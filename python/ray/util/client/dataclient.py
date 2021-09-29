@@ -191,7 +191,7 @@ class DataClient:
             # Skip ACKs if reconnect isn't enabled
             return
         if not _should_cache(response):
-            # Don't send ACKs unless response would have been
+            # Don't send ACKs unless response would have been cached
             return
         assert self.lock.locked()
         self._acknowledge_counter += 1
