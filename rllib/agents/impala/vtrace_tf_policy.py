@@ -239,7 +239,7 @@ def stats(policy, train_batch):
         "vf_loss": policy.loss.mean_vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy.loss.value_targets, [-1]),
-            tf.reshape(values_batched, [-1])),
+            tf.reshape(values_batched, [-1]))
     }
 
 

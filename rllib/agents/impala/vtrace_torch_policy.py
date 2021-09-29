@@ -199,7 +199,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         drop_last=policy.config["vtrace"])
     model.tower_stats["vf_explained_var"] = explained_variance(
         torch.reshape(loss.value_targets, [-1]),
-        torch.reshape(values_batched, [-1])),
+        torch.reshape(values_batched, [-1]))
 
     return loss.total_loss
 
