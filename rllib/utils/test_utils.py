@@ -368,8 +368,10 @@ def check_compute_single_action(trainer,
                 explore=explore,
                 timestep=timestep,
                 **call_kwargs)
-            # Make sure these are the same.
-            check(action, action2)
+            # Make sure these are the same, unless we have exploration
+            # switched on.
+            if not explore:
+                check(action, action2)
         else:
             action = what.compute_single_action(
                 obs,
