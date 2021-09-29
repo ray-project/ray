@@ -8,7 +8,7 @@ from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
 import ray
 from ray import cloudpickle
 from ray.exceptions import RayActorError
-from ray.ray_constants import env_integer, env_bool
+from ray.ray_constants import env_integer
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     TUNE_INSTALLED, TUNE_CHECKPOINT_FILE_NAME, \
@@ -276,9 +276,9 @@ class BackendExecutor:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
 
-            share_cuda_visible_devices_enabled = env_bool(
+            share_cuda_visible_devices_enabled = bool(env_integer(
                 ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-                self._backend.share_cuda_visible_devices)
+                self._backend.share_cuda_visible_devices))
 
             if (self._num_gpus_per_worker > 0
                     and share_cuda_visible_devices_enabled):

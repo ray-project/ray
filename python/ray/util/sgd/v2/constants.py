@@ -45,6 +45,6 @@ TUNE_CHECKPOINT_FILE_NAME = "checkpoint"
 # is restarted, the checkpoint_id can continue to increment.
 TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 
-# Boolean value which if set will override the value of
-# Backend.share_cuda_visible_devices.
+# Integer value which if set will override the value of
+# Backend.share_cuda_visible_devices. 1 for True, 0 for False.
 ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV = "SGD_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
