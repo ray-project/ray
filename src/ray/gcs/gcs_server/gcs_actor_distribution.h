@@ -152,7 +152,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
                                       const rpc::RequestWorkerLeaseReply &reply);
 
   /// Reset the actor's current assignment, while releasing acquired resources.
-  void ResetActorWorkerAssignment(std::shared_ptr<GcsActor> actor);
+  void ResetActorWorkerAssignment(GcsActor *actor);
 
   /// Notify that the cluster resources are changed.
   void NotifyClusterResourcesChanged();
