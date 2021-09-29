@@ -231,6 +231,7 @@ class StandardAutoscaler:
             self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])
 
+        # TODO(ekl) fix the hash mismatch thing
         #        if not self.provider.is_readonly():
         #            self.terminate_nodes_to_enforce_config_constraints(now)
 
