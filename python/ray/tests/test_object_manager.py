@@ -611,6 +611,7 @@ def test_object_directory_failure(ray_start_cluster):
         "object_store_memory": 75 * 1024 * 1024,
         "_system_config": {
             "worker_lease_timeout_milliseconds": 0,
+            "object_manager_pull_timeout_ms": 10000,
         }
     }],
     indirect=True)
@@ -635,6 +636,7 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
 
     remote_obj_creator = RemoteObjectCreator.remote()
     remote_refs = [remote_obj_creator.put.remote(1) for _ in range(7)]
+    print(remote_refs)
     # Make sure all objects are created.
     ray.get(remote_obj_creator.idle.remote())
 

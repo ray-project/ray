@@ -188,7 +188,7 @@ RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
 /// ObjectManager.
-RAY_CONFIG(int, object_manager_pull_timeout_ms, 1000)
+RAY_CONFIG(int, object_manager_pull_timeout_ms, 10000)
 
 /// Timeout, in milliseconds, to wait until the Push request fails.
 /// Special value:
