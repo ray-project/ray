@@ -428,9 +428,9 @@ class TFPolicy(Policy):
         if state_batches:
             for i, s in enumerate(state_batches):
                 input_dict[f"state_in_{i}"] = s
-        if prev_action_batch:
+        if prev_action_batch is not None:
             input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-        if prev_reward_batch:
+        if prev_reward_batch is not None:
             input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
 
         to_fetch = self._build_compute_actions(

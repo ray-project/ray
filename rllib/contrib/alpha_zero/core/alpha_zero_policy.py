@@ -39,9 +39,9 @@ class AlphaZeroPolicy(TorchPolicy):
                         **kwargs):
 
         input_dict = {"obs": obs_batch}
-        if prev_action_batch:
+        if prev_action_batch is not None:
             input_dict["prev_actions"] = prev_action_batch
-        if prev_reward_batch:
+        if prev_reward_batch is not None:
             input_dict["prev_rewards"] = prev_reward_batch
 
         return self.compute_actions_from_input_dict(
