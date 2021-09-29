@@ -387,6 +387,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
+
+  FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
+  FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);
 };
 
 }  // namespace gcs

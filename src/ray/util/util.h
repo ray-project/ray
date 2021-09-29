@@ -335,9 +335,10 @@ class ExponentialBackOff {
   }
 
   double Next() {
+    auto ret = curr_value_;
     curr_value_ = curr_value_ * multiplier_;
     curr_value_ = std::min(curr_value_, max_value_);
-    return curr_value_;
+    return ret;
   }
 
   void Reset() { curr_value_ = initial_value_; }
