@@ -12,6 +12,7 @@ from ray.autoscaler._private.util import format_readonly_node_type
 
 logger = logging.getLogger(__name__)
 
+# TODO(ekl) make it so you don't need to pass this to ray start
 # RAY_OVERRIDE_NODE_ID_FOR_TESTING=fffffffffffffffffffffffffffffffffffffffffffffffffff00000
 # ray start \
 #   --autoscaling-config=~/Desktop/foo.yaml --head --block
@@ -75,6 +76,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             }
         }
+        # TODO(ekl) why is it not finding the local path?
         cmd = "/home/eric/.local/bin/ray start --address=localhost:6379"
         env = {
             "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
@@ -94,6 +96,7 @@ class FakeMultiNodeProvider(NodeProvider):
             logger.info("Output: \n{}".format(output))
 
     def terminate_node(self, node_id):
+        # TODO(ekl) implement this
         raise AssertionError("Readonly node provider cannot be updated")
 
     @staticmethod
