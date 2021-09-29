@@ -208,6 +208,9 @@ def _resolve_paths_and_filesystem(
         try:
             import fsspec
         except ModuleNotFoundError:
+            # If filesystem is not a pyarrow filesystem and fsspec isn't
+            # installed, then filesystem is neither a pyarrow filesystem nor
+            # an fsspec filesystem, so we raise a TypeError.
             raise TypeError(err_msg)
         if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
             raise TypeError(err_msg)
