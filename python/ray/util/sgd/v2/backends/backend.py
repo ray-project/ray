@@ -276,9 +276,9 @@ class BackendExecutor:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
 
-            share_cuda_visible_devices_enabled = bool(env_integer(
-                ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-                self._backend.share_cuda_visible_devices))
+            share_cuda_visible_devices_enabled = bool(
+                env_integer(ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+                            self._backend.share_cuda_visible_devices))
 
             if (self._num_gpus_per_worker > 0
                     and share_cuda_visible_devices_enabled):
