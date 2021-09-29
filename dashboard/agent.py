@@ -67,10 +67,7 @@ class DashboardAgent(object):
         self.session_dir = session_dir
         self.runtime_env_dir = runtime_env_dir
         self.log_dir = log_dir
-        self.dashboard_agent_port = os.environ.get("RAY_AGENT_PORT_OVERRIDE")
-        if not self.dashboard_agent_port:
-            self.dashboard_agent_port = dashboard_agent_port
-        logger.info(self.dashboard_agent_port)
+        self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
         self.listen_port = listen_port
