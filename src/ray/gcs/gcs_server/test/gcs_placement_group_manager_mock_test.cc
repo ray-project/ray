@@ -128,7 +128,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   failure_callback(pg, true);
   next = RayConfig::instance().gcs_create_placement_group_retry_multiplier() * next;
   ASSERT_EQ(1, pending_queue.size());
-  ASSERT_DOUBLE_EQ(next, pending_queue.begin()->first);
+  ASSERT_LT(now + next, pending_queue.begin()->first);
 }
 
 }  // namespace gcs
