@@ -60,7 +60,8 @@ public class HttpProxy implements ServeProxy {
                 Metrics.count()
                     .name("serve_num_http_requests")
                     .description("The number of HTTP requests processed.")
-                    .unit("").tags(new HashMap<>())
+                    .unit("")
+                    .tags(new HashMap<>())
                     .register());
     startupHttpServer(port);
     LOGGER.info("Proxy {} has been started with port:{}", getName(), this.port);
