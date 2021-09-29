@@ -15,6 +15,7 @@ from ray.util.sgd.v2 import Trainer, TorchConfig, TensorflowConfig, \
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
     BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func \
@@ -1005,6 +1006,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
 
     def get_resources():
         return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
 
     # 0 GPUs will be requested and should not raise an error.
     trainer = Trainer(TestConfig(), num_workers=2, use_gpu=False)
