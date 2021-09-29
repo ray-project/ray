@@ -33,19 +33,26 @@ ObjectBufferPool::~ObjectBufferPool() {
 
   // Assume no request would arrive and most likely no inflight requests during
   // destruction.
-  while (!create_buffer_ops_.empty()) {
+  int count = 0;
+  while (!create_buffer_ops_.empty() && count < 5) {
+    ++count;
     RAY_LOG(ERROR)
         << create_buffer_ops_.size() << " inflight create buffer operations found "
         << "during ObjectBufferPool shutdown. Either abort these requests before "
-        << "destroying ObjectBufferPool, or make it unnecessary to wait for their "
-           "completion.";
+        << "destroying ObjectBufferPool, or refactor ObjectBufferPool to make it "
+           "unnecessary to wait for the operations' completion.";
     auto inflight_ops = create_buffer_ops_;
     lock.unlock();
     for (const auto &[obj_id, cond_var] : inflight_ops) {
       cond_var->notify_all();
     }
-    absl::SleepFor(absl::Seconds(0.1));
+    absl::SleepFor(absl::Seconds(1));
     lock.lock();
+  }
+  if (count == 5) {
+    RAY_LOG(ERROR)
+      << create_buffer_ops_.size() << " remaining inflight create buffer operations "
+      << "during ObjectBufferPool destruction.";
   }
 
   // Abort unfinished buffers in progress.
