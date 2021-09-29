@@ -133,7 +133,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             if _block_udf is not None:
                 block = _block_udf(block)
             with fs.open_output_stream(write_path) as f:
-                _write_block_to_file(f, BlockAccessor.for_block(block))
+                _write_block_to_file(f, BlockAccessor.for_block(block),
+                                     **write_args)
 
         write_block = cached_remote_fn(write_block)
 

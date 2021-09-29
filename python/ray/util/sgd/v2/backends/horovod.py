@@ -5,7 +5,7 @@ from typing import Optional, Set
 
 import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend
-from ray.util.sgd.v2.utils import get_node_id, get_hostname, update_env_vars
+from ray.util.sgd.v2.utils import update_env_vars
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 try:
@@ -44,14 +44,16 @@ class HorovodConfig(BackendConfig):
         return HorovodBackend
 
 
-def init_env_vars(world_rank: int, world_size: int):
+def init_env_vars(world_rank: int, world_size: int, node_id: str):
     """Initialize Horovod environment variables."""
-    os.environ["HOROVOD_HOSTNAME"] = get_node_id()
+    os.environ["HOROVOD_HOSTNAME"] = node_id
     os.environ["HOROVOD_RANK"] = str(world_rank)
     os.environ["HOROVOD_SIZE"] = str(world_size)
 
 
 class HorovodBackend(Backend):
+    share_cuda_visible_devices: bool = True
+
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: HorovodConfig):
 
@@ -60,9 +62,11 @@ class HorovodBackend(Backend):
         # Initialize workers with Horovod environment variables
         setup_futures = []
         for rank in range(len(worker_group)):
+            worker_node_id = worker_group.workers[rank].metadata.node_id
             setup_futures.append(
                 worker_group.execute_single_async(rank, init_env_vars, rank,
-                                                  len(worker_group)))
+                                                  len(worker_group),
+                                                  worker_node_id))
         ray.get(setup_futures)
 
         # Use Horovod Ray Coordinator
@@ -70,8 +74,8 @@ class HorovodBackend(Backend):
         self.coordinator = Coordinator(backend_config)
 
         # Get all the hostnames of all workers
-        node_ids = worker_group.execute(get_node_id)
-        hostnames = worker_group.execute(get_hostname)
+        node_ids = [w.metadata.node_id for w in worker_group.workers]
+        hostnames = [w.metadata.hostname for w in worker_group.workers]
         # Register each hostname to the coordinator. assumes the hostname
         # ordering is the same.
         for rank, (hostname, node_id) in enumerate(zip(hostnames, node_ids)):

@@ -214,6 +214,7 @@ class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
     EveryNode = "EveryNode"
+    FixedNumber = "FixedNumber"
 
 
 class HTTPOptions(pydantic.BaseModel):
@@ -224,11 +225,20 @@ class HTTPOptions(pydantic.BaseModel):
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
     num_cpus: int = 0
     root_url: str = ""
+    fixed_number_replicas: Optional[int] = None
+    fixed_number_selection_seed: int = 0
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
+        return v
+
+    @validator("fixed_number_replicas", always=True)
+    def fixed_number_replicas_should_exist(cls, v, values):
+        if values["location"] == DeploymentMode.FixedNumber and v is None:
+            raise ValueError("When location='FixedNumber', you must specify "
+                             "the `fixed_number_replicas` parameter.")
         return v
 
     class Config:
