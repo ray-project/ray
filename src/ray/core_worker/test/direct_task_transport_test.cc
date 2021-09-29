@@ -250,7 +250,7 @@ class MockActorCreator : public ActorCreatorInterface {
     callbacks.push_back(callback);
   }
 
-  bool IsActorInRegistering(const ActorID &actor_id) const override {
+  [[nodiscard]] bool IsActorInRegistering(const ActorID &actor_id) const override {
     return actor_pending;
   }
 
@@ -332,7 +332,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
 
   int num_resolved = 0;
   actor_creator.actor_pending = true;
-  resolver.ResolveDependencies(task, [&](Status) { num_resolved++; });
+  resolver.ResolveDependencies(task, [&](const Status &) { num_resolved++; });
   ASSERT_EQ(num_resolved, 0);
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
 
@@ -368,7 +368,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
 
   int num_resolved = 0;
   actor_creator.actor_pending = true;
-  resolver.ResolveDependencies(task, [&](Status) { num_resolved++; });
+  resolver.ResolveDependencies(task, [&](const Status &) { num_resolved++; });
   ASSERT_EQ(num_resolved, 0);
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
 
