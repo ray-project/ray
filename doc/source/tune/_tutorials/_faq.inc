@@ -285,8 +285,10 @@ to run without being starved of resources.
     tune.run(
         train_fn,
         resources_per_trial=tune.PlacementGroupFactory([
-            {"CPU": 1},  # this bundle will be used by the trainable itself
-            {"CPU": 1},  # this bundle will be used by Modin
+            # first bundle will be used by the trainable itself
+            {"CPU": 1},
+            # second bundle will be used by Modin
+            {"CPU": 1},
         ], strategy="PACK")
 
 How can I pass further parameter values to my trainable?
