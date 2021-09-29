@@ -1,3 +1,4 @@
+import os
 import pytest
 import ray
 import re
@@ -5,6 +6,7 @@ from filelock import FileLock
 from ray._private.test_utils import run_string_as_driver, SignalActor
 from ray import workflow
 from ray.tests.conftest import *  # noqa
+from unittest.mock import patch
 
 
 def test_init_twice(call_ray_start, reset_workflow, tmp_path):
@@ -22,9 +24,11 @@ if __name__ == "__main__":
 
 
 def test_init_twice_2(call_ray_start, reset_workflow, tmp_path):
-    run_string_as_driver(driver_script)
-    with pytest.raises(RuntimeError):
-        workflow.init(str(tmp_path))
+    with patch.dict(os.environ, {"RAY_ADDRESS": call_ray_start}):
+        run_string_as_driver(driver_script)
+        with pytest.raises(
+                RuntimeError, match=".*different from the workflow manager.*"):
+            workflow.init(str(tmp_path))
 
 
 @pytest.mark.parametrize(
