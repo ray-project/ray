@@ -119,8 +119,9 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(
       void, RequestWorkerLease,
       (const rpc::TaskSpec &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-       const int64_t backlog_size), (override));
+       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+       const int64_t backlog_size),
+      (override));
 
   MOCK_METHOD(ray::Status, ReturnWorker,
               (int worker_port, const WorkerID &worker_id, bool disconnect_worker),
