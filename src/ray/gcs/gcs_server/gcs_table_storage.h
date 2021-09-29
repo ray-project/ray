@@ -405,8 +405,7 @@ class GcsTableStorage {
 class RedisGcsTableStorage : public GcsTableStorage {
  public:
   explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
-      : GcsTableStorage(std::make_shared<RedisStoreClient>(redis_client)) {
-  }
+      : GcsTableStorage(std::make_shared<RedisStoreClient>(redis_client)) {}
 };
 
 /// \class InMemoryGcsTableStorage
@@ -415,8 +414,7 @@ class RedisGcsTableStorage : public GcsTableStorage {
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
   explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
-      : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service)) {
-  }
+      : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service)) {}
 };
 
 }  // namespace gcs
