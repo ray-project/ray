@@ -405,7 +405,8 @@ def populate_wheels_sanity_check(commit: Optional[str] = None):
         raise RuntimeError(f"Could not populate wheels sanity check command: "
                            f"Commit hash missing. Got: {commit}")
 
-    cmd = f"python -c 'import ray; assert ray.__commit__ == \"{commit}\", ray.__commit__'"
+    cmd = f"python -c 'import ray; "
+          f"assert ray.__commit__ == \"{commit}\", ray.__commit__'"
     os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
