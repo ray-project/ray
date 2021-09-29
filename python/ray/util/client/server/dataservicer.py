@@ -12,7 +12,7 @@ import time
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (CLIENT_SERVER_MAX_THREADS,
-                                    _propagate_error_in_context,
+                                    _propagate_error_in_context, _should_cache,
                                     OrderedResponseCache)
 from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
@@ -39,22 +39,6 @@ def _get_reconnecting_from_context(context: Any) -> bool:
             "version.")
         return False
     return val == "True"
-
-
-def _should_cache(req: ray_client_pb2.DataRequest) -> bool:
-    """
-    Returns True if the response should to the given request should be cached,
-    false otherwise. At the moment the only requests we do not cache are:
-        - asynchronous gets: These arrive out of order. Skipping caching here
-            is fine, since repeating an async get is idempotent
-        - acks: Repeating acks is idempotent
-        - clean up requests: Also idempotent, and client has likely already
-             wrapped up the data connection by this point.
-    """
-    req_type = req.WhichOneof("type")
-    if req_type == "get" and req.get.asynchronous:
-        return False
-    return req_type not in ("acknowledge", "connection_cleanup")
 
 
 def fill_queue(

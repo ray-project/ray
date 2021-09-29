@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, TYPE_CHECKING, Optional, Union
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client.common import INT32_MAX
+from ray.util.client.common import INT32_MAX, _should_cache
 
 if TYPE_CHECKING:
     from ray.util.client.worker import Worker
@@ -135,7 +135,7 @@ class DataClient:
                 if response.req_id in self.outstanding_requests:
                     del self.outstanding_requests[response.req_id]
                     # Acknowledge response
-                    self._acknowledge(response.req_id)
+                    self._acknowledge(response)
         else:
             with self.lock:
                 self.ready_data[response.req_id] = response
@@ -180,14 +180,18 @@ class DataClient:
         # Since self._in_shutdown is set to True, no new item
         # will be added to self.asyncio_waiting_data
 
-    def _acknowledge(self, req_id: int) -> None:
+    def _acknowledge(self, response: ray_client_pb2.DataResponse) -> None:
         """
         Puts an acknowledge request on the request queue periodically.
         Lock should be held before calling this. Used when an async or
         blocking response is received.
         """
+        req_id = response.req_id
         if not self.client_worker._reconnect_enabled:
             # Skip ACKs if reconnect isn't enabled
+            return
+        if not _should_cache(response):
+            # Don't send ACKs unless response would have been
             return
         assert self.lock.locked()
         self._acknowledge_counter += 1
@@ -271,7 +275,7 @@ class DataClient:
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
             del self.outstanding_requests[req_id]
-            self._acknowledge(req_id)
+            self._acknowledge(data)
 
         return data
 

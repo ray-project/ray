@@ -486,6 +486,22 @@ class ClientServerHandle:
         return getattr(self.grpc_server, attr)
 
 
+def _should_cache(
+        msg: Union[ray_client_pb2.DataRequest, ray_client_pb2.DataResponse]
+) -> bool:
+    """
+    Returns True if the response to the given request should be cached,
+    false otherwise. At the moment the only requests we do not cache are:
+        - gets: Gets are idempotent, and get responses can be arbitrarily
+                large, so we should avoid caching them.
+        - acks: Repeating acks is idempotent.
+        - clean up requests: Also idempotent, and client has likely already
+             wrapped up the data connection by this point.
+    """
+    msg_type = msg.WhichOneof("type")
+    return msg_type not in ("acknowledge", "connection_cleanup", "get")
+
+
 def _get_client_id_from_context(context: Any) -> str:
     """
     Get `client_id` from gRPC metadata. If the `client_id` is not present,
