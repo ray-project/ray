@@ -16,6 +16,7 @@
 #     tons of time querying for available RLlib tests.
 
 import argparse
+import ast
 import os
 import re
 import subprocess
@@ -87,98 +88,44 @@ def _new_dep(graph: DepGraph, src_module: str, dep: str):
     graph.edges[src_id][dep_id] = True
 
 
-def _new_import(graph: DepGraph, src_module: str, line: str):
+def _new_import(graph: DepGraph, src_module: str, dep_module: str):
     """Process a new import statement in src_module.
     """
-    m = re.match(r"import (\S+)", line)
-    if m:
-        module = m.group(1)
+    # We don't care about system imports.
+    if not dep_module.startswith("ray"):
+        return
 
-        # We don't care about system imports.
-        if not module.startswith("ray"):
-            return
-
-        _new_dep(graph, src_module, module)
+    _new_dep(graph, src_module, dep_module)
 
 
-def _is_path_module(base: str, sub: str, _base_dir: str):
+def _is_path_module(module: str, name: str, _base_dir: str):
     """Figure out if base.sub is a python module or not.
     """
     # Special handling for _raylet, which is a C++ lib.
-    if base == "ray._raylet":
+    if module == "ray._raylet":
         return False
 
-    bps = ["python"] + base.split(".")
-    path = os.path.join(_base_dir, os.path.join(*bps), sub + ".py")
+    bps = ["python"] + module.split(".")
+    path = os.path.join(_base_dir, os.path.join(*bps), name + ".py")
     if os.path.isfile(path):
         return True  # file module
     return False
 
 
-def _count_triple_quotes(fl: str):
-    """Figure out how many triple quotes are in a line of code.
-
-    This is to correctly handle the cases:
-        '''single multi-line string'''
-        and
-        '''multi-line
-        string
-        '''
-    """
-    def _count_type(tq):
-        c = 0
-        start = fl.find(tq)
-        while start >= 0:
-            c += 1
-            start = fl.find(tq, start + 1)
-        return c
-
-    return _count_type('"""') + _count_type("'''")
-
-
-def _new_from_import(graph: DepGraph, src_module: str, line: str,
-                     _base_dir: str):
+def _new_from_import(graph: DepGraph, src_module: str, dep_module: str,
+                     dep_name: str, _base_dir: str):
     """Process a new "from ... import ..." statement in src_module.
     """
-    line = re.sub(r" as .*", "", line)
-    m = re.match(r"from (\S+) import (.+)", line)
-    if not m:
+    # We don't care about imports outside of ray package.
+    if not dep_module or not dep_module.startswith("ray"):
         return
 
-    base = m.group(1)
-    # We don't care about system imports.
-    if not base.startswith("ray"):
-        return
-
-    # This is where things are not handled 100%.
-    # If we have something like:
-    #     from ray.rllib.env.some_module import (ClassName1, ClassName2,
-    #                                            ClassName3)
-    # We are basically gonna say src_module depends on some_module and
-    # call it a day.
-    # This simplification is almost always true. It also allows us not
-    # to worry about complicated () line continuation problem.
-    if m.group(2).startswith("("):
-        # Simply add the dependency on base module and return.
-        _new_dep(graph, src_module, base)
-        return
-
-    # Handle the case: from xx.yy import aa, bb
-    for sub in m.group(2).split(","):
-        sub = sub.strip()
-
-        # In the case of "from xxx import *", we are going to simply
-        # add a dep from full to xxx. The module xxx should import all
-        # the sub modules that are exposed in __all__.
-        if sub == "*":
-            _new_dep(graph, src_module, base)
-        else:
-            if _is_path_module(base, sub, _base_dir):
-                # base.sub points to a file.
-                _new_dep(graph, src_module, _full_module_path(base, sub))
-            else:
-                # sub is an obj on base dir/file.
-                _new_dep(graph, src_module, base)
+    if _is_path_module(dep_module, dep_name, _base_dir):
+        # dep_module.dep_name points to a file.
+        _new_dep(graph, src_module, _full_module_path(dep_module, dep_name))
+    else:
+        # sub is an obj on base dir/file.
+        _new_dep(graph, src_module, dep_module)
 
 
 def _process_file(graph: DepGraph,
@@ -194,42 +141,16 @@ def _process_file(graph: DepGraph,
         _base_dir: use a different base dir than current dir. For unit testing.
     """
     with open(os.path.join(_base_dir, src_path), "r") as in_f:
-        in_multiline_comments = False
-        fl = ""
-        for line in in_f.readlines():
-            line = line.strip()
-            # Strip comments from the line.
-            line = re.sub(r"#.*", "", line)
+        tree = ast.parse(in_f.read())
 
-            # Line continuation.
-            # TODO(jungong) : also need to handle line breaks with ().
-            if line.endswith("\\"):
-                # line continuation.
-                fl += line[:-1]
-                continue
-            else:
-                fl += line
-
-            # Need to make sure we don't process multi-line comments.
-            # TODO(jungong) : this is quite ugly. Find a lib to do this maybe.
-            tq_count = _count_triple_quotes(fl)
-            if tq_count > 0 and tq_count % 2 == 0:
-                # Single multiline comment. Probably not import statement.
-                fl = ""
-                continue
-            elif tq_count % 2 == 1:
-                in_multiline_comments = not in_multiline_comments
-
-            if in_multiline_comments:
-                fl = ""
-                continue
-
-            if fl.startswith("import"):
-                _new_import(graph, src_module, fl)
-            elif fl.startswith("from"):
-                _new_from_import(graph, src_module, fl, _base_dir)
-
-            fl = ""
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    _new_import(graph, src_module, alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    _new_from_import(graph, src_module, node.module,
+                                     alias.name, _base_dir)
 
 
 def build_dep_graph():
@@ -283,6 +204,8 @@ def _should_skip(d: str):
     if d.startswith("python/.eggs/"):
         return True
     if d.startswith("python/."):
+        return True
+    if d.startswith("python/build"):
         return True
     if d.startswith("python/ray/cpp"):
         return True

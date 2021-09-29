@@ -77,68 +77,6 @@ b = 2
         self.assertEqual(graph.ids["ray.rllib.env"], 1)
         self.assertEqual(graph.edges[0], {1: True})
 
-    def test_import_in_comment(self):
-        graph = pda.DepGraph()
-        graph.ids["ray"] = 0
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            src_path = os.path.join(tmpdir, "comment1.py")
-            self.create_tmp_file(
-                src_path, '''
-import ray.rllib.env.mock_env
-a = 1  # this is a comment import ray.rllib.env.multi_agent_env
-b = 2
-''')
-            pda._process_file(graph, src_path, "ray")
-
-        self.assertEqual(len(graph.ids), 2)
-        self.assertEqual(graph.ids["ray.rllib.env.mock_env"], 1)
-        # Only 1 edge from ray to ray.rllib.env.mock_env
-        # ray.tune.tune is ignored.
-        self.assertEqual(graph.edges[0], {1: True})
-
-    def test_import_in_multi_line_comment_1(self):
-        graph = pda.DepGraph()
-        graph.ids["ray"] = 0
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            src_path = os.path.join(tmpdir, "multi_line_comment1.py")
-            self.create_tmp_file(
-                src_path, '''
-a = 1
-b = 2  """usa this like: import ray.tune.tune"""
-import ray.rllib.env.mock_env
-''')
-            pda._process_file(graph, src_path, "ray")
-
-        self.assertEqual(len(graph.ids), 2)
-        self.assertEqual(graph.ids["ray.rllib.env.mock_env"], 1)
-        # Only 1 edge from ray to ray.rllib.env.mock_env
-        # ray.tune.tune is ignored.
-        self.assertEqual(graph.edges[0], {1: True})
-
-    def test_import_in_multi_line_comment_2(self):
-        graph = pda.DepGraph()
-        graph.ids["ray"] = 0
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            src_path = os.path.join(tmpdir, "multi_line_comment2.py")
-            self.create_tmp_file(
-                src_path, '''
-a = 1
-b = 2  """
-usa this like: import ray.tune.tune
-"""
-import ray.rllib.env.mock_env
-''')
-            pda._process_file(graph, src_path, "ray")
-
-        self.assertEqual(len(graph.ids), 2)
-        self.assertEqual(graph.ids["ray.rllib.env.mock_env"], 1)
-        # Only 1 edge from ray to ray.rllib.env.mock_env
-        # ray.tune.tune is ignored.
-        self.assertEqual(graph.edges[0], {1: True})
-
     def test_from_import_file_module(self):
         graph = pda.DepGraph()
         graph.ids["ray"] = 0
@@ -147,11 +85,9 @@ import ray.rllib.env.mock_env
             src_path = "multi_line_comment_3.py"
             self.create_tmp_file(
                 os.path.join(tmpdir, src_path), '''
-a = 1
-b = 2  """
-usa this like: from ray.tune import tune
-"""
 from ray.rllib.env import mock_env
+a = 1
+b = 2
 ''')
             # Touch ray/rllib/env/mock_env.py in tmpdir,
             # so that it looks like a module.
@@ -177,11 +113,9 @@ from ray.rllib.env import mock_env
             src_path = "multi_line_comment_3.py"
             self.create_tmp_file(
                 os.path.join(tmpdir, src_path), '''
-a = 1
-b = 2  """
-usa this like: from ray.tune import tune
-"""
 from ray.rllib.env import MockEnv
+a = 1
+b = 2
 ''')
             # Touch ray/rllib/env.py in tmpdir,
             # MockEnv is a class on env module.
