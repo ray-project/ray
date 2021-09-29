@@ -106,7 +106,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler. Defaults to UNKNOWN.
-  /// \param callback A callback function called when the handler been executed.
+  /// \param callback A callback function called when the handler has been executed.
   void post(std::function<void()> handler, const std::string name = "UNKNOWN",
             std::function<void()> callback = nullptr) LOCKS_EXCLUDED(mutex_);
 
@@ -115,7 +115,7 @@ class instrumented_io_context : public boost::asio::io_context {
   ///
   /// \param handler The handler to be posted to the event loop.
   /// \param handle The stats handle returned by RecordStart() previously.
-  /// \param callback A callback function called when the handler been executed.
+  /// \param callback A callback function called when the handler has been executed.
   void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle,
             std::function<void()> callback = nullptr) LOCKS_EXCLUDED(mutex_);
 
@@ -125,7 +125,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler. Defaults to UNKNOWN.
-  /// \param callback A callback function called when the handler been executed.
+  /// \param callback A callback function called when the handler has been executed.
   void dispatch(std::function<void()> handler, const std::string name = "UNKNOWN",
                 std::function<void()> callback = nullptr) LOCKS_EXCLUDED(mutex_);
 
@@ -150,7 +150,7 @@ class instrumented_io_context : public boost::asio::io_context {
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
-  /// \param callback A callback function called when the handler been executed.
+  /// \param callback A callback function called when the handler has been executed.
   static void RecordExecution(const std::function<void()> &fn,
                               std::shared_ptr<StatsHandle> handle,
                               const std::function<void()> &callback = nullptr);
