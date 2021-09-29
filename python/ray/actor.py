@@ -8,6 +8,7 @@ import ray._private.signature as signature
 import ray._private.runtime_env as runtime_support
 import ray.worker
 from ray.util.annotations import PublicAPI
+from ray._private.runtime_env import parse_pip_str, parse_conda_str
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
 
@@ -583,6 +584,13 @@ class ActorClass:
 
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
+
+        # Parse pip/conda requirements files before client_mode_convert is
+        # called, because the files aren't available on the remote node.
+        if isinstance(runtime_env.get("pip"), str):
+            runtime_env["pip"] = parse_pip_str(runtime_env["pip"])
+        if isinstance(runtime_env.get("conda"), str):
+            runtime_env["conda"] = parse_conda_str(runtime_env["conda"])
 
         if client_mode_should_convert(auto_init=True):
             return client_mode_convert_actor(

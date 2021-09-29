@@ -8,6 +8,7 @@ from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
+from ray._private.runtime_env import parse_pip_str, parse_conda_str
 from ray.util.placement_group import (
     PlacementGroup,
     check_placement_group_index,
@@ -210,6 +211,14 @@ class RemoteFunction:
                 override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
+
+        # Parse pip/conda requirements files before client_mode_convert is
+        # called, because the files aren't available on the remote node.
+        if isinstance(runtime_env.get("pip"), str):
+            runtime_env["pip"] = parse_pip_str(runtime_env["pip"])
+        if isinstance(runtime_env.get("conda"), str):
+            runtime_env["conda"] = parse_conda_str(runtime_env["conda"])
+
         if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(
                 self,
