@@ -1329,6 +1329,7 @@ py_test(
 
 sh_test(
     name = "env/tests/test_local_inference_cartpole",
+    main = "env/tests/test_client_server_setup.sh",
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_client_server_setup.sh"],
@@ -1338,6 +1339,7 @@ sh_test(
 
 sh_test(
     name = "env/tests/test_remote_inference_cartpole",
+    main = "env/tests/test_client_server_setup.sh",
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_client_server_setup.sh"],
@@ -1347,6 +1349,7 @@ sh_test(
 
 sh_test(
     name = "env/tests/test_local_inference_unity3d",
+    main = "env/tests/test_client_server_setup.sh",
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_client_server_setup.sh"],
@@ -1356,6 +1359,7 @@ sh_test(
 
 sh_test(
     name = "env/tests/test_remote_inference_unity3d",
+    main = "env/tests/test_client_server_setup.sh",
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_client_server_setup.sh"],
