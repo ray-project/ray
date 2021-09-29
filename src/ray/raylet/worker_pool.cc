@@ -1359,7 +1359,7 @@ std::string WorkerPool::GetCreatedRuntimeEnvContext(
 
 void WorkerPool::CreateRuntimeEnv(
     const std::string &serialized_runtime_env, const JobID &job_id,
-    std::function<void(bool, const std::string &)> &callback) {
+    const std::function<void(bool, const std::string &)> &callback) {
   auto runtime_env_context = GetCreatedRuntimeEnvContext(serialized_runtime_env);
   if (runtime_env_context.empty()) {
     // create runtime env.
