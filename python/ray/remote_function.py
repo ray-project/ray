@@ -210,7 +210,7 @@ class RemoteFunction:
                 override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
-        if client_mode_should_convert():
+        if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(
                 self,
                 args,
@@ -328,6 +328,7 @@ class RemoteFunction:
                 placement_group_capture_child_tasks,
                 worker.debugger_breakpoint,
                 runtime_env_dict,
+                runtime_env_dict.get("uris") or [],
                 override_environment_variables=override_environment_variables
                 or dict())
             # Reset worker's debug context from the last "remote" command

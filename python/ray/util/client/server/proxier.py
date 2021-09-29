@@ -263,7 +263,7 @@ class ProxyManager():
             f"ray_client_server_{specific_server.port}", unique=True)
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
-        if serialized_runtime_env == "{}":
+        if not serialized_runtime_env or serialized_runtime_env == "{}":
             serialized_runtime_env_context = RuntimeEnvContext().serialize()
         else:
             serialized_runtime_env_context = self._create_runtime_env(
