@@ -15,9 +15,9 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.schedules import PiecewiseSchedule
@@ -424,14 +424,18 @@ class TFPolicy(Policy):
         timestep = timestep if timestep is not None else self.global_timestep
 
         builder = TFRunBuilder(self.get_session(), "compute_actions")
+
+        input_dict = {SampleBatch.OBS: obs_batch}
+        if state_batches:
+            for i, s in enumerate(state_batches):
+                input_dict[f"state_in_{i}"] = s
+        if prev_action_batch is not None:
+            input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+        if prev_reward_batch is not None:
+            input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+
         to_fetch = self._build_compute_actions(
-            builder,
-            obs_batch=obs_batch,
-            state_batches=state_batches,
-            prev_action_batch=prev_action_batch,
-            prev_reward_batch=prev_reward_batch,
-            explore=explore,
-            timestep=timestep)
+            builder, input_dict=input_dict, explore=explore, timestep=timestep)
 
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
@@ -1006,6 +1010,12 @@ class TFPolicy(Policy):
         # TODO: (sven) This can be deprecated after trajectory view API flag is
         #  removed and always True.
         else:
+            if log_once("_build_compute_actions_input_dict"):
+                deprecation_warning(
+                    old="_build_compute_actions(.., obs_batch=.., ..)",
+                    new="_build_compute_actions(.., input_dict=..)",
+                    error=False,
+                )
             state_batches = state_batches or []
             if len(self._state_inputs) != len(state_batches):
                 raise ValueError(
