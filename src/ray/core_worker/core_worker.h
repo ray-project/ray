@@ -1443,7 +1443,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
         GUARDED_BY(tasks_counter_mutex_);
 
-    void Add(TaskStatusType type, std::string func_name, int value) {
+    void Add(TaskStatusType type, const std::string &func_name, int value) {
       tasks_counter_mutex_.AssertHeld();
       if (type == kPending) {
         pending_tasks_counter_map_[func_name] += value;
