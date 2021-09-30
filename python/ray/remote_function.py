@@ -210,7 +210,7 @@ class RemoteFunction:
                 override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
-        if client_mode_should_convert(auto_init=True):
+        if client_mode_should_convert():
             return client_mode_convert_function(
                 self,
                 args,

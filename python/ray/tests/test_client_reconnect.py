@@ -311,21 +311,18 @@ def test_valid_actor_state():
             return self.val
 
     i = 0
-    # This is to prevent erroring in the initial connection logic.
-    started = False
 
     def fail_every_seven(_):
         # Inject an error every seventh time this method is called
-        nonlocal i, started
+        nonlocal i
         i += 1
-        if i % 7 == 0 and started:
+        if i % 7 == 0:
             raise RuntimeError
 
     with start_middleman_server(
             on_data_response=fail_every_seven,
             on_task_request=fail_every_seven,
             on_task_response=fail_every_seven):
-        started = True
         actor = IncrActor.remote()
         for _ in range(100):
             ref = actor.incr.remote()

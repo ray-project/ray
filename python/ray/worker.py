@@ -223,6 +223,9 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
+                ray.client().connect()
+                return
             raise RaySystemError("Ray has not been started yet. You can "
                                  "start Ray with 'ray.init()'.")
 
@@ -476,7 +479,7 @@ class Worker:
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
 
@@ -573,7 +576,7 @@ _global_node = None
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def init(
         address: Optional[str] = None,
         *,
@@ -971,7 +974,7 @@ _post_init_hooks = []
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -1237,7 +1240,7 @@ def listen_error_messages_raylet(worker, threads_stopped):
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def is_initialized() -> bool:
     """Check if ray.init has been called yet.
 
@@ -1556,7 +1559,7 @@ blocking_get_inside_async_warned = False
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
         *,
         timeout: Optional[float] = None) -> Union[Any, List[Any]]:
@@ -1645,7 +1648,7 @@ def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def put(value: Any, *,
         _owner: Optional["ray.actor.ActorHandle"] = None) -> ray.ObjectRef:
     """Store an object in the object store.
@@ -1699,7 +1702,7 @@ blocking_wait_inside_async_warned = False
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def wait(object_refs: List[ray.ObjectRef],
          *,
          num_returns: int = 1,
@@ -1806,7 +1809,7 @@ def wait(object_refs: List[ray.ObjectRef],
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def get_actor(name: str,
               namespace: Optional[str] = None) -> "ray.actor.ActorHandle":
     """Get a handle to a named actor.
@@ -1838,7 +1841,7 @@ def get_actor(name: str,
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     """Kill an actor forcefully.
 
@@ -1867,7 +1870,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def cancel(object_ref: ray.ObjectRef,
            *,
            force: bool = False,
