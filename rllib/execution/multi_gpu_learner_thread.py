@@ -3,13 +3,14 @@ import threading
 
 from six.moves import queue
 
-from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
+    LEARNER_STATS_KEY
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
@@ -147,17 +148,30 @@ class MultiGPULearnerThread(LearnerThread):
             buffer_idx, released = self.ready_tower_stacks_buffer.get()
 
         with self.grad_timer:
-            fetches = self.policy.learn_on_loaded_batch(
+            # Use LearnerInfoBuilder as a unified way to build the final
+            # results dict from `learn_on_loaded_batch` call(s).
+            # This makes sure results dicts always have the same structure
+            # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
+            # tf vs torch).
+            learner_info_builder = LearnerInfoBuilder(
+                num_devices=len(self.policy.devices))
+            default_policy_results = self.policy.learn_on_loaded_batch(
                 offset=0, buffer_index=buffer_idx)
+            learner_info_builder.add_learn_on_batch_results(
+                default_policy_results)
+            self.learner_info = learner_info_builder.finalize()
+            learner_stats = {
+                DEFAULT_POLICY_ID: self.learner_info[DEFAULT_POLICY_ID][
+                    LEARNER_STATS_KEY]
+            }
             self.weights_updated = True
-            self.stats = {DEFAULT_POLICY_ID: get_learner_stats(fetches)}
 
         if released:
             self.idle_tower_stacks.put(buffer_idx)
 
         self.outqueue.put(
             (self.policy.get_num_samples_loaded_into_buffer(buffer_idx),
-             self.stats))
+             learner_stats))
         self.learner_queue_size.push(self.inqueue.qsize())
 
 

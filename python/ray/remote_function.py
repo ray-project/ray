@@ -8,6 +8,7 @@ from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
+from ray._private.runtime_env import parse_pip_and_conda
 from ray.util.placement_group import (
     PlacementGroup,
     check_placement_group_index,
@@ -108,7 +109,10 @@ class RemoteFunction:
         self._retry_exceptions = (DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS
                                   if retry_exceptions is None else
                                   retry_exceptions)
-        self._runtime_env = runtime_env
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        self._runtime_env = parse_pip_and_conda(runtime_env)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
@@ -163,6 +167,10 @@ class RemoteFunction:
         """
 
         func_cls = self
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = parse_pip_and_conda(runtime_env)
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
@@ -182,7 +190,7 @@ class RemoteFunction:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=runtime_env,
+                    runtime_env=new_runtime_env,
                     name=name)
 
         return FuncWrapper()
@@ -206,6 +214,7 @@ class RemoteFunction:
                 runtime_env=None,
                 name=""):
         """Submit the remote function for execution."""
+
         if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(
                 self,

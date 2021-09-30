@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 import uuid
 
 import ray._private.gcs_utils as gcs_utils
+from ray._private.runtime_env import parse_pip_and_conda
 
 
 class JobConfig:
@@ -51,8 +52,9 @@ class JobConfig:
         # Lazily import this to avoid circular dependencies.
         import ray._private.runtime_env as runtime_support
         if runtime_env:
+            runtime_env_parsed_conda_pip = parse_pip_and_conda(runtime_env)
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict(
-                runtime_env)
+                runtime_env_parsed_conda_pip)
         else:
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
         self.runtime_env = runtime_env or dict()
