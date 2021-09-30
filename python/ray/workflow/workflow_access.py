@@ -328,7 +328,8 @@ class WorkflowManagementActor:
                 return actor.get_output.remote(workflow_id,
                                                result.output_step_id)
             raise ValueError(
-                f"No such step id {step_id} in workflow {workflow_id}")
+                f"Cannot load output from step id {step_id} "
+                f"in workflow {workflow_id}")
 
         return ray.put(
             _SelfDereferenceObject(None,
