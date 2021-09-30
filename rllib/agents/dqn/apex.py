@@ -33,6 +33,7 @@ from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import SampleBatchType
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -227,7 +228,7 @@ def apex_execution_plan(workers: WorkerSet,
         result["info"].update({
             "exploration_infos": exploration_infos,
             "learner_queue": learner_thread.learner_queue_size.stats(),
-            "learner": copy.deepcopy(learner_thread.stats),
+            LEARNER_INFO: copy.deepcopy(learner_thread.learner_info),
             "replay_shard_0": replay_stats,
         })
         return result

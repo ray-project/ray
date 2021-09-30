@@ -1073,8 +1073,9 @@ class BackendState:
                 f"Deployment '{self._name}' has "
                 f"{len(slow_start_replicas)} replicas that have taken "
                 f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
-                "may be caused by waiting for the cluster to auto-scale "
-                "or because the constructor is slow. Resources required "
+                "may be caused by waiting for the cluster to auto-scale, "
+                "waiting for a runtime environment to install, or a slow "
+                "constructor. Resources required "
                 f"for each replica: {required}, resources available: "
                 f"{available}. component=serve deployment={self._name}")
 
