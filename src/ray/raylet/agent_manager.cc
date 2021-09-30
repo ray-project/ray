@@ -114,6 +114,12 @@ void AgentManager::StartAgent() {
           // Retrying with exponential backoff
           RayConfig::instance().agent_restart_interval_ms() *
               std::pow(2, (agent_restart_count_ + 1))));
+    } else {
+      RAY_LOG(INFO) << "Agent has failed "
+                    << RayConfig::instance().agent_max_restart_count()
+                    << " times in a row without registering the agent. This is highly "
+                       "likely there's a bug in the dashboard agent. Please check out "
+                       "the dashboard_agent.log file.";
     }
   });
   monitor_thread.detach();

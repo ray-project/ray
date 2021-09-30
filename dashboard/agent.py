@@ -366,7 +366,7 @@ if __name__ == "__main__":
         # they are provided by the parent raylet.
         restart_count = os.environ["RESTART_COUNT"]
         max_restart_count = os.environ["MAX_RESTART_COUNT"]
-        raylet_pid = os.environ['RAY_RAYLET_PID']
+        raylet_pid = os.environ["RAY_RAYLET_PID"]
         node_ip = args.node_ip_address
         if restart_count >= max_restart_count:
             # Agent is failed to be started many times.
