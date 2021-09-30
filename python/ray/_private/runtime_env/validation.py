@@ -176,6 +176,43 @@ class ParsedRuntimeEnv(dict):
 
     This should be constructed from user-provided input (the API runtime_env)
     and used everywhere that the runtime_env is passed around internally.
+
+    Currently supported options:
+        working_dir (Path): Specifies the working directory of the worker.
+            This can either be a local directory or zip file.
+            Examples:
+                "."  # cwd
+                "local_project.zip"  # archive is unpacked into directory
+        uris (List[str]): A list of URIs that define the working_dir.
+        pip (List[str] | str): Either a list of pip packages, or a string
+            containing the path to a pip requirements.txt file.
+        conda (dict | str): Either the conda YAML config, the name of a
+            local conda env (e.g., "pytorch_p36"), or the path to a conda
+            environment.yaml file.
+            The Ray dependency will be automatically injected into the conda
+            env to ensure compatibility with the cluster Ray. The conda name
+            may be mangled automatically to avoid conflicts between runtime
+            envs.
+            This field cannot be specified at the same time as the 'pip' field.
+            To use pip with conda, please specify your pip dependencies within
+            the conda YAML config:
+            https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-e
+            nvironments.html#create-env-file-manually
+            Examples:
+                {"channels": ["defaults"], "dependencies": ["codecov"]}
+                "pytorch_p36"   # Found on DLAMIs
+        container (dict): Require a given (Docker) container image,
+            The Ray worker process will run in a container with this image.
+            The `worker_path` is the default_worker.py path.
+            The `run_options` list spec is here:
+            https://docs.docker.com/engine/reference/run/
+            Examples:
+                {"image": "anyscale/ray-ml:nightly-py38-cpu",
+                 "worker_path": "/root/python/ray/workers/default_worker.py",
+                 "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}
+        env_vars (dict): Environment variables to set.
+            Examples:
+                {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
     """
 
     def __init__(self,
