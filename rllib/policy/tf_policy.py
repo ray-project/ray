@@ -973,10 +973,13 @@ class TFPolicy(Policy):
                 for key, value in input_dict.items():
                     if key in self._input_dict:
                         # Handle complex/nested spaces as well.
-                        tree.map_structure(
-                            lambda k, v: builder.add_feed_dict({k: v}),
-                            self._input_dict[key], value,
-                        )
+                        try:
+                            tree.map_structure(
+                                lambda k, v: builder.add_feed_dict({k: v}),
+                                self._input_dict[key], value,
+                            )
+                        except Exception as e:
+                            print()#TODO
             # For policies that inherit directly from TFPolicy.
             else:
                 builder.add_feed_dict({
