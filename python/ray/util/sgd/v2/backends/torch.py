@@ -92,6 +92,8 @@ def shutdown_torch(destroy_process_group=False):
 
 
 class TorchBackend(Backend):
+    share_cuda_visible_devices: bool = True
+
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
         if len(worker_group) > 1 and dist.is_available():
             # Set the appropriate training backend.

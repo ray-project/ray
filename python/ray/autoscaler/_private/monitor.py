@@ -25,12 +25,12 @@ from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S, \
     AUTOSCALER_METRIC_PORT
 from ray.autoscaler._private.event_summarizer import EventSummarizer
-from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
+from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
-    DEBUG_AUTOSCALING_ERROR
+    DEBUG_AUTOSCALING_ERROR, format_readonly_node_type
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
@@ -84,6 +84,42 @@ def parse_resource_demands(resource_load_by_shape):
     return waiting_bundles, infeasible_bundles
 
 
+# Readonly provider config (e.g., for laptop mode, manually setup clusters).
+BASE_READONLY_CONFIG = {
+    "cluster_name": "default",
+    "max_workers": 0,
+    "upscaling_speed": 1.0,
+    "docker": {},
+    "idle_timeout_minutes": 0,
+    "provider": {
+        "type": "readonly",
+        "use_node_id_as_ip": True,  # For emulated multi-node on laptop.
+    },
+    "auth": {},
+    "available_node_types": {
+        "ray.head.default": {
+            "resources": {},
+            "node_config": {},
+            "max_workers": 0
+        }
+    },
+    "head_node_type": "ray.head.default",
+    "file_mounts": {},
+    "cluster_synced_files": [],
+    "file_mounts_sync_continuously": False,
+    "rsync_exclude": [],
+    "rsync_filter": [],
+    "initialization_commands": [],
+    "setup_commands": [],
+    "head_setup_commands": [],
+    "worker_setup_commands": [],
+    "head_start_ray_commands": [],
+    "worker_start_ray_commands": [],
+    "head_node": {},
+    "worker_nodes": {}
+}
+
+
 class Monitor:
     """Autoscaling monitor.
 
@@ -135,6 +171,9 @@ class Monitor:
         self.stop_event = stop_event  # type: Optional[Event]
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
+        # If set, we are in a manually created cluster (non-autoscaling) and
+        # simply mirroring what the GCS tells us the cluster node types are.
+        self.readonly_config = None
 
         self.prom_metrics = AutoscalerPrometheusMetrics()
         if monitor_ip and prometheus_client:
@@ -162,22 +201,60 @@ class Monitor:
 
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
-            self.autoscaler = StandardAutoscaler(
-                self.autoscaling_config,
-                self.load_metrics,
-                prefix_cluster_info=self.prefix_cluster_info,
-                event_summarizer=self.event_summarizer,
-                prom_metrics=self.prom_metrics)
+            autoscaling_config = self.autoscaling_config
+        else:
+            # This config mirrors the current setup of the manually created
+            # cluster. Each node gets its own unique node type.
+            self.readonly_config = BASE_READONLY_CONFIG
+
+            # Note that the "available_node_types" of the config can change.
+            def get_latest_readonly_config():
+                return self.readonly_config
+
+            autoscaling_config = get_latest_readonly_config
+        self.autoscaler = StandardAutoscaler(
+            autoscaling_config,
+            self.load_metrics,
+            prefix_cluster_info=self.prefix_cluster_info,
+            event_summarizer=self.event_summarizer,
+            prom_metrics=self.prom_metrics)
 
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
         request = gcs_service_pb2.GetAllResourceUsageRequest()
         response = self.gcs_node_resources_stub.GetAllResourceUsage(
-            request, timeout=4)
+            request, timeout=60)
         resources_batch_data = response.resource_usage_data
 
+        # Tell the readonly node provider what nodes to report.
+        if self.readonly_config:
+            new_nodes = []
+            for msg in list(resources_batch_data.batch):
+                node_id = msg.node_id.hex()
+                new_nodes.append((node_id, msg.node_manager_address))
+            self.autoscaler.provider._set_nodes(new_nodes)
+
+        mirror_node_types = {}
+        cluster_full = False
         for resource_message in resources_batch_data.batch:
+            # Generate node type config based on GCS reported node list.
+            if self.readonly_config:
+                # Keep prefix in sync with ReadonlyNodeProvider.
+                node_type = format_readonly_node_type(
+                    resource_message.node_id.hex())
+                resources = {}
+                for k, v in resource_message.resources_total.items():
+                    resources[k] = v
+                mirror_node_types[node_type] = {
+                    "resources": resources,
+                    "node_config": {},
+                    "max_workers": 1,
+                }
+            if (hasattr(resource_message, "cluster_full_of_actors_detected")
+                    and resource_message.cluster_full_of_actors_detected):
+                # Aggregate this flag across all batches.
+                cluster_full = True
             resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
             available_resources = dict(resource_message.resources_available)
@@ -192,12 +269,21 @@ class Monitor:
                                  and self.autoscaler.config["provider"].get(
                                      "use_node_id_as_ip", False))
             if use_node_id_as_ip:
-                ip = str(int(total_resources.get("NODE_ID_AS_RESOURCE", 0)))
+                peloton_id = total_resources.get("NODE_ID_AS_RESOURCE")
+                # Legacy support https://github.com/ray-project/ray/pull/17312
+                if peloton_id is not None:
+                    ip = str(int(peloton_id))
+                else:
+                    ip = resource_message.node_id.hex()
             else:
                 ip = resource_message.node_manager_address
-            self.load_metrics.update(
-                ip, total_resources, available_resources, resource_load,
-                waiting_bundles, infeasible_bundles, pending_placement_groups)
+            self.load_metrics.update(ip, total_resources, available_resources,
+                                     resource_load, waiting_bundles,
+                                     infeasible_bundles,
+                                     pending_placement_groups, cluster_full)
+        if self.readonly_config:
+            self.readonly_config["available_node_types"].update(
+                mirror_node_types)
 
     def update_resource_requests(self):
         """Fetches resource requests from the internal KV and updates load."""
@@ -255,7 +341,8 @@ class Monitor:
         only the latest cluster size per batch.
         """
         avail_resources = self.load_metrics.resources_avail_summary()
-        if avail_resources != self.last_avail_resources:
+        if (not self.readonly_config
+                and avail_resources != self.last_avail_resources):
             self.event_summarizer.add(
                 "Resized to {}.",  # e.g., Resized to 100 CPUs, 4 GPUs.
                 quantity=avail_resources,

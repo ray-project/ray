@@ -372,7 +372,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
+  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutSeconds) {
     return true;
   }
 

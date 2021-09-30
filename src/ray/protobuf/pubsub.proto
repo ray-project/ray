@@ -13,6 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
+option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -75,6 +76,11 @@ message WorkerObjectLocationsPubMessage {
   // The ID of the node that stores the primary copy in plasma.
   // This could be Nil if the object has been evicted or inlined.
   bytes primary_node_id = 6;
+  // If this is set, then the owner is alive but no longer has an entry for
+  // this reference. This can happen if there is a bug in the distributed ref
+  // counting protocol that causes the object to be released while there are
+  // still references.
+  bool ref_removed = 7;
 }
 
 /// Indicating the subscriber needs to handle failure callback.

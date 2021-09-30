@@ -16,6 +16,7 @@ import ray.cluster_utils
 import ray._private.profiling as profiling
 from ray._private.test_utils import (client_test_enabled,
                                      RayTestTimeoutException, SignalActor)
+from ray.exceptions import ReferenceCountingAssertionError
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -44,7 +45,7 @@ def test_internal_free(shutdown_only):
     obj_ref = sampler.sample.remote()
     ray.get(obj_ref)
     ray.internal.free(obj_ref)
-    with pytest.raises(Exception):
+    with pytest.raises(ReferenceCountingAssertionError):
         ray.get(obj_ref)
 
     # Free deletes big objects from plasma store.
@@ -52,7 +53,7 @@ def test_internal_free(shutdown_only):
     ray.get(big_id)
     ray.internal.free(big_id)
     time.sleep(1)  # wait for delete RPC to propagate
-    with pytest.raises(Exception):
+    with pytest.raises(ReferenceCountingAssertionError):
         ray.get(big_id)
 
 
@@ -776,14 +777,13 @@ def test_actor_distribution_balance(ray_start_cluster, args):
 
 # This case tests whether RequestWorkerLeaseReply carries normal task resources
 # when the request is rejected (due to resource preemption by normal tasks).
-@pytest.mark.skip(
-    reason="The period of pull based resource report (10ms) is hard-coded.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Time out on Windows")
 def test_worker_lease_reply_with_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
         memory=2000 * 1024**2,
         _system_config={
-            "raylet_report_resources_period_milliseconds": 1000000,
+            "gcs_resource_report_poll_period_ms": 1000000,
             "gcs_actor_scheduling_enabled": True,
         })
     node2 = cluster.add_node(memory=1000 * 1024**2)

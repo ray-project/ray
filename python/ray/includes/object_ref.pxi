@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import functools
 import logging
+import threading
 from typing import Callable, Any, Union
 
 import ray
@@ -35,9 +36,10 @@ def _set_future_helper(
 
 cdef class ObjectRef(BaseID):
 
-    def __init__(self, id, call_site_data=""):
+    def __init__(self, id, owner_addr="", call_site_data=""):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
+        self.owner_addr = owner_addr
         self.in_core_worker = False
         self.call_site_data = call_site_data
 
@@ -65,10 +67,7 @@ cdef class ObjectRef(BaseID):
                 pass
 
     cdef CObjectID native(self):
-        return <CObjectID>self.data
-
-    def size(self):
-        return CObjectID.Size()
+        return self.data
 
     def binary(self):
         return self.data.Binary()
@@ -79,17 +78,23 @@ cdef class ObjectRef(BaseID):
     def is_nil(self):
         return self.data.IsNil()
 
+    cdef size_t hash(self):
+        return self.data.Hash()
+
     def task_id(self):
         return TaskID(self.data.TaskId().Binary())
 
     def job_id(self):
         return self.task_id().job_id()
 
+    def owner_address(self):
+        return self.owner_addr
+
     def call_site(self):
         return decode(self.call_site_data)
 
-    cdef size_t hash(self):
-        return self.data.Hash()
+    def size(self):
+        return CObjectID.Size()
 
     @classmethod
     def nil(cls):
@@ -143,11 +148,15 @@ cdef class ObjectRef(BaseID):
 
 cdef class ClientObjectRef(ObjectRef):
 
-    def __init__(self, id: bytes):
-        check_id(id)
-        self.data = CObjectID.FromBinary(<c_string>id)
-        client.ray.call_retain(id)
+    def __init__(self, id: Union[bytes, concurrent.futures.Future]):
         self.in_core_worker = False
+        self._mutex = threading.Lock()
+        if isinstance(id, bytes):
+            self._set_id(id)
+        elif isinstance(id, concurrent.futures.Future):
+            self._id_future = id
+        else:
+            raise TypeError("Unexpected type for id {}".format(id))
 
     def __dealloc__(self):
         if client is None or client.ray is None:
@@ -157,8 +166,44 @@ cdef class ClientObjectRef(ObjectRef):
             # call_release in this case, since the client should have already
             # disconnected at this point.
             return
-        if client.ray.is_connected() and not self.data.IsNil():
-            client.ray.call_release(self.id)
+        if client.ray.is_connected():
+            try:
+                self._wait_for_id()
+            # cython would suppress this exception as well, but it tries to
+            # print out the exception which may crash. Log a simpler message
+            # instead.
+            except Exception:
+                logger.info(
+                    "Exception in ObjectRef is ignored in destructor. "
+                    "To receive this exception in application code, call "
+                    "a method on the actor reference before its destructor "
+                    "is run.")
+            if not self.data.IsNil():
+                client.ray.call_release(self.id)
+
+    cdef CObjectID native(self):
+        self._wait_for_id()
+        return self.data
+
+    def binary(self):
+        self._wait_for_id()
+        return self.data.Binary()
+
+    def hex(self):
+        self._wait_for_id()
+        return decode(self.data.Hex())
+
+    def is_nil(self):
+        self._wait_for_id()
+        return self.data.IsNil()
+
+    cdef size_t hash(self):
+        self._wait_for_id()
+        return self.data.Hash()
+
+    def task_id(self):
+        self._wait_for_id()
+        return TaskID(self.data.TaskId().Binary())
 
     @property
     def id(self):
@@ -167,7 +212,7 @@ cdef class ClientObjectRef(ObjectRef):
     def future(self) -> concurrent.futures.Future:
         fut = concurrent.futures.Future()
 
-        def set_value(data: Any) -> None:
+        def set_future(data: Any) -> None:
             """Schedules a callback to set the exception or result
             in the Future."""
 
@@ -176,7 +221,7 @@ cdef class ClientObjectRef(ObjectRef):
             else:
                 fut.set_result(data)
 
-        self._on_completed(set_value)
+        self._on_completed(set_future)
 
         # Prevent this object ref from being released.
         fut.object_ref = self
@@ -190,15 +235,30 @@ cdef class ClientObjectRef(ObjectRef):
         """
         from ray.util.client.client_pickler import loads_from_server
 
-        def deserialize_obj(resp: ray_client_pb2.DataResponse) -> None:
-            """Converts from a GetResponse proto to a python object."""
-            obj = resp.get
-            data = None
-            if not obj.valid:
-                data = loads_from_server(resp.get.error)
+        def deserialize_obj(resp: Union[ray_client_pb2.DataResponse,
+                                        Exception]) -> None:
+            if isinstance(resp, Exception):
+                data = resp
             else:
-                data = loads_from_server(resp.get.data)
+                obj = resp.get
+                data = None
+                if not obj.valid:
+                    data = loads_from_server(resp.get.error)
+                else:
+                    data = loads_from_server(resp.get.data)
 
             py_callback(data)
 
         client.ray._register_callback(self, deserialize_obj)
+
+    cdef _set_id(self, id):
+        check_id(id)
+        self.data = CObjectID.FromBinary(<c_string>id)
+        client.ray.call_retain(id)
+
+    cdef inline _wait_for_id(self, timeout=None):
+        if self._id_future:
+            with self._mutex:
+                if self._id_future:
+                    self._set_id(self._id_future.result(timeout=timeout))
+                    self._id_future = None

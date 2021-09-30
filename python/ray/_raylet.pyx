@@ -184,8 +184,10 @@ cdef RayObjectsToDataMetadataPairs(
 cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs):
     result = []
     for i in range(object_refs.size()):
-        result.append(ObjectRef(object_refs[i].object_id(),
-                                object_refs[i].call_site()))
+        result.append(ObjectRef(
+            object_refs[i].object_id(),
+            object_refs[i].owner_address().SerializeAsString(),
+            object_refs[i].call_site()))
     return result
 
 
@@ -450,13 +452,13 @@ cdef execute_task(
         actor_id = core_worker.get_actor_id()
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
-        # Record the actor name via :actor_name: magic token in the log file.
-        # This is used for the prefix in driver logs `(actor_repr pid=123)...`
-        if (hasattr(actor_class, "__ray_actor_class__") and
-                "__repr__" in actor_class.__ray_actor_class__.__dict__):
-            print("{}{}".format(
-                ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
-        else:
+        if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+            # Record the actor class via :actor_name: magic token in the log.
+            #
+            # (Phase 1): this covers code run before __init__ finishes.
+            # We need to handle this separately because `__repr__` may not be
+            # runnable until after `__init__` (e.g., if it accesses fields
+            # defined in the constructor).
             print("{}{}".format(
                 ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
 
@@ -597,6 +599,17 @@ cdef execute_task(
                     raise e
                 if c_return_ids.size() == 1:
                     outputs = (outputs,)
+            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+                # Record actor repr via :actor_name: magic token in the log.
+                #
+                # (Phase 2): after `__init__` finishes, we override the
+                # log prefix with the full repr of the actor. The log monitor
+                # will pick up the updated token.
+                if (hasattr(actor_class, "__ray_actor_class__") and
+                        "__repr__" in
+                        actor_class.__ray_actor_class__.__dict__):
+                    print("{}{}".format(
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
             # Check for a cancellation that was called when the function
             # was exiting and was raised after the except block.
             if not check_signals().ok():
@@ -1340,6 +1353,7 @@ cdef class CoreWorker:
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
                     runtime_env_dict,
+                    runtime_env_uris,
                     override_environment_variables
                     ):
         cdef:
@@ -1349,6 +1363,7 @@ cdef class CoreWorker:
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
             c_string c_serialized_runtime_env
+            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
@@ -1370,6 +1385,7 @@ cdef class CoreWorker:
                     name, num_returns, c_resources,
                     b"",
                     c_serialized_runtime_env,
+                    c_runtime_env_uris,
                     c_override_environment_variables),
                 max_retries, retry_exceptions,
                 c_pair[CPlacementGroupID, int64_t](
@@ -1397,6 +1413,7 @@ cdef class CoreWorker:
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
                      runtime_env_dict,
+                     runtime_env_uris,
                      override_environment_variables
                      ):
         cdef:
@@ -1409,6 +1426,7 @@ cdef class CoreWorker:
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
             c_string c_serialized_runtime_env
+            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
@@ -1436,6 +1454,7 @@ cdef class CoreWorker:
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
                         c_serialized_runtime_env,
+                        c_runtime_env_uris,
                         c_override_environment_variables),
                     extension_data,
                     &c_actor_id))
@@ -1851,8 +1870,8 @@ cdef class CoreWorker:
         # This should never change, so we can safely cache it to avoid ser/de
         if self.current_runtime_env_dict is None:
             if self.is_driver:
-                self.current_runtime_env_dict = \
-                    json.loads(self.get_job_config().serialized_runtime_env)
+                self.current_runtime_env_dict = json.loads(
+                    self.get_job_config().runtime_env.serialized_runtime_env)
             else:
                 self.current_runtime_env_dict = json.loads(
                     CCoreWorkerProcess.GetCoreWorker()

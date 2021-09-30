@@ -1252,6 +1252,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     return call_site;
   }
 
+  Status WaitForActorRegistered(const std::vector<ObjectID> &ids);
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -1326,6 +1328,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
 
+  // A class for actor creation.
+  std::shared_ptr<ActorCreatorInterface> actor_creator_;
+
   // Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
@@ -1375,12 +1380,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
 
-  /// Event loop where tasks are processed.
-  instrumented_io_context task_execution_service_;
-
-  /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work task_execution_service_work_;
-
   /// Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;
 
@@ -1398,6 +1397,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
+
+  /// Event loop where tasks are processed.
+  /// task_execution_service_ should be destructed first to avoid
+  /// issues like https://github.com/ray-project/ray/issues/18857
+  instrumented_io_context task_execution_service_;
+
+  /// The asio work to keep task_execution_service_ alive.
+  boost::asio::io_service::work task_execution_service_work_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
@@ -1417,8 +1424,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
                       ObjectID object_id, void *py_future);
 
-  /// Whether we are shutting down and not running further tasks.
-  bool exiting_ = false;
+  /// we are shutting down and not running further tasks.
+  /// when exiting_ is set to true HandlePushTask becomes no-op.
+  std::atomic<bool> exiting_ = false;
 
   int64_t max_direct_call_object_size_;
 

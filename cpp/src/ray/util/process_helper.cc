@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "process_helper.h"
+
 #include <boost/algorithm/string.hpp>
 
-#include "process_helper.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -25,37 +26,13 @@ namespace internal {
 using ray::core::CoreWorkerProcess;
 using ray::core::WorkerType;
 
-std::string FormatResourcesArg(const std::unordered_map<std::string, int> &resources) {
-  std::ostringstream oss;
-  oss << "{";
-  for (auto iter = resources.begin(); iter != resources.end();) {
-    oss << "\"" << iter->first << "\":" << iter->second;
-    ++iter;
-    if (iter != resources.end()) {
-      oss << ",";
-    }
-  }
-  oss << "}";
-  return oss.str();
-}
-
 void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_password,
-                                 const int num_cpus, const int num_gpus,
-                                 const std::unordered_map<std::string, int> resources) {
-  std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
-                                    std::to_string(redis_port), "--redis-password",
-                                    redis_password, "--include-dashboard", "false"});
-  if (num_cpus >= 0) {
-    cmdargs.emplace_back("--num-cpus");
-    cmdargs.emplace_back(std::to_string(num_cpus));
-  }
-  if (num_gpus >= 0) {
-    cmdargs.emplace_back("--num-gpus");
-    cmdargs.emplace_back(std::to_string(num_gpus));
-  }
-  if (!resources.empty()) {
-    cmdargs.emplace_back("--resources");
-    cmdargs.emplace_back(FormatResourcesArg(resources));
+                                 const std::vector<std::string> &head_args) {
+  std::vector<std::string> cmdargs(
+      {"ray", "start", "--head", "--port", std::to_string(redis_port), "--redis-password",
+       redis_password, "--node-ip-address", GetNodeIpAddress()});
+  if (!head_args.empty()) {
+    cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
@@ -85,8 +62,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     redis_ip = "127.0.0.1";
     StartRayNode(ConfigInternal::Instance().redis_port,
                  ConfigInternal::Instance().redis_password,
-                 ConfigInternal::Instance().num_cpus, ConfigInternal::Instance().num_gpus,
-                 ConfigInternal::Instance().resources);
+                 ConfigInternal::Instance().head_args);
   }
   if (redis_ip == "127.0.0.1") {
     redis_ip = GetNodeIpAddress();

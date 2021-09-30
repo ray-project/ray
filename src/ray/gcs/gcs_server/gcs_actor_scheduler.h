@@ -75,6 +75,11 @@ class GcsActorSchedulerInterface {
   virtual void ReleaseUnusedWorkers(
       const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
 
+  /// Handle the destruction of an actor.
+  ///
+  /// \param actor The actor to be destoryed.
+  virtual void OnActorDestruction(std::shared_ptr<GcsActor> actor) = 0;
+
   virtual ~GcsActorSchedulerInterface() {}
 };
 
@@ -98,7 +103,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
-      std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
+      std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
+          schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       rpc::ClientFactoryFn client_factory = nullptr);
   virtual ~GcsActorScheduler() = default;
@@ -144,6 +150,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param node_to_workers Workers used by each node.
   void ReleaseUnusedWorkers(
       const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
+
+  /// Handle the destruction of an actor.
+  ///
+  /// \param actor The actor to be destoryed.
+  void OnActorDestruction(std::shared_ptr<GcsActor> actor) override {}
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -299,7 +310,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The handler to handle the scheduling failures.
   std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler_;
   /// The handler to handle the successful scheduling.
-  std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler_;
+  std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
+      schedule_success_handler_;
   /// Whether or not to report the backlog of actors waiting to be scheduled.
   bool report_worker_backlog_;
   /// The nodes which are releasing unused workers.

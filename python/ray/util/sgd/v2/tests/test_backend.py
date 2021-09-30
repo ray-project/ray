@@ -8,6 +8,7 @@ from ray.cluster_utils import Cluster
 from ray.util.sgd import v2 as sgd
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
+from ray.util.sgd.v2.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig
 
@@ -54,9 +55,10 @@ def ray_2_node_4_gpu():
 def gen_execute_special(special_f):
     def execute_async_special(self, f):
         """Runs f on worker 0, special_f on other workers."""
-        futures = [self.workers[0].execute.remote(f)]
+        futures = [self.workers[0].actor._BaseWorkerMixin__execute.remote(f)]
         for worker in self.workers[1:]:
-            futures.append(worker.execute.remote(special_f))
+            futures.append(
+                worker.actor._BaseWorkerMixin__execute.remote(special_f))
         return futures
 
     return execute_async_special
@@ -121,6 +123,18 @@ def test_train(ray_start_2_cpus, tmp_path):
 
     e.start_training(lambda: 1, run_dir=tmp_path)
     assert e.finish_training() == [1, 1]
+
+
+def test_local_ranks(ray_start_2_cpus, tmp_path):
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=2)
+    e.start()
+
+    def train():
+        return sgd.local_rank()
+
+    e.start_training(train, run_dir=tmp_path)
+    assert set(e.finish_training()) == {0, 1}
 
 
 def test_train_failure(ray_start_2_cpus, tmp_path):
@@ -308,6 +322,7 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results, tmp_path):
 
     num_workers, expected_results = worker_results
 
+    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
         config,
         num_workers=num_workers,
@@ -336,6 +351,7 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results,
 
     num_workers, expected_results = worker_results
 
+    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
         config,
         num_workers=num_workers,
@@ -361,6 +377,7 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results,
 
     num_workers, expected_results = worker_results
 
+    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
         config,
         num_workers=num_workers,

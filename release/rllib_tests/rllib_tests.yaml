@@ -10,9 +10,7 @@
 
   smoke_test:
       run:
-        timeout: 900
-      cluster:
-        compute_template: 4gpus_64cpus.yaml
+        timeout: 1200
 
 # 2-GPU learning tests (CartPole and RepeatAfterMeEnv) for major algos.
 - name: multi_gpu_learning_tests
@@ -56,7 +54,7 @@
 #    timeout: 7200
 #    script: bash unit_gpu_tests/run.sh
 
-# IMPALA large machine stress tests (Atari).
+# IMPALA large machine stress tests (4x Atari).
 - name: stress_tests
   cluster:
     app_config: app_config.yaml
@@ -64,8 +62,9 @@
 
   run:
     timeout: 5400
+    prepare: python wait_cluster.py 6 600
     script: python stress_tests/run_stress_tests.py
 
   smoke_test:
       run:
-        timeout: 900
+        timeout: 2000

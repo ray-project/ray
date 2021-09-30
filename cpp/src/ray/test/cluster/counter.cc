@@ -21,12 +21,17 @@
 #include "unistd.h"
 #endif
 
-Counter::Counter(int init) {
+Counter::Counter(int init, bool with_exception) {
+  if (with_exception) {
+    throw std::invalid_argument("creation error");
+  }
   count = init;
   is_restared = ray::WasCurrentActorRestarted();
 }
 
 Counter *Counter::FactoryCreate() { return new Counter(0); }
+
+Counter *Counter::FactoryCreateException() { return new Counter(0, true); }
 
 Counter *Counter::FactoryCreate(int init) { return new Counter(init); }
 
@@ -78,7 +83,8 @@ bool Counter::CheckRestartInActorCreationTask() { return is_restared; }
 
 bool Counter::CheckRestartInActorTask() { return ray::WasCurrentActorRestarted(); }
 
-RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
+RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), Counter::FactoryCreateException,
+           RAY_FUNC(Counter::FactoryCreate, int),
            RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add,
            &Counter::Exit, &Counter::GetPid, &Counter::ExceptionFunc,
            &Counter::CheckRestartInActorCreationTask, &Counter::CheckRestartInActorTask);

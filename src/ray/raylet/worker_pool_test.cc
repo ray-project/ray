@@ -103,9 +103,10 @@ class WorkerPoolMock : public WorkerPool {
                           const WorkerCommandMap &worker_commands,
                           absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
                               &mock_worker_rpc_clients)
-      : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
-                   MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, 0, [this]() { return current_time_ms_; }),
+      : WorkerPool(
+            io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
+            MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands, []() {}, 0,
+            [this]() { return current_time_ms_; }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -465,7 +466,7 @@ static inline TaskSpecification ExampleTaskSpec(
   } else {
     message.set_type(TaskType::NORMAL_TASK);
   }
-  message.set_serialized_runtime_env(serialized_runtime_env);
+  message.mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
   return TaskSpecification(std::move(message));
 }
 

@@ -4,8 +4,9 @@ import logging
 import os
 from pathlib import Path
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
-    Type, Iterator
+    Type
 
+from ray.actor import ActorHandle
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, SGDBackendError, TrainingWorkerError
 from ray.util.sgd.v2.backends.horovod import HorovodConfig
@@ -18,6 +19,7 @@ from ray.util.sgd.v2.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
 
 # Ray SGD should be usable even if Tune is not installed.
 from ray.util.sgd.v2.utils import construct_path
+from ray.util.sgd.v2.worker_group import WorkerGroup
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -59,7 +61,7 @@ class Trainer:
         backend (Union[str, BackendConfig]): The backend used for
             distributed communication. If configurations are needed,
             a subclass of ``BackendConfig`` can be passed in.
-            Supported ``str`` values: {"torch"}.
+            Supported ``str`` values: {"torch", "tensorflow", "horovod"}.
         num_workers (int): The number of workers (Ray actors) to launch.
             Defaults to 1. Each worker will reserve 1 CPU by default. The
             number of CPUs reserved by each worker can be overridden with the
@@ -174,19 +176,12 @@ class Trainer:
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
 
-    def start(self,
-              initialization_hook: Optional[Callable[[], None]] = None,
-              train_cls: Optional[S] = None,
-              *args,
-              **kwargs):
+    def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the training execution service.
 
         Args:
             initialization_hook (Optional[Callable]): The function to call on
                 each worker when it is instantiated.
-            train_cls (Optional[cls]): The training class that each worker
-                should be instantiated as.
-            args, kwargs: The arguments to pass into ``train_cls.__init__``.
         """
         self._executor.start(initialization_hook)
 
@@ -258,7 +253,7 @@ class Trainer:
             config: Optional[Dict[str, Any]] = None,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
-    ) -> Iterator[List[Dict]]:
+    ) -> "SGDIterator":
         """Same as ``run`` except returns an iterator over the results.
 
         This is useful if you want to have more customization of what to do
@@ -343,36 +338,6 @@ class Trainer:
         else:  # num_params == 0
             return train_func
 
-    def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
-        """Executes a function for all instances of ``self.train_cls``.
-
-        Args:
-            func (Callable): The function that should be executed.
-                The first argument should be an instance of
-                ``self.train_cls``.
-            args, kwargs: The arguments to pass into ``func``.
-
-        Returns:
-            A list of results from ``func``. Each value in the
-            list corresponds to the output of ``func`` from
-            each worker.
-        """
-        raise NotImplementedError
-
-    def execute_single(self, func: Callable[..., T], *args, **kwargs) -> T:
-        """Executes a function on a single instance of ``self.train_cls``.
-
-        Args:
-            func (Callable): The function that should be executed.
-                The first argument should be an instance of
-                ``self.train_cls``.
-            args, kwargs: The arguments to pass into ``func``.
-
-        Returns:
-            The output of ``func`` from a single worker.
-        """
-        raise NotImplementedError
-
     @property
     def latest_run_dir(self) -> Optional[Path]:
         """Path to the log directory for the latest call to ``run()``.
@@ -443,6 +408,91 @@ class Trainer:
         return _create_tune_trainable(train_func, self._backend,
                                       self._num_workers, self._use_gpu,
                                       self._resources_per_worker)
+
+    def to_worker_group(self, train_cls: Type, *args,
+                        **kwargs) -> "SGDWorkerGroup":
+        """Returns Ray actors with the provided class and the backend started.
+
+        This is useful if you want to provide your own class for training
+        and have more control over execution, but still want to use Ray SGD
+        to setup the appropriate backend configurations (torch, tf, etc.).
+
+        .. code-block:: python
+
+            class Trainer:
+                def __init__(self, config):
+                    self.config = config
+
+                def train_epoch(self):
+                    ...
+                    return 1
+
+            config = {"lr": 0.1}
+            trainer = Trainer(num_workers=2, backend="torch")
+            workers = trainer.to_worker_group(train_cls=Trainer, config=config)
+            futures = [w.train_epoch.remote() for w in workers]
+            assert ray.get(futures) == [1, 1]
+            assert ray.get(workers[0].train_epoch.remote()) == 1
+            workers.shutdown()
+
+        Args:
+            train_cls (Type): The class definition to use for the Ray
+                actors/workers.
+            args, kwargs: Arguments to pass into the ``__init__`` of the
+                provided ``train_cls``.
+        """
+        if self._executor.is_started:
+            raise RuntimeError("The Trainer must not be active to use "
+                               "`to_worker_group`. Either shutdown the "
+                               "Trainer or don't start it in the first place.")
+        self._executor.start(
+            train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs)
+        return SGDWorkerGroup(self._executor.worker_group)
+
+
+class SGDWorkerGroup:
+    """A container for a group of Ray actors.
+
+    You should not instantiate this directly and only use this as the output
+    of ``Trainer.to_worker_group``. You can index or iterate this object like
+    you would a List.
+
+    .. code-block:: python
+
+        class Trainer:
+            def __init__(self, config):
+                self.config = config
+
+            def train_epoch(self):
+                ...
+                return 1
+
+        config = {"lr": 0.1}
+        trainer = Trainer(num_workers=2, backend="torch")
+        workers = trainer.to_worker_group(train_cls=Trainer, config=config)
+        futures = [w.train_epoch.remote() for w in workers]
+        assert ray.get(futures) == [1, 1]
+        assert ray.get(workers[0].train_epoch.remote()) == 1
+        workers.shutdown()`
+    """
+
+    def __init__(self, worker_group: WorkerGroup):
+        self._worker_group = worker_group
+
+    def __getitem__(self, item) -> ActorHandle:
+        return self._worker_group.workers[item].actor
+
+    def shutdown(self, patience_s: float = 5):
+        """Shutdown all the workers.
+
+        Args:
+            patience_s (float): Attempt a graceful shutdown
+                of the workers for this many seconds. Fallback to force kill
+                if graceful shutdown is not complete after this time. If
+                this is less than or equal to 0, immediately force kill all
+                workers.
+        """
+        self._worker_group.shutdown(patience_s=patience_s)
 
 
 class SGDIterator:

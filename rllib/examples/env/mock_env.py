@@ -53,6 +53,30 @@ class MockEnv2(gym.Env):
         self.rng_seed = rng_seed
 
 
+class MockEnv3(gym.Env):
+    """Mock environment for testing purposes.
+
+    Observation=ts (discrete space!), reward=100.0, episode-len is
+    configurable. Actions are ignored.
+    """
+
+    def __init__(self, episode_length):
+        self.episode_length = episode_length
+        self.i = 0
+        self.observation_space = gym.spaces.Discrete(100)
+        self.action_space = gym.spaces.Discrete(2)
+
+    def reset(self):
+        self.i = 0
+        return self.i
+
+    def step(self, action):
+        self.i += 1
+        return self.i, self.i, self.i >= self.episode_length, {
+            "timestep": self.i
+        }
+
+
 class VectorizedMockEnv(VectorEnv):
     """Vectorized version of the MockEnv.
 

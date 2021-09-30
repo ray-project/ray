@@ -27,33 +27,16 @@ We welcome (and encourage!) all forms of contributions to Ray, including and not
 - Test cases to make the codebase more robust.
 - Tutorials, blog posts, talks that promote the project.
 
-
 What can I work on?
 -------------------
 
 We use Github to track issues, feature requests, and bugs. Take a look at the
 ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ and `"help wanted" <https://github.com/ray-project/ray/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22>`__ for a place to start.
 
-
-Examples of features to contribute
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Tune
-####
-
-We encourage both the developers and users of optimization libraries to contribute
-:ref:`tune-search-alg` to Tune wrapping around them. Search Algorithms allow Tune's users
-to take advantage of algorithms contained in external libraries while benefitting from 
-a unified API and other Tune features.
-
-For implementation details, please refer to :ref:`byo-algo`.
-
-
 Setting up your development environment
 ---------------------------------------
 
 To edit the Ray source code, you'll want to checkout the repository and also build Ray from source. Follow :ref:`these instructions for building <building-ray>` a local copy of Ray to easily make changes.
-
 
 Submitting and Merging a Contribution
 -------------------------------------
@@ -65,16 +48,17 @@ There are a couple steps to merge a contribution.
    .. code:: bash
 
      git remote add upstream https://github.com/ray-project/ray.git
-     git pull upstream master
+     git pull . upstream/master
 
 2. Make sure all existing tests `pass <getting-involved.html#testing>`__.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
    in the relevant file in `ray/python/ray/tests/`.
 4. Document the code. Public functions need to be documented, and remember to provide an usage
    example if applicable.
-5. Request code reviews from other contributors and address their comments. One fast way to get reviews is
-   to help review others' code so that they return the favor. You should aim to improve the code as much as
-   possible before the review. We highly value patches that can get in without extensive reviews.
+5. Request code reviews from other contributors and address their comments. During the review
+   process you may need to address merge conflicts with other changes. To resolve merge conflicts,
+   run ``git pull . upstream/master`` on your branch (please do not use rebase, as it is less
+   friendly to the GitHub review tool. All commits will be squashed on merge.)
 6. Reviewers will merge and approve the pull request; be sure to ping them if
    the pull request is getting stale.
 
@@ -91,42 +75,21 @@ If you are running tests for the first time, you can install the required depend
 
     pip install -r python/requirements.txt
 
-To run all Python tests:
-
-.. code-block:: shell
-
-    pytest python/ray/tests/
-
-Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
-
-
 Testing for Python development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Suppose that one of the tests in a file of tests, e.g.,
-``python/ray/tests/test_basic.py``, is failing. You can run just that
-test file locally as follows:
+The full suite of tests is too large to run on a single machine. However, you can run individual relevant Python test files. Suppose that one of the tests in a file of tests, e.g., ``python/ray/tests/test_basic.py``, is failing. You can run just that test file locally as follows:
+
 
 .. code-block:: shell
 
- python -m pytest -v python/ray/tests/test_basic.py
+    pytest -v -s python/ray/tests/test_basic.py
 
-However, this will run all of the tests in the file, which can take some
-time. To run a specific test that is failing, you can do the following
-instead:
+This will run all of the tests in the file. To run a specific test, use the following:
 
 .. code-block:: shell
 
-    pytest test_file.py -v -k [test substring]
-
-When running tests, usually only the first test failure matters. A single
-test failure often triggers the failure of subsequent tests in the same
-file.
-
-.. code-block:: shell
-
-    # Stop after first failure.
-    pytest test_file.py -x
+    pytest -v -s test_file.py::name_of_the_test
 
 Testing for C++ development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -143,11 +106,42 @@ Alternatively, you can also run one specific C++ test. You can use:
 
  bazel test $(bazel query 'kind(cc_test, ...)') --test_filter=ClientConnectionTest --test_output=streamed
 
+Code Style
+----------
+
+In general, we follow the `Google style guide <https://google.github.io/styleguide/>`__ for code in C++ and Python. However, it is more important for code to be in a locally consistent style than to strictly follow guidelines. Whenever in doubt, follow the local code style of the component.
+
+For Python documentation, we follow a subset of the `Google pydoc format <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__. The following code snippet demonstrates the canonical Ray pydoc formatting:
+
+.. code-block:: python
+
+    def ray_canonical_doc_style(param1: int, param2: str) -> bool:
+        """First sentence MUST be inline with the quotes and fit on one line.
+
+        Additional explanatory text can be added in paragraphs such as this one.
+        Do not introduce multi-line first sentences.
+
+        Examples:
+            >>> # Provide code examples as possible.
+            >>> ray_canonical_doc_style(41, "hello")
+            True
+
+            >>> # A second example.
+            >>> ray_canonical_doc_style(72, "goodbye")
+            False
+
+        Args:
+            param1: The first parameter. Do not include the types in the
+                docstring (they should be defined only in the signature).
+                Multi-line parameter docs should be indented by four spaces.
+            param2: The second parameter.
+
+        Returns:
+            The return value. Do not include types here.
+        """
 
 Lint and Formatting
 ~~~~~~~~~~~~~~~~~~~
-
-.. note:: Python 3.7 is recommended. You will run into flake8 `issues <https://github.com/ray-project/ray/pull/11588>`_ with Python 3.8.
 
 We also have tests for code formatting and linting that need to pass before merge.
 
@@ -157,16 +151,13 @@ We also have tests for code formatting and linting that need to pass before merg
 
   pip install -r python/requirements_linters.txt
 
-* If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``7.0.0`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
-
-
-.. note:: On MacOS X, don't use HomeBrew to install ``clang-format``, as the only version available is too new.
+* If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 
 You can run the following locally:
 
 .. code-block:: shell
 
-    ./ci/travis/format.sh
+    scripts/format.sh
 
 An output like the following indicates failure:
 
@@ -177,8 +168,7 @@ An output like the following indicates failure:
    * branch                master     -> FETCH_HEAD
   python/ray/util/sgd/tf/tf_runner.py:4:1: F401 'numpy as np' imported but unused  # Below is the failure
 
-In addition, there are other formatting and semantic checkers for components like the following (not included in
-``./ci/travis/format.sh``):
+In addition, there are other formatting and semantic checkers for components like the following (not included in ``scripts/format.sh``):
 
 * Python README format:
 
@@ -193,7 +183,7 @@ In addition, there are other formatting and semantic checkers for components lik
 
     ./ci/travis/bazel-format.sh
 
-* clang-tidy for C++ anti-patterns, requires ``clang`` and ``clang-tidy`` version 12 to be installed:
+* clang-tidy for C++ lint, requires ``clang`` and ``clang-tidy`` version 12 to be installed:
 
 .. code-block:: shell
 

@@ -418,32 +418,43 @@ def parse_placement_group_resource_str(
         placement_group_resource_str: str) -> Tuple[str, Optional[str]]:
     """Parse placement group resource in the form of following 3 cases:
     {resource_name}_group_{bundle_id}_{group_name};
+    -> This case is ignored as it is duplicated to the case below.
     {resource_name}_group_{group_name};
     {resource_name}
 
     Returns:
-        Tuple of (resource_name, placement_group_name). placement_group_name
-        could be None if its not a placement group resource.
+        Tuple of (resource_name, placement_group_name, is_countable_resource).
+        placement_group_name could be None if its not a placement group
+        resource. is_countable_resource is True if the resource
+        doesn't contain bundle index. We shouldn't count resources
+        with bundle index because it will
+        have duplicated resource information as
+        wildcard resources (resource name without bundle index).
     """
     result = PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN.match(
         placement_group_resource_str)
     if result:
-        return (result.group(1), result.group(3))
+        return (result.group(1), result.group(3), False)
     result = PLACEMENT_GROUP_RESOURCE_PATTERN.match(
         placement_group_resource_str)
     if result:
-        return (result.group(1), result.group(2))
-    return (placement_group_resource_str, None)
+        return (result.group(1), result.group(2), True)
+    return (placement_group_resource_str, None, True)
 
 
 def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
     # first collect resources used in placement groups
-    placement_group_resource_usage = collections.defaultdict(float)
+    placement_group_resource_usage = {}
+    placement_group_resource_total = collections.defaultdict(float)
     for resource, (used, total) in lm_summary.usage.items():
-        (pg_resource_name,
-         pg_name) = parse_placement_group_resource_str(resource)
+        (pg_resource_name, pg_name,
+         is_countable) = parse_placement_group_resource_str(resource)
         if pg_name:
-            placement_group_resource_usage[pg_resource_name] += used
+            if pg_resource_name not in placement_group_resource_usage:
+                placement_group_resource_usage[pg_resource_name] = 0
+            if is_countable:
+                placement_group_resource_usage[pg_resource_name] += used
+                placement_group_resource_total[pg_resource_name] += total
             continue
 
     usage_lines = []
@@ -451,26 +462,37 @@ def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
         if "node:" in resource:
             continue  # Skip the auto-added per-node "node:<ip>" resource.
 
-        (_, pg_name) = parse_placement_group_resource_str(resource)
+        (_, pg_name, _) = parse_placement_group_resource_str(resource)
         if pg_name:
             continue  # Skip resource used by placement groups
 
-        used_in_pg = placement_group_resource_usage[resource]
-
-        line = f" {used}/{total} {resource}"
-        if used_in_pg != 0:
-            line = line + f" ({used_in_pg} reserved in placement groups)"
+        pg_used = 0
+        pg_total = 0
+        used_in_pg = resource in placement_group_resource_usage
+        if used_in_pg:
+            pg_used = placement_group_resource_usage[resource]
+            pg_total = placement_group_resource_total[resource]
+            # Used includes pg_total because when pgs are created
+            # it allocates resources.
+            # To get the real resource usage, we should subtract the pg
+            # reserved resources from the usage and add pg used instead.
+            used = used - pg_total + pg_used
 
         if resource in ["memory", "object_store_memory"]:
             to_GiB = 1 / 2**30
-            used *= to_GiB
-            total *= to_GiB
-            used_in_pg *= to_GiB
-            line = f" {used:.2f}/{total:.3f} GiB {resource}"
-            if used_in_pg != 0:
-                line = line + f" ({used_in_pg:.2f} GiB reserved" \
-                    + " in placement groups)"
-        usage_lines.append(line)
+            line = (f" {(used * to_GiB):.2f}/"
+                    f"{(total * to_GiB):.3f} GiB {resource}")
+            if used_in_pg:
+                line = line + (f" ({(pg_used * to_GiB):.2f} used of "
+                               f"{(pg_total * to_GiB):.2f} GiB " +
+                               "reserved in placement groups)")
+            usage_lines.append(line)
+        else:
+            line = f" {used}/{total} {resource}"
+            if used_in_pg:
+                line += (f" ({pg_used} used of "
+                         f"{pg_total} reserved in placement groups)")
+            usage_lines.append(line)
     usage_report = "\n".join(usage_lines)
     return usage_report
 
@@ -488,8 +510,8 @@ def format_resource_demand_summary(
         using_placement_group = False
         result_bundle = dict()
         for pg_resource_str, resource_count in bundle.items():
-            (resource_name,
-             pg_name) = parse_placement_group_resource_str(pg_resource_str)
+            (resource_name, pg_name,
+             _) = parse_placement_group_resource_str(pg_resource_str)
             result_bundle[resource_name] = resource_count
             if pg_name:
                 using_placement_group = True
@@ -591,7 +613,6 @@ Pending:
 
 Resources
 {separator}
-
 Usage:
 {usage_report}
 
@@ -600,31 +621,32 @@ Demands:
     return formatted_output
 
 
-def format_info_string_no_node_types(lm_summary, time=None):
-    if time is None:
-        time = datetime.now()
-    header = "=" * 8 + f" Cluster status: {time} " + "=" * 8
-    separator = "-" * len(header)
+def format_readonly_node_type(node_id: str):
+    """The anonymous node type for readonly node provider nodes."""
+    return "node_{}".format(node_id)
 
-    node_lines = []
-    for node_type, count in lm_summary.node_types:
-        line = f" {count} node(s) with resources: {node_type}"
-        node_lines.append(line)
-    node_report = "\n".join(node_lines)
 
-    usage_report = get_usage_report(lm_summary)
-    demand_report = get_demand_report(lm_summary)
+def format_no_node_type_string(node_type: dict):
+    placement_group_resource_usage = {}
+    regular_resource_usage = collections.defaultdict(float)
+    for resource, total in node_type.items():
+        (pg_resource_name, pg_name,
+         is_countable) = parse_placement_group_resource_str(resource)
+        if pg_name:
+            if not is_countable:
+                continue
+            if pg_resource_name not in placement_group_resource_usage:
+                placement_group_resource_usage[pg_resource_name] = 0
+            placement_group_resource_usage[pg_resource_name] += total
+        else:
+            regular_resource_usage[resource] += total
 
-    formatted_output = f"""{header}
-Node status
-{separator}
-{node_report}
+    output_lines = [""]
+    for resource, total in regular_resource_usage.items():
+        output_line = f"{resource}: {total}"
+        if resource in placement_group_resource_usage:
+            pg_resource = placement_group_resource_usage[resource]
+            output_line += f" ({pg_resource} reserved in placement groups)"
+        output_lines.append(output_line)
 
-Resources
-{separator}
-Usage:
-{usage_report}
-
-Demands:
-{demand_report}"""
-    return formatted_output
+    return "\n  ".join(output_lines)
