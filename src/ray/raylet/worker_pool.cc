@@ -371,7 +371,10 @@ Process WorkerPool::StartWorkerProcess(
                 << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(
-      startup_token_, std::make_pair(StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type}, proc));
+      startup_token_,
+      std::make_pair(
+          StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type},
+          proc));
   startup_token_ += 1;
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
@@ -428,7 +431,8 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     for (const auto &arg : worker_command_args) {
       stream << " " << arg;
     }
-    stream << " " << "--startup-token=" << startup_token_;
+    stream << " "
+           << "--startup-token=" << startup_token_;
     RAY_LOG(DEBUG) << stream.str();
   }
 
@@ -505,7 +509,8 @@ boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                  pid_t pid, pid_t worker_shim_pid, StartupToken worker_startup_token,
+                                  pid_t pid, pid_t worker_shim_pid,
+                                  StartupToken worker_startup_token,
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
 
@@ -1220,7 +1225,8 @@ void WorkerPool::WarnAboutSize() {
     num_workers_started_or_registered +=
         static_cast<int64_t>(state.registered_workers.size());
     for (const auto &starting_process : state.starting_worker_processes) {
-      num_workers_started_or_registered += starting_process.second.first.num_starting_workers;
+      num_workers_started_or_registered +=
+          starting_process.second.first.num_starting_workers;
     }
     // Don't count IO workers towards the warning message threshold.
     num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;

@@ -1081,7 +1081,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       worker_type == rpc::WorkerType::RESTORE_WORKER) {
     // Register the new worker.
     auto status =
-        worker_pool_.RegisterWorker(worker, pid, worker_shim_pid, worker_startup_token, send_reply_callback);
+        worker_pool_.RegisterWorker(worker, pid, worker_shim_pid,
+                                    worker_startup_token, send_reply_callback);
     if (!status.ok()) {
       // If the worker failed to register to Raylet, trigger task dispatching here to
       // allow new worker processes to be started (if capped by
