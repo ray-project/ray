@@ -716,7 +716,10 @@ class TestRolloutWorker(unittest.TestCase):
 
             def step(self, action):
                 obs, rew, done, info = super(NoTrainingEnv, self).step(action)
-                return obs, rew, done, {**info, **{"training_enabled": self.training_enabled}}
+                return obs, rew, done, {
+                    **info,
+                    "training_enabled": self.training_enabled
+                }
 
         ev = RolloutWorker(
             env_creator=lambda _: NoTrainingEnv(10, True),
