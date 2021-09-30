@@ -67,6 +67,7 @@ class NewEpisodeDefaultDict(defaultdict):
 
 class _PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
+
     def __init__(self):
         self.iters = 0
         self.raw_obs_processing_time = 0.0
@@ -96,6 +97,7 @@ class _PerfStats:
 @DeveloperAPI
 class SamplerInput(InputReader, metaclass=ABCMeta):
     """Reads input experiences from an existing sampler."""
+
     @override(InputReader)
     def next(self) -> SampleBatchType:
         batches = [self.get_data()]
@@ -125,30 +127,31 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
 class SyncSampler(SamplerInput):
     """Sync SamplerInput that collects experiences when `get_data()` is called.
     """
+
     def __init__(
-        self,
-        *,
-        worker: "RolloutWorker",
-        env: BaseEnv,
-        clip_rewards: Union[bool, float],
-        rollout_fragment_length: int,
-        count_steps_by: str = "env_steps",
-        callbacks: "DefaultCallbacks",
-        horizon: int = None,
-        multiple_episodes_in_batch: bool = False,
-        normalize_actions: bool = True,
-        clip_actions: bool = False,
-        soft_horizon: bool = False,
-        no_done_at_end: bool = False,
-        observation_fn: "ObservationFunction" = None,
-        sample_collector_class: Optional[Type[SampleCollector]] = None,
-        render: bool = False,
-        # Obsolete.
-        policies=None,
-        policy_mapping_fn=None,
-        preprocessors=None,
-        obs_filters=None,
-        tf_sess=None,
+            self,
+            *,
+            worker: "RolloutWorker",
+            env: BaseEnv,
+            clip_rewards: Union[bool, float],
+            rollout_fragment_length: int,
+            count_steps_by: str = "env_steps",
+            callbacks: "DefaultCallbacks",
+            horizon: int = None,
+            multiple_episodes_in_batch: bool = False,
+            normalize_actions: bool = True,
+            clip_actions: bool = False,
+            soft_horizon: bool = False,
+            no_done_at_end: bool = False,
+            observation_fn: "ObservationFunction" = None,
+            sample_collector_class: Optional[Type[SampleCollector]] = None,
+            render: bool = False,
+            # Obsolete.
+            policies=None,
+            policy_mapping_fn=None,
+            preprocessors=None,
+            obs_filters=None,
+            tf_sess=None,
     ):
         """Initializes a SyncSampler object.
 
@@ -262,31 +265,32 @@ class AsyncSampler(threading.Thread, SamplerInput):
     Once started, experiences are continuously collected and put into a Queue,
     from where they can be unqueued by the caller of `get_data()`.
     """
+
     def __init__(
-        self,
-        *,
-        worker: "RolloutWorker",
-        env: BaseEnv,
-        clip_rewards: Union[bool, float],
-        rollout_fragment_length: int,
-        count_steps_by: str = "env_steps",
-        callbacks: "DefaultCallbacks",
-        horizon: Optional[int] = None,
-        multiple_episodes_in_batch: bool = False,
-        normalize_actions: bool = True,
-        clip_actions: bool = False,
-        blackhole_outputs: bool = False,
-        soft_horizon: bool = False,
-        no_done_at_end: bool = False,
-        observation_fn: Optional["ObservationFunction"] = None,
-        sample_collector_class: Optional[Type[SampleCollector]] = None,
-        render: bool = False,
-        # Obsolete.
-        policies=None,
-        policy_mapping_fn=None,
-        preprocessors=None,
-        obs_filters=None,
-        tf_sess=None,
+            self,
+            *,
+            worker: "RolloutWorker",
+            env: BaseEnv,
+            clip_rewards: Union[bool, float],
+            rollout_fragment_length: int,
+            count_steps_by: str = "env_steps",
+            callbacks: "DefaultCallbacks",
+            horizon: Optional[int] = None,
+            multiple_episodes_in_batch: bool = False,
+            normalize_actions: bool = True,
+            clip_actions: bool = False,
+            blackhole_outputs: bool = False,
+            soft_horizon: bool = False,
+            no_done_at_end: bool = False,
+            observation_fn: Optional["ObservationFunction"] = None,
+            sample_collector_class: Optional[Type[SampleCollector]] = None,
+            render: bool = False,
+            # Obsolete.
+            policies=None,
+            policy_mapping_fn=None,
+            preprocessors=None,
+            obs_filters=None,
+            tf_sess=None,
     ):
         """Initializes a AsyncSampler object.
 
@@ -445,20 +449,20 @@ class AsyncSampler(threading.Thread, SamplerInput):
 
 
 def _env_runner(
-    worker: "RolloutWorker",
-    base_env: BaseEnv,
-    extra_batch_callback: Callable[[SampleBatchType], None],
-    horizon: Optional[int],
-    normalize_actions: bool,
-    clip_actions: bool,
-    multiple_episodes_in_batch: bool,
-    callbacks: "DefaultCallbacks",
-    perf_stats: _PerfStats,
-    soft_horizon: bool,
-    no_done_at_end: bool,
-    observation_fn: "ObservationFunction",
-    sample_collector: Optional[SampleCollector] = None,
-    render: bool = None,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        extra_batch_callback: Callable[[SampleBatchType], None],
+        horizon: Optional[int],
+        normalize_actions: bool,
+        clip_actions: bool,
+        multiple_episodes_in_batch: bool,
+        callbacks: "DefaultCallbacks",
+        perf_stats: _PerfStats,
+        soft_horizon: bool,
+        no_done_at_end: bool,
+        observation_fn: "ObservationFunction",
+        sample_collector: Optional[SampleCollector] = None,
+        render: bool = None,
 ) -> Iterator[SampleBatchType]:
     """This implements the common experience collection logic.
 
@@ -556,10 +560,11 @@ def _env_runner(
         # would counter the purpose of the LRU policy caching.
         for p in worker.policy_map.cache.values():
             if getattr(p, "exploration", None) is not None:
-                p.exploration.on_episode_start(policy=p,
-                                               environment=base_env,
-                                               episode=episode,
-                                               tf_sess=p.get_session())
+                p.exploration.on_episode_start(
+                    policy=p,
+                    environment=base_env,
+                    episode=episode,
+                    tf_sess=p.get_session())
         callbacks.on_episode_start(
             worker=worker,
             base_env=base_env,
@@ -674,21 +679,21 @@ def _env_runner(
 
 
 def _process_observations(
-    *,
-    worker: "RolloutWorker",
-    base_env: BaseEnv,
-    active_episodes: Dict[EnvID, MultiAgentEpisode],
-    unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
-    rewards: Dict[EnvID, Dict[AgentID, float]],
-    dones: Dict[EnvID, Dict[AgentID, bool]],
-    infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
-    horizon: int,
-    multiple_episodes_in_batch: bool,
-    callbacks: "DefaultCallbacks",
-    soft_horizon: bool,
-    no_done_at_end: bool,
-    observation_fn: "ObservationFunction",
-    sample_collector: SampleCollector,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        active_episodes: Dict[EnvID, MultiAgentEpisode],
+        unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
+        rewards: Dict[EnvID, Dict[AgentID, float]],
+        dones: Dict[EnvID, Dict[AgentID, bool]],
+        infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
+        horizon: int,
+        multiple_episodes_in_batch: bool,
+        callbacks: "DefaultCallbacks",
+        soft_horizon: bool,
+        no_done_at_end: bool,
+        observation_fn: "ObservationFunction",
+        sample_collector: SampleCollector,
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
         RolloutMetrics, SampleBatchType]]]:
     """Record new data from the environment and prepare for policy evaluation.
@@ -827,33 +832,29 @@ def _process_observations(
             if agent_infos is None or agent_infos.get("training_enabled", True):
                 if last_observation is None:
                     sample_collector.add_init_obs(episode, agent_id, env_id,
-                                                  policy_id,
-                                                  episode.length - 1,
+                                                  policy_id, episode.length - 1,
                                                   filtered_obs)
                 else:
                     # Add actions, rewards, next-obs to collectors.
                     values_dict = {
                         SampleBatch.T: episode.length - 1,
                         SampleBatch.ENV_ID: env_id,
-                        SampleBatch.AGENT_INDEX: episode._agent_index(
-                            agent_id),
+                        SampleBatch.AGENT_INDEX: episode._agent_index(agent_id),
                         # Action (slot 0) taken at timestep t.
                         SampleBatch.ACTIONS: episode.last_action_for(agent_id),
                         # Reward received after taking a at timestep t.
-                        SampleBatch.REWARDS: rewards[env_id].get(
-                            agent_id, 0.0),
+                        SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
                         # After taking action=a, did we reach terminal?
-                        SampleBatch.DONES: (False if
-                                            (no_done_at_end or
-                                             (hit_horizon and soft_horizon))
+                        SampleBatch.DONES: (False
+                                            if (no_done_at_end
+                                                or (hit_horizon and soft_horizon))
                                             else agent_done),
                         # Next observation.
                         SampleBatch.NEXT_OBS: filtered_obs,
                     }
                     # Add extra-action-fetches to collectors.
                     pol = worker.policy_map[policy_id]
-                    for key, value in episode.last_pi_info_for(
-                            agent_id).items():
+                    for key, value in episode.last_pi_info_for(agent_id).items():
                         if key in pol.view_requirements:
                             values_dict[key] = value
                     # Env infos for this agent.
@@ -863,15 +864,15 @@ def _process_observations(
                         episode.episode_id, agent_id, env_id, policy_id,
                         agent_done, values_dict)
 
-                if not agent_done:
-                    item = PolicyEvalData(
-                        env_id, agent_id, filtered_obs, agent_infos,
-                        None if last_observation is None else
-                        episode.rnn_state_for(agent_id),
-                        None if last_observation is None else
-                        episode.last_action_for(agent_id),
-                        rewards[env_id].get(agent_id, 0.0))
-                    to_eval[policy_id].append(item)
+            if not agent_done:
+                item = PolicyEvalData(
+                    env_id, agent_id, filtered_obs, agent_infos, None
+                    if last_observation is None else
+                    episode.rnn_state_for(agent_id), None
+                    if last_observation is None else
+                    episode.last_action_for(agent_id), rewards[env_id].get(
+                        agent_id, 0.0))
+                to_eval[policy_id].append(item)
 
         # Invoke the `on_episode_step` callback after the step is logged
         # to the episode.
@@ -879,11 +880,12 @@ def _process_observations(
         # (no step taken yet, just a single starting observation logged).
         # We need to skip this callback in this case.
         if episode.length > 0:
-            callbacks.on_episode_step(worker=worker,
-                                      base_env=base_env,
-                                      policies=worker.policy_map,
-                                      episode=episode,
-                                      env_index=env_id)
+            callbacks.on_episode_step(
+                worker=worker,
+                base_env=base_env,
+                policies=worker.policy_map,
+                episode=episode,
+                env_index=env_id)
 
         # Episode is done for all agents (dones[__all__] == True)
         # or we hit the horizon.
@@ -913,10 +915,11 @@ def _process_observations(
             # would counter the purpose of the LRU policy caching.
             for p in worker.policy_map.cache.values():
                 if getattr(p, "exploration", None) is not None:
-                    p.exploration.on_episode_end(policy=p,
-                                                 environment=base_env,
-                                                 episode=episode,
-                                                 tf_sess=p.get_session())
+                    p.exploration.on_episode_end(
+                        policy=p,
+                        environment=base_env,
+                        episode=episode,
+                        tf_sess=p.get_session())
             # Call custom on_episode_end callback.
             callbacks.on_episode_end(
                 worker=worker,
@@ -931,8 +934,8 @@ def _process_observations(
                 resetted_obs: Dict[AgentID, EnvObsType] = all_agents_obs
             else:
                 del active_episodes[env_id]
-                resetted_obs: Dict[AgentID,
-                                   EnvObsType] = base_env.try_reset(env_id)
+                resetted_obs: Dict[AgentID, EnvObsType] = base_env.try_reset(
+                    env_id)
             # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
                 if horizon != float("inf"):
@@ -965,10 +968,9 @@ def _process_observations(
                     new_episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.
-                    sample_collector.add_init_obs(new_episode, agent_id,
-                                                  env_id, policy_id,
-                                                  new_episode.length - 1,
-                                                  filtered_obs)
+                    sample_collector.add_init_obs(
+                        new_episode, agent_id, env_id, policy_id,
+                        new_episode.length - 1, filtered_obs)
 
                     item = PolicyEvalData(
                         env_id, agent_id, filtered_obs,
@@ -987,11 +989,11 @@ def _process_observations(
 
 
 def _do_policy_eval(
-    *,
-    to_eval: Dict[PolicyID, List[PolicyEvalData]],
-    policies: PolicyMap,
-    sample_collector,
-    active_episodes: Dict[EnvID, MultiAgentEpisode],
+        *,
+        to_eval: Dict[PolicyID, List[PolicyEvalData]],
+        policies: PolicyMap,
+        sample_collector,
+        active_episodes: Dict[EnvID, MultiAgentEpisode],
 ) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
     """Call compute_actions on collected episode/model data to get next action.
 
@@ -1025,9 +1027,8 @@ def _do_policy_eval(
             # have already been changed (mapping fn stay constant
             # within one episode).
             episode = active_episodes[eval_data[0].env_id]
-            policy_id = episode.policy_mapping_fn(eval_data[0].agent_id,
-                                                  episode,
-                                                  worker=episode.worker)
+            policy_id = episode.policy_mapping_fn(
+                eval_data[0].agent_id, episode, worker=episode.worker)
             policy: Policy = _get_or_raise(policies, policy_id)
 
         input_dict = sample_collector.get_inference_input_dict(policy_id)
@@ -1045,15 +1046,16 @@ def _do_policy_eval(
 
 
 def _process_policy_eval_results(
-    *,
-    to_eval: Dict[PolicyID, List[PolicyEvalData]],
-    eval_results: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]],
-    active_episodes: Dict[EnvID, MultiAgentEpisode],
-    active_envs: Set[int],
-    off_policy_actions: MultiEnvDict,
-    policies: Dict[PolicyID, Policy],
-    normalize_actions: bool,
-    clip_actions: bool,
+        *,
+        to_eval: Dict[PolicyID, List[PolicyEvalData]],
+        eval_results: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
+                                           dict]],
+        active_episodes: Dict[EnvID, MultiAgentEpisode],
+        active_envs: Set[int],
+        off_policy_actions: MultiEnvDict,
+        policies: Dict[PolicyID, Policy],
+        normalize_actions: bool,
+        clip_actions: bool,
 ) -> Dict[EnvID, Dict[AgentID, EnvActionType]]:
     """Process the output of policy neural network evaluation.
 
