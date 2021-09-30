@@ -184,6 +184,11 @@ ray_files += [
 # in this directory
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
+        "data": [
+            "pandas",
+            "pyarrow>=4.0.1",
+            "fsspec",
+        ],
         "default": [
             "aiohttp",
             "aiohttp_cors",
