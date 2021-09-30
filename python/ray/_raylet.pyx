@@ -1871,7 +1871,7 @@ cdef class CoreWorker:
             self.current_runtime_env = ParsedRuntimeEnv.deserialize(
                     serialized_env)
 
-        return self.current_runtime_env_dict
+        return self.current_runtime_env
 
     def is_exiting(self):
         return CCoreWorkerProcess.GetCoreWorker().IsExiting()
