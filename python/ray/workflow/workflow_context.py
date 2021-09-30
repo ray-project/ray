@@ -9,32 +9,60 @@ class WorkflowStepContext:
     def __init__(self,
                  workflow_id: str = None,
                  storage_url: str = None,
-                 workflow_scope: List[str] = None):
+                 workflow_scope: List[str] = None,
+                 outer_most_step_id: Optional[str] = None,
+                 last_step_of_workflow: bool = False):
         """
         The structure for saving workflow step context. The context provides
         critical info (e.g. where to checkpoint, which is its parent step)
         for the step to execute correctly.
+
+        To fully explain what we are doing, we need to introduce some syntax
+        first. The syntax for dependencies between workflow steps
+        "B.step(A.step())" is "A - B"; the syntax for nested workflow steps
+        "def A(): return B.step()" is "A / B".
+
+        In a chain/DAG of step dependencies, the "output step" is the step of
+        last (topological) order. For example, in "A - B - C", C is the
+        output step.
+
+        In a chain of nested workflow steps, the initial "output step" is
+        called the "outer most step" for other "output steps". For example, in
+        "A / B / C / D", "A" is the outer most step for "B", "C", "D";
+        in the hybrid workflow "((A - B) / C / D) - (E / (F - G) / H)",
+        "B" is the outer most step for "C", "D"; "E" is the outer most step
+        for "G", "H".
 
         Args:
             workflow_id: The workflow job ID.
             storage_url: The storage of the workflow, used for checkpointing.
             workflow_scope: The "calling stack" of the current workflow step.
                 It describe the parent workflow steps.
+            outer_most_step_id: The ID of the outer most workflow. None if it
+                does not exists.
+            last_step_of_workflow: The step that generates the output of the
+                workflow (including nested steps).
         """
         self.workflow_id = workflow_id
         self.storage_url = storage_url
         self.workflow_scope = workflow_scope or []
+        self.outer_most_step_id: str = outer_most_step_id
+        self.last_step_of_workflow: bool = last_step_of_workflow
 
     def __reduce__(self):
         return WorkflowStepContext, (self.workflow_id, self.storage_url,
-                                     self.workflow_scope)
+                                     self.workflow_scope,
+                                     self.outer_most_step_id,
+                                     self.last_step_of_workflow)
 
 
 _context: Optional[WorkflowStepContext] = None
 
 
 @contextmanager
-def workflow_step_context(workflow_id, storage_url) -> None:
+def workflow_step_context(workflow_id,
+                          storage_url,
+                          last_step_of_workflow=False) -> None:
     """Initialize the workflow step context.
 
     Args:
@@ -45,7 +73,48 @@ def workflow_step_context(workflow_id, storage_url) -> None:
     original_context = _context
     assert workflow_id is not None
     try:
-        _context = WorkflowStepContext(workflow_id, storage_url)
+        _context = WorkflowStepContext(
+            workflow_id,
+            storage_url,
+            last_step_of_workflow=last_step_of_workflow)
+        yield
+    finally:
+        _context = original_context
+
+
+_sentinel = object()
+
+
+@contextmanager
+def fork_workflow_step_context(
+        workflow_id: Optional[str] = _sentinel,
+        storage_url: Optional[str] = _sentinel,
+        workflow_scope: Optional[List[str]] = _sentinel,
+        outer_most_step_id: Optional[str] = _sentinel,
+        last_step_of_workflow: Optional[bool] = _sentinel):
+    """Fork the workflow step context.
+    Inherits the original value if provided value is 'None'.
+
+    Args:
+        workflow_id: The ID of the workflow.
+        storage_url: The storage the workflow is using.
+    """
+    global _context
+    original_context = _context
+    assert workflow_id is not None
+    try:
+        _context = WorkflowStepContext(
+            workflow_id=original_context.workflow_id
+            if workflow_id is _sentinel else workflow_id,
+            storage_url=original_context.storage_url
+            if storage_url is _sentinel else storage_url,
+            workflow_scope=original_context.workflow_scope
+            if workflow_scope is _sentinel else workflow_scope,
+            outer_most_step_id=original_context.outer_most_step_id
+            if outer_most_step_id is _sentinel else outer_most_step_id,
+            last_step_of_workflow=original_context.last_step_of_workflow
+            if last_step_of_workflow is _sentinel else last_step_of_workflow,
+        )
         yield
     finally:
         _context = original_context
