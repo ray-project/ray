@@ -12,7 +12,7 @@ from ray.util.dask import ray_dask_get
 
 from xgboost_ray import RayDMatrix, RayParams, train, predict
 
-from utils.utils import is_anyscale_connect
+from ray._private.test_utils import is_anyscale_connect
 
 FILE_URL = "https://ray-ci-higgs.s3.us-west-2.amazonaws.com/" \
                       "simpleHIGGS.csv"

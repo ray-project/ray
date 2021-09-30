@@ -17,7 +17,7 @@ from ray.util.sgd.utils import override
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
 
-from utils.utils import is_anyscale_connect
+from ray._private.test_utils import is_anyscale_connect
 
 
 def load_mnist_data(train: bool, download: bool):
