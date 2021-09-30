@@ -262,31 +262,6 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                         "ERROR: x ({}) is the same as y ({})!".format(x, y)
 
 
-def check_learning_achieved(tune_results, min_reward, evaluation=False):
-    """Throws an error if `min_reward` is not reached within tune_results.
-
-    Checks the last iteration found in tune_results for its
-    "episode_reward_mean" value and compares it to `min_reward`.
-
-    Args:
-        tune_results: The tune.run returned results object.
-        min_reward (float): The min reward that must be reached.
-
-    Raises:
-        ValueError: If `min_reward` not reached.
-    """
-    # Get maximum reward of all trials
-    # (check if at least one trial achieved some learning)
-    avg_rewards = [(trial.last_result["episode_reward_mean"]
-                    if not evaluation else
-                    trial.last_result["evaluation"]["episode_reward_mean"])
-                   for trial in tune_results.trials]
-    best_avg_reward = max(avg_rewards)
-    if best_avg_reward < min_reward:
-        raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
-    print("ok")
-
-
 def check_compute_single_action(trainer,
                                 include_state=False,
                                 include_prev_action_reward=False):
@@ -439,6 +414,114 @@ def check_compute_single_action(trainer,
                         for clip in ([False] if unsquash else [True, False]):
                             _test(what, method_to_test, obs_space, full_fetch,
                                   explore, timestep, unsquash, clip)
+
+
+def check_learning_achieved(tune_results, min_reward, evaluation=False):
+    """Throws an error if `min_reward` is not reached within tune_results.
+
+    Checks the last iteration found in tune_results for its
+    "episode_reward_mean" value and compares it to `min_reward`.
+
+    Args:
+        tune_results: The tune.run returned results object.
+        min_reward (float): The min reward that must be reached.
+
+    Raises:
+        ValueError: If `min_reward` not reached.
+    """
+    # Get maximum reward of all trials
+    # (check if at least one trial achieved some learning)
+    avg_rewards = [(trial.last_result["episode_reward_mean"]
+                    if not evaluation else
+                    trial.last_result["evaluation"]["episode_reward_mean"])
+                   for trial in tune_results.trials]
+    best_avg_reward = max(avg_rewards)
+    if best_avg_reward < min_reward:
+        raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
+    print("ok")
+
+
+def check_train_results(train_results):
+    """Checks proper structure of a Trainer.train() returned dict.
+
+    Args:
+        train_results: The train results dict to check.
+
+    Raises:
+        AssertionError: If `train_results` doesn't have the proper structure or
+            data in it.
+    """
+    # Import these here to avoid circular dependencies.
+    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+    from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
+        LEARNER_STATS_KEY
+    from ray.rllib.utils.multi_agent import check_multi_agent
+
+    # Assert that some keys are where we would expect them.
+    for key in [
+            "agent_timesteps_total",
+            "config",
+            "custom_metrics",
+            "episode_len_mean",
+            "episode_reward_max",
+            "episode_reward_mean",
+            "episode_reward_min",
+            "episodes_total",
+            "hist_stats",
+            "info",
+            "iterations_since_restore",
+            "num_healthy_workers",
+            "perf",
+            "policy_reward_max",
+            "policy_reward_mean",
+            "policy_reward_min",
+            "sampler_perf",
+            "time_since_restore",
+            "time_this_iter_s",
+            "timesteps_since_restore",
+            "timesteps_total",
+            "timers",
+            "time_total_s",
+            "training_iteration",
+    ]:
+        assert key in train_results, \
+            f"'{key}' not found in `train_results` ({train_results})!"
+
+    _, is_multi_agent = check_multi_agent(train_results["config"])
+
+    # Check in particular the "info" dict.
+    info = train_results["info"]
+    assert LEARNER_INFO in info, \
+        f"'learner' not in train_results['infos'] ({info})!"
+    assert "num_steps_trained" in info,\
+        f"'num_steps_trained' not in train_results['infos'] ({info})!"
+
+    learner_info = info[LEARNER_INFO]
+
+    # Make sure we have a default_policy key if we are not in a
+    # multi-agent setup.
+    if not is_multi_agent:
+        assert DEFAULT_POLICY_ID in learner_info, \
+            f"'{DEFAULT_POLICY_ID}' not found in " \
+            f"train_results['infos']['learner'] ({learner_info})!"
+
+    for pid, policy_stats in learner_info.items():
+        # Expect td-errors to be per batch-item.
+        if "td_error" in policy_stats:
+            configured_b = train_results["config"]["train_batch_size"]
+            actual_b = policy_stats["td_error"].shape[0]
+            assert (configured_b - actual_b) / actual_b <= 0.1
+
+        # Make sure each policy has the LEARNER_STATS_KEY under it.
+        assert LEARNER_STATS_KEY in policy_stats
+        learner_stats = policy_stats[LEARNER_STATS_KEY]
+        for key, value in learner_stats.items():
+            # Min- and max-stats should be single values.
+            if key.startswith("min_") or key.startswith("max_"):
+                assert np.isscalar(
+                    value), f"'key' value not a scalar ({value})!"
+
+    return train_results
 
 
 def run_learning_tests_from_yaml(

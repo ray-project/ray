@@ -4,7 +4,7 @@ import unittest
 import ray
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 
 class TestDQN(unittest.TestCase):
@@ -30,6 +30,7 @@ class TestDQN(unittest.TestCase):
             trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
 
             check_compute_single_action(trainer)
@@ -46,6 +47,7 @@ class TestDQN(unittest.TestCase):
             trainer = dqn.DQNTrainer(config=rainbow_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
 
             check_compute_single_action(trainer)

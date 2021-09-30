@@ -27,10 +27,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# By convention, metrics from optimizing the loss can be reported in the
-# `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
-LEARNER_STATS_KEY = "learner_stats"
-
 # A policy spec used in the "config.multiagent.policies" specification dict
 # as values (keys are the policy IDs (str)). E.g.:
 # config:
