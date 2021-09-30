@@ -35,6 +35,10 @@ def _map_block(block: Block, meta: BlockMetadata,
 class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList[Any]) -> BlockList[Any]:
+        # Handle empty datasets.
+        if len(blocks) == 0:
+            return blocks
+
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         kwargs = remote_args.copy()

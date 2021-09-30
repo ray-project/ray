@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def method(*args, **kwargs):
     """Annotate an actor method.
 
@@ -584,7 +584,7 @@ class ActorClass:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
 
-        if client_mode_should_convert():
+        if client_mode_should_convert(auto_init=True):
             return client_mode_convert_actor(
                 self,
                 args,
@@ -755,6 +755,7 @@ class ActorClass:
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
             runtime_env_dict=runtime_env_dict,
+            runtime_env_uris=runtime_env_dict.get("uris") or [],
             override_environment_variables=override_environment_variables
             or dict())
 

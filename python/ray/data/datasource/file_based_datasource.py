@@ -133,7 +133,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             if _block_udf is not None:
                 block = _block_udf(block)
             with fs.open_output_stream(write_path) as f:
-                _write_block_to_file(f, BlockAccessor.for_block(block))
+                _write_block_to_file(f, BlockAccessor.for_block(block),
+                                     **write_args)
 
         write_block = cached_remote_fn(write_block)
 
@@ -188,9 +189,8 @@ def _resolve_paths_and_filesystem(
             compatibility.
     """
     import pyarrow as pa
-    from pyarrow.fs import (FileSystem, PyFileSystem, FSSpecHandler,
-                            _resolve_filesystem_and_path)
-    import fsspec
+    from pyarrow.fs import FileSystem, PyFileSystem, FSSpecHandler, \
+        _resolve_filesystem_and_path
 
     if isinstance(paths, str):
         paths = [paths]
@@ -202,11 +202,20 @@ def _resolve_paths_and_filesystem(
         raise ValueError("Must provide at least one path.")
 
     if filesystem and not isinstance(filesystem, FileSystem):
+        err_msg = f"The filesystem passed must either conform to " \
+                  f"pyarrow.fs.FileSystem, or " \
+                  f"fsspec.spec.AbstractFileSystem. The provided " \
+                  f"filesystem was: {filesystem}"
+        try:
+            import fsspec
+        except ModuleNotFoundError:
+            # If filesystem is not a pyarrow filesystem and fsspec isn't
+            # installed, then filesystem is neither a pyarrow filesystem nor
+            # an fsspec filesystem, so we raise a TypeError.
+            raise TypeError(err_msg)
         if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
-            raise TypeError(f"The filesystem passed must either conform to "
-                            f"pyarrow.fs.FileSystem, or "
-                            f"fsspec.spec.AbstractFileSystem. The provided "
-                            f"filesystem was: {filesystem}")
+            raise TypeError(err_msg)
+
         filesystem = PyFileSystem(FSSpecHandler(filesystem))
 
     resolved_paths = []

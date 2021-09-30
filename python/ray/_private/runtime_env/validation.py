@@ -114,13 +114,14 @@ class RuntimeEnvDict:
                                 "dict")
 
         self._dict["pip"] = None
-        if "pip" in runtime_env_json:
+        pip = runtime_env_json.get("pip")
+        if pip is not None:
             if sys.platform == "win32":
                 raise NotImplementedError("The 'pip' field in runtime_env "
                                           "is not currently supported on "
                                           "Windows.")
-            if ("conda" in runtime_env_json
-                    and runtime_env_json["conda"] is not None):
+            conda = runtime_env_json.get("conda")
+            if runtime_env_json.get("conda") is not None:
                 raise ValueError(
                     "The 'pip' field and 'conda' field of "
                     "runtime_env cannot both be specified.\n"
@@ -132,7 +133,6 @@ class RuntimeEnvDict:
                     "https://conda.io/projects/conda/en/latest/"
                     "user-guide/tasks/manage-environments.html"
                     "#create-env-file-manually")
-            pip = runtime_env_json["pip"]
             if isinstance(pip, str):
                 # We have been given a path to a requirements.txt file.
                 pip_file = Path(pip)
@@ -156,8 +156,8 @@ class RuntimeEnvDict:
             self._dict["container"] = runtime_env_json["container"]
 
         self._dict["env_vars"] = None
-        if "env_vars" in runtime_env_json:
-            env_vars = runtime_env_json["env_vars"]
+        env_vars = runtime_env_json.get("env_vars")
+        if env_vars is not None:
             self._dict["env_vars"] = env_vars
             if not (isinstance(env_vars, dict) and all(
                     isinstance(k, str) and isinstance(v, str)

@@ -17,9 +17,11 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 
 from ray.tests.conftest import *  # noqa
+from ray.data.dataset import Dataset
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
+from ray.data.impl.block_list import BlockList
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
@@ -142,6 +144,89 @@ def test_callable_classes(shutdown_only):
     assert len(actor_reuse) == 10, actor_reuse
 
 
+@pytest.mark.parametrize(
+    "block_sizes,num_splits",
+    [
+        (  # Test baseline.
+            [3, 6, 3], 3),
+        (  # Already balanced.
+            [3, 3, 3], 3),
+        (  # Row truncation.
+            [3, 6, 4], 3),
+        (  # Row truncation, smaller number of blocks.
+            [3, 6, 2, 3], 3),
+        (  # Row truncation, larger number of blocks.
+            [5, 6, 2, 5], 5),
+        (  # All smaller but one.
+            [1, 1, 1, 1, 6], 5),
+        (  # All larger but one.
+            [4, 4, 4, 4, 1], 5),
+        (  # Single block.
+            [2], 2),
+        (  # Single split.
+            [2, 5], 1),
+    ])
+def test_equal_split_balanced(ray_start_regular_shared, block_sizes,
+                              num_splits):
+    _test_equal_split_balanced(block_sizes, num_splits)
+
+
+def _test_equal_split_balanced(block_sizes, num_splits):
+    blocks = []
+    metadata = []
+    total_rows = 0
+    for block_size in block_sizes:
+        block = list(range(total_rows, total_rows + block_size))
+        blocks.append(ray.put(block))
+        metadata.append(BlockAccessor.for_block(block).get_metadata(None))
+        total_rows += block_size
+    block_list = BlockList(blocks, metadata)
+    ds = Dataset(block_list)
+
+    splits = ds.split(num_splits, equal=True)
+    split_counts = [split.count() for split in splits]
+    assert len(split_counts) == num_splits
+    expected_block_size = total_rows // num_splits
+    # Check that all splits are the expected size.
+    assert all([count == expected_block_size for count in split_counts])
+    expected_total_rows = sum(split_counts)
+    # Check that the expected number of rows were dropped.
+    assert total_rows - expected_total_rows == total_rows % num_splits
+    # Check that all rows are unique (content check).
+    split_rows = [row for split in splits for row in split.take(total_rows)]
+    assert len(set(split_rows)) == len(split_rows)
+
+
+def test_equal_split_balanced_grid(ray_start_regular_shared):
+
+    # Tests balanced equal splitting over a grid of configurations.
+    # Grid: num_blocks x num_splits x num_rows_block_1 x ... x num_rows_block_n
+    seed = int(time.time())
+    print(f"Seeding RNG for test_equal_split_balanced_grid with: {seed}")
+    random.seed(seed)
+    max_num_splits = 20
+    num_splits_samples = 5
+    max_num_blocks = 50
+    max_num_rows_per_block = 100
+    num_blocks_samples = 5
+    block_sizes_samples = 5
+    for num_splits in np.random.randint(
+            2, max_num_splits + 1, size=num_splits_samples):
+        for num_blocks in np.random.randint(
+                1, max_num_blocks + 1, size=num_blocks_samples):
+            block_sizes_list = [
+                np.random.randint(
+                    1, max_num_rows_per_block + 1, size=num_blocks)
+                for _ in range(block_sizes_samples)
+            ]
+            for block_sizes in block_sizes_list:
+                if sum(block_sizes) < num_splits:
+                    min_ = math.ceil(num_splits / num_blocks)
+                    block_sizes = np.random.randint(
+                        min_, max_num_rows_per_block + 1, size=num_blocks)
+                _test_equal_split_balanced(block_sizes, num_splits)
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic(ray_start_regular_shared, pipelined):
     ds0 = ray.data.range(5)
@@ -195,30 +280,15 @@ def test_batch_tensors(ray_start_regular_shared):
 def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.data.range_tensor(5, shape=(3, 5))
-    assert str(ds) == ("Dataset(num_blocks=5, num_rows=5, "
-                       "schema=<Tensor: shape=(None, 3, 5), dtype=int64>)")
-
-    # Transform.
-    ds = ds.map_batches(lambda t: np.expand_dims(t, 3))
-    assert str(ds) == ("Dataset(num_blocks=5, num_rows=5, "
-                       "schema=<Tensor: shape=(None, 3, 5, 1), dtype=int64>)")
+    assert str(ds) == (
+        "Dataset(num_blocks=5, num_rows=5, "
+        "schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})")
 
     # Pandas conversion.
     res = ray.data.range_tensor(10).map_batches(
         lambda t: t + 2, batch_format="pandas").take(2)
-    assert str(res) == "[ArrowRow({'0': 2}), ArrowRow({'0': 3})]", res
-
-    # From other formats.
-    ds = ray.data.range(10).map_batches(lambda x: np.array(x))
-    assert str(ds) == ("Dataset(num_blocks=10, num_rows=10, "
-                       "schema=<Tensor: shape=(None,), dtype=int64>)")
-    ds = ray.data.range(10).map(lambda x: np.array(x))
-    assert str(ds) == ("Dataset(num_blocks=10, num_rows=10, "
-                       "schema=<Tensor: shape=(None,), dtype=int64>)")
-    ds = ray.data.from_items([np.zeros(shape=(2, 2, 2)) for _ in range(4)])
-    assert str(ds) == (
-        "Dataset(num_blocks=4, num_rows=4, "
-        "schema=<Tensor: shape=(None, 2, 2, 2), dtype=float64>)"), ds
+    assert str(res) == \
+        "[ArrowRow({'value': array([2])}), ArrowRow({'value': array([3])})]"
 
 
 def test_tensor_array_ops(ray_start_regular_shared):
@@ -639,13 +709,11 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.range_tensor(10, parallelism=2)
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
-    assert str(ds) == ("Dataset(num_blocks=2, num_rows=?, "
-                       "schema=<Tensor: shape=(None, 1), dtype=int64>)")
-
-    assert str(
-        ds.take()) == ("[array([0]), array([1]), array([2]), "
-                       "array([3]), array([4]), array([5]), array([6]), "
-                       "array([7]), array([8]), array([9])]"), ds.take()
+    assert str(ds) == (
+        "Dataset(num_blocks=2, num_rows=?, "
+        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
+    assert str(ds.take(2)) == \
+        "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
 
 
 def test_numpy_read(ray_start_regular_shared, tmp_path):
@@ -654,13 +722,11 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(
         os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
-    assert str(ds) == ("Dataset(num_blocks=1, num_rows=?, "
-                       "schema=<Tensor: shape=(None, 1), dtype=int64>)")
-
-    assert str(
-        ds.take()) == ("[array([0]), array([1]), array([2]), "
-                       "array([3]), array([4]), array([5]), array([6]), "
-                       "array([7]), array([8]), array([9])]"), ds.take()
+    assert str(ds) == (
+        "Dataset(num_blocks=1, num_rows=?, "
+        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
+    assert str(ds.take(2)) == \
+        "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
 
 
 @pytest.mark.parametrize("fs,data_path,endpoint_url", [
@@ -682,7 +748,12 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
         arr1 = np.load(s3.open(file_path1))
         arr2 = np.load(s3.open(file_path2))
-    np.testing.assert_equal(np.concatenate((arr1, arr2)), ds.take())
+    assert ds.count() == 10
+    assert len(arr1) == 5
+    assert len(arr2) == 5
+    assert arr1.sum() == 10
+    assert arr2.sum() == 35
+    assert str(ds.take(1)) == "[ArrowRow({'value': array([0])})]"
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):
@@ -732,6 +803,16 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ds.filter(lambda x: x > 1)
     assert str(ds) == \
         "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
+
+    # Test map on empty dataset.
+    ds = ray.data.from_items([])
+    ds = ds.map(lambda x: x)
+    assert ds.count() == 0
+
+    # Test filter on empty dataset.
+    ds = ray.data.from_items([])
+    ds = ds.filter(lambda: True)
+    assert ds.count() == 0
 
 
 def test_schema(ray_start_regular_shared):
@@ -845,7 +926,10 @@ def test_from_numpy(ray_start_regular_shared):
     arr2 = np.expand_dims(np.arange(4, 8), 1)
     ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
     values = np.array(ds.take(8))
-    np.testing.assert_equal(np.concatenate((arr1, arr2)), values)
+    for i in range(4):
+        assert values[i]["value"] == arr1[i]
+    for i in range(4, 8):
+        assert values[i]["value"] == arr2[i - 4]
 
 
 def test_from_arrow(ray_start_regular_shared):
@@ -871,13 +955,13 @@ def test_to_pandas(ray_start_regular_shared):
 def test_to_numpy(ray_start_regular_shared):
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
-    arr = np.concatenate(ray.get(ds.to_numpy()))
+    arr = np.concatenate(ray.get(ds.to_numpy(column="value")))
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
     ds = ray.data.range_arrow(10)
-    arr = np.concatenate(ray.get(ds.to_numpy()))
-    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+    arr = np.concatenate(ray.get(ds.to_numpy(column="value")))
+    np.testing.assert_equal(arr, np.arange(0, 10))
 
     # Simple Dataset
     ds = ray.data.range(10)
@@ -2365,6 +2449,12 @@ def test_sort_simple(ray_start_regular_shared):
     assert ds.sort(key=lambda x: -x).take(num_items) == list(
         reversed(range(num_items)))
 
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    s1 = ds.sort()
+    assert s1.count() == 0
+    assert s1 == ds
+
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_random_shuffle(shutdown_only, pipelined):
@@ -2415,6 +2505,12 @@ def test_random_shuffle(shutdown_only, pipelined):
             ds = ds.map(lambda x: x).take(999)
     r2 = range(100).random_shuffle(_move=True).take(999)
     assert r1 != r2, (r1, r2)
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    r1 = ds.random_shuffle()
+    assert r1.count() == 0
+    assert r1 == ds
 
 
 def test_random_shuffle_spread(ray_start_cluster):
