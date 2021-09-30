@@ -253,8 +253,6 @@ If you want to access any values *during* the training process, you can do so vi
     for _ in range(3):
         print(trainer.train(reduce_results=False))
 
-    final_model = trainer.get_model()
-
 
 **SGD v2**
 
@@ -291,6 +289,44 @@ Checkpointing
 Finally, you can also use ``sgd.save_checkpoint()`` and ``sgd.load_checkpoint()`` to write checkpoints to disk during the training process, and to load from the most recently saved checkpoint in the case of node failures.
 
 See the :ref:`Checkpointing <sgd-checkpointing>` and :ref:`Fault Tolerance & Elastic Training <sgd-fault-tolerance>` sections on the user guide for more info.
+
+For example, in order to save checkpoints after every epoch:
+
+**SGD v1**
+
+.. code-block:: python
+
+    from ray.util.sgd import TorchTrainer, TrainingOperator
+
+    class MyTrainingOperator(TrainingOperator):
+       ...
+
+    trainer = TorchTrainer(training_operator_cls=MyTrainingOperator, num_workers=2)
+
+    for _ in range(3):
+        trainer.train()
+        trainer.save_checkpoint(checkpoint_dir="~/ray_results")
+
+
+**SGD v2**
+
+.. code-block:: python
+
+    from ray.util.sgd.v2 import Trainer
+    import ray.util.sgd.v2 as sgd
+
+    def train_func():
+       model = Net()
+       trainer_loader = MyDataset()
+       for i in range(3):
+           for batch in train_loader:
+               model.train(batch)
+           sgd.save_checkpoint(epoch=i, model=model.state_dict()))
+
+    trainer = Trainer(backend="torch")
+    trainer.start()
+    trainer.run(train_func, num_workers=2)
+
 
 .. _sgd-migration-tune:
 
