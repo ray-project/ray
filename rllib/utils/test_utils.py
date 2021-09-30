@@ -3,8 +3,10 @@ import copy
 import gym
 import logging
 import numpy as np
+import random
 import re
 import time
+import tree  # pip install dm_tree
 from typing import Any, Dict, List
 import yaml
 
@@ -300,17 +302,119 @@ def check_compute_single_action(trainer,
     Raises:
         ValueError: If anything unexpected happens.
     """
+    # Have to import this here to avoid circular dependency.
+    from ray.rllib.policy.sample_batch import SampleBatch
+
+    # Some Trainers may not abide to the standard API.
     try:
         pol = trainer.get_policy()
     except AttributeError:
         pol = trainer.policy
+    # Get the policy's model.
     model = pol.model
 
     action_space = pol.action_space
 
+    def _test(what, method_to_test, obs_space, full_fetch, explore, timestep,
+              unsquash, clip):
+        call_kwargs = {}
+        if what is trainer:
+            call_kwargs["full_fetch"] = full_fetch
+
+        obs = obs_space.sample()
+        if isinstance(obs_space, gym.spaces.Box):
+            obs = np.clip(obs, -1.0, 1.0)
+        state_in = None
+        if include_state:
+            state_in = model.get_initial_state()
+            if not state_in:
+                state_in = []
+                i = 0
+                while f"state_in_{i}" in model.view_requirements:
+                    state_in.append(model.view_requirements[f"state_in_{i}"]
+                                    .space.sample())
+                    i += 1
+        action_in = action_space.sample() \
+            if include_prev_action_reward else None
+        reward_in = 1.0 if include_prev_action_reward else None
+
+        if method_to_test == "input_dict":
+            assert what is pol
+
+            input_dict = {SampleBatch.OBS: obs}
+            if include_prev_action_reward:
+                input_dict[SampleBatch.PREV_ACTIONS] = action_in
+                input_dict[SampleBatch.PREV_REWARDS] = reward_in
+            if state_in:
+                for i, s in enumerate(state_in):
+                    input_dict[f"state_in_{i}"] = s
+            input_dict_batched = SampleBatch(
+                tree.map_structure(lambda s: np.expand_dims(s, 0), input_dict))
+            action = pol.compute_actions_from_input_dict(
+                input_dict=input_dict_batched,
+                explore=explore,
+                timestep=timestep,
+                **call_kwargs)
+            # Unbatch everything to be able to compare against single
+            # action below.
+            # ARS and ES return action batches as lists.
+            if isinstance(action[0], list):
+                action = (np.array(action[0]), action[1], action[2])
+            action = tree.map_structure(lambda s: s[0], action)
+
+            try:
+                action2 = pol.compute_single_action(
+                    input_dict=input_dict,
+                    explore=explore,
+                    timestep=timestep,
+                    **call_kwargs)
+                # Make sure these are the same, unless we have exploration
+                # switched on (or noisy layers).
+                if not explore and not pol.config.get("noisy"):
+                    check(action, action2)
+            except TypeError:
+                pass
+        else:
+            action = what.compute_single_action(
+                obs,
+                state_in,
+                prev_action=action_in,
+                prev_reward=reward_in,
+                explore=explore,
+                timestep=timestep,
+                unsquash_action=unsquash,
+                clip_action=clip,
+                **call_kwargs)
+
+        state_out = None
+        if state_in or full_fetch or what is pol:
+            action, state_out, _ = action
+        if state_out:
+            for si, so in zip(state_in, state_out):
+                check(list(si.shape), so.shape)
+
+        # Test whether unsquash/clipping works: Both should push the action
+        # to certainly be within the space's bounds.
+        if not action_space.contains(action):
+            if clip or unsquash or not isinstance(action_space,
+                                                  gym.spaces.Box):
+                raise ValueError(
+                    f"Returned action ({action}) of trainer/policy {what} "
+                    f"not in Env's action_space {action_space}")
+        # We are operating in normalized space: Expect only smaller action
+        # values.
+        if isinstance(action_space, gym.spaces.Box) and not unsquash and \
+                what.config.get("normalize_actions") and \
+                np.any(np.abs(action) > 10.0):
+            raise ValueError(
+                f"Returned action ({action}) of trainer/policy {what} "
+                "should be in normalized space, but seems too large/small for "
+                "that!")
+
+    # Loop through: Policy vs Trainer; Different API methods to calculate
+    # actions; unsquash option; clip option; full fetch or not.
     for what in [pol, trainer]:
         if what is trainer:
-            method_to_test = trainer.compute_single_action
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
             worker_set = getattr(trainer, "workers",
@@ -323,53 +427,18 @@ def check_compute_single_action(trainer,
                     lambda p: p.observation_space)
             obs_space = getattr(obs_space, "original_space", obs_space)
         else:
-            method_to_test = pol.compute_single_action
             obs_space = pol.observation_space
 
-        for explore in [True, False]:
-            for full_fetch in ([False, True] if what is trainer else [False]):
-                call_kwargs = {}
-                if what is trainer:
-                    call_kwargs["full_fetch"] = full_fetch
-                else:
-                    call_kwargs["clip_actions"] = True
-
-                obs = obs_space.sample()
-                if isinstance(obs_space, gym.spaces.Box):
-                    obs = np.clip(obs, -1.0, 1.0)
-                state_in = None
-                if include_state:
-                    state_in = model.get_initial_state()
-                    if not state_in:
-                        state_in = []
-                        i = 0
-                        while f"state_in_{i}" in model.view_requirements:
-                            state_in.append(model.view_requirements[
-                                f"state_in_{i}"].space.sample())
-                            i += 1
-                action_in = action_space.sample() \
-                    if include_prev_action_reward else None
-                reward_in = 1.0 if include_prev_action_reward else None
-                action = method_to_test(
-                    obs,
-                    state_in,
-                    prev_action=action_in,
-                    prev_reward=reward_in,
-                    explore=explore,
-                    **call_kwargs)
-
-                state_out = None
-                if state_in or full_fetch or what is pol:
-                    action, state_out, _ = action
-                if state_out:
-                    for si, so in zip(state_in, state_out):
-                        check(list(si.shape), so.shape)
-
-                if not action_space.contains(action):
-                    raise ValueError(
-                        "Returned action ({}) of trainer/policy {} not in "
-                        "Env's action_space "
-                        "({})!".format(action, what, action_space))
+        for method_to_test in ["single"] + \
+                (["input_dict"] if what is pol else []):
+            for explore in [True, False]:
+                for full_fetch in ([False, True]
+                                   if what is trainer else [False]):
+                    timestep = random.randint(0, 100000)
+                    for unsquash in [True, False]:
+                        for clip in ([False] if unsquash else [True, False]):
+                            _test(what, method_to_test, obs_space, full_fetch,
+                                  explore, timestep, unsquash, clip)
 
 
 def run_learning_tests_from_yaml(

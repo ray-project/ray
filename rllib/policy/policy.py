@@ -14,9 +14,8 @@ from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.spaces.space_utils import clip_action, \
-    get_base_struct_from_space, get_dummy_batch_for_space, unbatch, \
-    unsquash_action
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
+    get_dummy_batch_for_space, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
 
@@ -180,16 +179,17 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def compute_single_action(
             self,
-            obs: TensorStructType,
+            obs: Optional[TensorStructType] = None,
             state: Optional[List[TensorType]] = None,
+            *,
             prev_action: Optional[TensorStructType] = None,
             prev_reward: Optional[TensorStructType] = None,
             info: dict = None,
+            input_dict: Optional[SampleBatch] = None,
             episode: Optional["MultiAgentEpisode"] = None,
-            clip_actions: bool = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            unsquash_actions: bool = None,
+            # Kwars placeholder for future compatibility.
             **kwargs) -> \
             Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
@@ -199,14 +199,13 @@ class Policy(metaclass=ABCMeta):
             state: List of RNN state inputs, if any.
             prev_action: Previous action value, if any.
             prev_reward: Previous reward, if any.
-            info (dict): Info object, if any.
-            episode: this provides access to all
-                of the internal episode state, which may be useful for
-                model-based or multi-agent algorithms.
-            unsquash_actions: Should actions be unsquashed according to
-                the Policy's action space?
-            clip_actions: Should actions be clipped according to the
-                Policy's action space?
+            info: Info object, if any.
+            input_dict: A SampleBatch or input dict containing the
+                single (unbatched) Tensors to compute actions. If given, it'll
+                be used instead of `obs`, `state`, `prev_action|reward`, and
+                `info`.
+            episode: This provides access to all of the internal episode state,
+                which may be useful for model-based or multi-agent algorithms.
             explore: Whether to pick an exploitation or
                 exploration action
                 (default: None -> use self.config["explore"]).
@@ -220,43 +219,37 @@ class Policy(metaclass=ABCMeta):
             - state_outs: List of RNN state outputs, if any.
             - info: Dictionary of extra features, if any.
         """
-        # If policy works in normalized space, we should unsquash the action.
-        # Use value of config.normalize_actions, if None.
-        unsquash_actions = \
-            unsquash_actions if unsquash_actions is not None \
-            else self.config["normalize_actions"]
-        clip_actions = clip_actions if clip_actions is not None else \
-            self.config["clip_actions"]
+        # Build the input-dict used for the call to
+        # `self.compute_actions_from_input_dict()`.
+        if input_dict is None:
+            input_dict = {SampleBatch.OBS: obs}
+            if state is not None:
+                for i, s in enumerate(state):
+                    input_dict[f"state_in_{i}"] = s
+            if prev_action is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action
+            if prev_reward is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward
+            if info is not None:
+                input_dict[SampleBatch.INFOS] = info
 
-        prev_action_batch = None
-        prev_reward_batch = None
-        info_batch = None
+        # Batch all data in input dict.
+        input_dict = tree.map_structure_with_path(
+            lambda p, s: (s if p == "seq_lens" else s.unsqueeze(0) if
+                          torch and isinstance(s, torch.Tensor) else
+                          np.expand_dims(s, 0)),
+            input_dict)
+
         episodes = None
-        state_batch = None
-        if prev_action is not None:
-            prev_action_batch = [prev_action]
-        if prev_reward is not None:
-            prev_reward_batch = [prev_reward]
-        if info is not None:
-            info_batch = [info]
         if episode is not None:
             episodes = [episode]
-        if state is not None:
-            state_batch = [
-                s.unsqueeze(0)
-                if torch and isinstance(s, torch.Tensor) else np.expand_dims(
-                    s, 0) for s in state
-            ]
 
-        out = self.compute_actions(
-            tree.map_structure(lambda s: np.array([s]), obs),
-            state_batch,
-            prev_action_batch=prev_action_batch,
-            prev_reward_batch=prev_reward_batch,
-            info_batch=info_batch,
+        out = self.compute_actions_from_input_dict(
+            input_dict=SampleBatch(input_dict),
             episodes=episodes,
             explore=explore,
-            timestep=timestep)
+            timestep=timestep,
+        )
 
         # Some policies don't return a tuple, but always just a single action.
         # E.g. ES and ARS.
@@ -271,16 +264,6 @@ class Policy(metaclass=ABCMeta):
         assert len(single_action) == 1
         single_action = single_action[0]
 
-        # If we work in normalized action space (normalize_actions=True),
-        # we re-translate here into the env's action space.
-        if unsquash_actions:
-            single_action = unsquash_action(single_action,
-                                            self.action_space_struct)
-        # Clip, according to env's action space.
-        elif clip_actions:
-            single_action = clip_action(single_action,
-                                        self.action_space_struct)
-
         # Return action, internal state(s), infos.
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
@@ -288,7 +271,7 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def compute_actions_from_input_dict(
             self,
-            input_dict: SampleBatch,
+            input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
             explore: bool = None,
             timestep: Optional[int] = None,
             episodes: Optional[List["MultiAgentEpisode"]] = None,
@@ -300,14 +283,19 @@ class Policy(metaclass=ABCMeta):
         to construct the input_dict for the Model.
 
         Args:
-            input_dict (SampleBatch): A SampleBatch containing the Tensors
+            input_dict: A SampleBatch or input dict containing the Tensors
                 to compute actions. `input_dict` already abides to the
                 Policy's as well as the Model's view requirements and can
                 thus be passed to the Model as-is.
-            explore (bool): Whether to pick an exploitation or exploration
+            explore: Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            timestep (Optional[int]): The current (sampling) time step.
-            kwargs: forward compatibility placeholder
+            timestep: The current (sampling) time step.
+            episodes: This provides access to all of the internal episodes'
+                state, which may be useful for model-based or multi-agent
+                algorithms.
+
+        Keyword Args:
+            kwargs: Forward compatibility placeholder.
 
         Returns:
             Tuple:

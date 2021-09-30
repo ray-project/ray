@@ -528,7 +528,7 @@ def build_eager_tf_policy(
                                 dist_inputs, self.dist_class, state_out = \
                                     action_distribution_fn(
                                         self, self.model,
-                                        input_dict[SampleBatch.CUR_OBS],
+                                        input_dict[SampleBatch.OBS],
                                         explore=explore,
                                         timestep=timestep,
                                         is_training=False)
