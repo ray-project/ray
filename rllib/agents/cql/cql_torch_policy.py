@@ -280,11 +280,8 @@ def cql_loss(policy: Policy, model: ModelV2,
             policy.alpha_prime_optim.step()
 
     # Return all loss terms corresponding to our optimizers.
-    if use_lagrange:
-        return tuple([policy.actor_loss] + policy.critic_loss +
-                     [policy.alpha_loss] + [policy.alpha_prime_loss])
-    return tuple([policy.actor_loss] + policy.critic_loss +
-                 [policy.alpha_loss])
+    return tuple([actor_loss] + critic_loss + [alpha_loss] +
+                 ([alpha_prime_loss] if use_lagrange else []))
 
 
 def cql_stats(policy: Policy,
