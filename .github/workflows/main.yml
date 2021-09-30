@@ -111,7 +111,6 @@ jobs:
         TRAVIS_COMMIT: ${{ github.sha }}
         TRAVIS_JOB_ID: ${{ github.run_id }}
       run: |
-        # Multi thread in windowns for grpc not working now
         function clean_up() {
           echo "Performing cleanup"
           if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then ./ci/travis/upload_build_info.sh; fi
