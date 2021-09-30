@@ -38,13 +38,13 @@ class Sequencer {
   /// \param operation The operation to be called.
   void Post(KEY key, std::function<void(SequencerDoneCallback done_callback)> operation) {
     mutex_.Lock();
-    pending_operations_[key].emplace_back(std::move(operation));
+    pending_operations_[key].push_back(operation);
     int queue_size = pending_operations_[key].size();
     mutex_.Unlock();
 
     if (1 == queue_size) {
       auto done_callback = [this, key]() { PostExecute(key); };
-      pending_operations_[key][0](done_callback);
+      operation(done_callback);
     }
   }
 
