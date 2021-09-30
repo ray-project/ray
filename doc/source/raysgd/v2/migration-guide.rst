@@ -331,6 +331,7 @@ There is a 1:1 mapping between rank 0 worker's ``sgd.report()``\ , ``sgd.save_ch
 
 
 **SGD v2**
+
 .. code-block:: python
 
    from ray import tune
