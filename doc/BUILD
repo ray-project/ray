@@ -8,7 +8,7 @@ py_test(
     size = "medium",
     main = "examples/dask_xgboost/dask_xgboost.py",
     srcs = ["examples/dask_xgboost/dask_xgboost.py"],
-    tags = ["exclusive", "team:ml"],
+    tags = ["exclusive", "team:ml", "py37"],
     args = ["--smoke-test", "--address ''", "--num-actors 4",
             "--cpus-per-actor 1", "--num-actors-inference 4",
              "--cpus-per-actor-inference 1"]
@@ -19,7 +19,7 @@ py_test(
     size = "medium",
     main = "examples/modin_xgboost/modin_xgboost.py",
     srcs = ["examples/modin_xgboost/modin_xgboost.py"],
-    tags = ["exclusive", "team:ml"],
+    tags = ["exclusive", "team:ml", "py37"],
     args = ["--smoke-test", "--address ''", "--num-actors 4",
             "--cpus-per-actor 1", "--num-actors-inference 4",
              "--cpus-per-actor-inference 1"]

@@ -1,3 +1,4 @@
+# flake8: noqa: E501
 """
 XGBoost-Ray with Dask
 ======================
@@ -225,6 +226,7 @@ print(f"Results: {evals_result}")
 
 ###############################################################################
 # Hyperparameter optimization
+# ---------------------------
 # If we are not content with the results obtained with default XGBoost
 # parameters, we can use `Ray Tune
 # <https://docs.ray.io/en/latest/tune/index.html>`_ for cutting-edge
