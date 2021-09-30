@@ -871,6 +871,24 @@ bool ClusterTaskManager::AnyPendingTasks(RayTask *exemplar, bool *any_pending,
 }
 
 std::string ClusterTaskManager::DebugStr() const {
+  std::stringstream stream;
+  stream << "tasks_to_schedule:\n";
+  for (const auto &pair: tasks_to_schedule_) {
+    const auto &queue = pair.second;
+    for (const auto &work_ptr : queue) {
+      const auto &task = work_ptr->task;
+      stream << "\t" << task.DebugString() << "\n";
+    }
+  }
+  stream << "tasks_to_dispatch:\n";
+  for (const auto &pair: tasks_to_dispatch_) {
+    const auto &queue = pair.second;
+    for (const auto &work_ptr : queue) {
+      const auto &task = work_ptr->task;
+      stream << "\t" << task.DebugString() << "\n";
+    }
+  }
+  RAY_LOG(ERROR) << stream.str();
   // TODO(Shanly): This method will be replaced with `DebugString` once we remove the
   // legacy scheduler.
   auto accumulator = [](size_t state,

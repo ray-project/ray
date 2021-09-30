@@ -392,7 +392,7 @@ def read_numpy(paths: Union[str, List[str]],
                *,
                filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                parallelism: int = 200,
-               **numpy_load_args) -> Dataset[np.ndarray]:
+               **numpy_load_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
 
     Examples:
@@ -529,7 +529,7 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]]) -> Dataset[ArrowRow]:
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
-def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[np.ndarray]:
+def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
     """Create a dataset from a set of NumPy ndarrays.
 
     Args:
@@ -590,8 +590,11 @@ def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
 
 
 def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
-    return (ndarray,
-            BlockAccessor.for_block(ndarray).get_metadata(input_files=None))
+    import pyarrow as pa
+    from ray.data.extensions import TensorArray
+    table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
+    return (table,
+            BlockAccessor.for_block(table).get_metadata(input_files=None))
 
 
 def _get_schema(block: Block) -> Any:

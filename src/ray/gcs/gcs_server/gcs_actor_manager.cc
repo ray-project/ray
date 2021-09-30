@@ -187,13 +187,13 @@ void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request
 
   const auto &registered_actor_iter = registered_actors_.find(actor_id);
   if (registered_actor_iter != registered_actors_.end()) {
-    reply->mutable_actor_table_data()->CopyFrom(
-        registered_actor_iter->second->GetActorTableData());
+    reply->unsafe_arena_set_allocated_actor_table_data(
+        registered_actor_iter->second->GetMutableActorTableData());
   } else {
     const auto &destroyed_actor_iter = destroyed_actors_.find(actor_id);
     if (destroyed_actor_iter != destroyed_actors_.end()) {
-      reply->mutable_actor_table_data()->CopyFrom(
-          destroyed_actor_iter->second->GetActorTableData());
+      reply->unsafe_arena_set_allocated_actor_table_data(
+          destroyed_actor_iter->second->GetMutableActorTableData());
     }
   }
 
@@ -210,10 +210,12 @@ void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &r
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
   if (request.show_dead_jobs() == false) {
     for (const auto &iter : registered_actors_) {
-      reply->add_actor_table_data()->CopyFrom(iter.second->GetActorTableData());
+      reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
+          const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
     }
     for (const auto &iter : destroyed_actors_) {
-      reply->add_actor_table_data()->CopyFrom(iter.second->GetActorTableData());
+      reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
+          const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
     }
     RAY_LOG(DEBUG) << "Finished getting all actor info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -227,7 +229,9 @@ void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &r
       [reply, send_reply_callback](
           const std::unordered_map<ActorID, rpc::ActorTableData> &result) {
         for (const auto &pair : result) {
-          reply->add_actor_table_data()->CopyFrom(pair.second);
+          // TODO yic: Fix const cast
+          reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
+              const_cast<rpc::ActorTableData *>(&pair.second));
         }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
         RAY_LOG(DEBUG) << "Finished getting all actor info.";
@@ -258,7 +262,8 @@ void GcsActorManager::HandleGetNamedActorInfo(
     RAY_LOG(WARNING) << stream.str();
     status = Status::NotFound(stream.str());
   } else {
-    reply->mutable_actor_table_data()->CopyFrom(iter->second->GetActorTableData());
+    reply->unsafe_arena_set_allocated_actor_table_data(
+        iter->second->GetMutableActorTableData());
     RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                    << ", actor id = " << actor_id;
   }
@@ -275,10 +280,9 @@ void GcsActorManager::HandleListNamedActors(const rpc::ListNamedActorsRequest &r
   std::vector<std::pair<std::string, std::string>> actors =
       ListNamedActors(request.all_namespaces(), ray_namespace);
   for (const auto &actor : actors) {
-    rpc::NamedActorInfo named_actor_info;
-    named_actor_info.set_ray_namespace(actor.first);
-    named_actor_info.set_name(actor.second);
-    reply->add_named_actors_list()->CopyFrom(named_actor_info);
+    auto named_actor_indo = reply->add_named_actors_list();
+    named_actor_indo->set_ray_namespace(actor.first);
+    named_actor_indo->set_name(actor.second);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::LIST_NAMED_ACTORS_REQUEST];
@@ -381,13 +385,9 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     // owner to determine when the actor should be removed.
     PollOwnerForActorOutOfScope(actor);
   } else {
-    // If it's a detached actor, we need to register the runtime env it used to GC
-    auto job_id = JobID::FromBinary(request.task_spec().job_id());
-    const auto &uris = runtime_env_manager_.GetReferences(job_id.Hex());
-    auto actor_id_hex = actor->GetActorID().Hex();
-    for (const auto &uri : uris) {
-      runtime_env_manager_.AddURIReference(actor_id_hex, uri);
-    }
+    // If it's a detached actor, we need to register the runtime env it used to GC.
+    runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
+                                         request.task_spec().runtime_env());
   }
 
   // The backend storage is supposed to be reliable, so the status must be ok.

@@ -353,8 +353,11 @@ def _workflow_step_executor(
     Returns:
         Workflow step output.
     """
+    print("STARTING STEP EXECUTOR", step_id)
     workflow_context.update_workflow_step_context(context, step_id)
+    print("RESOLVING ARGS", step_id)
     args, kwargs = _resolve_step_inputs(baked_inputs)
+    print("RESOLVED ARGS", step_id)
     store = workflow_storage.get_workflow_storage()
     try:
         persisted_output, volatile_output = _wrap_run(
@@ -401,6 +404,7 @@ def _workflow_step_executor(
         assert step_type == StepType.ACTOR_METHOD
         volatile_output = volatile_output.run_async(
             workflow_context.get_current_workflow_id())
+    print("FINISHED STEP EXECUTOR", step_id)
     return persisted_output, volatile_output
 
 

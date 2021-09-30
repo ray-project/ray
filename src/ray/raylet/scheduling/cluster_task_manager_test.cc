@@ -116,16 +116,18 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
 
 RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
                    int num_args = 0, std::vector<ObjectID> args = {},
-                   std::string serialized_runtime_env = "{}") {
+                   const std::string &serialized_runtime_env = "{}",
+                   const std::vector<std::string> &runtime_env_uris = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
-  spec_builder.SetCommonTaskSpec(
-      id, "dummy_task", Language::PYTHON,
-      FunctionDescriptorBuilder::BuildPython("", "", "", ""), job_id, TaskID::Nil(), 0,
-      TaskID::Nil(), address, 0, required_resources, {},
-      std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0, serialized_runtime_env);
+  spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
+                                 FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                                 job_id, TaskID::Nil(), 0, TaskID::Nil(), 0, address, 0,
+                                 required_resources, {},
+                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "",
+                                 serialized_runtime_env, runtime_env_uris);
 
   if (!args.empty()) {
     for (auto &arg : args) {
