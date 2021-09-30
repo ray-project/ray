@@ -22,6 +22,7 @@ from ray.serve.common import (
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY)
 from ray.serve.endpoint_state import EndpointState
+from ray.serve.generated.serve_pb2 import JAVA
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
@@ -247,10 +248,15 @@ class ServeController:
                         f"prev_version '{prev_version}' "
                         "does not match with the existing "
                         f"version '{existing_backend_info.version}'.")
-            backend_info = BackendInfo(
-                actor_def=ray.remote(
+            if backend_config.backend_language == "JAVA":
+                actor_def = ray.java_actor_class(
+                    "io.ray.serve.RayServeWrappedReplica")
+            else:
+                actor_def = ray.remote(
                     create_backend_replica(
-                        name, replica_config.serialized_backend_def)),
+                        name, replica_config.serialized_backend_def))
+            backend_info = BackendInfo(
+                actor_def=actor_def,
                 version=version,
                 backend_config=backend_config,
                 replica_config=replica_config,

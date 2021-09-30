@@ -301,22 +301,21 @@ class RayServeReplica:
 
         return result
 
-    async def reconfigure(self,
-                          user_config: Optional[Any] = None) -> BackendVersion:
+    async def reconfigure(self, user_config: Optional[Any] = None) -> None:
+        self.user_config = user_config
+        self.version = BackendVersion(
+            self.version.code_version, user_config=user_config)
+        if self.is_function:
+            raise ValueError("backend_def must be a class to use user_config")
+        elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
+            raise RayServeException("user_config specified but backend " +
+                                    self.backend_tag + " missing " +
+                                    BACKEND_RECONFIGURE_METHOD + " method")
         if user_config:
-            self.user_config = user_config
-            self.version = BackendVersion(
-                self.version.code_version, user_config=user_config)
-            if self.is_function:
-                raise ValueError(
-                    "backend_def must be a class to use user_config")
-            elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
-                raise RayServeException("user_config specified but backend " +
-                                        self.backend_tag + " missing " +
-                                        BACKEND_RECONFIGURE_METHOD + " method")
             reconfigure_method = sync_to_async(
                 getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
             await reconfigure_method(user_config)
+        return self.version
 
     def _update_backend_configs(self, new_config_bytes: bytes) -> None:
         self.backend_config = BackendConfig.from_proto_bytes(new_config_bytes)

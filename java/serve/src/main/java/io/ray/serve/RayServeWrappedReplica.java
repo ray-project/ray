@@ -12,6 +12,7 @@ import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.Optional;
@@ -40,13 +41,13 @@ public class RayServeWrappedReplica {
 
     // Parse init args.
     Object[] initArgs = parseInitArgs(initArgsbytes, backendConfig);
-    LOGGER.error("init Args length "+initArgs.length);
 
     ReplicaConfig replicaConfig = ReplicaConfig.parseFrom(replicaConfigProtoBytes);
 
     // Instantiate the object defined by backendDef.
     Class backendClass = Class.forName(replicaConfig.getFuncOrClassName());
-    Object callable = ReflectUtil.getConstructor(backendClass, initArgs).newInstance(initArgs);
+    Constructor constructor = ReflectUtil.getConstructor(backendClass, initArgs);
+    Object callable = constructor.newInstance(initArgs);
 
     // Set the controller name so that Serve.connect() in the user's backend code will connect to
     // the instance that this backend is running in.
@@ -54,7 +55,6 @@ public class RayServeWrappedReplica {
 
     // Construct worker replica.
     backend = new RayServeReplica(callable, backendConfig, controllerHandle);
-    LOGGER.error("Finish init!");
   }
 
   private Object[] parseInitArgs(byte[] initArgsbytes, BackendConfig backendConfig)
@@ -101,6 +101,11 @@ public class RayServeWrappedReplica {
   /** Check whether this replica is ready or not. */
   public void ready() {
     return;
+  }
+
+  public int reconfigure(Object any) {
+    LOGGER.error("reconfigure is not implemented yet.");
+    return 1;
   }
 
   /** Wait until there is no request in processing. It is used for stopping replica gracefully. */

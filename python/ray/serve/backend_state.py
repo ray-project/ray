@@ -20,6 +20,7 @@ from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
 from ray.serve.version import BackendVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
+from ray.serve.generated.serve_pb2 import JAVA, ReplicaConfig as ReplicaConfigProto
 
 
 class ReplicaState(Enum):
@@ -83,6 +84,8 @@ class ActorReplicaWrapper:
         # the non-detached case.
         self._actor_handle = None
         self._placement_group = None
+
+        self._do_health_check = True
 
     def __get_state__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
@@ -155,6 +158,34 @@ class ActorReplicaWrapper:
                      f"{self.backend_tag} component=serve deployment="
                      f"{self.backend_tag} replica={self.replica_tag}")
 
+        if backend_info.backend_config.backend_language == "JAVA":
+
+            def msgpack_serialize(init_args):
+                ctx = ray.worker.global_worker.get_serialization_context()
+                buffer = ctx.serialize(init_args)
+                init_args_serialized = buffer.to_bytes()
+                return init_args_serialized
+
+            # this should be renamed
+            replica_config = ReplicaConfigProto()
+            replica_config.backend_tag = self.backend_tag
+            replica_config.replica_tag = self.replica_tag
+            replica_config.func_or_class_name = backend_info.replica_config.func_or_class_name
+
+            constructor_args = (
+                backend_info.backend_config.to_proto_bytes(),
+                replica_config.SerializeToString(),
+                msgpack_serialize(list(backend_info.replica_config.init_args)),
+                ray.runtime_context.get_runtime_context().current_actor,
+            )
+
+            self._do_health_check = False
+        else:
+            constructor_args = (self.backend_tag, self.replica_tag,
+                                backend_info.replica_config.init_args,
+                                backend_info.backend_config.to_proto_bytes(),
+                                version, self._controller_name, self._detached)
+
         self._actor_handle = backend_info.actor_def.options(
             name=self._actor_name,
             namespace=self._controller_namespace,
@@ -162,10 +193,7 @@ class ActorReplicaWrapper:
             placement_group=self._placement_group,
             placement_group_capture_child_tasks=False,
             **backend_info.replica_config.ray_actor_options).remote(
-                self.backend_tag, self.replica_tag,
-                backend_info.replica_config.init_args,
-                backend_info.backend_config.to_proto_bytes(), version,
-                self._controller_name, self._detached)
+                *constructor_args)
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
@@ -230,6 +258,8 @@ class ActorReplicaWrapper:
         elif len(ready) > 0:
             try:
                 version = ray.get(ready)[0]
+                if version == 1:  # special handling for JAVA for now
+                    version = None
             except Exception:
                 return ReplicaStartupStatus.FAILED, None
 
@@ -266,6 +296,8 @@ class ActorReplicaWrapper:
 
     def check_health(self) -> bool:
         """Check if the actor is healthy."""
+        if not self._do_health_check:
+            return True
         if self._health_check_ref is None:
             self._health_check_ref = self._actor_handle.run_forever.remote()
 

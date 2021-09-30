@@ -79,6 +79,7 @@ class BackendConfig(BaseModel):
     experimental_graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
 
     autoscaling_config: Optional[AutoscalingConfig] = None
+    backend_language: Any = BackendLanguage.PYTHON
 
     class Config:
         validate_assignment = True
@@ -104,7 +105,7 @@ class BackendConfig(BaseModel):
                 **data["autoscaling_config"])
         return BackendConfigProto(
             is_cross_language=False,
-            backend_language=BackendLanguage.PYTHON,
+            # backend_language=BackendLanguage.PYTHON,
             **data,
         ).SerializeToString()
 

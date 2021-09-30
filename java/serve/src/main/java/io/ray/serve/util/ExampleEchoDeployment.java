@@ -1,10 +1,15 @@
 package io.ray.serve.util;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class ExampleEchoDeployment {
    String prefix;
+  private static final Logger LOGGER = LoggerFactory.getLogger(ExampleEchoDeployment.class);
 
-  public ExampleEchoDeployment(String prefix) {
-    this.prefix = prefix;
+
+  public ExampleEchoDeployment(Object prefix) {
+    this.prefix = (String) prefix;
   }
 
   public String call(String input) {
