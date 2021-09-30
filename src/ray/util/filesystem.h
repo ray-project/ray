@@ -43,7 +43,7 @@ static inline bool IsDirSep(char ch) {
 
 /// \return The result of joining multiple path components.
 template <class... Paths>
-std::string JoinPaths(std::string base, const Paths &... components) {
+std::string JoinPaths(std::string base, const Paths &...components) {
   auto join = [](auto &joined_path, const auto &component) {
     // if the components begin with "/" or "////", just get the path name.
     if (!component.empty() &&
