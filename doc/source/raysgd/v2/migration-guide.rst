@@ -21,24 +21,26 @@ There are 3 primary API differences between Ray SGD v1 and v2.
 
     .. code-block:: python
 
-       # Torch Example
-       def train_func_distributed():
-        num_epochs = 3
-        model = NeuralNetwork()
-        model = DistributedDataParallel(model)
-        loss_fn = nn.MSELoss()
-        optimizer = optim.SGD(model.parameters(), lr=0.1)
+        from torch.nn.parallel import DistributedDataParallel
+        from torch import nn, optim
 
-        for epoch in range(num_epochs):
+        # Torch Example
+        def train_func_distributed():
+            num_epochs = 3
+            model = NeuralNetwork()
+            model = DistributedDataParallel(model)
+            loss_fn = nn.MSELoss()
+            optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-           output = model(input)
-           loss = loss_fn(output, labels)
-           optimizer.zero_grad()
-           loss.backward()
-           optimizer.step()
-           print(f"epoch: {epoch}, loss: {loss.item()}")
+            for epoch in range(num_epochs):
+                output = model(input)
+                loss = loss_fn(output, labels)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                print(f"epoch: {epoch}, loss: {loss.item()}")
 
-        from ray.sgd import Trainer
+        from ray.util.sgd.v2 import Trainer
 
         trainer = Trainer(backend="torch", num_workers=4)
         trainer.start()
@@ -80,6 +82,8 @@ So instead of
 
 .. code-block:: python
 
+    from ray.util.sgd import TrainingOperator, TorchTrainer
+
     class MyTrainingOperator(TrainingOperator):
        ...
 
@@ -97,10 +101,14 @@ you would do
 
 .. code-block:: python
 
-   class MyTrainingOperator(TrainingOperator):
+    from ray.util.sgd import TrainingOperator
+    from ray.util.sgd.v2 import Trainer
+    import ray.util.sgd.v2 as sgd
+
+    class MyTrainingOperator(TrainingOperator):
        ...
 
-   def train_func(config):
+    def train_func(config):
        device = torch.device(f"cuda:{sgd.local_rank()}" if
                      torch.cuda.is_available() else "cpu")
        if torch.cuda.is_available():
@@ -133,10 +141,10 @@ you would do
        else:
            return None
 
-   trainer = Trainer(backend="torch", num_workers=4, use_gpu=True)
-   trainer.start()
-   results = trainer.run(train_func, config={"num_epochs": 10})
-   final_model = results[0]
+    trainer = Trainer(backend="torch", num_workers=4, use_gpu=True)
+    trainer.start()
+    results = trainer.run(train_func, config={"num_epochs": 10})
+    final_model = results[0]
 
 Tensorflow
 ~~~~~~~~~~
@@ -145,7 +153,12 @@ The API for ``TFTrainer`` uses creator functions instead of a ``TrainingOperator
 
 .. code-block:: python
 
-   def train_func(config):
+    from tensorflow.distribute import MultiWorkerMirroredStrategy
+
+    from ray.util.sgd.v2 import Trainer
+    import ray.util.sgd.v2 as sgd
+
+    def train_func(config):
        train_dataset, val_dataset = data_creator(config)
        strategy = MultiWorkerMirroredStrategy()
        with strategy.scope():
@@ -159,10 +172,11 @@ The API for ``TFTrainer`` uses creator functions instead of a ``TrainingOperator
        else:
            return None
 
-   trainer = Trainer(backend="tensorflow", num_workers=4, config={"num_epochs": 3, ...})
-   trainer.start()
-   model = trainer.run(train_func)[0]
+    trainer = Trainer(backend="tensorflow", num_workers=4, config={"num_epochs": 3, ...})
+    trainer.start()
+    model = trainer.run(train_func)[0]
 
+You can see a full example :ref:`here <sgd-porting-code>`.
 
 .. _sgd-migration-trainer:
 
@@ -183,9 +197,30 @@ Return Values
 
 To get any state from training *after* training has completed, you can simply return it from your training function. The return values from each the workers will be added to a list and returned from the ``trainer.run()`` call.
 
+For example, to get the final model:
+
+**SGD v1**
+
 .. code-block:: python
 
-   def train_func():
+    from ray.util.sgd import TorchTrainer, TrainingOperator
+
+    class MyTrainingOperator(TrainingOperator):
+       ...
+
+    trainer = TorchTrainer(training_operator_cls=MyTrainingOperator, num_workers=2)
+
+    trainer.train()
+
+    trained_model = trainer.get_model()
+
+**SGD v2**
+
+.. code-block:: python
+
+    from ray.util.sgd.v2 import Trainer
+
+    def train_func():
        model = Net()
        trainer_loader = MyDataset()
        for batch in train_loader:
@@ -193,21 +228,40 @@ To get any state from training *after* training has completed, you can simply re
 
        return model
 
-   trainer = Trainer(backend="torch")
-   trainer.start()
-   results = trainer.run(train_func, num_workers=2)
-   assert len(results) == 2
-   trained_model = results[0]
+    trainer = Trainer(backend="torch")
+    trainer.start()
+    results = trainer.run(train_func, num_workers=2)
+    assert len(results) == 2
+    trained_model = results[0]
 
 Intermediate Reporting
 ~~~~~~~~~~~~~~~~~~~~~~
 
 If you want to access any values *during* the training process, you can do so via ``sgd.report()``. You can pass in any values to ``sgd.report()`` and these values from all workers will be sent to any callbacks passed into your ``Trainer``.
 
+**SGD v1**
+
 .. code-block:: python
 
-   from ray import sgd
-   from ray.sgd import SGDCallback, Trainer
+    from ray.util.sgd import TorchTrainer, TrainingOperator
+
+    class MyTrainingOperator(TrainingOperator):
+       ...
+
+    trainer = TorchTrainer(training_operator_cls=MyTrainingOperator, num_workers=2)
+
+    for _ in range(3):
+        print(trainer.train(reduce_results=False))
+
+    final_model = trainer.get_model()
+
+
+**SGD v2**
+
+.. code-block:: python
+
+   import ray.util.sgd.v2 as sgd
+   from ray.util.sgd.v2 import SGDCallback, Trainer
    from typing import List, Dict
 
    class PrintingCallback(SGDCallback):
@@ -245,13 +299,45 @@ Hyperparameter Tuning with Ray Tune
 
 Ray SGD v2 also comes with an easier to use interface for Hyperparameter Tuning with Ray Tune using Tune's function API instead of its Class API. In particular, it is much easier to define custom procedures because the logic is entirely defined by your training function.
 
+There is a 1:1 mapping between rank 0 worker's ``sgd.report()``\ , ``sgd.save_checkpoint()``\ , and ``sgd.load_checkpoint()`` with ``tune.report()``\ , ``tune.save_checkpoint()``\ , and ``tune.load_checkpoint()``.
+
+**SGD v1**
+
+.. code-block:: python
+
+    from ray import tune
+    from ray.util.sgd import TrainingOperator, TorchTrainer
+
+    class MyTrainingOperator(TrainingOperator):
+        ...
+
+    def custom_step(trainer, info):
+        train_stats = trainer.train()
+        return train_stats
+
+    # TorchTrainable is subclass of BaseTorchTrainable.
+    TorchTrainable = TorchTrainer.as_trainable(
+        training_operator_cls=MyTrainingOperator,
+        num_workers=2,
+        use_gpu=True,
+        override_tune_step=custom_step
+    )
+
+    analysis = tune.run(
+        TorchTrainable,
+        config={"input": tune.grid_search([1, 2, 3])}
+    )
+
+
+
+**SGD v2**
 .. code-block:: python
 
    from ray import tune
-   from ray import sgd
-   from ray.sgd import Trainer
+   import ray.util.sgd.v2 as sgd
+   from ray.util.sgd.v2 import Trainer
 
-   def train_func(config):
+   def train_func(config)
        # In this example, nothing is expected to change over epochs,
        # and the output metric is equivalent to the input value.
        for _ in range(config["num_epochs"]):
@@ -266,4 +352,4 @@ Ray SGD v2 also comes with an easier to use interface for Hyperparameter Tuning 
    print(analysis.get_best_config(metric="output", mode="max"))
    # {'num_epochs': 2, 'input': 3}
 
-There is a 1:1 mapping between rank 0 worker's ``sgd.report()``\ , ``sgd.save_checkpoint()``\ , and ``sgd.load_checkpoint()`` with ``tune.report()``\ , ``tune.save_checkpoint()``\ , and ``tune.load_checkpoint()``.
+For more information see :ref:`sgd-tune`
