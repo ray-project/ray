@@ -175,6 +175,8 @@ class ParsedRuntimeEnv(dict):
     This should be constructed from user-provided input (the API runtime_env)
     and used everywhere that the runtime_env is passed around internally.
 
+    All options in the resulting dictionary will have non-None values.
+
     Currently supported options:
         working_dir (Path): Specifies the working directory of the worker.
             This can either be a local directory or zip file.
@@ -285,34 +287,30 @@ def override_task_or_actor_runtime_env(
     JobConfig.  Otherwise, we are running in a worker for an actor or
     task, and the current runtime env comes from the current TaskSpec.
 
-    The child's runtime env dict is merged with the parents via a simple
-    dict update, except for runtime_env["env_vars"], which is merged
-    with runtime_env["env_vars"] of the parent rather than overwriting it.
-    This is so that env vars set in the parent propagate to child actors
-    and tasks even if a new env var is set in the child.
-
-    Args:
-        runtime_env_dict (dict): A runtime env for a child actor or task.
+    By default, the child runtime env inherits non-specified options from the
+    parent. There are two exceptions to this:
+        - working_dir is not inherited (only URIs).
+        - The env_vars dictionaries are merged, so environment variables
+          not specified by the child are still inherited from the parent.
 
     Returns:
-        The resulting merged JSON-serialized runtime env.
+        The resulting merged ParsedRuntimeEnv.
     """
     assert child_runtime_env is not None
     assert parent_runtime_env is not None
-
-    result = copy.deepcopy(child_runtime_env)
-
-    # If per-actor URIs aren't specified, override them with those in the
-    # job config.
-    if "uris" not in result and "uris" in parent_runtime_env:
-        result["uris"] = parent_runtime_env.get("uris")
 
     # Override environment variables.
     result_env_vars = copy.deepcopy(parent_runtime_env.get("env_vars") or {})
     child_env_vars = child_runtime_env.get("env_vars") or {}
     result_env_vars.update(child_env_vars)
+
+    # Inherit all other non-specified options from the parent.
+    result = copy.deepcopy(parent_runtime_env)
+    result.update(child_runtime_env)
     if len(result_env_vars) > 0:
         result["env_vars"] = result_env_vars
+    if "working_dir" in result:
+        del result["working_dir"]  # working_dir should not be in child env.
 
     # NOTE(architkulkarni): This allows worker caching code in C++ to
     # check if a runtime env is empty without deserializing it.
