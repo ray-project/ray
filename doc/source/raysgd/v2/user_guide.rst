@@ -90,6 +90,7 @@ training.
     If you are using GPUs, you need to make sure to the CUDA devices are properly setup inside your training function.
 
     This involves 3 steps:
+
     1. Use the local rank to set the default CUDA device for the worker.
     2. Move the model to the default CUDA device (or a specific CUDA device).
     3. Specify ``device_ids`` when wrapping in ``DistributedDataParallel``.
