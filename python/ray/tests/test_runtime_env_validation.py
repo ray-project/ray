@@ -360,6 +360,18 @@ class TestOverrideRuntimeEnvs:
         assert child_env == {}
         assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
 
+    def test_inherit_conda(self):
+        child_env = {"uris": ["a"]}
+        parent_env = {"conda": "my-env-name", "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env == {"uris": ["a"], "conda": "my-env-name"}
+
+    def test_inherit_pip(self):
+        child_env = {"uris": ["a"]}
+        parent_env = {"pip": ["pkg-name"], "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env == {"uris": ["a"], "pip": ["pkg-name"]}
+
 
 if __name__ == "__main__":
     import sys
