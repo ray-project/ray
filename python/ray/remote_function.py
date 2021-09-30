@@ -299,6 +299,13 @@ class RemoteFunction:
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
 
+        if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
+            runtime_env = ParsedRuntimeEnv(runtime_env)
+        elif isinstance(runtime_env, ParsedRuntimeEnv):
+            pass
+        else:
+            runtime_env = self._runtime_env
+
         parent_runtime_env = worker.core_worker.get_current_runtime_env()
         parsed_runtime_env = override_task_or_actor_runtime_env(
             runtime_env, parent_runtime_env)
