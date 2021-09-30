@@ -48,16 +48,17 @@ TEST(FileSystemTest, PathParseTest) {
 }
 
 TEST(FileSystemTest, JoinPathTest) {
-  auto old_path =
-      testing::JoinPaths(GetUserTempDir(), "hello", "/subdir", "more", "", "last/");
-  auto new_path =
-      ray::JoinPaths(GetUserTempDir(), "hello", "/subdir", "more", "", "last/");
-  ASSERT_EQ(old_path, new_path);
 #ifdef _WIN32
   auto old_path =
       testing::JoinPaths(GetUserTempDir(), "hello", "\\subdir", "more", "", "last/");
   auto new_path =
       ray::JoinPaths(GetUserTempDir(), "hello", "\\subdir", "more", "", "last/");
+  ASSERT_EQ(old_path, new_path);
+#else
+  auto old_path =
+      testing::JoinPaths(GetUserTempDir(), "hello", "/subdir", "more", "", "last/");
+  auto new_path =
+      ray::JoinPaths(GetUserTempDir(), "hello", "/subdir", "more", "", "last/");
   ASSERT_EQ(old_path, new_path);
 #endif
 }
