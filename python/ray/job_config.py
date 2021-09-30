@@ -100,7 +100,7 @@ class JobConfig:
             self._cached_pb.runtime_env.serialized_runtime_env = serialized_env
             for k, v in self.metadata.items():
                 self._cached_pb.metadata[k] = v
-            self._cached_pb.runtime_env_eager_install = \
+            self._cached_pb.runtime_env.runtime_env_eager_install = \
                 self.runtime_env_eager_install
         return self._cached_pb
 

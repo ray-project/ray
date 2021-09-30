@@ -293,8 +293,6 @@ message JobConfig {
   string ray_namespace = 6;
   // An opaque kv store for job related metadata.
   map<string, string> metadata = 7;
-  // Indicates whether to install runtime env eagerly before the workers are leased.
-  bool runtime_env_eager_install = 8;
 }
 
 message JobTableData {

@@ -483,22 +483,21 @@ void WorkerPool::MarkPortAsFree(int port) {
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
   all_jobs_[job_id] = job_config;
-  if (job_config.runtime_env_eager_install() && job_config.has_runtime_env()) {
-    auto const &runtime_env = job_config.serialized_runtime_env();
+  if (job_config.runtime_env().runtime_env_eager_install() &&
+      job_config.has_runtime_env()) {
+    auto const &runtime_env = job_config.runtime_env().serialized_runtime_env();
+    RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
+                  << ". The runtime environment was " << runtime_env << ".";
     CreateRuntimeEnv(
         runtime_env, job_id,
-        [job_id, runtime_env](bool successful,
-                              const std::string &serialized_runtime_env_context) {
+        [job_id](bool successful, const std::string &serialized_runtime_env_context) {
           if (successful) {
             RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job " << job_id
-                          << ". The runtime environment was " << runtime_env << "."
-                          << "The result context was " << serialized_runtime_env_context
+                          << ". The result context was " << serialized_runtime_env_context
                           << ".";
-
           } else {
             RAY_LOG(ERROR) << "[Eagerly] Couldn't create a runtime environment for job "
-                           << job_id << ". The runtime environment was " << runtime_env
-                           << ".";
+                           << job_id << ".";
           }
         });
   }
