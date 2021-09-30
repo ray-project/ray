@@ -446,7 +446,7 @@ On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environme
 The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()``.
 The runtime environment defines the dependencies required for your workload.
 
-You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client...
+You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client:
 
 .. literalinclude:: ../examples/doc_code/runtime_env_example.py
    :language: python
@@ -461,19 +461,20 @@ You can specify a runtime environment for your whole job using ``ray.init()`` or
     # Using Ray Client
     ray.init("ray://localhost:10001", runtime_env=runtime_env)
 
-...or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
+Or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
 
 .. literalinclude:: ../examples/doc_code/runtime_env_example.py
    :language: python
    :start-after: __per_task_per_actor_start__
    :end-before: __per_task_per_actor_end__
 
+Note: specifying within the ``@ray.remote()`` decorator is currently unsupported while using Ray Client; please use ``.options()`` instead in this case.
+
 The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
 
 - ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory.
   It will be cached on the cluster, so the next time you connect with Ray Client you will be able to skip uploading the directory contents.
-  Furthermore, if you locally make a small change to your directory, the next time you connect only the updated part will be uploaded.
-  All Ray workers for your job will be started in their node's copy of this working directory.
+  All Ray workers for your job will be started in their node's local copy of this working directory.
 
   - Examples
 
