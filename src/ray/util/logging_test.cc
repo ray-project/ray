@@ -22,6 +22,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/fixed_string.h"
 
 using namespace testing;
 
@@ -257,6 +258,27 @@ TEST(PrintLogTest, CallstackTraceTest) {
 }
 #endif
 
+constexpr auto push_back() {
+  fixed_string<5> s;
+  s.push_back('h');
+  s.push_back('e');
+  return s;
+}
+
+TEST(LogTest, FixedStringTest) {
+  constexpr auto s = make_fixed_string("hello");
+  static_assert(s.size() == 5);
+  constexpr auto s1 = s + " world";
+  std::cout << s1.size() << '\n';
+  static_assert(s1.size() == 11);
+
+  fixed_string<5> str;
+  std::cout << str.size() << '\n';
+
+  constexpr auto s2 = push_back();
+  static_assert(s2.size() == 2);
+  std::cout << s2.size() << '\n';
+}
 /// Catch abort signal handler for testing RAY_CHECK.
 /// We'd better to run the following test case manually since process
 /// will terminated if abort signal raising.

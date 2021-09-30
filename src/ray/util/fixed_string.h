@@ -21,6 +21,7 @@
 #include <iterator>
 #include <limits>
 #include <string>
+
 #include "absl/strings/string_view.h"
 
 namespace ray {
@@ -56,15 +57,27 @@ constexpr basic_fixed_string<charT, N1 - 1> make_fixed_string(const charT (&a)[N
   return s;
 }
 
+template <class charT, class Left, class Right>
+constexpr charT char_at(const Left &left, std::size_t left_count, const Right &right,
+                        std::size_t right_count, std::size_t i) noexcept {
+  return i < left_count
+             ? left[i]
+             : i < (left_count + right_count) ? right[i - left_count] : charT(0);
+}
+
+template <class charT, class Left, class Right, std::size_t... Is>
+static constexpr basic_fixed_string<charT, sizeof...(Is)> concat(
+    const Left &left, std::size_t left_count, const Right &right, std::size_t right_count,
+    std::index_sequence<Is...> is) noexcept {
+  return {left, left_count, right, right_count, is};
+}
+
 // Concatenations between fixed_strings and string literals.
 template <class charT, size_t N, size_t M>
 constexpr basic_fixed_string<charT, N + M> operator+(
-    const basic_fixed_string<charT, N> &lhs,
-    const basic_fixed_string<charT, M> &rhs) noexcept {
-  basic_fixed_string<charT, N + M> s;
-  for (size_t i = 0; i < N; i++) s[i] = lhs[i];
-  for (size_t i = 0; i < M; i++) s[N + i] = rhs[i];
-  return s;
+    const basic_fixed_string<charT, N> &a,
+    const basic_fixed_string<charT, M> &b) noexcept {
+  return concat<charT>(a, a.size(), b, b.size(), std::make_index_sequence<N + M>{});
 }
 
 template <class charT, size_t N1, size_t M>
@@ -225,17 +238,13 @@ class basic_fixed_string {
   constexpr operator view() const noexcept { return {data_, N}; }
 
   // Default construct to all zeros.
-  constexpr basic_fixed_string() noexcept : data_{0} {
-    for (size_t i = 0; i < N + 1; i++) data_[i] = 0;
-  }
+  constexpr basic_fixed_string() noexcept : data_{}, size_{} {}
 
   // Copy constructor.
-  constexpr basic_fixed_string(const basic_fixed_string &str) noexcept : data_{0} {
-    for (size_t i = 0; i < N + 1; i++) data_[i] = str[i];
-  }
+  constexpr basic_fixed_string(const basic_fixed_string &str) = default;
 
   // Converting constructor from string literal.
-  constexpr basic_fixed_string(const charT (&arr)[N + 1]) noexcept : data_{0} {
+  constexpr basic_fixed_string(const charT (&arr)[N + 1]) noexcept : data_{0}, size_(N) {
     for (size_t i = 0; i < N + 1; i++) data_[i] = arr[i];
   }
 
@@ -273,7 +282,7 @@ class basic_fixed_string {
   }
 
   // size, empty, length.
-  constexpr size_t size() const noexcept { return N; }
+  constexpr size_t size() const noexcept { return size_; }
   constexpr bool empty() const noexcept { return N == 0; }
   constexpr size_t length() const noexcept { return N; }
 
@@ -295,6 +304,12 @@ class basic_fixed_string {
   constexpr const_reference at(size_t pos) const {
     check_overflow(pos, N - 1);
     return data_[pos];
+  }
+
+  constexpr void push_back(charT ch) noexcept(false) {
+    check_overflow(1u, N - size_);
+    data_[size_] = ch;
+    data_[++size_] = charT(0);
   }
 
   // front, back.
@@ -324,6 +339,13 @@ class basic_fixed_string {
     for (size_t i = 0; i < n; i++) result[i] = data_[pos + i];
     return result;
   }
+
+  template <class Left, class Right, std::size_t... Is>
+  constexpr basic_fixed_string(const Left &left, std::size_t left_size,
+                               const Right &right, std::size_t right_size,
+                               std::index_sequence<Is...>) noexcept
+      : data_{char_at<charT>(left, left_size, right, right_size, Is)..., charT(0)},
+        size_{left_size + right_size} {}
 
   // str1.assign(str2).  Must be equal size.
   constexpr basic_fixed_string &assign(view str) {
@@ -449,6 +471,7 @@ class basic_fixed_string {
  private:
   charT data_[N + 1];  // exposition only
                        // (+1 is for terminating null)
+  std::size_t size_;   // number of chars, not include null terminator. size_ <= N.
 };
 
 }  // namespace ray
