@@ -1865,8 +1865,8 @@ cdef class CoreWorker:
                 job_config = self.get_job_config()
                 serialized_env = job_config.runtime_env.serialized_runtime_env
             else:
-                context = CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
-                serialized_env = context.GetCurrentSerializedRuntimeEnv()
+                serialized_env = CCoreWorkerProcess.GetCoreWorker() \
+                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv()
 
             self.current_runtime_env = ParsedRuntimeEnv.deserialize(
                     serialized_env)
