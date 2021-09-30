@@ -283,44 +283,17 @@ class TestOverrideRuntimeEnvs:
 
     def test_override_env_vars(self):
         # (child, parent, expected)
-        TEST_CASES = [({}, {}, {}), (None, None, None), ({
-            "a": "b"
-        }, {}, {
-            "a": "b"
-        }), ({
-            "a": "b"
-        }, None, {
-            "a": "b"
-        }), ({}, {
-            "a": "b"
-        }, {
-            "a": "b"
-        }), (None, {
-            "a": "b"
-        }, {
-            "a": "b"
-        }), ({
-            "a": "b"
-        }, {
-            "a": "d"
-        }, {
-            "a": "b"
-        }), ({
-            "a": "b"
-        }, {
-            "c": "d"
-        }, {
-            "a": "b",
-            "c": "d"
-        }), ({
-            "a": "b"
-        }, {
-            "a": "e",
-            "c": "d"
-        }, {
-            "a": "b",
-            "c": "d"
-        })]
+        TEST_CASES = [
+            ({}, {}, {}),
+            (None, None, None),
+            ({"a": "b"}, {}, {"a": "b"}),
+            ({"a": "b"}, None, {"a": "b"}),
+            ({}, {"a": "b"}, {"a": "b"}),
+            (None, {"a": "b"}, {"a": "b"}),
+            ({"a": "b"}, {"a": "d"}, {"a": "b"}),
+            ({"a": "b"}, {"c": "d"}, {"a": "b", "c": "d"}),
+            ({"a": "b"}, {"a": "e", "c": "d"}, {"a": "b", "c": "d"})
+        ]  # yapf: disable
 
         for idx, (child, parent, expected) in enumerate(TEST_CASES):
             child = {"env_vars": child} if child is not None else {}
