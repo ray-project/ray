@@ -18,7 +18,7 @@ from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.execution import synchronous_parallel_sample, train_multi_gpu #train_one_step, \
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import ResultsDict, TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,24 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def execution_plan(trainer: Trainer):
+def training_iteration_fn(trainer: Trainer) -> ResultsDict:
+    """Execution plan of the PG algorithm representing one training iteration.
+    
+    - Collect on-policy samples (SampleBatches) in parallel using the
+      Trainer's RolloutWorkers (@ray.remote).
+    - Concatenate collected SampleBatches into one train batch.
+    - Note that we may have more than one policy in the multi-agent case:
+      Call the different policies' `learn_on_batch` (simple optimizer) OR
+      `load_batch_into_buffer` + `learn_on_loaded_batch` (multi-GPU optimizer)
+      methods to calculate loss and update the model(s).
+    - Return all collected metrics for the iteration.
+
+    Args:
+        trainer: The Trainer object that performs the training iteration.
+
+    Returns:
+        The results dict from executing the training iteration.
+    """
     # Some shortcuts.
     config = trainer.config
     workers = trainer.workers
@@ -65,15 +82,8 @@ def execution_plan(trainer: Trainer):
         results = train(trainer, train_batch)
     else:
         results = train_multi_gpu(trainer, train_batch)
-            #sgd_minibatch_size=config.get("sgd_minibatch_size",
-            #                              config["train_batch_size"]),
-            #num_sgd_iter=config.get("num_sgd_iter", 1),
-            #num_gpus=config["num_gpus"],
-            #shuffle_sequences=config.get("shuffle_sequences", False),
-            #_fake_gpus=config["_fake_gpus"],
-            #framework=config["framework"],
-        #)
-    # Collect metrics from all workers.
+
+    # TODO: Collect metrics from all workers.
     #metrics = collect_metrics()
 
     return results
@@ -100,5 +110,5 @@ PGTrainer = build_trainer(
     default_config=DEFAULT_CONFIG,
     default_policy=PGTFPolicy,
     get_policy_class=get_policy_class,
-    execution_plan=execution_plan,
+    training_iteration_fn=training_iteration_fn,
 )

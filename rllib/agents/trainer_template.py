@@ -63,6 +63,7 @@ def build_trainer(
         after_init: Optional[Callable[[Trainer], None]] = None,
         before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
         mixins: Optional[List[type]] = None,
+        training_iteration_fn: Optional[Callable[[Trainer], ResultDict]] = None,
         execution_plan: Optional[Union[Callable[
             [WorkerSet, TrainerConfigDict], Iterable[ResultDict]], Callable[[
                 Trainer, WorkerSet, TrainerConfigDict
@@ -79,50 +80,47 @@ def build_trainer(
         3. Post setup: after_init
 
     Args:
-        name (str): name of the trainer (e.g., "PPO")
-        default_config (Optional[TrainerConfigDict]): The default config dict
-            of the algorithm, otherwise uses the Trainer default config.
-        validate_config (Optional[Callable[[TrainerConfigDict], None]]):
-            Optional callable that takes the config to check for correctness.
-            It may mutate the config as needed.
-        default_policy (Optional[Type[Policy]]): The default Policy class to
-            use if `get_policy_class` returns None.
-        get_policy_class (Optional[Callable[
-            TrainerConfigDict, Optional[Type[Policy]]]]): Optional callable
-            that takes a config and returns the policy class or None. If None
-            is returned, will use `default_policy` (which must be provided
-            then).
-        validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
-            Optional callable to validate the generated environment (only
-            on worker=0).
-        before_init (Optional[Callable[[Trainer], None]]): Optional callable to
-            run before anything is constructed inside Trainer (Workers with
-            Policies, execution plan, etc..). Takes the Trainer instance as
-            argument.
-        after_init (Optional[Callable[[Trainer], None]]): Optional callable to
-            run at the end of trainer init (after all Workers and the exec.
-            plan have been constructed). Takes the Trainer instance as
-            argument.
-        before_evaluate_fn (Optional[Callable[[Trainer], None]]): Callback to
-            run before evaluation. This takes the trainer instance as argument.
-        mixins (list): list of any class mixins for the returned trainer class.
+        name: Name of the trainer (e.g. "PPO").
+        default_config: The default config dict of the algorithm, otherwise
+            uses the Trainer default config.
+        validate_config: Optional callable that takes the config to check
+            for correctness. It may mutate the config as needed.
+        default_policy: The default Policy class to use if `get_policy_class`
+            returns None.
+        get_policy_class: Optional callable that takes a config and returns
+            the policy class or None. If None is returned, will use
+            `default_policy` (which must be provided then).
+        validate_env: Optional callable to validate the generated environment
+            (only on worker=0).
+        before_init: Optional callable to run before anything is constructed
+            inside Trainer (Workers with Policies, execution plan, etc..).
+            Takes the Trainer instance as argument.
+        after_init: Optional callable to run at the end of trainer init
+            (after all Workers and the exec. plan have been constructed).
+            Takes the Trainer instance as argument.
+        before_evaluate_fn: Callback to run before evaluation. This takes
+            the trainer instance as argument.
+        mixins: list of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
             precedence than the Trainer class.
-        execution_plan (Optional[Callable[[WorkerSet, TrainerConfigDict],
-            Iterable[ResultDict]]]): Optional callable that sets up the
-            distributed execution workflow.
-        allow_unknown_configs (bool): Whether to allow unknown top-level config
-            keys.
-        allow_unknown_subkeys (Optional[List[str]]): List of top-level keys
+        training_iteration_fn: Optional callable that gets called for each
+            training iteration, taking Trainer as arg and returning a results
+            dict. Only used when
+            `config._disable_distributed_execution_api=False`.
+        execution_plan: Optional callable that sets up the distributed
+            execution workflow. Only used when
+            `config._disable_distributed_execution_api=True`.
+        allow_unknown_configs: Whether to allow unknown top-level config keys.
+        allow_unknown_subkeys: List of top-level keys
             with value=dict, for which new sub-keys are allowed to be added to
             the value dict. Appends to Trainer class defaults.
-        override_all_subkeys_if_type_changes (Optional[List[str]]): List of top
+        override_all_subkeys_if_type_changes: List of top
             level keys with value=dict, for which we always override the entire
             value (dict), iff the "type" key in that value dict changes.
             Appends to Trainer class defaults.
 
     Returns:
-        Type[Trainer]: A Trainer sub-class configured by the specified args.
+        A Trainer sub-class configured by the specified args.
     """
 
     original_kwargs = locals().copy()
@@ -174,18 +172,29 @@ def build_trainer(
                 policy_class=self._policy_class,
                 config=config,
                 num_workers=self.config["num_workers"])
-            # Ensure remote workers are initially in sync with the
-            # local worker.
-            self.workers.sync_weights()
 
-            self.execution_plan = execution_plan
+            # Generators/functions defining training iteration behavior.
+            self.execution_plan = self.training_iteration_fn = None
 
-            if not config["_disable_distributed_execution_api"]:
+            # Function defining one single training iteration's behavior.
+            if config["_disable_distributed_execution_api"]:
+                assert training_iteration_fn is not None
+                self.training_iteration_fn = training_iteration_fn
+                # Ensure remote workers are initially in sync with the
+                # local worker.
+                self.workers.sync_weights()
+            # LocalIterator-creating "execution plan".
+            # Only call this once here to create `self.train_exec_impl`,
+            # which is a ray.util.iter.LocalIterator that will be `next`'d
+            # on each training iteration.
+            else:
+                assert execution_plan is not None
+                self.execution_plan = execution_plan
                 try:
                     self.train_exec_impl = execution_plan(self, self.workers,
                                                           config)
                 except TypeError as e:
-                    # Keyword error: Try old way w/o kwargs.
+                    # Keyword error: Try old way w/o trainer arg.
                     if "() takes 2 positional arguments but 3" in e.args[0]:
                         self.train_exec_impl = execution_plan(
                             self.workers, config)
@@ -216,7 +225,7 @@ def build_trainer(
                 if use_exec_api:
                     step_results = next(self.train_exec_impl)
                 else:
-                    step_results = self.execution_plan(self)
+                    step_results = self.training_iteration_fn(self)
             # We have to evaluate in this training iteration.
             else:
                 # No parallelism.
@@ -224,7 +233,7 @@ def build_trainer(
                     if use_exec_api:
                         step_results = next(self.train_exec_impl)
                     else:
-                        step_results = self.execution_plan(self)
+                        step_results = self.training_iteration_fn(self)
 
                 # Kick off evaluation-loop (and parallel train() call,
                 # if requested).
@@ -234,7 +243,7 @@ def build_trainer(
                         train_future = executor.submit(
                             lambda: (next(self.train_exec_impl) if
                                      use_exec_api else
-                                     self.execution_plan(self)))
+                                     self.training_iteration_fn(self)))
                         if self.config["evaluation_num_episodes"] == "auto":
 
                             # Run at least one `evaluate()` (num_episodes_done

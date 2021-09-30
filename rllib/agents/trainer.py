@@ -903,7 +903,6 @@ class Trainer(Trainable):
             # Sync weights to the evaluation WorkerSet.
             self.evaluation_workers.sync_weights(
                 from_worker=self.workers.local_worker())
-            #self._sync_weights_to_workers(worker_set=self.evaluation_workers)
             self._sync_filters_if_needed(self.evaluation_workers)
 
         if self.config["custom_eval_function"]:
@@ -1619,7 +1618,8 @@ class Trainer(Trainable):
         an error is raised.
         """
 
-        assert hasattr(self, "execution_plan")
+        assert get(self, "execution_plan", None) is not None or \
+               self.config.get("_disable_distributed_execution_api")
         workers = self.workers
 
         logger.info("Health checking all workers...")
