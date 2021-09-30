@@ -93,7 +93,7 @@ def fork_workflow_step_context(
         outer_most_step_id: Optional[str] = _sentinel,
         last_step_of_workflow: Optional[bool] = _sentinel):
     """Fork the workflow step context.
-    Inherits the original value if provided value is 'None'.
+    Inherits the original value if no value is provided.
 
     Args:
         workflow_id: The ID of the workflow.
