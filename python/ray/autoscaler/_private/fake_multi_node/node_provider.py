@@ -3,6 +3,7 @@ import json
 from typing import Tuple, List
 import subprocess
 
+import ray
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
                                  NODE_KIND_WORKER, TAG_RAY_USER_NODE_TYPE,
@@ -68,38 +69,31 @@ class FakeMultiNodeProvider(NodeProvider):
     def create_node_with_resources(self, node_config, tags, count, resources):
         node_type = tags[TAG_RAY_USER_NODE_TYPE]
         next_id = self._next_hex_node_id()
+        ray_params = ray._private.parameter.RayParams(
+            num_cpus=resources.pop("CPU", None),
+            num_gpus=resources.pop("GPU", None),
+            object_store_memory=resources.pop("object_store_memory", None),
+            resources=resources,
+            redis_address="localhost:6379",
+            env_vars={
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
+                "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
+            })
+        node = ray.node.Node(
+            ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False)
         self._nodes[next_id] = {
             "tags": {
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
                 TAG_RAY_USER_NODE_TYPE: node_type,
                 TAG_RAY_NODE_NAME: next_id,
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-            }
+            },
+            "node": node
         }
-        # TODO(ekl) why is it not finding the local ray binary?
-        cmd = "/home/eric/.local/bin/ray start --address=localhost:6379"
-        env = {
-            "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
-            "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
-        }
-        try:
-            output = subprocess.check_output(
-                cmd,
-                stderr=subprocess.STDOUT,
-                shell=True,
-                env=env,
-                universal_newlines=True)
-        except subprocess.CalledProcessError as e:
-            logger.exception("Failed: exit={}, output={}".format(
-                e.returncode, e.output))
-        else:
-            logger.info("Output: \n{}".format(output))
 
     def terminate_node(self, node_id):
-        # TODO(ekl) implement this, somehow we need to find the PID started
-        # and terminate specifically that raylet
-        del self._nodes[node_id]
-        raise NotImplementedError
+        node = self._nodes.pop(node_id)["node"]
+        node.kill_all_processes(check_alive=False, allow_graceful=True)
 
     @staticmethod
     def bootstrap_config(cluster_config):
