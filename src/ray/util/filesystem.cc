@@ -25,7 +25,7 @@
 namespace ray {
 
 std::string GetFileName(const std::string &path) {
-  return std::filesystem::path(path).filename();
+  return std::filesystem::path(path).filename().string();
 }
 
 std::string GetUserTempDir() {
