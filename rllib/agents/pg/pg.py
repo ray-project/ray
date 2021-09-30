@@ -9,6 +9,7 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#pg
 """
 
 import logging
+import time
 from typing import Optional, Type
 
 from ray.rllib.agents.trainer import Trainer, with_common_config
@@ -18,7 +19,7 @@ from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.execution import synchronous_parallel_sample, train_multi_gpu #train_one_step, \
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import ResultsDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def training_iteration_fn(trainer: Trainer) -> ResultsDict:
+def training_iteration_fn(trainer: Trainer) -> ResultDict:
     """Execution plan of the PG algorithm representing one training iteration.
     
     - Collect on-policy samples (SampleBatches) in parallel using the
@@ -79,14 +80,28 @@ def training_iteration_fn(trainer: Trainer) -> ResultsDict:
     # should use the multi-GPU optimizer, even if only using 1 GPU).
     # TODO: (sven) rename MultiGPUOptimizer into something more meaningful.
     if config.get("simple_optimizer") is True:
-        results = train(trainer, train_batch)
+        train_results = train(trainer, train_batch)
     else:
-        results = train_multi_gpu(trainer, train_batch)
+        train_results = train_multi_gpu(trainer, train_batch)
 
-    # TODO: Collect metrics from all workers.
-    #metrics = collect_metrics()
+    #if trainer.
+    #report = False
 
-    return results
+    #time_now = time.time()
+    #if time_now - config["min_iter_time_s"] > trainer._last_time_reported:
+    #    trainer._last_time_reported = time_now
+    #    report = True
+    #elif trainer._last_timestep + len(train_batch) > config["timesteps_per_iteration"]:
+
+    #if report:
+    #    return collect_metrics(
+    #        workers.remote_workers() or [workers.local_worker()],
+    #        min_history=config["metrics_smoothing_episodes"],
+    #        timeout_seconds=config["collect_metrics_timeout"],
+    #    )
+    #return {}
+
+    return train_results
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
