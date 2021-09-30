@@ -162,15 +162,24 @@ class ConcatBatches:
 
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
         _check_sample_batch_type(batch)
-        self.buffer.append(batch)
 
         if self.count_steps_by == "env_steps":
-            self.count += batch.count
+            size = batch.count
         else:
             assert isinstance(batch, MultiAgentBatch), \
                 "`count_steps_by=agent_steps` only allowed in multi-agent " \
                 "environments!"
-            self.count += batch.agent_steps()
+            size = batch.agent_steps()
+
+        # Incoming batch is an empty dummy batch -> Ignore.
+        # Possibly produced automatically by a PolicyServer to unblock
+        # an external env waiting for inputs from unresponsive/disconnected
+        # client(s).
+        if size == 0:
+            return []
+
+        self.count += size
+        self.buffer.append(batch)
 
         if self.count >= self.min_batch_size:
             if self.count > self.min_batch_size * 2:
