@@ -35,18 +35,6 @@ logger = logging.getLogger(__name__)
 DEFINE_BY_RUN_WARN_THRESHOLD_S = 1  # 1 is arbitrary
 
 
-# Deprecate: 1.5
-class _Param:
-    def __getattr__(self, item):
-        def _inner(*args, **kwargs):
-            return (item, args, kwargs)
-
-        return _inner
-
-
-param = _Param()
-
-
 class _OptunaTrialSuggestCaptor:
     """Utility to capture returned values from Optuna's suggest_ methods.
 
@@ -126,6 +114,13 @@ class OptunaSearch(Searcher):
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate.
 
+            ..warning::
+                When using ``evaluated_rewards``, the search space ``space``
+                must be provided as a :class:`dict` with parameter names as
+                keys and ``optuna.distributions`` instances as values. The
+                define-by-run search space definition is not yet supported with
+                this functionality.
+
     Tune automatically converts search spaces to Optuna's format:
 
     .. code-block:: python
@@ -151,7 +146,7 @@ class OptunaSearch(Searcher):
         from ray.tune.suggest.optuna import OptunaSearch
         import optuna
 
-        config = {
+        space = {
             "a": optuna.distributions.UniformDistribution(6, 8),
             "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
         }
@@ -173,6 +168,49 @@ class OptunaSearch(Searcher):
 
         optuna_search = OptunaSearch(
             define_search_space,
+            metric="loss",
+            mode="min")
+
+        tune.run(trainable, search_alg=optuna_search)
+
+    You can pass configs that will be evaluated first using
+    ``points_to_evaluate``:
+
+    .. code-block:: python
+
+        from ray.tune.suggest.optuna import OptunaSearch
+        import optuna
+
+        space = {
+            "a": optuna.distributions.UniformDistribution(6, 8),
+            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+        }
+
+        optuna_search = OptunaSearch(
+            space,
+            points_to_evaluate=[{"a": 6.5, "b": 5e-4}, {"a": 7.5, "b": 1e-3}]
+            metric="loss",
+            mode="min")
+
+        tune.run(trainable, search_alg=optuna_search)
+
+    Avoid re-running evaluated trials by passing the rewards together with
+    `points_to_evaluate`:
+
+    .. code-block:: python
+
+        from ray.tune.suggest.optuna import OptunaSearch
+        import optuna
+
+        space = {
+            "a": optuna.distributions.UniformDistribution(6, 8),
+            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+        }
+
+        optuna_search = OptunaSearch(
+            space,
+            points_to_evaluate=[{"a": 6.5, "b": 5e-4}, {"a": 7.5, "b": 1e-3}]
+            evaluated_rewards=[0.89, 0.42]
             metric="loss",
             mode="min")
 
@@ -210,14 +248,6 @@ class OptunaSearch(Searcher):
             else:
                 # Flatten to support nested dicts
                 space = flatten_dict(space, "/")
-
-        # Deprecate: 1.5
-        if isinstance(space, list):
-            logger.warning(
-                "Passing lists of `param.suggest_*()` calls to OptunaSearch "
-                "as a search space is deprecated and will be removed in "
-                "a future release of Ray. Please pass a dict mapping "
-                "to `optuna.distributions` objects instead.")
 
         self._space = space
 
@@ -329,22 +359,7 @@ class OptunaSearch(Searcher):
                     cls=self.__class__.__name__,
                     metric=self._metric,
                     mode=self._mode))
-
-        if isinstance(self._space, list):
-            # Keep for backwards compatibility
-            # Deprecate: 1.5
-            if trial_id not in self._ot_trials:
-                self._ot_trials[trial_id] = self._ot_study.ask()
-
-            ot_trial = self._ot_trials[trial_id]
-
-            # getattr will fetch the trial.suggest_ function on Optuna trials
-            params = {
-                args[0] if len(args) > 0 else kwargs["name"]: getattr(
-                    ot_trial, fn)(*args, **kwargs)
-                for (fn, args, kwargs) in self._space
-            }
-        elif callable(self._space):
+        if callable(self._space):
             if trial_id not in self._ot_trials:
                 self._ot_trials[trial_id] = self._ot_study.ask()
 
@@ -402,6 +417,12 @@ class OptunaSearch(Searcher):
                     cls=self.__class__.__name__,
                     metric=self._metric,
                     mode=self._mode))
+        if callable(self._space):
+            raise TypeError(
+                "Define-by-run function passed in `space` argument is not "
+                "yet supported when using `evaluated_rewards`. Please provide "
+                "an `OptunaDistribution` dict or pass a Ray Tune "
+                "search space to `tune.run()`.")
 
         ot_trial_state = OptunaTrialState.COMPLETE
         if error:

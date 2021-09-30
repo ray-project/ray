@@ -1,6 +1,8 @@
 import copy
+import gym
 import numpy as np
 from random import choice
+import time
 import unittest
 
 import ray
@@ -185,6 +187,45 @@ class TestTrainer(unittest.TestCase):
             assert "episode_reward_mean" in results["evaluation"]
             trainer_w_env_on_driver.stop()
             config["create_env_on_driver"] = False
+
+    def test_space_inference_from_remote_workers(self):
+        # Expect to not do space inference if the learner has an env.
+
+        env = gym.make("CartPole-v0")
+
+        config = pg.DEFAULT_CONFIG.copy()
+        config["env"] = "CartPole-v0"
+        config["num_workers"] = 1
+
+        # No env on driver -> expect longer build time due to space
+        # "lookup" from remote worker.
+        t0 = time.time()
+        trainer = pg.PGTrainer(config=config)
+        w_lookup = time.time() - t0
+        print(f"No env on learner: {w_lookup}sec")
+        trainer.stop()
+
+        # Env on driver -> expect longer build time due to space
+        # "lookup" from remote worker.
+        config["create_env_on_driver"] = True
+        t0 = time.time()
+        trainer = pg.PGTrainer(config=config)
+        wo_lookup = time.time() - t0
+        print(f"Env on learner: {wo_lookup}sec")
+        self.assertLess(wo_lookup, w_lookup)
+        trainer.stop()
+
+        # Spaces given -> expect shorter build time due to no space
+        # "lookup" from remote worker.
+        config["create_env_on_driver"] = False
+        config["observation_space"] = env.observation_space
+        config["action_space"] = env.action_space
+        t0 = time.time()
+        trainer = pg.PGTrainer(config=config)
+        wo_lookup = time.time() - t0
+        print(f"Spaces given manually in config: {wo_lookup}sec")
+        self.assertLess(wo_lookup, w_lookup)
+        trainer.stop()
 
 
 if __name__ == "__main__":

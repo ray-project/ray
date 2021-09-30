@@ -371,6 +371,7 @@ def actor_critic_loss(
         critic_loss.append(
             reduce_mean_valid(
                 train_batch[PRIO_WEIGHTS] * huber_loss(twin_td_error)))
+    td_error = td_error * seq_mask
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -409,7 +410,9 @@ def actor_critic_loss(
     # Store td-error in model, such that for multi-GPU, we do not override
     # them during the parallel loss phase. TD-error tensor in final stats
     # can then be concatenated and retrieved for each individual batch item.
-    model.td_error = td_error * seq_mask
+    # Also, store per time chunk (b/c we need only one mean
+    # prioritized replay weight per stored sequence).
+    model.td_error = torch.mean(td_error.reshape([-1, T]), dim=-1)
 
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss

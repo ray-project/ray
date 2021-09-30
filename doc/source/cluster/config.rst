@@ -109,6 +109,8 @@ Provider
             :ref:`region <cluster-configuration-region>`: str
             :ref:`availability_zone <cluster-configuration-availability-zone>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+            :ref:`security_group <cluster-configuration-security-group>`:
+                :ref:`Security Group <cluster-configuration-security-group-type>`
 
     .. group-tab:: Azure
 
@@ -129,6 +131,20 @@ Provider
             :ref:`availability_zone <cluster-configuration-availability-zone>`: str
             :ref:`project_id <cluster-configuration-project-id>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+
+.. _cluster-configuration-security-group-type:
+
+Security Group
+~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        .. parsed-literal::
+
+            :ref:`GroupName <cluster-configuration-group-name>`: str
+            :ref:`IpPermissions <cluster-configuration-ip-permissions>`:
+                - `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
 
 .. _cluster-configuration-node-types-type:
 
@@ -922,6 +938,52 @@ If enabled, nodes will be *stopped* when the cluster scales down. If disabled, n
 * **Importance:** Low
 * **Type:** Boolean
 * **Default:** ``True``
+
+.. _cluster-configuration-security-group:
+
+``provider.security_group``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        A security group that can be used to specify custom inbound rules.
+
+        * **Required:** No
+        * **Importance:** Medium
+        * **Type:** :ref:`Security Group <cluster-configuration-security-group-type>`
+
+    .. group-tab:: Azure
+
+        Not available.
+
+    .. group-tab:: GCP
+
+        Not available.
+
+
+.. _cluster-configuration-group-name:
+
+``security_group.GroupName``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The name of the security group. This name must be unique within the VPC.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+* **Default:** ``"ray-autoscaler-{cluster-name}"``
+
+.. _cluster-configuration-ip-permissions:
+
+``security_group.IpPermissions``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The inbound rules associated with the security group.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
 
 .. _cluster-configuration-node-config:
 

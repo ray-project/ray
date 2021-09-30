@@ -114,6 +114,11 @@ else:
     setup_spec = SetupSpec(
         SetupType.RAY, "ray", "Ray provides a simple, "
         "universal API for building distributed applications.", BUILD_TYPE)
+    RAY_EXTRA_CPP = True
+    # Disable extra cpp for the development versions.
+    if "dev" in setup_spec.version or os.getenv(
+            "RAY_DISABLE_EXTRA_CPP") == "1":
+        RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -179,6 +184,11 @@ ray_files += [
 # in this directory
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
+        "data": [
+            "pandas",
+            "pyarrow>=4.0.1",
+            "fsspec",
+        ],
         "default": [
             "aiohttp",
             "aiohttp_cors",
@@ -200,7 +210,7 @@ if setup_spec.type == SetupType.RAY:
         ],
     }
 
-    if os.getenv("RAY_EXTRA_CPP") == "1":
+    if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     if sys.version_info >= (3, 7, 0):

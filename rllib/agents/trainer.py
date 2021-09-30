@@ -40,7 +40,8 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
-    PartialTrainerConfigDict, PolicyID, ResultDict, TrainerConfigDict
+    PartialTrainerConfigDict, PolicyID, ResultDict, TensorStructType, \
+    TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.resources import Resources
@@ -486,6 +487,20 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Define logger-specific configuration to be used inside Logger
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
+
+    # === API deprecations/simplifications/changes ===
+    # Experimental flag.
+    # If True, TFPolicy will handle more than one loss/optimizer.
+    # Set this to True, if you would like to return more than
+    # one loss term from your `loss_fn` and an equal number of optimizers
+    # from your `optimizer_fn`.
+    # In the future, the default for this will be True.
+    "_tf_policy_handles_more_than_one_loss": False,
+    # Experimental flag.
+    # If True, no (observation) preprocessor will be created and
+    # observations will arrive in model as they are returned by the env.
+    # In the future, the default for this will be True.
+    "_disable_preprocessor_api": False,
 
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
@@ -1236,8 +1251,8 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             tuple: The full output of policy.compute_actions() if
                 full_fetch=True or we have an RNN-based Policy.
         """
-        # Preprocess obs and states
-        stateDefined = state is not None
+        # Preprocess obs and states.
+        state_defined = state is not None
         policy = self.get_policy(policy_id)
         filtered_obs, filtered_state = [], []
         for agent_id, ob in observations.items():
@@ -1282,7 +1297,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             unbatched_states[agent_id] = [s[idx] for s in states]
 
         # Return only actions or full tuple
-        if stateDefined or full_fetch:
+        if state_defined or full_fetch:
             return actions, unbatched_states, infos
         else:
             return actions
@@ -1660,8 +1675,8 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         # Check model config.
         # If no preprocessing, propagate into model's config as well
         # (so model will know, whether inputs are preprocessed or not).
-        if config["preprocessor_pref"] is None:
-            model_config["_no_preprocessor"] = True
+        if config["_disable_preprocessor_api"] is True:
+            model_config["_disable_preprocessor_api"] = True
 
         # Prev_a/r settings.
         prev_a_r = model_config.get("lstm_use_prev_action_reward",

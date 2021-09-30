@@ -11,10 +11,6 @@ DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
     {
         # Batch mode (see common config)
         "batch_mode": "complete_episodes",
-        # If True prioritized replay buffer will be used.
-        "prioritized_replay": False,
-        # RNNSAC does not suport n-step > 1 yet!
-        "n_step": 1,
         # If True, assume a zero-initialized state input (no matter where in
         # the episode the sequence is located).
         # If False, store the initial states along with each SampleBatch, use
@@ -49,9 +45,6 @@ def validate_config(config: TrainerConfigDict) -> None:
     # Set the replay sequence length to the max_seq_len of the model.
     config["replay_sequence_length"] = \
         config["burn_in"] + config["model"]["max_seq_len"]
-
-    if config["n_step"] > 1:
-        raise ValueError("`n_step` > 1 not yet supported by RNNSAC!")
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:

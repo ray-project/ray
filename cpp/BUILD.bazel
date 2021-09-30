@@ -152,6 +152,7 @@ cc_test(
     ]),
     args = [
         "--ray_code_search_path=$(location plus.so):$(location counter.so)",
+        "--ray_head_args '--include-dashboard false'",
     ],
     copts = COPTS,
     data = [

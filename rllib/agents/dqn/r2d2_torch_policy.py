@@ -171,7 +171,7 @@ def r2d2_loss(policy: Policy, model, _,
         td_error = td_error * seq_mask
         weights = weights.reshape([B, T])[:, :-1]
         policy._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
-        policy._td_error = td_error.reshape([-1])
+        policy._td_error = torch.mean(td_error, dim=-1)
         policy._loss_stats = {
             "mean_q": reduce_mean_valid(q_selected),
             "min_q": torch.min(q_selected),

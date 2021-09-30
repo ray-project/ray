@@ -91,7 +91,7 @@ cdef class ClientObjectRef(ObjectRef):
     cdef object _id_future
 
     cdef _set_id(self, id)
-    cdef inline _wait_for_id(self)
+    cdef inline _wait_for_id(self, timeout=None)
 
 cdef class ActorID(BaseID):
     cdef CActorID data
@@ -105,7 +105,7 @@ cdef class ClientActorRef(ActorID):
     cdef object _id_future
 
     cdef _set_id(self, id)
-    cdef inline _wait_for_id(self)
+    cdef inline _wait_for_id(self, timeout=None)
 
 cdef class CoreWorker:
     cdef:
