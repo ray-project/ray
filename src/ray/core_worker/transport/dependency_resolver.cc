@@ -146,10 +146,7 @@ void LocalDependencyResolver::ResolveDependencies(
           }
           if (--state->actor_dependencies_remaining == 0 &&
               state->obj_dependencies_remaining == 0) {
-<<<<<<< HEAD
-=======
             num_pending_--;
->>>>>>> 02d1f659ba8f42bc283d3bf822cd5fe79960e91f
             on_complete(state->status);
           }
         });
