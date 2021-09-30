@@ -264,6 +264,7 @@ GLOBAL_CONFIG = {
 }
 
 REPORT_S = 30
+RETRY_MULTIPLIER = 2
 
 
 def maybe_fetch_api_token():
@@ -478,67 +479,83 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
         f"results, artifacts, category) "
         f"VALUES (:created_on, :test_suite, :test_name, :status, :last_logs, "
         f":results, :artifacts, :category)")
+    parameters = [{
+        "name": "created_on",
+        "typeHint": "TIMESTAMP",
+        "value": {
+            "stringValue": now.strftime("%Y-%m-%d %H:%M:%S")
+        },
+    }, {
+        "name": "test_suite",
+        "value": {
+            "stringValue": test_suite
+        }
+    }, {
+        "name": "test_name",
+        "value": {
+            "stringValue": test_name
+        }
+    }, {
+        "name": "status",
+        "value": {
+            "stringValue": status
+        }
+    }, {
+        "name": "last_logs",
+        "value": {
+            "stringValue": logs
+        }
+    }, {
+        "name": "results",
+        "typeHint": "JSON",
+        "value": {
+            "stringValue": json.dumps(results)
+        },
+    }, {
+        "name": "artifacts",
+        "typeHint": "JSON",
+        "value": {
+            "stringValue": json.dumps(artifacts)
+        },
+    }, {
+        "name": "category",
+        "value": {
+            "stringValue": category
+        }
+    }]
 
-    rds_data_client.execute_statement(
-        database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
-        parameters=[
-            {
-                "name": "created_on",
-                "typeHint": "TIMESTAMP",
-                "value": {
-                    "stringValue": now.strftime("%Y-%m-%d %H:%M:%S")
-                },
-            },
-            {
-                "name": "test_suite",
-                "value": {
-                    "stringValue": test_suite
-                }
-            },
-            {
-                "name": "test_name",
-                "value": {
-                    "stringValue": test_name
-                }
-            },
-            {
-                "name": "status",
-                "value": {
-                    "stringValue": status
-                }
-            },
-            {
-                "name": "last_logs",
-                "value": {
-                    "stringValue": logs
-                }
-            },
-            {
-                "name": "results",
-                "typeHint": "JSON",
-                "value": {
-                    "stringValue": json.dumps(results)
-                },
-            },
-            {
-                "name": "artifacts",
-                "typeHint": "JSON",
-                "value": {
-                    "stringValue": json.dumps(artifacts)
-                },
-            },
-            {
-                "name": "category",
-                "value": {
-                    "stringValue": category
-                }
-            },
-        ],
-        secretArn=GLOBAL_CONFIG["RELEASE_AWS_DB_SECRET_ARN"],
-        resourceArn=GLOBAL_CONFIG["RELEASE_AWS_DB_RESOURCE_ARN"],
-        schema=schema,
-        sql=sql,
-    )
+    retry_cnt = 0
+    # Default boto3 call timeout is 45 seconds.
+    retry_delay_s = 64
+    MAX_RDS_RETRY = 3
+    db_updated = False
+
+    while retry_cnt < MAX_RDS_RETRY and not db_updated:
+        try:
+            rds_data_client.execute_statement(
+                database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
+                parameters=parameters,
+                secretArn=GLOBAL_CONFIG["RELEASE_AWS_DB_SECRET_ARN"],
+                resourceArn=GLOBAL_CONFIG["RELEASE_AWS_DB_RESOURCE_ARN"],
+                schema=schema,
+                sql=sql,
+            )
+            logger.info("Result has been persisted to the databse")
+            db_updated = True
+        except rds_data_client.exceptions.StatementTimeoutException as e:
+            logger.info(
+                f"Database operation failis due to time out. Error: {e}")
+            logger.info(f"Retry count: {retry_cnt} / {MAX_RDS_RETRY}")
+            logger.info(f"Retrying in {retry_delay_s} seconds...")
+            time.sleep(retry_delay_s)
+            retry_delay_s *= RETRY_MULTIPLIER
+        finally:
+            retry_cnt += 1
+
+    if not db_updated:
+        raise CommandTimeoutError(
+            "RDS command failed after retrying "
+            f"{MAX_RDS_RETRY} times. Check logs for more details")
 
 
 def log_results_and_artifacts(result: Dict):
@@ -1936,7 +1953,6 @@ if __name__ == "__main__":
             "You have to set the ANYSCALE_PROJECT environment variable!")
 
     maybe_fetch_api_token()
-
     if args.ray_wheels:
         os.environ["RAY_WHEELS"] = str(args.ray_wheels)
         url = str(args.ray_wheels)

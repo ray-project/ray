@@ -1,48 +1,40 @@
 """
-Example of running a Unity3D client instance against an RLlib Policy server.
-Unity3D clients can be run in distributed fashion on n nodes in the cloud
-and all connect to the same RLlib server for faster sample collection.
-For a locally running Unity3D example, see:
-`examples/unity3d_env_local.py`
+Dummy in-place replacement for the unity3d_client.py script
+in case you don't have an actual Unity3D engine installed or just want
+to test client/server connectivity with the unity3d_server.py script.
+
+This client script simply uses RLlib's RandomMultiAgentEnv to mimic
+one of the ML Agents (Unity3D) example games (e.g. "3DBall").
 
 To run this script on possibly different machines
 against a central Policy server:
-1) Install Unity3D and `pip install mlagents`.
 
-2) Compile a Unity3D example game with MLAgents support (e.g. 3DBall or any
-   other one that you created yourself) and place the compiled binary
-   somewhere, where your RLlib client script (see below) can access it.
-
-2.1) To find Unity3D MLAgent examples, first `pip install mlagents`,
-     then check out the `.../ml-agents/Project/Assets/ML-Agents/Examples/`
-     folder.
-
-3) Change your RLlib Policy server code so it knows the observation- and
-   action Spaces, the different Policies (called "behaviors" in Unity3D
-   MLAgents), and Agent-to-Policy mappings for your particular game.
-   Alternatively, use one of the two already existing setups (3DBall or
-   SoccerStrikersVsGoalie).
-
-4) Then run (two separate shells/machines):
+1) Run (two separate shells/machines):
 $ python unity3d_server.py --env 3DBall
-$ python unity3d_client.py --inference-mode=local --game [path to game binary]
+$ python unity3d_dummy_client.py --env 3DBall --inference-mode=local
 """
 
 import argparse
 
 from ray.rllib.env.policy_client import PolicyClient
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
+from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--game",
+    "--env",
     type=str,
-    default=None,
-    help="The game executable to run as RL env. If not provided, uses local "
-    "Unity3D editor instance.")
+    default="3DBall",
+    choices=[
+        "3DBall", "3DBallHard", "FoodCollector", "GridFoodCollector",
+        "Pyramids", "Sorter", "Tennis", "VisualHallway", "Walker"
+    ],
+    help="The name of the Env to mimic. Only those examples supported so "
+    "far for which all agents have the same "
+    "observation- and action spaces (feel free to add more to this script!)")
 parser.add_argument(
     "--horizon",
     type=int,
@@ -78,10 +70,10 @@ parser.add_argument(
     help="For `inference-mode=local`, every how many seconds do we update "
     "learnt policy weights from the server?")
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=9999,
-    help="Stop once the specified reward is reached.")
+    "--num-episodes",
+    type=int,
+    default=10,
+    help="Stop once the specified number of episodes have been played.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -93,16 +85,41 @@ if __name__ == "__main__":
         inference_mode=args.inference_mode,
         update_interval=args.update_interval_local_mode)
 
+    # Get the multi-agent policies dict and agent->policy
+    # mapping-fn.
+    policies, policy_mapping_fn = \
+        Unity3DEnv.get_policy_configs_for_game(args.env)
+
+    # Make sure all policies' obs- and action spaces are the same.
+    # If not, we won't be able to mimic the Unity3D env using RLlib's
+    # RandomMultiAgentEnv.
+    first_policy_spec = next(iter(policies.values()))
+    for pid, policy_spec in policies.items():
+        assert policy_spec.observation_space == \
+               first_policy_spec.observation_space
+        assert policy_spec.action_space == first_policy_spec.action_space
+
     # Start and reset the actual Unity3DEnv (either already running Unity3D
     # editor or a binary (game) to be started automatically).
-    env = Unity3DEnv(file_name=args.game, episode_horizon=args.horizon)
+    env = RandomMultiAgentEnv({
+        # Same number of agents as the actual Unity3D game would have.
+        "num_agents": len(policies),
+        # Make sure we stick to the user given horizons using our
+        # RandomMultiAgentEnv options.
+        "max_episode_len": args.horizon,
+        "p_done": 0.0,
+        # Same obs- action spaces as the actual Unity3D game would have.
+        "observation_space": first_policy_spec.observation_space,
+        "action_space": first_policy_spec.action_space,
+    })
     obs = env.reset()
     eid = client.start_episode(training_enabled=not args.no_train)
 
     # Keep track of the total reward per episode.
     total_rewards_this_episode = 0.0
 
-    # Loop infinitely through the env.
+    # Loop through the env until n episodes completed.
+    num_episodes = 0
     while True:
         # Get actions from the Policy server given our current obs.
         actions = client.get_action(eid, obs)
@@ -114,9 +131,12 @@ if __name__ == "__main__":
         # Check whether all agents are done and end the episode, if necessary.
         if dones["__all__"]:
             print("Episode done: Reward={}".format(total_rewards_this_episode))
-            if total_rewards_this_episode >= args.stop_reward:
+
+            num_episodes += 1
+            if num_episodes >= args.num_episodes:
                 quit(0)
-            # End the episode and reset Unity Env.
+
+            # End the episode and reset dummy Env.
             total_rewards_this_episode = 0.0
             client.end_episode(eid, obs)
             obs = env.reset()
