@@ -369,8 +369,8 @@ def check_compute_single_action(trainer,
                     timestep=timestep,
                     **call_kwargs)
                 # Make sure these are the same, unless we have exploration
-                # switched on.
-                if not explore:
+                # switched on (or noisy layers).
+                if not explore and not pol.config.get("noisy"):
                     check(action, action2)
             except TypeError:
                 pass
