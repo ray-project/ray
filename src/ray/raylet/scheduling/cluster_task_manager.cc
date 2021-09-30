@@ -873,7 +873,7 @@ bool ClusterTaskManager::AnyPendingTasks(RayTask *exemplar, bool *any_pending,
 std::string ClusterTaskManager::DebugStr() const {
   std::stringstream stream;
   stream << "tasks_to_schedule:\n";
-  for (const auto &pair: tasks_to_schedule_) {
+  for (const auto &pair : tasks_to_schedule_) {
     const auto &queue = pair.second;
     for (const auto &work_ptr : queue) {
       const auto &task = work_ptr->task;
@@ -881,7 +881,7 @@ std::string ClusterTaskManager::DebugStr() const {
     }
   }
   stream << "tasks_to_dispatch:\n";
-  for (const auto &pair: tasks_to_dispatch_) {
+  for (const auto &pair : tasks_to_dispatch_) {
     const auto &queue = pair.second;
     for (const auto &work_ptr : queue) {
       const auto &task = work_ptr->task;
