@@ -509,7 +509,7 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
     parts = unwrap_partitions(df, axis=0)
-    return from_pandas(parts)
+    return from_pandas_refs(parts)
 
 
 @PublicAPI(stability="beta")

@@ -227,7 +227,7 @@ If working with in-memory Pandas DataFrames that you want to analyze, manipulate
     # -> one: int64
     #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-    read_df = read_ds.to_pandas()[0]
+    read_df = ray.get(read_ds.to_pandas_refs())[0]
     print(read_df.dtypes)
     # -> one          int64
     #    two    TensorDtype

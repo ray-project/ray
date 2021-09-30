@@ -681,8 +681,8 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        blocks1 = self.get_blocks()
-        blocks2 = other.get_blocks()
+        blocks1 = self.get_internal_block_refs()
+        blocks2 = other.get_internal_block_refs()
 
         if len(blocks1) != len(blocks2):
             # TODO(ekl) consider supporting if num_rows are equal.
@@ -1321,14 +1321,15 @@ class Dataset(Generic[T]):
         """Convert this dataset into a Modin dataframe.
 
         This works by first converting this dataset into a distributed set of
-        Pandas dataframes (using ``.to_pandas()``). Please see caveats there.
-        Then the individual dataframes are used to create the modin DataFrame
-        using
+        Pandas dataframes (using ``.to_pandas_refs()``). Please see caveats
+        there. Then the individual dataframes are used to create the modin
+        DataFrame using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+        underlying data, consider using ``.to_arrow()`` or
+        ``.get_internal_block_refs()``.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1338,7 +1339,7 @@ class Dataset(Generic[T]):
 
         from modin.distributed.dataframe.pandas.partitions import (
             from_partitions)
-        pd_objs = self.to_pandas()
+        pd_objs = self.to_pandas_refs()
         return from_partitions(pd_objs, axis=0)
 
     def to_spark(self,
@@ -1354,25 +1355,10 @@ class Dataset(Generic[T]):
         core_worker = ray.worker.global_worker.core_worker
         locations = [
             core_worker.get_owner_address(block)
-            for block in self.get_blocks()
+            for block in self.get_internal_block_refs()
         ]
         return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, self.schema(), self.get_blocks(), locations)
-
-    def to_pandas(self) -> List["pandas.DataFrame"]:
-        """Convert this dataset into a list of Pandas dataframes.
-
-        This is only supported for datasets convertible to Arrow records.
-        This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
-
-        Time complexity: O(dataset size / parallelism)
-
-        Returns:
-            A list of Pandas dataframes created from this dataset.
-        """
-
-        return ray.get(self.to_pandas_refs())
+            spark, self.schema(), self.get_internal_block_refs(), locations)
 
     @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
@@ -1380,7 +1366,8 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+        underlying data, consider using ``.to_arrow()`` or
+        ``.get_internal_block_refs()``.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1397,7 +1384,8 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+        underlying data, consider using ``.to_arrow()`` or
+        ``.get_internal_block_refs()``.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1578,7 +1566,7 @@ class Dataset(Generic[T]):
         return DatasetPipeline(it, length=len(it._splits))
 
     @DeveloperAPI
-    def get_blocks(self) -> List[ObjectRef[Block]]:
+    def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
 
         This function can be used for zero-copy access to the data.

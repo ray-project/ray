@@ -123,7 +123,7 @@ Datasource Compatibility Matrices
      - ``ds.iter_batches(batch_format="pyarrow")``
      - ✅
    * - Pandas Dataframe Objects
-     - ``ds.to_pandas()``
+     - ``ds.to_pandas_refs()``
      - ✅
    * - NumPy ndarray Objects
      - ``ds.to_numpy()``
