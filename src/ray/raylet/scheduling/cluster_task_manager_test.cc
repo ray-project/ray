@@ -1550,8 +1550,8 @@ TEST_F(ClusterTaskManagerTest, PopWorkerFailed) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](const Status&, const std::function<void()>&,
-                                          const std::function<void()>&) {
+  auto callback = [callback_occurred_ptr](const Status &, const std::function<void()> &,
+                                          const std::function<void()> &) {
     *callback_occurred_ptr = true;
   };
 
