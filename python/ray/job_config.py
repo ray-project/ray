@@ -9,8 +9,6 @@ class JobConfig:
     """A class used to store the configurations of a job.
 
     Attributes:
-        worker_env (dict): Environment variables to be set on worker
-            processes.
         num_java_workers_per_process (int): The number of java workers per
             worker process.
         jvm_options (str[]): The jvm options for java workers of the job.
@@ -23,7 +21,6 @@ class JobConfig:
     """
 
     def __init__(self,
-                 worker_env=None,
                  num_java_workers_per_process=1,
                  jvm_options=None,
                  code_search_path=None,
@@ -31,10 +28,6 @@ class JobConfig:
                  client_job=False,
                  metadata=None,
                  ray_namespace=None):
-        if worker_env is None:
-            self.worker_env = dict()
-        else:
-            self.worker_env = worker_env
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
@@ -62,9 +55,6 @@ class JobConfig:
             runtime_env_parsed_conda_pip = parse_pip_and_conda(runtime_env)
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict(
                 runtime_env_parsed_conda_pip)
-            self.worker_env.update(
-                self._parsed_runtime_env.get_parsed_dict().get("env_vars")
-                or {})
         else:
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
         self.runtime_env = runtime_env or dict()
@@ -83,8 +73,6 @@ class JobConfig:
                 self._cached_pb.ray_namespace = str(uuid.uuid4())
             else:
                 self._cached_pb.ray_namespace = self.ray_namespace
-            for key in self.worker_env:
-                self._cached_pb.worker_env[key] = self.worker_env[key]
             self._cached_pb.num_java_workers_per_process = (
                 self.num_java_workers_per_process)
             self._cached_pb.jvm_options.extend(self.jvm_options)
