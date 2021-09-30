@@ -858,7 +858,7 @@ def _process_observations(
                     # Add extra-action-fetches to collectors.
                     pol = worker.policy_map[policy_id]
                     for key, value in episode.last_pi_info_for(
-                        agent_id).items():
+                            agent_id).items():
                         if key in pol.view_requirements:
                             values_dict[key] = value
                     # Env infos for this agent.
