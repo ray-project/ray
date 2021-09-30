@@ -109,7 +109,11 @@ class RemoteFunction:
         self._retry_exceptions = (DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS
                                   if retry_exceptions is None else
                                   retry_exceptions)
-        self._runtime_env = runtime_env
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        self._runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
@@ -165,6 +169,11 @@ class RemoteFunction:
         """
 
         func_cls = self
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
@@ -184,7 +193,7 @@ class RemoteFunction:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=runtime_env,
+                    runtime_env=new_runtime_env,
                     override_environment_variables=(
                         override_environment_variables),
                     name=name)
@@ -211,6 +220,7 @@ class RemoteFunction:
                 override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
+
         if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(
                 self,
@@ -289,14 +299,9 @@ class RemoteFunction:
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
 
-        # Validate user-passed runtime_env and translate it to an internal
-        # runtime_env (e.g., read local 'requirements.txt' file).
-        parsed_runtime_env = ParsedRuntimeEnv(
-            runtime_env or self._runtime_env or {}, is_task_or_actor=True)
-
         parent_runtime_env = worker.core_worker.get_current_runtime_env()
         parsed_runtime_env = override_task_or_actor_runtime_env(
-            parsed_runtime_env, parent_runtime_env)
+            runtime_env, parent_runtime_env)
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "

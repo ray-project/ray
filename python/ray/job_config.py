@@ -57,6 +57,7 @@ class JobConfig:
 
     def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
         self._parsed_runtime_env = ParsedRuntimeEnv(runtime_env or {})
+        self.worker_env.update(self._parsed_runtime_env.get("env_vars") or {})
         self.runtime_env = runtime_env or dict()
         self._cached_pb = None
 

@@ -9,6 +9,7 @@ from ray._private.runtime_env import (override_task_or_actor_runtime_env,
                                       ParsedRuntimeEnv)
 import ray.worker
 from ray.util.annotations import PublicAPI
+from ray._private.runtime_env import parse_pip_and_conda
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
 
@@ -389,11 +390,16 @@ class ActorClass:
             PythonFunctionDescriptor.from_class(
                 modified_class.__ray_actor_class__)
 
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = ParsedRuntimeEnv(runtime_env, is_task_or_actor=True)
+
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
             actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources, accelerator_type, runtime_env)
+            resources, accelerator_type, new_runtime_env)
 
         return self
 
@@ -465,6 +471,11 @@ class ActorClass:
 
         actor_cls = self
 
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = parse_pip_and_conda(runtime_env)
+
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(
@@ -486,7 +497,7 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=runtime_env,
+                    runtime_env=new_runtime_env,
                     override_environment_variables=(
                         override_environment_variables))
 
@@ -724,14 +735,9 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
 
-        # Validate user-passed runtime_env and translate it to an internal
-        # runtime_env (e.g., read local 'requirements.txt' file).
-        parsed_runtime_env = ParsedRuntimeEnv(
-            runtime_env or meta.runtime_env or {}, is_task_or_actor=True)
-
         parent_runtime_env = worker.core_worker.get_current_runtime_env_dict()
         parsed_runtime_env = override_task_or_actor_runtime_env(
-            parsed_runtime_env, parent_runtime_env)
+            runtime_env, parent_runtime_env)
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
