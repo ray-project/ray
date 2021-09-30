@@ -81,8 +81,7 @@ if __name__ == "__main__":
         "--data-dir",
         type=str,
         default="~/data/",
-        help="Set the path of the dataset."
-    )
+        help="Set the path of the dataset.")
     args, _ = parser.parse_known_args()
     ray.init()
 

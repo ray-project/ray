@@ -244,7 +244,10 @@ def download_model():
     return model_path
 
 
-def train_example(num_workers=1, use_gpu=False, test_mode=False, data_dir="~/data/"):
+def train_example(num_workers=1,
+                  use_gpu=False,
+                  test_mode=False,
+                  data_dir="~/data/"):
     if ray.util.client.ray.is_connected():
         # If using Ray Client, make sure model is downloaded on the Server.
         model_path = ray.get(ray.remote(download_model).remote())
@@ -308,8 +311,7 @@ if __name__ == "__main__":
         "--data-dir",
         type=str,
         default="~/data/",
-        help="Set the path of the dataset."
-    )
+        help="Set the path of the dataset.")
     args = parser.parse_args()
     if args.smoke_test:
         ray.init(num_cpus=2)
