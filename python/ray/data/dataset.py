@@ -347,8 +347,13 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
+        curr_num_blocks = self.num_blocks()
+        # Handle empty dataset.
+        if curr_num_blocks == 0:
+            return self
+
         if num_blocks is None:
-            num_blocks = self.num_blocks()
+            num_blocks = curr_num_blocks
         new_blocks = simple_shuffle(
             self._move_blocks() if _move else self._blocks,
             num_blocks,
@@ -648,6 +653,9 @@ class Dataset(Generic[T]):
         Returns:
             A new, sorted dataset.
         """
+        # Handle empty dataset.
+        if self.num_blocks() == 0:
+            return self
         return Dataset(sort_impl(self._blocks, key, descending))
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
@@ -756,6 +764,9 @@ class Dataset(Generic[T]):
         Returns:
             The number of records in the dataset.
         """
+        # Handle empty dataset.
+        if self.num_blocks() == 0:
+            return 0
 
         # For parquet, we can return the count directly from metadata.
         meta_count = self._meta_count()
