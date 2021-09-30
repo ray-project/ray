@@ -308,7 +308,7 @@ def test_tensors_in_tables_pandas_roundtrip(ray_start_regular_shared):
     arr = np.arange(num_items).reshape(shape)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
     ds = ray.data.from_pandas([df])
-    ds_df = ray.get(ds.to_pandas_refs())[0]
+    ds_df = ds.to_pandas()
     assert ds_df.equals(df)
 
 
@@ -879,6 +879,22 @@ def test_from_arrow_refs(ray_start_regular_shared):
     assert values == rows
 
 
+def test_to_pandas(ray_start_regular_shared):
+    n = 5
+    df = pd.DataFrame({"value": list(range(n))})
+    ds = ray.data.range_arrow(n)
+    dfds = ds.to_pandas()
+    assert df.equals(dfds)
+
+    # Test limit.
+    dfds = ds.to_pandas(limit=3)
+    assert df[:3].equals(dfds)
+
+    # Test limit greater than number of rows.
+    dfds = ds.to_pandas(limit=6)
+    assert df.equals(dfds)
+
+
 def test_to_pandas_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
@@ -954,8 +970,8 @@ def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.data.from_pandas([df1, df2])
-    dfds = pd.concat(ray.get(ds.to_pandas_refs()))
-    assert pd.concat([df1, df2]).equals(dfds)
+    dfds = ds.to_pandas()
+    assert pd.concat([df1, df2], ignore_index=True).equals(dfds)
 
 
 def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
@@ -1312,8 +1328,8 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
         fs.create_dir(_unwrap_protocol(path))
     ds.write_parquet(path, filesystem=fs)
     ds2 = ray.data.read_parquet(path, parallelism=2, filesystem=fs)
-    ds2df = pd.concat(ray.get(ds2.to_pandas_refs()))
-    assert pd.concat([df1, df2]).equals(ds2df)
+    ds2df = ds2.to_pandas()
+    assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
@@ -1520,10 +1536,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
                         # Concatenated batches should equal the DataFrame
                         # representation of the entire dataset.
                         assert pd.concat(
-                            batches, ignore_index=True).equals(
-                                pd.concat(
-                                    ray.get(ds.to_pandas_refs()),
-                                    ignore_index=True))
+                            batches, ignore_index=True).equals(ds.to_pandas())
                     else:
                         # Number of batches should be equal to
                         # num_rows / batch_size, rounded down.
@@ -1533,10 +1546,8 @@ def test_iter_batches_grid(ray_start_regular_shared):
                         # remainder sliced off.
                         assert pd.concat(
                             batches, ignore_index=True).equals(
-                                pd.concat(
-                                    ray.get(ds.to_pandas_refs()),
-                                    ignore_index=True)
-                                [:batch_size * (num_rows // batch_size)])
+                                ds.to_pandas()[:batch_size *
+                                               (num_rows // batch_size)])
                     if num_rows % batch_size == 0 or drop_last:
                         assert all(
                             len(batch) == batch_size for batch in batches)
@@ -1805,7 +1816,7 @@ def test_from_dask(ray_start_regular_shared):
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
     ddf = dd.from_pandas(df, npartitions=10)
     ds = ray.data.from_dask(ddf)
-    dfds = pd.concat(ray.get(ds.to_pandas_refs()))
+    dfds = ds.to_pandas()
     assert df.equals(dfds)
 
 
@@ -1827,7 +1838,7 @@ def test_from_modin(ray_start_regular_shared):
     df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))}, )
     modf = mopd.DataFrame(df)
     ds = ray.data.from_modin(modf)
-    dfds = pd.concat(ray.get(ds.to_pandas_refs()))
+    dfds = ds.to_pandas()
     assert df.equals(dfds)
 
 
@@ -1970,7 +1981,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df1.to_json(
         path1, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json(path1, filesystem=fs)
-    dsdf = ray.get(ds.to_pandas_refs())[0]
+    dsdf = ds.to_pandas()
     assert df1.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == 3
@@ -1983,8 +1994,8 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(
         path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json([path1, path2], parallelism=2, filesystem=fs)
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()))
-    df = pd.concat([df1, df2])
+    dsdf = ds.to_pandas()
+    df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
     for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
@@ -1998,7 +2009,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.read_json(
         [path1, path2, path3], parallelism=2, filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()), ignore_index=True)
+    dsdf = ds.to_pandas()
     assert df.equals(dsdf)
 
     # Directory, two files.
@@ -2016,8 +2027,8 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(
         path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json(path, filesystem=fs)
-    df = pd.concat([df1, df2])
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()))
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas()
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -2055,8 +2066,8 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         lines=True,
         storage_options=storage_options)
     ds = ray.data.read_json([path1, path2], filesystem=fs)
-    df = pd.concat([df1, df2, df3])
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()))
+    df = pd.concat([df1, df2, df3], ignore_index=True)
+    dsdf = ds.to_pandas()
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path1)
@@ -2080,8 +2091,8 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(
         path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json([dir_path, path2], filesystem=fs)
-    df = pd.concat([df1, df2])
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()))
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas()
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(dir_path)
@@ -2095,7 +2106,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     path1 = os.path.join(tmp_path, "test1.json.gz")
     df1.to_json(path1, compression="gzip", orient="records", lines=True)
     ds = ray.data.read_json(path1)
-    assert df1.equals(ray.get(ds.to_pandas_refs())[0])
+    assert df1.equals(ds.to_pandas())
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -2105,8 +2116,8 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     path2 = os.path.join(tmp_path, "test2.json.gz")
     df2.to_json(path2, compression="gzip", orient="records", lines=True)
     ds = ray.data.read_json([path1, path2], parallelism=2)
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()))
-    assert pd.concat([df1, df2]).equals(dsdf)
+    dsdf = ds.to_pandas()
+    assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
     for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes()
@@ -2121,8 +2132,8 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     path2 = os.path.join(tmp_path, "data1.json.gz")
     df2.to_json(path2, compression="gzip", orient="records", lines=True)
     ds = ray.data.read_json([dir_path, path2])
-    df = pd.concat([df1, df2])
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()))
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas()
     assert df.equals(dsdf)
     shutil.rmtree(dir_path)
 
@@ -2184,7 +2195,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_json(data_path, filesystem=fs)
     file_path = os.path.join(data_path, "data_000000.json")
     ds2 = ray.data.read_json([file_path], filesystem=fs)
-    ds2df = pd.concat(ray.get(ds2.to_pandas_refs()))
+    ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
@@ -2201,8 +2212,8 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds._set_uuid("data")
     ds.write_json(data_path, filesystem=fs)
     ds2 = ray.data.read_json(data_path, parallelism=2, filesystem=fs)
-    ds2df = pd.concat(ray.get(ds2.to_pandas_refs()))
-    assert pd.concat([df, df2]).equals(ds2df)
+    ds2df = ds2.to_pandas()
+    assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
@@ -2226,7 +2237,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     path1 = os.path.join(data_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options=storage_options)
     ds = ray.data.read_csv(path1, filesystem=fs)
-    dsdf = ray.get(ds.to_pandas_refs())[0]
+    dsdf = ds.to_pandas()
     assert df1.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == 3
@@ -2238,8 +2249,8 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     path2 = os.path.join(data_path, "test2.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
     ds = ray.data.read_csv([path1, path2], parallelism=2, filesystem=fs)
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()))
-    df = pd.concat([df1, df2])
+    dsdf = ds.to_pandas()
+    df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
     for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
@@ -2251,7 +2262,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df3.to_csv(path3, index=False, storage_options=storage_options)
     ds = ray.data.read_csv([path1, path2, path3], parallelism=2, filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()), ignore_index=True)
+    dsdf = ds.to_pandas()
     assert df.equals(dsdf)
 
     # Directory, two files.
@@ -2267,8 +2278,8 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     path2 = os.path.join(path, "data1.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
     ds = ray.data.read_csv(path, filesystem=fs)
-    df = pd.concat([df1, df2])
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()))
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas()
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -2294,8 +2305,8 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     file_path3 = os.path.join(path2, "data2.csv")
     df3.to_csv(file_path3, index=False, storage_options=storage_options)
     ds = ray.data.read_csv([path1, path2], filesystem=fs)
-    df = pd.concat([df1, df2, df3])
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()))
+    df = pd.concat([df1, df2, df3], ignore_index=True)
+    dsdf = ds.to_pandas()
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path1)
@@ -2317,8 +2328,8 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     path2 = os.path.join(data_path, "data1.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
     ds = ray.data.read_csv([dir_path, path2], filesystem=fs)
-    df = pd.concat([df1, df2])
-    dsdf = pd.concat(ray.get(ds.to_pandas_refs()))
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas()
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(dir_path)
@@ -2370,7 +2381,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_csv(data_path, filesystem=fs)
     file_path = os.path.join(data_path, "data_000000.csv")
     ds2 = ray.data.read_csv([file_path], filesystem=fs)
-    ds2df = pd.concat(ray.get(ds2.to_pandas_refs()))
+    ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
@@ -2382,8 +2393,8 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
     ds2 = ray.data.read_csv(data_path, parallelism=2, filesystem=fs)
-    ds2df = pd.concat(ray.get(ds2.to_pandas_refs()))
-    assert pd.concat([df, df2]).equals(ds2df)
+    ds2df = ds2.to_pandas()
+    assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes

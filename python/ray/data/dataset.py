@@ -1360,6 +1360,39 @@ class Dataset(Generic[T]):
         return raydp.spark.ray_dataset_to_spark_dataframe(
             spark, self.schema(), self.get_internal_block_refs(), locations)
 
+    def to_pandas(self, limit: int = 1000) -> "pandas.DataFrame":
+        """Convert this dataset into a single Pandas DataFrame, limiting the
+        number of records returned.
+
+        This is only supported for datasets convertible to Arrow records.
+
+        Time complexity: O(limit)
+
+        Args:
+            limit: The maximum number of records to return.
+
+        Returns:
+            A Pandas DataFrame created from this dataset, containing a limited
+            number of records.
+        """
+
+        batcher = Batcher(batch_size=limit)
+
+        for idx, block in enumerate(self._blocks):
+            block = ray.get(block)
+            batcher.add(block)
+            if batcher.has_batch():
+                if idx < len(self._blocks) - 1:
+                    logger.warning(
+                        f"Only returning the first {limit} records from "
+                        "to_pandas()")
+                out = batcher.next_batch()
+                return BlockAccessor.for_block(out).to_pandas()
+
+        # Limit larger than the dataset, so return the full dataset.
+        out = batcher.next_batch()
+        return BlockAccessor.for_block(out).to_pandas()
+
     @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
