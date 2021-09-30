@@ -1046,8 +1046,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Retrieve the current statistics about tasks being received and executing.
   /// \return an unordered_map mapping function name to list of (num_received,
-  /// num_executing, num_executed).
-  std::unordered_map<std::string, std::vector<size_t>> GetInflightTasksCount() const;
+  /// num_executing, num_executed). It is a std map instead of absl due to its
+  /// interface with language bindings.
+  std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
   void SetCurrentTaskId(const TaskID &task_id);
@@ -1430,26 +1431,26 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   struct TaskCounter {
     /// A task can only be one of the following state. Received state in particular
     /// covers from the point of RPC call to beginning execution.
-    enum TaskStatusType { kReceived, kExectuing, kExecuted };
+    enum TaskStatusType { kPending, kRunning, kFinished };
 
     /// This mutex should be used by caller to ensure consistency when transitioning
     /// a task's state.
     mutable absl::Mutex tasks_counter_mutex_;
-    absl::flat_hash_map<std::string, int> received_tasks_counter_map_
+    absl::flat_hash_map<std::string, int> pending_tasks_counter_map_
         GUARDED_BY(tasks_counter_mutex_);
-    absl::flat_hash_map<std::string, int> executing_tasks_counter_map_
+    absl::flat_hash_map<std::string, int> running_tasks_counter_map_
         GUARDED_BY(tasks_counter_mutex_);
-    absl::flat_hash_map<std::string, int> executed_tasks_counter_map_
+    absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
         GUARDED_BY(tasks_counter_mutex_);
 
     void Add(TaskStatusType type, std::string func_name, int value) {
       tasks_counter_mutex_.AssertHeld();
-      if (type == kReceived) {
-        received_tasks_counter_map_[func_name] += value;
-      } else if (type == kExectuing) {
-        executing_tasks_counter_map_[func_name] += value;
-      } else if (type == kExecuted) {
-        executed_tasks_counter_map_[func_name] += value;
+      if (type == kPending) {
+        pending_tasks_counter_map_[func_name] += value;
+      } else if (type == kRunning) {
+        running_tasks_counter_map_[func_name] += value;
+      } else if (type == kFinished) {
+        finished_tasks_counter_map_[func_name] += value;
       } else {
         RAY_CHECK(false) << "This line should not be reached.";
       }

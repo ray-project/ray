@@ -2200,8 +2200,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
   {
     absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-    task_counter_.Add(TaskCounter::kReceived, func_name, -1);
-    task_counter_.Add(TaskCounter::kExectuing, func_name, 1);
+    task_counter_.Add(TaskCounter::kPending, func_name, -1);
+    task_counter_.Add(TaskCounter::kRunning, func_name, 1);
   }
 
   if (!options_.is_local_mode) {
@@ -2303,8 +2303,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // Modify the worker's per function counters.
   {
     absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-    task_counter_.Add(TaskCounter::kExectuing, func_name, -1);
-    task_counter_.Add(TaskCounter::kExecuted, func_name, 1);
+    task_counter_.Add(TaskCounter::kRunning, func_name, -1);
+    task_counter_.Add(TaskCounter::kFinished, func_name, 1);
   }
 
   RAY_LOG(INFO) << "Finished executing task " << task_spec.TaskId()
@@ -2482,7 +2482,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
           ->CallString();
   {
     absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-    task_counter_.Add(TaskCounter::kReceived, func_name, 1);
+    task_counter_.Add(TaskCounter::kPending, func_name, 1);
   }
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
@@ -3227,19 +3227,19 @@ std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_cl
 
 bool CoreWorker::IsExiting() const { return exiting_; }
 
-std::unordered_map<std::string, std::vector<size_t>> CoreWorker::GetInflightTasksCount()
+std::unordered_map<std::string, std::vector<uint64_t>> CoreWorker::GetActorCallStats()
     const {
   absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-  std::unordered_map<std::string, std::vector<size_t>> total_counts;
+  std::unordered_map<std::string, std::vector<uint64_t>> total_counts;
 
-  for (const auto &count : task_counter_.received_tasks_counter_map_) {
+  for (const auto &count : task_counter_.pending_tasks_counter_map_) {
     total_counts[count.first].resize(3, 0);
     total_counts[count.first][0] = count.second;
   }
-  for (const auto &count : task_counter_.executing_tasks_counter_map_) {
+  for (const auto &count : task_counter_.running_tasks_counter_map_) {
     total_counts[count.first][1] = count.second;
   }
-  for (const auto &count : task_counter_.executed_tasks_counter_map_) {
+  for (const auto &count : task_counter_.finished_tasks_counter_map_) {
     total_counts[count.first][2] = count.second;
   }
 

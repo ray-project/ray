@@ -1907,12 +1907,12 @@ cdef class CoreWorker:
 
         return ref_counts
 
-    def get_inflight_tasks_count(self):
+    def get_actor_call_stats(self):
         cdef:
-            unordered_map[c_string, c_vector[size_t]] c_tasks_count
+            unordered_map[c_string, c_vector[uint64_t]] c_tasks_count
 
         c_tasks_count = (
-            CCoreWorkerProcess.GetCoreWorker().GetInflightTasksCount())
+            CCoreWorkerProcess.GetCoreWorker().GetActorCallStats())
         it = c_tasks_count.begin()
 
         tasks_count = dict()
@@ -1920,9 +1920,9 @@ cdef class CoreWorker:
             func_name = <unicode>dereference(it).first
             counters = dereference(it).second
             tasks_count[func_name] = {
-                "received": counters[0],
-                "executing": counters[1],
-                "executed": counters[2],
+                "pending": counters[0],
+                "running": counters[1],
+                "finished": counters[2],
             }
             postincrement(it)
         return tasks_count

@@ -115,42 +115,43 @@ def test_current_actor(ray_start_regular):
     assert ray.get(ray.get(obj)) == "hello"
 
 
-def test_inflight_tasks_normal_task(ray_start_regular):
+def test_actor_stats_normal_task(ray_start_regular):
+    # Because it works at the core worker level, this API works for tasks.
     @ray.remote
     def func():
-        return ray.get_runtime_context()._current_inflight_tasks_count
+        return ray.get_runtime_context()._get_actor_call_stats()
 
     assert ray.get(func.remote())["func"] == {
-        "received": 0,
-        "executing": 1,
-        "executed": 0,
+        "pending": 0,
+        "running": 1,
+        "finished": 0,
     }
 
 
-def test_inflight_tasks_actor(ray_start_regular):
+def test_actor_stats_sync_actor(ray_start_regular):
     signal = SignalActor.remote()
 
     @ray.remote
     class SyncActor:
         def run(self):
-            return ray.get_runtime_context()._current_inflight_tasks_count
+            return ray.get_runtime_context()._get_actor_call_stats()
 
         def wait_signal(self):
             ray.get(signal.wait.remote())
-            return ray.get_runtime_context()._current_inflight_tasks_count
+            return ray.get_runtime_context()._get_actor_call_stats()
 
     actor = SyncActor.remote()
     counts = ray.get(actor.run.remote())
     assert counts == {
         "SyncActor.run": {
-            "received": 0,
-            "executing": 1,
-            "executed": 0
+            "pending": 0,
+            "running": 1,
+            "finished": 0
         },
         "SyncActor.__init__": {
-            "received": 0,
-            "executing": 0,
-            "executed": 1
+            "pending": 0,
+            "running": 0,
+            "finished": 1
         }
     }
 
@@ -162,31 +163,31 @@ def test_inflight_tasks_actor(ray_start_regular):
     counts = ray.get(ref)
     assert counts == {
         "SyncActor.run": {
-            "received": 3,
-            "executing": 0,
-            "executed": 1,  # from previous run
+            "pending": 3,
+            "running": 0,
+            "finished": 1,  # from previous run
         },
         "SyncActor.wait_signal": {
-            "received": 5,
-            "executing": 1,
-            "executed": 0,
+            "pending": 5,
+            "running": 1,
+            "finished": 0,
         },
         "SyncActor.__init__": {
-            "received": 0,
-            "executing": 0,
-            "executed": 1
+            "pending": 0,
+            "running": 0,
+            "finished": 1
         }
     }
 
 
-def test_inflight_tasks_threaded_actor(ray_start_regular):
+def test_actor_stats_threaded_actor(ray_start_regular):
     signal = SignalActor.remote()
 
     @ray.remote
     class ThreadedActor:
         def func(self):
             ray.get(signal.wait.remote())
-            return ray.get_runtime_context()._current_inflight_tasks_count
+            return ray.get_runtime_context()._get_actor_call_stats()
 
     actor = ThreadedActor.options(max_concurrency=3).remote()
     refs = [actor.func.remote() for _ in range(6)]
@@ -194,20 +195,20 @@ def test_inflight_tasks_threaded_actor(ray_start_regular):
     assert len(ready) == 0
     signal.send.remote()
     results = ray.get(refs)
-    assert max(result["ThreadedActor.func"]["executing"]
+    assert max(result["ThreadedActor.func"]["running"]
                for result in results) > 1
-    assert max(result["ThreadedActor.func"]["received"]
+    assert max(result["ThreadedActor.func"]["pending"]
                for result in results) > 1
 
 
-def test_inflight_tasks_async_actor(ray_start_regular):
+def test_actor_stats_async_actor(ray_start_regular):
     signal = SignalActor.remote()
 
     @ray.remote
     class AysncActor:
         async def func(self):
             await signal.wait.remote()
-            return ray.get_runtime_context()._current_inflight_tasks_count
+            return ray.get_runtime_context()._get_actor_call_stats()
 
     actor = AysncActor.options(max_concurrency=3).remote()
     refs = [actor.func.remote() for _ in range(6)]
@@ -215,10 +216,8 @@ def test_inflight_tasks_async_actor(ray_start_regular):
     assert len(ready) == 0
     signal.send.remote()
     results = ray.get(refs)
-    assert max(
-        result["AysncActor.func"]["executing"] for result in results) == 3
-    assert max(
-        result["AysncActor.func"]["received"] for result in results) == 3
+    assert max(result["AysncActor.func"]["running"] for result in results) == 3
+    assert max(result["AysncActor.func"]["pending"] for result in results) == 3
 
 
 if __name__ == "__main__":
