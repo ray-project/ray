@@ -128,7 +128,7 @@ def parse_and_validate_uris(uris: List[str]) -> List[str]:
 
 
 def parse_and_validate_container(container: List[str]) -> List[str]:
-    """Parses and validates a user-provided 'uris' option.
+    """Parses and validates a user-provided 'container' option.
 
     This is passed through without validation (for now).
     """
@@ -297,6 +297,8 @@ def override_task_or_actor_runtime_env(
     Returns:
         The resulting merged JSON-serialized runtime env.
     """
+    assert child_runtime_env is not None
+    assert parent_runtime_env is not None
 
     result = copy.deepcopy(child_runtime_env)
 
