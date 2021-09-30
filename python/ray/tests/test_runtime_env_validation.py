@@ -140,11 +140,11 @@ class TestValidatePip:
             requirements_file = requirements_file.resolve()
 
         result = parse_and_validate_pip(str(requirements_file))
-        assert result == "\n".join(PIP_LIST) + "\n"
+        assert result == PIP_LIST
 
-    def test_validate_pip_valid_dict(self):
+    def test_validate_pip_valid_list(self):
         result = parse_and_validate_pip(PIP_LIST)
-        assert result == "\n".join(PIP_LIST) + "\n"
+        assert result == PIP_LIST
 
 
 class TestValidateEnvVars:

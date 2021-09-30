@@ -9,7 +9,6 @@ from ray._private.runtime_env import (override_task_or_actor_runtime_env,
                                       ParsedRuntimeEnv)
 import ray.worker
 from ray.util.annotations import PublicAPI
-from ray._private.runtime_env import parse_pip_and_conda
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
 
@@ -393,7 +392,8 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = ParsedRuntimeEnv(runtime_env, is_task_or_actor=True)
+        new_runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
@@ -474,7 +474,8 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = parse_pip_and_conda(runtime_env)
+        new_runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):

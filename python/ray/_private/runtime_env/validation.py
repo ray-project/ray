@@ -85,14 +85,13 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
-def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[str]:
+def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """Parses and validates a user-provided 'pip' option.
 
     Conda can be one of two cases:
-        1) A List[str] describing the requirements. This is joined into a
-          string to be used as a requirements.txt file.
+        1) A List[str] describing the requirements. This is passed through.
         2) A string pointing to a local requirements file. In this case, the
-           file contents will be read and passed through.
+           file contents will be read split into a list.
     """
     assert pip is not None
 
@@ -106,13 +105,12 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[str]:
         pip_file = Path(pip)
         if not pip_file.is_file():
             raise ValueError(f"{pip_file} is not a valid file")
-        result = pip_file.read_text()
+        result = pip_file.read_text().strip().split("\n")
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
         if len(pip) == 0:
             result = None
         else:
-            # Construct valid pip requirements.txt from list of packages.
-            result = "\n".join(pip) + "\n"
+            result = pip
     else:
         raise TypeError("runtime_env['pip'] must be of type str or "
                         f"List[str], got {type(pip)}")
