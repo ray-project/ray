@@ -8,7 +8,7 @@ from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
-from ray._private.runtime_env import parse_pip_str, parse_conda_str
+from ray._private.runtime_env import parse_pip_and_conda
 from ray.util.placement_group import (
     PlacementGroup,
     check_placement_group_index,
@@ -109,7 +109,7 @@ class RemoteFunction:
         self._retry_exceptions = (DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS
                                   if retry_exceptions is None else
                                   retry_exceptions)
-        self._runtime_env = runtime_env
+        self._runtime_env = parse_pip_and_conda(runtime_env)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
@@ -165,6 +165,7 @@ class RemoteFunction:
         """
 
         func_cls = self
+        new_runtime_env = parse_pip_and_conda(runtime_env)
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
@@ -184,7 +185,7 @@ class RemoteFunction:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=runtime_env,
+                    runtime_env=new_runtime_env,
                     override_environment_variables=(
                         override_environment_variables),
                     name=name)
@@ -211,14 +212,6 @@ class RemoteFunction:
                 override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
-
-        # Parse pip/conda requirements files before client_mode_convert is
-        # called, because the files aren't available on the remote node.
-        if runtime_env is not None:
-            if isinstance(runtime_env.get("pip"), str):
-                runtime_env["pip"] = parse_pip_str(runtime_env["pip"])
-            if isinstance(runtime_env.get("conda"), str):
-                runtime_env["conda"] = parse_conda_str(runtime_env["conda"])
 
         if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(

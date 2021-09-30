@@ -8,7 +8,7 @@ import ray._private.signature as signature
 import ray._private.runtime_env as runtime_support
 import ray.worker
 from ray.util.annotations import PublicAPI
-from ray._private.runtime_env import parse_pip_str, parse_conda_str
+from ray._private.runtime_env import parse_pip_and_conda
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
 
@@ -389,11 +389,13 @@ class ActorClass:
             PythonFunctionDescriptor.from_class(
                 modified_class.__ray_actor_class__)
 
+        new_runtime_env = parse_pip_and_conda(runtime_env)
+
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
             actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources, accelerator_type, runtime_env)
+            resources, accelerator_type, new_runtime_env)
 
         return self
 
@@ -465,6 +467,8 @@ class ActorClass:
 
         actor_cls = self
 
+        new_runtime_env = parse_pip_and_conda(runtime_env)
+
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(
@@ -486,7 +490,7 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=runtime_env,
+                    runtime_env=new_runtime_env,
                     override_environment_variables=(
                         override_environment_variables))
 
@@ -584,14 +588,6 @@ class ActorClass:
 
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
-
-        # Parse pip/conda requirements files before client_mode_convert is
-        # called, because the files aren't available on the remote node.
-        if runtime_env is not None:
-            if isinstance(runtime_env.get("pip"), str):
-                runtime_env["pip"] = parse_pip_str(runtime_env["pip"])
-            if isinstance(runtime_env.get("conda"), str):
-                runtime_env["conda"] = parse_conda_str(runtime_env["conda"])
 
         if client_mode_should_convert(auto_init=True):
             return client_mode_convert_actor(

@@ -233,3 +233,16 @@ def parse_pip_str(pip: str):
     if not pip_file.is_file():
         raise ValueError(f"{pip_file} is not a valid file")
     return pip_file.read_text()
+
+
+def parse_pip_and_conda(runtime_env):
+    if runtime_env is not None:
+        new_runtime_env = runtime_env.copy()
+        if isinstance(new_runtime_env.get("pip"), str):
+            new_runtime_env["pip"] = parse_pip_str(new_runtime_env["pip"])
+        if isinstance(new_runtime_env.get("conda"), str):
+            new_runtime_env["conda"] = parse_conda_str(
+                new_runtime_env["conda"])
+    else:
+        new_runtime_env = None
+    return new_runtime_env
