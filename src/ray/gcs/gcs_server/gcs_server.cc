@@ -35,7 +35,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     : config_(config),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
-                  config.grpc_server_thread_num,
+                  config.node_ip_address == "127.0.0.1", config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service),
       raylet_client_pool_(

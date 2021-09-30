@@ -179,9 +179,9 @@ def r2d2_loss(policy: Policy, model, _,
         model.tower_stats["min_q"] = torch.min(q_selected)
         model.tower_stats["max_q"] = torch.max(q_selected)
         model.tower_stats["mean_td_error"] = reduce_mean_valid(td_error)
-        # TD-error tensor in final stats
-        # will be concatenated and retrieved for each individual batch item.
-        model.tower_stats["td_error"] = td_error.reshape([-1])
+        # Store per time chunk (b/c we need only one mean
+        # prioritized replay weight per stored sequence).
+        model.tower_stats["td_error"] = torch.mean(td_error, dim=-1)
 
     return total_loss
 
