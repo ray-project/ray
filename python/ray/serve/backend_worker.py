@@ -240,10 +240,19 @@ class RayServeReplica:
     def get_runner_method(self, request_item: Query) -> Callable:
         method_name = request_item.metadata.call_method
         if not hasattr(self.callable, method_name):
-            raise RayServeException("Backend doesn't have method {} "
-                                    "which is specified in the request. "
-                                    "The available methods are {}".format(
-                                        method_name, dir(self.callable)))
+            # Filter to methods that don't start with '__' prefix.
+            def callable_method_filter(attr):
+                if attr.startswith("__"):
+                    return False
+                elif not callable(getattr(self.callable, attr)):
+                    return False
+
+                return True
+
+            methods = list(filter(callable_method_filter, dir(self.callable)))
+            raise RayServeException(f"Tried to call a method '{method_name}' "
+                                    "that does not exist. Available methods: "
+                                    f"{methods}.")
         if self.is_function:
             return self.callable
         return getattr(self.callable, method_name)

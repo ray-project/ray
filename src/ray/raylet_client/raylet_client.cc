@@ -296,13 +296,20 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
 }
 
 void raylet::RayletClient::RequestWorkerLease(
-    const TaskSpecification &resource_spec,
+    const rpc::TaskSpec &task_spec,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
     const int64_t backlog_size) {
-  rpc::RequestWorkerLeaseRequest request;
-  request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
-  request.set_backlog_size(backlog_size);
-  grpc_client_->RequestWorkerLease(request, callback);
+  google::protobuf::Arena arena;
+  auto request =
+      google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
+  // The unsafe allocating here is actually safe because the life-cycle of
+  // task_spec is longer than request.
+  // Request will be sent before the end of this call, and after that, it won't be
+  // used any more.
+  request->unsafe_arena_set_allocated_resource_spec(
+      const_cast<rpc::TaskSpec *>(&task_spec));
+  request->set_backlog_size(backlog_size);
+  grpc_client_->RequestWorkerLease(*request, callback);
 }
 
 /// Spill objects to external storage.
@@ -373,7 +380,7 @@ void raylet::RayletClient::CommitBundleResources(
 }
 
 void raylet::RayletClient::CancelResourceReserve(
-    BundleSpecification &bundle_spec,
+    const BundleSpecification &bundle_spec,
     const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) {
   rpc::CancelResourceReserveRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
