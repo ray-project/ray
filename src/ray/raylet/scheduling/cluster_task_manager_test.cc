@@ -1550,25 +1550,35 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
     *callback_occurred_ptr = true;
   };
 
-  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
-  task_manager_.QueueAndScheduleTask(task, &reply, callback);
-  pool_.TriggerCallbacks();
+  constexpr int num_cases = 5;
+  // Create 5 tasks with different CPU requests.
+  const std::array<int, num_cases> cpu_request = {1, 2, 1, 3, 1};
+  // Each type of CPU request corresponds to a types of resource demand.
+  const std::array<int, num_cases> demand_types = {1, 2, 2, 3, 3};
+  // Number of infeasible 1 CPU requests..
+  const std::array<int, num_cases> num_infeasible_1cpu = {1, 1, 2, 2, 3};
 
-  // The task cannot run because there is only 1 node (head) with 0 CPU.
-  ASSERT_FALSE(callback_occurred);
-  ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.workers.size(), 0);
-  ASSERT_EQ(node_info_calls_, 0);
+  for (int i = 0; i < num_cases; ++i) {
+    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, cpu_request[i]}});
+    task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    pool_.TriggerCallbacks();
 
-  {
+    // The task cannot run because there is only 1 node (head) with 0 CPU.
+    ASSERT_FALSE(callback_occurred);
+    ASSERT_EQ(leased_workers_.size(), 0);
+    ASSERT_EQ(pool_.workers.size(), 0);
+    ASSERT_EQ(node_info_calls_, 0);
+
     rpc::ResourcesData data;
     task_manager_.FillResourceUsage(data);
     const auto &resource_load_by_shape = data.resource_load_by_shape();
-    ASSERT_EQ(resource_load_by_shape.resource_demands().size(), 1);
-    const auto &shape = resource_load_by_shape.resource_demands()[0];
+    ASSERT_EQ(resource_load_by_shape.resource_demands().size(), demand_types[i]);
 
-    ASSERT_EQ(shape.shape().size(), 1);
-    ASSERT_EQ(shape.shape().at("CPU"), 1);
+    // 1 CPU demand currently is always the 1st.
+    const auto &demand = resource_load_by_shape.resource_demands()[0];
+    EXPECT_EQ(demand.num_infeasible_requests_queued(), num_infeasible_1cpu[i]);
+    ASSERT_EQ(demand.shape().size(), 1);
+    ASSERT_EQ(demand.shape().at("CPU"), 1);
   }
 }
 
