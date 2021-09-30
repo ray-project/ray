@@ -7,7 +7,7 @@ In Ray 1.7, we are rolling out a new and more streamlined version of Ray SGD. Ra
 
 This guide will help you easily migrate existing code from Ray SGD v1 to Ray SGD v2. If you are new to Ray SGD as a whole, you should get started with :ref:`Ray SGD v2 directly <sgd-v2-docs>`.
 
-For a full list of features that Ray SGD v2 provides, please check out the :ref:`user guide<sgd-user-guide>`
+For a full list of features that Ray SGD v2 provides, please check out the :ref:`user guide<sgd-user-guide>`.
 
 If there are any issues or anything missing with this guide or any feedback on Ray SGD v2 overall, please file a `Github issue on the Ray repo  <https://github.com/ray-project/ray/issues>`_!
 
