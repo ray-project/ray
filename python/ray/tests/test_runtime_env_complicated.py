@@ -12,7 +12,7 @@ from unittest import mock, skipIf
 import yaml
 
 import ray
-from ray._private.runtime_env import RuntimeEnvDict
+from ray._private.runtime_env import RuntimeEnvDict, parse_pip_and_conda
 from ray._private.runtime_env.conda import (
     inject_dependencies,
     _inject_ray_to_conda_site,
@@ -460,13 +460,10 @@ def test_conda_input_filepath(use_working_dir, tmp_path):
     p.write_text(yaml.dump(conda_dict))
 
     if use_working_dir:
-        runtime_env_dict = RuntimeEnvDict({
-            "working_dir": str(d),
-            "conda": "environment.yml"
-        })
+        runtime_env_json = {"working_dir": str(d), "conda": str(p)}
     else:
-        runtime_env_dict = RuntimeEnvDict({"conda": str(p)})
-
+        runtime_env_json = {"conda": str(p)}
+    runtime_env_dict = RuntimeEnvDict(parse_pip_and_conda(runtime_env_json))
     output_conda_dict = runtime_env_dict.get_parsed_dict().get("conda")
     assert output_conda_dict == conda_dict
 
@@ -514,7 +511,7 @@ def test_experimental_package_github(shutdown_only):
     ["ray start --head --ray-client-server-port 24001 --port 0"],
     indirect=True)
 def test_client_working_dir_filepath(call_ray_start, tmp_path):
-    """Test that pip and conda relative filepaths work with working_dir."""
+    """Test that pip and conda filepaths work with working_dir."""
 
     working_dir = tmp_path / "requirements"
     working_dir.mkdir()
@@ -524,10 +521,7 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
     pip-install-test==0.5
     """
     pip_file.write_text(requirements_txt)
-    runtime_env_pip = {
-        "working_dir": str(working_dir),
-        "pip": "requirements.txt"
-    }
+    runtime_env_pip = {"working_dir": str(working_dir), "pip": str(pip_file)}
 
     conda_file = working_dir / "environment.yml"
     conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
@@ -535,7 +529,7 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
     conda_file.write_text(conda_str)
     runtime_env_conda = {
         "working_dir": str(working_dir),
-        "conda": "environment.yml"
+        "conda": str(conda_file)
     }
 
     @ray.remote
@@ -555,6 +549,64 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
                 # Ensure pip-install-test is not installed on the test machine
                 import pip_install_test  # noqa
             assert ray.get(f.remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_conda_pip_filepaths_remote(call_ray_start, tmp_path):
+    """Test that pip and conda filepaths work, simulating a remote cluster."""
+
+    working_dir = tmp_path / "requirements"
+    working_dir.mkdir()
+
+    pip_file = working_dir / "requirements.txt"
+    requirements_txt = """
+    pip-install-test==0.5
+    """
+    pip_file.write_text(requirements_txt)
+    runtime_env_pip = {"pip": str(pip_file)}
+
+    conda_file = working_dir / "environment.yml"
+    conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
+    conda_str = yaml.dump(conda_dict)
+    conda_file.write_text(conda_str)
+    runtime_env_conda = {"conda": str(conda_file)}
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with ray.client("localhost:24001").connect():
+        with pytest.raises(ModuleNotFoundError):
+            # Ensure pip-install-test is not installed in a client that doesn't
+            # use the runtime_env
+            ray.get(f.remote())
+
+    # pip and conda files should be parsed when the function is declared.
+    f_pip = f.options(runtime_env=runtime_env_pip)
+    f_conda = f.options(runtime_env=runtime_env_conda)
+
+    # Remove the pip and conda files from the local filesystem. This is
+    # necessary to simulate the files not being present on the remote cluster,
+    # because in this single-machine test, the cluster has the same filesystem.
+    os.remove(pip_file)
+    os.remove(conda_file)
+
+    # Test with and without a working_dir.
+    client_envs = [{}, {"working_dir": str(working_dir)}]
+    for runtime_env in client_envs:
+        with ray.client("localhost:24001").env(runtime_env).connect():
+            with pytest.raises(ModuleNotFoundError):
+                # Ensure pip-install-test is not installed on the test machine
+                import pip_install_test  # noqa
+            assert ray.get(f_pip.remote())
+            assert ray.get(f_conda.remote())
 
 
 install_env_script = """
@@ -718,7 +770,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
     # Start a new job on the same cluster using the Summit 2021 requirements.
     with ray.client(f"localhost:{CLIENT_SERVER_PORT}").env({
             "working_dir": str(tmp_path),
-            "pip": "requirements.txt"
+            "pip": str(requirement_path)
     }).connect():
 
         @ray.remote
@@ -752,7 +804,9 @@ def test_e2e_complex(call_ray_start, tmp_path):
 
                 return Path("./test").read_text()
 
-        a = TestActor.options(runtime_env={"pip": "requirements.txt"}).remote()
+        a = TestActor.options(runtime_env={
+            "pip": str(requirement_path)
+        }).remote()
         assert ray.get(a.test.remote()) == "Hello"
 
         # Check that per-task pip specification works and that the job's

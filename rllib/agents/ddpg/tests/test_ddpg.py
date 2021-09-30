@@ -13,7 +13,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 tf1, tf, tfv = try_import_tf()
@@ -45,6 +45,7 @@ class TestDDPG(unittest.TestCase):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
             for i in range(num_iterations):
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
             check_compute_single_action(trainer)
             # Ensure apply_gradient_fn is being called and updating global_step

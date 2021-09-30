@@ -14,12 +14,12 @@ from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class, stats, \
     build_sac_model_and_action_dist, optimizer_fn, ComputeTDErrorMixin, \
     TargetNetworkMixin, setup_late_mixins, action_distribution_fn
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
 from ray.rllib.utils.torch_ops import apply_grad_clipping, \
