@@ -405,7 +405,7 @@ def check_compute_single_action(trainer,
         # values.
         if isinstance(action_space, gym.spaces.Box) and not unsquash and \
                 what.config.get("normalize_actions") and \
-                np.any(np.abs(action) > 2.0):
+                np.any(np.abs(action) > 10.0):
             raise ValueError(
                 f"Returned action ({action}) of trainer/policy {what} "
                 "should be in normalized space, but seems too large/small for "
