@@ -168,6 +168,5 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   ASSERT_EQ(pg1, pending_queue.begin()->second.second);
 }
 
-
 }  // namespace gcs
 }  // namespace ray
