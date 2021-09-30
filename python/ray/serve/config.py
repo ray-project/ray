@@ -121,7 +121,11 @@ class BackendConfig(BaseModel):
 
 
 class ReplicaConfig:
-    def __init__(self, backend_def, *init_args, ray_actor_options=None):
+    def __init__(self,
+                 backend_def,
+                 init_args,
+                 init_kwargs,
+                 ray_actor_options=None):
         # Validate that backend_def is an import path, function, or class.
         if isinstance(backend_def, str):
             self.func_or_class_name = backend_def
@@ -131,6 +135,9 @@ class ReplicaConfig:
             if len(init_args) != 0:
                 raise ValueError(
                     "init_args not supported for function backend.")
+            if len(init_kwargs) != 0:
+                raise ValueError(
+                    "init_kwargs not supported for function backend.")
         elif inspect.isclass(backend_def):
             self.func_or_class_name = backend_def.__name__
         else:
@@ -140,6 +147,7 @@ class ReplicaConfig:
 
         self.serialized_backend_def = cloudpickle.dumps(backend_def)
         self.init_args = init_args
+        self.init_kwargs = init_kwargs
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:
@@ -158,12 +166,13 @@ class ReplicaConfig:
             raise TypeError("ray_actor_options must be a dictionary.")
         elif "lifetime" in self.ray_actor_options:
             raise ValueError(
-                "Specifying lifetime in init_args is not allowed.")
+                "Specifying lifetime in ray_actor_options is not allowed.")
         elif "name" in self.ray_actor_options:
-            raise ValueError("Specifying name in init_args is not allowed.")
+            raise ValueError(
+                "Specifying name in ray_actor_options is not allowed.")
         elif "max_restarts" in self.ray_actor_options:
             raise ValueError("Specifying max_restarts in "
-                             "init_args is not allowed.")
+                             "ray_actor_options is not allowed.")
         else:
             # Ray defaults to zero CPUs for placement, we default to one here.
             if "num_cpus" not in self.ray_actor_options:
