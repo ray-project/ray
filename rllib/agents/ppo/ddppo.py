@@ -136,14 +136,12 @@ def validate_config(config):
         raise ValueError(
             "Distributed data parallel requires truncate_episodes "
             "batch mode.")
+    # DDPPO doesn't support KL penalties like PPO-1.
+    # In order to support KL penalties, DDPPO would need to become
+    # undecentralized, which defeats the purpose of the algorithm.
+    # Users can still tune the entropy coefficient to control the
+    # policy entropy (similar to controlling the KL penalty).
     if config["kl_coeff"] != 0.0 or config["kl_target"] != 0.0:
-        # DDPPO doesn't support KL penalties like PPO-1.
-        # In order to support KL penalties, DDPPO would need to
-        # become undecentralized, which defeats the purpose of the
-        # algorithm. Users can still tune the entropy coefficient to
-        # control the policy entropy (similar to controlling the KL
-        # penalty.)
-
         raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
 
