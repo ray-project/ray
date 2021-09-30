@@ -2,7 +2,7 @@ import logging
 import numpy as np
 import math
 import tree  # pip install dm_tree
-from typing import List, Tuple, Any
+from typing import Dict, List, Tuple, Any
 
 import ray
 from ray.rllib.evaluation.metrics import get_learner_stats
@@ -23,6 +23,124 @@ from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
+
+
+def train_multi_gpu(trainer, train_batch) -> Dict:
+    config = trainer.config
+    workers = trainer.workers
+    local_worker = workers.local_worker()
+    sgd_minibatch_size = config.get("sgd_minibatch_size", config["train_batch_size"])
+
+    # Collect actual GPU devices to use.
+    if not config["num_gpus"]:
+        _fake_gpus = True
+        num_gpus = 1
+    type_ = "cpu" if _fake_gpus else "gpu"
+    devices = [
+        "/{}:{}".format(type_, 0 if _fake_gpus else i)
+        for i in range(int(math.ceil(num_gpus)))
+    ]
+
+    # Make sure total batch size is dividable by the number of devices.
+    # Batch size per tower.
+    per_device_batch_size = sgd_minibatch_size // len(devices)
+    # Total batch size.
+    batch_size = per_device_batch_size * len(devices)
+    assert batch_size % len(devices) == 0
+    assert batch_size >= len(devices), "Batch size too small!"
+
+    _check_sample_batch_type(train_batch)
+
+    # Handle everything as if multi agent.
+    if isinstance(train_batch, SampleBatch):
+        train_batch = MultiAgentBatch({
+            DEFAULT_POLICY_ID: train_batch
+        }, train_batch.count)
+
+    #metrics = _get_shared_metrics()
+    #load_timer = metrics.timers[LOAD_BATCH_TIMER]
+    #learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
+
+    # Load data into GPUs, if applicable.
+    #with load_timer:
+    num_loaded_samples = {}
+    for policy_id, batch in train_batch.policy_batches.items():
+        # Not a policy-to-train.
+        if policy_id not in local_worker.policies_to_train:
+            continue
+
+        # Decompress SampleBatch, in case some columns are compressed.
+        batch.decompress_if_needed()
+
+        # Load the entire train batch into the Policy's only buffer
+        # (idx=0). Policies only have >1 buffers, if we are training
+        # asynchronously.
+        num_loaded_samples[policy_id] = local_worker.policy_map[
+            policy_id].load_batch_into_buffer(
+                batch, buffer_index=0)
+
+    # Execute minibatch SGD on loaded data.
+    #with learn_timer:
+    fetches = {}
+    for policy_id, samples_per_device in num_loaded_samples.items():
+        policy = local_worker.policy_map[policy_id]
+        num_batches = max(
+            1,
+            int(samples_per_device) // int(per_device_batch_size))
+        logger.debug("== sgd epochs for {} ==".format(policy_id))
+        batch_fetches_all_towers = []
+        for _ in range(config.get("num_sgd_iter", 1)):
+            permutation = np.random.permutation(num_batches)
+            for batch_index in range(num_batches):
+                # Learn on the pre-loaded data in the buffer.
+                # Note: For minibatch SGD, the data is an offset into
+                # the pre-loaded entire train batch.
+                batch_fetches = policy.learn_on_loaded_batch(
+                    permutation[batch_index] *
+                    per_device_batch_size,
+                    buffer_index=0)
+
+                # No towers: Single CPU.
+                if "tower_0" not in batch_fetches:
+                    batch_fetches_all_towers.append(batch_fetches)
+                else:
+                    batch_fetches_all_towers.append(
+                        tree.map_structure_with_path(
+                            lambda p, *s: all_tower_reduce(p, *s),
+                            *(batch_fetches.pop(
+                                "tower_{}".format(tower_num))
+                              for tower_num in range(len(devices)))))
+                    for k, v in batch_fetches.items():
+                        if k == LEARNER_STATS_KEY:
+                            for k1, v1 in batch_fetches[k].items():
+                                batch_fetches_all_towers[-1][
+                                    LEARNER_STATS_KEY][k1] = v1
+                        else:
+                            batch_fetches_all_towers[-1][k] = v
+
+        # Reduce mean across all minibatch SGD steps (axis=0 to keep
+        # all shapes as-is).
+        fetches[policy_id] = tree.map_structure(
+            lambda *s: None if s[0] is None else np.nanmean(s, axis=0),
+            *batch_fetches_all_towers)
+
+    #load_timer.push_units_processed(train_batch.count)
+    #learn_timer.push_units_processed(train_batch.count)
+
+    #metrics.counters[STEPS_TRAINED_COUNTER] += train_batch.count
+    #metrics.counters[AGENT_STEPS_TRAINED_COUNTER] += train_batch.agent_steps()
+    #metrics.info[LEARNER_INFO] = fetches
+
+    if workers.remote_workers():
+        #with metrics.timers[WORKER_UPDATE_TIMER]:
+        weights = ray.put(local_worker.get_weights(
+            local_worker.policies_to_train))
+        for e in workers.remote_workers():
+            e.set_weights.remote(weights)#, _get_global_vars())
+
+    # Also update global vars of the local worker.
+    #local_worker.set_global_vars(_get_global_vars())
+    return fetches
 
 
 class TrainOneStep:

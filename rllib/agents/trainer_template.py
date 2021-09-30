@@ -174,26 +174,36 @@ def build_trainer(
                 policy_class=self._policy_class,
                 config=config,
                 num_workers=self.config["num_workers"])
+            # Ensure remote workers are initially in sync with the
+            # local worker.
+            self.workers.sync_weights()
+
             self.execution_plan = execution_plan
-            try:
-                self.train_exec_impl = execution_plan(self, self.workers,
-                                                      config)
-            except TypeError as e:
-                # Keyword error: Try old way w/o kwargs.
-                if "() takes 2 positional arguments but 3" in e.args[0]:
-                    self.train_exec_impl = execution_plan(self.workers, config)
-                    logger.warning(
-                        "`execution_plan` functions should accept "
-                        "`trainer`, `workers`, and `config` as args!")
-                # Other error -> re-raise.
-                else:
-                    raise e
+
+            if not config["_disable_distributed_execution_api"]:
+                try:
+                    self.train_exec_impl = execution_plan(self, self.workers,
+                                                          config)
+                except TypeError as e:
+                    # Keyword error: Try old way w/o kwargs.
+                    if "() takes 2 positional arguments but 3" in e.args[0]:
+                        self.train_exec_impl = execution_plan(
+                            self.workers, config)
+                        logger.warning(
+                            "`execution_plan` functions should accept "
+                            "`trainer`, `workers`, and `config` as args!")
+                    # Other error -> re-raise.
+                    else:
+                        raise e
 
             if after_init:
                 after_init(self)
 
         @override(Trainer)
         def step(self):
+            use_exec_api = not self.config.get(
+                "_disable_distributed_execution_api")
+
             # self._iteration gets incremented after this function returns,
             # meaning that e. g. the first time this function is called,
             # self._iteration will be 0.
@@ -203,12 +213,18 @@ def build_trainer(
 
             # No evaluation necessary, just run the next training iteration.
             if not evaluate_this_iter:
-                step_results = next(self.train_exec_impl)
+                if use_exec_api:
+                    step_results = next(self.train_exec_impl)
+                else:
+                    step_results = self.execution_plan(self)
             # We have to evaluate in this training iteration.
             else:
                 # No parallelism.
                 if not self.config["evaluation_parallel_to_training"]:
-                    step_results = next(self.train_exec_impl)
+                    if use_exec_api:
+                        step_results = next(self.train_exec_impl)
+                    else:
+                        step_results = self.execution_plan(self)
 
                 # Kick off evaluation-loop (and parallel train() call,
                 # if requested).
@@ -216,7 +232,9 @@ def build_trainer(
                 if self.config["evaluation_parallel_to_training"]:
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         train_future = executor.submit(
-                            lambda: next(self.train_exec_impl))
+                            lambda: (next(self.train_exec_impl) if
+                                     use_exec_api else
+                                     self.execution_plan(self)))
                         if self.config["evaluation_num_episodes"] == "auto":
 
                             # Run at least one `evaluate()` (num_episodes_done

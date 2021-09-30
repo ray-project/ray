@@ -492,6 +492,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     # observations will arrive in model as they are returned by the env.
     # In the future, the default for this will be True.
     "_disable_preprocessor_api": False,
+    # If True, the distributed execution API will not be used. Instead,
+    # a Trainer's execution plan will be called as-is for each training
+    # iteration.
+    "_disable_distributed_execution_api": False,
 
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
@@ -897,7 +901,9 @@ class Trainer(Trainable):
 
         if self.evaluation_workers is not None:
             # Sync weights to the evaluation WorkerSet.
-            self._sync_weights_to_workers(worker_set=self.evaluation_workers)
+            self.evaluation_workers.sync_weights(
+                from_worker=self.workers.local_worker())
+            #self._sync_weights_to_workers(worker_set=self.evaluation_workers)
             self._sync_filters_if_needed(self.evaluation_workers)
 
         if self.config["custom_eval_function"]:
@@ -1639,10 +1645,12 @@ class Trainer(Trainable):
         if len(healthy_workers) < 1:
             raise RuntimeError(
                 "Not enough healthy workers remain to continue.")
-
-        logger.warning("Recreating execution plan after failure")
         workers.reset(healthy_workers)
-        self.train_exec_impl = self.execution_plan(workers, self.config)
+
+        self.train_exec_impl = None
+        if not self.config.get("_disable_distributed_execution_api"):
+            logger.warning("Recreating execution plan after failure")
+            self.train_exec_impl = self.execution_plan(workers, self.config)
 
     @override(Trainable)
     def _export_model(self, export_formats: List[str],

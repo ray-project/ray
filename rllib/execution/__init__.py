@@ -8,11 +8,16 @@ from ray.rllib.execution.replay_buffer import ReplayBuffer, \
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay, \
     SimpleReplayBuffer, MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
-    ConcatBatches, SelectExperiences, StandardizeFields
+    ConcatBatches, SelectExperiences, StandardizeFields, \
+    synchronous_parallel_sample
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
-    ComputeGradients, ApplyGradients, AverageGradients, UpdateTargetNetwork
+    ComputeGradients, ApplyGradients, AverageGradients, UpdateTargetNetwork, \
+    train_multi_gpu
 
 __all__ = [
+    "synchronous_parallel_sample",
+    "train_multi_gpu",
+
     "ApplyGradients",
     "AsyncGradients",
     "AverageGradients",

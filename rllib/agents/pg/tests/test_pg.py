@@ -14,7 +14,7 @@ from ray.rllib.utils import check, check_compute_single_action, fc, \
 class TestPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -27,7 +27,7 @@ class TestPG(unittest.TestCase):
         config["rollout_fragment_length"] = 500
         num_iterations = 1
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks="tf"):#TODO
             for env in ["FrozenLake-v0", "CartPole-v0"]:
                 trainer = pg.PGTrainer(config=config, env=env)
                 for i in range(num_iterations):

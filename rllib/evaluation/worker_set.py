@@ -126,12 +126,27 @@ class WorkerSet:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
-    def sync_weights(self, policies: Optional[List[PolicyID]] = None) -> None:
-        """Syncs weights from the local worker to all remote workers."""
-        if self.remote_workers():
-            weights = ray.put(self.local_worker().get_weights(policies))
+    def sync_weights(self,
+                     policies: Optional[List[PolicyID]] = None,
+                     from_worker: Optional[RolloutWorker] = None) -> None:
+        """Syncs weights from the local worker to all remote workers.
+
+        Args:
+            policies: Optional list of PolicyIDs to sync weights for.
+                If None (default), sync weights to/from all policies.
+            from_worker: Optional RolloutWorker instance to sync from.
+                If None (default), sync from this WorkerSet's local worker.
+        """
+        if self.remote_workers() or from_worker is not None:
+            weights = ray.put(
+                (from_worker or self.local_worker()).get_weights(policies))
+            # Sync to all remote workers in this WorkerSet.
             for e in self.remote_workers():
                 e.set_weights.remote(weights)
+            # If from_worker is provided, also sync to this WorkerSet's local
+            # worker.
+            if from_worker is not None:
+                self.local_worker().set_weights(weights)
 
     def add_workers(self, num_workers: int) -> None:
         """Creates and adds a number of remote workers to this worker set.
