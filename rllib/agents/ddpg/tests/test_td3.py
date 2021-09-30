@@ -5,7 +5,7 @@ import ray
 import ray.rllib.agents.ddpg.td3 as td3
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 
@@ -30,6 +30,7 @@ class TestTD3(unittest.TestCase):
             num_iterations = 1
             for i in range(num_iterations):
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
             check_compute_single_action(trainer)
             trainer.stop()

@@ -428,7 +428,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server_ = std::make_unique<rpc::GrpcServer>(
-      WorkerTypeString(options_.worker_type), assigned_port);
+      WorkerTypeString(options_.worker_type), assigned_port,
+      options_.node_ip_address == "127.0.0.1");
   core_worker_server_->RegisterService(grpc_service_);
   core_worker_server_->Run();
 
@@ -2196,6 +2197,14 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
+  // Modify the worker's per function counters.
+  std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  {
+    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+    task_counter_.Add(TaskCounter::kPending, func_name, -1);
+    task_counter_.Add(TaskCounter::kRunning, func_name, 1);
+  }
+
   if (!options_.is_local_mode) {
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId());
@@ -2291,8 +2300,16 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       resource_ids_.reset(new ResourceMappingType());
     }
   }
-  RAY_LOG(INFO) << "Finished executing task " << task_spec.TaskId()
-                << ", status=" << status;
+
+  // Modify the worker's per function counters.
+  {
+    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+    task_counter_.Add(TaskCounter::kRunning, func_name, -1);
+    task_counter_.Add(TaskCounter::kFinished, func_name, 1);
+  }
+
+  RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
+                 << ", status=" << status;
   if (status.IsCreationTaskError()) {
     Exit(rpc::WorkerExitType::CREATION_TASK_ERROR, creation_task_exception_pb_bytes);
   } else if (status.IsIntentionalSystemExit()) {
@@ -2459,8 +2476,15 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
     return;
   }
 
-  // Increment the task_queue_length
+  // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
+  std::string func_name =
+      FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
+          ->CallString();
+  {
+    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+    task_counter_.Add(TaskCounter::kPending, func_name, 1);
+  }
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
@@ -3203,6 +3227,25 @@ const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
 std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_client_; }
 
 bool CoreWorker::IsExiting() const { return exiting_; }
+
+std::unordered_map<std::string, std::vector<uint64_t>> CoreWorker::GetActorCallStats()
+    const {
+  absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+  std::unordered_map<std::string, std::vector<uint64_t>> total_counts;
+
+  for (const auto &count : task_counter_.pending_tasks_counter_map_) {
+    total_counts[count.first].resize(3, 0);
+    total_counts[count.first][0] = count.second;
+  }
+  for (const auto &count : task_counter_.running_tasks_counter_map_) {
+    total_counts[count.first][1] = count.second;
+  }
+  for (const auto &count : task_counter_.finished_tasks_counter_map_) {
+    total_counts[count.first][2] = count.second;
+  }
+
+  return total_counts;
+}
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<ActorID> actor_ids;
