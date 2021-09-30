@@ -1,37 +1,37 @@
 """
-XGBoost-Ray with Modin
+XGBoost-Ray with Dask
 ======================
 
 This notebook includes an example workflow using
 `XGBoost-Ray <https://docs.ray.io/en/latest/xgboost-ray.html>`_ and
-`Modin <https://modin.readthedocs.io/en/latest/>`_ for distributed model
-training and prediction.
+`Dask <https://docs.dask.org/en/latest/>`_ for distributed model training,
+hyperparameter optimization, and prediction.
 """
 
 ###############################################################################
 # Cluster Setup
 # -------------
 #
-# First, we'll set up our Ray Cluster. The provided ``modin_xgboost.yaml``
+# First, we'll set up our Ray Cluster. The provided ``dask_xgboost.yaml``
 # cluster config can be used to set up an AWS cluster with 64 CPUs.
 #
 # The following steps assume you are in a directory with both
-# ``modin_xgboost.yaml`` and this file saved as ``modin_xgboost.ipynb``.
+# ``dask_xgboost.yaml`` and this file saved as ``dask_xgboost.ipynb``.
 #
 # **Step 1:** Bring up the Ray cluster.
 #
 # .. code-block:: bash
 #
 #     $ pip install ray boto3
-#     $ ray up modin_xgboost.yaml
+#     $ ray up dask_xgboost.yaml
 #
-# **Step 2:** Move ``modin_xgboost.ipynb`` to the cluster and start Jupyter.
+# **Step 2:** Move ``dask_xgboost.ipynb`` to the cluster and start Jupyter.
 #
 # .. code-block:: bash
 #
-#     $ ray rsync_up modin_xgboost.yaml "./modin_xgboost.ipynb" \
-#       "~/modin_xgboost.ipynb"
-#     $ ray exec modin_xgboost.yaml --port-forward=9999 "jupyter notebook \
+#     $ ray rsync_up dask_xgboost.yaml "./dask_xgboost.ipynb" \
+#       "~/dask_xgboost.ipynb"
+#     $ ray exec dask_xgboost.yaml --port-forward=9999 "jupyter notebook \
 #       --port=9999"
 #
 # You can then access this notebook at the URL that is output:
@@ -48,11 +48,13 @@ training and prediction.
 import argparse
 import time
 
-import modin.pandas as pd
-from modin.experimental.sklearn.model_selection import train_test_split
+import dask
+import dask.dataframe as dd
 from xgboost_ray import RayDMatrix, RayParams, train, predict
 
 import ray
+from ray import tune
+from ray.util.dask import ray_dask_get
 
 ###############################################################################
 #
@@ -75,7 +77,7 @@ parser.add_argument(
 parser.add_argument(
     "--cpus-per-actor",
     type=int,
-    default=8,
+    default=6,
     help="The number of CPUs per actor for training.")
 parser.add_argument(
     "--num-actors-inference",
@@ -114,34 +116,43 @@ ray.init(address=address)
 # repository <https://archive.ics.uci.edu/ml/datasets/HIGGS>`_. The HIGGS
 # dataset consists of 11,000,000 samples and 28 attributes, which is large
 # enough size to show the benefits of distributed computation.
+#
+# We set the Dask scheduler to ``ray_dask_get`` to use `Dask on Ray
+# <https://docs.ray.io/en/latest/data/dask-on-ray.html>`_ backend.
 
 LABEL_COLUMN = "label"
 if smoke_test:
     # Test dataset with only 10,000 records.
     FILE_URL = "https://ray-ci-higgs.s3.us-west-2.amazonaws.com/simpleHIGGS" \
-                ".csv"
+               ".csv"
 else:
     # Full dataset. This may take a couple of minutes to load.
     FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases" \
-                "/00280/HIGGS.csv.gz"
-
+               "/00280/HIGGS.csv.gz"
 colnames = [LABEL_COLUMN] + ["feature-%02d" % i for i in range(1, 29)]
+dask.config.set(scheduler=ray_dask_get)
 
 ###############################################################################
 
 load_data_start_time = time.time()
 
-df = pd.read_csv(FILE_URL, names=colnames)
+data = dd.read_csv(FILE_URL, names=colnames)
+data = data[sorted(colnames)]
+data = data.persist()
 
 load_data_end_time = time.time()
 load_data_duration = load_data_end_time - load_data_start_time
 print(f"Dataset loaded in {load_data_duration} seconds.")
 
 ###############################################################################
-# Split data into training and validation.
+# With the connection established, we can now create the Dask dataframe.
+#
+# We will split the data into a training set and a evaluation set using a 80-20
+# proportion.
 
-df_train, df_validation = train_test_split(df)
-print(df_train, df_validation)
+train_df, eval_df = data.random_split([0.8, 0.2])
+train_df, eval_df = train_df.persist(), eval_df.persist()
+print(train_df, eval_df)
 
 ###############################################################################
 # Distributed Training
@@ -179,8 +190,6 @@ def train_xgboost(config, train_df, test_df, target_column, ray_params):
         dtrain=train_set,
         evals=[(test_set, "eval")],
         evals_result=evals_result,
-        verbose_eval=False,
-        num_boost_round=100,
         ray_params=ray_params)
 
     train_end_time = time.time()
@@ -196,8 +205,11 @@ def train_xgboost(config, train_df, test_df, target_column, ray_params):
 
 
 ###############################################################################
-# We can now pass our Modin dataframes and run the function. We will use
+# We can now pass our Dask dataframes and run the function. We will use
 # ``RayParams`` to specify that the number of actors and CPUs to train with.
+#
+# The dataset has to be downloaded onto the cluster, which may take a few
+# minutes.
 
 # standard XGBoost config for classification
 config = {
@@ -207,9 +219,83 @@ config = {
 }
 
 bst, evals_result = train_xgboost(
-    config, df_train, df_validation, LABEL_COLUMN,
+    config, train_df, eval_df, LABEL_COLUMN,
     RayParams(cpus_per_actor=cpus_per_actor, num_actors=num_actors))
 print(f"Results: {evals_result}")
+
+###############################################################################
+# Hyperparameter optimization
+# If we are not content with the results obtained with default XGBoost
+# parameters, we can use `Ray Tune
+# <https://docs.ray.io/en/latest/tune/index.html>`_ for cutting-edge
+# distributed hyperparameter tuning. XGBoost-Ray automatically integrates
+# with Ray Tune, meaning we can use the same training function as before.
+#
+# In this workflow, we will tune three hyperparameters - ``eta``, ``subsample``
+# and ``max_depth``. We are using `Tune's samplers to define the search
+# space <https://docs.ray.io/en/latest/tune/user-guide.html#search-space-grid-random>`_.
+#
+# The experiment configuration is done through ``tune.run``. We set the amount
+# of resources each trial (hyperparameter combination) requires by using the
+# ``get_tune_resources`` method of ``RayParams``. The ``num_samples`` argument
+# controls how many trials will be ran in total. In the end, the best
+# combination of hyperparameters evaluated during the experiment will be
+# returned.
+#
+# By default, Tune will use simple random search. However, Tune also
+# provides various `search algorithms
+# <https://docs.ray.io/en/latest/tune/api_docs/suggestion.html>`_ and
+# `schedulers <https://docs.ray.io/en/latest/tune/api_docs/schedulers.html>`_
+# to further improve the optimization process.
+
+
+def tune_xgboost(train_df, test_df, target_column):
+    # Set XGBoost config.
+    config = {
+        "tree_method": "approx",
+        "objective": "binary:logistic",
+        "eval_metric": ["logloss", "error"],
+        "eta": tune.loguniform(1e-4, 1e-1),
+        "subsample": tune.uniform(0.5, 1.0),
+        "max_depth": tune.randint(1, 9)
+    }
+
+    ray_params = RayParams(
+        max_actor_restarts=1,
+        cpus_per_actor=cpus_per_actor,
+        num_actors=num_actors)
+
+    tune_start_time = time.time()
+
+    analysis = tune.run(
+        tune.with_parameters(
+            train_xgboost,
+            train_df=train_df,
+            test_df=test_df,
+            target_column=target_column,
+            ray_params=ray_params),
+        # Use the `get_tune_resources` helper function to set the resources.
+        resources_per_trial=ray_params.get_tune_resources(),
+        config=config,
+        num_samples=10,
+        metric="eval-error",
+        mode="min")
+
+    tune_end_time = time.time()
+    tune_duration = tune_end_time - tune_start_time
+    print(f"Total time taken: {tune_duration} seconds.")
+
+    accuracy = 1. - analysis.best_result["eval-error"]
+    print(f"Best model parameters: {analysis.best_config}")
+    print(f"Best model total accuracy: {accuracy:.4f}")
+
+    return analysis.best_config
+
+
+###############################################################################
+# Hyperparameter optimization may take some time to complete.
+
+tune_xgboost(train_df, eval_df, LABEL_COLUMN)
 
 ###############################################################################
 # Prediction
@@ -221,7 +307,7 @@ print(f"Results: {evals_result}")
 # Since prediction is naively parallelizable, distributing it over multiple
 # actors can measurably reduce the amount of time needed.
 
-inference_df = RayDMatrix(df, ignore=[LABEL_COLUMN, "partition"])
+inference_df = RayDMatrix(data, ignore=[LABEL_COLUMN, "partition"])
 results = predict(
     bst,
     inference_df,

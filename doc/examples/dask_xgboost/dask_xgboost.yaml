@@ -1,4 +1,4 @@
-cluster_name: modin_xgboost
+cluster_name: dask_xgboost
 
 max_workers: 3
 
@@ -21,4 +21,4 @@ available_node_types:
 head_node_type: 16_cpu_node
 
 setup_commands:
-    - pip install -U jupyter ray xgboost_ray[default] modin pandas
+    - pip install -U jupyter ray[tune] xgboost_ray[default] dask pandas
