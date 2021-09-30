@@ -232,26 +232,20 @@ class Policy(metaclass=ABCMeta):
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward
             if info is not None:
                 input_dict[SampleBatch.INFOS] = info
-            # Batch everything in input_dict to B=1.
-            input_dict = tree.map_structure(
-                lambda s: (s.unsqueeze(0) if
-                           torch and isinstance(s, torch.Tensor) else
-                           np.expand_dims(s, 0)),
-                input_dict)
+
         # Batch all data in input dict.
-        else:
-            input_dict = tree.map_structure_with_path(
-                lambda p, s: (s if p == "seq_lens" else s.unsqueeze(0) if
-                              torch and isinstance(s, torch.Tensor) else
-                              np.expand_dims(s, 0)),
-                input_dict)
+        input_dict = tree.map_structure_with_path(
+            lambda p, s: (s if p == "seq_lens" else s.unsqueeze(0) if
+                          torch and isinstance(s, torch.Tensor) else
+                          np.expand_dims(s, 0)),
+            input_dict)
 
         episodes = None
         if episode is not None:
             episodes = [episode]
 
         out = self.compute_actions_from_input_dict(
-            input_dict=input_dict,
+            input_dict=SampleBatch(input_dict),
             episodes=episodes,
             explore=explore,
             timestep=timestep,

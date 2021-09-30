@@ -1130,6 +1130,7 @@ class Trainer(Trainable):
         else:
             action, state, extra = policy.compute_single_action(
                 obs=observation,
+                state=state,
                 prev_action=prev_action,
                 prev_reward=prev_reward,
                 info=info,

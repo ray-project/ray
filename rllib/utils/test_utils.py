@@ -348,30 +348,32 @@ def check_compute_single_action(trainer,
             if state_in:
                 for i, s in enumerate(state_in):
                     input_dict[f"state_in_{i}"] = s
-            input_dict = tree.map_structure(lambda s: np.expand_dims(s, 0),
-                                            input_dict)
+            input_dict_batched = SampleBatch(
+                tree.map_structure(lambda s: np.expand_dims(s, 0), input_dict))
             action = pol.compute_actions_from_input_dict(
-                input_dict=input_dict,
+                input_dict=input_dict_batched,
                 explore=explore,
                 timestep=timestep,
                 **call_kwargs)
             # Unbatch everything to be able to compare against single
             # action below.
+            # ARS and ES return action batches as lists.
+            if isinstance(action[0], list):
+                action = (np.array(action[0]), action[1], action[2])
             action = tree.map_structure(lambda s: s[0], action)
 
-            input_dict = {SampleBatch.OBS: obs}
-            if include_prev_action_reward:
-                input_dict[SampleBatch.PREV_ACTIONS] = action_in
-                input_dict[SampleBatch.PREV_REWARDS] = reward_in
-            action2 = pol.compute_single_action(
-                input_dict=input_dict,
-                explore=explore,
-                timestep=timestep,
-                **call_kwargs)
-            # Make sure these are the same, unless we have exploration
-            # switched on.
-            if not explore:
-                check(action, action2)
+            try:
+                action2 = pol.compute_single_action(
+                    input_dict=input_dict,
+                    explore=explore,
+                    timestep=timestep,
+                    **call_kwargs)
+                # Make sure these are the same, unless we have exploration
+                # switched on.
+                if not explore:
+                    check(action, action2)
+            except TypeError:
+                pass
         else:
             action = what.compute_single_action(
                 obs,
