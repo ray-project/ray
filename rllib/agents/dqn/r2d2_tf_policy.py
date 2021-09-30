@@ -156,7 +156,7 @@ def r2d2_loss(policy: Policy, model, _,
         def reduce_mean_valid(t):
             return tf.reduce_mean(tf.boolean_mask(t, seq_mask))
 
-        # Make sure use the correct time indices:
+        # Make sure to use the correct time indices:
         # Q(t) - [gamma * r + Q^(t+1)]
         q_selected = tf.reshape(q_selected, [B, T])[:, :-1]
         td_error = q_selected - tf.stop_gradient(
@@ -164,7 +164,9 @@ def r2d2_loss(policy: Policy, model, _,
         td_error = td_error * tf.cast(seq_mask, tf.float32)
         weights = tf.reshape(weights, [B, T])[:, :-1]
         policy._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
-        policy._td_error = tf.reshape(td_error, [-1])
+        # Store the TD-error per time chunk (b/c we need only one mean
+        # prioritized replay weight per stored sequence).
+        policy._td_error = tf.reduce_mean(td_error, axis=-1)
         policy._loss_stats = {
             "mean_q": reduce_mean_valid(q_selected),
             "min_q": tf.reduce_min(q_selected),

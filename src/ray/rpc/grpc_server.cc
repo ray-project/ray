@@ -35,10 +35,12 @@ DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads,
+GrpcServer::GrpcServer(std::string name, const uint32_t port,
+                       bool listen_to_localhost_only, int num_threads,
                        int64_t keepalive_time_ms)
     : name_(std::move(name)),
       port_(port),
+      listen_to_localhost_only_(listen_to_localhost_only),
       is_closed_(true),
       num_threads_(num_threads),
       keepalive_time_ms_(keepalive_time_ms) {
@@ -47,7 +49,8 @@ GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads,
 
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
-  std::string server_address("0.0.0.0:" + std::to_string(port_));
+  std::string server_address((listen_to_localhost_only_ ? "127.0.0.1:" : "0.0.0.0:") +
+                             std::to_string(port_));
   grpc::ServerBuilder builder;
   // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and
