@@ -1,9 +1,10 @@
 import copy
+import json
 import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 import yaml
 
 import ray
@@ -20,60 +21,129 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
 
 
-def validate_runtime_env(runtime_env: Dict[str, Any],
-                         is_task_or_actor: bool = False):
-    result = dict()
+def parse_and_validate_working_dir(working_dir: str,
+                                   is_task_or_actor: bool = False) -> str:
+    assert working_dir is not None
 
-    working_dir = runtime_env.get("working_dir")
-    if working_dir is not None:
-        if is_task_or_actor:
-            raise NotImplementedError(
-                "Overriding working_dir for tasks and actors isn't supported. "
-                "Please use ray.init(runtime_env={'working_dir': ...}) "
-                "to configure the environment per-job instead.")
-        if not isinstance(working_dir, str):
-            raise TypeError("`working_dir` must be a string, got "
-                            f"{type(working_dir)}.")
-        working_dir_path = Path(working_dir)
-        if not working_dir_path.is_dir():
-            raise ValueError(
-                f"working_dir {working_dir} is not a valid directory.")
-        result["working_dir"] = working_dir
+    if is_task_or_actor:
+        raise NotImplementedError(
+            "Overriding working_dir for tasks and actors isn't supported. "
+            "Please use ray.init(runtime_env={'working_dir': ...}) "
+            "to configure the environment per-job instead.")
+    elif not isinstance(working_dir, str):
+        raise TypeError("`working_dir` must be a string, got "
+                        f"{type(working_dir)}.")
+    elif not Path(working_dir).is_dir():
+        raise ValueError(
+            f"working_dir {working_dir} is not a valid directory.")
 
-    conda = runtime_env.get("conda")
-    if conda is not None:
-        if sys.platform == "win32":
-            raise NotImplementedError("The 'conda' field in runtime_env "
-                                      "is not currently supported on "
-                                      "Windows.")
+    return working_dir
 
-        if isinstance(conda, str):
-            yaml_file = Path(conda)
-            if yaml_file.suffix in (".yaml", ".yml"):
-                if not yaml_file.is_file():
-                    raise ValueError(
-                        f"Can't find conda YAML file {yaml_file}.")
-                try:
-                    result["conda"] = yaml.safe_load(yaml_file.read_text())
-                except Exception as e:
-                    raise ValueError(
-                        f"Failed to read conda file {yaml_file}: {e}.")
-            else:
-                # Assume it's a pre-existing conda environment name.
-                result["conda"] = conda
-        elif isinstance(conda, dict):
-            result["conda"] = conda
-        elif conda is not None:
-            raise TypeError("runtime_env['conda'] must be of type str or "
-                            f"dict, got {type(conda)}.")
 
-    pip = runtime_env.get("pip")
-    if pip is not None:
-        if sys.platform == "win32":
-            raise NotImplementedError("The 'pip' field in runtime_env "
-                                      "is not currently supported on "
-                                      "Windows.")
-        if runtime_env.get("conda") is not None:
+def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
+    assert conda is not None
+
+    result = None
+    if sys.platform == "win32":
+        raise NotImplementedError("The 'conda' field in runtime_env "
+                                  "is not currently supported on "
+                                  "Windows.")
+    elif isinstance(conda, str):
+        yaml_file = Path(conda)
+        if yaml_file.suffix in (".yaml", ".yml"):
+            if not yaml_file.is_file():
+                raise ValueError(f"Can't find conda YAML file {yaml_file}.")
+            try:
+                result = yaml.safe_load(yaml_file.read_text())
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to read conda file {yaml_file}: {e}.")
+        else:
+            # Assume it's a pre-existing conda environment name.
+            result = conda
+    elif isinstance(conda, dict):
+        result = conda
+    else:
+        raise TypeError("runtime_env['conda'] must be of type str or "
+                        f"dict, got {type(conda)}.")
+
+    return result
+
+
+def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[str]:
+    assert pip is not None
+
+    result = None
+    if sys.platform == "win32":
+        raise NotImplementedError("The 'pip' field in runtime_env "
+                                  "is not currently supported on "
+                                  "Windows.")
+    elif isinstance(pip, str):
+        # We have been given a path to a requirements.txt file.
+        pip_file = Path(pip)
+        if not pip_file.is_file():
+            raise ValueError(f"{pip_file} is not a valid file")
+        result = pip_file.read_text()
+    elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
+        if len(pip) == 0:
+            result = None
+        else:
+            # Construct valid pip requirements.txt from list of packages.
+            result = "\n".join(pip) + "\n"
+    else:
+        raise TypeError("runtime_env['pip'] must be of type str or "
+                        f"List[str], got {type(pip)}")
+
+    return result
+
+
+def parse_and_validate_uris(uris: List[str]) -> List[str]:
+    assert uris is not None
+    return uris
+
+
+def parse_and_validate_container(container: List[str]) -> List[str]:
+    assert container is not None
+    return container
+
+
+def parse_and_validate_env_vars(
+        env_vars: Dict[str, str]) -> Optional[Dict[str, str]]:
+    assert env_vars is not None
+    if len(env_vars) == 0:
+        return None
+
+    if not (isinstance(env_vars, dict) and all(
+            isinstance(k, str) and isinstance(v, str)
+            for (k, v) in env_vars.items())):
+        raise TypeError("runtime_env['env_vars'] must be of type "
+                        "Dict[str, str]")
+
+    return env_vars
+
+
+OPTION_TO_VALIDATION_FN = {
+    "working_dir": parse_and_validate_working_dir,
+    "conda": parse_and_validate_conda,
+    "pip": parse_and_validate_pip,
+    "uris": parse_and_validate_uris,
+    "env_vars": parse_and_validate_env_vars,
+    "container": parse_and_validate_container,
+}
+
+
+class ParsedRuntimeEnv(dict):
+    def __init__(self,
+                 runtime_env: Dict[str, Any],
+                 is_task_or_actor: bool = False,
+                 validate: bool = True):
+        super().__init__()
+
+        if not validate:
+            self.update(runtime_env)
+            return
+
+        if runtime_env.get("conda") and runtime_env.get("pip"):
             raise ValueError(
                 "The 'pip' field and 'conda' field of "
                 "runtime_env cannot both be specified.\n"
@@ -86,64 +156,45 @@ def validate_runtime_env(runtime_env: Dict[str, Any],
                 "user-guide/tasks/manage-environments.html"
                 "#create-env-file-manually")
 
-        if isinstance(pip, str):
-            # We have been given a path to a requirements.txt file.
-            pip_file = Path(pip)
-            if not pip_file.is_file():
-                raise ValueError(f"{pip_file} is not a valid file")
-            result["pip"] = pip_file.read_text()
-        elif isinstance(pip, list) and all(
-                isinstance(dep, str) for dep in pip):
-            # Construct valid pip requirements.txt from list of packages.
-            result["pip"] = "\n".join(pip) + "\n"
+        for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
+            option_val = runtime_env.get(option)
+            if option_val is not None:
+                validated_option_val = validate_fn(option_val)
+                if validated_option_val is not None:
+                    self[option] = validated_option_val
+
+        if "_ray_release" in runtime_env:
+            self["_ray_release"] = runtime_env["_ray_release"]
+
+        if "_ray_commit" in runtime_env:
+            self["_ray_commit"] = runtime_env["_ray_commit"]
         else:
-            raise TypeError("runtime_env['pip'] must be of type str or "
-                            f"List[str], got {type(pip)}")
+            if self.get("pip") or self.get("conda"):
+                self["_ray_commit"] = ray.__commit__
 
-    if "uris" in runtime_env:
-        result["uris"] = runtime_env["uris"]
+        # Used for testing wheels that have not yet been merged into master.
+        # If this is set to True, then we do not inject Ray into the conda
+        # or pip dependencies.
+        if "_inject_current_ray" in runtime_env:
+            self["_inject_current_ray"] = runtime_env["_inject_current_ray"]
+        elif "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
+            self["_inject_current_ray"] = True
 
-    if "container" in runtime_env:
-        result["container"] = runtime_env["container"]
+        # NOTE(architkulkarni): This allows worker caching code in C++ to
+        # check if a runtime env is empty without deserializing it.
+        assert all(val is not None for val in self.values())
 
-    env_vars = runtime_env.get("env_vars")
-    if env_vars is not None:
-        if not (isinstance(env_vars, dict) and all(
-                isinstance(k, str) and isinstance(v, str)
-                for (k, v) in env_vars.items())):
-            raise TypeError("runtime_env['env_vars'] must be of type "
-                            "Dict[str, str]")
+    @classmethod
+    def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
+        return cls(json.loads(serialized), validate=False)
 
-        if len(env_vars) > 0:
-            result["env_vars"] = env_vars
-
-    if "_ray_release" in runtime_env:
-        result["_ray_release"] = runtime_env["_ray_release"]
-
-    if "_ray_commit" in runtime_env:
-        result["_ray_commit"] = runtime_env["_ray_commit"]
-    else:
-        if result.get("pip") or result.get("conda"):
-            result["_ray_commit"] = ray.__commit__
-
-    # Used for testing wheels that have not yet been merged into master.
-    # If this is set to True, then we do not inject Ray into the conda
-    # or pip dependencies.
-    if "_inject_current_ray" in runtime_env:
-        result["_inject_current_ray"] = runtime_env["_inject_current_ray"]
-    elif "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
-        result["_inject_current_ray"] = True
-
-    # NOTE(architkulkarni): This allows worker caching code in C++ to
-    # check if a runtime env is empty without deserializing it.
-    assert all(val is not None for val in result.values())
-
-    return result
+    def serialize(self) -> str:
+        return json.dumps(self, sort_keys=True)
 
 
 def override_task_or_actor_runtime_env(
-        child_runtime_env: Optional[Dict[str, Any]],
-        parent_runtime_env: Dict[str, Any]) -> Dict[str, Any]:
+        child_runtime_env: ParsedRuntimeEnv,
+        parent_runtime_env: ParsedRuntimeEnv) -> ParsedRuntimeEnv:
     """Merge the given new runtime env with the current runtime env.
 
     If running in a driver, the current runtime env comes from the

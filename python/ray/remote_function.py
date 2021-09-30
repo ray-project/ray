@@ -1,6 +1,5 @@
 from functools import wraps
 import inspect
-import json
 import logging
 import uuid
 
@@ -16,7 +15,7 @@ from ray.util.placement_group import (
 )
 import ray._private.signature
 from ray._private.runtime_env import (override_task_or_actor_runtime_env,
-                                      validate_runtime_env)
+                                      ParsedRuntimeEnv)
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
 
@@ -292,13 +291,12 @@ class RemoteFunction:
 
         # Validate user-passed runtime_env and translate it to an internal
         # runtime_env (e.g., read local 'requirements.txt' file).
-        runtime_env = runtime_env or self._runtime_env or {}
-        internal_runtime_env = validate_runtime_env(
-            runtime_env, is_task_or_actor=True)
+        parsed_runtime_env = ParsedRuntimeEnv(
+            runtime_env or self._runtime_env or {}, is_task_or_actor=True)
 
-        parent_runtime_env = worker.core_worker.get_current_runtime_env_dict()
-        internal_runtime_env = override_task_or_actor_runtime_env(
-            internal_runtime_env, parent_runtime_env)
+        parent_runtime_env = worker.core_worker.get_current_runtime_env()
+        parsed_runtime_env = override_task_or_actor_runtime_env(
+            parsed_runtime_env, parent_runtime_env)
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
@@ -332,8 +330,8 @@ class RemoteFunction:
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,
                 worker.debugger_breakpoint,
-                json.dumps(internal_runtime_env, sort_keys=True),
-                internal_runtime_env.get("uris") or [],
+                parsed_runtime_env.serialize(),
+                parsed_runtime_env.get("uris") or [],
                 override_environment_variables=override_environment_variables
                 or dict())
             # Reset worker's debug context from the last "remote" command

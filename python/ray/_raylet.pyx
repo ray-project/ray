@@ -9,15 +9,16 @@ from cpython.exc cimport PyErr_CheckSignals
 import asyncio
 import gc
 import inspect
-import threading
-import traceback
-import time
 import logging
+import msgpack
 import os
 import pickle
-import sys
-import _thread
 import setproctitle
+import sys
+import threading
+import time
+import traceback
+import _thread
 
 from libc.stdint cimport (
     int32_t,
@@ -99,13 +100,6 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
-import ray._private.gcs_utils as gcs_utils
-from ray import external_storage
-from ray._private.async_compat import (
-    sync_to_async, get_new_event_loop)
-import ray._private.memory_monitor as memory_monitor
-import ray.ray_constants as ray_constants
-import ray._private.profiling as profiling
 from ray.exceptions import (
     RayActorError,
     RayError,
@@ -116,11 +110,15 @@ from ray.exceptions import (
     TaskCancelledError,
     AsyncioActorExit,
 )
+from ray import external_storage
+import ray.ray_constants as ray_constants
+from ray._private.async_compat import sync_to_async, get_new_event_loop
+from ray._private.client_mode_hook import disable_client_hook
+import ray._private.gcs_utils as gcs_utils
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
+import ray._private.memory_monitor as memory_monitor
+import ray._private.profiling as profiling
 from ray._private.utils import decode
-from ray._private.client_mode_hook import (
-    disable_client_hook,
-)
-import msgpack
 
 cimport cpython
 
@@ -1860,18 +1858,19 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
-    def get_current_runtime_env_dict(self):
+    def get_current_runtime_env(self) -> ParsedRuntimeEnv:
         # This should never change, so we can safely cache it to avoid ser/de
-        if self.current_runtime_env_dict is None:
+        if self.current_runtime_env is None:
             if self.is_driver:
-                self.current_runtime_env_dict = json.loads(
-                    self.get_job_config().runtime_env.serialized_runtime_env)
+                job_config = self.get_job_config()
+                serialized_env = job_config.runtime_env.serialized_runtime_env
             else:
-                self.current_runtime_env_dict = json.loads(
-                    CCoreWorkerProcess.GetCoreWorker()
-                    .GetWorkerContext()
-                    .GetCurrentSerializedRuntimeEnv()
-                )
+                context = CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                serialized_env = context.GetCurrentSerializedRuntimeEnv()
+
+            self.current_runtime_env = ParsedRuntimeEnv.deserialize(
+                    serialized_env)
+
         return self.current_runtime_env_dict
 
     def is_exiting(self):
