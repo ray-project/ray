@@ -64,6 +64,7 @@ The main change you will have to make is how you define your training logic. In 
 PyTorch
 ~~~~~~~
 In v1, the training logic is defined through the ``train_epoch`` and ``train_batch`` methods of a ``TrainingOperator`` class which is passed into the ``TorchTrainer``. To migrate to Ray SGD v2, there are 2 options:
+
 1. If you felt the ``TrainingOperator`` is too unnecessary and complex, or you had to customize it extensively, you can define your own training function.
 2. If you liked having your training logic in the ``TrainingOperator``, you can continue to use the ``TrainingOperator`` with Ray SGD v2.
 
