@@ -14,6 +14,7 @@ genrule(
         "redis-cli",
     ],
     cmd = """
+        unset CC LDFLAGS CXX CXXFLAGS
         tmpdir="redis.tmp"
         p=$(location Makefile)
         cp -p -L -R -- "$${p%/*}" "$${tmpdir}"

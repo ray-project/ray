@@ -26,7 +26,7 @@ from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
-    TrainerConfigDict
+    TensorStructType, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import MultiAgentEpisode  # noqa
@@ -246,23 +246,24 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def compute_actions(
             self,
-            obs_batch: Union[List[TensorType], TensorType],
+            obs_batch: Union[List[TensorStructType], TensorStructType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Union[List[TensorType], TensorType] = None,
-            prev_reward_batch: Union[List[TensorType], TensorType] = None,
+            prev_action_batch: Union[List[TensorStructType],
+                                     TensorStructType] = None,
+            prev_reward_batch: Union[List[TensorStructType],
+                                     TensorStructType] = None,
             info_batch: Optional[Dict[str, list]] = None,
             episodes: Optional[List["MultiAgentEpisode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
-            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+            Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
 
         with torch.no_grad():
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
-            input_dict = self._lazy_tensor_dict(
-                SampleBatch({
-                    SampleBatch.CUR_OBS: np.asarray(obs_batch),
-                }))
+            input_dict = self._lazy_tensor_dict({
+                SampleBatch.CUR_OBS: obs_batch
+            })
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
                     np.asarray(prev_action_batch)
@@ -405,13 +406,13 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def compute_log_likelihoods(
             self,
-            actions: Union[List[TensorType], TensorType],
-            obs_batch: Union[List[TensorType], TensorType],
+            actions: Union[List[TensorStructType], TensorStructType],
+            obs_batch: Union[List[TensorStructType], TensorStructType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
+            prev_action_batch: Optional[Union[List[TensorStructType],
+                                              TensorStructType]] = None,
+            prev_reward_batch: Optional[Union[List[TensorStructType],
+                                              TensorStructType]] = None,
             actions_normalized: bool = True,
     ) -> TensorType:
 

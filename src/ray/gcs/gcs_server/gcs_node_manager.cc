@@ -84,11 +84,15 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
 void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
                                           rpc::GetAllNodeInfoReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  // Here the unsafe allocate is safe here, because entry.second's life cycle is longer
+  // then reply.
+  // The request will be sent when call send_reply_callback and after that, reply will
+  // not be used any more. But entry is still valid.
   for (const auto &entry : alive_nodes_) {
-    reply->add_node_info_list()->CopyFrom(*entry.second);
+    reply->mutable_node_info_list()->UnsafeArenaAddAllocated(entry.second.get());
   }
   for (const auto &entry : dead_nodes_) {
-    reply->add_node_info_list()->CopyFrom(*entry.second);
+    reply->mutable_node_info_list()->UnsafeArenaAddAllocated(entry.second.get());
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
@@ -155,7 +159,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
                     << " has been marked dead because the detector"
                     << " has missed too many heartbeats from it. This can happen when a "
                        "raylet crashes unexpectedly or has lagging heartbeats.";
-      RAY_LOG(INFO) << "Publish RemoveNode, msg=" << error_message.str();
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
       RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)

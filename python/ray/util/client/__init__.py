@@ -5,13 +5,14 @@ from ray._private.client_mode_hook import (_explicitly_disable_client_mode,
 import os
 import sys
 import logging
-import json
 import threading
+import grpc
+
 logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-08-26"
+CURRENT_PROTOCOL_VERSION = "2021-09-22"
 
 
 class _ClientContext:
@@ -32,6 +33,7 @@ class _ClientContext:
                 namespace: str = None,
                 *,
                 ignore_version: bool = False,
+                _credentials: Optional[grpc.ChannelCredentials] = None,
                 ray_init_kwargs: Optional[Dict[str, Any]] = None
                 ) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
@@ -54,7 +56,7 @@ class _ClientContext:
             if self._connected_with_init:
                 return
             raise Exception(
-                "ray.connect() called, but ray client is already connected")
+                "ray.init() called, but ray client is already connected")
         if not self._inside_client_test:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
@@ -63,7 +65,7 @@ class _ClientContext:
             job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
         if job_config is not None:
-            runtime_env = json.loads(job_config.get_serialized_runtime_env())
+            runtime_env = job_config.runtime_env
             if runtime_env.get("pip") or runtime_env.get("conda"):
                 logger.warning("The 'pip' or 'conda' field was specified in "
                                "the runtime env, so it may take some time to "
@@ -72,6 +74,7 @@ class _ClientContext:
             self.client_worker = Worker(
                 conn_str,
                 secure=secure,
+                _credentials=_credentials,
                 metadata=metadata,
                 connection_retries=connection_retries)
             self.api.worker = self.client_worker
@@ -145,7 +148,7 @@ class _ClientContext:
             return lambda: False
         else:
             raise Exception("Ray Client is not connected. "
-                            "Please connect by calling `ray.connect`.")
+                            "Please connect by calling `ray.init`.")
 
     def is_connected(self) -> bool:
         if self.client_worker is None:

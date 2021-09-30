@@ -159,6 +159,7 @@ struct ObjectStatsCollectorTest : public Test {
     ray::ObjectInfo info;
     info.object_id = id;
     info.data_size = data_size;
+    info.metadata_size = 0;
     return info;
   }
 

@@ -77,6 +77,7 @@ cdef class BaseID:
 cdef class ObjectRef(BaseID):
     cdef:
         CObjectID data
+        c_string owner_addr
         # Flag indicating whether or not this object ref was added to the set
         # of active IDs in the core worker so we know whether we should clean
         # it up.
@@ -85,12 +86,26 @@ cdef class ObjectRef(BaseID):
 
     cdef CObjectID native(self)
 
+cdef class ClientObjectRef(ObjectRef):
+    cdef object _mutex
+    cdef object _id_future
+
+    cdef _set_id(self, id)
+    cdef inline _wait_for_id(self, timeout=None)
+
 cdef class ActorID(BaseID):
     cdef CActorID data
 
     cdef CActorID native(self)
 
     cdef size_t hash(self)
+
+cdef class ClientActorRef(ActorID):
+    cdef object _mutex
+    cdef object _id_future
+
+    cdef _set_id(self, id)
+    cdef inline _wait_for_id(self, timeout=None)
 
 cdef class CoreWorker:
     cdef:

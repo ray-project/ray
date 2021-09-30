@@ -64,7 +64,9 @@ class RuntimeEnvDict:
                 {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
     """
 
-    def __init__(self, runtime_env_json: dict):
+    def __init__(self,
+                 runtime_env_json: dict,
+                 working_dir: Optional[str] = None):
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if
         # unspecified. However, if all values are None this is set to {}.
@@ -78,7 +80,7 @@ class RuntimeEnvDict:
             working_dir = Path(self._dict["working_dir"]).absolute()
         else:
             self._dict["working_dir"] = None
-            working_dir = None
+            working_dir = Path(working_dir).absolute() if working_dir else None
 
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
@@ -112,13 +114,14 @@ class RuntimeEnvDict:
                                 "dict")
 
         self._dict["pip"] = None
-        if "pip" in runtime_env_json:
+        pip = runtime_env_json.get("pip")
+        if pip is not None:
             if sys.platform == "win32":
                 raise NotImplementedError("The 'pip' field in runtime_env "
                                           "is not currently supported on "
                                           "Windows.")
-            if ("conda" in runtime_env_json
-                    and runtime_env_json["conda"] is not None):
+            conda = runtime_env_json.get("conda")
+            if runtime_env_json.get("conda") is not None:
                 raise ValueError(
                     "The 'pip' field and 'conda' field of "
                     "runtime_env cannot both be specified.\n"
@@ -130,7 +133,6 @@ class RuntimeEnvDict:
                     "https://conda.io/projects/conda/en/latest/"
                     "user-guide/tasks/manage-environments.html"
                     "#create-env-file-manually")
-            pip = runtime_env_json["pip"]
             if isinstance(pip, str):
                 # We have been given a path to a requirements.txt file.
                 pip_file = Path(pip)
@@ -154,8 +156,8 @@ class RuntimeEnvDict:
             self._dict["container"] = runtime_env_json["container"]
 
         self._dict["env_vars"] = None
-        if "env_vars" in runtime_env_json:
-            env_vars = runtime_env_json["env_vars"]
+        env_vars = runtime_env_json.get("env_vars")
+        if env_vars is not None:
             self._dict["env_vars"] = env_vars
             if not (isinstance(env_vars, dict) and all(
                     isinstance(k, str) and isinstance(v, str)
@@ -213,13 +215,13 @@ def override_task_or_actor_runtime_env(
                 "Overriding working_dir for actors is not supported. "
                 "Please use ray.init(runtime_env={'working_dir': ...}) "
                 "to configure per-job environment instead.")
-        # NOTE(edoakes): this is sort of hacky, but we manually add the right
+        # NOTE(edoakes): this is sort of hacky, but we pass in the parent
         # working_dir here so the relative path to a requirements.txt file
         # works. The right solution would be to merge the runtime_env with the
         # parent runtime env before validation.
-        if parent_runtime_env.get("working_dir"):
-            runtime_env["working_dir"] = parent_runtime_env["working_dir"]
-        runtime_env_dict = RuntimeEnvDict(runtime_env).get_parsed_dict()
+        runtime_env_dict = RuntimeEnvDict(
+            runtime_env, working_dir=parent_runtime_env.get(
+                "working_dir")).get_parsed_dict()
     else:
         runtime_env_dict = {}
 

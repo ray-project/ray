@@ -13,7 +13,6 @@ except ImportError:
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
-from ray.data.impl.tensor_block import TensorBlockBuilder
 
 if TYPE_CHECKING:
     import pandas
@@ -42,7 +41,17 @@ class ArrowRow:
         return self.as_pydict().items()
 
     def __getitem__(self, key: str) -> Any:
-        return self._row[key][0].as_py()
+        col = self._row[key]
+        if len(col) == 0:
+            return None
+        item = col[0]
+        try:
+            # Try to interpret this as a pyarrow.Scalar value.
+            return item.as_py()
+        except AttributeError:
+            # Assume that this row is an element of an extension array, and
+            # that it is bypassing pyarrow's scalar model.
+            return item
 
     def __eq__(self, other: Any) -> bool:
         return self.as_pydict() == other
@@ -68,8 +77,6 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
                     self._builder = SimpleBlockBuilder()
-            elif isinstance(item, np.ndarray):
-                self._builder = TensorBlockBuilder()
             else:
                 self._builder = SimpleBlockBuilder()
         self._builder.add(item)
@@ -135,6 +142,11 @@ class ArrowBlockAccessor(BlockAccessor):
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._table = table
 
+    @classmethod
+    def from_bytes(cls, data: bytes):
+        reader = pyarrow.ipc.open_stream(data)
+        return cls(reader.read_all())
+
     def iter_rows(self) -> Iterator[ArrowRow]:
         outer = self
 
@@ -173,8 +185,21 @@ class ArrowBlockAccessor(BlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table.to_pandas()
 
-    def to_numpy(self) -> np.ndarray:
-        return np.array(self._table)
+    def to_numpy(self, column: str = None) -> np.ndarray:
+        if not column:
+            raise ValueError(
+                "`column` must be specified when calling .to_numpy() "
+                "on Arrow blocks.")
+        if column not in self._table.column_names:
+            raise ValueError(
+                "Cannot find column {}, available columns: {}".format(
+                    column, self._table.column_names))
+        array = self._table[column]
+        if array.num_chunks > 1:
+            # TODO(ekl) combine fails since we can't concat ArrowTensorType?
+            array = array.combine_chunks()
+        assert array.num_chunks == 1, array
+        return self._table[column].chunk(0).to_numpy()
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table
@@ -184,6 +209,30 @@ class ArrowBlockAccessor(BlockAccessor):
 
     def size_bytes(self) -> int:
         return self._table.nbytes
+
+    def zip(self, other: "Block[T]") -> "Block[T]":
+        acc = BlockAccessor.for_block(other)
+        if not isinstance(acc, ArrowBlockAccessor):
+            raise ValueError("Cannot zip {} with block of type {}".format(
+                type(self), type(other)))
+        if acc.num_rows() != self.num_rows():
+            raise ValueError(
+                "Cannot zip self (length {}) with block of length {}".format(
+                    self.num_rows(), acc.num_rows()))
+        r = self.to_arrow()
+        s = acc.to_arrow()
+        for col_name in s.column_names:
+            col = s.column(col_name)
+            # Ensure the column names are unique after zip.
+            if col_name in r.column_names:
+                i = 1
+                new_name = col_name
+                while new_name in r.column_names:
+                    new_name = "{}_{}".format(col_name, i)
+                    i += 1
+                col_name = new_name
+            r = r.append_column(col_name, col)
+        return r
 
     @staticmethod
     def builder() -> ArrowBlockBuilder[T]:
