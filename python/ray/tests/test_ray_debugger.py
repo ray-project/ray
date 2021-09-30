@@ -11,6 +11,7 @@ import pytest
 import ray
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private import services
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
@@ -217,7 +218,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
 
     host, port = session["pdb_address"].split(":")
     if ray_debugger_external:
-        assert host not in ["localhost", "127.0.0.1"], host
+        assert host == services.get_node_ip_address(), host
     else:
         assert host == "localhost", host
 
@@ -267,13 +268,13 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
 
     host1, port1 = session1["pdb_address"].split(":")
     if ray_debugger_external:
-        assert host1 not in ["localhost", "127.0.0.1"], host1
+        assert host1 == services.get_node_ip_address(), host1
     else:
         assert host1 == "localhost", host1
 
     host2, port2 = session2["pdb_address"].split(":")
     if ray_debugger_external:
-        assert host2 not in ["localhost", "127.0.0.1"], host2
+        assert host2 == services.get_node_ip_address(), host2
     else:
         assert host2 == "localhost", host2
 
