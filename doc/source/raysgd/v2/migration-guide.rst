@@ -75,7 +75,7 @@ You can define your own custom training function, and use only the parts from ``
 
 You can see a full example on how to :ref:`port over regular PyTorch DDP code to Ray SGD here <sgd-porting-code>`
 
-**Alternative 2: Continue to use ``TrainingOperator``**
+**Alternative 2: Continue to use TrainingOperator**
 Alternatively, if you liked having the ``TrainingOperator``, you can define a training function that instantiates your `TrainingOperator` and you can call methods directly on the operator object.
 
 So instead of
