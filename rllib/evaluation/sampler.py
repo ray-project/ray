@@ -829,49 +829,50 @@ def _process_observations(
             episode._set_last_info(agent_id, agent_infos)
 
             # Record transition info if applicable.
-            if last_observation is None:
-                sample_collector.add_init_obs(episode, agent_id, env_id,
-                                              policy_id, episode.length - 1,
-                                              filtered_obs)
-            else:
-                # Add actions, rewards, next-obs to collectors.
-                values_dict = {
-                    SampleBatch.T: episode.length - 1,
-                    SampleBatch.ENV_ID: env_id,
-                    SampleBatch.AGENT_INDEX: episode._agent_index(agent_id),
-                    # Action (slot 0) taken at timestep t.
-                    SampleBatch.ACTIONS: episode.last_action_for(agent_id),
-                    # Reward received after taking a at timestep t.
-                    SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
-                    # After taking action=a, did we reach terminal?
-                    SampleBatch.DONES: (False
-                                        if (no_done_at_end
-                                            or (hit_horizon and soft_horizon))
-                                        else agent_done),
-                    # Next observation.
-                    SampleBatch.NEXT_OBS: filtered_obs,
-                }
-                # Add extra-action-fetches to collectors.
-                pol = worker.policy_map[policy_id]
-                for key, value in episode.last_pi_info_for(agent_id).items():
-                    if key in pol.view_requirements:
-                        values_dict[key] = value
-                # Env infos for this agent.
-                if "infos" in pol.view_requirements:
-                    values_dict["infos"] = agent_infos
-                sample_collector.add_action_reward_next_obs(
-                    episode.episode_id, agent_id, env_id, policy_id,
-                    agent_done, values_dict)
+            if agent_infos.get("training_enabled", True):
+                if last_observation is None:
+                    sample_collector.add_init_obs(episode, agent_id, env_id,
+                                                  policy_id, episode.length - 1,
+                                                  filtered_obs)
+                else:
+                    # Add actions, rewards, next-obs to collectors.
+                    values_dict = {
+                        SampleBatch.T: episode.length - 1,
+                        SampleBatch.ENV_ID: env_id,
+                        SampleBatch.AGENT_INDEX: episode._agent_index(agent_id),
+                        # Action (slot 0) taken at timestep t.
+                        SampleBatch.ACTIONS: episode.last_action_for(agent_id),
+                        # Reward received after taking a at timestep t.
+                        SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
+                        # After taking action=a, did we reach terminal?
+                        SampleBatch.DONES: (False
+                                            if (no_done_at_end
+                                                or (hit_horizon and soft_horizon))
+                                            else agent_done),
+                        # Next observation.
+                        SampleBatch.NEXT_OBS: filtered_obs,
+                    }
+                    # Add extra-action-fetches to collectors.
+                    pol = worker.policy_map[policy_id]
+                    for key, value in episode.last_pi_info_for(agent_id).items():
+                        if key in pol.view_requirements:
+                            values_dict[key] = value
+                    # Env infos for this agent.
+                    if "infos" in pol.view_requirements:
+                        values_dict["infos"] = agent_infos
+                    sample_collector.add_action_reward_next_obs(
+                        episode.episode_id, agent_id, env_id, policy_id,
+                        agent_done, values_dict)
 
-            if not agent_done:
-                item = PolicyEvalData(
-                    env_id, agent_id, filtered_obs, agent_infos, None
-                    if last_observation is None else
-                    episode.rnn_state_for(agent_id), None
-                    if last_observation is None else
-                    episode.last_action_for(agent_id), rewards[env_id].get(
-                        agent_id, 0.0))
-                to_eval[policy_id].append(item)
+                if not agent_done:
+                    item = PolicyEvalData(
+                        env_id, agent_id, filtered_obs, agent_infos, None
+                        if last_observation is None else
+                        episode.rnn_state_for(agent_id), None
+                        if last_observation is None else
+                        episode.last_action_for(agent_id), rewards[env_id].get(
+                            agent_id, 0.0))
+                    to_eval[policy_id].append(item)
 
         # Invoke the `on_episode_step` callback after the step is logged
         # to the episode.
