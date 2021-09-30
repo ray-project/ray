@@ -259,7 +259,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   std::function<void(const RayTask &)> announce_infeasible_task_;
 
   const int max_resource_shapes_per_load_report_;
-  const bool report_worker_backlog_;
 
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
   /// through queues to cancel tasks, etc.

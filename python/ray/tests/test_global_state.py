@@ -286,10 +286,7 @@ def test_placement_group_load_report(ray_start_cluster):
 
 
 def test_backlog_report(shutdown_only):
-    cluster = ray.init(
-        num_cpus=1, _system_config={
-            "report_worker_backlog": True,
-        })
+    cluster = ray.init(num_cpus=1)
     global_state_accessor = GlobalStateAccessor(
         cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     global_state_accessor.connect()
@@ -333,10 +330,7 @@ def test_backlog_report(shutdown_only):
 
 
 def test_heartbeat_ip(shutdown_only):
-    cluster = ray.init(
-        num_cpus=1, _system_config={
-            "report_worker_backlog": True,
-        })
+    cluster = ray.init(num_cpus=1)
     global_state_accessor = GlobalStateAccessor(
         cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     global_state_accessor.connect()

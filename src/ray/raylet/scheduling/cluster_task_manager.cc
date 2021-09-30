@@ -48,7 +48,6 @@ ClusterTaskManager::ClusterTaskManager(
       announce_infeasible_task_(announce_infeasible_task),
       max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
-      report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
@@ -1073,10 +1072,6 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
 }
 
 void ClusterTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {
-  if (!report_worker_backlog_) {
-    return;
-  }
-
   for (const auto &entry : backlog_tracker_) {
     SetWorkerBacklog(entry.first, worker_id, 0);
   }
@@ -1085,10 +1080,6 @@ void ClusterTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {
 void ClusterTaskManager::SetWorkerBacklog(SchedulingClass scheduling_class,
                                           const WorkerID &worker_id,
                                           int64_t backlog_size) {
-  if (!report_worker_backlog_) {
-    return;
-  }
-
   if (backlog_size == 0) {
     backlog_tracker_[scheduling_class].erase(worker_id);
     if (backlog_tracker_[scheduling_class].empty()) {

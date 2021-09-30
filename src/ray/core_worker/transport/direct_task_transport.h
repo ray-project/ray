@@ -68,8 +68,7 @@ class CoreWorkerDirectTaskSubmitter {
           ::RayConfig::instance().max_tasks_in_flight_per_worker(),
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt,
       uint64_t max_pending_lease_requests_per_scheduling_category =
-          ::RayConfig::instance().max_pending_lease_requests_per_scheduling_category(),
-      bool report_worker_backlog = ::RayConfig::instance().report_worker_backlog())
+          ::RayConfig::instance().max_pending_lease_requests_per_scheduling_category())
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
@@ -83,7 +82,6 @@ class CoreWorkerDirectTaskSubmitter {
         max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         max_pending_lease_requests_per_scheduling_category_(
             max_pending_lease_requests_per_scheduling_category),
-        report_worker_backlog_(report_worker_backlog),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -248,9 +246,6 @@ class CoreWorkerDirectTaskSubmitter {
 
   // Max number of pending lease requests per SchedulingKey.
   const uint64_t max_pending_lease_requests_per_scheduling_category_;
-
-  // Report worker backlog size to the local raylet if it's true.
-  const bool report_worker_backlog_;
 
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
   /// (1) The lease client through which the worker should be returned

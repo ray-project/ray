@@ -424,10 +424,6 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
 
 void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
     const SchedulingKey &scheduling_key) {
-  if (!report_worker_backlog_) {
-    return;
-  }
-
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   int64_t scheduling_key_backlog_size;
   if (scheduling_key_entry.task_queue.size() <

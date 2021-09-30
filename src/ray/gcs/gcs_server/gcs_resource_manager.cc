@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+
 #include "ray/common/ray_config.h"
 #include "ray/stats/stats.h"
 
@@ -233,10 +234,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
             demand.num_infeasible_requests_queued());
-        if (RayConfig::instance().report_worker_backlog()) {
-          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                            demand.backlog_size());
-        }
+        aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                          demand.backlog_size());
       }
 
       batch->add_batch()->CopyFrom(usage.second);
