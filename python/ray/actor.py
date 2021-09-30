@@ -736,7 +736,7 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
 
-        parent_runtime_env = worker.core_worker.get_current_runtime_env_dict()
+        parent_runtime_env = worker.core_worker.get_current_runtime_env()
         parsed_runtime_env = override_task_or_actor_runtime_env(
             runtime_env, parent_runtime_env)
 
