@@ -725,6 +725,10 @@ void ClusterTaskManager::FillResourceUsage(
     if (it != tasks_to_dispatch_.end()) {
       count += it->second.size();
     }
+    it = infeasible_tasks_.find(one_cpu_scheduling_cls);
+    if (it != infeasible_tasks_.end()) {
+      count += it->second.size();
+    }
 
     if (count > 0) {
       auto by_shape_entry = resource_load_by_shape->Add();
