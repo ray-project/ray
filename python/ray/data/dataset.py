@@ -1359,7 +1359,23 @@ class Dataset(Generic[T]):
         return raydp.spark.ray_dataset_to_spark_dataframe(
             spark, self.schema(), self.get_blocks(), locations)
 
-    def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
+    def to_pandas(self) -> List["pandas.DataFrame"]:
+        """Convert this dataset into a list of Pandas dataframes.
+
+        This is only supported for datasets convertible to Arrow records.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Returns:
+            A list of Pandas dataframes created from this dataset.
+        """
+
+        return ray.get(self.to_pandas_refs())
+
+    @DeveloperAPI
+    def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1399,7 +1415,23 @@ class Dataset(Generic[T]):
             for block in self._blocks
         ]
 
-    def to_arrow(self) -> List[ObjectRef["pyarrow.Table"]]:
+    def to_arrow(self) -> List["pyarrow.Table"]:
+        """Convert this dataset into a list of Arrow tables.
+
+        This is only supported for datasets convertible to Arrow records.
+        This function is zero-copy if the existing data is already in Arrow
+        format. Otherwise, the data will be converted to Arrow format.
+
+        Time complexity: O(1) unless conversion is required.
+
+        Returns:
+            A list of Arrow tables created from this dataset.
+        """
+
+        return ray.get(self.to_arrow_refs())
+
+    @DeveloperAPI
+    def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
 
         This is only supported for datasets convertible to Arrow records.

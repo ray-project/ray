@@ -830,7 +830,16 @@ def test_repartition_arrow(ray_start_regular_shared):
 def test_from_pandas(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds = ray.data.from_pandas([df1, df2])
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+
+def test_from_pandas_refs(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
@@ -850,7 +859,18 @@ def test_from_numpy(ray_start_regular_shared):
 def test_from_arrow(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_arrow([
+    ds = ray.data.from_arrow(
+        [pa.Table.from_pandas(df1),
+         pa.Table.from_pandas(df2)])
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+
+def test_from_arrow_refs(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_arrow_refs([
         ray.put(pa.Table.from_pandas(df1)),
         ray.put(pa.Table.from_pandas(df2))
     ])
@@ -863,7 +883,15 @@ def test_to_pandas(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.data.range_arrow(n)
-    dfds = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
+    dfds = pd.concat(ds.to_pandas(), ignore_index=True)
+    assert df.equals(dfds)
+
+
+def test_to_pandas_refs(ray_start_regular_shared):
+    n = 5
+    df = pd.DataFrame({"value": list(range(n))})
+    ds = ray.data.range_arrow(n)
+    dfds = pd.concat(ray.get(ds.to_pandas_refs()), ignore_index=True)
     assert df.equals(dfds)
 
 
@@ -890,15 +918,33 @@ def test_to_arrow(ray_start_regular_shared):
     # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.data.range_arrow(n)
+    dfds = pd.concat([t.to_pandas() for t in ds.to_arrow()], ignore_index=True)
+    assert df.equals(dfds)
+
+    # Conversion.
+    df = pd.DataFrame({0: list(range(n))})
+    ds = ray.data.range(n)
+    dfds = pd.concat([t.to_pandas() for t in ds.to_arrow()], ignore_index=True)
+    assert df.equals(dfds)
+
+
+def test_to_arrow_refs(ray_start_regular_shared):
+    n = 5
+
+    # Zero-copy.
+    df = pd.DataFrame({"value": list(range(n))})
+    ds = ray.data.range_arrow(n)
     dfds = pd.concat(
-        [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
+        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
+        ignore_index=True)
     assert df.equals(dfds)
 
     # Conversion.
     df = pd.DataFrame({0: list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(
-        [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
+        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
+        ignore_index=True)
     assert df.equals(dfds)
 
 
@@ -915,8 +961,8 @@ def test_get_blocks(ray_start_regular_shared):
 def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
-    dfds = pd.concat(ray.get(ds.to_pandas()))
+    ds = ray.data.from_pandas([df1, df2])
+    dfds = pd.concat(ds.to_pandas())
     assert pd.concat([df1, df2]).equals(dfds)
 
 
