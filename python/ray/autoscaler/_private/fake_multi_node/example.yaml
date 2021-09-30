@@ -1,0 +1,45 @@
+# Example command to start a cluster with this config:
+# RAY_OVERRIDE_NODE_ID_FOR_TESTING=fffffffffffffffffffffffffffffffffffffffffffffffffff00000 \
+#    ray start --autoscaling-config=example.yaml --head --block
+cluster_name: fake_multinode
+max_workers: 4
+provider:
+    type: fake_multinode
+    use_node_id_as_ip: True
+    disable_node_updaters: True
+available_node_types:
+    ray.head.default:
+        resources: {}  # Auto-detected.
+        node_config: {}
+        max_workers: 1
+    ray.worker.cpu:
+        resources:
+            CPU: 1
+            object_store_memory: 1000000000
+        node_config: {}
+        min_workers: 2
+        max_workers: 4
+    ray.worker.gpu:
+        resources:
+            CPU: 8
+            GPU: 1
+            object_store_memory: 1000000000
+        node_config: {}
+        min_workers: 0
+        max_workers: 4
+head_node_type: ray.head.default
+auth: {}
+upscaling_speed: 1.0
+idle_timeout_minutes: 0.5
+docker: {}
+initialization_commands: []
+setup_commands: []
+head_setup_commands: []
+worker_setup_commands: []
+head_start_ray_commands: []
+worker_start_ray_commands: []
+file_mounts: {}
+cluster_synced_files: []
+file_mounts_sync_continuously: false
+rsync_exclude: []
+rsync_filter: []
