@@ -17,9 +17,11 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 
 from ray.tests.conftest import *  # noqa
+from ray.data.dataset import Dataset
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
+from ray.data.impl.block_list import BlockList
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
@@ -140,6 +142,102 @@ def test_callable_classes(shutdown_only):
     assert len(task_reuse) == 9, task_reuse
     actor_reuse = ds.filter(StatefulFn, compute="actors").take()
     assert len(actor_reuse) == 10, actor_reuse
+
+
+def test_transform_failure(shutdown_only):
+    ray.init(num_cpus=2)
+    ds = ray.data.from_items([0, 10], parallelism=2)
+
+    def mapper(x):
+        time.sleep(x)
+        assert False
+        return x
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ds.map(mapper)
+
+
+@pytest.mark.parametrize(
+    "block_sizes,num_splits",
+    [
+        (  # Test baseline.
+            [3, 6, 3], 3),
+        (  # Already balanced.
+            [3, 3, 3], 3),
+        (  # Row truncation.
+            [3, 6, 4], 3),
+        (  # Row truncation, smaller number of blocks.
+            [3, 6, 2, 3], 3),
+        (  # Row truncation, larger number of blocks.
+            [5, 6, 2, 5], 5),
+        (  # All smaller but one.
+            [1, 1, 1, 1, 6], 5),
+        (  # All larger but one.
+            [4, 4, 4, 4, 1], 5),
+        (  # Single block.
+            [2], 2),
+        (  # Single split.
+            [2, 5], 1),
+    ])
+def test_equal_split_balanced(ray_start_regular_shared, block_sizes,
+                              num_splits):
+    _test_equal_split_balanced(block_sizes, num_splits)
+
+
+def _test_equal_split_balanced(block_sizes, num_splits):
+    blocks = []
+    metadata = []
+    total_rows = 0
+    for block_size in block_sizes:
+        block = list(range(total_rows, total_rows + block_size))
+        blocks.append(ray.put(block))
+        metadata.append(BlockAccessor.for_block(block).get_metadata(None))
+        total_rows += block_size
+    block_list = BlockList(blocks, metadata)
+    ds = Dataset(block_list)
+
+    splits = ds.split(num_splits, equal=True)
+    split_counts = [split.count() for split in splits]
+    assert len(split_counts) == num_splits
+    expected_block_size = total_rows // num_splits
+    # Check that all splits are the expected size.
+    assert all([count == expected_block_size for count in split_counts])
+    expected_total_rows = sum(split_counts)
+    # Check that the expected number of rows were dropped.
+    assert total_rows - expected_total_rows == total_rows % num_splits
+    # Check that all rows are unique (content check).
+    split_rows = [row for split in splits for row in split.take(total_rows)]
+    assert len(set(split_rows)) == len(split_rows)
+
+
+def test_equal_split_balanced_grid(ray_start_regular_shared):
+
+    # Tests balanced equal splitting over a grid of configurations.
+    # Grid: num_blocks x num_splits x num_rows_block_1 x ... x num_rows_block_n
+    seed = int(time.time())
+    print(f"Seeding RNG for test_equal_split_balanced_grid with: {seed}")
+    random.seed(seed)
+    max_num_splits = 20
+    num_splits_samples = 5
+    max_num_blocks = 50
+    max_num_rows_per_block = 100
+    num_blocks_samples = 5
+    block_sizes_samples = 5
+    for num_splits in np.random.randint(
+            2, max_num_splits + 1, size=num_splits_samples):
+        for num_blocks in np.random.randint(
+                1, max_num_blocks + 1, size=num_blocks_samples):
+            block_sizes_list = [
+                np.random.randint(
+                    1, max_num_rows_per_block + 1, size=num_blocks)
+                for _ in range(block_sizes_samples)
+            ]
+            for block_sizes in block_sizes_list:
+                if sum(block_sizes) < num_splits:
+                    min_ = math.ceil(num_splits / num_blocks)
+                    block_sizes = np.random.randint(
+                        min_, max_num_rows_per_block + 1, size=num_blocks)
+                _test_equal_split_balanced(block_sizes, num_splits)
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -718,6 +816,16 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ds.filter(lambda x: x > 1)
     assert str(ds) == \
         "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
+
+    # Test map on empty dataset.
+    ds = ray.data.from_items([])
+    ds = ds.map(lambda x: x)
+    assert ds.count() == 0
+
+    # Test filter on empty dataset.
+    ds = ray.data.from_items([])
+    ds = ds.filter(lambda: True)
+    assert ds.count() == 0
 
 
 def test_schema(ray_start_regular_shared):
@@ -2354,6 +2462,12 @@ def test_sort_simple(ray_start_regular_shared):
     assert ds.sort(key=lambda x: -x).take(num_items) == list(
         reversed(range(num_items)))
 
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    s1 = ds.sort()
+    assert s1.count() == 0
+    assert s1 == ds
+
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_random_shuffle(shutdown_only, pipelined):
@@ -2404,6 +2518,12 @@ def test_random_shuffle(shutdown_only, pipelined):
             ds = ds.map(lambda x: x).take(999)
     r2 = range(100).random_shuffle(_move=True).take(999)
     assert r1 != r2, (r1, r2)
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    r1 = ds.random_shuffle()
+    assert r1.count() == 0
+    assert r1 == ds
 
 
 def test_random_shuffle_spread(ray_start_cluster):
