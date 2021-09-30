@@ -131,5 +131,43 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   ASSERT_LT(now + next, pending_queue.begin()->first);
 }
 
+TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
+  // Test priority works
+  //   Add two pgs
+  //   Fail one and make sure it's scheduled later
+  auto req1 =
+      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+  auto pg1 = std::make_shared<GcsPlacementGroup>(req1, "");
+  auto req2 =
+      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+  auto pg2 = std::make_shared<GcsPlacementGroup>(req2, "");
+  auto cb = [](Status s) {};
+  PGSchedulingFailureCallback failure_callback;
+  PGSchedulingSuccessfulCallback success_callback;
+  StatusCallback put_cb;
+  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _))
+      .Times(2)
+      .WillRepeatedly(DoAll(SaveArg<3>(&put_cb), Return(Status::OK())));
+  EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_, _, _))
+      .Times(2)
+      .WillRepeatedly(
+          DoAll(SaveArg<1>(&failure_callback), SaveArg<2>(&success_callback)));
+  gcs_placement_group_manager_->RegisterPlacementGroup(pg1, cb);
+  gcs_placement_group_manager_->RegisterPlacementGroup(pg2, cb);
+  auto &pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
+  ASSERT_EQ(2, pending_queue.size());
+  put_cb(Status::OK());
+  ASSERT_EQ(1, pending_queue.size());
+  // PG1 is scheduled first, so PG2 is in pending queue
+  ASSERT_EQ(pg2, pending_queue.begin()->second.second);
+  failure_callback(pg1, true);
+  ASSERT_EQ(2, pending_queue.size());
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  // PG2 is scheduled for the next, so PG1 is in pending queue
+  ASSERT_EQ(1, pending_queue.size());
+  ASSERT_EQ(pg1, pending_queue.begin()->second.second);
+}
+
+
 }  // namespace gcs
 }  // namespace ray

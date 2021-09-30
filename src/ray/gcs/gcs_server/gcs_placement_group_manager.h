@@ -390,6 +390,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);
+  FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder);
 };
 
 }  // namespace gcs
