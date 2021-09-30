@@ -276,6 +276,7 @@ Ray tasks. By allocating an additional CPU bundle to the trial, those tasks will
 to run without being starved of resources.
 
 .. code-block:: python
+
     import modin.pandas as pd
 
     def train_fn(config, checkpoint_dir=None):
@@ -285,10 +286,8 @@ to run without being starved of resources.
     tune.run(
         train_fn,
         resources_per_trial=tune.PlacementGroupFactory([
-            # first bundle will be used by the trainable itself
-            {"CPU": 1},
-            # second bundle will be used by Modin
-            {"CPU": 1},
+            {"CPU": 1},  # this bundle will be used by the trainable itself
+            {"CPU": 1},  # this bundle will be used by Modin
         ], strategy="PACK")
 
 How can I pass further parameter values to my trainable?
