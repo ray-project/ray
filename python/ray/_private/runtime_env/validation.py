@@ -23,6 +23,12 @@ GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
 
 def parse_and_validate_working_dir(working_dir: str,
                                    is_task_or_actor: bool = False) -> str:
+    """Parses and validates a user-provided 'working_dir' option.
+
+    The working_dir may not be specified per-task or per-actor.
+
+    Otherwise, it should be a valid path to a local directory.
+    """
     assert working_dir is not None
 
     if is_task_or_actor:
@@ -41,6 +47,15 @@ def parse_and_validate_working_dir(working_dir: str,
 
 
 def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
+    """Parses and validates a user-provided 'conda' option.
+
+    Conda can be one of three cases:
+        1) A dictionary describing the env. This is passed through directly.
+        2) A string referring to a preinstalled conda env.
+        3) A string pointing to a local conda YAML file. This is detected
+           by looking for a '.yaml' or '.yml' suffix. In this case, the file
+           will be read as YAML and passed through as a dictionary.
+    """
     assert conda is not None
 
     result = None
@@ -71,6 +86,14 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 
 
 def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[str]:
+    """Parses and validates a user-provided 'pip' option.
+
+    Conda can be one of two cases:
+        1) A List[str] describing the requirements. This is joined into a
+          string to be used as a requirements.txt file.
+        2) A string pointing to a local requirements file. In this case, the
+           file contents will be read and passed through.
+    """
     assert pip is not None
 
     result = None
@@ -98,17 +121,31 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[str]:
 
 
 def parse_and_validate_uris(uris: List[str]) -> List[str]:
+    """Parses and validates a user-provided 'uris' option.
+
+    These are passed through without validation (for now).
+    """
     assert uris is not None
     return uris
 
 
 def parse_and_validate_container(container: List[str]) -> List[str]:
+    """Parses and validates a user-provided 'uris' option.
+
+    This is passed through without validation (for now).
+    """
     assert container is not None
     return container
 
 
 def parse_and_validate_env_vars(
         env_vars: Dict[str, str]) -> Optional[Dict[str, str]]:
+    """Parses and validates a user-provided 'env_vars' option.
+
+    This is validated to verify that all keys and vals are strings.
+
+    If an empty dictionary is passed, we return `None` for consistency.
+    """
     assert env_vars is not None
     if len(env_vars) == 0:
         return None
@@ -122,6 +159,8 @@ def parse_and_validate_env_vars(
     return env_vars
 
 
+# Dictionary mapping runtime_env options with the function to parse and
+# validate them.
 OPTION_TO_VALIDATION_FN = {
     "working_dir": parse_and_validate_working_dir,
     "conda": parse_and_validate_conda,
@@ -133,13 +172,22 @@ OPTION_TO_VALIDATION_FN = {
 
 
 class ParsedRuntimeEnv(dict):
+    """An internal wrapper for runtime_env that is parsed and validated.
+
+    This should be constructed from user-provided input (the API runtime_env)
+    and used everywhere that the runtime_env is passed around internally.
+    """
+
     def __init__(self,
                  runtime_env: Dict[str, Any],
                  is_task_or_actor: bool = False,
-                 validate: bool = True):
+                 _validate: bool = True):
         super().__init__()
 
-        if not validate:
+        # Blindly trust that the runtime_env has already been validated.
+        # This is dangerous and should only be used internally (e.g., on the
+        # deserialization codepath.
+        if not _validate:
             self.update(runtime_env)
             return
 
@@ -186,16 +234,17 @@ class ParsedRuntimeEnv(dict):
 
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
-        return cls(json.loads(serialized), validate=False)
+        return cls(json.loads(serialized), _validate=False)
 
     def serialize(self) -> str:
+        # Sort the keys we can compare the serialized string for equality.
         return json.dumps(self, sort_keys=True)
 
 
 def override_task_or_actor_runtime_env(
         child_runtime_env: ParsedRuntimeEnv,
         parent_runtime_env: ParsedRuntimeEnv) -> ParsedRuntimeEnv:
-    """Merge the given new runtime env with the current runtime env.
+    """Merge the given child runtime env with the parent runtime env.
 
     If running in a driver, the current runtime env comes from the
     JobConfig.  Otherwise, we are running in a worker for an actor or

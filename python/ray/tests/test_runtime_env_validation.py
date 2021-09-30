@@ -168,7 +168,8 @@ class TestParsedRuntimeEnv:
             {
                 "pip": ["requests"],
                 "env_vars": {
-                    "hi": "hi"
+                    "hi1": "hi1",
+                    "hi2": "hi2"
                 }
             },
             is_task_or_actor=is_task_or_actor)
@@ -176,7 +177,8 @@ class TestParsedRuntimeEnv:
         env2 = ParsedRuntimeEnv(
             {
                 "env_vars": {
-                    "hi": "hi"
+                    "hi2": "hi2",
+                    "hi1": "hi1"
                 },
                 "pip": ["requests"]
             },
