@@ -347,7 +347,7 @@ def _workflow_step_executor(step_type: StepType, func: Callable,
                     # there is no outer step for the current step. So the
                     # current step is the outer most step for the inner nested
                     # workflow steps.
-                    outer_most_step_id = workflow_context.get_current_step_id()                
+                    outer_most_step_id = workflow_context.get_current_step_id()
             assert volatile_output is None
             # Execute sub-workflow. Pass down "outer_most_step_id".
             with workflow_context.fork_workflow_step_context(
