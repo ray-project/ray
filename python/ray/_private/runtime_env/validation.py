@@ -232,7 +232,7 @@ def parse_pip_str(pip: str):
     pip_file = Path(pip)
     if not pip_file.is_file():
         raise ValueError(f"{pip_file} is not a valid file")
-    return pip_file.read_text()
+    return pip_file.read_text().splitlines()
 
 
 def parse_pip_and_conda(runtime_env):
