@@ -9,7 +9,7 @@ This guide will help you easily migrate existing code from Ray SGD v1 to Ray SGD
 
 For a full list of features that Ray SGD v2 provides, please check out the :ref:`user guide<sgd-user-guide>`.
 
-If there are any issues or anything missing with this guide or any feedback on Ray SGD v2 overall, please file a `Github issue on the Ray repo  <https://github.com/ray-project/ray/issues>`_!
+.. note:: If there are any issues or anything missing with this guide or any feedback on Ray SGD v2 overall, please file a `Github issue on the Ray repo  <https://github.com/ray-project/ray/issues>`_!
 
 What are the API differences?
 -----------------------------
