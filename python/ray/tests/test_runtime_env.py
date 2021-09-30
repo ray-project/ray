@@ -944,13 +944,6 @@ def test_large_file_error(shutdown_only):
 
 
 class TestOverrideTaskOrActorRuntimeEnv:
-    def test_working_dir_in_child_invalid(self):
-        child_env = {"working_dir": "some_dir"}
-        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
-
-        with pytest.raises(NotImplementedError):
-            override_task_or_actor_runtime_env(child_env, parent_env)
-
     def test_uri_inherit(self):
         child_env = {}
         parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
