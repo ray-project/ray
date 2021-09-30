@@ -27,6 +27,12 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/process.h"
 
+#ifdef _WIN32
+typedef int StartupToken;
+#else
+typedef int64_t StartupToken;
+#endif
+
 namespace ray {
 
 namespace raylet {
@@ -48,7 +54,10 @@ class WorkerInterface {
   virtual WorkerID WorkerId() const = 0;
   /// Return the worker process.
   virtual Process GetProcess() const = 0;
+  /// Return the worker process's startup token
+  virtual StartupToken GetStartupToken() const = 0;
   virtual void SetProcess(Process proc) = 0;
+  virtual void SetStartupToken(StartupToken startup_token) = 0;
   /// Return the worker shim process.
   virtual Process GetShimProcess() const = 0;
   virtual void SetShimProcess(Process proc) = 0;
@@ -137,7 +146,10 @@ class Worker : public WorkerInterface {
   WorkerID WorkerId() const;
   /// Return the worker process.
   Process GetProcess() const;
+  /// Return the worker process's startup token
+  StartupToken GetStartupToken() const;
   void SetProcess(Process proc);
+  void SetStartupToken(StartupToken startup_token);
   /// Return this worker shim process.
   Process GetShimProcess() const;
   void SetShimProcess(Process proc);
@@ -219,6 +231,8 @@ class Worker : public WorkerInterface {
   WorkerID worker_id_;
   /// The worker's process.
   Process proc_;
+  /// The worker's process's startup_token
+  StartupToken startup_token_;
   /// The worker's shim process. The shim process PID is the same with worker process PID,
   /// except starting worker process in container.
   Process shim_proc_;

@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -37,6 +38,12 @@
 namespace ray {
 
 namespace raylet {
+
+#ifdef _WIN32
+typedef int StartupToken;
+#else
+typedef int64_t StartupToken;
+#endif
 
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
@@ -211,7 +218,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
-                        pid_t worker_shim_pid,
+                        pid_t worker_shim_pid, StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback);
 
   /// To be invoked when a worker is started. This method should be called when the worker
@@ -475,7 +482,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of this shim processes to the extra information of
     /// the process. The shim process PID is the same with worker process PID, except
     /// starting worker process in container.
-    std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
+    std::unordered_map<StartupToken, std::pair<StartingWorkerProcessInfo, Process>> starting_worker_processes;
     /// A map for looking up the task by the pid of starting worker process.
     std::unordered_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
     /// A map for looking up the task with dynamic options by the pid of
@@ -595,6 +602,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const NodeID node_id_;
   /// Address of the current node.
   const std::string node_address_;
+  StartupToken startup_token_;
   /// The soft limit of the number of registered workers.
   int num_workers_soft_limit_;
   /// The maximum number of worker processes that can be started concurrently.

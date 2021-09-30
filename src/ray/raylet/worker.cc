@@ -62,9 +62,15 @@ WorkerID Worker::WorkerId() const { return worker_id_; }
 
 Process Worker::GetProcess() const { return proc_; }
 
+StartupToken Worker::GetStartupToken() const { return startup_token_; }
+
 void Worker::SetProcess(Process proc) {
   RAY_CHECK(proc_.IsNull());  // this procedure should not be called multiple times
   proc_ = std::move(proc);
+}
+
+void Worker::SetStartupToken(StartupToken startup_token) {
+  startup_token_ = startup_token;
 }
 
 Process Worker::GetShimProcess() const {

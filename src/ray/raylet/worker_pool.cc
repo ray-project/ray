@@ -69,6 +69,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
     : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
+      startup_token_(0),
       num_workers_soft_limit_(num_workers_soft_limit),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
@@ -133,7 +134,7 @@ WorkerPool::~WorkerPool() {
     }
     // Kill all the workers that have been started but not registered.
     for (const auto &starting_worker : entry.second.starting_worker_processes) {
-      procs_to_kill.insert(starting_worker.first);
+      procs_to_kill.insert(starting_worker.second.second);
     }
   }
   for (Process proc : procs_to_kill) {
@@ -197,8 +198,8 @@ Process WorkerPool::StartWorkerProcess(
   // without starting more.
   int starting_workers = 0;
   for (auto &entry : state.starting_worker_processes) {
-    if (entry.second.worker_type == worker_type) {
-      starting_workers += entry.second.num_starting_workers;
+    if (entry.second.first.worker_type == worker_type) {
+      starting_workers += entry.second.first.num_starting_workers;
     }
   }
 
@@ -370,7 +371,8 @@ Process WorkerPool::StartWorkerProcess(
                 << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(
-      proc, StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type});
+      startup_token_, std::make_pair(StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type}, proc));
+  startup_token_ += 1;
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -391,7 +393,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
     auto &state = this->GetStateForLanguage(language);
     // Since this process times out to start, remove it from starting_worker_processes
     // to avoid the zombie worker.
-    auto it = state.starting_worker_processes.find(proc);
+    auto it = state.starting_worker_processes.find(startup_token_);
     if (it != state.starting_worker_processes.end()) {
       RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
                     << ") have not registered to raylet within timeout.";
@@ -426,6 +428,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     for (const auto &arg : worker_command_args) {
       stream << " " << arg;
     }
+    stream << " " << "--startup-token=" << startup_token_;
     RAY_LOG(DEBUG) << stream.str();
   }
 
@@ -435,6 +438,8 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   for (const std::string &arg : worker_command_args) {
     argv.push_back(arg.c_str());
   }
+  const std::string &arg = "--startup-token=" + std::to_string(startup_token_);
+  argv.push_back(arg.c_str());
   argv.push_back(NULL);
 
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
@@ -500,14 +505,14 @@ boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                  pid_t pid, pid_t worker_shim_pid,
+                                  pid_t pid, pid_t worker_shim_pid, StartupToken worker_startup_token,
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
 
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto shim_process = Process::FromPid(worker_shim_pid);
   worker->SetShimProcess(shim_process);
-  if (state.starting_worker_processes.count(shim_process) == 0) {
+  if (state.starting_worker_processes.count(worker_startup_token) == 0) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker shim process:"
                      << shim_process.GetId();
     Status status = Status::Invalid("Unknown worker");
@@ -516,6 +521,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   }
   auto process = Process::FromPid(pid);
   worker->SetProcess(process);
+  worker->SetStartupToken(worker_startup_token);
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
   // should bind on a random port.
@@ -540,12 +546,13 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const auto &shim_process = worker->GetShimProcess();
+  const StartupToken &worker_startup_token = worker->GetStartupToken();
   RAY_CHECK(shim_process.IsValid());
 
-  auto it = state.starting_worker_processes.find(shim_process);
+  auto it = state.starting_worker_processes.find(worker_startup_token);
   if (it != state.starting_worker_processes.end()) {
-    it->second.num_starting_workers--;
-    if (it->second.num_starting_workers == 0) {
+    it->second.first.num_starting_workers--;
+    if (it->second.first.num_starting_workers == 0) {
       state.starting_worker_processes.erase(it);
       // We may have slots to start more workers now.
       TryStartIOWorkers(worker->GetLanguage());
@@ -810,9 +817,10 @@ void WorkerPool::TryKillingIdleWorkers() {
       continue;
     }
     auto shim_process = idle_worker->GetShimProcess();
+    auto worker_startup_token = idle_worker->GetStartupToken();
     auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
 
-    if (worker_state.starting_worker_processes.count(shim_process) > 0) {
+    if (worker_state.starting_worker_processes.count(worker_startup_token) > 0) {
       // A Java worker process may hold multiple workers.
       // Some workers of this process are pending registration. Skip killing this worker.
       continue;
@@ -1077,7 +1085,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec, int64_t bac
   // The number of available workers that can be used for this task spec.
   int num_usable_workers = state.idle.size();
   for (auto &entry : state.starting_worker_processes) {
-    num_usable_workers += entry.second.num_starting_workers;
+    num_usable_workers += entry.second.first.num_starting_workers;
   }
   // Some existing workers may be holding less than 1 CPU each, so we should
   // start as many workers as needed to fill up the remaining CPUs.
@@ -1212,7 +1220,7 @@ void WorkerPool::WarnAboutSize() {
     num_workers_started_or_registered +=
         static_cast<int64_t>(state.registered_workers.size());
     for (const auto &starting_process : state.starting_worker_processes) {
-      num_workers_started_or_registered += starting_process.second.num_starting_workers;
+      num_workers_started_or_registered += starting_process.second.first.num_starting_workers;
     }
     // Don't count IO workers towards the warning message threshold.
     num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;

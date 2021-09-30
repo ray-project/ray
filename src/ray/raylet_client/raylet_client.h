@@ -29,6 +29,12 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
+#ifdef _WIN32
+typedef int StartupToken;
+#else
+typedef int64_t StartupToken;
+#endif
+
 using ray::ActorID;
 using ray::JobID;
 using ray::NodeID;
@@ -233,7 +239,8 @@ class RayletClient : public RayletClientInterface {
                rpc::WorkerType worker_type, const JobID &job_id,
                const int &runtime_env_hash, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::string *serialized_job_config, pid_t worker_shim_pid);
+               int *port, std::string *serialized_job_config, pid_t worker_shim_pid,
+               StartupToken startup_token);
 
   /// Connect to the raylet via grpc only.
   ///
