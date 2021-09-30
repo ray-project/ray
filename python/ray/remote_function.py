@@ -109,6 +109,9 @@ class RemoteFunction:
         self._retry_exceptions = (DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS
                                   if retry_exceptions is None else
                                   retry_exceptions)
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
         self._runtime_env = parse_pip_and_conda(runtime_env)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
@@ -165,6 +168,9 @@ class RemoteFunction:
         """
 
         func_cls = self
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
         new_runtime_env = parse_pip_and_conda(runtime_env)
 
         class FuncWrapper:

@@ -389,6 +389,9 @@ class ActorClass:
             PythonFunctionDescriptor.from_class(
                 modified_class.__ray_actor_class__)
 
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
         new_runtime_env = parse_pip_and_conda(runtime_env)
 
         self.__ray_metadata__ = ActorClassMetadata(
@@ -467,6 +470,9 @@ class ActorClass:
 
         actor_cls = self
 
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
         new_runtime_env = parse_pip_and_conda(runtime_env)
 
         class ActorOptionWrapper:
