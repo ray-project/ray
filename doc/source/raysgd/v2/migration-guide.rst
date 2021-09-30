@@ -5,7 +5,7 @@ Migrating from Ray SGD v1
 
 In Ray 1.7, we are rolling out a new and more streamlined version of Ray SGD. Ray SGD v2 focuses on usability and composability - it has a much simpler API, has support for more deep learning backends, integrates better with other libraries in the Ray ecosystem, and will continue to be actively developed with more features.
 
-This guide will help you easily migrate existing code from Ray SGD v1 to Ray SGD v2. If you are new to Ray SGD as a whole, you should get started with :ref:`Ray SGD v2 directly <sgd-v2-docs>`
+This guide will help you easily migrate existing code from Ray SGD v1 to Ray SGD v2. If you are new to Ray SGD as a whole, you should get started with :ref:`Ray SGD v2 directly <sgd-v2-docs>`.
 
 For a full list of features that Ray SGD v2 provides, please check out the :ref:`user guide<sgd-user-guide>`
 
