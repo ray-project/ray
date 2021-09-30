@@ -824,7 +824,7 @@ def _process_observations(
             episode._set_last_info(agent_id, agent_infos)
 
             # Record transition info if applicable.
-            if agent_infos.get("training_enabled", True):
+            if agent_infos is None or agent_infos.get("training_enabled", True):
                 if last_observation is None:
                     sample_collector.add_init_obs(episode, agent_id, env_id,
                                                   policy_id,
