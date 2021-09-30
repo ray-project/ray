@@ -7,6 +7,7 @@ import numpy as np
 import os
 import time
 import threading
+import tree  # pip install dm_tree
 from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union, \
     TYPE_CHECKING
 
@@ -704,7 +705,7 @@ class TorchPolicy(Policy):
             self._optimizers[0].step()
 
     @DeveloperAPI
-    def get_tower_stats(self, stats_name: str) -> TensorType:
+    def get_tower_stats(self, stats_name: str) -> List[TensorStructType]:
         """Returns list of per-tower stats, copied to this Policy's device.
 
         Args:
@@ -712,12 +713,23 @@ class TorchPolicy(Policy):
                 must exist as a key inside each tower's `tower_stats` dict).
 
         Returns:
-            The list of stats tensors of all towers, copied to this Policy's
-                device.
+            The list of stats tensor (structs) of all towers, copied to this
+                Policy's device.
+
+        Raises:
+            AssertionError: If the `stats_name` cannot be found in any one
+                of the tower's `tower_stats` dicts.
         """
         data = []
         for tower in self.model_gpu_towers:
-            data.append(tower.tower_stats[stats_name].to(self.device))
+            if stats_name in tower.tower_stats:
+                data.append(
+                    tree.map_structure(lambda s: s.to(self.device),
+                                       tower.tower_stats[stats_name]))
+        assert len(data) > 0, \
+            f"Stats `{stats_name}` not found in any of the towers (you have " \
+            f"{len(self.model_gpu_towers)} towers in total)! Make " \
+            "sure you call the loss function on at least one of the towers."
         return data
 
     @override(Policy)
