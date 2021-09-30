@@ -414,8 +414,7 @@ def actor_critic_loss(
     model.tower_stats["td_error"] = td_error * seq_mask
 
     # Return all loss terms corresponding to our optimizers.
-    return tuple([policy.actor_loss] + policy.critic_loss +
-                 [policy.alpha_loss])
+    return tuple([actor_loss] + critic_loss + [alpha_loss])
 
 
 RNNSACTorchPolicy = SACTorchPolicy.with_updates(
