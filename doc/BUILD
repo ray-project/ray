@@ -2,7 +2,8 @@
 # Tests from the doc/examples directory.
 # Please keep these sorted alphabetically, but start with the
 # root directory.
-# --------------------------------------------------------------------py_test(
+# --------------------------------------------------------------------
+py_test(
     name = "modin_xgboost",
     size = "medium",
     main = "examples/modin_xgboost/modin_xgboost.py",
