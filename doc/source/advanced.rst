@@ -468,6 +468,7 @@ Or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using 
    :start-after: __per_task_per_actor_start__
    :end-before: __per_task_per_actor_end__
 
+Note: specifying within the ``@ray.remote()`` decorator is currently unsupported while using Ray Client; please use ``.options()`` instead in this case.
 
 The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
 
