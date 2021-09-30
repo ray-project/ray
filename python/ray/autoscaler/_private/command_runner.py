@@ -860,7 +860,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                     # is called before the first `file_sync` happens
                     self.run_rsync_up(file_mounts[mount], mount)
                 self.ssh_command_runner.run(
-                    "{cmd} cp {src} {container}:{dst}".format(
+                    "rsync -e '{cmd} exec -i' -avz {src} {container}:{dst}".
+                    format(
                         cmd=self.docker_cmd,
                         src=os.path.join(
                             self._get_docker_host_mount_location(
