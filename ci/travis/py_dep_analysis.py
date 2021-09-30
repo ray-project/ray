@@ -21,7 +21,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 
 class DepGraph(object):
@@ -31,11 +31,11 @@ class DepGraph(object):
         self.inv_ids: Dict[int, str] = {}
 
 
-def _run_shell(args: List[str]):
+def _run_shell(args: List[str]) -> str:
     return subprocess.check_output(args).decode(sys.stdout.encoding)
 
 
-def list_rllib_tests(n: int, test: str):
+def list_rllib_tests(n: int = -1, test: str = None) -> Tuple[str, List[str]]:
     """List RLlib tests.
 
     Args:
@@ -98,7 +98,7 @@ def _new_import(graph: DepGraph, src_module: str, dep_module: str):
     _new_dep(graph, src_module, dep_module)
 
 
-def _is_path_module(module: str, name: str, _base_dir: str):
+def _is_path_module(module: str, name: str, _base_dir: str) -> bool:
     """Figure out if base.sub is a python module or not.
     """
     # Special handling for _raylet, which is a C++ lib.
@@ -153,7 +153,7 @@ def _process_file(graph: DepGraph,
                                      alias.name, _base_dir)
 
 
-def build_dep_graph():
+def build_dep_graph() -> DepGraph:
     """Build index from py files to their immediate dependees.
     """
     graph = DepGraph()
@@ -185,7 +185,7 @@ def build_dep_graph():
     return graph
 
 
-def _full_module_path(module, f):
+def _full_module_path(module, f) -> str:
     if f == "__init__.py":
         # __init__ file for this module.
         # Full path is the same as the module name.
@@ -198,7 +198,7 @@ def _full_module_path(module, f):
     return module + "." + fn
 
 
-def _should_skip(d: str):
+def _should_skip(d: str) -> bool:
     """Skip directories that should not contain py sources.
     """
     if d.startswith("python/.eggs/"):
@@ -212,7 +212,7 @@ def _should_skip(d: str):
     return False
 
 
-def _bazel_path_to_module_path(d: str):
+def _bazel_path_to_module_path(d: str) -> str:
     """Convert a Bazel file path to python module path.
 
     Example: //python/ray/rllib:xxx/yyy/dd -> ray.rllib.xxx.yyy.dd
@@ -225,14 +225,15 @@ def _bazel_path_to_module_path(d: str):
     return d.replace("/", ".").replace(":", ".")
 
 
-def _file_path_to_module_path(f: str):
+def _file_path_to_module_path(f: str) -> str:
     """Return the corresponding module path for a .py file.
     """
     dir, fn = os.path.split(f)
     return _full_module_path(_bazel_path_to_module_path(dir), fn)
 
 
-def _depends(graph: DepGraph, visited: Dict[int, bool], tid: int, qid: int):
+def _depends(graph: DepGraph, visited: Dict[int, bool], tid: int,
+             qid: int) -> List[int]:
     """Whether there is a dependency path from module tid to module qid.
 
     Given graph, and without going through visited.
@@ -254,7 +255,7 @@ def _depends(graph: DepGraph, visited: Dict[int, bool], tid: int, qid: int):
     return []
 
 
-def test_depends_on_file(graph: DepGraph, test: str, path: str):
+def test_depends_on_file(graph: DepGraph, test: str, path: str) -> List[int]:
     """Give dependency graph, check if a test depends on a specific .py file.
 
     Args:
@@ -291,7 +292,7 @@ def test_depends_on_file(graph: DepGraph, test: str, path: str):
     return []
 
 
-def _find_circular_dep_impl(graph: DepGraph, id: str, branch: str):
+def _find_circular_dep_impl(graph: DepGraph, id: str, branch: str) -> bool:
     if id not in graph.edges:
         return False
     for c in graph.edges[id]:
@@ -306,7 +307,7 @@ def _find_circular_dep_impl(graph: DepGraph, id: str, branch: str):
     return False
 
 
-def find_circular_dep(graph: DepGraph):
+def find_circular_dep(graph: DepGraph) -> Dict[str, List[int]]:
     """Find circular dependencies among a dependency graph.
     """
     known = {}

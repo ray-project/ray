@@ -3,13 +3,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import json
 import os
+from pprint import pformat
+import py_dep_analysis as pda
 import re
 import subprocess
 import sys
-from pprint import pformat
-import argparse
 
 
 def list_changed_files(commit_range):
@@ -66,8 +67,10 @@ def get_commit_range():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--output", type=str, help="json or envvars", default="envvars")
+    parser.add_argument("--output",
+                        type=str,
+                        help="json or envvars",
+                        default="envvars")
     args = parser.parse_args()
 
     RAY_CI_TUNE_AFFECTED = 0
@@ -93,6 +96,23 @@ if __name__ == "__main__":
         files = list_changed_files(commit_range)
         print(pformat(commit_range), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
+
+        # Dry run py_dep_analysis.py to see which tests we would have run.
+        try:
+            graph = pda.build_dep_graph()
+            rllib_tests = pda.list_rllib_tests()
+            impacted = {}
+            for test in rllib_tests:
+                for file in files:
+                    if pda.test_depends_on_file(graph, test, file):
+                        impacted[test] = True
+            print("RLlib tests impacted:", file=sys.stderr)
+            for test in impacted.keys():
+                print("    ", test, file=sys.stderr)
+        except Exception as e:
+            print("Failed to dry run py_dep_analysis.py", file=sys.stderr)
+            print(e, file=sys.stderr)
+        # End of dry run.
 
         skip_prefix_list = [
             "doc/", "examples/", "dev/", "kubernetes/", "site/"
