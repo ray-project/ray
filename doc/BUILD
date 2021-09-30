@@ -7,10 +7,11 @@ py_test(
     name = "modin-xgboost",
     size = "medium",
     srcs = ["examples/modin_xgboost/modin_xgboost.py"],
-    tags = ["exclusive", "team:ml"]
+    tags = ["exclusive", "team:ml"],
     args = ["--smoke-test", "--address ''", "--num-actors 4",
-            "--cpus-per-actor 1","--num-actors-inference 4",
+            "--cpus-per-actor 1", "--num-actors-inference 4",
              "--cpus-per-actor-inference 1"]
+)
 
 py_test(
     name = "plot_hyperparameter",
