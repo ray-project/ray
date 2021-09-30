@@ -499,6 +499,8 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``"./requirements.txt"``
 
+  Note: Currently when specifying this option per-task or per-actor while using Ray Client, only the ``List[str]`` input format is supported.
+
 - ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the path to a
   `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
   or (3) the name of a local conda environment already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
@@ -512,6 +514,8 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
   - Example: ``"pytorch_p36"``
 
   Note: if specifying the path to an "environment.yml" file, you may provide an absolute path or a relative path.  A relative path will be interpreted relative to ``working_dir`` if ``working_dir`` is specified.
+
+  Note: Currently when specifying this option per-task or per-actor while using Ray Client, only the ``dict`` input format is supported.
 
 - ``env_vars`` (Dict[str, str]): Environment variables to set.
 
