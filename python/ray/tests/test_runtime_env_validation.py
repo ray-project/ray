@@ -329,6 +329,37 @@ class TestOverrideRuntimeEnvs:
             assert override_task_or_actor_runtime_env(
                 child, parent) == expected, f"TEST_INDEX:{idx}"
 
+    def test_uri_inherit(self):
+        child_env = {}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env == {"uris": ["a", "b"]}
+
+        # The dicts passed in should not be mutated.
+        assert child_env == {}
+        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
+
+    def test_uri_override(self):
+        child_env = {"uris": ["c", "d"]}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env["uris"] == ["c", "d"]
+        assert result_env.get("working_dir") is None
+
+        # The dicts passed in should not be mutated.
+        assert child_env == {"uris": ["c", "d"]}
+        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
+
+    def test_no_mutate(self):
+        child_env = {}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env == {"uris": ["a", "b"]}
+
+        # The dicts passed in should not be mutated.
+        assert child_env == {}
+        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
+
 
 if __name__ == "__main__":
     import sys
