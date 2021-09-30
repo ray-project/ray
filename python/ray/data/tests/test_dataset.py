@@ -719,6 +719,16 @@ def test_empty_dataset(ray_start_regular_shared):
     assert str(ds) == \
         "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
 
+    # Test map on empty dataset.
+    ds = ray.data.from_items([])
+    ds = ds.map(lambda x: x)
+    assert ds.count() == 0
+
+    # Test filter on empty dataset.
+    ds = ray.data.from_items([])
+    ds = ds.filter(lambda: True)
+    assert ds.count() == 0
+
 
 def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10)
@@ -2354,6 +2364,12 @@ def test_sort_simple(ray_start_regular_shared):
     assert ds.sort(key=lambda x: -x).take(num_items) == list(
         reversed(range(num_items)))
 
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    s1 = ds.sort()
+    assert s1.count() == 0
+    assert s1 == ds
+
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_random_shuffle(shutdown_only, pipelined):
@@ -2404,6 +2420,12 @@ def test_random_shuffle(shutdown_only, pipelined):
             ds = ds.map(lambda x: x).take(999)
     r2 = range(100).random_shuffle(_move=True).take(999)
     assert r1 != r2, (r1, r2)
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    r1 = ds.random_shuffle()
+    assert r1.count() == 0
+    assert r1 == ds
 
 
 def test_random_shuffle_spread(ray_start_cluster):

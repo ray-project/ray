@@ -428,7 +428,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server_ = std::make_unique<rpc::GrpcServer>(
-      WorkerTypeString(options_.worker_type), assigned_port);
+      WorkerTypeString(options_.worker_type), assigned_port,
+      options_.node_ip_address == "127.0.0.1");
   core_worker_server_->RegisterService(grpc_service_);
   core_worker_server_->Run();
 
@@ -2307,8 +2308,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     task_counter_.Add(TaskCounter::kFinished, func_name, 1);
   }
 
-  RAY_LOG(INFO) << "Finished executing task " << task_spec.TaskId()
-                << ", status=" << status;
+  RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
+                 << ", status=" << status;
   if (status.IsCreationTaskError()) {
     Exit(rpc::WorkerExitType::CREATION_TASK_ERROR, creation_task_exception_pb_bytes);
   } else if (status.IsIntentionalSystemExit()) {

@@ -65,13 +65,15 @@ def test_autoscaler_no_spam():
 import ray
 import time
 
-ray.init(num_cpus=1)
+# Check that there are no false positives with custom resources.
+ray.init(num_cpus=1, resources={"node:x": 1})
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=1, resources={"node:x": 1})
 def f():
     time.sleep(1)
+    print("task done")
 
-ray.get([f.remote() for _ in range(5)])
+ray.get([f.remote() for _ in range(15)])
     """
 
     proc = run_string_as_driver_nonblocking(script)
