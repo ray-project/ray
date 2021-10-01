@@ -148,4 +148,3 @@ class TorchBackend(Backend):
 
 def prepare_torch(*args):
     """P"""
-
