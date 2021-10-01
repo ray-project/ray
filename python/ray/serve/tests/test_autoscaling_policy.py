@@ -1,5 +1,54 @@
-from ray.serve.config import AutoscalingConfig
+import time
+
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.autoscaling_policy import calculate_desired_num_replicas
+from ray.serve.backend_state import ReplicaState
+from ray.serve.config import AutoscalingConfig
+
+import ray
+from ray import serve
+
+
+def test_e2e_basic_scale_up_down(serve_instance):
+    """Send 100 requests and check that we autoscale up, and then back down."""
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "look_back_period_s": 0.2
+        },
+        max_concurrent_queries=1000,
+        version="v1")
+    class A:
+        def __call__(self):
+            # Use blocking call to uncover possible delayed metrics.
+            ray.get(signal.wait.remote())
+
+    # We will send over a lot of queries. This will make sure replicas are
+    # killed quickly during cleanup.
+    A._config.experimental_graceful_shutdown_timeout_s = 1
+
+    A.deploy()
+    handle = A.get_handle()
+    [handle.remote() for _ in range(100)]
+
+    controller = serve_instance._controller
+
+    def get_num_running_replicas():
+        running_replicas = ray.get(
+            controller._all_replica_handles.remote())["A"]
+        return len(running_replicas)
+
+    wait_for_condition(lambda: get_num_running_replicas() >= 2, timeout=30)
+    # Make sure the queue is quickly drained
+    signal.send.remote()
+
+    # As the queue is drained, we should scale back down.
+    wait_for_condition(lambda: get_num_running_replicas() <= 1)
 
 
 class TestCalculateDesiredNumReplicas:
@@ -71,3 +120,9 @@ class TestCalculateDesiredNumReplicas:
             autoscaling_config=config,
             current_num_ongoing_requests=num_ongoing_requests)
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -233,9 +233,17 @@ class RayServeReplica:
                     f"replica={self.replica_tag}"))
 
     def _collect_autoscaling_metrics(self):
-        # TODO(simon): Instead of relying on this counter, we should get the
-        # outstanding actor calls properly from Ray's core worker.
-        return {self.replica_tag: self.num_ongoing_requests}
+        actor_stats = (
+            ray.runtime_context.get_runtime_context()._get_actor_call_stats())
+        method_stat = actor_stats.get("RayServeWrappedReplica.handle_request")
+
+        if method_stat:
+            num_inflight_requests = (
+                method_stat["pending"] + method_stat["running"])
+        else:
+            num_inflight_requests = 0
+
+        return {self.replica_tag: num_inflight_requests}
 
     def get_runner_method(self, request_item: Query) -> Callable:
         method_name = request_item.metadata.call_method
@@ -328,12 +336,6 @@ class RayServeReplica:
 
         self.num_ongoing_requests += 1
         self.num_processing_items.set(self.num_ongoing_requests)
-
-        # Trigger a context switch so we can enqueue more requests in the
-        # meantime. Without this line and if the function is synchronous,
-        # other requests won't even get enqueued as await self.invoke_single
-        # doesn't context switch.
-        await asyncio.sleep(0)
 
         result = await self.invoke_single(request)
         self.num_ongoing_requests -= 1
