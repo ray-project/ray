@@ -672,6 +672,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
         if not options.get("docker_mount_if_possible", False):
+            # NOTE: `--delete` is okay here because the container is the source
+            # of truth.
             self.ssh_command_runner.run(
                 "rsync -e '{} exec -i' -avz --delete {}:{} {}".format(
                     self.docker_cmd, self.container_name,
