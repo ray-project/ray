@@ -501,7 +501,9 @@ def check_train_results(train_results):
     # Make sure we have a default_policy key if we are not in a
     # multi-agent setup.
     if not is_multi_agent:
-        assert DEFAULT_POLICY_ID in learner_info, \
+        # APEX algos sometimes have an empty learner info dict (no metrics
+        # collected yet).
+        assert len(learner_info) == 0 or DEFAULT_POLICY_ID in learner_info, \
             f"'{DEFAULT_POLICY_ID}' not found in " \
             f"train_results['infos']['learner'] ({learner_info})!"
 
