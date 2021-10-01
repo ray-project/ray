@@ -258,7 +258,7 @@ class DatasetPipeline(Generic[T]):
         """Repeat this pipeline a given number or times, or indefinitely.
 
         This operation is only allowed for pipelines of a finite length. An
-        error will be raised for pipelines of unknown length.
+        error will be raised for pipelines of infinite or unknown length.
 
         Args:
             times: The number of times to loop over this pipeline, or None
