@@ -1,6 +1,7 @@
 import json
 import jsonschema
 import os
+import re
 import shutil
 from subprocess import CalledProcessError
 import tempfile
@@ -13,7 +14,7 @@ import copy
 from collections import defaultdict
 from ray.autoscaler._private.commands import get_or_create_head_node
 from jsonschema.exceptions import ValidationError
-from typing import Dict, Callable
+from typing import Dict, Callable, List, Optional
 
 import ray
 from ray.autoscaler._private.util import prepare_config, validate_config
@@ -105,33 +106,45 @@ class MockProcessRunner:
 
             return return_string.encode()
 
-    def assert_has_call(self, ip, pattern=None, exact=None):
+    def assert_has_call(self,
+                        ip: str,
+                        pattern: Optional[str] = None,
+                        exact: Optional[List[str]] = None):
+        """Checks if the given value was called by this process runner.
+
+        NOTE: Either pattern or exact must be specified, not both!
+
+        Args:
+            ip: IP address of the node that the given call was executed on.
+            pattern: RegEx that matches one specific call.
+            exact: List of strings that when joined exactly match one call.
+        """
         with self.lock:
-            assert pattern or exact, \
+            assert bool(pattern) ^ bool(exact), \
                 "Must specify either a pattern or exact match."
-            out = ""
+            debug_output = ""
             if pattern is not None:
                 for cmd in self.command_history():
                     if ip in cmd:
-                        out += cmd
-                        out += "\n"
-                if pattern in out:
-                    return True
+                        debug_output += cmd
+                        debug_output += "\n"
+                    if re.search(pattern, cmd):
+                        return True
                 else:
                     raise Exception(
-                        f"Did not find [{pattern}] in [{out}] for ip={ip}."
-                        f"\n\nFull output: {self.command_history()}")
+                        f"Did not find [{pattern}] in [{debug_output}] for "
+                        f"ip={ip}.\n\nFull output: {self.command_history()}")
             elif exact is not None:
                 exact_cmd = " ".join(exact)
                 for cmd in self.command_history():
                     if ip in cmd:
-                        out += cmd
-                        out += "\n"
+                        debug_output += cmd
+                        debug_output += "\n"
                     if cmd == exact_cmd:
                         return True
                 raise Exception(
-                    f"Did not find [{exact_cmd}] in [{out}] for ip={ip}."
-                    f"\n\nFull output: {self.command_history()}")
+                    f"Did not find [{exact_cmd}] in [{debug_output}] for "
+                    f"ip={ip}.\n\nFull output: {self.command_history()}")
 
     def assert_not_has_call(self, ip, pattern):
         with self.lock:
