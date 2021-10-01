@@ -605,12 +605,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        common_container_copy = \
+            f"rsync -e.*docker exec -i.*{docker_mount_prefix}/~/"
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"{docker_mount_prefix}/~/ray_bootstrap_key.pem mock:")
-        pattern_to_assert = \
-            f"{docker_mount_prefix}/~/ray_bootstrap_config.yaml mock:"
-        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+            pattern=common_container_copy + "ray_bootstrap_config.yaml")
         return config
 
     def testNodeTypeNameChange(self):
@@ -779,12 +780,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        common_container_copy = \
+            f"rsync -e.*podman exec -i.*{docker_mount_prefix}/~/"
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"{docker_mount_prefix}/~/ray_bootstrap_key.pem mock:")
-        pattern_to_assert = \
-            f"{docker_mount_prefix}/~/ray_bootstrap_config.yaml mock:"
-        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+            pattern=common_container_copy + "ray_bootstrap_config.yaml")
 
         for cmd in runner.command_history():
             assert "docker" not in cmd, ("Docker (not podman) found in call: "
@@ -828,12 +830,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        common_container_copy = \
+            f"rsync -e.*docker exec -i.*{docker_mount_prefix}/~/"
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"{docker_mount_prefix}/~/ray_bootstrap_key.pem mock:")
-        pattern_to_assert = \
-            f"{docker_mount_prefix}/~/ray_bootstrap_config.yaml mock:"
-        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+            pattern=common_container_copy + "ray_bootstrap_config.yaml")
 
         # This next section of code ensures that the following order of
         # commands are executed:
@@ -940,12 +943,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        common_container_copy = \
+            f"rsync -e.*docker exec -i.*{docker_mount_prefix}/~/"
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"{docker_mount_prefix}/~/ray_bootstrap_key.pem mock:")
-        pattern_to_assert = \
-            f"{docker_mount_prefix}/~/ray_bootstrap_config.yaml mock:"
-        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+            pattern=common_container_copy + "ray_bootstrap_config.yaml")
 
     def testDockerFileMountsRemoved(self):
         config = copy.deepcopy(SMALL_CLUSTER)
@@ -989,12 +993,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        common_container_copy = \
+            f"rsync -e.*docker exec -i.*{docker_mount_prefix}/~/"
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"{docker_mount_prefix}/~/ray_bootstrap_key.pem mock:")
-        pattern_to_assert = \
-            f"{docker_mount_prefix}/~/ray_bootstrap_config.yaml mock:"
-        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+            pattern=common_container_copy + "ray_bootstrap_config.yaml")
 
     def testRsyncCommandWithDocker(self):
         assert SMALL_CLUSTER["docker"]["container_name"]
