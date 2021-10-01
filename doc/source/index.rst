@@ -338,6 +338,7 @@ Papers
    raysgd/v2/examples.rst
    raysgd/v2/architecture.rst
    raysgd/v2/api.rst
+   raysgd/v2/migration-guide.rst
    RaySGD v1: Distributed Training Wrappers <raysgd/raysgd.rst>
 
 .. toctree::
