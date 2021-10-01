@@ -1340,18 +1340,38 @@ py_test(
 # --------------------------------------------------------------------
 
 sh_test(
-    name = "env/tests/test_local_inference",
+    name = "env/tests/test_local_inference_cartpole",
     tags = ["team:ml", "env"],
     size = "medium",
-    srcs = ["env/tests/test_local_inference.sh"],
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "cartpole"],
     data = glob(["examples/serving/*.py"]),
 )
 
 sh_test(
-    name = "env/tests/test_remote_inference",
+    name = "env/tests/test_remote_inference_cartpole",
     tags = ["team:ml", "env"],
     size = "medium",
-    srcs = ["env/tests/test_remote_inference.sh"],
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["remote", "cartpole"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_local_inference_unity3d",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "unity3d"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_remote_inference_unity3d",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["remote", "unity3d"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1859,14 +1879,14 @@ py_test(
     args = ["TestSupportedMultiAgentOffPolicy"]
 )
 
-# py_test(
-#     name = "tests/test_supported_spaces_pg",
-#     main = "tests/test_supported_spaces.py",
-#     tags = ["team:ml", "tests_dir", "tests_dir_S"],
-#     size = "enormous",
-#     srcs = ["tests/test_supported_spaces.py"],
-#     args = ["TestSupportedSpacesPG"]
-# )
+py_test(
+     name = "tests/test_supported_spaces_pg",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:ml", "tests_dir", "tests_dir_S"],
+     size = "large",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesPG"]
+ )
 
 py_test(
     name = "tests/test_supported_spaces_off_policy",

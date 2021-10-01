@@ -90,23 +90,7 @@ class RuntimeEnvDict:
                                           "Windows.")
             conda = runtime_env_json["conda"]
             if isinstance(conda, str):
-                yaml_file = Path(conda)
-                if yaml_file.suffix in (".yaml", ".yml"):
-                    if working_dir and not yaml_file.is_absolute():
-                        yaml_file = working_dir / yaml_file
-                    if not yaml_file.is_file():
-                        raise ValueError(
-                            f"Can't find conda YAML file {yaml_file}")
-                    try:
-                        self._dict["conda"] = yaml.safe_load(
-                            yaml_file.read_text())
-                    except Exception as e:
-                        raise ValueError(
-                            f"Invalid conda file {yaml_file} with error {e}")
-                else:
-                    logger.info(
-                        f"Using preinstalled conda environment: {conda}")
-                    self._dict["conda"] = conda
+                self._dict["conda"] = conda
             elif isinstance(conda, dict):
                 self._dict["conda"] = conda
             elif conda is not None:
@@ -134,13 +118,7 @@ class RuntimeEnvDict:
                     "user-guide/tasks/manage-environments.html"
                     "#create-env-file-manually")
             if isinstance(pip, str):
-                # We have been given a path to a requirements.txt file.
-                pip_file = Path(pip)
-                if working_dir and not pip_file.is_absolute():
-                    pip_file = working_dir / pip_file
-                if not pip_file.is_file():
-                    raise ValueError(f"{pip_file} is not a valid file")
-                self._dict["pip"] = pip_file.read_text()
+                self._dict["pip"] = pip
             elif isinstance(pip, list) and all(
                     isinstance(dep, str) for dep in pip):
                 # Construct valid pip requirements.txt from list of packages.
@@ -231,3 +209,40 @@ def override_task_or_actor_runtime_env(
         runtime_env_dict["uris"] = parent_runtime_env.get("uris")
 
     return runtime_env_dict
+
+
+def parse_conda_str(conda: str):
+    yaml_file = Path(conda)
+    conda_dict = dict()
+    if yaml_file.suffix in (".yaml", ".yml"):
+        if not yaml_file.is_file():
+            raise ValueError(f"Can't find conda YAML file {yaml_file}")
+        try:
+            conda_dict = yaml.safe_load(yaml_file.read_text())
+        except Exception as e:
+            raise ValueError(f"Invalid conda file {yaml_file} with error {e}")
+        return conda_dict
+    else:
+        logger.info(f"Using preinstalled conda environment: {conda}")
+        return conda
+
+
+def parse_pip_str(pip: str):
+    # We have been given a path to a requirements.txt file.
+    pip_file = Path(pip)
+    if not pip_file.is_file():
+        raise ValueError(f"{pip_file} is not a valid file")
+    return pip_file.read_text().splitlines()
+
+
+def parse_pip_and_conda(runtime_env):
+    if runtime_env is not None:
+        new_runtime_env = runtime_env.copy()
+        if isinstance(new_runtime_env.get("pip"), str):
+            new_runtime_env["pip"] = parse_pip_str(new_runtime_env["pip"])
+        if isinstance(new_runtime_env.get("conda"), str):
+            new_runtime_env["conda"] = parse_conda_str(
+                new_runtime_env["conda"])
+    else:
+        new_runtime_env = None
+    return new_runtime_env

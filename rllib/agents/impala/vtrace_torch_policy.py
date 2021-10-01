@@ -192,7 +192,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
             drop_last=policy.config["vtrace"])
         policy._vf_explained_var = explained_variance(
             torch.reshape(loss.value_targets, [-1]),
-            torch.reshape(values_batched, [-1])),
+            torch.reshape(values_batched, [-1]))
 
     return loss.total_loss
 
@@ -244,7 +244,7 @@ def stats(policy, train_batch):
         "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,
-        "vf_explained_var": policy._vf_explained_var,
+        "vf_explained_var": policy._vf_explained_var
     }
 
 

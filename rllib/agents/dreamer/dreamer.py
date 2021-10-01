@@ -7,11 +7,12 @@ from ray.rllib.agents import with_common_config
 from ray.rllib.agents.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    LEARNER_INFO, _get_shared_metrics
+    _get_shared_metrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.agents.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
