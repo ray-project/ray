@@ -11,7 +11,7 @@ learning shuffle ingestion pipeline using
 In particular, we will show you:
 
 * How to build a shuffle ingestion pipeline that loads, shuffles and feeds data
-  into distributed trainers in few lines of code;
+  into distributed trainers in a few lines of code;
 * How to scale the pipeline from ingesting 100MB data to
   500GB data.
 
