@@ -241,10 +241,10 @@ class DatasetPipeline(Generic[T]):
         ]
 
     def window(self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
-        """Change the windowing of this pipeline.
+        """Change the windowing (blocks per dataset) of this pipeline.
 
         Changes the windowing of this pipeline to the specified size. For
-        example, if the current pipeline has two blocks per datasets, and
+        example, if the current pipeline has two blocks per dataset, and
         `.window(4)` is requested, adjacent datasets will be merged until each
         dataset is 4 blocks. If `.window(1)` was requested the datasets will
         be split into smaller windows.
