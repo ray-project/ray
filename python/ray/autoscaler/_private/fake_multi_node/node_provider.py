@@ -46,7 +46,9 @@ class FakeMultiNodeProvider(NodeProvider):
         return base + str(self._next_node_id).zfill(5)
 
     def non_terminated_nodes(self, tag_filters):
-        return list(self._nodes.keys())
+        nodes = list(self._nodes.keys())
+        print("Non terM", nodes)
+        return nodes
 
     def is_running(self, node_id):
         return node_id in self._nodes
@@ -92,6 +94,8 @@ class FakeMultiNodeProvider(NodeProvider):
         }
 
     def terminate_node(self, node_id):
+        print(self._nodes)
+        print("TERMINATE", node_id)
         node = self._nodes.pop(node_id)["node"]
         node.kill_all_processes(check_alive=False, allow_graceful=True)
 

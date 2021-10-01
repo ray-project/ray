@@ -231,9 +231,8 @@ class StandardAutoscaler:
             self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])
 
-        # TODO(ekl) fix the hash mismatch thing
-        #        if not self.provider.is_readonly():
-        #            self.terminate_nodes_to_enforce_config_constraints(now)
+        if not self.provider.is_readonly():
+            self.terminate_nodes_to_enforce_config_constraints(now)
 
         # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = (
@@ -310,20 +309,23 @@ class StandardAutoscaler:
             should_keep_or_terminate, reason = self._keep_worker_of_node_type(
                 node_id, node_type_counts)
             if should_keep_or_terminate == KeepOrTerminate.terminate:
+                print("DECIDE TO TERMINTAE", node_id)
                 self.schedule_node_termination(node_id, reason, logger.info)
                 continue
             if ((should_keep_or_terminate == KeepOrTerminate.keep
                  or node_id in nodes_not_allowed_to_terminate)
                     and self.launch_config_ok(node_id)):
+                print("DECIDE TO KEEP", node_id)
                 keep_node(node_id)
                 continue
 
+            print("CHECK IDLE ", node_id)
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
                 self.schedule_node_termination(node_id, "idle", logger.info)
-            elif not self.launch_config_ok(node_id):
-                self.schedule_node_termination(node_id, "outdated",
-                                               logger.info)
+#            elif not self.launch_config_ok(node_id):
+#                self.schedule_node_termination(node_id, "outdated",
+#                                               logger.info)
             else:
                 keep_node(node_id)
                 nodes_we_could_terminate.append(node_id)
@@ -628,7 +630,6 @@ class StandardAutoscaler:
 
         Return KeepOrTerminate.decide_later otherwise.
 
-
         Args:
             node_type_counts(Dict[NodeType, int]): The non_terminated node
                 types counted so far.
@@ -654,6 +655,7 @@ class StandardAutoscaler:
                 return (KeepOrTerminate.terminate,
                         f"not in available_node_types: {available_node_types}")
             new_count = node_type_counts[node_type] + 1
+            print("NEW_COUNT", node_type_counts, node_type, new_count, min(min_workers, max_workers))
             if new_count <= min(min_workers, max_workers):
                 return KeepOrTerminate.keep, None
             if new_count > max_workers:
