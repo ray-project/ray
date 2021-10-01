@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, Optional, Set
-from ray._private.runtime_env.plugin import (RAY_PLUGIN_ENV_KEY_PREFIX,
-                                             load_plugins)
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.utils import import_attr
 import yaml
 
 import ray
@@ -75,7 +75,7 @@ class RuntimeEnvDict:
         self._dict = dict()
         self.known_fields: Set[str] = {
             "working_dir", "conda", "pip", "uris", "containers", "env_vars",
-            "_ray_release", "_ray_commit", "_inject_current_ray"
+            "_ray_release", "_ray_commit", "_inject_current_ray", "plugins"
         }
 
         if "working_dir" in runtime_env_json:
@@ -171,31 +171,33 @@ class RuntimeEnvDict:
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support docker
 
-        self._load_and_validate_plugins(runtime_env_json)
+        if "plugins" in runtime_env_json:
+            self._dict["plugins"] = dict()
+            for class_path, plugin_field in runtime_env_json[
+                    "plugins"].items():
+                plugin_class: RuntimeEnvPlugin = import_attr(class_path)
+                if not issubclass(plugin_class, RuntimeEnvPlugin):
+                    # TODO(simon): move the inferface to public once ready.
+                    raise TypeError(
+                        f"{class_path} must be inherit from "
+                        "ray._private.runtime_env.plugin.RuntimeEnvPlugin.")
+                # TODO(simon): implement uri support.
+                _ = plugin_class.validate(runtime_env_json)
+                # Validation passed, add the entry to parsed runtime env.
+                self._dict["plugins"][class_path] = plugin_field
+
         unknown_fields = set(runtime_env_json.keys()) - self.known_fields
         if len(unknown_fields):
             logger.warning(
                 "The following unknown entries in the runtime_env dictionary "
                 f"will be ignored: {unknown_fields}. If you are intended to "
-                "use plugin, make sure to supply environment variable "
-                f"{RAY_PLUGIN_ENV_KEY_PREFIX}*=your.plugin.Class")
+                "use plugin, make sure to nest them in the ``plugins`` field.")
 
         # TODO(architkulkarni) This is to make it easy for the worker caching
         # code in C++ to check if the env is empty without deserializing and
         # parsing it.  We should use a less confusing approach here.
         if all(val is None for val in self._dict.values()):
             self._dict = {}
-
-    def _load_and_validate_plugins(self, runtime_env_dict: dict):
-        for entry_key, plugin_class in load_plugins(
-                runtime_env_dict.keys()).items():
-
-            # TODO(simon): implement uri support.
-            _ = plugin_class.validate(runtime_env_dict)
-
-            # Validation passed, add the entry to parsed runtime env.
-            self._dict[entry_key] = runtime_env_dict[entry_key]
-            self.known_fields.add(entry_key)
 
     def get_parsed_dict(self) -> dict:
         return self._dict

@@ -6,7 +6,7 @@ import logging
 import os
 import time
 from typing import Dict, Set
-from ray._private.runtime_env.plugin import load_plugins
+from ray._private.utils import import_attr
 
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
@@ -100,7 +100,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                         serialized_runtime_env)
 
                 # Run setup function from all the plugins
-                for plugin_class in load_plugins(runtime_env).values():
+                for plugin_class_path in runtime_env.get("plugins", {}).keys():
+                    plugin_class = import_attr(plugin_class_path)
                     # TODO(simon): implement uri support
                     plugin_class.create("uri not implemented", runtime_env,
                                         context)

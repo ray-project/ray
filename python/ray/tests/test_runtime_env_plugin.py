@@ -3,19 +3,19 @@ import tempfile
 
 import pytest
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import (RAY_PLUGIN_ENV_KEY_PREFIX,
-                                             RuntimeEnvPlugin)
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 import ray
 
+MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.MyPlugin"
+
 
 class MyPlugin(RuntimeEnvPlugin):
-    entry_key = "my_test_plugin_key"
-    env_key = "MY_PLUGIN_ENV_KEY"
+    env_key = "MY_PLUGIN_TEST_ENVIRONMENT_KEY"
 
     @staticmethod
     def validate(runtime_env_dict: dict) -> str:
-        value = runtime_env_dict[MyPlugin.entry_key]
+        value = runtime_env_dict["plugins"][MY_PLUGIN_CLASS_PATH]
         if value == "fail":
             raise ValueError("not allowed")
         return value
@@ -23,7 +23,7 @@ class MyPlugin(RuntimeEnvPlugin):
     @staticmethod
     def modify_context(uri: str, runtime_env_dict: dict,
                        ctx: RuntimeEnvContext) -> None:
-        plugin_config_dict = runtime_env_dict[MyPlugin.entry_key]
+        plugin_config_dict = runtime_env_dict["plugins"][MY_PLUGIN_CLASS_PATH]
         ctx.env_vars[MyPlugin.env_key] = str(plugin_config_dict["env_value"])
         ctx.command_prefix.append(
             f"echo {plugin_config_dict['tmp_content']} > "
@@ -32,15 +32,7 @@ class MyPlugin(RuntimeEnvPlugin):
             plugin_config_dict["prefix_command"] + " " + ctx.py_executable)
 
 
-@pytest.fixture
-def _inject_plugin_env():
-    key = RAY_PLUGIN_ENV_KEY_PREFIX + MyPlugin.entry_key
-    os.environ[key] = "ray.tests.test_runtime_env_plugin.MyPlugin"
-    yield
-    del os.environ[key]
-
-
-def test_simple_env_modification_plugin(_inject_plugin_env, ray_start_regular):
+def test_simple_env_modification_plugin(ray_start_regular):
     _, tmp_file_path = tempfile.mkstemp()
 
     @ray.remote
@@ -55,16 +47,22 @@ def test_simple_env_modification_plugin(_inject_plugin_env, ray_start_regular):
         }
 
     with pytest.raises(ValueError, match="not allowed"):
-        f.options(runtime_env={MyPlugin.entry_key: "fail"}).remote()
+        f.options(runtime_env={
+            "plugins": {
+                MY_PLUGIN_CLASS_PATH: "fail"
+            }
+        }).remote()
 
     output = ray.get(
         f.options(
             runtime_env={
-                MyPlugin.entry_key: {
-                    "env_value": 42,
-                    "tmp_file": tmp_file_path,
-                    "tmp_content": "hello",
-                    "prefix_command": "nice -n 19",
+                "plugins": {
+                    MY_PLUGIN_CLASS_PATH: {
+                        "env_value": 42,
+                        "tmp_file": tmp_file_path,
+                        "tmp_content": "hello",
+                        "prefix_command": "nice -n 19",
+                    }
                 }
             }).remote())
 

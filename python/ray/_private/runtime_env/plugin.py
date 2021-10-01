@@ -1,12 +1,7 @@
 from abc import ABC, abstractstaticmethod
-import os
-from typing import Dict, Iterable, Type
 
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.utils import import_attr
 from ray.util.annotations import DeveloperAPI
-
-RAY_PLUGIN_ENV_KEY_PREFIX = "RAY_RUNTIME_ENV_PLUGIN_"
 
 
 @DeveloperAPI
@@ -73,33 +68,3 @@ class RuntimeEnvPlugin(ABC):
             the amount of space reclaimed by the deletion.
         """
         return 0
-
-
-def load_plugins(
-        runtime_env_keys: Iterable[str]) -> Dict[str, Type[RuntimeEnvPlugin]]:
-    """Load plugins by parsing environment variables.
-
-    Args:
-        runtime_env_keys (Iterable[str]): the runtime_env keys supplied by the
-          users. Only plugins that have a key matched will be loaded.
-    Returns:
-        A dictionary mapping key to plugin class.
-    """
-
-    loaded = dict()
-    for key, value in os.environ.items():
-        # This plugin is specified via environment variable.
-        if key.startswith(RAY_PLUGIN_ENV_KEY_PREFIX):
-            entry_key = key.replace(RAY_PLUGIN_ENV_KEY_PREFIX, "")
-
-            # User has supplied a field matching this plugin.
-            if entry_key in runtime_env_keys:
-                plugin_class_path = value
-                plugin_class: RuntimeEnvPlugin = import_attr(plugin_class_path)
-                if not issubclass(plugin_class, RuntimeEnvPlugin):
-                    # TODO(simon): move the class to public once ready.
-                    raise TypeError(
-                        f"{plugin_class_path} must be inherit from "
-                        "ray._private.runtime_env.plugin.RuntimeEnvPlugin.")
-                loaded[entry_key] = plugin_class
-    return loaded
