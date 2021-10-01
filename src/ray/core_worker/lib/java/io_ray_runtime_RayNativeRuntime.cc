@@ -325,7 +325,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
                                                               std::move(elem_converter));
   };
   ResourceMappingType resource_mapping =
-      (ray::CoreWorkerProcess::GetCoreWorker().GetResourceIDs());
+      CoreWorkerProcess::GetCoreWorker().GetResourceIDs();
   return NativeMapToJavaMap<std::string, std::vector<std::pair<int64_t, double>>>(
       env, resource_mapping, std::move(key_converter), std::move(value_converter));
 }
