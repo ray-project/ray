@@ -371,7 +371,7 @@ There is a 1:1 mapping between rank 0 worker's ``sgd.report()``\ , ``sgd.save_ch
 .. code-block:: python
 
    from ray import tune
-   import ray.util.sgd.v2 as sgd
+   from ray import sgd
    from ray.util.sgd.v2 import Trainer
 
    def train_func(config)
