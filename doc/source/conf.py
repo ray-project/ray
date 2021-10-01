@@ -162,10 +162,10 @@ versionwarning_messages = {
 
 versionwarning_body_selector = "#main-content"
 sphinx_gallery_conf = {
-    "examples_dirs": ["../examples",
-                      "tune/_tutorials"],  # path to example scripts
+    "examples_dirs": ["../examples", "tune/_tutorials",
+                      "data/_examples"],  # path to example scripts
     # path where to save generated examples
-    "gallery_dirs": ["auto_examples", "tune/tutorials"],
+    "gallery_dirs": ["auto_examples", "tune/tutorials", "data/examples"],
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
     "min_reported_time": sys.maxsize,
