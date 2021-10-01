@@ -43,7 +43,7 @@ than one fixed set of hyperparameters.
 
 **If you have a small number of hyperparameters**, Bayesian Optimization methods
 work well. Take a look at :ref:`BOHB <tune-scheduler-bohb>` or :ref:`Optuna <tune-optuna>`
-with :ref:`ASHA <tune-scheduler-hyperband>` scheduler to combine the
+with the :ref:`ASHA <tune-scheduler-hyperband>` scheduler to combine the
 benefits of Bayesian Optimization with early stopping.
 
 **If you only have continuous values for hyperparameters** this will work well
