@@ -36,7 +36,7 @@ class MockWorkerLeaseInterface : public WorkerLeaseInterface {
        const int64_t backlog_size),
       (override));
   MOCK_METHOD(ray::Status, ReturnWorker,
-              (int worker_port, const WorkerID &worker_id, bool disconnect_worker),
+              (int worker_port, const WorkerID &worker_id, bool disconnect_worker, bool reuse_worker),
               (override));
   MOCK_METHOD(void, ReleaseUnusedWorkers,
               (const std::vector<WorkerID> &workers_in_use,
@@ -124,7 +124,7 @@ class MockRayletClientInterface : public RayletClientInterface {
       (override));
 
   MOCK_METHOD(ray::Status, ReturnWorker,
-              (int worker_port, const WorkerID &worker_id, bool disconnect_worker),
+              (int worker_port, const WorkerID &worker_id, bool disconnect_worker, bool reuse_worker),
               (override));
   MOCK_METHOD(void, ReleaseUnusedWorkers,
               (const std::vector<WorkerID> &workers_in_use,

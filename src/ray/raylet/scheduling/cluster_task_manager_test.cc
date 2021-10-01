@@ -124,9 +124,9 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
   rpc::Address address;
   spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
-                                 job_id, TaskID::Nil(), 0, TaskID::Nil(), 0, address, 0,
+                                 job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
                                  required_resources, {},
-                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "",
+                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0,
                                  serialized_runtime_env, runtime_env_uris);
 
   if (!args.empty()) {
@@ -1529,9 +1529,13 @@ TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
 }
 
 TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
-  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{});
-  RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{});
-  RayTask task3 = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{});
+  scheduler_->AddLocalResourceInstances(ray::kGPU_ResourceLabel, {1, 1, 1});
+  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
+                            /*num_args=*/0, /*args=*/{});
+  RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
+                             /*num_args=*/0, /*args=*/{});
+  RayTask task3 = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
+                             /*num_args=*/0, /*args=*/{});
   auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {

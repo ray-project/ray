@@ -77,6 +77,8 @@ class WorkerLeaseInterface {
   /// \param worker_port The local port of the worker on the raylet node.
   /// \param worker_id The unique worker id of the worker on the raylet node.
   /// \param disconnect_worker Whether the raylet should disconnect the worker.
+  /// \param resuse_worker Whether the worker can be reused or not. For example, if the
+  /// worker is being drained for shutdown, then it cannot be resused.
   /// \return ray::Status
   virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                                    bool disconnect_worker, bool reuse_worker) = 0;

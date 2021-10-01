@@ -542,37 +542,10 @@ def test_nested_tasks(shutdown_only):
 
     @ray.remote(num_cpus=1)
     def f():
-        counter.inc.remote()
+        ray.get(counter.inc.remote())
         res = ray.get(g.remote())
         ray.get(counter.dec.remote())
         return res
-
-    ready, _ = ray.wait(
-        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
-    assert len(ready) == 1000, len(ready)
-
-
-def test_nested_tasks_2(shutdown_only):
-    """This test is the same as before, but uses a custom resource to ensure
-        exactly 1 of each function is executing at once. Since custom resources
-        aren't preemtible, if 2 instances of `f` run, there won't be enough
-        resources for an instance of `h` to run, thus the program will never
-        finish.
-
-    """
-    ray.init(num_cpus=1, resources={"worker": 3})
-
-    @ray.remote(num_cpus=1, resources={"worker": 1})
-    def h():
-        return 0
-
-    @ray.remote(num_cpus=1, resources={"worker": 1})
-    def g():
-        return ray.get(h.remote())
-
-    @ray.remote(num_cpus=1, resources={"worker": 1})
-    def f():
-        return ray.get(g.remote())
 
     ready, _ = ray.wait(
         [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
