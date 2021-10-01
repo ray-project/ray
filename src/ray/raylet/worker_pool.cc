@@ -1341,45 +1341,23 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
   UNREACHABLE;
 }
 
-void WorkerPool::SetCreatedRuntimeEnvContext(
-    const std::string &serialized_runtime_env,
-    const std::string &serialized_runtime_env_context) {
-  created_runtime_envs.emplace(serialized_runtime_env, serialized_runtime_env_context);
-}
-
-std::string WorkerPool::GetCreatedRuntimeEnvContext(
-    const std::string &serialized_runtime_env) {
-  auto it = created_runtime_envs.find(serialized_runtime_env);
-  if (it != created_runtime_envs.end()) {
-    return it->second;
-  }
-  return "";
-}
-
 void WorkerPool::CreateRuntimeEnv(
     const std::string &serialized_runtime_env, const JobID &job_id,
     const std::function<void(bool, const std::string &)> &callback) {
-  auto runtime_env_context = GetCreatedRuntimeEnvContext(serialized_runtime_env);
-  if (runtime_env_context.empty()) {
-    // create runtime env.
-    agent_manager_->CreateRuntimeEnv(
-        job_id, serialized_runtime_env,
-        [this, job_id, serialized_runtime_env, callback](
-            bool successful, const std::string &serialized_runtime_env_context) {
-          if (successful) {
-            SetCreatedRuntimeEnvContext(serialized_runtime_env,
-                                        serialized_runtime_env_context);
-            callback(true, serialized_runtime_env_context);
-          } else {
-            RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
-                             << ". The runtime environment was " << serialized_runtime_env
-                             << ".";
-            callback(false, "");
-          }
-        });
-  } else {
-    callback(true, runtime_env_context);
-  }
+  // create runtime env.
+  agent_manager_->CreateRuntimeEnv(
+      job_id, serialized_runtime_env,
+      [this, job_id, serialized_runtime_env, callback](
+          bool successful, const std::string &serialized_runtime_env_context) {
+        if (successful) {
+          callback(true, serialized_runtime_env_context);
+        } else {
+          RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
+                           << ". The runtime environment was " << serialized_runtime_env
+                           << ".";
+          callback(false, "");
+        }
+      });
 }
 
 }  // namespace raylet
