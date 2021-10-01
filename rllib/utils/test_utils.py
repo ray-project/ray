@@ -1,6 +1,6 @@
 from collections import Counter
 import copy
-import gym
+from gym.spaces import Box
 import logging
 import numpy as np
 import random
@@ -297,7 +297,7 @@ def check_compute_single_action(trainer,
             call_kwargs["full_fetch"] = full_fetch
 
         obs = obs_space.sample()
-        if isinstance(obs_space, gym.spaces.Box):
+        if isinstance(obs_space, Box):
             obs = np.clip(obs, -1.0, 1.0)
         state_in = None
         if include_state:
@@ -370,21 +370,21 @@ def check_compute_single_action(trainer,
 
         # Test whether unsquash/clipping works: Both should push the action
         # to certainly be within the space's bounds.
-        if not action_space.contains(action):
-            if clip or unsquash or not isinstance(action_space,
-                                                  gym.spaces.Box):
+        if method_to_test == "single":
+            if not action_space.contains(action) and \
+                    (clip or unsquash or not isinstance(action_space, Box)):
                 raise ValueError(
                     f"Returned action ({action}) of trainer/policy {what} "
                     f"not in Env's action_space {action_space}")
-        # We are operating in normalized space: Expect only smaller action
-        # values.
-        if isinstance(action_space, gym.spaces.Box) and not unsquash and \
-                what.config.get("normalize_actions") and \
-                np.any(np.abs(action) > 10.0):
-            raise ValueError(
-                f"Returned action ({action}) of trainer/policy {what} "
-                "should be in normalized space, but seems too large/small for "
-                "that!")
+            # We are operating in normalized space: Expect only smaller action
+            # values.
+            if isinstance(action_space, Box) and not unsquash and \
+                    what.config.get("normalize_actions") and \
+                    np.any(np.abs(action) > 3.0):
+                raise ValueError(
+                    f"Returned action ({action}) of trainer/policy {what} "
+                    "should be in normalized space, but seems too large/small "
+                    "for that!")
 
     # Loop through: Policy vs Trainer; Different API methods to calculate
     # actions; unsquash option; clip option; full fetch or not.
