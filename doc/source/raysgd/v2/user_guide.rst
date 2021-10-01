@@ -3,6 +3,8 @@
 RaySGD User Guide
 =================
 
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
+
 In this guide, we cover examples for the following use cases:
 
 * How do I :ref:`port my code <sgd-porting-code>` to using RaySGD?
@@ -88,6 +90,7 @@ training.
     If you are using GPUs, you need to make sure to the CUDA devices are properly setup inside your training function.
 
     This involves 3 steps:
+
     1. Use the local rank to set the default CUDA device for the worker.
     2. Move the model to the default CUDA device (or a specific CUDA device).
     3. Specify ``device_ids`` when wrapping in ``DistributedDataParallel``.
