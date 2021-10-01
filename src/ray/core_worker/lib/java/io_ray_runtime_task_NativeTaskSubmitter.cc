@@ -235,9 +235,9 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       ray_namespace,
       /*is_asyncio=*/false,
       placement_options,
-      true,
-      "{}",
-      {},
+      /*placement_group_capture_child_tasks=*/true,
+      /*serialized_runtime_env=*/"{}",
+      /*runtime_env_uris=*/{},
       concurrency_groups};
   return actor_creation_options;
 }

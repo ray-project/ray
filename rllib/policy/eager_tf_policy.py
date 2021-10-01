@@ -5,18 +5,20 @@ It supports both traced and non-traced eager execution modes."""
 import functools
 import logging
 import threading
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple
 
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
@@ -421,16 +423,16 @@ def build_eager_tf_policy(
                             **kwargs):
 
             self._is_training = False
-            self._is_recurrent = \
-                state_batches is not None and state_batches != []
 
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            input_dict = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
-                "is_training": tf.constant(False),
-            }
+            input_dict = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: tree.map_structure(
+                        lambda s: tf.convert_to_tensor(s), obs_batch),
+                },
+                _is_training=tf.constant(False))
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
                     tf.convert_to_tensor(prev_action_batch)
@@ -475,10 +477,12 @@ def build_eager_tf_policy(
                 self.global_timestep
             if isinstance(timestep, tf.Tensor):
                 timestep = int(timestep.numpy())
+            self._is_recurrent = state_batches is not None and \
+                state_batches != []
             self._is_training = False
             self._state_in = state_batches or []
             # Calculate RNN sequence lengths.
-            batch_size = input_dict[SampleBatch.CUR_OBS].shape[0]
+            batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
             seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches \
                 else None
 
@@ -525,7 +529,7 @@ def build_eager_tf_policy(
                                 dist_inputs, self.dist_class, state_out = \
                                     action_distribution_fn(
                                         self, self.model,
-                                        input_dict[SampleBatch.CUR_OBS],
+                                        input_dict[SampleBatch.OBS],
                                         explore=explore,
                                         timestep=timestep,
                                         is_training=False)

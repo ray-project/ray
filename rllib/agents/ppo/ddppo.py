@@ -26,9 +26,10 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, LEARNER_INFO, LEARN_ON_BATCH_TIMER, \
+    STEPS_TRAINED_COUNTER, LEARN_ON_BATCH_TIMER, \
     _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.rollout_worker import get_global_worker
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -75,6 +76,11 @@ DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
         "truncate_episodes": True,
         # This is auto set based on sample batch size.
         "train_batch_size": -1,
+        # Kl divergence penalty should be fixed to 0 in DDPPO because in order
+        # for it to be used as a penalty, we would have to un-decentralize
+        # DDPPO
+        "kl_coeff": 0.0,
+        "kl_target": 0.0
     },
     _allow_unknown_configs=True,
 )
@@ -131,6 +137,13 @@ def validate_config(config):
         raise ValueError(
             "Distributed data parallel requires truncate_episodes "
             "batch mode.")
+    # DDPPO doesn't support KL penalties like PPO-1.
+    # In order to support KL penalties, DDPPO would need to become
+    # undecentralized, which defeats the purpose of the algorithm.
+    # Users can still tune the entropy coefficient to control the
+    # policy entropy (similar to controlling the KL penalty).
+    if config["kl_coeff"] != 0.0 or config["kl_target"] != 0.0:
+        raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
 
 def execution_plan(workers: WorkerSet,

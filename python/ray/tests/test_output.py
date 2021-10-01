@@ -9,6 +9,83 @@ from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_autoscaler_infeasible():
+    script = """
+import ray
+import time
+
+ray.init(num_cpus=1)
+
+@ray.remote(num_gpus=1)
+def foo():
+    pass
+
+x = foo.remote()
+time.sleep(15)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "Tip:" in out_str
+    assert "Error: No available node types can fulfill" in out_str
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_autoscaler_warn_deadlock():
+    script = """
+import ray
+import time
+
+ray.init(num_cpus=1)
+
+@ray.remote(num_cpus=1)
+class A:
+    pass
+
+a = A.remote()
+b = A.remote()
+time.sleep(25)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "Tip:" in out_str
+    assert "Warning: The following resource request cannot" in out_str
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_autoscaler_no_spam():
+    script = """
+import ray
+import time
+
+# Check that there are no false positives with custom resources.
+ray.init(num_cpus=1, resources={"node:x": 1})
+
+@ray.remote(num_cpus=1, resources={"node:x": 1})
+def f():
+    time.sleep(1)
+    print("task done")
+
+ray.get([f.remote() for _ in range(15)])
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "Tip:" not in out_str
+    assert "Tip:" not in err_str
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = """
 import os

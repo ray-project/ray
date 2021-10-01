@@ -66,7 +66,7 @@ class MockResourceReserveInterface : public ResourceReserveInterface {
       (override));
   MOCK_METHOD(
       void, CancelResourceReserve,
-      (BundleSpecification & bundle_spec,
+      (const BundleSpecification &bundle_spec,
        const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback),
       (override));
   MOCK_METHOD(void, ReleaseUnusedBundles,
@@ -107,31 +107,6 @@ namespace ray {
 
 class MockRayletClientInterface : public RayletClientInterface {
  public:
-  MOCK_METHOD(void, GetSystemConfig,
-              (const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback),
-              (override));
-  MOCK_METHOD(void, GetGcsServerAddress,
-              (const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback),
-              (override));
-};
-
-}  // namespace ray
-
-namespace ray {
-namespace raylet {
-
-class MockRayletConnection : public RayletConnection {
- public:
-};
-
-}  // namespace raylet
-}  // namespace ray
-
-namespace ray {
-namespace raylet {
-
-class MockRayletClient : public RayletClient {
- public:
   MOCK_METHOD(ray::Status, WaitForDirectActorCallArgs,
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
               (override));
@@ -145,6 +120,13 @@ class MockRayletClient : public RayletClient {
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
        const int64_t backlog_size),
       (override));
+  MOCK_METHOD(
+      void, RequestWorkerLease,
+      (const rpc::TaskSpec &resource_spec,
+       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+       const int64_t backlog_size),
+      (override));
+
   MOCK_METHOD(ray::Status, ReturnWorker,
               (int worker_port, const WorkerID &worker_id, bool disconnect_worker),
               (override));
@@ -168,7 +150,7 @@ class MockRayletClient : public RayletClient {
       (override));
   MOCK_METHOD(
       void, CancelResourceReserve,
-      (BundleSpecification & bundle_spec,
+      (const BundleSpecification &bundle_spec,
        const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback),
       (override));
   MOCK_METHOD(void, ReleaseUnusedBundles,
@@ -195,5 +177,4 @@ class MockRayletClient : public RayletClient {
               (override));
 };
 
-}  // namespace raylet
 }  // namespace ray
