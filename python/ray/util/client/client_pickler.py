@@ -57,8 +57,8 @@ class PickleStub(
                                   ("ref_id", bytes), ("name", Optional[str]),
                                   ("baseline_options", Optional[Dict])])):
     def __reduce__(self):
-        # PySpark's namedtuple monkey patch break compatibility with
-        # cloudpickle. Thus we revert these patches here if they exist.
+        # PySpark's namedtuple monkey patch breaks compatibility with
+        # cloudpickle. Thus we revert this patch here if it exists.
         return object.__reduce__(self)
 
 
