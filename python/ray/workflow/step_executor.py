@@ -206,7 +206,12 @@ def commit_step(store: workflow_storage.WorkflowStorage, step_id: "StepID",
         ]
         asyncio.get_event_loop().run_until_complete(asyncio.gather(*tasks))
 
-    store.save_step_output(step_id, ret, exception)
+    context = workflow_context.get_workflow_step_context()
+    store.save_step_output(
+        step_id,
+        ret,
+        exception=exception,
+        outer_most_step_id=context.outer_most_step_id)
 
 
 def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",

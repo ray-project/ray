@@ -117,8 +117,9 @@ class WorkflowStorage:
         # In this case, there is no such step
         raise output_err
 
-    def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any],
-                         exception: Optional[Exception]) -> None:
+    def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any], *,
+                         exception: Optional[Exception],
+                         outer_most_step_id: StepID) -> None:
         """When a workflow step returns,
         1. If the returned object is a workflow, this means we are a nested
            workflow. We save the output metadata that points to the workflow.
@@ -129,6 +130,7 @@ class WorkflowStorage:
                 it means we are in the workflow job driver process.
             ret: The returned object from a workflow step.
             exception: This step should throw exception.
+            outer_most_step_id: See WorkflowStepContext.
         """
         tasks = []
         if isinstance(ret, Workflow):
@@ -151,7 +153,9 @@ class WorkflowStorage:
                 # tasks.append(self._put(self._key_step_output(step_id), ret))
                 dynamic_output_id = step_id
                 # TODO (yic): Delete exception file
-                tasks.append(self._update_dynamic_output(dynamic_output_id))
+                tasks.append(
+                    self._update_dynamic_output(outer_most_step_id,
+                                                dynamic_output_id))
             else:
                 assert ret is None
                 promise = serialization.dump_to_storage(
@@ -242,7 +246,7 @@ class WorkflowStorage:
 
         return asyncio_run(_load_obj_ref())
 
-    async def _update_dynamic_output(self,
+    async def _update_dynamic_output(self, outer_most_step_id: StepID,
                                      dynamic_output_step_id: StepID) -> None:
         """Update dynamic output.
 
@@ -261,10 +265,9 @@ class WorkflowStorage:
         critical for scalability of virtual actors.
 
         Args:
+            outer_most_step_id: See WorkflowStepContext for explanation.
             dynamic_output_step_id: ID of dynamic_step.
         """
-        context = workflow_context.get_workflow_step_context()
-        outer_most_step_id = context.outer_most_step_id
         # outer_most_step_id == "" indicates the root step of a
         # workflow. This would directly update "outputs.json" in
         # the workflow dir, and we want to avoid it.
