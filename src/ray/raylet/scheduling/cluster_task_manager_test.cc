@@ -1568,9 +1568,10 @@ TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
 }
 
 TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
-  RayTask task = CreateTask({}, /*num_args=*/0, /*args=*/{});
-  RayTask task2 = CreateTask({}, /*num_args=*/0, /*args=*/{});
-  RayTask task3 = CreateTask({}, /*num_args=*/0, /*args=*/{});
+  scheduler_->AddLocalResourceInstances(ray::kGPU_ResourceLabel, {1, 1, 1});
+  RayTask task = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
+  RayTask task2 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
+  RayTask task3 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {

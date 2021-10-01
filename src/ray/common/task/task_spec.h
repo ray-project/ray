@@ -35,15 +35,14 @@ typedef int SchedulingClass;
 struct SchedulingClassDescriptor {
  public:
   explicit SchedulingClassDescriptor(ResourceSet rs, FunctionDescriptor fd, int64_t d)
-    : resource_set(std::move(rs)), function_descriptor(std::move(fd)), depth(d) {}
+      : resource_set(std::move(rs)), function_descriptor(std::move(fd)), depth(d) {}
   ResourceSet resource_set;
   FunctionDescriptor function_descriptor;
   int64_t depth;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
-    return depth_match == other.depth &&
-    resource_set == other.resource_set &&
-    function_descriptor == other.function_descriptor;
+    return depth_match == other.depth && resource_set == other.resource_set &&
+           function_descriptor == other.function_descriptor;
   }
 };
 }  // namespace ray
