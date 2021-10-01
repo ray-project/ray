@@ -647,7 +647,8 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
     start = time.time()
     ray.get(remote_tasks)
     end = time.time()
-    assert end - start < 10, "Too much time spent in pulling objects, " \
+    # end - start would be greater than 20 if there is a retry.
+    assert end - start < 19, "Too much time spent in pulling objects, " \
                              "check the amount of time in retries"
 
 
