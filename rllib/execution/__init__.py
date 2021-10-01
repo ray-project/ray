@@ -12,11 +12,12 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
     synchronous_parallel_sample
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
     ComputeGradients, ApplyGradients, AverageGradients, UpdateTargetNetwork, \
-    train_multi_gpu
+    train_one_step, load_train_batch_and_train_one_step
 
 __all__ = [
     "synchronous_parallel_sample",
-    "train_multi_gpu",
+    "load_train_batch_and_train_one_step",
+    "train_one_step",
 
     "ApplyGradients",
     "AsyncGradients",

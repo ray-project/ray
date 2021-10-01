@@ -677,6 +677,16 @@ class SampleBatch(dict):
             return default
 
     @PublicAPI
+    def as_multi_agent(self) -> MultiAgentBatch:
+        """Returns the respective MultiAgentBatch using DEFAULT_POLICY_ID.
+        
+        Returns:
+            The MultiAgentBatch (using DEFAULT_POLICY_ID) corresponding
+                to this SampleBatch.
+        """
+        return MultiAgentBatch({DEFAULT_POLICY_ID: self}, self.count)
+
+    @PublicAPI
     def __getitem__(self, key: Union[str, slice]) -> TensorType:
         """Returns one column (by key) from the data or a sliced new batch.
 
@@ -1236,6 +1246,15 @@ class MultiAgentBatch:
         """
         for batch in self.policy_batches.values():
             batch.decompress_if_needed(columns)
+        return self
+
+    @DeveloperAPI
+    def as_multi_agent(self) -> MultiAgentBatch:
+        """Simply returns `self` (already a MultiAgentBatch).
+
+        Returns:
+            This very instance of MultiAgentBatch.
+        """
         return self
 
     def __str__(self):

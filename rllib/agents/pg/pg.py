@@ -16,7 +16,8 @@ from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
-from ray.rllib.execution import synchronous_parallel_sample, train_multi_gpu #train_one_step, \
+from ray.rllib.execution import synchronous_parallel_sample, train_one_step, \
+    load_train_batch_and_train_one_step
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
@@ -80,9 +81,10 @@ def training_iteration_fn(trainer: Trainer) -> ResultDict:
     # should use the multi-GPU optimizer, even if only using 1 GPU).
     # TODO: (sven) rename MultiGPUOptimizer into something more meaningful.
     if config.get("simple_optimizer") is True:
-        train_results = train(trainer, train_batch)
+        train_results = train_one_step(trainer, train_batch)
     else:
-        train_results = train_multi_gpu(trainer, train_batch)
+        train_results = load_train_batch_and_train_one_step(
+            trainer, train_batch)
 
     #if trainer.
     #report = False

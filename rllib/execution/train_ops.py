@@ -25,7 +25,62 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-def train_multi_gpu(trainer, train_batch) -> Dict:
+def train_one_step(trainer, train_batch) -> Dict:
+    config = trainer.config
+    workers = trainer.workers
+    local_worker = workers.local_worker()
+    policies = list(local_worker.policy_map.keys())
+    num_sgd_iter = config.get("sgd_num_iter", 1)
+    sgd_minibatch_size = config.get("sgd_minibatch_size", config["train_batch_size"])
+
+    _check_sample_batch_type(batch)
+    #metrics = _get_shared_metrics()
+    #learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
+    #with learn_timer:
+    # Subsample minibatches (size=`sgd_minibatch_size`) from the
+    # train batch and loop through train batch `num_sgd_iter` times.
+    if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
+        lw = self.workers.local_worker()
+        info = do_minibatch_sgd(
+            batch, {
+                pid: lw.get_policy(pid)
+                for pid in self.policies
+                           or self.local_worker.policies_to_train
+            }, lw, self.num_sgd_iter, self.sgd_minibatch_size, [])
+    # Single update step using train batch.
+    else:
+        info = self.workers.local_worker().learn_on_batch(batch)
+
+    #metrics.info[LEARNER_INFO] = info
+    #learn_timer.push_units_processed(batch.count)
+    #metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
+    #if isinstance(batch, MultiAgentBatch):
+    #    metrics.counters[
+    #        AGENT_STEPS_TRAINED_COUNTER] += batch.agent_steps()
+
+    # Update weights - after learning on the local worker - on all remote
+    # workers.
+    if self.workers.remote_workers():
+        #with metrics.timers[WORKER_UPDATE_TIMER]:
+        weights = ray.put(self.workers.local_worker().get_weights(
+            self.policies or self.local_worker.policies_to_train))
+        for e in self.workers.remote_workers():
+            e.set_weights.remote(weights)#, _get_global_vars())
+    # Also update global vars of the local worker.
+    #self.workers.local_worker().set_global_vars(_get_global_vars())
+    return batch, info
+
+
+def load_train_batch_and_train_one_step(trainer: Trainer, train_batch: SampleBatchType) -> Dict:
+    """
+    
+    Args:
+        trainer: 
+        train_batch: 
+
+    Returns:
+        The results dict.
+    """
     config = trainer.config
     workers = trainer.workers
     local_worker = workers.local_worker()
@@ -52,10 +107,7 @@ def train_multi_gpu(trainer, train_batch) -> Dict:
     _check_sample_batch_type(train_batch)
 
     # Handle everything as if multi agent.
-    if isinstance(train_batch, SampleBatch):
-        train_batch = MultiAgentBatch({
-            DEFAULT_POLICY_ID: train_batch
-        }, train_batch.count)
+    train_batch = train_batch.as_multi_agent()
 
     #metrics = _get_shared_metrics()
     #load_timer = metrics.timers[LOAD_BATCH_TIMER]
