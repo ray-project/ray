@@ -1376,22 +1376,15 @@ class Dataset(Generic[T]):
             number of records.
         """
 
-        batcher = Batcher(batch_size=limit)
-
-        for idx, block in enumerate(self._blocks):
-            block = ray.get(block)
-            batcher.add(block)
-            if batcher.has_batch():
-                if idx < len(self._blocks) - 1:
-                    logger.warning(
-                        f"Only returning the first {limit} records from "
-                        "to_pandas()")
-                out = batcher.next_batch()
-                return BlockAccessor.for_block(out).to_pandas()
-
-        # Limit larger than the dataset, so return the full dataset.
-        out = batcher.next_batch()
-        return BlockAccessor.for_block(out).to_pandas()
+        if self.count() > limit:
+            logger.warning(f"Only returning the first {limit} records from "
+                           "to_pandas()")
+        limited_ds = self.limit(limit)
+        blocks = limited_ds.get_internal_block_refs()
+        output = DelegatingArrowBlockBuilder()
+        for block in ray.get(blocks):
+            output.add_block(block)
+        return output.build().to_pandas()
 
     @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
