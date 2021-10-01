@@ -67,7 +67,6 @@ def storage(storage_type):
 @contextmanager
 def _workflow_start(storage_url, shared, **kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
-    init_kwargs.update({"num_cpus": 2})
     init_kwargs.update(kwargs)
     if ray.is_initialized():
         ray.shutdown()

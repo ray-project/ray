@@ -340,7 +340,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
     while (!current_queue.empty() &&
            !lease_entry.PipelineToWorkerFull(max_tasks_in_flight_per_worker_)) {
-      auto task_spec = current_queue.front();
+      auto task_spec = std::move(current_queue.front());
       current_queue.pop_front();
 
       // Increment the number of tasks in flight to the worker
@@ -615,7 +615,6 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           // failure (e.g., by contacting the raylet). If it was a process
           // failure, it may have been an application-level error and it may
           // not make sense to retry the task.
-          RAY_LOG(ERROR) << "Detected task failed!";
           RAY_UNUSED(task_finisher_->PendingTaskFailed(
               task_id,
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
@@ -624,7 +623,6 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           if (!task_spec.GetMessage().retry_exceptions() ||
               !reply.is_application_level_error() ||
               !task_finisher_->RetryTaskIfPossible(task_id)) {
-            RAY_LOG(ERROR) << "Gets here!!!";
             task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
           }
         }

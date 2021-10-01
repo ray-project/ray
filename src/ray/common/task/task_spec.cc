@@ -93,8 +93,8 @@ void TaskSpecification::ComputeResources() {
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
-    auto resource_set = GetRequiredResources();
-    auto function_descriptor = FunctionDescriptor();
+    const auto &resource_set = GetRequiredResources();
+    const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
     auto sched_cls_desc =
         SchedulingClassDescriptor(resource_set, function_descriptor, depth);

@@ -878,7 +878,7 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
       local_view->predefined_resources[i].available +=
           local_resources_.predefined_resources[i].available[j];
       local_view->predefined_resources[i].total +=
-        local_resources_.predefined_resources[i].total[j];
+          local_resources_.predefined_resources[i].total[j];
     }
   }
 

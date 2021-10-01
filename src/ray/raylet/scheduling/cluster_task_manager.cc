@@ -1292,10 +1292,15 @@ uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
   cpu_req = std::max(cpu_req, 0.01);
   uint64_t total_cpus = cluster_resource_scheduler_->GetNumCpus();
   if (total_cpus == 0) {
-    total_cpus = INT_MAX;
+    total_cpus = std::numeric_limits<uint64_t>::max();
   }
   double target = total_cpus / cpu_req;
-  return static_cast<uint64_t>(std::ceil(target));
+  if (target > std::numeric_limits<uint64_t>::max()) {
+    // Casting a large value to uint64_t may result in 0.
+    return std::numeric_limits<uint64_t>::max();
+  } else {
+    return static_cast<uint64_t>(std::ceil(target));
+  }
 }
 
 }  // namespace raylet

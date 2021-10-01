@@ -30,22 +30,20 @@ extern "C" {
 #include "ray/thirdparty/sha256.h"
 }
 namespace ray {
-/* typedef ResourceSet SchedulingClassDescriptor; */
 typedef int SchedulingClass;
 
 struct SchedulingClassDescriptor {
  public:
-  explicit SchedulingClassDescriptor(ResourceSet &rs, FunctionDescriptor &fd, int64_t d)
-      : resource_set(rs), function_descriptor(fd), depth(d) {}
+  explicit SchedulingClassDescriptor(ResourceSet rs, FunctionDescriptor fd, int64_t d)
+    : resource_set(std::move(rs)), function_descriptor(std::move(fd)), depth(d) {}
   ResourceSet resource_set;
   FunctionDescriptor function_descriptor;
   int64_t depth;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
-    bool resource_sets_match = resource_set == other.resource_set;
-    bool functions_match = function_descriptor == other.function_descriptor;
-    bool depth_match = depth == other.depth;
-    return resource_sets_match && functions_match && depth_match;
+    return depth_match == other.depth &&
+    resource_set == other.resource_set &&
+    function_descriptor == other.function_descriptor;
   }
 };
 }  // namespace ray
