@@ -186,7 +186,7 @@ def test_parquet_write(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds = ray.data.from_pandas([df1, df2])
     ds = ds.pipeline(parallelism=1)
     path = os.path.join(tmp_path, "test_parquet_dir")
     os.mkdir(path)

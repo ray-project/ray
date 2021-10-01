@@ -42,15 +42,14 @@ void BuildCommonTaskSpec(
     const std::string debugger_breakpoint, int64_t depth,
     const std::string &serialized_runtime_env,
     const std::vector<std::string> &runtime_env_uris,
-    const std::unordered_map<std::string, std::string> &override_environment_variables,
     const std::string &concurrency_group_name = "") {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, depth, serialized_runtime_env, runtime_env_uris,
-      override_environment_variables, concurrency_group_name);
+    debugger_breakpoint, depth, serialized_runtime_env, runtime_env_uris,
+      concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1027,6 +1026,7 @@ void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &ob
 }
 
 void CoreWorker::PromoteObjectToPlasma(const ObjectID &object_id) {
+  // TODO(swang): Remove.
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
     PutObjectIntoPlasma(*value, object_id);
@@ -1663,23 +1663,14 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
-  // Propagate existing environment variable overrides, but override them with any new
-  // ones
-  std::unordered_map<std::string, std::string> current_override_environment_variables =
-      worker_context_.GetCurrentOverrideEnvironmentVariables();
-  std::unordered_map<std::string, std::string> override_environment_variables =
-      task_options.override_environment_variables;
-  override_environment_variables.insert(current_override_environment_variables.begin(),
-                                        current_override_environment_variables.end());
   int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, placement_options,
-                      placement_group_capture_child_tasks, debugger_breakpoint, depth,
-                      task_options.serialized_runtime_env, task_options.runtime_env_uris,
-                      override_environment_variables);
+    placement_group_capture_child_tasks, debugger_breakpoint, depth,
+                      task_options.serialized_runtime_env, task_options.runtime_env_uris);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
@@ -1715,12 +1706,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   // Propagate existing environment variable overrides, but override them with any new
   // ones
-  std::unordered_map<std::string, std::string> current_override_environment_variables =
-      worker_context_.GetCurrentOverrideEnvironmentVariables();
-  std::unordered_map<std::string, std::string> override_environment_variables =
-      actor_creation_options.override_environment_variables;
-  override_environment_variables.insert(current_override_environment_variables.begin(),
-                                        current_override_environment_variables.end());
+  std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
@@ -1735,14 +1721,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
           ? function.GetFunctionDescriptor()->DefaultTaskName()
           : actor_name + ":" + function.GetFunctionDescriptor()->CallString();
   int64_t depth = worker_context_.GetTaskDepth() + 1;
-  BuildCommonTaskSpec(
-      builder, job_id, actor_creation_task_id, task_name,
-      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, 1, new_resource, new_placement_resources,
-      actor_creation_options.placement_options,
-      actor_creation_options.placement_group_capture_child_tasks,
-      /*debugger_breakpoint=*/"", depth, actor_creation_options.serialized_runtime_env,
-      actor_creation_options.runtime_env_uris, override_environment_variables);
+  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, 1, new_resource,
+                      new_placement_resources, actor_creation_options.placement_options,
+                      actor_creation_options.placement_group_capture_child_tasks,
+                      "" /* debugger_breakpoint */, depth,
+                      actor_creation_options.serialized_runtime_env,
+                      actor_creation_options.runtime_env_uris);
 
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id,
@@ -1919,7 +1905,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   const auto task_name = task_options.name.empty()
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
-  const std::unordered_map<std::string, std::string> override_environment_variables = {};
+
   // Depth shouldn't matter for an actor task, but for consistency it should be
   // the same as the actor creation task's depth.
   int64_t depth = worker_context_.GetTaskDepth();
@@ -1927,12 +1913,11 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
-                      true,  /* placement_group_capture_child_tasks */
-                      "",    /* debugger_breakpoint */
+                      true, /* placement_group_capture_child_tasks */
+                      "",   /* debugger_breakpoint */
                       depth, /*depth*/
-                      "{}",  /* serialized_runtime_env */
-                      {},    /* runtime_env_uris */
-                      override_environment_variables,
+                      "{}", /* serialized_runtime_env */
+                      {},   /* runtime_env_uris */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.

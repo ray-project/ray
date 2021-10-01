@@ -107,8 +107,6 @@ class TaskSpecBuilder {
       const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env = "{}",
       const std::vector<std::string> &runtime_env_uris = {},
-      const std::unordered_map<std::string, std::string> &override_environment_variables =
-          {},
       const std::string &concurrency_group_name = "") {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
@@ -136,9 +134,6 @@ class TaskSpecBuilder {
       message_->mutable_runtime_env()->add_uris(uri);
     }
     message_->set_concurrency_group_name(concurrency_group_name);
-    for (const auto &env : override_environment_variables) {
-      (*message_->mutable_override_environment_variables())[env.first] = env.second;
-    }
     return *this;
   }
 
