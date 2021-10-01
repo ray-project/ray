@@ -60,13 +60,16 @@ struct TaskOptions {
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
               const std::string &serialized_runtime_env = "{}",
-              const std::vector<std::string> &runtime_env_uris = {})
+              const std::vector<std::string> &runtime_env_uris = {},
+              const std::unordered_map<std::string, std::string>
+                  &override_environment_variables = {})
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
         serialized_runtime_env(serialized_runtime_env),
-        runtime_env_uris(runtime_env_uris) {}
+        runtime_env_uris(runtime_env_uris),
+        override_environment_variables(override_environment_variables) {}
 
   /// The name of this task.
   std::string name;
@@ -80,6 +83,10 @@ struct TaskOptions {
   std::string serialized_runtime_env;
   // URIs contained in the runtime_env.
   std::vector<std::string> runtime_env_uris;
+  /// Environment variables to update for this task.  Maps a variable name to its
+  /// value.  Can override existing environment variables and introduce new ones.
+  /// Propagated to child actors and/or tasks.
+  const std::unordered_map<std::string, std::string> override_environment_variables;
 };
 
 /// Options for actor creation tasks.
@@ -95,6 +102,8 @@ struct ActorCreationOptions {
       bool placement_group_capture_child_tasks = true,
       const std::string &serialized_runtime_env = "{}",
       const std::vector<std::string> &runtime_env_uris = {},
+      const std::unordered_map<std::string, std::string> &override_environment_variables =
+          {},
       const std::vector<ConcurrencyGroup> &concurrency_groups = {})
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
@@ -110,6 +119,7 @@ struct ActorCreationOptions {
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
         serialized_runtime_env(serialized_runtime_env),
         runtime_env_uris(runtime_env_uris),
+        override_environment_variables(override_environment_variables),
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()){};
 
   /// Maximum number of times that the actor should be restarted if it dies
@@ -153,6 +163,10 @@ struct ActorCreationOptions {
   std::string serialized_runtime_env;
   // URIs contained in the runtime_env.
   std::vector<std::string> runtime_env_uris;
+  /// Environment variables to update for this actor.  Maps a variable name to its
+  /// value.  Can override existing environment variables and introduce new ones.
+  /// Propagated to child actors and/or tasks.
+  const std::unordered_map<std::string, std::string> override_environment_variables;
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;

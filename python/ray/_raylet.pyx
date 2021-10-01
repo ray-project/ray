@@ -1354,7 +1354,8 @@ cdef class CoreWorker:
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
                     runtime_env_dict,
-                    runtime_env_uris
+                    runtime_env_uris,
+                    override_environment_variables
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1364,6 +1365,9 @@ cdef class CoreWorker:
                 placement_group_id.native()
             c_string c_serialized_runtime_env
             c_vector[c_string] c_runtime_env_uris = runtime_env_uris
+            unordered_map[c_string, c_string] \
+                c_override_environment_variables = \
+                override_environment_variables
             c_vector[CObjectReference] return_refs
 
         with self.profile_event(b"submit_task"):
@@ -1382,7 +1386,8 @@ cdef class CoreWorker:
                     name, num_returns, c_resources,
                     b"",
                     c_serialized_runtime_env,
-                    c_runtime_env_uris),
+                    c_runtime_env_uris,
+                    c_override_environment_variables),
                 max_retries, retry_exceptions,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1410,6 +1415,7 @@ cdef class CoreWorker:
                      c_string extension_data,
                      runtime_env_dict,
                      runtime_env_uris,
+                     override_environment_variables
                      ):
         cdef:
             CRayFunction ray_function
@@ -1422,6 +1428,9 @@ cdef class CoreWorker:
                 placement_group_id.native()
             c_string c_serialized_runtime_env
             c_vector[c_string] c_runtime_env_uris = runtime_env_uris
+            unordered_map[c_string, c_string] \
+                c_override_environment_variables = \
+                override_environment_variables
 
         with self.profile_event(b"submit_task"):
             c_serialized_runtime_env = \
@@ -1446,7 +1455,8 @@ cdef class CoreWorker:
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
                         c_serialized_runtime_env,
-                        c_runtime_env_uris),
+                        c_runtime_env_uris,
+                        c_override_environment_variables),
                     extension_data,
                     &c_actor_id))
 

@@ -238,6 +238,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       /*placement_group_capture_child_tasks=*/true,
       /*serialized_runtime_env=*/"{}",
       /*runtime_env_uris=*/{},
+      /*override_environment_variables=*/{},
       concurrency_groups};
   return actor_creation_options;
 }
