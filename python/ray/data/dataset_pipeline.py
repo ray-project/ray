@@ -240,6 +240,32 @@ class DatasetPipeline(Generic[T]):
             for idx in range(n)
         ]
 
+    def window(self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
+        """Change the windowing of this pipeline.
+
+        Changes the windowing of this pipeline to the specified size. For
+        example, if the current pipeline has two blocks per datasets, and
+        `.window(4)` is requested, adjacent datasets will be merged until each
+        dataset is 4 blocks. If `.window(1)` was requested the datasets will
+        be split into smaller windows.
+
+        Args:
+            blocks_per_window: The new target blocks per window.
+        """
+        raise NotImplementedError
+
+    def repeat(self, times: int = None) -> "DatasetPipeline[T]":
+        """Repeat this pipeline a given number or times, or indefinitely.
+
+        This operation is only allowed for pipelines of a finite length. An
+        error will be raised for pipelines of unknown length.
+
+        Args:
+            times: The number of times to loop over this pipeline, or None
+                to repeat indefinitely.
+        """
+        raise NotImplementedError
+
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
 
