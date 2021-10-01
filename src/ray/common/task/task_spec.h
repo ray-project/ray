@@ -41,7 +41,7 @@ struct SchedulingClassDescriptor {
   int64_t depth;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
-    return depth_match == other.depth && resource_set == other.resource_set &&
+    return depth == other.depth && resource_set == other.resource_set &&
            function_descriptor == other.function_descriptor;
   }
 };
