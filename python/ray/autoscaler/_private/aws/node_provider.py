@@ -1,4 +1,3 @@
-import random
 import copy
 import threading
 from collections import defaultdict, OrderedDict
@@ -98,8 +97,7 @@ class AWSNodeProvider(NodeProvider):
             max_retries=0,
             aws_credentials=aws_credentials)
 
-        # Try availability zones round-robin, starting from random offset
-        self.subnet_idx = random.randint(0, 100)
+        self.last_used_subnet_idx = 0
 
         # Tags that we believe to actually be on EC2.
         self.tag_cache = {}
@@ -388,8 +386,8 @@ class AWSNodeProvider(NodeProvider):
                     conf.pop("SecurityGroupIds", None)
                     cli_logger_tags["network_interfaces"] = str(net_ifs)
                 else:
-                    subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
-                    self.subnet_idx += 1
+                    subnet_id = subnet_ids[self.last_used_subnet_idx %
+                                           len(subnet_ids)]
                     conf["SubnetId"] = subnet_id
                     cli_logger_tags["subnet_id"] = subnet_id
 
@@ -430,6 +428,8 @@ class AWSNodeProvider(NodeProvider):
                     cli_logger.warning(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
+                # Launch failure may be due to instance type availability!
+                self.last_used_subnet_idx += 1
         return created_nodes_dict
 
     def terminate_node(self, node_id):
