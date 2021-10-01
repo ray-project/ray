@@ -108,7 +108,8 @@ cpus_per_actor_inference = args.cpus_per_actor_inference
 # -----------------------------
 # Now, let's connect our Python script to this newly deployed Ray cluster!
 
-ray.init(address=address)
+if not ray.is_initialized():
+    ray.init(address=address)
 
 ###############################################################################
 # Data Preparation

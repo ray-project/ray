@@ -5,7 +5,7 @@ import json
 from util import import_and_execute_test_script, wait_for_cluster_client
 
 NOTEBOOK_PATH_RELATIVE_TO_RAY_REPO = (
-    "doc/examples/modin_xgboost/modin_xgboost.py")
+    "doc/examples/dask_xgboost/dask_xgboost.py")
 
 
 def main():
@@ -16,7 +16,7 @@ if __name__ == "__main__":
     start = time.time()
 
     addr = os.environ.get("RAY_ADDRESS")
-    job_name = os.environ.get("RAY_JOB_NAME", "modin_xgboost_test")
+    job_name = os.environ.get("RAY_JOB_NAME", "dask_xgboost_test")
     if addr is not None and addr.startswith("anyscale://"):
         ray.init(address=addr, job_name=job_name)
     else:
@@ -30,7 +30,7 @@ if __name__ == "__main__":
         "time_taken": taken,
     }
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/modin_xgboost_test.json")
+                                      "/tmp/dask_xgboost_test.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
