@@ -652,9 +652,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 # Without it, docker copies the source *into* the target
                 host_destination += "/."
             self.ssh_command_runner.run(
-                "{} cp {} {}:{}".format(self.docker_cmd, host_destination,
-                                        self.container_name,
-                                        self._docker_expand_user(target)),
+                "rsync -e '{} exec -i' -avz {} {}:{}".format(
+                    self.docker_cmd, host_destination, self.container_name,
+                    self._docker_expand_user(target)),
                 silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target, options=None):

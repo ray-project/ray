@@ -554,7 +554,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
-        # Two initial calls to docker cp, + 2 more calls during run_init
+        # Two initial calls to rsync, + 2 more calls during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -607,9 +607,9 @@ class AutoscalingTest(unittest.TestCase):
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+            pattern=f"{docker_mount_prefix}/~/ray_bootstrap_key.pem mock:")
         pattern_to_assert = \
-            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+            f"{docker_mount_prefix}/~/ray_bootstrap_config.yaml mock:"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
         return config
 
@@ -754,7 +754,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
-        # Two initial calls to docker cp, + 2 more calls during run_init
+        # Two initial calls to rsync, + 2 more calls during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -781,9 +781,9 @@ class AutoscalingTest(unittest.TestCase):
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"podman cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+            pattern=f"{docker_mount_prefix}/~/ray_bootstrap_key.pem mock:")
         pattern_to_assert = \
-            f"podman cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+            f"{docker_mount_prefix}/~/ray_bootstrap_config.yaml mock:"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
         for cmd in runner.command_history():
@@ -802,7 +802,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
-        # Two initial calls to docker cp, + 2 more calls during run_init
+        # Two initial calls to rsync, + 2 more calls during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -830,23 +830,25 @@ class AutoscalingTest(unittest.TestCase):
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+            pattern=f"{docker_mount_prefix}/~/ray_bootstrap_key.pem mock:")
         pattern_to_assert = \
-            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+            f"{docker_mount_prefix}/~/ray_bootstrap_config.yaml mock:"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
         # This next section of code ensures that the following order of
         # commands are executed:
         # 1. mkdir -p {docker_mount_prefix}
-        # 2. rsync bootstrap files
-        # 3. docker cp bootstrap files into container
+        # 2. rsync bootstrap files (over ssh)
+        # 3. rsync bootstrap files into container
         commands_with_mount = [
             (i, cmd) for i, cmd in enumerate(runner.command_history())
             if docker_mount_prefix in cmd
         ]
-        rsync_commands = [x for x in commands_with_mount if "rsync" in x[1]]
-        docker_cp_commands = [
-            x for x in commands_with_mount if "docker cp" in x[1]
+        rsync_commands = [
+            x for x in commands_with_mount if "rsync --rsh" in x[1]
+        ]
+        copy_into_container = [
+            x for x in commands_with_mount if "rsync -e" in x[1]
         ]
         first_mkdir = min(x[0] for x in commands_with_mount if "mkdir" in x[1])
         docker_run_cmd_indx = [
@@ -859,7 +861,7 @@ class AutoscalingTest(unittest.TestCase):
             first_rsync = min(x[0] for x in rsync_commands
                               if "ray_bootstrap_config.yaml" in x[1])
             first_cp = min(
-                x[0] for x in docker_cp_commands if file_to_check in x[1])
+                x[0] for x in copy_into_container if file_to_check in x[1])
             # Ensures that `mkdir -p` precedes `docker run` because Docker
             # will auto-create the folder with wrong permissions.
             assert first_mkdir < docker_run_cmd_indx
@@ -877,7 +879,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
-        # Two initial calls to docker cp, + 2 more calls during run_init
+        # Two initial calls to rsync, + 2 more calls during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -911,7 +913,7 @@ class AutoscalingTest(unittest.TestCase):
             "Propagation": "rprivate"
         }]
         runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
-        # Two initial calls to docker cp, +1 more call during run_init
+        # Two initial calls to rsync, +1 more call during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "true", "true"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -939,9 +941,9 @@ class AutoscalingTest(unittest.TestCase):
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+            pattern=f"{docker_mount_prefix}/~/ray_bootstrap_key.pem mock:")
         pattern_to_assert = \
-            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+            f"{docker_mount_prefix}/~/ray_bootstrap_config.yaml mock:"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
     def testDockerFileMountsRemoved(self):
@@ -959,7 +961,7 @@ class AutoscalingTest(unittest.TestCase):
             "Propagation": "rprivate"
         }]
         runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
-        # Two initial calls to docker cp, +1 more call during run_init
+        # Two initial calls to rsync, +1 more call during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "true", "true"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -988,9 +990,9 @@ class AutoscalingTest(unittest.TestCase):
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+            pattern=f"{docker_mount_prefix}/~/ray_bootstrap_key.pem mock:")
         pattern_to_assert = \
-            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+            f"{docker_mount_prefix}/~/ray_bootstrap_config.yaml mock:"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
     def testRsyncCommandWithDocker(self):
@@ -1018,8 +1020,8 @@ class AutoscalingTest(unittest.TestCase):
             override_cluster_name=None,
             down=True,
             _runner=runner)
-        runner.assert_has_call("1.2.3.0", pattern="docker cp")
-        runner.assert_has_call("1.2.3.0", pattern="rsync")
+        runner.assert_has_call("1.2.3.0", pattern="rsync -e")
+        runner.assert_has_call("1.2.3.0", pattern="rsync --rsh")
         runner.clear_history()
 
         commands.rsync(
@@ -1030,8 +1032,8 @@ class AutoscalingTest(unittest.TestCase):
             down=True,
             ip_address="1.2.3.5",
             _runner=runner)
-        runner.assert_has_call("1.2.3.5", pattern="docker cp")
-        runner.assert_has_call("1.2.3.5", pattern="rsync")
+        runner.assert_has_call("1.2.3.5", pattern="rsync -e")
+        runner.assert_has_call("1.2.3.5", pattern="rsync --rsh")
         runner.clear_history()
 
         commands.rsync(
@@ -1043,8 +1045,8 @@ class AutoscalingTest(unittest.TestCase):
             down=True,
             use_internal_ip=True,
             _runner=runner)
-        runner.assert_has_call("172.0.0.4", pattern="docker cp")
-        runner.assert_has_call("172.0.0.4", pattern="rsync")
+        runner.assert_has_call("172.0.0.4", pattern="rsync -e")
+        runner.assert_has_call("172.0.0.4", pattern="rsync --rsh")
 
     def testRsyncCommandWithoutDocker(self):
         cluster_cfg = SMALL_CLUSTER.copy()
