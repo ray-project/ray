@@ -42,7 +42,7 @@ from ray.data.dataset_pipeline import DatasetPipeline
 #
 # 1. Load the training data from external storage;
 # 2. Iterate the data for multiple epochs;
-# 3. In each epoch, applying global shuffle to normalize the data;
+# 3. In each epoch, applying global shuffle to decorrelate the data;
 # 4. In each epoch, split the shuffled data into shards, and feed shards to
 #    distributed trainers;
 #
