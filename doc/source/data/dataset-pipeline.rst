@@ -13,6 +13,10 @@ Creating a DatasetPipeline
 
 A DatasetPipeline can be constructed in two ways: either by pipelining the execution of an existing Dataset (via ``Dataset.window``), or generating repeats of an existing Dataset (via ``Dataset.repeat``). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started with this synthetic data example:
 
+.. tip::
+
+  The "window size" of a pipeline is defined as the number of blocks per Dataset in the pipeline.
+
 .. code-block:: python
 
     import ray
@@ -52,7 +56,6 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     # Stage 3:  35%|████████████████                         | 8/20 [00:02<00:02,  5.33it/s]
     print("Total num rows", num_rows)
     # -> Total num rows 1000000
-
 
 You can also create a DatasetPipeline from a custom iterator over dataset creators using ``DatasetPipeline.from_iterable``. For example, this is how you would implement ``Dataset.repeat`` and ``Dataset.window`` using ``from_iterable``:
 
