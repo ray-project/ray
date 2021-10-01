@@ -2102,15 +2102,6 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        override_environment_variables (Dict[str, str]): (Deprecated in Ray
-            1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
-            field of :ref:`runtime-environments` instead.) This specifies
-            environment variables to override for the actor or task.  The
-            overrides are propagated to all child actors and tasks.  This
-            is a dictionary mapping variable names to their values.  Existing
-            variables can be overridden, new ones can be created, and an
-            existing variable can be unset by setting it to an empty string.
-            Note: can only be set via `.options()`.
     """
     worker = global_worker
 
