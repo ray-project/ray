@@ -1703,7 +1703,6 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
     const auto &resource_load_by_shape = data.resource_load_by_shape();
     ASSERT_EQ(resource_load_by_shape.resource_demands().size(), demand_types[i]);
 
-
     // Assert that the one-cpu fields are correct.
     bool one_cpu_found = false;
     for (const auto &demand : resource_load_by_shape.resource_demands()) {

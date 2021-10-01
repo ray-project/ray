@@ -48,7 +48,7 @@ void BuildCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-    debugger_breakpoint, depth, serialized_runtime_env, runtime_env_uris,
+      debugger_breakpoint, depth, serialized_runtime_env, runtime_env_uris,
       concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
@@ -1669,7 +1669,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, placement_options,
-    placement_group_capture_child_tasks, debugger_breakpoint, depth,
+                      placement_group_capture_child_tasks, debugger_breakpoint, depth,
                       task_options.serialized_runtime_env, task_options.runtime_env_uris);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
@@ -1913,11 +1913,11 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
-                      true, /* placement_group_capture_child_tasks */
-                      "",   /* debugger_breakpoint */
+                      true,  /* placement_group_capture_child_tasks */
+                      "",    /* debugger_breakpoint */
                       depth, /*depth*/
-                      "{}", /* serialized_runtime_env */
-                      {},   /* runtime_env_uris */
+                      "{}",  /* serialized_runtime_env */
+                      {},    /* runtime_env_uris */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
