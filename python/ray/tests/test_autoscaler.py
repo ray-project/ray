@@ -2573,8 +2573,7 @@ class AutoscalingTest(unittest.TestCase):
         for i in [0, 1]:
             runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                f"172.0.0.{i}", f"172.0.0.{i}",
-                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
 
     def testFileMountsNonContinuous(self):
@@ -2609,8 +2608,7 @@ class AutoscalingTest(unittest.TestCase):
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                f"172.0.0.{i}", f"172.0.0.{i}",
-                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
 
         runner.clear_history()
@@ -2653,8 +2651,7 @@ class AutoscalingTest(unittest.TestCase):
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                f"172.0.0.{i}", f"172.0.0.{i}",
-                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
 
     def testAutodetectResources(self):
