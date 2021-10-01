@@ -20,6 +20,8 @@ import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -216,6 +218,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeRunTaskExecutor(taskExecutor);
   }
 
+  @Override
+  public Map<String, List<Long>> getAvailableResourceIds() {
+    return nativeGetResourceIds();
+  }
+
   private static native void nativeInitialize(
       int workerMode,
       String ndoeIpAddress,
@@ -238,6 +245,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native byte[] nativeGetActorIdOfNamedActor(String actorName, boolean global);
 
   private static native void nativeSetCoreWorker(byte[] workerId);
+
+  private static native Map<String, List<Long>> nativeGetResourceIds();
 
   static class AsyncContext {
 

@@ -20,6 +20,9 @@ jmethodID java_boolean_init;
 jclass java_double_class;
 jmethodID java_double_double_value;
 
+jclass java_long_class;
+jmethodID java_long_init;
+
 jclass java_object_class;
 jmethodID java_object_equals;
 jmethodID java_object_hash_code;
@@ -158,6 +161,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_double_class = LoadClass(env, "java/lang/Double");
   java_double_double_value = env->GetMethodID(java_double_class, "doubleValue", "()D");
+
+  java_long_class = LoadClass(env, "java/lang/Long");
+  java_long_init = env->GetMethodID(java_long_class, "<init>", "(J)V");
 
   java_object_class = LoadClass(env, "java/lang/Object");
   java_object_equals =

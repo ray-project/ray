@@ -310,6 +310,26 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
   CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
 }
 
+JNIEXPORT jobject JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
+  auto key_converter = [](JNIEnv *env, const std::string &str) -> jstring {
+    return env->NewStringUTF(str.c_str());
+  };
+  auto value_converter =
+      [](JNIEnv *env, const std::vector<std::pair<int64_t, double>> &value) -> jobject {
+    auto elem_converter = [](JNIEnv *env,
+                             const std::pair<int64_t, double> &elem) -> jobject {
+      return env->NewObject(java_long_class, java_long_init, (jlong)elem.first);
+    };
+    return NativeVectorToJavaList<std::pair<int64_t, double>>(env, value,
+                                                              std::move(elem_converter));
+  };
+  ResourceMappingType resource_mapping =
+      (ray::CoreWorkerProcess::GetCoreWorker().GetResourceIDs());
+  return NativeMapToJavaMap<std::string, std::vector<std::pair<int64_t, double>>>(
+      env, resource_mapping, std::move(key_converter), std::move(value_converter));
+}
+
 #ifdef __cplusplus
 }
 #endif

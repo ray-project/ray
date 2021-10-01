@@ -9,7 +9,12 @@ import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.config.RunMode;
+import io.ray.runtime.util.ResourceUtil;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class RuntimeContextImpl implements RuntimeContext {
 
@@ -58,5 +63,27 @@ public class RuntimeContextImpl implements RuntimeContext {
   @Override
   public <T extends BaseActorHandle> T getCurrentActorHandle() {
     return runtime.getActorHandle(getCurrentActorId());
+  }
+
+  @Override
+  public List<Long> getGpuIds() {
+    Map<String, List<Long>> resourceIds = runtime.getAvailableResourceIds();
+    Set<Long> assignedIds = new HashSet<>();
+    for (Map.Entry<String, List<Long>> entry : resourceIds.entrySet()) {
+      if (entry.getKey().equals("GPU") || entry.getKey().startsWith("GPU_group_")) {
+        assignedIds.addAll(entry.getValue());
+      }
+    }
+    List<Long> gpuIds;
+    List<String> gpuOnThisNode = ResourceUtil.getCudaVisibleDevices();
+    if (gpuOnThisNode != null) {
+      gpuIds = new ArrayList<>();
+      for (Long id : assignedIds) {
+        gpuIds.add(Long.valueOf(gpuOnThisNode.get(id.intValue())));
+      }
+    } else {
+      gpuIds = new ArrayList<>(assignedIds);
+    }
+    return gpuIds;
   }
 }

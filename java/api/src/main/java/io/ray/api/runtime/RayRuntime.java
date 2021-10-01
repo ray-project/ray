@@ -18,6 +18,7 @@ import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -204,6 +205,13 @@ public interface RayRuntime {
 
   /** Intentionally exit the current actor. */
   void exitActor();
+
+  /**
+   * Get the resource name and resource index list in a node.
+   *
+   * @return The resource info of one node, discard the ratio of each resource have been allocated
+   */
+  Map<String, List<Long>> getAvailableResourceIds();
 
   /**
    * Get a placement group by id.

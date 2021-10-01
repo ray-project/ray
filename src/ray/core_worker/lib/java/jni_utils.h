@@ -37,6 +37,11 @@ extern jclass java_double_class;
 /// doubleValue method of Double class
 extern jmethodID java_double_double_value;
 
+/// Long class
+extern jclass java_long_class;
+/// longValue method of Long class
+extern jmethodID java_long_init;
+
 /// Object class
 extern jclass java_object_class;
 /// equals method of Object class
