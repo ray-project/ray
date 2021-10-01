@@ -3,6 +3,8 @@
 # Please keep these sorted alphabetically, but start with the
 # root directory.
 # --------------------------------------------------------------------
+
+# Support for Dask has been dropped in 3.6.
 py_test(
     name = "dask_xgboost",
     size = "medium",
@@ -14,6 +16,7 @@ py_test(
              "--cpus-per-actor-inference 1"]
 )
 
+# Support for Modin has been dropped in 3.6.
 py_test(
     name = "modin_xgboost",
     size = "medium",
