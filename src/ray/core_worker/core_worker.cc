@@ -973,6 +973,8 @@ void CoreWorker::InternalHeartbeat() {
     direct_actor_submitter_->CheckTimeoutTasks();
   }
 
+  direct_task_submitter_->ReportWorkerBacklog();
+
   // Check for unhandled exceptions to raise after a timeout on the driver.
   // Only do this for TTY, since shells like IPython sometimes save references
   // to the result and prevent normal result deletion from handling.

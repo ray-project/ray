@@ -422,38 +422,41 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
   return lease_client;
 }
 
-void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
-    const SchedulingKey &scheduling_key) {
-  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  int64_t scheduling_key_backlog_size;
-  if (scheduling_key_entry.task_queue.size() <
-      scheduling_key_entry.pending_lease_requests.size()) {
-    // During work stealing we may have more pending lease requests than the number of
-    // queued tasks
-    scheduling_key_backlog_size = 0;
-  } else {
-    // Subtract tasks with pending lesae requests so we don't double count them.
-    scheduling_key_backlog_size = scheduling_key_entry.task_queue.size() -
-                                  scheduling_key_entry.pending_lease_requests.size();
-  }
-
-  if (scheduling_key_entry.last_reported_backlog_size != scheduling_key_backlog_size) {
-    scheduling_key_entry.last_reported_backlog_size = scheduling_key_backlog_size;
-
-    int64_t scheduling_class_backlog_size = 0;
+void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklog() {
+  absl::MutexLock lock(&mu_);
+  std::unordered_map<SchedulingClass, std::pair<TaskSpecification, int64_t>> backlogs;
+  for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
+    const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
+    if (backlogs.find(scheduling_class) == backlogs.end()) {
+      backlogs[scheduling_class].first = scheduling_key_and_entry.second.resource_spec;
+      backlogs[scheduling_class].second = 0;
+    }
     // We report backlog size per scheduling class not per scheduling key
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
-    for (const auto &scheduling_key_and_entry : scheduling_key_entries_) {
-      if (std::get<0>(scheduling_key_and_entry.first) == std::get<0>(scheduling_key)) {
-        scheduling_class_backlog_size +=
-            scheduling_key_and_entry.second.last_reported_backlog_size;
-      }
-    }
+    backlogs[scheduling_class].second += scheduling_key_and_entry.second.BacklogSize();
+    scheduling_key_and_entry.second.last_reported_backlog_size =
+        scheduling_key_and_entry.second.BacklogSize();
+  }
 
-    local_lease_client_->ReportWorkerBacklog(
-        WorkerID::FromBinary(rpc_address_.worker_id()),
-        scheduling_key_entry.resource_spec, scheduling_class_backlog_size);
+  std::vector<rpc::WorkerBacklogReport> backlog_reports;
+  for (const auto &backlog : backlogs) {
+    rpc::WorkerBacklogReport backlog_report;
+    backlog_report.mutable_resource_spec()->CopyFrom(backlog.second.first.GetMessage());
+    backlog_report.set_backlog_size(backlog.second.second);
+    backlog_reports.emplace_back(backlog_report);
+  }
+  local_lease_client_->ReportWorkerBacklog(WorkerID::FromBinary(rpc_address_.worker_id()),
+                                           backlog_reports);
+}
+
+void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
+    const SchedulingKey &scheduling_key) {
+  const auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+
+  if (scheduling_key_entry.last_reported_backlog_size !=
+      scheduling_key_entry.BacklogSize()) {
+    ReportWorkerBacklog();
   }
 }
 

@@ -1502,11 +1502,16 @@ void NodeManager::HandleRequestResourceReport(
 void NodeManager::HandleReportWorkerBacklog(
     const rpc::ReportWorkerBacklogRequest &request, rpc::ReportWorkerBacklogReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const TaskSpecification resource_spec(request.resource_spec());
-  const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  cluster_task_manager_->SetWorkerBacklog(scheduling_class, worker_id,
-                                          request.backlog_size());
+  cluster_task_manager_->ClearWorkerBacklog(worker_id);
+  std::unordered_set<SchedulingClass> seen;
+  for (const auto &backlog_report : request.backlog_reports()) {
+    const TaskSpecification resource_spec(backlog_report.resource_spec());
+    const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
+    RAY_CHECK(seen.find(scheduling_class) == seen.end());
+    cluster_task_manager_->SetWorkerBacklog(scheduling_class, worker_id,
+                                            backlog_report.backlog_size());
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1666,7 +1671,6 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
         HandleDirectCallTaskUnblocked(worker);
       }
       cluster_task_manager_->ReleaseWorkerResources(worker);
-      cluster_task_manager_->ClearWorkerBacklog(worker_id);
       HandleWorkerAvailable(worker);
     }
   } else {

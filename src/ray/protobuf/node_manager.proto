@@ -19,12 +19,23 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 
+message WorkerBacklogReport {
+  // TaskSpec indicating the scheduling class.
+  // Cannot send scheduling class directly
+  // since it's local to each process.
+  TaskSpec resource_spec = 1;
+  // Size of the backlog for the above scheduling class.
+  int64 backlog_size = 2;
+}
+
 message ReportWorkerBacklogRequest {
   // Unique id of the worker that's reporting the backlog
   bytes worker_id = 1;
+  // Backlog report per scheduling class
+  repeated WorkerBacklogReport backlog_reports = 2;
   // TaskSpec containing the requested resources.
-  TaskSpec resource_spec = 2;
-  int64 backlog_size = 3;
+  TaskSpec resource_spec = 3;
+  int64 backlog_size = 4;
 }
 
 message ReportWorkerBacklogReply {

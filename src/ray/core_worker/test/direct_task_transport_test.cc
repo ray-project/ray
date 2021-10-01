@@ -153,10 +153,13 @@ class MockRayletClient : public WorkerLeaseInterface {
     return Status::OK();
   }
 
-  void ReportWorkerBacklog(const WorkerID &worker_id,
-                           const ray::TaskSpecification &resource_spec,
-                           const int64_t backlog_size) override {
-    reported_backlog_size = backlog_size;
+  void ReportWorkerBacklog(
+      const WorkerID &worker_id,
+      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {
+    reported_backlog_size = 0;
+    for (const auto &backlog_report : backlog_reports) {
+      reported_backlog_size += backlog_report.backlog_size();
+    }
   }
 
   void RequestWorkerLease(

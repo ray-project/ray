@@ -111,6 +111,9 @@ class CoreWorkerDirectTaskSubmitter {
     return num_leases_requested_;
   }
 
+  /// Report worker backlog information to the local raylet
+  void ReportWorkerBacklog();
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
@@ -348,6 +351,18 @@ class CoreWorkerDirectTaskSubmitter {
 
       // If any worker has more than one task in flight, then that task can be stolen.
       return total_tasks_in_flight > active_workers.size();
+    }
+
+    // Get the current backlog size for this scheduling key
+    inline int64_t BacklogSize() const {
+      if (task_queue.size() < pending_lease_requests.size()) {
+        // During work stealing we may have more pending lease requests than the number of
+        // queued tasks
+        return 0;
+      } else {
+        // Subtract tasks with pending lesae requests so we don't double count them.
+        return task_queue.size() - pending_lease_requests.size();
+      }
     }
   };
 

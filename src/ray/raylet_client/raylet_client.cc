@@ -314,13 +314,12 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
-void raylet::RayletClient::ReportWorkerBacklog(const WorkerID &worker_id,
-                                               const TaskSpecification &resource_spec,
-                                               const int64_t backlog_size) {
+void raylet::RayletClient::ReportWorkerBacklog(
+    const WorkerID &worker_id,
+    const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
   rpc::ReportWorkerBacklogRequest request;
   request.set_worker_id(worker_id.Binary());
-  request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
-  request.set_backlog_size(backlog_size);
+  request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
   grpc_client_->ReportWorkerBacklog(
       request, [](const Status &status, const rpc::ReportWorkerBacklogReply &reply) {
         if (!status.ok()) {

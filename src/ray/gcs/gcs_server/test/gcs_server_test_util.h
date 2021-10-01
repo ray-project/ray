@@ -70,9 +70,9 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    void ReportWorkerBacklog(const WorkerID &worker_id,
-                             const ray::TaskSpecification &resource_spec,
-                             const int64_t backlog_size) override {}
+    void ReportWorkerBacklog(
+        const WorkerID &worker_id,
+        const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {}
 
     /// WorkerLeaseInterface
     void RequestWorkerLease(
