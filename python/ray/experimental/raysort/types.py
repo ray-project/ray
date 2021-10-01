@@ -7,12 +7,6 @@ Path = str
 RecordCount = int
 
 BlockInfo = Tuple[int, int]
-
-
-class PartInfo(NamedTuple):
-    part_id: PartId
-    node: NodeAddress
-    path: Path
-
-    def __repr__(self):
-        return f"Part({self.node}:{self.path})"
+PartitionInfo = NamedTuple("PartitionInfo",
+                           [("part_id", PartId), ("node", NodeAddress),
+                            ("path", Path)])
