@@ -66,6 +66,11 @@ class RuntimeEnvDict:
                 {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
     """
 
+    known_fields: Set[str] = {
+        "working_dir", "conda", "pip", "uris", "containers", "env_vars",
+        "_ray_release", "_ray_commit", "_inject_current_ray", "plugins"
+    }
+
     def __init__(self,
                  runtime_env_json: dict,
                  working_dir: Optional[str] = None):
@@ -73,10 +78,6 @@ class RuntimeEnvDict:
         # contain all supported keys; values will be set to None if
         # unspecified. However, if all values are None this is set to {}.
         self._dict = dict()
-        self.known_fields: Set[str] = {
-            "working_dir", "conda", "pip", "uris", "containers", "env_vars",
-            "_ray_release", "_ray_commit", "_inject_current_ray", "plugins"
-        }
 
         if "working_dir" in runtime_env_json:
             self._dict["working_dir"] = runtime_env_json["working_dir"]
@@ -186,7 +187,8 @@ class RuntimeEnvDict:
                 # Validation passed, add the entry to parsed runtime env.
                 self._dict["plugins"][class_path] = plugin_field
 
-        unknown_fields = set(runtime_env_json.keys()) - self.known_fields
+        unknown_fields = (
+            set(runtime_env_json.keys()) - RuntimeEnvDict.known_fields)
         if len(unknown_fields):
             logger.warning(
                 "The following unknown entries in the runtime_env dictionary "

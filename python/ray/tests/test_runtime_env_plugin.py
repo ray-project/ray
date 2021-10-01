@@ -61,6 +61,7 @@ def test_simple_env_modification_plugin(ray_start_regular):
                         "env_value": 42,
                         "tmp_file": tmp_file_path,
                         "tmp_content": "hello",
+                        # See https://en.wikipedia.org/wiki/Nice_(Unix)
                         "prefix_command": "nice -n 19",
                     }
                 }
