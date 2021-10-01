@@ -1,59 +1,52 @@
+from dataclasses import dataclass, field
 import logging
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from contextlib import contextmanager
 from ray.workflow.common import WorkflowStatus
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from python.ray.workflow.common import StepID
 
+
+@dataclass
 class WorkflowStepContext:
-    def __init__(self,
-                 workflow_id: str = None,
-                 storage_url: str = None,
-                 workflow_scope: List[str] = None,
-                 outer_most_step_id: Optional[str] = None,
-                 last_step_of_workflow: bool = False):
-        """
-        The structure for saving workflow step context. The context provides
-        critical info (e.g. where to checkpoint, which is its parent step)
-        for the step to execute correctly.
+    """
+    The structure for saving workflow step context. The context provides
+    critical info (e.g. where to checkpoint, which is its parent step)
+    for the step to execute correctly.
 
-        To fully explain what we are doing, we need to introduce some syntax
-        first. The syntax for dependencies between workflow steps
-        "B.step(A.step())" is "A - B"; the syntax for nested workflow steps
-        "def A(): return B.step()" is "A / B".
+    To fully explain what we are doing, we need to introduce some syntax
+    first. The syntax for dependencies between workflow steps
+    "B.step(A.step())" is "A - B"; the syntax for nested workflow steps
+    "def A(): return B.step()" is "A / B".
 
-        In a chain/DAG of step dependencies, the "output step" is the step of
-        last (topological) order. For example, in "A - B - C", C is the
-        output step.
+    In a chain/DAG of step dependencies, the "output step" is the step of
+    last (topological) order. For example, in "A - B - C", C is the
+    output step.
 
-        In a chain of nested workflow steps, the initial "output step" is
-        called the "outer most step" for other "output steps". For example, in
-        "A / B / C / D", "A" is the outer most step for "B", "C", "D";
-        in the hybrid workflow "((A - B) / C / D) - (E / (F - G) / H)",
-        "B" is the outer most step for "C", "D"; "E" is the outer most step
-        for "G", "H".
+    In a chain of nested workflow steps, the initial "output step" is
+    called the "outer most step" for other "output steps". For example, in
+    "A / B / C / D", "A" is the outer most step for "B", "C", "D";
+    in the hybrid workflow "((A - B) / C / D) - (E / (F - G) / H)",
+    "B" is the outer most step for "C", "D"; "E" is the outer most step
+    for "G", "H".
 
-        Args:
-            workflow_id: The workflow job ID.
-            storage_url: The storage of the workflow, used for checkpointing.
-            workflow_scope: The "calling stack" of the current workflow step.
-                It describe the parent workflow steps.
-            outer_most_step_id: The ID of the outer most workflow. None if it
-                does not exists.
-            last_step_of_workflow: The step that generates the output of the
-                workflow (including nested steps).
-        """
-        self.workflow_id = workflow_id
-        self.storage_url = storage_url
-        self.workflow_scope = workflow_scope or []
-        self.outer_most_step_id: str = outer_most_step_id
-        self.last_step_of_workflow: bool = last_step_of_workflow
-
-    def __reduce__(self):
-        return WorkflowStepContext, (self.workflow_id, self.storage_url,
-                                     self.workflow_scope,
-                                     self.outer_most_step_id,
-                                     self.last_step_of_workflow)
+    Args:
+        workflow_id: The workflow job ID.
+        storage_url: The storage of the workflow, used for checkpointing.
+        workflow_scope: The "calling stack" of the current workflow step.
+            It describe the parent workflow steps.
+        outer_most_step_id: The ID of the outer most workflow. None if it
+            does not exists.
+        last_step_of_workflow: The step that generates the output of the
+            workflow (including nested steps).
+    """
+    workflow_id: Optional[str] = None
+    storage_url: Optional[str] = None
+    workflow_scope: List[str] = field(default_factory=list)
+    outer_most_step_id: "Optional[StepID]" = None
+    last_step_of_workflow: bool = False
 
 
 _context: Optional[WorkflowStepContext] = None
