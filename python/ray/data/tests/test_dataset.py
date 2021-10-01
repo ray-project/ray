@@ -144,6 +144,19 @@ def test_callable_classes(shutdown_only):
     assert len(actor_reuse) == 10, actor_reuse
 
 
+def test_transform_failure(shutdown_only):
+    ray.init(num_cpus=2)
+    ds = ray.data.from_items([0, 10], parallelism=2)
+
+    def mapper(x):
+        time.sleep(x)
+        assert False
+        return x
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ds.map(mapper)
+
+
 @pytest.mark.parametrize(
     "block_sizes,num_splits",
     [
