@@ -21,7 +21,6 @@
     script: python workloads/modin_xgboost_test.py
     args:
       [
-        "--address 'auto'",
         "--num-actors 4",
         "--cpus-per-actor 4",
         "--num-actors-inference 16",
