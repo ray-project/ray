@@ -722,9 +722,9 @@ class BackendState:
                backend_info: BackendInfo) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
-        If the backend already exists with the same version, this is a no-op
-        and returns the GoalId corresponding to the existing update if there
-        is one.
+        If the backend already exists with the same version and BackendConfig,
+        this is a no-op and returns the GoalId corresponding to the existing
+        update if there is one.
 
         Returns:
             GoalId, bool: The GoalId for the client to wait for and whether or
@@ -1303,9 +1303,9 @@ class BackendStateManager:
                        ) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
-        If the backend already exists with the same version, this is a no-op
-        and returns the GoalId corresponding to the existing update if there
-        is one.
+        If the backend already exists with the same version and BackendConfig,
+        this is a no-op and returns the GoalId corresponding to the existing
+        update if there is one.
 
         Returns:
             GoalId, bool: The GoalId for the client to wait for and whether or
