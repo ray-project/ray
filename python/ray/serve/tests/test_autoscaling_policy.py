@@ -1,15 +1,7 @@
-import time
-
-from ray._private.test_utils import SignalActor, wait_for_condition
 import sys
-import time
-import pytest
 
-import ray
-from ray import serve
-from ray._private.test_utils import wait_for_condition
-from ray.serve.backend_state import ReplicaState
-from ray.serve.config import AutoscalingConfig
+import pytest
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.autoscaling_policy import calculate_desired_num_replicas
 from ray.serve.backend_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
@@ -133,5 +125,6 @@ def test_e2e_basic_scale_up_down(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
     sys.exit(pytest.main(["-v", "-s", __file__]))
