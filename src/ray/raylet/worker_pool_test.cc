@@ -136,6 +136,7 @@ class WorkerPoolMock : public WorkerPool {
     pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_process_ = Process::FromPid(pid);
     worker_commands_by_proc_[last_worker_process_] = worker_command_args;
+    startup_tokens_by_proc_[last_worker_process_] = WorkerPool::startup_token_;
     return last_worker_process_;
   }
 
@@ -173,6 +174,10 @@ class WorkerPoolMock : public WorkerPool {
   int NumRestoreWorkerStarting() const {
     auto state = states_by_lang_.find(Language::PYTHON)->second;
     return state.restore_io_worker_state.num_starting_io_workers;
+  }
+
+  StartupToken GetStartupToken(Process proc) {
+    return startup_tokens_by_proc_[proc];
   }
 
   int GetProcessSize() const { return worker_commands_by_proc_.size(); }
@@ -263,6 +268,7 @@ class WorkerPoolMock : public WorkerPool {
           auto worker =
               CreateWorker(it->first, is_java ? Language::JAVA : Language::PYTHON, JOB_ID,
                            rpc::WorkerType::WORKER, runtime_env_hash);
+          worker->SetStartupToken(startup_tokens_by_proc_[it->first]);
           OnWorkerStarted(worker);
           PushAvailableWorker(worker);
         }
@@ -302,6 +308,7 @@ class WorkerPoolMock : public WorkerPool {
   Process last_worker_process_;
   // The worker commands by process.
   std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
+  std::unordered_map<Process, StartupToken> startup_tokens_by_proc_;
   double current_time_ms_ = 0;
   std::unordered_map<Process, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
@@ -491,6 +498,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     // Check that we can lookup the worker after it's registered.
@@ -508,7 +516,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
 
 TEST_F(WorkerPoolTest, HandleUnknownWorkerRegistration) {
   auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON);
-  auto status = worker_pool_->RegisterWorker(worker, 1234, 1234, [](Status, int) {});
+  auto status = worker_pool_->RegisterWorker(worker, 1234, 1234, -1, [](Status, int) {});
   ASSERT_FALSE(status.ok());
 }
 
@@ -717,7 +725,7 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
   for (const auto &process : started_processes) {
     auto worker = worker_pool_->CreateWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, process.GetId(), process.GetId(),
-                                              [](Status, int) {}));
+                                              worker_pool_->GetStartupToken(process), [](Status, int) {}));
     // Calling `RegisterWorker` won't affect the counter of starting worker processes.
     ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
     workers.push_back(worker);
@@ -974,8 +982,10 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
 
   // 1. we register both workers.
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker1, proc.GetId(), proc.GetId(),
+                                            worker_pool_->GetStartupToken(proc),
                                             [](Status, int) {}));
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker2, proc.GetId(), proc.GetId(),
+                                            worker_pool_->GetStartupToken(proc),
                                             [](Status, int) {}));
 
   // 2. announce worker port for worker 1. When interacting with worker pool, it's
@@ -1020,6 +1030,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1111,6 +1122,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
         Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id, &status);
     auto worker = CreateSpillWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1122,6 +1134,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
         Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id, &status);
     auto worker = CreateRestoreWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1165,6 +1178,7 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1422,6 +1436,7 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
 
   /* Test PopWorkerStatus RuntimeEnvCreationFailed */
   // Create a task without push worker.
+  // Fault To be fixed
   popped_worker = worker_pool_->PopWorkerSync(task_spec, false, &status);
   ASSERT_EQ(popped_worker, nullptr);
   // PopWorker failed while the timer was triggered and the status is

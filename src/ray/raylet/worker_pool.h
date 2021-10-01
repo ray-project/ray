@@ -134,6 +134,8 @@ class Worker;
 /// The WorkerPool is responsible for managing a pool of Workers. Each Worker
 /// is a container for a unit of work.
 class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
+ protected:
+  StartupToken startup_token_;
  public:
   /// Create a pool and asynchronously start at least the specified number of workers per
   /// language.
@@ -598,7 +600,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const NodeID node_id_;
   /// Address of the current node.
   const std::string node_address_;
-  StartupToken startup_token_;
   /// The soft limit of the number of registered workers.
   int num_workers_soft_limit_;
   /// The maximum number of worker processes that can be started concurrently.
