@@ -1295,7 +1295,7 @@ uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
     total_cpus = std::numeric_limits<uint64_t>::max();
   }
   double target = total_cpus / cpu_req;
-  if (target > std::numeric_limits<uint64_t>::max()) {
+  if (target >= static_cast<double>(std::numeric_limits<uint64_t>::max())) {
     // Casting a large value to uint64_t may result in 0.
     return std::numeric_limits<uint64_t>::max();
   } else {
