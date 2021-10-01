@@ -18,6 +18,16 @@ set -eo pipefail
 
 trap '[ $? -eq 0 ] || log_err' EXIT
 
+# Compare against the master branch, because most development is done against it.
+base_commit="$(git merge-base HEAD master)"
+if [ "$base_commit" = "$(git rev-parse HEAD)" ] && [ "$(git status --porcelain | wc -l)" -eq 0 ]; then
+  # Prefix of master branch, so compare against parent commit
+  base_commit="$(git rev-parse HEAD^)"
+  printInfo "Running clang-tidy against parent commit $base_commit"
+else
+  printInfo "Running clang-tidy against parent commit $base_commit from master branch"
+fi
+
 printInfo "Fetching workspace info ..."
 
 WORKSPACE=$(bazel info workspace)
@@ -65,28 +75,15 @@ else
     cp --no-preserve=mode "$TMPFILE" "$OUTFILE"
 fi
 
-# Compare against the master branch, because most development is done against it.
-base_commit="$(git merge-base HEAD master)"
-if [ "$base_commit" = "$(git rev-parse HEAD)" ]; then
-  # Prefix of master branch, so compare against parent commit
-  base_commit="$(git rev-parse HEAD^)"
-  printInfo "Running clang-tidy against parent commit $base_commit"
-else
-  printInfo "Running clang-tidy against parent commit $base_commit from master branch"
-fi
-
 trap - EXIT
 
-if git diff -U0 "$base_commit" | ci/travis/clang-tidy-diff.py -p1 -fix; then
+output="$(git diff -U0 "$base_commit" | ci/travis/clang-tidy-diff.py -p1 -fix)"
+if [[ ! "$output" =~ "error: " ]]; then
   printInfo "clang-tidy passed."
 else
-  printError "clang-tidy failed. See above for details including suggested fixes."
-  printError
-  printError "If you think the warning is too aggressive, the proposed fix is incorrect or are unsure about how to"
-  printError "fix, feel free to raise the issue on the PR or Anyscale #learning-cplusplus Slack channel."
-  printError
-  printError "To run clang-tidy locally with fix suggestions, make sure clang and clang-tidy are installed and"
-  printError "available in PATH (version 12 is preferred). Then run"
-  printError "scripts/check-git-clang-tidy-output.sh"
-  printError "from repo root."
+  printError "clang-tidy issued warnings. See below for details. Suggested fixes have also been applied."
+  printError "$output"
+  printError "If a warning is too pedantic, a proposed fix is incorrect or you are unsure about how to fix a warning,"
+  printError "feel free to raise the issue on the pull request."
+  printError "clang-tidy warnings can also be suppressed with NOLINT"
 fi

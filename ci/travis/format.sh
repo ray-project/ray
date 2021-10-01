@@ -64,10 +64,21 @@ tool_version_check "shellcheck" "$SHELLCHECK_VERSION" "$SHELLCHECK_VERSION_REQUI
 tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
 
 if which clang-format >/dev/null; then
-  CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
+  CLANG_FORMAT_VERSION=$(clang-format --version | awk 'NR==1{print $3}')
   tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.0"
 else
-    echo "WARNING: clang-format is not installed!"
+    echo "WARNING: clang-format 12 is not installed!"
+    echo "To install on MacOS: brew install clang-format"
+    echo "To install on Ubuntu: sudo apt install clang-format-12 && update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-12 100"
+fi
+
+if which clang-tidy >/dev/null; then
+  CLANG_TIDY_VERSION=$(clang-tidy --version | awk '{print $4}')
+  tool_version_check "clang-tidy" "$CLANG_TIDY_VERSION" "12.0.1"
+else
+    echo "WARNING: clang-tidy 12 is not installed!"
+    echo "To install on MacOS: brew install clang-tidy"
+    echo "To install on Ubuntu: sudo apt install clang-tidy-12 && update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-12 100"
 fi
 
 if command -v java >/dev/null; then
@@ -282,10 +293,11 @@ format_changed() {
     fi
 
     if which clang-format >/dev/null; then
-        if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.cc' '*.h' &>/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.cc' '*.h' | xargs -P 5 \
-                 clang-format -i
-        fi
+        ci/travis/check-git-clang-format-output.sh
+    fi
+
+    if which clang-tidy >/dev/null; then
+        ci/travis/check-git-clang-tidy-output.sh
     fi
 
     if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
