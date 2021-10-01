@@ -293,15 +293,17 @@ class GcsTableStorage {
     placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
     task_table_ = std::make_unique<GcsTaskTable>(store_client_);
     task_lease_table_ = std::make_unique<GcsTaskLeaseTable>(store_client_);
-    task_reconstruction_table_ = std::make_unique<GcsTaskReconstructionTable>(store_client_);
+    task_reconstruction_table_ =
+        std::make_unique<GcsTaskReconstructionTable>(store_client_);
     object_table_ = std::make_unique<GcsObjectTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
     node_resource_table_ = std::make_unique<GcsNodeResourceTable>(store_client_);
-    placement_group_schedule_table_ = std::make_unique<GcsPlacementGroupScheduleTable>(
-        store_client_);
-    placement_group_schedule_table_ = std::make_unique<GcsPlacementGroupScheduleTable>(
-        store_client_);
-    resource_usage_batch_table_ = std::make_unique<GcsResourceUsageBatchTable>(store_client_);
+    placement_group_schedule_table_ =
+        std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
+    placement_group_schedule_table_ =
+        std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
+    resource_usage_batch_table_ =
+        std::make_unique<GcsResourceUsageBatchTable>(store_client_);
     profile_table_ = std::make_unique<GcsProfileTable>(store_client_);
     worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
     system_config_table_ = std::make_unique<GcsInternalConfigTable>(store_client_);
