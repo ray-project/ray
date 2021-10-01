@@ -50,7 +50,7 @@ benefits of Bayesian Optimization with early stopping.
 with most Bayesian Optimization methods. Discrete or categorical variables still
 work, but less good with an increasing number of categories.
 
-**If you have many categorical values for hyperparemeters**, consider using random search,
+**If you have many categorical values for hyperparameters**, consider using random search,
 or a TPE-based Bayesian Optimization algorithm such as :ref:`Optuna <tune-optuna>` or
 :ref:`HyperOpt <tune-hyperopt>`.
 
