@@ -848,7 +848,8 @@ class AutoscalingTest(unittest.TestCase):
             x for x in commands_with_mount if "rsync --rsh" in x[1]
         ]
         copy_into_container = [
-            x for x in commands_with_mount if "rsync -e" in x[1]
+            x for x in commands_with_mount
+            if re.search("rsync -e.*docker exec -i", x[1])
         ]
         first_mkdir = min(x[0] for x in commands_with_mount if "mkdir" in x[1])
         docker_run_cmd_indx = [
@@ -1020,7 +1021,7 @@ class AutoscalingTest(unittest.TestCase):
             override_cluster_name=None,
             down=True,
             _runner=runner)
-        runner.assert_has_call("1.2.3.0", pattern="rsync -e")
+        runner.assert_has_call("1.2.3.0", pattern="rsync -e.*docker exec -i")
         runner.assert_has_call("1.2.3.0", pattern="rsync --rsh")
         runner.clear_history()
 
@@ -1032,7 +1033,7 @@ class AutoscalingTest(unittest.TestCase):
             down=True,
             ip_address="1.2.3.5",
             _runner=runner)
-        runner.assert_has_call("1.2.3.5", pattern="rsync -e")
+        runner.assert_has_call("1.2.3.5", pattern="rsync -e.*docker exec -i")
         runner.assert_has_call("1.2.3.5", pattern="rsync --rsh")
         runner.clear_history()
 
@@ -1045,7 +1046,7 @@ class AutoscalingTest(unittest.TestCase):
             down=True,
             use_internal_ip=True,
             _runner=runner)
-        runner.assert_has_call("172.0.0.4", pattern="rsync -e")
+        runner.assert_has_call("172.0.0.4", pattern="rsync -e.*docker exec -i")
         runner.assert_has_call("172.0.0.4", pattern="rsync --rsh")
 
     def testRsyncCommandWithoutDocker(self):
