@@ -39,12 +39,6 @@ namespace ray {
 
 namespace raylet {
 
-#ifdef _WIN32
-typedef int StartupToken;
-#else
-typedef int64_t StartupToken;
-#endif
-
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
@@ -447,6 +441,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_workers;
     /// The type of the worker.
     rpc::WorkerType worker_type;
+    Process proc;
   };
 
   struct TaskWaitingForWorkerInfo {
@@ -482,7 +477,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of this shim processes to the extra information of
     /// the process. The shim process PID is the same with worker process PID, except
     /// starting worker process in container.
-    std::unordered_map<StartupToken, std::pair<StartingWorkerProcessInfo, Process>>
+    std::unordered_map<StartupToken, StartingWorkerProcessInfo>
         starting_worker_processes;
     /// A map for looking up the task by the pid of starting worker process.
     std::unordered_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;

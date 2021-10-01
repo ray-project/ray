@@ -27,12 +27,6 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/process.h"
 
-#ifdef _WIN32
-typedef int StartupToken;
-#else
-typedef int64_t StartupToken;
-#endif
-
 namespace ray {
 
 namespace raylet {

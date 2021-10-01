@@ -29,11 +29,6 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-#ifdef _WIN32
-typedef int StartupToken;
-#else
-typedef int64_t StartupToken;
-#endif
 
 using ray::ActorID;
 using ray::JobID;

@@ -134,7 +134,7 @@ WorkerPool::~WorkerPool() {
     }
     // Kill all the workers that have been started but not registered.
     for (const auto &starting_worker : entry.second.starting_worker_processes) {
-      procs_to_kill.insert(starting_worker.second.second);
+      procs_to_kill.insert(starting_worker.second.proc);
     }
   }
   for (Process proc : procs_to_kill) {
@@ -198,8 +198,8 @@ Process WorkerPool::StartWorkerProcess(
   // without starting more.
   int starting_workers = 0;
   for (auto &entry : state.starting_worker_processes) {
-    if (entry.second.first.worker_type == worker_type) {
-      starting_workers += entry.second.first.num_starting_workers;
+    if (entry.second.worker_type == worker_type) {
+      starting_workers += entry.second.num_starting_workers;
     }
   }
 
@@ -372,9 +372,7 @@ Process WorkerPool::StartWorkerProcess(
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(
       startup_token_,
-      std::make_pair(
-          StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type},
-          proc));
+      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc});
   startup_token_ += 1;
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
@@ -556,8 +554,8 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 
   auto it = state.starting_worker_processes.find(worker_startup_token);
   if (it != state.starting_worker_processes.end()) {
-    it->second.first.num_starting_workers--;
-    if (it->second.first.num_starting_workers == 0) {
+    it->second.num_starting_workers--;
+    if (it->second.num_starting_workers == 0) {
       state.starting_worker_processes.erase(it);
       // We may have slots to start more workers now.
       TryStartIOWorkers(worker->GetLanguage());
@@ -1090,7 +1088,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec, int64_t bac
   // The number of available workers that can be used for this task spec.
   int num_usable_workers = state.idle.size();
   for (auto &entry : state.starting_worker_processes) {
-    num_usable_workers += entry.second.first.num_starting_workers;
+    num_usable_workers += entry.second.num_starting_workers;
   }
   // Some existing workers may be holding less than 1 CPU each, so we should
   // start as many workers as needed to fill up the remaining CPUs.
@@ -1226,7 +1224,7 @@ void WorkerPool::WarnAboutSize() {
         static_cast<int64_t>(state.registered_workers.size());
     for (const auto &starting_process : state.starting_worker_processes) {
       num_workers_started_or_registered +=
-          starting_process.second.first.num_starting_workers;
+          starting_process.second.num_starting_workers;
     }
     // Don't count IO workers towards the warning message threshold.
     num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;
