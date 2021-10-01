@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <utility>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -285,25 +286,25 @@ class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
 /// derive from this class and override class member variables.
 class GcsTableStorage {
  public:
-  GcsTableStorage(std::shared_ptr<StoreClient> store_client)
+  explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client)
       : store_client_(std::move(store_client)) {
-    job_table_.reset(new GcsJobTable(store_client_));
-    actor_table_.reset(new GcsActorTable(store_client_));
-    placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
-    task_table_.reset(new GcsTaskTable(store_client_));
-    task_lease_table_.reset(new GcsTaskLeaseTable(store_client_));
-    task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client_));
-    object_table_.reset(new GcsObjectTable(store_client_));
-    node_table_.reset(new GcsNodeTable(store_client_));
-    node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    placement_group_schedule_table_.reset(
-        new GcsPlacementGroupScheduleTable(store_client_));
-    placement_group_schedule_table_.reset(
-        new GcsPlacementGroupScheduleTable(store_client_));
-    resource_usage_batch_table_.reset(new GcsResourceUsageBatchTable(store_client_));
-    profile_table_.reset(new GcsProfileTable(store_client_));
-    worker_table_.reset(new GcsWorkerTable(store_client_));
-    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
+    job_table_ = std::make_unique<GcsJobTable>(store_client_);
+    actor_table_ = std::make_unique<GcsActorTable>(store_client_);
+    placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
+    task_table_ = std::make_unique<GcsTaskTable>(store_client_);
+    task_lease_table_ = std::make_unique<GcsTaskLeaseTable>(store_client_);
+    task_reconstruction_table_ = std::make_unique<GcsTaskReconstructionTable>(store_client_);
+    object_table_ = std::make_unique<GcsObjectTable>(store_client_);
+    node_table_ = std::make_unique<GcsNodeTable>(store_client_);
+    node_resource_table_ = std::make_unique<GcsNodeResourceTable>(store_client_);
+    placement_group_schedule_table_ = std::make_unique<GcsPlacementGroupScheduleTable>(
+        store_client_);
+    placement_group_schedule_table_ = std::make_unique<GcsPlacementGroupScheduleTable>(
+        store_client_);
+    resource_usage_batch_table_ = std::make_unique<GcsResourceUsageBatchTable>(store_client_);
+    profile_table_ = std::make_unique<GcsProfileTable>(store_client_);
+    worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
+    system_config_table_ = std::make_unique<GcsInternalConfigTable>(store_client_);
   }
 
   GcsJobTable &JobTable() {
@@ -405,7 +406,7 @@ class GcsTableStorage {
 class RedisGcsTableStorage : public GcsTableStorage {
  public:
   explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
-      : GcsTableStorage(std::make_shared<RedisStoreClient>(redis_client)) {}
+      : GcsTableStorage(std::make_shared<RedisStoreClient>(std::move(redis_client))) {}
 };
 
 /// \class InMemoryGcsTableStorage

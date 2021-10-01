@@ -258,7 +258,7 @@ template <typename T>
 class ThreadPrivate {
  public:
   template <typename... Ts>
-  ThreadPrivate(Ts &&...ts) : t_(std::forward<Ts>(ts)...) {}
+  explicit ThreadPrivate(Ts &&...ts) : t_(std::forward<Ts>(ts)...) {}
 
   T &operator*() {
     ThreadCheck();
