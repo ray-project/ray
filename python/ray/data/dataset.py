@@ -1645,11 +1645,14 @@ class Dataset(Generic[T]):
         return DatasetPipeline(Iterable(self), length=times)
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        """Pipeline the dataset execution by splitting its blocks into groups.
+        raise DeprecationWarning("Use .window(n) instead of .pipeline(n)")
 
-        Transformations prior to the call to ``pipeline()`` are evaluated in
+    def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
+        """Convert this into a DatasetPipeline by windowing over data blocks.
+
+        Transformations prior to the call to ``window()`` are evaluated in
         bulk on the entire dataset. Transformations done on the returned
-        pipeline are evaluated incrementally per group of blocks as data is
+        pipeline are evaluated incrementally per window of blocks as data is
         read from the output of the pipeline.
 
         Pipelining execution allows for output to be read sooner without
@@ -1673,11 +1676,11 @@ class Dataset(Generic[T]):
         Examples:
             >>> # Create an inference pipeline.
             >>> ds = ray.data.read_binary_files(dir)
-            >>> pipe = ds.pipeline(parallelism=10).map(infer)
+            >>> pipe = ds.window(blocks_per_window=10).map(infer)
             DatasetPipeline(num_stages=2, length=40)
 
             >>> # The higher the stage parallelism, the shorter the pipeline.
-            >>> pipe = ds.pipeline(parallelism=20).map(infer)
+            >>> pipe = ds.window(blocks_per_window=20).map(infer)
             DatasetPipeline(num_stages=2, length=20)
 
             >>> # Outputs can be incrementally read from the pipeline.
@@ -1685,8 +1688,8 @@ class Dataset(Generic[T]):
             ...    print(item)
 
         Args:
-            parallelism: The parallelism (number of blocks) per stage.
-                Increasing parallelism increases pipeline throughput, but also
+            blocks_per_window: The window size (parallelism) in blocks.
+                Increasing window size increases pipeline throughput, but also
                 increases the latency to initial output, since it decreases the
                 length of the pipeline. Setting this to infinity effectively
                 disables pipelining.
@@ -1710,7 +1713,7 @@ class Dataset(Generic[T]):
 
         class Iterable:
             def __init__(self, blocks):
-                self._splits = blocks.split(split_size=parallelism)
+                self._splits = blocks.split(split_size=blocks_per_window)
 
             def __iter__(self):
                 return Iterator(self._splits)

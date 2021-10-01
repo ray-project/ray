@@ -11,7 +11,7 @@ A DatasetPipeline is an unified iterator over a (potentially infinite) sequence 
 Creating a DatasetPipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A DatasetPipeline can be constructed in two ways: either by pipelining the execution of an existing Dataset (via ``Dataset.pipeline``), or generating repeats of an existing Dataset (via ``Dataset.repeat``). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started with this synthetic data example:
+A DatasetPipeline can be constructed in two ways: either by pipelining the execution of an existing Dataset (via ``Dataset.window``), or generating repeats of an existing Dataset (via ``Dataset.repeat``). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started with this synthetic data example:
 
 .. code-block:: python
 
@@ -30,7 +30,7 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     base = ray.data.range(1000000)
     print(base)
     # -> Dataset(num_blocks=200, num_rows=1000000, schema=<class 'int'>)
-    pipe = base.pipeline(parallelism=10)
+    pipe = base.window(blocks_per_window=10)
     print(pipe)
     # -> DatasetPipeline(length=20, num_stages=1)
 
@@ -54,7 +54,7 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     # -> Total num rows 1000000
 
 
-You can also create a DatasetPipeline from a custom iterator over dataset creators using ``DatasetPipeline.from_iterable``. For example, this is how you would implement ``Dataset.repeat`` and ``Dataset.pipeline`` using ``from_iterable``:
+You can also create a DatasetPipeline from a custom iterator over dataset creators using ``DatasetPipeline.from_iterable``. For example, this is how you would implement ``Dataset.repeat`` and ``Dataset.window`` using ``from_iterable``:
 
 .. code-block:: python
 
@@ -66,8 +66,8 @@ You can also create a DatasetPipeline from a custom iterator over dataset creato
     pipe = DatasetPipeline.from_iterable(
         [lambda: source, lambda: source, lambda: source, lambda: source])
 
-    # Equivalent to ray.data.range(1000).pipeline(parallelism=10)
-    splits = ray.data.range(1000, parallelism=200).split(20)
+    # Equivalent to ray.data.range(1000).window(blocks_per_window=10)
+    splits = ray.data.range(1000, blocks_per_window=200).split(20)
     pipe = DatasetPipeline.from_iterable([lambda s=s: s for s in splits])
 
 
@@ -109,28 +109,28 @@ Ignoring the output, the above script has three separate stages: loading, prepro
 Enabling Pipelining
 ~~~~~~~~~~~~~~~~~~~
 
-We can optimize this by *pipelining* the execution of the dataset with the ``.pipeline()`` call, which returns a DatasetPIpeline instead of a Dataset object. The pipeline supports similar transformations to the original Dataset:
+We can optimize this by *pipelining* the execution of the dataset with the ``.window()`` call, which returns a DatasetPipeline instead of a Dataset object. The pipeline supports similar transformations to the original Dataset:
 
 .. code-block:: python
 
     # Convert the Dataset into a DatasetPipeline.
     pipe: DatasetPipeline = ray.data \
         .read_binary_files("s3://bucket/image-dir") \
-        .pipeline(parallelism=2)
+        .window(blocks_per_window=2)
 
     # The remainder of the steps do not change.
     pipe = pipe.map(preprocess)
     pipe = pipe.map_batches(BatchInferModel, compute="actors", batch_size=256, num_gpus=1)
     pipe.write_json("/tmp/results")
 
-Here we specified ``parallelism=2``, which means that the Dataset is split into smaller sub-Datasets of two blocks each. Each transformation or *stage* of the pipeline is operating over these two-block Datasets in parallel. This means batch inference processing can start as soon as two blocks are read and preprocessed, greatly reducing the GPU idle time:
+Here we specified ``blocks_per_window=2``, which means that the Dataset is split into smaller sub-Datasets of two blocks each. Each transformation or *stage* of the pipeline is operating over these two-block Datasets in parallel. This means batch inference processing can start as soon as two blocks are read and preprocessed, greatly reducing the GPU idle time:
 
 .. image:: dataset-pipeline-2.svg
 
 Tuning Parallelism
 ~~~~~~~~~~~~~~~~~~
 
-Tune the throughput vs latency of your pipeline with the ``parallelism`` setting. As a rule of thumb, higher parallelism settings perform better, however ``parallelism == num_blocks`` effectively disables pipelining, since the DatasetPipeline will only contain a single Dataset. The other extreme is setting ``parallelism=1``, which minimizes the latency to initial output but only allows one concurrent transformation task per stage:
+Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` setting. As a rule of thumb, higher parallelism settings perform better, however ``blocks_per_window == num_blocks`` effectively disables pipelining, since the DatasetPipeline will only contain a single Dataset. The other extreme is setting ``blocks_per_window=1``, which minimizes the latency to initial output but only allows one concurrent transformation task per stage:
 
 .. image:: dataset-pipeline-3.svg
 

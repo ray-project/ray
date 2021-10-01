@@ -31,7 +31,7 @@ from ray.data.tests.conftest import *  # noqa
 
 def maybe_pipeline(ds, enabled):
     if enabled:
-        return ds.pipeline(parallelism=1)
+        return ds.window(blocks_per_window=1)
     else:
         return ds
 
