@@ -1361,10 +1361,10 @@ class Dataset(Generic[T]):
             spark, self.schema(), self.get_internal_block_refs(), locations)
 
     def to_pandas(self, limit: int = 1000) -> "pandas.DataFrame":
-        """Convert this dataset into a single Pandas DataFrame, limiting the
-        number of records returned.
+        """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records.
+        This is only supported for datasets convertible to Arrow records. This
+        limits the number of records returned to the provided limit.
 
         Time complexity: O(limit)
 
