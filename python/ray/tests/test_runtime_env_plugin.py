@@ -29,7 +29,7 @@ class MyPlugin(RuntimeEnvPlugin):
             f"echo {plugin_config_dict['tmp_content']} > "
             f"{plugin_config_dict['tmp_file']}")
         ctx.py_executable = (
-            plugin_config_dict['prefix_command'] + " " + ctx.py_executable)
+            plugin_config_dict["prefix_command"] + " " + ctx.py_executable)
 
 
 @pytest.fixture
