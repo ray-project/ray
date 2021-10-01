@@ -1347,7 +1347,7 @@ void WorkerPool::CreateRuntimeEnv(
   // create runtime env.
   agent_manager_->CreateRuntimeEnv(
       job_id, serialized_runtime_env,
-      [this, job_id, serialized_runtime_env, callback](
+      [job_id, serialized_runtime_env, callback](
           bool successful, const std::string &serialized_runtime_env_context) {
         if (successful) {
           callback(true, serialized_runtime_env_context);
