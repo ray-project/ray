@@ -1545,8 +1545,8 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
+  auto callback = [callback_occurred_ptr](const Status &, const std::function<void()> &,
+                                          const std::function<void()> &) {
     *callback_occurred_ptr = true;
   };
 
