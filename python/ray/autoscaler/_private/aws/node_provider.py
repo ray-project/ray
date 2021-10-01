@@ -2,6 +2,7 @@ import copy
 import threading
 from collections import defaultdict, OrderedDict
 import logging
+import random
 import time
 from typing import Any, Dict, List
 
@@ -97,7 +98,8 @@ class AWSNodeProvider(NodeProvider):
             max_retries=0,
             aws_credentials=aws_credentials)
 
-        self.last_used_subnet_idx = 0
+        self.subnet_idx = 0
+        self.spot_subnet_idx = random.randint(0, 100)
 
         # Tags that we believe to actually be on EC2.
         self.tag_cache = {}
@@ -376,6 +378,9 @@ class AWSNodeProvider(NodeProvider):
             "TagSpecifications": tag_specs
         })
 
+        is_spot = conf.get("InstanceMarketOptions",
+                           {}).get("MarketType") == "spot"
+
         cli_logger_tags = {}
         for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
             try:
@@ -386,8 +391,13 @@ class AWSNodeProvider(NodeProvider):
                     conf.pop("SecurityGroupIds", None)
                     cli_logger_tags["network_interfaces"] = str(net_ifs)
                 else:
-                    subnet_id = subnet_ids[self.last_used_subnet_idx %
-                                           len(subnet_ids)]
+                    idx = self.subnet_idx
+                    if is_spot:
+                        # We want to round-robin spot instances to reduce
+                        # the likelihood of many being evicted at once.
+                        idx = self.spot_subnet_idx
+                        self.spot_subnet_idx += 1
+                    subnet_id = subnet_ids[idx % len(subnet_ids)]
                     conf["SubnetId"] = subnet_id
                     cli_logger_tags["subnet_id"] = subnet_id
 
@@ -429,7 +439,8 @@ class AWSNodeProvider(NodeProvider):
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
                 # Launch failure may be due to instance type availability!
-                self.last_used_subnet_idx += 1
+                if not is_spot:
+                    self.subnet_idx += 1
         return created_nodes_dict
 
     def terminate_node(self, node_id):
