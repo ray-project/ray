@@ -144,4 +144,3 @@ class TorchBackend(Backend):
 
         worker_group.execute(
             shutdown_torch, destroy_process_group=len(worker_group) > 1)
-
