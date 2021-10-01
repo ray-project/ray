@@ -111,12 +111,13 @@ ray.shutdown()
                     all_worker_pids.add(worker_pid)
 
 
-def test_worker_env(shutdown_only):
+def test_runtime_env(shutdown_only):
     ray.init(
-        job_config=ray.job_config.JobConfig(worker_env={
-            "foo1": "bar1",
-            "foo2": "bar2"
-        }))
+        job_config=ray.job_config.JobConfig(
+            runtime_env={"env_vars": {
+                "foo1": "bar1",
+                "foo2": "bar2"
+            }}))
 
     @ray.remote
     def get_env(key):
