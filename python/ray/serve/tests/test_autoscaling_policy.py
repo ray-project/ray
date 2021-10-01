@@ -125,6 +125,5 @@ def test_e2e_basic_scale_up_down(serve_instance):
 
 if __name__ == "__main__":
     import sys
-
     import pytest
     sys.exit(pytest.main(["-v", "-s", __file__]))
