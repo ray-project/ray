@@ -146,14 +146,16 @@ class MockProcessRunner:
                     f"Did not find [{exact_cmd}] in [{debug_output}] for "
                     f"ip={ip}.\n\nFull output: {self.command_history()}")
 
-    def assert_not_has_call(self, ip, pattern):
+    def assert_not_has_call(self, ip: str, pattern: str):
+        """Ensure that the given regex pattern was never called.
+        """
         with self.lock:
             out = ""
             for cmd in self.command_history():
                 if ip in cmd:
                     out += cmd
                     out += "\n"
-            if pattern in out:
+            if re.search(pattern, out):
                 raise Exception("Found [{}] in [{}] for {}".format(
                     pattern, out, ip))
             else:
