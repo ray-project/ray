@@ -3,7 +3,9 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.utils import import_attr
 import yaml
 
 import ray
@@ -63,6 +65,11 @@ class RuntimeEnvDict:
             Examples:
                 {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
     """
+
+    known_fields: Set[str] = {
+        "working_dir", "conda", "pip", "uris", "containers", "env_vars",
+        "_ray_release", "_ray_commit", "_inject_current_ray", "plugins"
+    }
 
     def __init__(self,
                  runtime_env_json: dict,
@@ -164,6 +171,29 @@ class RuntimeEnvDict:
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support docker
+
+        if "plugins" in runtime_env_json:
+            self._dict["plugins"] = dict()
+            for class_path, plugin_field in runtime_env_json[
+                    "plugins"].items():
+                plugin_class: RuntimeEnvPlugin = import_attr(class_path)
+                if not issubclass(plugin_class, RuntimeEnvPlugin):
+                    # TODO(simon): move the inferface to public once ready.
+                    raise TypeError(
+                        f"{class_path} must be inherit from "
+                        "ray._private.runtime_env.plugin.RuntimeEnvPlugin.")
+                # TODO(simon): implement uri support.
+                _ = plugin_class.validate(runtime_env_json)
+                # Validation passed, add the entry to parsed runtime env.
+                self._dict["plugins"][class_path] = plugin_field
+
+        unknown_fields = (
+            set(runtime_env_json.keys()) - RuntimeEnvDict.known_fields)
+        if len(unknown_fields):
+            logger.warning(
+                "The following unknown entries in the runtime_env dictionary "
+                f"will be ignored: {unknown_fields}. If you are intended to "
+                "use plugin, make sure to nest them in the ``plugins`` field.")
 
         # TODO(architkulkarni) This is to make it easy for the worker caching
         # code in C++ to check if the env is empty without deserializing and
