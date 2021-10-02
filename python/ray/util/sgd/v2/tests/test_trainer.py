@@ -10,8 +10,9 @@ import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 import torch
 from ray._private.test_utils import wait_for_condition
-from ray.util.sgd.v2 import Trainer, TorchConfig, TensorflowConfig, \
+from ray.util.sgd.v2 import Trainer, TensorflowConfig, \
     HorovodConfig
+from ray.util.sgd.v2.torch import TorchConfig
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
     BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import SGDCallback

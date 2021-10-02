@@ -144,3 +144,25 @@ class TorchBackend(Backend):
 
         worker_group.execute(
             shutdown_torch, destroy_process_group=len(worker_group) > 1)
+
+
+def prepare(*args, wrap_ddp=True, wrap_dist_sampler=True, ddp_args=None):
+    """Prepares the provided arguments for distributed execution.
+
+    This allows you to use the same exact code regardless of number of
+    workers or on any device type (CPU, GPU).
+
+    ``torch.nn.Module``:
+        - Place on correct device and wrap with DDP if applicable
+
+    ``torch.utils.data.DataLoader``
+        - Add ``DistributedSampler`` to ``DataLoader`` if applicable
+
+
+    Example:
+
+        ..
+    """
+
+
+

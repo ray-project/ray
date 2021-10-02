@@ -118,6 +118,11 @@ system. Let's take following simple examples:
 
     Now let's convert this to a distributed multi-worker training function!
 
+    All you have to do is use the ``ray.sgd.torch.prepare`` utility function to
+    easily setup your model and data. This will automatically wrap your model with
+    ``DistributedDataParallel`` and place it on the right device, and add ``DisributedSampler``
+    to your DataLoaders.
+
     First, update the training function code to use PyTorch's
     ``DistributedDataParallel``. With RaySGD, you just pass in your distributed
     data parallel code as as you would normally run it with
@@ -130,9 +135,10 @@ system. Let's take following simple examples:
         def train_func_distributed():
             num_epochs = 3
             model = NeuralNetwork()
-            model = DistributedDataParallel(model)
             loss_fn = nn.MSELoss()
             optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+            model, loss = ray.sgd.torch.prepare(model, loss)
 
             for epoch in range(num_epochs):
                 output = model(input)

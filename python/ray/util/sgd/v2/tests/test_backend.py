@@ -10,7 +10,7 @@ from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.util.sgd.v2.worker_group import WorkerGroup
-from ray.util.sgd.v2.backends.torch import TorchConfig
+from ray.util.sgd.v2.torch import TorchConfig
 
 from ray.util.sgd.v2.backends.backend import Backend, \
     InactiveWorkerGroupError, SGDBackendError, TrainingWorkerError
