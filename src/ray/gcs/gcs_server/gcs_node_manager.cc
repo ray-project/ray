@@ -149,24 +149,13 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     if (!is_intended) {
-      // Broadcast a warning to all of the drivers indicating that the node
+      // Broadcast an error in the logs indicating that the node
       // has been marked as dead.
-      // TODO(rkn): Define this constant somewhere else.
-      std::string type = "node_removed";
-      std::ostringstream error_message;
-      error_message << "The node with node id: " << node_id
-                    << " and ip: " << removed_node->node_manager_address()
-                    << " has been marked dead because the detector"
-                    << " has missed too many heartbeats from it. This can happen when a "
-                       "raylet crashes unexpectedly or has lagging heartbeats.";
-      auto error_data_ptr =
-          gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
-      RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
-              .WithField("node_id", node_id.Hex())
-              .WithField("ip", removed_node->node_manager_address())
-          << error_message.str();
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, node_id.Hex(),
-                                         error_data_ptr->SerializeAsString(), nullptr));
+      RAY_LOG(ERROR) << "The node with node id: " << node_id
+                     << " and ip: " << removed_node->node_manager_address()
+                     << " has been marked dead because the detector"
+                     << " has missed too many heartbeats from it. This can happen when a "
+                        "raylet crashes unexpectedly or has lagging heartbeats.";
     }
 
     // Notify all listeners.
