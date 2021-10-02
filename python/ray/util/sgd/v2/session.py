@@ -33,6 +33,7 @@ class Session:
                  training_func: Callable,
                  world_rank: int,
                  local_rank: int,
+                 world_size: int,
                  checkpoint: Optional[Dict] = None,
                  detailed_autofilled_metrics: bool = False):
         # The Thread object that is running the training function.
@@ -40,6 +41,7 @@ class Session:
             target=training_func, daemon=True)
         self.world_rank = world_rank
         self.local_rank = local_rank
+        self.world_size = world_size
         self.loaded_checkpoint = checkpoint
 
         # This lock is used to control the execution of the training thread.
@@ -220,7 +222,7 @@ def report(**kwargs) -> None:
     .. code-block:: python
 
         import time
-        from ray.util import sgd
+        from ray import sgd
 
         def train_func():
             for iter in range(100):
@@ -247,7 +249,7 @@ def world_rank() -> int:
     .. code-block:: python
 
         import time
-        from ray.util import sgd
+        from ray import sgd
 
         def train_func():
             for iter in range(100):
@@ -265,13 +267,35 @@ def world_rank() -> int:
     return session.world_rank
 
 
+def world_size() -> int:
+    """Get the current world size for this training execution..
+
+    .. code-block:: python
+
+        import time
+        from ray import sgd
+
+        def train_func():
+            assert sgd.world_size() == 4
+
+
+        trainer = Trainer(backend="torch", num_workers=4)
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
+
+    """
+    session = get_session()
+    return session.world_size
+
+
 def local_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
     .. code-block:: python
 
         import time
-        from ray.util import sgd
+        from ray import sgd
 
         def train_func():
             if torch.cuda.is_available():
@@ -293,7 +317,7 @@ def load_checkpoint() -> Optional[Dict]:
 
     .. code-block:: python
 
-        from ray.util import sgd
+        from ray import sgd
 
         def train_func():
             checkpoint = sgd.load_checkpoint()
@@ -324,7 +348,7 @@ def save_checkpoint(**kwargs) -> None:
     .. code-block:: python
 
         import time
-        from ray.util import sgd
+        from ray import sgd
 
         def train_func():
             for iter in range(100):

@@ -403,12 +403,14 @@ class BackendExecutor:
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
 
         # First initialize the session.
-        def initialize_session(world_rank, local_rank, train_func, checkpoint):
+        def initialize_session(world_rank, local_rank, world_size, train_func,
+                               checkpoint):
             try:
                 init_session(
                     training_func=train_func,
                     world_rank=world_rank,
                     local_rank=local_rank,
+                    world_size=world_size,
                     checkpoint=checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics
                 )
@@ -431,6 +433,7 @@ class BackendExecutor:
                     initialize_session,
                     world_rank=world_rank,
                     local_rank=local_rank_map[world_rank],
+                    world_size=len(self.worker_group),
                     train_func=train_func,
                     checkpoint=checkpoint_dict))
 

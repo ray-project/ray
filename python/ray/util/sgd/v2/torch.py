@@ -3,19 +3,57 @@ import logging
 import os
 
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, Dict, Any, Tuple
 
 import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.utils import get_address_and_port
+from ray.util.sgd.v2.session import local_rank, world_size
 
 try:
     import torch
     import torch.distributed as dist
+    from torch.nn.parallel import DistributedDataParallel
+    from torch.utils.data import DistributedSampler, DataLoader
+
+
+    def _add_dist_sampler(loader: DataLoader) -> DataLoader:
+        # Automatically set the DistributedSampler
+        data_loader_args = {
+            "dataset": loader.dataset,
+            "batch_size": loader.batch_size,
+            "shuffle": False,
+            "num_workers": loader.num_workers,
+            "collate_fn": loader.collate_fn,
+            "pin_memory": loader.pin_memory,
+            "drop_last": loader.drop_last,
+            "timeout": loader.timeout,
+            "worker_init_fn": loader.worker_init_fn,
+            "sampler": DistributedSampler(loader.dataset)
+        }
+        return DataLoader(**data_loader_args)
+
+
+    class _WrappedDataLoader(DataLoader):
+        def __init__(self, base_dataloader: DataLoader,
+                     device: torch.device):
+            self.base_dataloader = base_dataloader
+            self.device = device
+
+        def __iter__(self):
+            for batch in 
+
+
+
 except ImportError:
-    torch = None
-    dist = None
+    torch = dist = DistributedDataParallel = DistributedSampler = \
+        DataLoader = _Wrapped_DataLoader = None
+
+    def noop():
+        pass
+
+    _add_dist_sampler = noop
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +184,8 @@ class TorchBackend(Backend):
             shutdown_torch, destroy_process_group=len(worker_group) > 1)
 
 
-def prepare(*args, wrap_ddp=True, wrap_dist_sampler=True, ddp_args=None):
+def prepare(*args, wrap_ddp:bool=True, wrap_dist_sampler:bool=True,
+            ddp_kwargs:Dict[str, Any]=None) -> Tuple:
     """Prepares the provided arguments for distributed execution.
 
     This allows you to use the same exact code regardless of number of
@@ -158,11 +197,57 @@ def prepare(*args, wrap_ddp=True, wrap_dist_sampler=True, ddp_args=None):
     ``torch.utils.data.DataLoader``
         - Add ``DistributedSampler`` to ``DataLoader`` if applicable
 
-
     Example:
+        TODO
 
-        ..
+    Args:
+        args: Model, Data Loaders, etc. to be modified for distributed
+            execution.
+        wrap_ddp (bool): Whether to wrap models in ``DistributedDataParallel``.
+        wrap_dist_sampler (bool): Whether to add ``DistributedSampler`` to
+            provided Torch Data Loaders.
+        ddp_kwargs (Dict[str, Any]): Args to pass into
+            ``DistributedDataParallel`` initialization.
     """
+
+    if torch is None:
+        raise ValueError("`torch` is not installed. "
+                         "Please install torch to use this function.")
+
+    ddp_kwargs = ddp_kwargs if ddp_kwargs else {}
+
+    if torch.cuda.is_available():
+        device = torch.device("cpu")
+    else:
+        device = torch.device(f"cuda:{local_rank()}")
+
+    outputs = []
+
+    rank = local_rank()
+
+    for obj in args:
+        if isinstance(obj, torch.utils.data.DataLoader):
+            pass
+        elif isinstance(obj, torch.nn.Module):
+            logger.info(f"Moving model to device: {device}")
+            obj = obj.to(device)
+            logger.info("Wrapping provided model in DDP.")
+            if wrap_ddp and world_size() > 1:
+                if torch.cuda.is_available():
+                    obj = DistributedDataParallel(obj, device_ids=[rank],
+                                                  output_device=rank,
+                                                  **ddp_kwargs)
+                else:
+                    obj = DistributedDataParallel(obj, **ddp_kwargs)
+
+        else:
+            logger.info(f"Received object of unrecognizable type "
+                        f"{type(obj)}. Performing no-op on this object.")
+        outputs.append(obj)
+
+    return tuple(outputs)
+
+
 
 
 

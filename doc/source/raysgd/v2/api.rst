@@ -104,3 +104,8 @@ sgd.local_rank
 ~~~~~~~~~~~~~~
 
 .. autofunction:: ray.sgd.local_rank
+
+sgd.world_size
+~~~~~~~~~~~~~~
+
+.. autofunction:: ray.sgd.world_size
