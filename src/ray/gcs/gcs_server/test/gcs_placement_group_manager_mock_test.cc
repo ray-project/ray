@@ -43,6 +43,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
         io_context_, gcs_placement_group_scheduler_, gcs_table_storage_,
         *resource_manager_, [](auto &) { return ""; });
   }
+
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   std::shared_ptr<MockGcsPlacementGroupSchedulerInterface> gcs_placement_group_scheduler_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
