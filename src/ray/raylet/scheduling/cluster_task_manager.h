@@ -355,6 +355,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   uint64_t metric_tasks_dispatched_;
   uint64_t metric_tasks_spilled_;
 
+  const bool scheduling_class_backpressure_;
+
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
   ///

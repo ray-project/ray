@@ -103,6 +103,11 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// then spread via weighted (by critical resource usage).
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
+/// Apply backpressure to scheduling classes. This fixes
+/// https://github.com/ray-project/ray/pull/17887 but change behavior that
+/// could break workloads.
+RAY_CONFIG(bool, scheduling_class_backpressure, true)
+
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
