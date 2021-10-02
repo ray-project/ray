@@ -134,33 +134,9 @@ def _resolve_step_inputs(
     return signature.recover_args(flattened_args)
 
 
-def execute_workflow(
-        workflow: "Workflow",
-        outer_most_step_id: Optional[str] = None,
-        last_step_of_workflow: bool = False) -> "WorkflowExecutionResult":
+def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     """Execute workflow.
 
-    To fully explain what we are doing, we need to introduce some syntax first.
-    The syntax for dependencies between workflow steps
-    "B.step(A.step())" is "A - B"; the syntax for nested workflow steps
-    "def A(): return B.step()" is "A / B".
-
-    In a chain/DAG of step dependencies, the "output step" is the step of last
-    (topological) order. For example, in "A - B - C", C is the output step.
-
-    In a chain of nested workflow steps, the initial "output step" is
-    called the "outer most step" for other "output steps". For example, in
-    "A / B / C / D", "A" is the outer most step for "B", "C", "D";
-    in the hybrid workflow "((A - B) / C / D) - (E / (F - G) / H)",
-    "B" is the outer most step for "C", "D"; "E" is the outer most step
-    for "G", "H".
-
-    Args:
-        workflow: The workflow to be executed.
-        outer_most_step_id: The ID of the outer most workflow. None if it
-            does not exists.
-        last_step_of_workflow: The step that generates the output of the
-            workflow (including nested steps).
     Returns:
         An object ref that represent the result.
     """
@@ -173,8 +149,8 @@ def execute_workflow(
         **workflow_data.ray_options).remote(
             workflow_data.step_type, workflow_data.func_body,
             workflow_context.get_workflow_step_context(), workflow.step_id,
-            baked_inputs, outer_most_step_id, workflow_data.catch_exceptions,
-            workflow_data.max_retries, last_step_of_workflow)
+            baked_inputs, workflow_data.catch_exceptions,
+            workflow_data.max_retries)
 
     if not isinstance(persisted_output, WorkflowOutputType):
         raise TypeError("Unexpected return type of the workflow.")
@@ -213,19 +189,13 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
     await asyncio.gather(*save_tasks)
 
 
-def commit_step(store: workflow_storage.WorkflowStorage,
-                step_id: "StepID",
-                ret: Union["Workflow", Any],
-                exception: Optional[Exception],
-                outer_most_step_id: Optional[str] = None):
+def commit_step(store: workflow_storage.WorkflowStorage, step_id: "StepID",
+                ret: Union["Workflow", Any], exception: Optional[Exception]):
     """Checkpoint the step output.
     Args:
         store: The storage the current workflow is using.
         step_id: The ID of the step.
         ret: The returned object of the workflow step.
-        outer_most_step_id: The ID of the outer most workflow. None if it
-            does not exists. See "step_executor.execute_workflow" for detailed
-            explanation.
     """
     from ray.workflow.common import Workflow
     if isinstance(ret, Workflow):
@@ -236,7 +206,12 @@ def commit_step(store: workflow_storage.WorkflowStorage,
         ]
         asyncio.get_event_loop().run_until_complete(asyncio.gather(*tasks))
 
-    store.save_step_output(step_id, ret, exception, outer_most_step_id)
+    context = workflow_context.get_workflow_step_context()
+    store.save_step_output(
+        step_id,
+        ret,
+        exception=exception,
+        outer_most_step_id=context.outer_most_step_id)
 
 
 def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
@@ -328,12 +303,11 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
 
 
 @ray.remote(num_returns=2)
-def _workflow_step_executor(
-        step_type: StepType, func: Callable,
-        context: workflow_context.WorkflowStepContext, step_id: "StepID",
-        baked_inputs: "_BakedWorkflowInputs", outer_most_step_id: "StepID",
-        catch_exceptions: bool, max_retries: int,
-        last_step_of_workflow: bool) -> Any:
+def _workflow_step_executor(step_type: StepType, func: Callable,
+                            context: workflow_context.WorkflowStepContext,
+                            step_id: "StepID",
+                            baked_inputs: "_BakedWorkflowInputs",
+                            catch_exceptions: bool, max_retries: int) -> Any:
     """Executor function for workflow step.
 
     Args:
@@ -342,13 +316,9 @@ def _workflow_step_executor(
         context: Workflow step context. Used to access correct storage etc.
         step_id: The ID of the step.
         baked_inputs: The processed inputs for the step.
-        outer_most_step_id: See "step_executor.execute_workflow" for
-            explanation.
         catch_exceptions: If set to be true, return
             (Optional[Result], Optional[Error]) instead of Result.
         max_retries: Max number of retries encounter of a failure.
-        last_step_of_workflow: The step that generates the output of the
-            workflow (including nested steps).
 
     Returns:
         Workflow step output.
@@ -361,7 +331,7 @@ def _workflow_step_executor(
             func, step_type, step_id, catch_exceptions, max_retries, *args,
             **kwargs)
     except Exception as e:
-        commit_step(store, step_id, None, e, outer_most_step_id)
+        commit_step(store, step_id, None, e)
         raise e
     if step_type == StepType.READONLY_ACTOR_METHOD:
         if isinstance(volatile_output, Workflow):
@@ -371,26 +341,28 @@ def _workflow_step_executor(
         assert not isinstance(persisted_output, Workflow)
     else:
         store = workflow_storage.get_workflow_storage()
-        commit_step(store, step_id, persisted_output, None, outer_most_step_id)
+        commit_step(store, step_id, persisted_output, None)
+        outer_most_step_id = context.outer_most_step_id
         if isinstance(persisted_output, Workflow):
             if step_type == StepType.FUNCTION:
                 # Passing down outer most step so inner nested steps would
                 # access the same outer most step.
-                if not outer_most_step_id:
+                if not context.outer_most_step_id:
                     # The current workflow step returns a nested workflow, and
                     # there is no outer step for the current step. So the
                     # current step is the outer most step for the inner nested
                     # workflow steps.
                     outer_most_step_id = workflow_context.get_current_step_id()
             assert volatile_output is None
-            # execute sub-workflow
-            result = execute_workflow(persisted_output, outer_most_step_id,
-                                      last_step_of_workflow)
+            # Execute sub-workflow. Pass down "outer_most_step_id".
+            with workflow_context.fork_workflow_step_context(
+                    outer_most_step_id=outer_most_step_id):
+                result = execute_workflow(persisted_output)
             # When virtual actor returns a workflow in the method,
             # the volatile_output and persisted_output will be put together
             persisted_output = result.persisted_output
             volatile_output = result.volatile_output
-        elif last_step_of_workflow:
+        elif context.last_step_of_workflow:
             # advance the progress of the workflow
             store.advance_progress(step_id)
         _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
@@ -415,9 +387,11 @@ class _BakedWorkflowInputs:
 
     @classmethod
     def from_workflow_inputs(cls, inputs: "WorkflowInputs"):
-        workflow_outputs = [
-            execute_workflow(w).persisted_output for w in inputs.workflows
-        ]
+        with workflow_context.fork_workflow_step_context(
+                outer_most_step_id=None, last_step_of_workflow=False):
+            workflow_outputs = [
+                execute_workflow(w).persisted_output for w in inputs.workflows
+            ]
         return cls(inputs.args, workflow_outputs, inputs.workflow_refs)
 
     def __reduce__(self):
