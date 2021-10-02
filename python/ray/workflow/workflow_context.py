@@ -31,21 +31,18 @@ class WorkflowStepContext:
     in the hybrid workflow "((A - B) / C / D) - (E / (F - G) / H)",
     "B" is the outer most step for "C", "D"; "E" is the outer most step
     for "G", "H".
-
-    Args:
-        workflow_id: The workflow job ID.
-        storage_url: The storage of the workflow, used for checkpointing.
-        workflow_scope: The "calling stack" of the current workflow step.
-            It describe the parent workflow steps.
-        outer_most_step_id: The ID of the outer most workflow. None if it
-            does not exists.
-        last_step_of_workflow: The step that generates the output of the
-            workflow (including nested steps).
     """
+    # ID of the workflow.
     workflow_id: Optional[str] = None
+    # The storage of the workflow, used for checkpointing.
     storage_url: Optional[str] = None
+    # The "calling stack" of the current workflow step. It describe
+    # the parent workflow steps.
     workflow_scope: List[str] = field(default_factory=list)
+    # The ID of the outer most workflow. "None" if it does not exists.
     outer_most_step_id: "Optional[StepID]" = None
+    # The step that generates the output of the workflow (including all
+    # nested steps).
     last_step_of_workflow: bool = False
 
 
