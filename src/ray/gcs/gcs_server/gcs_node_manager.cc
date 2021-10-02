@@ -151,7 +151,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     if (!is_intended) {
       // Broadcast an error in the logs indicating that the node
       // has been marked as dead.
-      RAY_LOG(ERROR) << "The node with node id: " << node_id
+      RAY_LOG(WARNING) << "The node with node id: " << node_id
                      << " and ip: " << removed_node->node_manager_address()
                      << " has been marked dead because the detector"
                      << " has missed too many heartbeats from it. This can happen when a "
