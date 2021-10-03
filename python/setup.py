@@ -564,9 +564,8 @@ def pip_run(build_ext):
     for filename in setup_spec.files_to_include:
         copied_files += copy_file(build_ext.build_lib, filename, ROOT_DIR)
     if sys.platform == 'win32':
-        print('copy_file uses', build_ext.build_lib, ROOT_DIR)
-        shutil.copy(r'c:\Windows\system32\msvcp140.dll',
-                        os.path.join(build_ext.build_lib, 'ray'))
+        shutil.copy(r"c:\Windows\system32\msvcp140.dll",
+                        os.path.join(build_ext.build_lib, "ray"))
         copied_files += 1
     print("# of files copied to {}: {}".format(build_ext.build_lib,
                                                copied_files))
