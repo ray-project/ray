@@ -40,7 +40,7 @@ void Init() {
 bool IsInitialized() { return is_init_; }
 
 void Shutdown() {
-  // TODO(guyang.sgy): Clean the ray runtime.
+  // TODO(SongGuyang): Clean the ray runtime.
   internal::AbstractRayRuntime::DoShutdown();
   is_init_ = false;
 }

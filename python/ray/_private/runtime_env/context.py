@@ -34,10 +34,13 @@ class RuntimeEnvContext:
     def deserialize(json_string):
         return RuntimeEnvContext(**json.loads(json_string))
 
-    def exec_worker(self, passthrough_args: List[str]):
+    def exec_worker(self, passthrough_args: List[str], language: str):
         os.environ.update(self.env_vars)
-        exec_command = " ".join([f"exec {self.py_executable}"] +
-                                passthrough_args)
+        if language == "PYTHON":
+            executable = f"exec {self.py_executable}"
+        else:
+            executable = "exec"
+        exec_command = " ".join([executable] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
         logger.info(f"Exec'ing worker with command: {command_str}")
         os.execvp("bash", ["bash", "-c", command_str])

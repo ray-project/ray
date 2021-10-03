@@ -313,13 +313,7 @@ Process WorkerPool::StartWorkerProcess(
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
   }
 
-  // TODO(edoakes): this is only used by Java. Once Java moves to runtime_env we
-  // should remove worker_env.
-  if (job_config) {
-    env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
-  }
-
-  if (language == Language::PYTHON) {
+  if (language == Language::PYTHON || language == Language::JAVA) {
     if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
       worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
       // Allocated_resource_json is only used in "shim process".
@@ -342,6 +336,12 @@ Process WorkerPool::StartWorkerProcess(
     if (serialized_runtime_env_context != "{}" && serialized_runtime_env_context != "") {
       worker_command_args.push_back("--serialized-runtime-env-context=" +
                                     serialized_runtime_env_context);
+    }
+
+    if (language == Language::PYTHON) {
+      worker_command_args.push_back("--language=PYTHON");
+    } else {
+      worker_command_args.push_back("--language=JAVA");
     }
 
     if (ray_debugger_external) {
@@ -747,7 +747,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     // The worker is used for the actor creation task with dynamic options.
     if (!used) {
       // Put it into idle dedicated worker pool.
-      // TODO(guyang.sgy): This worker will not be used forever. We should kill it.
+      // TODO(SongGuyang): This worker will not be used forever. We should kill it.
       state.idle_dedicated_workers[task_id] = worker;
     }
     return;
@@ -945,7 +945,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         state.starting_workers_to_tasks[proc] = std::move(task_info);
       }
     } else {
-      // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
+      // TODO(SongGuyang): Wait until a worker is pushed or a worker can be started If
       // startup concurrency maxed out or job not started.
       PopWorkerCallbackAsync(callback, nullptr, status);
     }

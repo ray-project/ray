@@ -72,8 +72,8 @@ class RayParams:
             be created.
         worker_path (str): The path of the source code that will be run by the
             worker.
-        setup_worker_path (str): The path of the Python file that will run
-            worker_setup_hook to set up the environment for the worker process.
+        setup_worker_path (str): The path of the Python file that will set up
+            the environment for the worker process.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_dashboard: Boolean flag indicating whether to start the web

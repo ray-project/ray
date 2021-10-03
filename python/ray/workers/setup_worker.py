@@ -26,6 +26,9 @@ parser.add_argument(
     type=str,
     help="the worker allocated resource")
 
+parser.add_argument(
+    "--language", type=str, help="the language type of the worker")
+
 
 def get_tmp_dir(remaining_args):
     for arg in remaining_args:
@@ -117,5 +120,4 @@ if __name__ == "__main__":
         # probably not even go through this codepath.
         runtime_env_context = RuntimeEnvContext.deserialize(
             args.serialized_runtime_env_context or "{}")
-
-        runtime_env_context.exec_worker(remaining_args)
+        runtime_env_context.exec_worker(remaining_args, args.language)
