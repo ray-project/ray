@@ -319,6 +319,11 @@ Process WorkerPool::StartWorkerProcess(
       // Allocated_resource_json is only used in "shim process".
       worker_command_args.push_back("--allocated-instances-serialized-json=" +
                                     allocated_instances_serialized_json);
+      if (language == Language::PYTHON) {
+        worker_command_args.push_back("--language=PYTHON");
+      } else {
+        worker_command_args.push_back("--language=JAVA");
+      }
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
@@ -336,12 +341,6 @@ Process WorkerPool::StartWorkerProcess(
     if (serialized_runtime_env_context != "{}" && serialized_runtime_env_context != "") {
       worker_command_args.push_back("--serialized-runtime-env-context=" +
                                     serialized_runtime_env_context);
-    }
-
-    if (language == Language::PYTHON) {
-      worker_command_args.push_back("--language=PYTHON");
-    } else {
-      worker_command_args.push_back("--language=JAVA");
     }
 
     if (ray_debugger_external) {
