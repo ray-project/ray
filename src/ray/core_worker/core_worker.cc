@@ -1623,13 +1623,13 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
 
 void CoreWorker::BuildCommonTaskSpec(
     TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-    const std::string name, const TaskID &current_task_id, const uint64_t task_index,
+    const std::string &name, const TaskID &current_task_id, const uint64_t task_index,
     const TaskID &caller_id, const rpc::Address &address, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-    const std::string debugger_breakpoint, const std::string &serialized_runtime_env,
+    const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
     const std::vector<std::string> &runtime_env_uris,
     const std::string &concurrency_group_name) {
   // Build common task spec.
