@@ -1436,7 +1436,6 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
 
   /* Test PopWorkerStatus RuntimeEnvCreationFailed */
   // Create a task without push worker.
-  // Fault To be fixed
   popped_worker = worker_pool_->PopWorkerSync(task_spec, false, &status);
   ASSERT_EQ(popped_worker, nullptr);
   // PopWorker failed while the timer was triggered and the status is
