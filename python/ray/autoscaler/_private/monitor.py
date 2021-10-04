@@ -163,7 +163,12 @@ class Monitor:
         head_node_ip = redis_address.split(":")[0]
         self.redis_address = redis_address
         self.redis_password = redis_password
-        self.load_metrics = LoadMetrics(local_ip=head_node_ip)
+        # TODO(ekl) clean this up
+        override_node_id = os.environ.get("RAY_OVERRIDE_NODE_ID_FOR_TESTING")
+        if override_node_id:
+            self.load_metrics = LoadMetrics(local_ip=override_node_id)
+        else:
+            self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info

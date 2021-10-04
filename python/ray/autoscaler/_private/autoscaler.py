@@ -309,17 +309,14 @@ class StandardAutoscaler:
             should_keep_or_terminate, reason = self._keep_worker_of_node_type(
                 node_id, node_type_counts)
             if should_keep_or_terminate == KeepOrTerminate.terminate:
-                print("DECIDE TO TERMINTAE", node_id)
                 self.schedule_node_termination(node_id, reason, logger.info)
                 continue
             if ((should_keep_or_terminate == KeepOrTerminate.keep
                  or node_id in nodes_not_allowed_to_terminate)
                     and self.launch_config_ok(node_id)):
-                print("DECIDE TO KEEP", node_id)
                 keep_node(node_id)
                 continue
 
-            print("CHECK IDLE ", node_id)
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
                 self.schedule_node_termination(node_id, "idle", logger.info)

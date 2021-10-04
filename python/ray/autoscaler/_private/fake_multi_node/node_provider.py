@@ -46,8 +46,15 @@ class FakeMultiNodeProvider(NodeProvider):
         return base + str(self._next_node_id).zfill(5)
 
     def non_terminated_nodes(self, tag_filters):
-        nodes = list(self._nodes.keys())
-        print("Non terM", nodes)
+        nodes = []
+        for node_id in self._nodes:
+            tags = self.node_tags(node_id)
+            ok = True
+            for k, v in tag_filters.items():
+                if tags.get(k) != v:
+                    ok = False
+            if ok:
+                nodes.append(node_id)
         return nodes
 
     def is_running(self, node_id):
@@ -72,8 +79,11 @@ class FakeMultiNodeProvider(NodeProvider):
         node_type = tags[TAG_RAY_USER_NODE_TYPE]
         next_id = self._next_hex_node_id()
         ray_params = ray._private.parameter.RayParams(
-            num_cpus=resources.pop("CPU", None),
-            num_gpus=resources.pop("GPU", None),
+            min_worker_port=0,
+            max_worker_port=0,
+            dashboard_port=None,
+            num_cpus=resources.pop("CPU", 0),
+            num_gpus=resources.pop("GPU", 0),
             object_store_memory=resources.pop("object_store_memory", None),
             resources=resources,
             redis_address="{}:6379".format(
@@ -95,8 +105,6 @@ class FakeMultiNodeProvider(NodeProvider):
         }
 
     def terminate_node(self, node_id):
-        print(self._nodes)
-        print("TERMINATE", node_id)
         node = self._nodes.pop(node_id)["node"]
         node.kill_all_processes(check_alive=False, allow_graceful=True)
 
