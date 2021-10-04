@@ -56,7 +56,8 @@ ClusterTaskManager::ClusterTaskManager(
       metric_tasks_queued_(0),
       metric_tasks_dispatched_(0),
       metric_tasks_spilled_(0),
-      scheduling_class_backpressure_(RayConfig::instance().scheduling_class_backpressure()){}
+      scheduling_class_backpressure_(
+          RayConfig::instance().scheduling_class_backpressure()) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -283,8 +284,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin();
          work_it != dispatch_queue.end() &&
-           (scheduling_class_backpressure_ &&
-         num_running_tasks_by_sched_cls_[scheduling_class] < max_running_tasks);) {
+         (scheduling_class_backpressure_ &&
+          num_running_tasks_by_sched_cls_[scheduling_class] < max_running_tasks);) {
       auto &work = *work_it;
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
