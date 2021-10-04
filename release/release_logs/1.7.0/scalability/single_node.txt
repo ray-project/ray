@@ -3,7 +3,7 @@
   "num_args": 10000,
   "returns_time": 5.854934190999984,
   "num_returns": 3000,
-  "get_time": 10000,
+  "get_time": 25.88724605799996,
   "queued_time": 140.99555420300004,
   "num_queued": 1000000,
   "large_object_time": 294.249499343,
