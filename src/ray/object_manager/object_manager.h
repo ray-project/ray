@@ -49,6 +49,8 @@
 namespace ray {
 
 struct ObjectManagerConfig {
+  /// The IP address this object manager is running on.
+  std::string object_manager_address;
   /// The port that the object manager should use to listen for connections
   /// from other object managers. If this is 0, the object manager will choose
   /// its own port.
@@ -56,7 +58,7 @@ struct ObjectManagerConfig {
   /// The object manager's global timer frequency.
   unsigned int timer_freq_ms;
   /// The time in milliseconds to wait before retrying a pull
-  /// that fails due to node id lookup.
+  /// that failed.
   unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;

@@ -35,7 +35,7 @@ def _initialize_internal_kv(gcs_client: "ray._raylet.GcsClient" = None):
     return global_gcs_client
 
 
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def _internal_kv_initialized():
     gcs_client = _initialize_internal_kv()
 
@@ -46,7 +46,7 @@ def _internal_kv_initialized():
         return hasattr(worker, "mode") and worker.mode is not None
 
 
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def _internal_kv_get(key: Union[str, bytes]) -> bytes:
     """Fetch the value of a binary key."""
     gcs_client = _initialize_internal_kv()
@@ -57,7 +57,7 @@ def _internal_kv_get(key: Union[str, bytes]) -> bytes:
         return ray.worker.global_worker.redis_client.hget(key, "value")
 
 
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def _internal_kv_exists(key: Union[str, bytes]) -> bool:
     """Check key exists or not."""
     gcs_client = _initialize_internal_kv()
@@ -67,7 +67,7 @@ def _internal_kv_exists(key: Union[str, bytes]) -> bool:
         return ray.worker.global_worker.redis_client.hexists(key, "value")
 
 
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def _internal_kv_put(key: Union[str, bytes],
                      value: Union[str, bytes],
                      overwrite: bool = True) -> bool:
@@ -91,7 +91,7 @@ def _internal_kv_put(key: Union[str, bytes],
         return updated == 0  # already exists
 
 
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def _internal_kv_del(key: Union[str, bytes]):
     gcs_client = _initialize_internal_kv()
     if gcs_client is not None:
@@ -100,7 +100,7 @@ def _internal_kv_del(key: Union[str, bytes]):
         return ray.worker.global_worker.redis_client.delete(key)
 
 
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def _internal_kv_list(prefix: Union[str, bytes]) -> List[bytes]:
     """List all keys in the internal KV store that start with the prefix.
     """

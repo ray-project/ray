@@ -35,6 +35,10 @@ def _map_block(block: Block, meta: BlockMetadata,
 class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList[Any]) -> BlockList[Any]:
+        # Handle empty datasets.
+        if len(blocks) == 0:
+            return blocks
+
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         kwargs = remote_args.copy()
@@ -47,8 +51,23 @@ class TaskPool(ComputeStrategy):
         ]
         new_blocks, new_metadata = zip(*refs)
 
-        map_bar.block_until_complete(list(new_blocks))
-        new_metadata = ray.get(list(new_metadata))
+        new_metadata = list(new_metadata)
+        try:
+            new_metadata = map_bar.fetch_until_complete(new_metadata)
+        except (ray.exceptions.RayTaskError, KeyboardInterrupt) as e:
+            # One or more mapper tasks failed, or we received a SIGINT signal
+            # while waiting; either way, we cancel all map tasks.
+            for ref in new_metadata:
+                ray.cancel(ref)
+            # Wait until all tasks have failed or been cancelled.
+            for ref in new_metadata:
+                try:
+                    ray.get(ref)
+                except (ray.exceptions.RayTaskError,
+                        ray.exceptions.TaskCancelledError):
+                    pass
+            # Reraise the original task failure exception.
+            raise e from None
         return BlockList(list(new_blocks), list(new_metadata))
 
 

@@ -264,6 +264,24 @@ GLOBAL_CONFIG = {
 }
 
 REPORT_S = 30
+RETRY_MULTIPLIER = 2
+
+
+def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s,
+                              max_retries):
+    retry_cnt = 0
+    retry_delay_s = initial_retry_delay_s
+    while True:
+        try:
+            return f()
+        except retry_exceptions as e:
+            retry_cnt += 1
+            if retry_cnt > max_retries:
+                raise
+            logger.info(f"Retry function call failed due to {e} "
+                        f"in {retry_delay_s} seconds...")
+            time.sleep(retry_delay_s)
+            retry_delay_s *= RETRY_MULTIPLIER
 
 
 def maybe_fetch_api_token():
@@ -405,7 +423,8 @@ def populate_wheels_sanity_check(commit: Optional[str] = None):
         raise RuntimeError(f"Could not populate wheels sanity check command: "
                            f"Commit hash missing. Got: {commit}")
 
-    cmd = f"python -c 'import ray; assert ray.__commit__ == \"{commit}\"'"
+    cmd = (f"python -c 'import ray; "
+           f"assert ray.__commit__ == \"{commit}\", ray.__commit__'")
     os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
@@ -477,67 +496,66 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
         f"results, artifacts, category) "
         f"VALUES (:created_on, :test_suite, :test_name, :status, :last_logs, "
         f":results, :artifacts, :category)")
+    parameters = [{
+        "name": "created_on",
+        "typeHint": "TIMESTAMP",
+        "value": {
+            "stringValue": now.strftime("%Y-%m-%d %H:%M:%S")
+        },
+    }, {
+        "name": "test_suite",
+        "value": {
+            "stringValue": test_suite
+        }
+    }, {
+        "name": "test_name",
+        "value": {
+            "stringValue": test_name
+        }
+    }, {
+        "name": "status",
+        "value": {
+            "stringValue": status
+        }
+    }, {
+        "name": "last_logs",
+        "value": {
+            "stringValue": logs
+        }
+    }, {
+        "name": "results",
+        "typeHint": "JSON",
+        "value": {
+            "stringValue": json.dumps(results)
+        },
+    }, {
+        "name": "artifacts",
+        "typeHint": "JSON",
+        "value": {
+            "stringValue": json.dumps(artifacts)
+        },
+    }, {
+        "name": "category",
+        "value": {
+            "stringValue": category
+        }
+    }]
 
-    rds_data_client.execute_statement(
-        database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
-        parameters=[
-            {
-                "name": "created_on",
-                "typeHint": "TIMESTAMP",
-                "value": {
-                    "stringValue": now.strftime("%Y-%m-%d %H:%M:%S")
-                },
-            },
-            {
-                "name": "test_suite",
-                "value": {
-                    "stringValue": test_suite
-                }
-            },
-            {
-                "name": "test_name",
-                "value": {
-                    "stringValue": test_name
-                }
-            },
-            {
-                "name": "status",
-                "value": {
-                    "stringValue": status
-                }
-            },
-            {
-                "name": "last_logs",
-                "value": {
-                    "stringValue": logs
-                }
-            },
-            {
-                "name": "results",
-                "typeHint": "JSON",
-                "value": {
-                    "stringValue": json.dumps(results)
-                },
-            },
-            {
-                "name": "artifacts",
-                "typeHint": "JSON",
-                "value": {
-                    "stringValue": json.dumps(artifacts)
-                },
-            },
-            {
-                "name": "category",
-                "value": {
-                    "stringValue": category
-                }
-            },
-        ],
-        secretArn=GLOBAL_CONFIG["RELEASE_AWS_DB_SECRET_ARN"],
-        resourceArn=GLOBAL_CONFIG["RELEASE_AWS_DB_RESOURCE_ARN"],
-        schema=schema,
-        sql=sql,
-    )
+    # Default boto3 call timeout is 45 seconds.
+    retry_delay_s = 64
+    MAX_RDS_RETRY = 3
+    exponential_backoff_retry(
+        lambda: rds_data_client.execute_statement(
+            database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
+            parameters=parameters,
+            secretArn=GLOBAL_CONFIG["RELEASE_AWS_DB_SECRET_ARN"],
+            resourceArn=GLOBAL_CONFIG["RELEASE_AWS_DB_RESOURCE_ARN"],
+            schema=schema,
+            sql=sql),
+        retry_exceptions=rds_data_client.exceptions.StatementTimeoutException,
+        initial_retry_delay_s=retry_delay_s,
+        max_retries=MAX_RDS_RETRY)
+    logger.info("Result has been persisted to the databse")
 
 
 def log_results_and_artifacts(result: Dict):
@@ -903,7 +921,11 @@ def wait_for_session_command_to_complete(create_session_command_result,
         # Sleep 1 sec before next check.
         time.sleep(1)
 
-        result = sdk.get_session_command(session_command_id=scd_id)
+        result = exponential_backoff_retry(
+            lambda: sdk.get_session_command(session_command_id=scd_id),
+            retry_exceptions=Exception,
+            initial_retry_delay_s=10,
+            max_retries=3)
         completed = result.result.finished_at
 
         if state_str == "CMD_RUN":
@@ -934,10 +956,14 @@ def wait_for_session_command_to_complete(create_session_command_result,
 def get_command_logs(session_controller: SessionController,
                      scd_id: str,
                      lines: int = 50):
-    result = session_controller.api_client.get_execution_logs_api_v2_session_commands_session_command_id_execution_logs_get(  # noqa: E501
-        session_command_id=scd_id,
-        start_line=-1 * lines,
-        end_line=0)
+    result = exponential_backoff_retry(
+        lambda: session_controller.api_client.get_execution_logs_api_v2_session_commands_session_command_id_execution_logs_get(  # noqa: E501
+            session_command_id=scd_id,
+            start_line=-1 * lines,
+            end_line=0),
+        retry_exceptions=Exception,
+        initial_retry_delay_s=10,
+        max_retries=3)
 
     return result.result.lines
 
@@ -1935,7 +1961,6 @@ if __name__ == "__main__":
             "You have to set the ANYSCALE_PROJECT environment variable!")
 
     maybe_fetch_api_token()
-
     if args.ray_wheels:
         os.environ["RAY_WHEELS"] = str(args.ray_wheels)
         url = str(args.ray_wheels)
