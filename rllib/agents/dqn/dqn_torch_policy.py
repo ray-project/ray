@@ -323,7 +323,7 @@ def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
         stats[stats_key] = torch.mean(
             torch.stack([
                 t.tower_stats["q_loss"].stats[stats_key].to(policy.device)
-                for t in policy.model_gpu_towers
+                for t in policy.model_gpu_towers if "q_loss" in t.tower_stats
             ]))
     stats["cur_lr"] = policy.cur_lr
     return stats

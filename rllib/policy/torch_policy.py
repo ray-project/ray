@@ -7,7 +7,6 @@ import numpy as np
 import os
 import threading
 import time
-import threading
 import tree  # pip install dm_tree
 from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union, \
     TYPE_CHECKING

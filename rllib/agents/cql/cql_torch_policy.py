@@ -291,7 +291,7 @@ def cql_stats(policy: Policy,
 
     # Add CQL loss stats to the dict.
     stats_dict["cql_loss"] = torch.mean(
-        torch.stack(policy.get_tower_stats("cql_loss")))
+        torch.stack(*policy.get_tower_stats("cql_loss")))
 
     if policy.config["lagrangian"]:
         stats_dict["log_alpha_prime_value"] = torch.mean(

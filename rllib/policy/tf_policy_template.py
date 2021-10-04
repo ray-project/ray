@@ -14,8 +14,8 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import AgentID, ModelGradients, PolicyID, \
-    TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
+    TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import MultiAgentEpisode

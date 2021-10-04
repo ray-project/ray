@@ -305,10 +305,10 @@ class TestSAC(unittest.TestCase):
 
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
-                c, a, e, t = policy.model.tower_stats["critic_loss"][0],\
-                             policy.model.tower_stats["actor_loss"][0], \
-                             policy.model.tower_stats["alpha_loss"], \
-                             policy.model.tower_stats["td_error"][0]
+                c, a, e, t = policy.get_tower_stats("critic_loss")[0], \
+                    policy.get_tower_stats("actor_loss")[0], \
+                    policy.get_tower_stats("alpha_loss")[0], \
+                    policy.get_tower_stats("td_error")[0]
 
                 # Test actor gradients.
                 policy.actor_optim.zero_grad()
