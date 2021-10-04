@@ -66,10 +66,10 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
                        const WorkerCommandMap &worker_commands,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external, const std::function<double()> get_time)
-    : io_service_(&io_service),
+    : startup_token_(0),
+      io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
-      startup_token_(0),
       num_workers_soft_limit_(num_workers_soft_limit),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),

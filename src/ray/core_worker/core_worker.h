@@ -188,7 +188,10 @@ struct CoreWorkerOptions {
   /// The PID of the process for setup worker runtime env.
   pid_t worker_shim_pid;
   /// The startup token of the process assgined to it
-  /// during startup via command line arguments.
+  /// during startup via command line arguments. 
+  /// This is needed because the actual core worker process
+  /// may not have the same pid as the process the worker pool
+  /// starts (due to shim processes).
   StartupToken startup_token;
 };
 
