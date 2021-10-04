@@ -202,7 +202,7 @@ Finally, you can create a ``Dataset`` from existing data in the Ray object store
 
     # Create a Dataset from a list of Pandas DataFrame objects.
     pdf = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([ray.put(pdf)])
+    ds = ray.data.from_pandas([pdf])
 
     # Create a Dataset from a Dask-on-Ray DataFrame.
     dask_df = dd.from_pandas(pdf, npartitions=10)
