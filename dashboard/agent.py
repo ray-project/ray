@@ -380,11 +380,11 @@ if __name__ == "__main__":
                 f"(ip={node_ip}) "
                 f"The agent on node {platform.uname()[1]} failed to "
                 f"be restarted {max_restart_count} "
-                "times. There are 2 possible problems if you see this error."
+                "times. There are 3 possible problems if you see this error."
                 "\n  1. The dashboard might not display correct "
                 "information on this node."
                 "\n  2. Metrics on this node won't be reported."
-                "\n  3. Runtime env APIs won't work."
+                "\n  3. runtime_env APIs won't work."
                 "\nCheck out the `dashboard_agent.log` to see the "
                 "detailed failure messages.")
             ray._private.utils.push_error_to_driver_through_redis(
