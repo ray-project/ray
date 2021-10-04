@@ -111,8 +111,13 @@ class VTraceLoss:
         self.mean_entropy = tf.reduce_mean(masked_entropy)
 
         # The summed weighted loss.
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
-                           self.entropy * entropy_coeff)
+        self.total_loss = self.pi_loss - self.entropy * entropy_coeff
+
+        # Optional vf loss (or in a separate term due to separate
+        # optimizers/networks).
+        self.loss_wo_vf = self.total_loss
+        if not config["_separate_vf_optimizer"]:
+            self.total_loss += self.vf_loss * vf_loss_coeff
 
 
 def _make_time_major(policy, seq_lens, tensor, drop_last=False):
@@ -220,7 +225,10 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
 
-    return policy.loss.total_loss
+    if policy.config.get("_separate_vf_optimizer"):
+        return policy.loss.loss_wo_vf, policy.loss.vf_loss
+    else:
+        return policy.loss.total_loss
 
 
 def stats(policy, train_batch):
@@ -244,8 +252,16 @@ def stats(policy, train_batch):
 
 
 def grad_stats(policy, train_batch, grads):
+    # We have support for more than one loss (list of lists of grads).
+    if policy.config.get("_tf_policy_handles_more_than_one_loss"):
+        grad_gnorm = [tf.linalg.global_norm(g) for g in grads]
+    # Old case: We have a single list of grads (only one loss term and
+    # optimizer).
+    else:
+        grad_gnorm = tf.linalg.global_norm(grads)
+
     return {
-        "grad_gnorm": tf.linalg.global_norm(grads),
+        "grad_gnorm": grad_gnorm,
     }
 
 

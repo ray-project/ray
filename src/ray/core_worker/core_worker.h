@@ -1044,6 +1044,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
 
+  /// Retrieve the current statistics about tasks being received and executing.
+  /// \return an unordered_map mapping function name to list of (num_received,
+  /// num_executing, num_executed). It is a std map instead of absl due to its
+  /// interface with language bindings.
+  std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
+
  private:
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -1366,12 +1372,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
 
-  /// Event loop where tasks are processed.
-  instrumented_io_context task_execution_service_;
-
-  /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work task_execution_service_work_;
-
   /// Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;
 
@@ -1389,6 +1389,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
+
+  /// Event loop where tasks are processed.
+  /// task_execution_service_ should be destructed first to avoid
+  /// issues like https://github.com/ray-project/ray/issues/18857
+  instrumented_io_context task_execution_service_;
+
+  /// The asio work to keep task_execution_service_ alive.
+  boost::asio::io_service::work task_execution_service_work_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
@@ -1408,14 +1416,47 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
                       ObjectID object_id, void *py_future);
 
-  /// Whether we are shutting down and not running further tasks.
-  bool exiting_ = false;
+  /// we are shutting down and not running further tasks.
+  /// when exiting_ is set to true HandlePushTask becomes no-op.
+  std::atomic<bool> exiting_ = false;
 
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
 
   std::unique_ptr<rpc::JobConfig> job_config_;
+
+  /// Simple container for per function task counters. The counters will be
+  /// keyed by the function name in task spec.
+  struct TaskCounter {
+    /// A task can only be one of the following state. Received state in particular
+    /// covers from the point of RPC call to beginning execution.
+    enum TaskStatusType { kPending, kRunning, kFinished };
+
+    /// This mutex should be used by caller to ensure consistency when transitioning
+    /// a task's state.
+    mutable absl::Mutex tasks_counter_mutex_;
+    absl::flat_hash_map<std::string, int> pending_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> running_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+
+    void Add(TaskStatusType type, const std::string &func_name, int value) {
+      tasks_counter_mutex_.AssertHeld();
+      if (type == kPending) {
+        pending_tasks_counter_map_[func_name] += value;
+      } else if (type == kRunning) {
+        running_tasks_counter_map_[func_name] += value;
+      } else if (type == kFinished) {
+        finished_tasks_counter_map_[func_name] += value;
+      } else {
+        RAY_CHECK(false) << "This line should not be reached.";
+      }
+    }
+  };
+  TaskCounter task_counter_;
 };
 
 }  // namespace core

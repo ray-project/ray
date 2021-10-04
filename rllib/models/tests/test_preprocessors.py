@@ -10,7 +10,7 @@ from ray.rllib.models.preprocessors import DictFlatteningPreprocessor, \
     get_preprocessor, NoPreprocessor, TupleFlatteningPreprocessor, \
     OneHotPreprocessor, AtariRamPreprocessor, GenericPixelPreprocessor
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 
 class TestPreprocessors(unittest.TestCase):
@@ -50,7 +50,9 @@ class TestPreprocessors(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = ppo.PPOTrainer(config=config)
             for i in range(num_iterations):
-                print(trainer.train())
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
             check_compute_single_action(trainer)
             trainer.stop()
 

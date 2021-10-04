@@ -25,6 +25,16 @@ py_test(
 )
 
 py_test(
+    name = "tune_cifar_pytorch_pbt_example",
+    size = "medium",
+    main = "examples/tune_cifar_pytorch_pbt_example.py",
+    srcs = ["examples/tune_cifar_pytorch_pbt_example.py"],
+    tags = ["team:ml", "exclusive", "pytorch"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "tune_linear_example",
     size = "medium",
     main = "examples/tune_linear_example.py",
@@ -44,6 +54,14 @@ py_test(
     size = "medium",
     srcs = ["tests/test_backend.py"],
     tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
+py_test(
+    name = "test_gpu",
+    size = "medium",
+    srcs = ["tests/test_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":sgd_v2_lib"]
 )
 
@@ -70,6 +88,15 @@ py_test(
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]
 )
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
 
 py_test(
     name = "test_worker_group",
