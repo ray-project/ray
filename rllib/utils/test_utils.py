@@ -368,9 +368,10 @@ def check_compute_single_action(trainer,
             for si, so in zip(state_in, state_out):
                 check(list(si.shape), so.shape)
 
-        # Test whether unsquash/clipping works: Both should push the action
-        # to certainly be within the space's bounds.
-        if method_to_test == "single":
+        # Test whether unsquash/clipping works on the Trainer's
+        # compute_single_action method: Both flags should force the action
+        # to be within the space's bounds.
+        if method_to_test == "single" and what == trainer:
             if not action_space.contains(action) and \
                     (clip or unsquash or not isinstance(action_space, Box)):
                 raise ValueError(
