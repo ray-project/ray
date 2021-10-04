@@ -98,7 +98,6 @@ class AWSNodeProvider(NodeProvider):
             max_retries=0,
             aws_credentials=aws_credentials)
 
-        self.subnet_idx = 0
         self.spot_subnet_idx = random.randint(0, 100)
 
         # Tags that we believe to actually be on EC2.
@@ -380,7 +379,8 @@ class AWSNodeProvider(NodeProvider):
 
         is_spot = conf.get("InstanceMarketOptions",
                            {}).get("MarketType") == "spot"
-
+        # Try to always launch in the first subnet.
+        subnet_idx = 0
         cli_logger_tags = {}
         for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
             try:
@@ -391,13 +391,12 @@ class AWSNodeProvider(NodeProvider):
                     conf.pop("SecurityGroupIds", None)
                     cli_logger_tags["network_interfaces"] = str(net_ifs)
                 else:
-                    idx = self.subnet_idx
                     if is_spot:
                         # We want to round-robin spot instances to reduce
                         # the likelihood of many being evicted at once.
-                        idx = self.spot_subnet_idx
+                        subnet_idx = self.spot_subnet_idx
                         self.spot_subnet_idx += 1
-                    subnet_id = subnet_ids[idx % len(subnet_ids)]
+                    subnet_id = subnet_ids[subnet_idx % len(subnet_ids)]
                     conf["SubnetId"] = subnet_id
                     cli_logger_tags["subnet_id"] = subnet_id
 
@@ -440,7 +439,7 @@ class AWSNodeProvider(NodeProvider):
                         exc)
                 # Launch failure may be due to instance type availability!
                 if not is_spot:
-                    self.subnet_idx += 1
+                    subnet_idx += 1
         return created_nodes_dict
 
     def terminate_node(self, node_id):
