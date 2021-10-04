@@ -3,6 +3,7 @@ import pytest
 import ray
 import re
 from filelock import FileLock
+from pathlib import Path
 from ray._private.test_utils import run_string_as_driver, SignalActor
 from ray import workflow
 from ray.tests.conftest import *  # noqa
@@ -288,6 +289,32 @@ def test_wf_no_run():
     with pytest.raises(Exception):
         f.run()
 
+def test_dedupe_indirect(workflow_start_regular, tmp_path):
+    counter = Path(tmp_path) / "counter.txt"
+    lock = Path(tmp_path) / "lock.txt"
+    counter.write_text("0")
+
+    @workflow.step
+    def incr():
+        with FileLock(str(lock)):
+            c = int(counter.read_text())
+            c += 1
+            counter.write_text(f"{c}")
+
+    @workflow.step
+    def identity(a):
+        return a
+
+    @workflow.step
+    def join(a, b):
+        return counter.read_text()
+
+    a = incr.step()
+    i1 = identity.step(a)
+    i2 = identity.step(a)
+
+    j = join.step(i1, i2).run()
+    assert j == "1"
 
 if __name__ == "__main__":
     import sys
