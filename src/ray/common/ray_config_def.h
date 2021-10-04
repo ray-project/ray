@@ -183,8 +183,7 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
-/// Timeout, in milliseconds, to wait before retrying a failed pull in the
-/// ObjectManager.
+/// The object manager's global timer interval in milliseconds.
 RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
@@ -310,6 +309,9 @@ RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 
 /// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
+
+/// Max restart count for the dashboard agent.
+RAY_CONFIG(uint32_t, agent_max_restart_count, 5)
 
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.

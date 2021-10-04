@@ -638,7 +638,7 @@ Underneath the hood, RaySGD will automatically shard the given dataset.
         return model
 
     trainer = Trainer(num_workers=8, backend="torch")
-    dataset = ray.data.read_csv("...").filter().pipeline(length=50)
+    dataset = ray.data.read_csv("...").filter().window(blocks_per_window=50)
 
     result = trainer.run(
         train_func,
@@ -741,7 +741,7 @@ A couple caveats:
 
     # Declare the specification for training.
     trainer = Trainer(backend="torch", num_workers=12, use_gpu=True)
-    dataset = ray.dataset.pipeline()
+    dataset = ray.dataset.window()
 
     # Convert this to a trainable.
     trainable = trainer.to_tune_trainable(training_func, dataset=dataset)

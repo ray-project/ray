@@ -1025,6 +1025,7 @@ void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &ob
 }
 
 void CoreWorker::PromoteObjectToPlasma(const ObjectID &object_id) {
+  // TODO(swang): Remove.
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
     PutObjectIntoPlasma(*value, object_id);

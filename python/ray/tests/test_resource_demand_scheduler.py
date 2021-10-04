@@ -1322,7 +1322,10 @@ class AutoscalingTest(unittest.TestCase):
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
-    def waitForNodes(self, expected, comparison=None, tag_filters={}):
+    def waitForNodes(self, expected, comparison=None, tag_filters=None):
+        if tag_filters is None:
+            tag_filters = {}
+
         MAX_ITER = 50
         for i in range(MAX_ITER):
             n = len(self.provider.non_terminated_nodes(tag_filters))

@@ -4,10 +4,12 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 import yaml
 
 import ray
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.utils import import_attr
 
 # We need to setup this variable before
 # using this module
@@ -215,6 +217,11 @@ class ParsedRuntimeEnv(dict):
                 {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
     """
 
+    known_fields: Set[str] = {
+        "working_dir", "conda", "pip", "uris", "containers", "env_vars",
+        "_ray_release", "_ray_commit", "_inject_current_ray", "plugins"
+    }
+
     def __init__(self,
                  runtime_env: Dict[str, Any],
                  is_task_or_actor: bool = False,
@@ -265,9 +272,33 @@ class ParsedRuntimeEnv(dict):
         elif "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
             self["_inject_current_ray"] = True
 
-        # NOTE(architkulkarni): This allows worker caching code in C++ to
-        # check if a runtime env is empty without deserializing it.
-        assert all(val is not None for val in self.values())
+        if "plugins" in runtime_env:
+            self["plugins"] = dict()
+            for class_path, plugin_field in runtime_env["plugins"].items():
+                plugin_class: RuntimeEnvPlugin = import_attr(class_path)
+                if not issubclass(plugin_class, RuntimeEnvPlugin):
+                    # TODO(simon): move the inferface to public once ready.
+                    raise TypeError(
+                        f"{class_path} must be inherit from "
+                        "ray._private.runtime_env.plugin.RuntimeEnvPlugin.")
+                # TODO(simon): implement uri support.
+                _ = plugin_class.validate(runtime_env)
+                # Validation passed, add the entry to parsed runtime env.
+                self["plugins"][class_path] = plugin_field
+
+        unknown_fields = (
+            set(runtime_env.keys()) - ParsedRuntimeEnv.known_fields)
+        if len(unknown_fields):
+            logger.warning(
+                "The following unknown entries in the runtime_env dictionary "
+                f"will be ignored: {unknown_fields}. If you intended to use "
+                "them as plugins, they must be nested in the `plugins` field.")
+
+        # TODO(architkulkarni) This is to make it easy for the worker caching
+        # code in C++ to check if the env is empty without deserializing and
+        # parsing it.  We should use a less confusing approach here.
+        if all(val is None for val in self.values()):
+            self._dict = {}
 
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
