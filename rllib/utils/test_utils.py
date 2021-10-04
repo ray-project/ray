@@ -1,6 +1,6 @@
 from collections import Counter
 import copy
-import gym
+from gym.spaces import Box
 import logging
 import numpy as np
 import random
@@ -297,7 +297,7 @@ def check_compute_single_action(trainer,
             call_kwargs["full_fetch"] = full_fetch
 
         obs = obs_space.sample()
-        if isinstance(obs_space, gym.spaces.Box):
+        if isinstance(obs_space, Box):
             obs = np.clip(obs, -1.0, 1.0)
         state_in = None
         if include_state:
@@ -368,23 +368,24 @@ def check_compute_single_action(trainer,
             for si, so in zip(state_in, state_out):
                 check(list(si.shape), so.shape)
 
-        # Test whether unsquash/clipping works: Both should push the action
-        # to certainly be within the space's bounds.
-        if not action_space.contains(action):
-            if clip or unsquash or not isinstance(action_space,
-                                                  gym.spaces.Box):
+        # Test whether unsquash/clipping works on the Trainer's
+        # compute_single_action method: Both flags should force the action
+        # to be within the space's bounds.
+        if method_to_test == "single" and what == trainer:
+            if not action_space.contains(action) and \
+                    (clip or unsquash or not isinstance(action_space, Box)):
                 raise ValueError(
                     f"Returned action ({action}) of trainer/policy {what} "
                     f"not in Env's action_space {action_space}")
-        # We are operating in normalized space: Expect only smaller action
-        # values.
-        if isinstance(action_space, gym.spaces.Box) and not unsquash and \
-                what.config.get("normalize_actions") and \
-                np.any(np.abs(action) > 10.0):
-            raise ValueError(
-                f"Returned action ({action}) of trainer/policy {what} "
-                "should be in normalized space, but seems too large/small for "
-                "that!")
+            # We are operating in normalized space: Expect only smaller action
+            # values.
+            if isinstance(action_space, Box) and not unsquash and \
+                    what.config.get("normalize_actions") and \
+                    np.any(np.abs(action) > 3.0):
+                raise ValueError(
+                    f"Returned action ({action}) of trainer/policy {what} "
+                    "should be in normalized space, but seems too large/small "
+                    "for that!")
 
     # Loop through: Policy vs Trainer; Different API methods to calculate
     # actions; unsquash option; clip option; full fetch or not.
@@ -501,7 +502,9 @@ def check_train_results(train_results):
     # Make sure we have a default_policy key if we are not in a
     # multi-agent setup.
     if not is_multi_agent:
-        assert DEFAULT_POLICY_ID in learner_info, \
+        # APEX algos sometimes have an empty learner info dict (no metrics
+        # collected yet).
+        assert len(learner_info) == 0 or DEFAULT_POLICY_ID in learner_info, \
             f"'{DEFAULT_POLICY_ID}' not found in " \
             f"train_results['infos']['learner'] ({learner_info})!"
 
