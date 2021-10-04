@@ -313,7 +313,8 @@ class StandardAutoscaler:
                 continue
             if ((should_keep_or_terminate == KeepOrTerminate.keep
                  or node_id in nodes_not_allowed_to_terminate)
-                    and self.launch_config_ok(node_id)):
+#                    and self.launch_config_ok(node_id)
+                    ):
                 keep_node(node_id)
                 continue
 
@@ -654,8 +655,6 @@ class StandardAutoscaler:
                 return (KeepOrTerminate.terminate,
                         f"not in available_node_types: {available_node_types}")
             new_count = node_type_counts[node_type] + 1
-            print("NEW_COUNT", node_type_counts, node_type, new_count,
-                  min(min_workers, max_workers))
             if new_count <= min(min_workers, max_workers):
                 return KeepOrTerminate.keep, None
             if new_count > max_workers:
