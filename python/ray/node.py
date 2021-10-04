@@ -572,7 +572,10 @@ class Node:
             log_stderr = os.path.join(self._logs_dir, f"{name}.err")
         return log_stdout, log_stderr
 
-    def _get_unused_port(self, allocated_ports=set()):
+    def _get_unused_port(self, allocated_ports=None):
+        if allocated_ports is None:
+            allocated_ports = set()
+
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind(("", 0))
         port = s.getsockname()[1]
