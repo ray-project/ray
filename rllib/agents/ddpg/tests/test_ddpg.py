@@ -289,8 +289,9 @@ class TestDDPG(unittest.TestCase):
 
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
-                c, a, t = policy.critic_loss, policy.actor_loss, \
-                    policy.model.td_error
+                c, a, t = policy.get_tower_stats("critic_loss")[0], \
+                    policy.get_tower_stats("actor_loss")[0], \
+                    policy.get_tower_stats("td_error")[0]
                 # Check pure loss values.
                 check(c, expect_c)
                 check(a, expect_a)

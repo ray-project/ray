@@ -179,7 +179,7 @@ def central_vf_stats(policy, train_batch, grads):
     return {
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            policy._central_value_out),
+            policy._central_value_out)
     }
 
 
