@@ -113,7 +113,7 @@ def _resolve_step_inputs(
     Returns:
         Instances of arguments.
     """
-
+    print("DBG>>>>>>>>>>>", step_inputs, workflow_context.get_current_step_id())
     objects_mapping = []
     for obj_ref in step_inputs.workflow_outputs:
         obj, ref = _resolve_object_ref(obj_ref)
@@ -285,6 +285,7 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
                 retry_msg = "Maximum retry reached, stop retry."
             else:
                 retry_msg = "The step will be retried."
+            print("e", type(e), e)
             logger.error(
                 f"{workflow_context.get_name()} failed with error message"
                 f" {e}. {retry_msg}")
