@@ -19,10 +19,18 @@ Deciding on which to use mostly depends on your problem:
 * How many hyperparameters would you like to tune?
 * What values are valid for hyperparameters?
 
+**If your model returns incremental results** (eg. results per epoch in deep learning,
+results per each added tree in GBDTs, etc.) using early stopping usually allows for sampling
+more configurations, as unpromising trials are pruned before they run their full course.
+Please note that not all search algorithms can use information from pruned trials.
+Early stopping cannot be used without incremental results - in case of the functional API,
+that means that ``tune.report()`` has to be called more than once - usually in a loop.
+
 **If your model is small**, you can usually try to run many different configurations.
 A **random search** can be used to generate configurations. You can also grid search
 over some values. You should probably still use
-:ref:`ASHA for early termination of bad trials <tune-scheduler-hyperband>`.
+:ref:`ASHA for early termination of bad trials <tune-scheduler-hyperband>` (if your problem
+supports early stopping).
 
 **If your model is large**, you can try to either use
 **Bayesian Optimization-based search algorithms** like :ref:`BayesOpt <bayesopt>` or
@@ -33,13 +41,18 @@ Alternatively, you can use :ref:`Population Based Training <tune-scheduler-pbt>`
 works well with few trials, e.g. 8 or even 4. However, this will output a hyperparameter *schedule* rather
 than one fixed set of hyperparameters.
 
-**If you have a small number of hyperparameters**, Bayesian Optimization-methods
-work well. Take a look at :ref:`BOHB <tune-scheduler-bohb>` to combine the
-benefits of bayesian optimization with early stopping.
+**If you have a small number of hyperparameters**, Bayesian Optimization methods
+work well. Take a look at :ref:`BOHB <tune-scheduler-bohb>` or :ref:`Optuna <tune-optuna>`
+with the :ref:`ASHA <tune-scheduler-hyperband>` scheduler to combine the
+benefits of Bayesian Optimization with early stopping.
 
 **If you only have continuous values for hyperparameters** this will work well
-with most Bayesian-Optimization methods. Discrete or categorical variables still
+with most Bayesian Optimization methods. Discrete or categorical variables still
 work, but less good with an increasing number of categories.
+
+**If you have many categorical values for hyperparameters**, consider using random search,
+or a TPE-based Bayesian Optimization algorithm such as :ref:`Optuna <tune-optuna>` or
+:ref:`HyperOpt <tune-hyperopt>`.
 
 **Our go-to solution** is usually to use **random search** with :ref:`ASHA for early stopping <tune-scheduler-hyperband>`
 for smaller problems. Use :ref:`BOHB <tune-scheduler-bohb>` for **larger problems** with a **small number of hyperparameters**
@@ -248,6 +261,34 @@ on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
 
+Why is my training stuck and Ray reporting that pending actor or tasks cannot be scheduled?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This is usually caused by Ray actors or tasks being started by the
+trainable without the trainable resources accounting for them, leading to a deadlock.
+This can also be "stealthly" caused by using other libraries in the trainable that are
+based on Ray, such as Modin. In order to fix the issue, request additional resources for
+the trial using :ref:`placement groups <ray-placement-group-doc-ref>`, as outlined in
+the section above.
+
+For example, if your trainable is using Modin dataframes, operations on those will spawn
+Ray tasks. By allocating an additional CPU bundle to the trial, those tasks will be able
+to run without being starved of resources.
+
+.. code-block:: python
+
+    import modin.pandas as pd
+
+    def train_fn(config, checkpoint_dir=None):
+        # some Modin operations here
+        tune.report(metric=metric)
+
+    tune.run(
+        train_fn,
+        resources_per_trial=tune.PlacementGroupFactory([
+            {"CPU": 1},  # this bundle will be used by the trainable itself
+            {"CPU": 1},  # this bundle will be used by Modin
+        ], strategy="PACK")
 
 How can I pass further parameter values to my trainable?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -286,8 +327,8 @@ also works with class trainables. Please see
 :ref:`here for further details <tune-with-parameters>` and examples.
 
 
-How can I reproduce experiments
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can I reproduce experiments?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Reproducing experiments and experiment results means that you get the exact same
 results when running an experiment again and again. To achieve this, the
 conditions have to be exactly the same each time you run the exeriment.
