@@ -401,7 +401,10 @@ class _BakedWorkflowInputs:
 
 def _record_step_status(step_id: "StepID",
                         status: "WorkflowStatus",
-                        outputs: List["ObjectRef"] = []) -> None:
+                        outputs: Optional[List["ObjectRef"]] = None) -> None:
+    if outputs is None:
+        outputs = []
+
     workflow_id = workflow_context.get_current_workflow_id()
     workflow_manager = get_management_actor()
     ray.get(
