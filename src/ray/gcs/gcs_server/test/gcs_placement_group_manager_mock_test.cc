@@ -115,7 +115,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
       1000000 * RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms());
   ASSERT_EQ(1, pending_queue.size());
   auto rank = pending_queue.begin()->first;
-  ASSERT_LT(now + next, rank);
+  ASSERT_LE(now + next, rank);
   // ScheduleUnplacedBundles is not called here
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(1, pending_queue.size());
@@ -129,7 +129,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   failure_callback(pg, true);
   next = RayConfig::instance().gcs_create_placement_group_retry_multiplier() * next;
   ASSERT_EQ(1, pending_queue.size());
-  ASSERT_LT(now + next, pending_queue.begin()->first);
+  ASSERT_LE(now + next, pending_queue.begin()->first);
 }
 
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
