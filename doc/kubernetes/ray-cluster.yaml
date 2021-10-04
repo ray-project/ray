@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
   namespace: ray
-  name: ray-head
+  name: example-cluster-ray-head
 spec:
   ports:
   - name: client
