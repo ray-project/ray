@@ -372,7 +372,7 @@ else
     fi
 
     # Only fetch master since that's the branch we're diffing against.
-    git fetch upstream master || true
+    git fetch --quiet upstream master || true
 
     # Format only the files that changed in last commit.
     format_changed
