@@ -1,82 +1,134 @@
-from copy import deepcopy
-from numpy import float32
-import os
-from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
-
-import ray
-from ray.rllib.agents.registry import get_trainer_class
-from ray.rllib.env import PettingZooEnv
-from pettingzoo.butterfly import pistonball_v4
-
+from ray import tune
+from ray.rllib.models import ModelCatalog
 from ray.tune.registry import register_env
+# from ray.rllib.utils import try_import_tf
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+from pettingzoo.butterfly import pistonball_v4
+import supersuit as ss
+import torch
+from torch import nn
+
+# This tutorial uses PettingZoo's Multi-Agent Environment API (https://www.pettingzoo.ml/)
+# with RLlib. For more information, please see the blog post at:
+# https://towardsdatascience.com/using-pettingzoo-with-rllib-for-multi-agent-deep-reinforcement-learning-5ff47c677abd
+
+class CNNModelV2(TorchModelV2, nn.Module):
+    def __init__(self, obs_space, act_space, num_outputs, *args, **kwargs):
+        TorchModelV2.__init__(self, obs_space, act_space, num_outputs, *args, **kwargs)
+        nn.Module.__init__(self)
+        self.model = nn.Sequential(
+            nn.Conv2d(
+                3,
+                32,
+                [8, 8],
+                stride=(4, 4)),
+            nn.ReLU(),
+            nn.Conv2d(
+                32,
+                64,
+                [4, 4],
+                stride=(2, 2)),
+            nn.ReLU(),
+            nn.Conv2d(
+                64,
+                64,
+                [3, 3],
+                stride=(1, 1)),
+            nn.ReLU(),
+            nn.Flatten(),
+            (nn.Linear(3136,512)),
+            nn.ReLU(),
+        )
+        self.policy_fn = nn.Linear(512, num_outputs)
+        self.value_fn = nn.Linear(512, 1)
+
+    def forward(self, input_dict, state, seq_lens):
+        model_out = self.model(input_dict["obs"].permute(0, 3, 1, 2))
+        self._value_out = self.value_fn(model_out)
+        return self.policy_fn(model_out), state
+
+    def value_function(self):
+        return self._value_out.flatten()
+
+
+def env_creator(args):
+    env = pistonball_v4.parallel_env(n_pistons=20, local_ratio=0, time_penalty=-0.1, continuous=True, random_drop=True, random_rotate=True, ball_mass=0.75, ball_friction=0.3, ball_elasticity=1.5, max_cycles=125)
+    env = ss.color_reduction_v0(env, mode='B')
+    env = ss.dtype_v0(env, 'float32')
+    env = ss.resize_v0(env, x_size=84, y_size=84)
+    env = ss.frame_stack_v1(env, 3)
+    env = ss.normalize_obs_v0(env, env_min=0, env_max=1)
+    #env = ss.flatten_v0(env)
+    return env
+
 
 if __name__ == "__main__":
-    """For this script, you need:
-    1. Algorithm name and according module, e.g.: "PPo" + agents.ppo as agent
-    2. Name of the aec game you want to train on, e.g.: "pistonball".
-    3. num_cpus
-    4. num_rollouts
+    env_name = "pistonball_v4"
 
-    Does require SuperSuit
-    """
-    alg_name = "PPO"
+    register_env(env_name, lambda config: ParallelPettingZooEnv(env_creator(config)))
 
-    # Function that outputs the environment you wish to register.
-    def env_creator(config):
-        env = pistonball_v4.env(local_ratio=config.get("local_ratio", 0.2))
-        env = dtype_v0(env, dtype=float32)
-        env = color_reduction_v0(env, mode="R")
-        env = normalize_obs_v0(env)
-        return env
+    test_env = ParallelPettingZooEnv(env_creator({}))
+    obs_space = test_env.observation_space
+    act_space = test_env.action_space
 
-    num_cpus = 1
-    num_rollouts = 2
+    ModelCatalog.register_custom_model("CNNModelV2", CNNModelV2)
 
-    # Gets default training configuration and specifies the POMgame to load.
-    config = deepcopy(get_trainer_class(alg_name)._default_config)
+    def gen_policy(i):
+        config = {
+            "model": {
+                "custom_model": "CNNModelV2",
+            },
+            "gamma": 0.99,
+        }
+        return (None, obs_space, act_space, config)
 
-    # Set environment config. This will be passed to
-    # the env_creator function via the register env lambda below.
-    config["env_config"] = {"local_ratio": 0.5}
+    policies = {"policy_0": gen_policy(0)}
 
-    # Register env
-    register_env("pistonball",
-                 lambda config: PettingZooEnv(env_creator(config)))
-    env = PettingZooEnv(env_creator(config))
-    observation_space = env.observation_space
-    action_space = env.action_space
-    del env
+    policy_ids = list(policies.keys())
 
-    # Configuration for multiagent setup with policy sharing:
-    config["multiagent"] = {
-        # Setup a single, shared policy for all agents.
-        "policies": {
-            "av": (None, observation_space, action_space, {})
+    tune.run(
+        "PPO",
+        name="PPO",
+        stop={"timesteps_total": 5000000},
+        checkpoint_freq=10,
+        local_dir="~/ray_results/"+env_name,
+        config={
+            # Environment specific
+            "env": env_name,
+            # General
+            "log_level": "ERROR",
+            "framework": "torch",
+            "num_gpus": 1,
+            "num_workers": 4,
+            "num_envs_per_worker": 1,
+            "compress_observations": False,
+            "batch_mode": 'truncate_episodes',
+
+            # 'use_critic': True,
+            'use_gae': True,
+            "lambda": 0.9,
+
+            "gamma": .99,
+
+            # "kl_coeff": 0.001,
+            # "kl_target": 1000.,
+            "clip_param": 0.4,
+            'grad_clip': None,
+            "entropy_coeff": 0.1,
+            'vf_loss_coeff': 0.25,
+
+            "sgd_minibatch_size": 64,
+            "num_sgd_iter": 10, # epoc
+            'rollout_fragment_length': 512,
+            "train_batch_size": 512*4,
+            'lr': 2e-05,
+            "clip_actions": True,
+
+            # Method specific
+            "multiagent": {
+                "policies": policies,
+                "policy_mapping_fn": (
+                    lambda agent_id: policy_ids[0]),
+            },
         },
-        # Map all agents to that policy.
-        "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av",
-    }
-
-    # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-    config["num_gpus"] = int(os.environ.get("RLLIB_NUM_GPUS", "0"))
-    config["log_level"] = "DEBUG"
-    config["num_workers"] = 1
-    # Fragment length, collected at once from each worker and for each agent!
-    config["rollout_fragment_length"] = 30
-    # Training batch size -> Fragments are concatenated up to this point.
-    config["train_batch_size"] = 200
-    # After n steps, force reset simulation
-    config["horizon"] = 200
-    # Default: False
-    config["no_done_at_end"] = False
-    # Info: If False, each agents trajectory is expected to have
-    # maximum one done=True in the last step of the trajectory.
-    # If no_done_at_end = True, environment is not resetted
-    # when dones[__all__]= True.
-
-    # Initialize ray and trainer object
-    ray.init(num_cpus=num_cpus + 1)
-    trainer = get_trainer_class(alg_name)(env="pistonball", config=config)
-
-    # Train once
-    trainer.train()
+    )
