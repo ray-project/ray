@@ -1610,6 +1610,10 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
 
   for (int i = 0; i < num_cases; ++i) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, cpu_request[i]}});
+    rpc::RequestWorkerLeaseReply reply;
+    bool callback_occurred = false;
+    auto callback = [&](const Status &, const std::function<void()> &,
+                        const std::function<void()> &) { callback_occurred = true; };
     task_manager_.QueueAndScheduleTask(task, &reply, callback);
     pool_.TriggerCallbacks();
 

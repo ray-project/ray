@@ -401,7 +401,7 @@ std::string TaskSpecification::CallSiteString() const {
 WorkerCacheKey::WorkerCacheKey(const JobID &job_id) : WorkerCacheKey(job_id, "", {}) {}
 
 WorkerCacheKey::WorkerCacheKey(
-    const JobID &job_id, const std::string& serialized_runtime_env,
+    const JobID &job_id, const std::string &serialized_runtime_env,
     const std::unordered_map<std::string, double> required_resources)
     : job_id_(job_id),
       serialized_runtime_env(serialized_runtime_env),
