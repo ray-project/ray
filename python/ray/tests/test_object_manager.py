@@ -296,6 +296,8 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
+# TODO(ekl) this sometimes takes much longer (10+s) due to a higher level
+# pull retry. We should try to resolve these hangs in the chunk transfer logic.
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
