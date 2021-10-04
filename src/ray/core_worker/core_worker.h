@@ -1041,6 +1041,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
 
+  /// Retrieve the current statistics about tasks being received and executing.
+  /// \return an unordered_map mapping function name to list of (num_received,
+  /// num_executing, num_executed). It is a std map instead of absl due to its
+  /// interface with language bindings.
+  std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
+
  private:
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -1416,6 +1422,38 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   friend class CoreWorkerTest;
 
   std::unique_ptr<rpc::JobConfig> job_config_;
+
+  /// Simple container for per function task counters. The counters will be
+  /// keyed by the function name in task spec.
+  struct TaskCounter {
+    /// A task can only be one of the following state. Received state in particular
+    /// covers from the point of RPC call to beginning execution.
+    enum TaskStatusType { kPending, kRunning, kFinished };
+
+    /// This mutex should be used by caller to ensure consistency when transitioning
+    /// a task's state.
+    mutable absl::Mutex tasks_counter_mutex_;
+    absl::flat_hash_map<std::string, int> pending_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> running_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+
+    void Add(TaskStatusType type, const std::string &func_name, int value) {
+      tasks_counter_mutex_.AssertHeld();
+      if (type == kPending) {
+        pending_tasks_counter_map_[func_name] += value;
+      } else if (type == kRunning) {
+        running_tasks_counter_map_[func_name] += value;
+      } else if (type == kFinished) {
+        finished_tasks_counter_map_[func_name] += value;
+      } else {
+        RAY_CHECK(false) << "This line should not be reached.";
+      }
+    }
+  };
+  TaskCounter task_counter_;
 };
 
 }  // namespace core

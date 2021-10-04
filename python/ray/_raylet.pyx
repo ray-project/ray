@@ -1353,8 +1353,7 @@ cdef class CoreWorker:
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
                     runtime_env_dict,
-                    runtime_env_uris,
-                    override_environment_variables
+                    runtime_env_uris
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1364,9 +1363,6 @@ cdef class CoreWorker:
                 placement_group_id.native()
             c_string c_serialized_runtime_env
             c_vector[c_string] c_runtime_env_uris = runtime_env_uris
-            unordered_map[c_string, c_string] \
-                c_override_environment_variables = \
-                override_environment_variables
             c_vector[CObjectReference] return_refs
 
         with self.profile_event(b"submit_task"):
@@ -1385,8 +1381,7 @@ cdef class CoreWorker:
                     name, num_returns, c_resources,
                     b"",
                     c_serialized_runtime_env,
-                    c_runtime_env_uris,
-                    c_override_environment_variables),
+                    c_runtime_env_uris),
                 max_retries, retry_exceptions,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1414,7 +1409,6 @@ cdef class CoreWorker:
                      c_string extension_data,
                      runtime_env_dict,
                      runtime_env_uris,
-                     override_environment_variables
                      ):
         cdef:
             CRayFunction ray_function
@@ -1427,9 +1421,6 @@ cdef class CoreWorker:
                 placement_group_id.native()
             c_string c_serialized_runtime_env
             c_vector[c_string] c_runtime_env_uris = runtime_env_uris
-            unordered_map[c_string, c_string] \
-                c_override_environment_variables = \
-                override_environment_variables
 
         with self.profile_event(b"submit_task"):
             c_serialized_runtime_env = \
@@ -1454,8 +1445,7 @@ cdef class CoreWorker:
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
                         c_serialized_runtime_env,
-                        c_runtime_env_uris,
-                        c_override_environment_variables),
+                        c_runtime_env_uris),
                     extension_data,
                     &c_actor_id))
 
@@ -1735,7 +1725,6 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
             c_string serialized_object_status
-        CCoreWorkerProcess.GetCoreWorker().PromoteObjectToPlasma(c_object_id)
         CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
         return (object_ref,
@@ -1905,6 +1894,26 @@ cdef class CoreWorker:
             postincrement(it)
 
         return ref_counts
+
+    def get_actor_call_stats(self):
+        cdef:
+            unordered_map[c_string, c_vector[uint64_t]] c_tasks_count
+
+        c_tasks_count = (
+            CCoreWorkerProcess.GetCoreWorker().GetActorCallStats())
+        it = c_tasks_count.begin()
+
+        tasks_count = dict()
+        while it != c_tasks_count.end():
+            func_name = <unicode>dereference(it).first
+            counters = dereference(it).second
+            tasks_count[func_name] = {
+                "pending": counters[0],
+                "running": counters[1],
+                "finished": counters[2],
+            }
+            postincrement(it)
+        return tasks_count
 
     def set_get_async_callback(self, ObjectRef object_ref, callback):
         cpython.Py_INCREF(callback)

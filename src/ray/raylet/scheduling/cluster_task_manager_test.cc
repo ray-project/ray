@@ -49,7 +49,6 @@ class MockWorkerPool : public WorkerPoolInterface {
                  const std::string &allocated_instances_serialized_json) {
     num_pops++;
     const WorkerCacheKey env = {task_spec.JobId(),
-                                task_spec.OverrideEnvironmentVariables(),
                                 task_spec.SerializedRuntimeEnv(),
                                 {}};
     callbacks[env.Hash()].push_back(callback);
@@ -111,10 +110,11 @@ class MockWorkerPool : public WorkerPoolInterface {
   int num_pops;
 };
 
-std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
-    const std::string &id, double num_gpus = 0.0) {
+std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(const std::string &id,
+                                                                    double num_cpus,
+                                                                    double num_gpus) {
   std::unordered_map<std::string, double> local_node_resources;
-  local_node_resources[ray::kCPU_ResourceLabel] = 8;
+  local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
@@ -189,9 +189,10 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
 
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
-  ClusterTaskManagerTest(double num_gpus_at_head = 0.0)
+  ClusterTaskManagerTest(double num_cpus_at_head = 8.0, double num_gpus_at_head = 0.0)
       : id_(NodeID::FromRandom()),
-        scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_gpus_at_head)),
+        scheduler_(
+            CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head, num_gpus_at_head)),
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
@@ -301,7 +302,15 @@ class ClusterTaskManagerTest : public ::testing::Test {
 // Same as ClusterTaskManagerTest, but the head node starts with 4.0 num gpus.
 class ClusterTaskManagerTestWithGPUsAtHead : public ClusterTaskManagerTest {
  public:
-  ClusterTaskManagerTestWithGPUsAtHead() : ClusterTaskManagerTest(4.0) {}
+  ClusterTaskManagerTestWithGPUsAtHead()
+      : ClusterTaskManagerTest(/*num_cpus_at_head=*/8.0, /*num_gpus_at_head=*/4.0) {}
+};
+
+// Same as ClusterTaskManagerTest, but the head node starts with 0.0 num cpus.
+class ClusterTaskManagerTestWithoutCPUsAtHead : public ClusterTaskManagerTest {
+ public:
+  ClusterTaskManagerTestWithoutCPUsAtHead()
+      : ClusterTaskManagerTest(/*num_cpus_at_head=*/0.0) {}
 };
 
 TEST_F(ClusterTaskManagerTest, BasicTest) {
@@ -382,7 +391,6 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
 
   // Push a worker that can only run task A.
   const WorkerCacheKey env_A = {task_A.GetTaskSpecification().JobId(),
-                                /*override_environment_variables=*/{},
                                 serialized_runtime_env_A,
                                 {}};
   const auto runtime_env_hash_A = env_A.Hash();
@@ -1589,6 +1597,42 @@ TEST_F(ClusterTaskManagerTest, PopWorkerFailed) {
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task.GetTaskSpecification().TaskId());
   AssertNoLeaks();
+}
+
+// Regression test for https://github.com/ray-project/ray/issues/16935:
+// When a task requires 1 CPU and is infeasible because head node has 0 CPU,
+// make sure the task's resource demand is reported.
+TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
+  constexpr int num_cases = 5;
+  // Create 5 tasks with different CPU requests.
+  const std::array<int, num_cases> cpu_request = {1, 2, 1, 3, 1};
+  // Each type of CPU request corresponds to a types of resource demand.
+  const std::array<int, num_cases> demand_types = {1, 2, 2, 3, 3};
+  // Number of infeasible 1 CPU requests..
+  const std::array<int, num_cases> num_infeasible_1cpu = {1, 1, 2, 2, 3};
+
+  for (int i = 0; i < num_cases; ++i) {
+    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, cpu_request[i]}});
+    task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    pool_.TriggerCallbacks();
+
+    // The task cannot run because there is only 1 node (head) with 0 CPU.
+    ASSERT_FALSE(callback_occurred);
+    ASSERT_EQ(leased_workers_.size(), 0);
+    ASSERT_EQ(pool_.workers.size(), 0);
+    ASSERT_EQ(node_info_calls_, 0);
+
+    rpc::ResourcesData data;
+    task_manager_.FillResourceUsage(data);
+    const auto &resource_load_by_shape = data.resource_load_by_shape();
+    ASSERT_EQ(resource_load_by_shape.resource_demands().size(), demand_types[i]);
+
+    // 1 CPU demand currently is always the 1st.
+    const auto &demand = resource_load_by_shape.resource_demands()[0];
+    EXPECT_EQ(demand.num_infeasible_requests_queued(), num_infeasible_1cpu[i]);
+    ASSERT_EQ(demand.shape().size(), 1);
+    ASSERT_EQ(demand.shape().at("CPU"), 1);
+  }
 }
 
 int main(int argc, char **argv) {

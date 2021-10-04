@@ -218,7 +218,7 @@ class WorkerPoolMock : public WorkerPool {
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
 
-    WorkerCacheKey env = {job_id, {}, "", {}};
+    WorkerCacheKey env = {job_id, "", {}};
     worker_->SetRuntimeEnvHash(env.Hash());
 
     auto rpc_client = std::make_shared<MockWorkerClient>(instrumented_io_service_);
@@ -1021,7 +1021,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
 
   // The driver of job 1 is already registered. Here we register the driver for job 2.
   RegisterDriver(Language::PYTHON, job_id);
-  WorkerCacheKey env = {job_id, {}, "", {}};
+  WorkerCacheKey env = {job_id, "", {}};
   auto runtime_env_hash = env.Hash();
 
   ///

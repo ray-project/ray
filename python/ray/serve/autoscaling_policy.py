@@ -16,7 +16,6 @@ def calculate_desired_num_replicas(autoscaling_config: AutoscalingConfig,
         current_num_ongoing_requests (List[float]): A list of the number of
             ongoing requests for each replica.  Assumes each entry has already
             been time-averaged over the desired lookback window.
-        current_num_replicas (int): The current number of active replicas.
 
     Returns:
         desired_num_replicas: The desired number of replicas to scale to, based

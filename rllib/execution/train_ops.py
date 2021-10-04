@@ -1,22 +1,21 @@
 import logging
 import numpy as np
 import math
-import tree  # pip install dm_tree
 from typing import List, Tuple, Any
 
 import ray
-from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import \
     AGENT_STEPS_TRAINED_COUNTER, APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, \
-    LAST_TARGET_UPDATE_TS, LEARNER_INFO, LEARN_ON_BATCH_TIMER, \
+    LAST_TARGET_UPDATE_TS, LEARN_ON_BATCH_TIMER, \
     LOAD_BATCH_TIMER, NUM_TARGET_UPDATES, STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, WORKER_UPDATE_TIMER, _check_sample_batch_type, \
     _get_global_vars, _get_shared_metrics
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
+    LEARNER_INFO
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
@@ -62,7 +61,7 @@ class TrainOneStep:
             # train batch and loop through train batch `num_sgd_iter` times.
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
                 lw = self.workers.local_worker()
-                info = do_minibatch_sgd(
+                learner_info = do_minibatch_sgd(
                     batch, {
                         pid: lw.get_policy(pid)
                         for pid in self.policies
@@ -70,9 +69,10 @@ class TrainOneStep:
                     }, lw, self.num_sgd_iter, self.sgd_minibatch_size, [])
             # Single update step using train batch.
             else:
-                info = self.workers.local_worker().learn_on_batch(batch)
+                learner_info = \
+                    self.workers.local_worker().learn_on_batch(batch)
 
-            metrics.info[LEARNER_INFO] = info
+            metrics.info[LEARNER_INFO] = learner_info
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         if isinstance(batch, MultiAgentBatch):
@@ -88,7 +88,7 @@ class TrainOneStep:
                     e.set_weights.remote(weights, _get_global_vars())
         # Also update global vars of the local worker.
         self.workers.local_worker().set_global_vars(_get_global_vars())
-        return batch, info
+        return batch, learner_info
 
 
 class MultiGPUTrainOneStep:
@@ -174,56 +174,43 @@ class MultiGPUTrainOneStep:
 
         # Execute minibatch SGD on loaded data.
         with learn_timer:
-            fetches = {}
+            # Use LearnerInfoBuilder as a unified way to build the final
+            # results dict from `learn_on_loaded_batch` call(s).
+            # This makes sure results dicts always have the same structure
+            # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
+            # tf vs torch).
+            learner_info_builder = LearnerInfoBuilder(
+                num_devices=len(self.devices))
+
             for policy_id, samples_per_device in num_loaded_samples.items():
                 policy = self.local_worker.policy_map[policy_id]
                 num_batches = max(
                     1,
                     int(samples_per_device) // int(self.per_device_batch_size))
                 logger.debug("== sgd epochs for {} ==".format(policy_id))
-                batch_fetches_all_towers = []
                 for _ in range(self.num_sgd_iter):
                     permutation = np.random.permutation(num_batches)
                     for batch_index in range(num_batches):
                         # Learn on the pre-loaded data in the buffer.
                         # Note: For minibatch SGD, the data is an offset into
                         # the pre-loaded entire train batch.
-                        batch_fetches = policy.learn_on_loaded_batch(
+                        results = policy.learn_on_loaded_batch(
                             permutation[batch_index] *
                             self.per_device_batch_size,
                             buffer_index=0)
 
-                        # No towers: Single CPU.
-                        if "tower_0" not in batch_fetches:
-                            batch_fetches_all_towers.append(batch_fetches)
-                        else:
-                            batch_fetches_all_towers.append(
-                                tree.map_structure_with_path(
-                                    lambda p, *s: all_tower_reduce(p, *s),
-                                    *(batch_fetches.pop(
-                                        "tower_{}".format(tower_num))
-                                      for tower_num in range(
-                                          len(self.devices)))))
-                            for k, v in batch_fetches.items():
-                                if k == LEARNER_STATS_KEY:
-                                    for k1, v1 in batch_fetches[k].items():
-                                        batch_fetches_all_towers[-1][
-                                            LEARNER_STATS_KEY][k1] = v1
-                                else:
-                                    batch_fetches_all_towers[-1][k] = v
+                        learner_info_builder.add_learn_on_batch_results(
+                            results, policy_id)
 
-                # Reduce mean across all minibatch SGD steps (axis=0 to keep
-                # all shapes as-is).
-                fetches[policy_id] = tree.map_structure(
-                    lambda *s: None if s[0] is None else np.nanmean(s, axis=0),
-                    *batch_fetches_all_towers)
+            # Tower reduce and finalize results.
+            learner_info = learner_info_builder.finalize()
 
         load_timer.push_units_processed(samples.count)
         learn_timer.push_units_processed(samples.count)
 
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
         metrics.counters[AGENT_STEPS_TRAINED_COUNTER] += samples.agent_steps()
-        metrics.info[LEARNER_INFO] = fetches
+        metrics.info[LEARNER_INFO] = learner_info
 
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
@@ -234,22 +221,11 @@ class MultiGPUTrainOneStep:
 
         # Also update global vars of the local worker.
         self.workers.local_worker().set_global_vars(_get_global_vars())
-        return samples, fetches
+        return samples, learner_info
 
 
 # Backward compatibility.
 TrainTFMultiGPU = MultiGPUTrainOneStep
-
-
-def all_tower_reduce(path, *tower_data):
-    """Reduces stats across towers based on their stats-dict paths."""
-    if len(path) == 1 and path[0] == "td_error":
-        return np.concatenate(tower_data, axis=0)
-    elif path[-1].startswith("min_"):
-        return np.nanmin(tower_data)
-    elif path[-1].startswith("max_"):
-        return np.nanmax(tower_data)
-    return np.nanmean(tower_data)
 
 
 class ComputeGradients:
@@ -273,7 +249,12 @@ class ComputeGradients:
         metrics = _get_shared_metrics()
         with metrics.timers[COMPUTE_GRADS_TIMER]:
             grad, info = self.workers.local_worker().compute_gradients(samples)
-        metrics.info[LEARNER_INFO] = get_learner_stats(info)
+        # RolloutWorker.compute_gradients returns pure single agent stats
+        # in a non-multi agent setup.
+        if isinstance(samples, MultiAgentBatch):
+            metrics.info[LEARNER_INFO] = info
+        else:
+            metrics.info[LEARNER_INFO] = {DEFAULT_POLICY_ID: info}
         return grad, samples.count
 
 

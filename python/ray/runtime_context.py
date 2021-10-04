@@ -172,6 +172,18 @@ class RuntimeContext(object):
         worker.check_connected()
         return worker.core_worker.get_actor_handle(self.actor_id)
 
+    def _get_actor_call_stats(self):
+        """Get the current worker's task counters.
+
+        Returns:
+            A dictionary keyed by the function name. The values are
+            dictionaries with form ``{"received": 0, "executing": 1,
+            "exectued": 2}``.
+        """
+        worker = self.worker
+        worker.check_connected()
+        return worker.core_worker.get_actor_call_stats()
+
 
 _runtime_context = None
 

@@ -139,6 +139,7 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
+      -python/ray/serve:conda_env # runtime_env unsupported on Windows
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
       -python/ray/serve:test_router # timeout
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
@@ -181,6 +182,7 @@ test_python() {
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_reference_counting  # too flaky 9/25/21
+      -python/ray/tests:test_runtime_env_plugin # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
       -python/ray/tests:test_stress  # timeout

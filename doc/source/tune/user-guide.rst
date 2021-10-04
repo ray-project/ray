@@ -50,7 +50,8 @@ the respective placement group. If not enough resources are available, this will
 If your trainable function starts more remote workers, you will need to pass placement groups
 factory objects to request these resources. See the
 :class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
-for further information.
+for further information. This also applies if you are using other libraries making use of Ray, such
+as Modin. Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
 
 Using GPUs
 ~~~~~~~~~~
