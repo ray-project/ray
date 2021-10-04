@@ -220,7 +220,7 @@ def test_put_failure_get(ray_start_regular_shared):
 
         dsf = DeSerializationFailure()
         with pytest.raises(ZeroDivisionError):
-            ray.put(dsf)
+            ray.get(ray.put(dsf))
 
         # Ensure Ray Client is still connected
         assert ray.get(ray.put(100)) == 100

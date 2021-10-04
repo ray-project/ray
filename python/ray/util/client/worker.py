@@ -405,14 +405,31 @@ class Worker:
         req = ray_client_pb2.PutRequest(data=data)
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
-        resp = self.data_client.PutObject(req)
-        if not resp.valid:
-            try:
-                raise cloudpickle.loads(resp.error)
-            except (pickle.UnpicklingError, TypeError):
-                logger.exception("Failed to deserialize {}".format(resp.error))
-                raise
-        return ClientObjectRef(resp.id)
+
+        id_future = Future()
+
+        def populate_id(
+                response: Union[ray_client_pb2.DataResponse, Exception]):
+            if isinstance(response, Exception):
+                if isinstance(response, grpc.RpcError):
+                    resp = decode_exception(response)
+                id_future.set_exception(resp)
+                return
+
+            resp = response.put
+            if not resp.valid:
+                try:
+                    ex = cloudpickle.loads(resp.error)
+                except (pickle.UnpicklingError, TypeError) as e_new:
+                    ex = e_new
+                id_future.set_exception(ex)
+                return
+
+            id_future.set_result(resp.id)
+
+        self.data_client.PutObject(req, populate_id)
+
+        return ClientObjectRef(id_future)
 
     # TODO(ekl) respect MAX_BLOCKING_OPERATION_TIME_S for wait too
     def wait(self,
