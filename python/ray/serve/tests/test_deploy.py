@@ -10,6 +10,7 @@ import requests
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
+from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
 
 
@@ -676,8 +677,8 @@ def test_deploy_handle_validation(serve_instance):
     assert ray.get(handle.options(method_name="b").remote()) == "hello"
     # New code path
     assert ray.get(handle.b.remote()) == "hello"
-    with pytest.raises(AttributeError):
-        handle.c.remote()
+    with pytest.raises(RayServeException):
+        ray.get(handle.c.remote())
 
 
 def test_init_args(serve_instance):

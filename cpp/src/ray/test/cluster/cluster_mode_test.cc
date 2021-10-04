@@ -37,8 +37,8 @@ TEST(RayClusterModeTest, Initialized) {
 
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
-  config.num_cpus = 2;
-  config.resources = {{"resource1", 1}, {"resource2", 2}};
+  config.head_args = {"--num-cpus", "2", "--resources",
+                      "{\"resource1\":1,\"resource2\":2}"};
   if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
     auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
     std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);

@@ -49,7 +49,7 @@ class RayConfig {
 /// In particular, this generates a private field called `name_` and a public getter
 /// method called `name()` for a given config item.
 ///
-/// Configs defined in this way can be overriden by setting the env variable
+/// Configs defined in this way can be overridden by setting the env variable
 /// RAY_{name}=value where {name} is the variable name.
 ///
 /// \param type Type of the config item.
@@ -63,7 +63,16 @@ class RayConfig {
   inline type &name() { return name##_; }
 
 #include "ray/common/ray_config_def.h"
-/// -------------------------------------------------------------------------
+
+/// -----------Include ray_internal_flag_def.h to define internal flags-------
+/// RAY_INTERNAL_FLAG defines RayConfig fields similar to the RAY_CONFIG macro.
+/// The difference is that RAY_INTERNAL_FLAG is intended for Ray internal
+/// settings that users should not modify.
+#define RAY_INTERNAL_FLAG RAY_CONFIG
+
+#include "ray/common/ray_internal_flag_def.h"
+
+#undef RAY_INTERNAL_FLAG
 #undef RAY_CONFIG
 
  public:
@@ -74,7 +83,7 @@ class RayConfig {
  private:
   template <typename T>
   T ReadEnv(const std::string &name, const std::string &type_string, T default_value) {
-    auto value = getenv(name.c_str());
+    auto value = std::getenv(name.c_str());
     if (value == nullptr) {
       return default_value;
     } else {

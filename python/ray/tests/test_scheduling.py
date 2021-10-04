@@ -2,6 +2,7 @@
 import collections
 import logging
 import platform
+import subprocess
 import sys
 import time
 import unittest
@@ -576,6 +577,45 @@ def test_gpu(monkeypatch):
     finally:
         ray.shutdown()
         cluster.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 0,
+        "num_nodes": 1,
+    }], indirect=True)
+def test_head_node_without_cpu(ray_start_cluster):
+    @ray.remote(num_cpus=1)
+    def f():
+        return 1
+
+    f.remote()
+
+    check_count = 0
+    demand_1cpu = " {'CPU': 1.0}:"
+    while True:
+        status = subprocess.check_output(["ray", "status"]).decode()
+        if demand_1cpu in status:
+            break
+        check_count += 1
+        assert check_count < 5, f"Incorrect demand. Last status {status}"
+        time.sleep(1)
+
+    @ray.remote(num_cpus=2)
+    def g():
+        return 2
+
+    g.remote()
+
+    check_count = 0
+    demand_2cpu = " {'CPU': 2.0}:"
+    while True:
+        status = subprocess.check_output(["ray", "status"]).decode()
+        if demand_1cpu in status and demand_2cpu in status:
+            break
+        check_count += 1
+        assert check_count < 5, f"Incorrect demand. Last status {status}"
+        time.sleep(1)
 
 
 if __name__ == "__main__":
