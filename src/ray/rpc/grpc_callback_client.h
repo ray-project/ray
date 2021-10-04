@@ -276,23 +276,20 @@ class GrpcCallbackClient {
         // it after this GrpcCallbackClient has been destroyed; this serves as a proxy
         // for an io_context_ lifetime check.
         //
+        // We capture the client context to ensure that it isn't deallocated
+        // until the gRPC-level callback is invoked, which is required.
+        //
         // TODO(Clark): Make this lifetime management nicer.
         [&io_context = io_context_, response, callback = std::move(callback), ctx,
          shutdown = shutdown_, stats_handle = std::move(stats_handle)](auto status) {
+          // Tell the compiler that we need ctx in this closure even though it
+          // isn't referenced (this prevents an unused lambda capture warning).
+          static_cast<void>(ctx);
           if (!shutdown->load() && !io_context.stopped()) {
-            io_context.post(
-                // NOTE: We capture the client context to ensure that it isn't
-                // deallocated until the callback completes.
-                // TODO(Clark): This doesn't seem like it should be necessary, determine
-                // if it actually is.
-                [response, callback = std::move(callback), ctx,
-                 status = GrpcStatusToRayStatus(status)]() {
-                  // Tell the compiler that we need ctx in this closure even though it
-                  // isn't referenced (this prevents an unused lambda capture warning).
-                  static_cast<void>(ctx);
-                  callback(status, *response);
-                },
-                std::move(stats_handle));
+            io_context.post([response, callback = std::move(callback),
+                             status = GrpcStatusToRayStatus(
+                                 status)]() { callback(status, *response); },
+                            std::move(stats_handle));
           }
         });
   }
