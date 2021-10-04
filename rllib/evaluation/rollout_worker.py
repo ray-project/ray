@@ -4,6 +4,7 @@ import logging
 import numpy as np
 import platform
 import os
+import socket
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
@@ -566,8 +567,15 @@ class RolloutWorker(ParallelIteratorWorker):
             elif policy_config.get("framework") == "torch":
                 devices = list(range(torch.cuda.device_count()))
 
+            devs = str(devices)
+            ip = str(socket.gethostbyname(socket.gethostname()))
+            ids = str(ray.worker.get_resource_ids())
+            var = os.environ["CUDA_VISIBLE_DEVICES"]
+            logger.warning(f"{ip} / {ids} / {var}")
+
             if len(devices) < num_gpus:
                 raise RuntimeError(
+                    f"{devs} / {ip} / {ids} / {var}, " +
                     ERR_MSG_NO_GPUS.format(len(devices), devices) +
                     HOWTO_CHANGE_CONFIG)
         # Warn, if running in local-mode and actual GPUs (not faked) are
