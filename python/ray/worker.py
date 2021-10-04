@@ -1270,6 +1270,8 @@ def connect(node,
         runtime_env_hash (int): The hash of the runtime env for this worker.
         worker_shim_pid (int): The PID of the process for setup worker
             runtime env.
+        startup_token (int): The startup token of the process assigned to 
+            it during startup as a command line argument.
         ray_debugger_host (bool): The host to bind a Ray debugger to on
             this worker.
     """

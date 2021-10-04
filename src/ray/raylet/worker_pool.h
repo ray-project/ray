@@ -135,6 +135,9 @@ class Worker;
 /// is a container for a unit of work.
 class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
  protected:
+  /// Gloabl startup token variable. Incremented once assigned
+  /// to a worker process and is added to
+  /// state.starting_worker_processes.
   StartupToken startup_token_;
 
  public:
@@ -210,6 +213,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
   /// \param[in] worker_shim_pid The PID of the process for setup worker runtime env.
+  /// \param[in] worker_startup_token The startup token of the process assigned to
+  /// it during startup as a command line argument.
   /// \param[in] send_reply_callback The callback to invoke after registration is
   /// finished/failed.
   /// Returns 0 if the worker should bind on a random port.
@@ -444,6 +449,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_workers;
     /// The type of the worker.
     rpc::WorkerType worker_type;
+    /// The worker process instance.
     Process proc;
   };
 
@@ -477,9 +483,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// All workers that have registered but is about to disconnect. They shouldn't be
     /// popped anymore.
     std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
-    /// A map from the pids of this shim processes to the extra information of
-    /// the process. The shim process PID is the same with worker process PID, except
-    /// starting worker process in container.
+    /// A map from the startup tokens of this shim processes to the extra information of
+    /// the process.
     std::unordered_map<StartupToken, StartingWorkerProcessInfo> starting_worker_processes;
     /// A map for looking up the task by the pid of starting worker process.
     std::unordered_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;

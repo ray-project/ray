@@ -227,6 +227,8 @@ class RayletClient : public RayletClientInterface {
   /// provided by driver will be passed to Raylet. If this is a worker connection,
   /// this will be populated with the current job config.
   /// \param worker_shim_pid The PID of the process for setup worker runtime env.
+  /// \param startup_token The startup token of the process assigned to 
+  /// it during startup as a command line argument.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
