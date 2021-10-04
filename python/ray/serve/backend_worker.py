@@ -90,6 +90,9 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                                            backend_config.user_config, version,
                                            is_function, controller_handle)
 
+            # asyncio.Event used to signal that the replica is shutting down.
+            self.shutdown_event = asyncio.Event()
+
         @ray.method(num_returns=2)
         async def handle_request(
                 self,
@@ -112,11 +115,11 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
             return self.backend.version
 
         async def prepare_for_shutdown(self):
+            self.shutdown_event.set()
             return await self.backend.prepare_for_shutdown()
 
         async def run_forever(self):
-            while True:
-                await asyncio.sleep(10000)
+            await self.shutdown_event.wait()
 
     RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica
@@ -237,10 +240,19 @@ class RayServeReplica:
     def get_runner_method(self, request_item: Query) -> Callable:
         method_name = request_item.metadata.call_method
         if not hasattr(self.callable, method_name):
-            raise RayServeException("Backend doesn't have method {} "
-                                    "which is specified in the request. "
-                                    "The available methods are {}".format(
-                                        method_name, dir(self.callable)))
+            # Filter to methods that don't start with '__' prefix.
+            def callable_method_filter(attr):
+                if attr.startswith("__"):
+                    return False
+                elif not callable(getattr(self.callable, attr)):
+                    return False
+
+                return True
+
+            methods = list(filter(callable_method_filter, dir(self.callable)))
+            raise RayServeException(f"Tried to call a method '{method_name}' "
+                                    "that does not exist. Available methods: "
+                                    f"{methods}.")
         if self.is_function:
             return self.callable
         return getattr(self.callable, method_name)
@@ -355,7 +367,8 @@ class RayServeReplica:
         # We set the del method to noop after succssifully calling it so the
         # destructor is called only once.
         try:
-            self.callable.__del__()
+            if hasattr(self.callable, "__del__"):
+                self.callable.__del__()
         except Exception:
             logger.exception("Exception during graceful shutdown of replica.")
         finally:

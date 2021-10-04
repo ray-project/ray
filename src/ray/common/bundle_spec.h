@@ -32,6 +32,9 @@ typedef std::function<void(const ResourceIdSet &)> ScheduleBundleCallback;
 /// address and the raylet's port.
 typedef std::function<void()> SpillbackBundleCallback;
 
+const std::string kGroupKeyword = "_group_";
+const size_t kGroupKeywordSize = kGroupKeyword.size();
+
 class BundleSpecification : public MessageWrapper<rpc::Bundle> {
  public:
   /// Construct from a protobuf message object.
@@ -53,6 +56,9 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
 
   // Return the Placement Group id which the Bundle belong to.
   PlacementGroupID PlacementGroupId() const;
+
+  // Get a node ID that this bundle is scheduled on.
+  NodeID NodeId() const;
 
   // Return the index of the bundle.
   int64_t Index() const;

@@ -132,8 +132,10 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
+rpc::RuntimeEnv TaskSpecification::RuntimeEnv() const { return message_->runtime_env(); }
+
 std::string TaskSpecification::SerializedRuntimeEnv() const {
-  return message_->serialized_runtime_env();
+  return message_->runtime_env().serialized_runtime_env();
 }
 
 bool TaskSpecification::HasRuntimeEnv() const {
@@ -145,8 +147,7 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv(),
-                        required_resource};
+  WorkerCacheKey env = {SerializedRuntimeEnv(), required_resource};
   return env.IntHash();
 }
 
@@ -171,7 +172,7 @@ ObjectID TaskSpecification::ArgId(size_t arg_index) const {
   return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
 }
 
-rpc::ObjectReference TaskSpecification::ArgRef(size_t arg_index) const {
+const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   RAY_CHECK(ArgByRef(arg_index));
   return message_->args(arg_index).object_ref();
 }
@@ -237,11 +238,6 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
 
 std::string TaskSpecification::GetDebuggerBreakpoint() const {
   return message_->debugger_breakpoint();
-}
-
-std::unordered_map<std::string, std::string>
-TaskSpecification::OverrideEnvironmentVariables() const {
-  return MapFromProtobuf(message_->override_environment_variables());
 }
 
 bool TaskSpecification::IsDriverTask() const {
@@ -398,11 +394,9 @@ std::string TaskSpecification::CallSiteString() const {
 }
 
 WorkerCacheKey::WorkerCacheKey(
-    const std::unordered_map<std::string, std::string> override_environment_variables,
     const std::string serialized_runtime_env,
     const std::unordered_map<std::string, double> required_resources)
-    : override_environment_variables(override_environment_variables),
-      serialized_runtime_env(serialized_runtime_env),
+    : serialized_runtime_env(serialized_runtime_env),
       required_resources(std::move(required_resources)) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
@@ -411,8 +405,7 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return override_environment_variables.size() == 0 &&
-         (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
+  return (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
          required_resources.empty();
 }
 
@@ -424,19 +417,6 @@ std::size_t WorkerCacheKey::Hash() const {
       // runtime envs.
       hash_ = 0;
     } else {
-      std::vector<std::pair<std::string, std::string>> env_vars(
-          override_environment_variables.begin(), override_environment_variables.end());
-      // The environment doesn't depend the order of the variables, so the hash should not
-      // either.  Sort the variables so different permutations yield the same hash.
-      std::sort(env_vars.begin(), env_vars.end());
-      for (auto &pair : env_vars) {
-        // TODO(architkulkarni): boost::hash_combine isn't guaranteed to be equal during
-        // separate runs of a program, which may cause problems if these hashes are
-        // communicated between different Raylets and compared.
-        boost::hash_combine(hash_, pair.first);
-        boost::hash_combine(hash_, pair.second);
-      }
-
       boost::hash_combine(hash_, serialized_runtime_env);
 
       std::vector<std::pair<std::string, double>> resource_vars(

@@ -25,6 +25,11 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 /// TODO(ekl) this seems to segfault Java unit tests when on by default?
 RAY_CONFIG(bool, event_stats, false)
 
+/// Whether to enable Ray legacy scheduler warnings. These are replaced by
+/// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
+/// TODO(ekl) remove this after Ray 1.8
+RAY_CONFIG(bool, legacy_scheduler_warnings, true)
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are only available to
 /// debug_state.txt for raylets.
@@ -102,8 +107,8 @@ RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold,
-           getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
-               ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
+           std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
+               ? std::stof(std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
                : 0.5)
 
 // The max allowed size in bytes of a return object from direct actor calls.
@@ -178,8 +183,7 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
-/// Timeout, in milliseconds, to wait before retrying a failed pull in the
-/// ObjectManager.
+/// The object manager's global timer interval in milliseconds.
 RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
@@ -319,7 +323,7 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 RAY_CONFIG(bool, report_worker_backlog, true)
 
 /// The timeout for synchronous GCS requests in seconds.
-RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
 RAY_CONFIG(bool, enable_worker_prestart, true)
@@ -418,8 +422,8 @@ RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5
 
 /// Whether to enable GCS-based actor scheduling.
 RAY_CONFIG(bool, gcs_actor_scheduling_enabled,
-           getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
-               getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
+           std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
+               std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
@@ -430,8 +434,8 @@ RAY_CONFIG(bool, enable_light_weight_resource_report, true)
 // fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
 // (a few GB/s) to populate all the pages on Raylet startup.
 RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
-           getenv("RAY_preallocate_plasma_memory") != nullptr &&
-                   getenv("RAY_preallocate_plasma_memory") == std::string("1")
+           std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
+                   std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120
                : 10)
 
@@ -469,8 +473,14 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
 
+/// Whether to use log reporter in event framework
+RAY_CONFIG(bool, actor_register_async, true)
+
 /// Event severity threshold value
 RAY_CONFIG(std::string, event_level, "warning")
 
 /// Whether to avoid scheduling cpu requests on gpu nodes
-RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, false)
+RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
+
+/// Whether to skip running local GC in runtime env.
+RAY_CONFIG(bool, runtime_env_skip_local_gc, false)

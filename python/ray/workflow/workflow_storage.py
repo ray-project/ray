@@ -4,20 +4,18 @@ workflows.
 """
 
 import asyncio
-from collections import ChainMap
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
-import io
 import logging
 
 import ray
 from ray import cloudpickle
 from ray._private import signature
 from ray.workflow import storage
-from ray.workflow.common import (Workflow, WorkflowData, StepID,
-                                 WorkflowMetaData, WorkflowStatus, WorkflowRef,
-                                 StepType)
+from ray.workflow.common import (Workflow, StepID, WorkflowMetaData,
+                                 WorkflowStatus, WorkflowRef, StepType)
 from ray.workflow import workflow_context
+from ray.workflow import serialization
 from ray.workflow import serialization_context
 from ray.workflow.storage import (DataLoadError, DataSaveError,
                                   KeyNotFoundError)
@@ -63,8 +61,6 @@ class StepInspectResult:
     args_valid: bool = False
     # The step function body checkpoint exists and valid.
     func_body_valid: bool = False
-    # The object refs in the inputs of the workflow.
-    object_refs: Optional[List[str]] = None
     # The workflows in the inputs of the workflow.
     workflows: Optional[List[str]] = None
     # The dynamically referenced workflows in the input of the workflow.
@@ -82,8 +78,8 @@ class StepInspectResult:
 
     def is_recoverable(self) -> bool:
         return (self.output_object_valid or self.output_step_id
-                or (self.args_valid and self.object_refs is not None
-                    and self.workflows is not None and self.func_body_valid))
+                or (self.args_valid and self.workflows is not None
+                    and self.func_body_valid))
 
 
 class WorkflowStorage:
@@ -121,9 +117,9 @@ class WorkflowStorage:
         # In this case, there is no such step
         raise output_err
 
-    def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any],
+    def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any], *,
                          exception: Optional[Exception],
-                         outer_most_step_id: Optional[StepID]) -> None:
+                         outer_most_step_id: StepID) -> None:
         """When a workflow step returns,
         1. If the returned object is a workflow, this means we are a nested
            workflow. We save the output metadata that points to the workflow.
@@ -134,8 +130,7 @@ class WorkflowStorage:
                 it means we are in the workflow job driver process.
             ret: The returned object from a workflow step.
             exception: This step should throw exception.
-            outer_most_step_id: See
-                "step_executor.execute_workflow" for explanation.
+            outer_most_step_id: See WorkflowStepContext.
         """
         tasks = []
         if isinstance(ret, Workflow):
@@ -151,21 +146,24 @@ class WorkflowStorage:
             if exception is None:
                 # This workflow step returns a object.
                 ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
-                tasks.append(self._put(self._key_step_output(step_id), ret))
+                promise = serialization.dump_to_storage(
+                    self._key_step_output(step_id), ret, self._workflow_id,
+                    self._storage)
+                tasks.append(promise)
+                # tasks.append(self._put(self._key_step_output(step_id), ret))
                 dynamic_output_id = step_id
                 # TODO (yic): Delete exception file
-
-                # outer_most_step_id == "" indicates the root step of a
-                # workflow. This would directly update "outputs.json" in
-                # the workflow dir, and we want to avoid it.
-                if outer_most_step_id is not None and outer_most_step_id != "":
-                    tasks.append(
-                        self._update_dynamic_output(outer_most_step_id,
-                                                    dynamic_output_id))
+                tasks.append(
+                    self._update_dynamic_output(outer_most_step_id,
+                                                dynamic_output_id))
             else:
                 assert ret is None
-                tasks.append(
-                    self._put(self._key_step_exception(step_id), exception))
+                promise = serialization.dump_to_storage(
+                    self._key_step_exception(step_id), exception,
+                    self._workflow_id, self._storage)
+                tasks.append(promise)
+                # tasks.append(
+                #     self._put(self._key_step_exception(step_id), exception))
 
         asyncio_run(asyncio.gather(*tasks))
 
@@ -195,7 +193,6 @@ class WorkflowStorage:
 
     def load_step_args(
             self, step_id: StepID, workflows: List[Any],
-            object_refs: List[ray.ObjectRef],
             workflow_refs: List[WorkflowRef]) -> Tuple[List, Dict[str, Any]]:
         """Load the input arguments of the workflow step. This must be
         done under a serialization context, otherwise the arguments would
@@ -211,7 +208,7 @@ class WorkflowStorage:
             Args and kwargs.
         """
         with serialization_context.workflow_args_resolving_context(
-                workflows, object_refs, workflow_refs):
+                workflows, workflow_refs):
             flattened_args = asyncio_run(
                 self._get(self._key_step_args(step_id)))
             # dereference arguments like Ray remote functions
@@ -268,10 +265,15 @@ class WorkflowStorage:
         critical for scalability of virtual actors.
 
         Args:
-            outer_most_step_id: ID of outer_most_step. See
-                "step_executor.execute_workflow" for explanation.
+            outer_most_step_id: See WorkflowStepContext for explanation.
             dynamic_output_step_id: ID of dynamic_step.
         """
+        # outer_most_step_id == "" indicates the root step of a
+        # workflow. This would directly update "outputs.json" in
+        # the workflow dir, and we want to avoid it.
+        if outer_most_step_id is None or outer_most_step_id == "":
+            return
+
         metadata = await self._get(
             self._key_step_output_metadata(outer_most_step_id), True)
         if (dynamic_output_step_id != metadata["output_step_id"]
@@ -332,7 +334,6 @@ class WorkflowStorage:
             return StepInspectResult(
                 args_valid=(STEP_ARGS in keys),
                 func_body_valid=(STEP_FUNC_BODY in keys),
-                object_refs=metadata["object_refs"],
                 workflows=metadata["workflows"],
                 workflow_refs=metadata["workflow_refs"],
                 max_retries=metadata.get("max_retries"),
@@ -349,45 +350,8 @@ class WorkflowStorage:
             )
 
     async def _save_object_ref(self, identifier: str, obj_ref: ray.ObjectRef):
-        # TODO (Alex): We should do this in a remote task to exploit locality.
         data = await obj_ref
         await self._put(self._key_obj_id(identifier), data)
-
-    async def _write_step_inputs(self, step_id: StepID,
-                                 inputs: WorkflowData) -> None:
-        """Save workflow inputs."""
-        metadata = inputs.to_metadata()
-
-        with serialization_context.workflow_args_keeping_context():
-            # TODO(suquark): in the future we should write to storage directly
-            # with plasma store object in memory.
-            args_obj = ray.get(inputs.inputs.args)
-        save_tasks = [
-            self._put(self._key_step_input_metadata(step_id), metadata, True),
-            self._put(self._key_step_function_body(step_id), inputs.func_body),
-            self._put(self._key_step_args(step_id), args_obj)
-        ]
-
-        for identifier, obj_ref in zip(metadata["object_refs"],
-                                       inputs.inputs.object_refs):
-            paths = self._key_step_args(identifier)
-            save_tasks.append(self._put(paths, obj_ref))
-
-        await asyncio.gather(*save_tasks)
-
-    def save_subworkflow(self, workflow: Workflow) -> None:
-        """Save the DAG and inputs of the sub-workflow.
-
-        Args:
-            workflow: A sub-workflow. Could be a nested workflow inside
-                a workflow step.
-        """
-        assert not workflow.executed
-        tasks = [
-            self._write_step_inputs(w.step_id, w.data)
-            for w in workflow._iter_workflows_in_dag()
-        ]
-        asyncio_run(asyncio.gather(*tasks))
 
     def load_actor_class_body(self) -> type:
         """Load the class body of the virtual actor.
@@ -479,23 +443,8 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
-    def _reduce_objectref(self, obj_ref: ObjectRef,
-                          upload_tasks: List[ObjectRef]):
-        from ray.workflow import serialization
-        manager = serialization.get_or_create_manager()
-        paths, task = ray.get(
-            manager.save_objectref.remote((obj_ref, ), self._workflow_id))
-
-        assert task
-        upload_tasks.append(task)
-
-        return _load_object_ref, (paths, self)
-
-    async def _put(self,
-                   paths: List[str],
-                   data: Any,
-                   is_json: bool = False,
-                   update: bool = True) -> str:
+    async def _put(self, paths: List[str], data: Any,
+                   is_json: bool = False) -> str:
         """
         Serialize and put an object in the object store.
 
@@ -506,46 +455,20 @@ class WorkflowStorage:
             update: If false, do not upload data when the path already exists.
         """
         key = self._storage.make_key(*paths)
-        if not update:
-            prefix = self._storage.make_key(*paths[:-1])
-            scan_result = await self._storage.scan_prefix(prefix)
-            if paths[-1] in scan_result:
-                return key
         try:
             upload_tasks: List[ObjectRef] = []
             if not is_json:
-                # Setup our custom serializer.
-                output_buffer = io.BytesIO()
-
-                # Cloudpickle doesn't support private dispatch tables, so we
-                # extend the cloudpickler instead to avoid changing
-                # cloudpickle's global dispatch table which is shared with
-                # `ray.put`. See
-                # https://github.com/cloudpipe/cloudpickle/issues/437
-                class ObjectRefPickler(cloudpickle.CloudPickler):
-                    _object_ref_reducer = {
-                        ray.ObjectRef: lambda ref: self._reduce_objectref(
-                            ref, upload_tasks)
-                    }
-                    dispatch_table = ChainMap(
-                        _object_ref_reducer,
-                        cloudpickle.CloudPickler.dispatch_table)
-                    dispatch = dispatch_table
-
-                pickler = ObjectRefPickler(output_buffer)
-                pickler.dump(data)
-                output_buffer.seek(0)
-                value = output_buffer.read()
+                await serialization.dump_to_storage(
+                    paths, data, self._workflow_id, self._storage)
             else:
                 value = data
-
-            await self._storage.put(key, value, is_json=is_json)
-            # The serializer only kicks off the upload tasks, and returns
-            # the location they will be uploaded to in order to allow those
-            # uploads to be parallelized. We should wait for those uploads
-            # to be finished before we consider the object fully
-            # serialized.
-            await asyncio.gather(*upload_tasks)
+                outer_coro = self._storage.put(key, value, is_json=is_json)
+                # The serializer only kicks off the upload tasks, and returns
+                # the location they will be uploaded to in order to allow those
+                # uploads to be parallelized. We should wait for those uploads
+                # to be finished before we consider the object fully
+                # serialized.
+                await asyncio.gather(outer_coro, *upload_tasks)
         except Exception as e:
             raise DataSaveError from e
 

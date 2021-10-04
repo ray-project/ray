@@ -24,8 +24,10 @@ class AutoscalingConfig(BaseModel):
     # Private options below
 
     # Metrics scraping options
+
+    # How often to scrape for metrics
     metrics_interval_s: float = 10.0
-    loop_period_s: float = 30.0
+    # Time window to average over for metrics.
     look_back_period_s: float = 30.0
 
     # Internal autoscaling configuration options
@@ -34,6 +36,7 @@ class AutoscalingConfig(BaseModel):
     smoothing_factor: float = 1.0
 
     # TODO(architkulkarni): implement below
+    # loop_period_s = 30 # How frequently to make autoscaling decisions
     # How long to wait before scaling down replicas
     # downscale_delay_s: float = 600.0
     # How long to wait before scaling up replicas
@@ -214,6 +217,7 @@ class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
     EveryNode = "EveryNode"
+    FixedNumber = "FixedNumber"
 
 
 class HTTPOptions(pydantic.BaseModel):
@@ -224,11 +228,20 @@ class HTTPOptions(pydantic.BaseModel):
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
     num_cpus: int = 0
     root_url: str = ""
+    fixed_number_replicas: Optional[int] = None
+    fixed_number_selection_seed: int = 0
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
+        return v
+
+    @validator("fixed_number_replicas", always=True)
+    def fixed_number_replicas_should_exist(cls, v, values):
+        if values["location"] == DeploymentMode.FixedNumber and v is None:
+            raise ValueError("When location='FixedNumber', you must specify "
+                             "the `fixed_number_replicas` parameter.")
         return v
 
     class Config:

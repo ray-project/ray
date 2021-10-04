@@ -2,6 +2,9 @@ from typing import Any
 from typing import Dict
 from typing import Optional
 
+from ray.util.placement_group import (PlacementGroup,
+                                      check_placement_group_index)
+
 options = {
     "num_returns": (int, lambda x: x >= 0,
                     "The keyword 'num_returns' only accepts 0 "
@@ -33,7 +36,6 @@ options = {
     "placement_group_bundle_index": (),
     "placement_group_capture_child_tasks": (),
     "runtime_env": (),
-    "override_environment_variables": (),
 }
 
 
@@ -43,6 +45,7 @@ def validate_options(
         return None
     if len(kwargs_dict) == 0:
         return None
+
     out = {}
     for k, v in kwargs_dict.items():
         if k not in options.keys():
@@ -55,4 +58,21 @@ def validate_options(
                 if not validator[1](v):
                     raise ValueError(validator[2])
         out[k] = v
+
+    # Validate placement setting similar to the logic in ray/actor.py and
+    # ray/remote_function.py. The difference is that when
+    # placement_group = default and placement_group_capture_child_tasks
+    # specified, placement group cannot be resolved at client. So this check
+    # skips this case and relies on server to enforce any condition.
+    bundle_index = out.get("placement_group_bundle_index", None)
+    if bundle_index is not None:
+        pg = out.get("placement_group", None)
+        if pg is None:
+            pg = PlacementGroup.empty()
+        if pg == "default" and (out.get("placement_group_capture_child_tasks",
+                                        None) is None):
+            pg = PlacementGroup.empty()
+        if isinstance(pg, PlacementGroup):
+            check_placement_group_index(pg, bundle_index)
+
     return out

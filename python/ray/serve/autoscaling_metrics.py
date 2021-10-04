@@ -74,7 +74,7 @@ class InMemoryMetricsStore:
 
         Args:
             data_points(dict): dictionary containing the metrics values. The
-              key should be a string that uniquely identitify this time series
+              key should be a string that uniquely identifies this time series
               and to be used to perform aggregation.
             timestamp(float): the unix epoch timestamp the metrics are
               collected at.
@@ -98,6 +98,9 @@ class InMemoryMetricsStore:
             do_compact(bool): whether or not to delete the datapoints that's
               before `window_start_timestamp_s` to save memory. Default is
               true.
+        Returns:
+            The average of all the datapoints for the key on and after time
+            window_start_timestamp_s, or None if there are no such points.
         """
         datapoints = self.data[key]
 

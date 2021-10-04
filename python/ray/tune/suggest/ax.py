@@ -1,4 +1,5 @@
 import copy
+import pickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
@@ -374,3 +375,13 @@ class AxSearch(Searcher):
         ]
 
         return fixed_values + resolved_values
+
+    def save(self, checkpoint_path: str):
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            pickle.dump(save_object, outputFile)
+
+    def restore(self, checkpoint_path: str):
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = pickle.load(inputFile)
+        self.__dict__.update(save_object)

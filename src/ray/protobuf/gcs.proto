@@ -13,6 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
+option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -149,19 +150,17 @@ message ActorTableData {
   RayException creation_task_exception = 18;
   // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 19;
-  // Runtime required to run this actor
-  // It'll only be set if it's a detached actor and the original job has this field
-  RuntimeEnv runtime_env = 20;
   // The unix ms timestamp the actor was started at.
-  uint64 start_time = 21;
+  uint64 start_time = 20;
   // The unix ms timestamp the actor was ended at.
-  uint64 end_time = 22;
+  uint64 end_time = 21;
+  // Serialized runtime_env used to report in the dashboard snapshot. We need to populate
+  // it here instead of grabbing it from the task spec because the task spec is cleared
+  // for deleted actors: https://github.com/ray-project/ray/pull/11149.
+  string serialized_runtime_env = 22;
   // The actor's class name. This is necessary because the task spec's lifetime
   // is shorter than the ActorTableData.
   string class_name = 23;
-  // The actor's serialized runtime environment. This is necessary because the
-  // task spec's lifetime is shorter than the ActorTableData.
-  string serialized_runtime_env = 24;
 }
 
 message ErrorTableData {
@@ -279,6 +278,8 @@ message TaskLeaseData {
 
 message JobConfig {
   // Environment variables to be set on worker processes.
+  // TODO(edoakes): this is only used by Java. Once Java moves to runtime_env we
+  // should remove worker_env.
   map<string, string> worker_env = 1;
   // The number of java workers per worker process.
   uint32 num_java_workers_per_process = 2;
@@ -292,10 +293,8 @@ message JobConfig {
   RuntimeEnv runtime_env = 5;
   // The job's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 6;
-  // Serialized JSON string of the parsed runtime environment dict for this job.
-  string serialized_runtime_env = 7;
   // An opaque kv store for job related metadata.
-  map<string, string> metadata = 8;
+  map<string, string> metadata = 7;
 }
 
 message JobTableData {
@@ -472,6 +471,8 @@ message ResourcesData {
   bool resources_normal_task_changed = 12;
   // The timestamp that normal task resources are measured.
   int64 resources_normal_task_timestamp = 13;
+  // Whether this node has detected a resource deadlock (full of actors).
+  bool cluster_full_of_actors_detected = 14;
 }
 
 message ResourceUsageBatchData {

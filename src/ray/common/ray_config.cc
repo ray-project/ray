@@ -45,6 +45,8 @@ void RayConfig::initialize(const std::string &config_list) {
       // We use a big chain of if else statements because C++ doesn't allow
       // switch statements on strings.
 #include "ray/common/ray_config_def.h"
+      // "ray/common/ray_internal_flag_def.h" is intentionally not included,
+      // because it contains Ray internal settings.
       RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.key();
     }
     if (RAY_LOG_ENABLED(DEBUG)) {

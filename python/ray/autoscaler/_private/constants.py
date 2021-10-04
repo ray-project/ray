@@ -18,7 +18,7 @@ def env_integer(key, default):
 
 
 # Whether event logging to driver is enabled. Set to 0 to disable.
-AUTOSCALER_EVENTS = env_integer("AUTOSCALER_EVENTS", 1)
+AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
 
 # Whether to avoid launching GPU nodes for CPU only tasks.
 AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
