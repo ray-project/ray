@@ -51,7 +51,7 @@ else:
 
 
 # NOTE(barakmich): These PickleStubs are really close to
-# the data for an exectuion, with no arguments. Combine the two?
+# the data for an execution, with no arguments. Combine the two?
 class PickleStub(
         NamedTuple("PickleStub", [("type", str), ("client_id", str),
                                   ("ref_id", bytes), ("name", Optional[str]),
