@@ -183,8 +183,7 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
-/// Timeout, in milliseconds, to wait before retrying a failed pull in the
-/// ObjectManager.
+/// The object manager's global timer interval in milliseconds.
 RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
@@ -221,14 +220,8 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
-// TODO: fix win32 timeout in ci and unify these two.
-#ifdef _MSC_VER
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
-#else
-/// Number of threads used by rpc server in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 8)
-#endif
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -317,6 +310,9 @@ RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 /// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
+/// Max restart count for the dashboard agent.
+RAY_CONFIG(uint32_t, agent_max_restart_count, 5)
+
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000);
@@ -330,7 +326,7 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 RAY_CONFIG(bool, report_worker_backlog, true)
 
 /// The timeout for synchronous GCS requests in seconds.
-RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
 RAY_CONFIG(bool, enable_worker_prestart, true)

@@ -7,8 +7,7 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import (Any, Callable, Dict, List, Optional, Tuple, Type, Union,
-                    overload)
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, overload
 from weakref import WeakValueDictionary
 
 from fastapi import APIRouter, FastAPI
@@ -222,16 +221,10 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        python_methods = []
-        if inspect.isclass(backend_def):
-            for method_name, _ in inspect.getmembers(backend_def,
-                                                     inspect.isfunction):
-                python_methods.append(method_name)
-
         goal_id, updating = ray.get(
             self._controller.deploy.remote(
-                name, backend_config.to_proto_bytes(), replica_config,
-                python_methods, version, prev_version, route_prefix,
+                name, backend_config.to_proto_bytes(), replica_config, version,
+                prev_version, route_prefix,
                 ray.get_runtime_context().job_id))
 
         tag = f"component=serve deployment={name}"
@@ -318,27 +311,16 @@ class Client:
                 "to create sync handle. Learn more at https://docs.ray.io/en/"
                 "master/serve/http-servehandle.html#sync-and-async-handles")
 
-        if endpoint_name in all_endpoints:
-            this_endpoint = all_endpoints[endpoint_name]
-            python_methods: List[str] = this_endpoint["python_methods"]
-        else:
-            # This can happen in the missing_ok=True case.
-            # handle.method_name.remote won't work and user must
-            # use the legacy handle.options(method).remote().
-            python_methods: List[str] = []
-
         if sync:
             handle = RayServeSyncHandle(
                 self._controller,
                 endpoint_name,
-                known_python_methods=python_methods,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
         else:
             handle = RayServeHandle(
                 self._controller,
                 endpoint_name,
-                known_python_methods=python_methods,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
 
@@ -661,6 +643,14 @@ class Deployment:
         if init_args is None:
             init_args = ()
 
+        # TODO(architkulkarni): Enforce that autoscaling_config and
+        # user-provided num_replicas should be mutually exclusive.
+        if version is None and config.autoscaling_config is not None:
+            # TODO(architkulkarni): Remove this restriction.
+            raise ValueError(
+                "Currently autoscaling is only supported for "
+                "versioned deployments. Try @serve.deployment(version=...).")
+
         self._func_or_class = func_or_class
         self._name = name
         self._version = version
@@ -795,6 +785,8 @@ class Deployment:
             ray_actor_options: Optional[Dict] = None,
             user_config: Optional[Any] = None,
             max_concurrent_queries: Optional[int] = None,
+            _autoscaling_config: Optional[Union[Dict,
+                                                AutoscalingConfig]] = None,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -829,6 +821,9 @@ class Deployment:
 
         if ray_actor_options is None:
             ray_actor_options = self._ray_actor_options
+
+        if _autoscaling_config is None:
+            new_config.autoscaling_config = _autoscaling_config
 
         return Deployment(
             func_or_class,
@@ -871,16 +866,17 @@ def deployment(func_or_class: Callable) -> Deployment:
 
 
 @overload
-def deployment(name: Optional[str] = None,
-               version: Optional[str] = None,
-               prev_version: Optional[str] = None,
-               num_replicas: Optional[int] = None,
-               init_args: Optional[Tuple[Any]] = None,
-               ray_actor_options: Optional[Dict] = None,
-               user_config: Optional[Any] = None,
-               max_concurrent_queries: Optional[int] = None,
-               _autoscaling_config: Optional[dict] = None
-               ) -> Callable[[Callable], Deployment]:
+def deployment(
+        name: Optional[str] = None,
+        version: Optional[str] = None,
+        prev_version: Optional[str] = None,
+        num_replicas: Optional[int] = None,
+        init_args: Optional[Tuple[Any]] = None,
+        ray_actor_options: Optional[Dict] = None,
+        user_config: Optional[Any] = None,
+        max_concurrent_queries: Optional[int] = None,
+        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None
+) -> Callable[[Callable], Deployment]:
     pass
 
 
@@ -896,7 +892,7 @@ def deployment(
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[dict] = None,
+        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -962,8 +958,7 @@ def deployment(
         config.max_concurrent_queries = max_concurrent_queries
 
     if _autoscaling_config is not None:
-        config.autoscaling_config = AutoscalingConfig.parse_obj(
-            _autoscaling_config)
+        config.autoscaling_config = _autoscaling_config
 
     def decorator(_func_or_class):
         return Deployment(

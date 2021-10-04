@@ -1,5 +1,5 @@
 base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
-env_vars: {}
+env_vars: {"RAY_event_log_reporter_enabled": "1"}
 
 python:
   pip_packages: []

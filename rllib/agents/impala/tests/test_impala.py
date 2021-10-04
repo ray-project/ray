@@ -4,8 +4,10 @@ import ray
 import ray.rllib.agents.impala as impala
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
+    LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import check, \
-    check_compute_single_action, framework_iterator
+    check_compute_single_action, check_train_results, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 
@@ -39,7 +41,10 @@ class TestIMPALA(unittest.TestCase):
                 # to do with LSTMs, though).
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
-                    print(trainer.train())
+                    results = trainer.train()
+                    check_train_results(results)
+                    print(results)
+
                 check_compute_single_action(
                     trainer,
                     include_state=lstm,
@@ -61,7 +66,8 @@ class TestIMPALA(unittest.TestCase):
         config["env"] = "CartPole-v0"
 
         def get_lr(result):
-            return result["info"]["learner"][DEFAULT_POLICY_ID]["cur_lr"]
+            return result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
+                LEARNER_STATS_KEY]["cur_lr"]
 
         for fw in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = impala.ImpalaTrainer(config=config)
