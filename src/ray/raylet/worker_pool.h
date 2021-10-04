@@ -136,6 +136,7 @@ class Worker;
 class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
  protected:
   StartupToken startup_token_;
+
  public:
   /// Create a pool and asynchronously start at least the specified number of workers per
   /// language.
@@ -479,8 +480,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of this shim processes to the extra information of
     /// the process. The shim process PID is the same with worker process PID, except
     /// starting worker process in container.
-    std::unordered_map<StartupToken, StartingWorkerProcessInfo>
-        starting_worker_processes;
+    std::unordered_map<StartupToken, StartingWorkerProcessInfo> starting_worker_processes;
     /// A map for looking up the task by the pid of starting worker process.
     std::unordered_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
     /// A map for looking up the task with dynamic options by the pid of
@@ -515,8 +515,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// (due to worker process crash or any other reasons), remove them
   /// from `starting_worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
-  void MonitorStartingWorkerProcess(const Process &proc,
-                                    StartupToken proc_startup_token, const Language &language,
+  void MonitorStartingWorkerProcess(const Process &proc, StartupToken proc_startup_token,
+                                    const Language &language,
                                     const rpc::WorkerType worker_type);
 
   /// Get the next unallocated port in the free ports list. If a port range isn't

@@ -1224,8 +1224,7 @@ void WorkerPool::WarnAboutSize() {
     num_workers_started_or_registered +=
         static_cast<int64_t>(state.registered_workers.size());
     for (const auto &starting_process : state.starting_worker_processes) {
-      num_workers_started_or_registered +=
-          starting_process.second.num_starting_workers;
+      num_workers_started_or_registered += starting_process.second.num_starting_workers;
     }
     // Don't count IO workers towards the warning message threshold.
     num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;

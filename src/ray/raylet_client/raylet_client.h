@@ -29,7 +29,6 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-
 using ray::ActorID;
 using ray::JobID;
 using ray::NodeID;
