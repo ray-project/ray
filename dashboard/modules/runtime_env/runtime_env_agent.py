@@ -18,6 +18,7 @@ from ray.experimental.internal_kv import (_initialize_internal_kv,
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
+from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
         self._conda_manager = CondaManager(self._runtime_env_dir)
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
+        self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
@@ -90,6 +92,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 self._conda_manager.setup(
                     runtime_env, context, logger=per_job_logger)
                 self._working_dir_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._container_manager.setup(
                     runtime_env, context, logger=per_job_logger)
 
                 # Add the mapping of URIs -> the serialized environment to be
