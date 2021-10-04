@@ -58,27 +58,41 @@ tool_version_check() {
     fi
 }
 
+# params: tool name, version command, desired version
+tool_version_cmd_check() {
+    local tool_version
+    tool_version="$($2)"
+    if [[ ! "$tool_version" =~ $3 ]]; then
+        echo "WARNING: Ray uses $1 $3, but running $2 indicates otherwise. This might generate different results."
+    fi
+}
+
 tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
 tool_version_check "yapf" "$YAPF_VERSION" "$YAPF_VERSION_REQUIRED"
 tool_version_check "shellcheck" "$SHELLCHECK_VERSION" "$SHELLCHECK_VERSION_REQUIRED"
 tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
 
-if which clang-format >/dev/null; then
-  CLANG_FORMAT_VERSION=$(clang-format --version | awk 'NR==1{print $3}')
-  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.0"
+if command -v clang-format >/dev/null; then
+  tool_version_cmd_check "clang-format" "clang-format --version" "12.0"
 else
     echo "WARNING: clang-format 12 is not installed!"
     echo "To install on MacOS: brew install clang-format"
-    echo "To install on Ubuntu: sudo apt install clang-format-12 && update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-12 100"
+    echo "To install on Ubuntu: use package manager e.g. sudo apt install clang-format-12 -y && sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-12 100"
+    echo "Or run scripts/install-llvm-binaries.sh"
 fi
 
-if which clang-tidy >/dev/null; then
-  CLANG_TIDY_VERSION=$(clang-tidy --version | awk '{print $4}')
-  tool_version_check "clang-tidy" "$CLANG_TIDY_VERSION" "12.0.1"
+if command -v clang-tidy >/dev/null; then
+  tool_version_cmd_check "clang-tidy" "clang-tidy --version" "12.0"
 else
     echo "WARNING: clang-tidy 12 is not installed!"
     echo "To install on MacOS: brew install clang-tidy"
-    echo "To install on Ubuntu: sudo apt install clang-tidy-12 && update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-12 100"
+    echo "To install on Ubuntu: use package manager e.g. sudo apt install clang-tidy-12 -y && sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-12 100"
+    echo "Or run scripts/install-llvm-binaries.sh"
+fi
+
+if ! command -v clang >/dev/null; then
+    echo "WARNING: clang is not installed! clang-tidy will be disabled."
+    echo "To install, use package manager, run scripts/install-llvm-binaries.sh (Ubuntu only), or compile from source."
 fi
 
 if command -v java >/dev/null; then
@@ -87,7 +101,7 @@ if command -v java >/dev/null; then
     wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar -O "$GOOGLE_JAVA_FORMAT_JAR"
   fi
 else
-    echo "WARNING:java is not installed, skip format java files!"
+    echo "WARNING: Java is not installed, skip formatting Java files!"
 fi
 
 if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
@@ -95,9 +109,9 @@ if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
 fi
 
 SHELLCHECK_FLAGS=(
-  --exclude=1090  # "Can't follow non-constant source. Use a directive to specify location."
-  --exclude=1091  # "Not following {file} due to some error"
-  --exclude=2207  # "Prefer mapfile or read -a to split command output (or quote to avoid splitting)." -- these aren't compatible with macOS's old Bash
+  "--exclude=1090"  # "Can't follow non-constant source. Use a directive to specify location."
+  "--exclude=1091"  # "Not following {file} due to some error"
+  "--exclude=2207"  # "Prefer mapfile or read -a to split command output (or quote to avoid splitting)." -- these aren't compatible with macOS's old Bash
 )
 
 YAPF_FLAGS=(
@@ -279,24 +293,24 @@ format_changed() {
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
-        if which flake8 >/dev/null; then
+        if command -v flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
                  flake8 --config=.flake8
         fi
     fi
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
-        if which flake8 >/dev/null; then
+        if command -v flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
                  flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
         fi
     fi
 
-    if which clang-format >/dev/null; then
+    if command -v clang-format >/dev/null; then
         ci/travis/check-git-clang-format-output.sh
     fi
 
-    if which clang-tidy >/dev/null; then
+    if command -v clang-tidy >/dev/null && command -v clang >/dev/null; then
         ci/travis/check-git-clang-tidy-output.sh
     fi
 
