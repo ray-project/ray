@@ -39,13 +39,6 @@ def parse_allocated_resource(allocated_instances_serialized_json):
     return container_resource_args
 
 
-def get_tmp_dir(remaining_args):
-    for arg in remaining_args:
-        if arg.startswith("--temp-dir="):
-            return arg[11:]
-    return None
-
-
 class ContainerManager:
     def __init__(self, tmp_dir: str):
         self._tmp_dir = tmp_dir
