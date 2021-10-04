@@ -7,8 +7,8 @@ import redis
 import unittest.mock
 import ray
 import ray._private.services
+from ray.util.client import ManagedContext
 from ray.util.client.ray_client_helpers import ray_start_client_server
-from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver
 from ray._raylet import ClientObjectRef
@@ -209,14 +209,14 @@ def test_ray_address(input, call_ray_start):
     with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": address}):
         res = ray.init(input)
         # Ensure this is not a client.connect()
-        assert not isinstance(res, ClientContext)
+        assert not isinstance(res, ManagedContext)
         ray.shutdown()
 
     addr = "localhost:{}".format(address.split(":")[-1])
     with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": addr}):
         res = ray.init(input)
         # Ensure this is not a client.connect()
-        assert not isinstance(res, ClientContext)
+        assert not isinstance(res, ManagedContext)
         ray.shutdown()
 
 

@@ -152,6 +152,7 @@ class _LocalClientBuilder(ClientBuilder):
             address=self.address, job_config=self._job_config)
         return ray.util.client.ManagedContext(
             dict(
+                address=self.address,
                 dashboard_url=connection_dict["webui_url"],
                 python_version="{}.{}.{}".format(sys.version_info[0],
                                                  sys.version_info[1],

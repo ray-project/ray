@@ -282,7 +282,7 @@ def test_multi_cli_count_and_get(call_ray_start):
         ray.shutdown()
     assert ray.util.client.num_connected_contexts() == 1
 
-    with pytest.raises(ValueError, match="It may have shut down"):
+    with pytest.raises(ValueError, match="It may have been shut down"):
         with ray.util.client.context_from_client_id(id1):
             pass
 

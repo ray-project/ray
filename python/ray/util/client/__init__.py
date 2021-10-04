@@ -207,6 +207,7 @@ class ManagedContext:
     """
     Basic context manager for a RayAPIStub.
     """
+    address: str
     dashboard_url: Optional[str]
     python_version: str
     ray_version: str
@@ -216,7 +217,8 @@ class ManagedContext:
     _context_to_restore: Optional[_ClientContext]
 
     def __init__(self, info_dict: dict, context_to_restore: _ClientContext):
-        self.dashboard_url = info_dict["dashboard_url"]
+        self.address = info_dict["address"]
+        self.dashboard_url = info_dict.get("dashboard_url")
         self.python_version = info_dict["python_version"]
         self.ray_version = info_dict["ray_version"]
         self.ray_commit = info_dict["ray_commit"]
@@ -276,16 +278,21 @@ class ManagedContext:
             ray.shutdown()
 
 
+def _get_context(client_id: str) -> _ClientContext:
+    """Return the client context with ID. Or raises KeyError if not found."""
+    global _lock, _all_contexts
+    with _lock:
+        return _all_contexts.get(client_id)
+
+
 def context_from_client_id(client_id: str) -> ManagedContext:
     """Return the client context with ID. Or raises KeyError if not found."""
     global _lock, _all_contexts
     with _lock:
         ctx = _all_contexts.get(client_id)
         if ctx is None:
-            raise ValueError(
-                f"Client {client_id} does not exist. "
-                "It may have been shut down."
-            )
+            raise ValueError(f"Client {client_id} does not exist. "
+                             "It may have been shut down.")
         return ManagedContext(ctx._conn_info, ctx)
 
 

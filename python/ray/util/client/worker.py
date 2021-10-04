@@ -26,6 +26,7 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
 from ray.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
+from ray.util.client import _get_context
 from ray.util.client.client_pickler import (convert_to_arg, dumps_from_client,
                                             loads_from_server)
 from ray.util.client.common import (
@@ -310,6 +311,7 @@ class Worker:
         except grpc.RpcError as e:
             raise decode_exception(e)
         return {
+            "address": self._conn_str,
             "num_clients": data.num_clients,
             "python_version": data.python_version,
             "ray_version": data.ray_version,
@@ -340,11 +342,7 @@ class Worker:
                 raise TypeError(
                     "Input list has an element that is not a ClientObjectRef: "
                     f"{ref}")
-            if ref.client_id != self._client_id:
-                raise ValueError(
-                    f"ClientObjectRef is not from this Ray client: {ref}, "
-                    f"ref client_id={ref.client_id}, "
-                    f"Ray client_id={self._client_id}")
+            self._check_ref_client(ref)
 
         if timeout is None:
             deadline = None
@@ -441,11 +439,7 @@ class Worker:
             if not isinstance(ref, ClientObjectRef):
                 raise TypeError("wait() expected a list of ClientObjectRef, "
                                 f"got list containing {ref}")
-            if ref.client_id != self._client_id:
-                raise ValueError(
-                    f"ClientObjectRef is not from this Ray client: {ref}, "
-                    f"ref client_id={ref.client_id}, "
-                    f"Ray client_id={self._client_id}")
+            self._check_ref_client(ref)
         data = {
             "object_ids": [object_ref.id for object_ref in object_refs],
             "num_returns": num_returns,
@@ -467,14 +461,8 @@ class Worker:
         return (client_ready_object_ids, client_remaining_object_ids)
 
     def call_remote(self, instance, *args, **kwargs) -> List[Future]:
-        if isinstance(
-                instance, ClientRemoteMethod
-        ) and instance._actor_handle.actor_ref.client_id != self._client_id:
-            raise ValueError(
-                f"ClientActorHandle is not from this Ray client. Actor ref: "
-                f"{instance._actor_handle.actor_ref}, ref "
-                f"client_id={instance._actor_handle.actor_ref.client_id}"
-                f", Ray client_id={self._client_id}")
+        if isinstance(instance, ClientRemoteMethod):
+            self._check_ref_client(instance._actor_handle.actor_ref)
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)
@@ -592,11 +580,7 @@ class Worker:
         if not isinstance(actor, ClientActorHandle):
             raise ValueError("ray.kill() only supported for actors. "
                              "Got: {}.".format(type(actor)))
-        if actor.actor_ref.client_id != self._client_id:
-            raise ValueError(
-                f"ClientActorHandle is not from this Ray client. Actor ref: "
-                f"{actor.actor_ref}, ref client_id={actor.actor_ref.client_id}"
-                f", Ray client_id={self._client_id}")
+        self._check_ref_client(actor.actor_ref)
         term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
         term_actor.id = actor.actor_ref.id
         term_actor.no_restart = no_restart
@@ -778,6 +762,27 @@ class Worker:
 
     def _dumps_from_client(self, val) -> bytes:
         return dumps_from_client(val, self._client_id)
+
+    def _check_ref_client(self,
+                          ref: Union[ClientObjectRef, ClientActorRef]) -> None:
+        if isinstance(ref, ClientObjectRef):
+            typename = "ClientObjectRef"
+        elif isinstance(ref, ClientActorRef):
+            typename = "ClientActorRef"
+        else:
+            raise TypeError(f"Unsupported type for {ref}")
+        if ref.client_id == self._client_id:
+            return True
+        ref_client = _get_context(ref.client_id)
+        if ref_client is None:
+            raise ValueError(f"Client for {ref} does not exist. "
+                             f"Client id={ref.client_id}")
+        ref_address = ref_client._conn_info.address
+        raise ValueError(
+            f"{ref} is not from this Ray client. "
+            f"{typename} is from {ref_address} (id={ref.client_id}). "
+            f"But ray client is connected to {self.conn_str} "
+            f"(id={self._client_id})")
 
 
 def make_client_id() -> str:

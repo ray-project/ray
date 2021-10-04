@@ -31,7 +31,9 @@ def test_client_object_ref_basics(ray_start_regular):
         for client_ref in [ClientObjectRef(obj_id), ClientObjectRef(fut)]:
             client_members = set(client_ref.__dir__())
             server_members = set(server_ref.__dir__())
-            assert client_members.difference(server_members) == {"id"}
+            assert client_members.difference(server_members) == {
+                "client_id", "id"
+            }
             assert server_members.difference(client_members) == set()
 
             # Test __eq__()
@@ -81,7 +83,9 @@ def test_client_actor_ref_basics(ray_start_regular):
         for client_ref in [ClientActorRef(actor_id), ClientActorRef(fut)]:
             client_members = set(client_ref.__dir__())
             server_members = set(server_ref.__dir__())
-            assert client_members.difference(server_members) == {"id"}
+            assert client_members.difference(server_members) == {
+                "client_id", "id"
+            }
             assert server_members.difference(client_members) == set()
 
             # Test __eq__()
