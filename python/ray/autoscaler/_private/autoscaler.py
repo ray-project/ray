@@ -323,6 +323,8 @@ class StandardAutoscaler:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
                 self.schedule_node_termination(node_id, "idle", logger.info)
+
+
 #            elif not self.launch_config_ok(node_id):
 #                self.schedule_node_termination(node_id, "outdated",
 #                                               logger.info)
@@ -655,7 +657,8 @@ class StandardAutoscaler:
                 return (KeepOrTerminate.terminate,
                         f"not in available_node_types: {available_node_types}")
             new_count = node_type_counts[node_type] + 1
-            print("NEW_COUNT", node_type_counts, node_type, new_count, min(min_workers, max_workers))
+            print("NEW_COUNT", node_type_counts, node_type, new_count,
+                  min(min_workers, max_workers))
             if new_count <= min(min_workers, max_workers):
                 return KeepOrTerminate.keep, None
             if new_count > max_workers:
