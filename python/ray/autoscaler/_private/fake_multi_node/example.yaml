@@ -14,14 +14,13 @@ available_node_types:
             CPU: 8
             GPU: 0
         node_config: {}
-        min_workers: 0
         max_workers: 0
     ray.worker.cpu:
         resources:
             CPU: 1
             object_store_memory: 1000000000
         node_config: {}
-        min_workers: 0
+        min_workers: 2
         max_workers: 4
     ray.worker.gpu:
         resources:
