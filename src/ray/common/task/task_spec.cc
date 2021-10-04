@@ -152,8 +152,7 @@ RuntimeEnvHash TaskSpecification::GetRuntimeEnvHash() const {
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {job_id, SerializedRuntimeEnv(),
-                        required_resource};
+  WorkerCacheKey env = {job_id, SerializedRuntimeEnv(), required_resource};
   return env.Hash();
 }
 
@@ -399,12 +398,10 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
-WorkerCacheKey::WorkerCacheKey(const JobID &job_id)
-    : WorkerCacheKey(job_id, "", {}) {}
+WorkerCacheKey::WorkerCacheKey(const JobID &job_id) : WorkerCacheKey(job_id, "", {}) {}
 
 WorkerCacheKey::WorkerCacheKey(
-    const JobID &job_id,
-    const std::string serialized_runtime_env,
+    const JobID &job_id, const std::string serialized_runtime_env,
     const std::unordered_map<std::string, double> required_resources)
     : job_id_(job_id),
       serialized_runtime_env(serialized_runtime_env),

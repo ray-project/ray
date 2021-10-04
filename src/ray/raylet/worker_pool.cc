@@ -1047,8 +1047,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     Process proc = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status,
         dynamic_options, runtime_env_hash, serialized_runtime_env,
-        serialized_runtime_env_context,
-        allocated_instances_serialized_json);
+        serialized_runtime_env_context, allocated_instances_serialized_json);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
