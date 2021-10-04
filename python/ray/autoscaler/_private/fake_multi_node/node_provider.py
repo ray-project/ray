@@ -76,7 +76,7 @@ class FakeMultiNodeProvider(NodeProvider):
             num_gpus=resources.pop("GPU", None),
             object_store_memory=resources.pop("object_store_memory", None),
             resources=resources,
-            redis_address="localhost:6379",
+            redis_address="{}:6379".format(ray._private.services.get_node_ip_address()),
             env_vars={
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
                 "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
