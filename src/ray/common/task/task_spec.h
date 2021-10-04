@@ -276,14 +276,14 @@ class WorkerCacheKey {
  public:
   /// Constructor for a default runtime env.
   ///
-  WorkerCacheKey(const JobID &job_id);
+  explicit WorkerCacheKey(const JobID &job_id);
 
   /// Create a cache key with the given environment variable overrides and serialized
   /// runtime_env.
   ///
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
-  WorkerCacheKey(const JobID &job_id, const std::string serialized_runtime_env,
+  WorkerCacheKey(const JobID &job_id, std::string serialized_runtime_env,
                  const std::unordered_map<std::string, double> required_resources);
 
   bool operator==(const WorkerCacheKey &k) const;
