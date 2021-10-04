@@ -361,6 +361,7 @@ class WorkflowManagementActor:
     def debug_state(self):
         return self.__dict__
 
+
 def init_management_actor() -> None:
     """Initialize WorkflowManagementActor"""
     store = storage.get_global_storage()

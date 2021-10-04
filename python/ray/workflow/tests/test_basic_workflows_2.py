@@ -289,6 +289,7 @@ def test_wf_no_run():
     with pytest.raises(Exception):
         f.run()
 
+
 def test_dedupe_indirect(workflow_start_regular, tmp_path):
     counter = Path(tmp_path) / "counter.txt"
     lock = Path(tmp_path) / "lock.txt"
@@ -315,6 +316,7 @@ def test_dedupe_indirect(workflow_start_regular, tmp_path):
 
     j = join.step(i1, i2).run()
     assert j == "1"
+
 
 if __name__ == "__main__":
     import sys

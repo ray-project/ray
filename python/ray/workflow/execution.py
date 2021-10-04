@@ -32,9 +32,10 @@ def run(entry_workflow: Workflow,
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
 
-    logger.info(f"Workflow job created. [id=\"{workflow_id}\", storage_url="
-                f"\"{store.storage_url}\"]. Type: {entry_workflow.data.step_type} "
-                f"Name: {entry_workflow.data.name}")
+    logger.info(
+        f"Workflow job created. [id=\"{workflow_id}\", storage_url="
+        f"\"{store.storage_url}\"]. Type: {entry_workflow.data.step_type} "
+        f"Name: {entry_workflow.data.name}")
 
     with workflow_context.workflow_step_context(workflow_id,
                                                 store.storage_url):

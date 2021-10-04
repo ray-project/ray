@@ -113,7 +113,8 @@ def _resolve_step_inputs(
     Returns:
         Instances of arguments.
     """
-    print("DBG>>>>>>>>>>>", step_inputs, workflow_context.get_current_step_id())
+    print("DBG>>>>>>>>>>>", step_inputs,
+          workflow_context.get_current_step_id())
     objects_mapping = []
     for obj_ref in step_inputs.workflow_outputs:
         obj, ref = _resolve_object_ref(obj_ref)
@@ -169,7 +170,8 @@ def execute_workflow(
     workflow_data = workflow.data
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
-    print("ExecuteWorkflow: DBG>>>>>>>>", workflow, workflow.executed, workflow.step_id, baked_inputs)
+    print("ExecuteWorkflow: DBG>>>>>>>>", workflow, workflow.executed,
+          workflow.step_id, baked_inputs)
     persisted_output, volatile_output = _workflow_step_executor.options(
         **workflow_data.ray_options).remote(
             workflow_data.step_type, workflow_data.func_body,
