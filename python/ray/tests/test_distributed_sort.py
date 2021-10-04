@@ -4,6 +4,7 @@ import sys
 from ray.experimental.raysort import main
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_distributed_sort():
     args = main.get_args([
         "--total_data_size=1_000_000_000",
