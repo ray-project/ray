@@ -3,11 +3,29 @@ import sys
 import ray
 
 import pytest
+import grpc
+import psutil
 
 from ray.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
+from ray.core.generated import node_manager_pb2
+from ray.core.generated import node_manager_pb2_grpc
 from ray._private.test_utils import (init_error_pubsub, get_error_message,
-                                     run_string_as_driver)
+                                     run_string_as_driver, wait_for_condition)
+
+
+def search_raylet(cluster):
+    """Return the number of running processes."""
+    raylets = []
+    for node in cluster.list_all_nodes():
+        procs = node.all_processes
+        raylet_proc_info = procs.get(ray_constants.PROCESS_TYPE_RAYLET)
+        if raylet_proc_info:
+            assert len(raylet_proc_info) == 1
+            raylet = psutil.Process(raylet_proc_info[0].process.pid)
+            if raylet.status() == "running":
+                raylets.append(psutil.Process(raylet_proc_info[0].process.pid))
+    return raylets
 
 
 def test_retry_system_level_error(ray_start_regular):
@@ -221,6 +239,68 @@ def test_object_lost_error(ray_start_cluster, debug_enabled):
         print(error)
         assert ("actor call" in error) == debug_enabled
         assert ("test_object_lost_error" in error) == debug_enabled
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 0,
+        "_system_config": {
+            "num_heartbeats_timeout": 10,
+            "raylet_heartbeat_period_milliseconds": 100
+        }
+    }],
+    indirect=True)
+def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
+                                              error_pubsub):
+    cluster = ray_start_cluster_head
+    worker = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    # warm up the cluster
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    # Kill a raylet gracefully.
+    def kill_raylet(ip, port, graceful=True):
+        raylet_address = f"{ip}:{port}"
+        channel = grpc.insecure_channel(raylet_address)
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        print("Sending a shutdown request to ")
+        stub.ShutdownRaylet(
+            node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+
+    # Kill the first worker non-gracefully.
+    ip = worker.node_ip_address
+    port = worker.node_manager_port
+    print(ip, port)
+    kill_raylet(ip, port, graceful=False)
+    p = error_pubsub
+    errors = get_error_message(
+        p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=10)
+    # Should print the heartbeat messages.
+    assert "has missed too many heartbeats from it" in errors[0].error_message
+    # NOTE the killed raylet is a zombie since the
+    # parent process (the pytest script) hasn't called wait syscall.
+    # For normal scenarios where raylet is created by
+    # ray start, this issue won't exist.
+    wait_for_condition(lambda: len(search_raylet(cluster)) == 1)
+
+    worker = cluster.add_node(num_cpus=0)
+    # Kill the second worker gracefully.
+    ip = worker.node_ip_address
+    port = worker.node_manager_port
+    print(ip, port)
+    kill_raylet(ip, port, graceful=True)
+    p = error_pubsub
+    # Error shouldn't be printed to the driver.
+    errors = get_error_message(
+        p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5)
+    # Error messages shouldn't be published.
+    assert len(errors) == 0
+    wait_for_condition(lambda: len(search_raylet(cluster)) == 1)
 
 
 if __name__ == "__main__":

@@ -497,6 +497,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                   rpc::ReleaseUnusedWorkersReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ShutdownRaylet` request.
+  void HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request,
+                            rpc::ShutdownRayletReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReturnWorker` request.
   void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                rpc::CancelWorkerLeaseReply *reply,

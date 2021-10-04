@@ -15,6 +15,7 @@
 #include "ray/raylet/node_manager.h"
 
 #include <cctype>
+#include <csignal>
 #include <fstream>
 #include <memory>
 
@@ -1670,6 +1671,29 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     status = Status::Invalid("Returned worker does not exist any more");
   }
   send_reply_callback(status, nullptr, nullptr);
+}
+
+void NodeManager::HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request,
+                                       rpc::ShutdownRayletReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO)
+      << "Shutdown RPC has received. Shutdown will happen after the RPC is replied.";
+  auto graceful = request.graceful();
+  auto shutdown_after_reply = [graceful]() {
+    // Note that the callback is posted to the io service after the shutdown GRPC request
+    // is replied. When raylet is shutdown by ray stop, the CLI sends a sigterm. Raylet
+    // knows how to gracefully shutdown when it receives a sigterm. Here, we raise a
+    // sigterm to itself so that it can re-use the same graceful shutdown code path.
+    auto signo = graceful ? SIGTERM : SIGKILL;
+    RAY_LOG(INFO) << "Sending a signal to itself... shutting down. graceful " << graceful
+                  << ". Signo: " << signo;
+    // raise return 0 if succeeds. If it fails to gracefully shutdown, it kills itself
+    // forcefully.
+    RAY_CHECK(std::raise(signo) == 0)
+        << "There was a failure while sending a sigterm to itself. The process will not "
+           "gracefully shutdown.";
+  };
+  send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 
 void NodeManager::HandleReleaseUnusedWorkers(
