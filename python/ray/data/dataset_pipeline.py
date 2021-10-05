@@ -275,7 +275,7 @@ class DatasetPipeline(Generic[T]):
                     return lambda: res
                 except StopIteration:
                     # Return the left-over data as a single window.
-                    if self._buffer:
+                    if self._buffer and self._buffer.num_blocks() > 0:
                         res = self._buffer
                         assert res.num_blocks() <= blocks_per_window, res
                         self._buffer = None
@@ -403,6 +403,19 @@ class DatasetPipeline(Generic[T]):
         for elem in pipe.iter_rows():
             total += elem
         return total
+
+    def show_windows(self, limit_per_dataset: int = 10) -> None:
+        """Print up to the given number of records from each window/dataset.
+
+        This is helpful as a debugging tool for understanding the structure of
+        dataset pipelines.
+
+        Args:
+            limit_per_dataset: Rows to print per window/dataset.
+        """
+        for i, ds in enumerate(self.iter_datasets()):
+            print("=== Window {} ===".format(i))
+            ds.show(limit_per_dataset)
 
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
