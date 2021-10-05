@@ -344,7 +344,8 @@ You can plug all of these into RaySGD with the following interface:
 .. code-block:: python
 
     from ray import sgd
-    from ray.sgd import SGDCallback, Trainer
+    from ray.sgd Trainer
+    from ray.sgd.callbacks import SGDCallback
     from typing import List, Dict
 
     class PrintingCallback(SGDCallback):
@@ -398,7 +399,7 @@ A simple example for creating a callback that will print out results:
 
 .. code-block:: python
 
-    from ray.sgd import SGDCallback
+    from ray.sgd.callbacks import SGDCallback
 
     class PrintingCallback(SGDCallback):
         def handle_result(self, results: List[Dict], **info):
