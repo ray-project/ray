@@ -294,6 +294,7 @@ def test_disconnect_during_get():
         disconnect_thread.join()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_valid_actor_state():
     """
     Repeatedly inject errors in the middle of mutating actor calls. Check
