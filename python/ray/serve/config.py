@@ -1,7 +1,7 @@
 import inspect
 import pickle
 from enum import Enum
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
