@@ -2,11 +2,14 @@ package io.ray.serve;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
+import io.ray.serve.api.Serve;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
@@ -27,12 +30,15 @@ public class HttpProxyTest {
     Ray.init();
 
     try {
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String endpointName = "HTTPProxyTest";
       String route = "/route";
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new).setName(Constants.SERVE_CONTROLLER_NAME).remote();
+          Ray.actor(DummyServeController::new).setName(controllerName).remote();
       LOGGER.info("HttpProxyTest.test controller handle id : {}", controllerHandle.getId());
 
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
@@ -40,6 +46,8 @@ public class HttpProxyTest {
           endpointName,
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
+
+      Serve.setInternalReplicaContext(null, null, controllerName, null);
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();
@@ -64,6 +72,8 @@ public class HttpProxyTest {
       if (!inited) {
         Ray.shutdown();
       }
+      Serve.setInternalReplicaContext(null);
+      Serve.setGlobalClient(null);
     }
   }
 }

@@ -4,8 +4,9 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.Constants;
 import io.ray.serve.DummyServeController;
-import io.ray.serve.RayServeException;
 import io.ray.serve.ReplicaContext;
+import io.ray.serve.util.CommonUtil;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -14,28 +15,23 @@ public class ServeTest {
   @Test
   public void replicaContextTest() {
 
-    // Get current context.
-    ReplicaContext preContext = null;
     try {
-      preContext = Serve.getReplicaContext();
-    } catch (RayServeException e) {
+      // Test context setting and getting.
+      String backendTag = "backendTag";
+      String replicaTag = "replicaTag";
+      String controllerName = "controllerName";
+      Object servableObject = new Object();
+      Serve.setInternalReplicaContext(backendTag, replicaTag, controllerName, servableObject);
+
+      ReplicaContext replicaContext = Serve.getReplicaContext();
+      Assert.assertNotNull(replicaContext, "no replica context");
+      Assert.assertEquals(replicaContext.getBackendTag(), backendTag);
+      Assert.assertEquals(replicaContext.getReplicaTag(), replicaTag);
+      Assert.assertEquals(replicaContext.getInternalControllerName(), controllerName);
+    } finally {
+      // Recover context.
+      Serve.setInternalReplicaContext(null);
     }
-
-    // Test context setting and getting.
-    String backendTag = "backendTag";
-    String replicaTag = "replicaTag";
-    String controllerName = "controllerName";
-    Object servableObject = new Object();
-    Serve.setInternalReplicaContext(backendTag, replicaTag, controllerName, servableObject);
-
-    ReplicaContext replicaContext = Serve.getReplicaContext();
-    Assert.assertNotNull(replicaContext, "no replica context");
-    Assert.assertEquals(replicaContext.getBackendTag(), backendTag);
-    Assert.assertEquals(replicaContext.getReplicaTag(), replicaTag);
-    Assert.assertEquals(replicaContext.getInternalControllerName(), controllerName);
-
-    // Recover context.
-    Serve.setInternalReplicaContext(preContext);
   }
 
   @SuppressWarnings("unused")
@@ -52,14 +48,20 @@ public class ServeTest {
       }
       Assert.assertNull(client);
 
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       ActorHandle<DummyServeController> actorHandle =
-          Ray.actor(DummyServeController::new).setName(Constants.SERVE_CONTROLLER_NAME).remote();
+          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+      Serve.setInternalReplicaContext(null, null, controllerName, null);
       client = Serve.getGlobalClient();
       Assert.assertNotNull(client);
     } finally {
       if (!inited) {
         Ray.shutdown();
       }
+      Serve.setInternalReplicaContext(null);
+      Serve.setGlobalClient(null);
     }
   }
 }

@@ -59,7 +59,7 @@ public class Serve {
     }
   }
 
-  private static void setGlobalClient(Client client) {
+  public static void setGlobalClient(Client client) {
     GLOBAL_CLIENT = client;
   }
 

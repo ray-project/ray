@@ -3,13 +3,16 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
@@ -31,6 +34,9 @@ public class ProxyActorTest {
 
     try {
       String prefix = "ProxyActorTest";
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String backendTag = prefix;
       String replicaTag = prefix;
       String endpointName = prefix;
@@ -38,7 +44,7 @@ public class ProxyActorTest {
 
       // Controller
       ActorHandle<DummyServeController> controller =
-          Ray.actor(DummyServeController::new).setName(Constants.SERVE_CONTROLLER_NAME).remote();
+          Ray.actor(DummyServeController::new).setName(controllerName).remote();
       LOGGER.info("ProxyActorTest.test controller handle id : {}", controller.getId());
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
@@ -56,12 +62,12 @@ public class ProxyActorTest {
                   replicaTag,
                   replicaConfig,
                   BackendConfig.newBuilder().build().toByteArray(),
-                  Constants.SERVE_CONTROLLER_NAME)
+                  controllerName)
               .setName(replicaTag)
               .remote();
 
       // ProxyActor
-      ProxyActor proxyActor = new ProxyActor(Constants.SERVE_CONTROLLER_NAME, null);
+      ProxyActor proxyActor = new ProxyActor(controllerName, null);
       proxyActor.getProxyRouter().updateRoutes(endpointInfos);
       proxyActor
           .getProxyRouter()
@@ -95,6 +101,8 @@ public class ProxyActorTest {
       if (!inited) {
         Ray.shutdown();
       }
+      Serve.setInternalReplicaContext(null);
+      Serve.setGlobalClient(null);
     }
   }
 }

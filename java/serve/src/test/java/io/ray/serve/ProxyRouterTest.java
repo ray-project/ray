@@ -2,9 +2,12 @@ package io.ray.serve;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
+import io.ray.serve.api.Serve;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -18,13 +21,16 @@ public class ProxyRouterTest {
 
     try {
       String prefix = "ProxyRouterTest";
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String endpointName1 = prefix + "_1";
       String endpointName2 = prefix + "_2";
       String route1 = "/route1";
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new).setName(Constants.SERVE_CONTROLLER_NAME).remote();
+          Ray.actor(DummyServeController::new).setName(controllerName).remote();
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
           endpointName1,
@@ -32,6 +38,8 @@ public class ProxyRouterTest {
       endpointInfos.put(
           endpointName2, EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
+
+      Serve.setInternalReplicaContext(null, null, controllerName, null);
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();
@@ -53,6 +61,8 @@ public class ProxyRouterTest {
       if (!inited) {
         Ray.shutdown();
       }
+      Serve.setInternalReplicaContext(null);
+      Serve.setGlobalClient(null);
     }
   }
 }
