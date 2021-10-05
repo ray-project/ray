@@ -44,9 +44,10 @@ class BlockList(Iterable[ObjectRef[Block]]):
 
     def divide(self, block_idx: int) -> ("BlockList", "BlockList"):
         self._check_if_cleared()
-        return (
-            BlockList(self._blocks[:block_idx], self._metadata[:block_idx]), 
-            BlockList(self._blocks[block_idx:], self._metadata[block_idx:]))
+        return (BlockList(self._blocks[:block_idx],
+                          self._metadata[:block_idx]),
+                BlockList(self._blocks[block_idx:],
+                          self._metadata[block_idx:]))
 
     def __len__(self):
         self._check_if_cleared()

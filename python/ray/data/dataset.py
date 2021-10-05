@@ -704,7 +704,8 @@ class Dataset(Generic[T]):
 
         return splits
 
-    def union(self, *other: List["Dataset[T]"], preserve_order: bool = False) -> "Dataset[T]":
+    def union(self, *other: List["Dataset[T]"],
+              preserve_order: bool = False) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
 
         Args:
