@@ -254,7 +254,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
-  SchedulingClass sched_cls_id_;
+  SchedulingClass sched_cls_id_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
