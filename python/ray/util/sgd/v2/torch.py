@@ -42,7 +42,7 @@ try:
             self.device = device
 
         def __iter__(self):
-            for batch in 
+            for batch in
 
 
 
