@@ -111,8 +111,8 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
               (override));
   MOCK_METHOD(void, ReportWorkerBacklog,
-              (const WorkerID &worker_id, const ray::TaskSpecification &resource_spec,
-               const int64_t backlog_size),
+              (const WorkerID &worker_id,
+               const std::vector<rpc::WorkerBacklogReport> &backlog_reports),
               (override));
   MOCK_METHOD(
       void, RequestWorkerLease,

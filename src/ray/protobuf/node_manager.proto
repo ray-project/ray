@@ -34,9 +34,6 @@ message ReportWorkerBacklogRequest {
   bytes worker_id = 1;
   // Backlog report per scheduling class
   repeated WorkerBacklogReport backlog_reports = 2;
-  // TaskSpec containing the requested resources.
-  TaskSpec resource_spec = 3;
-  int64 backlog_size = 4;
 }
 
 message ReportWorkerBacklogReply {
