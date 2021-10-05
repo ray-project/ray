@@ -28,7 +28,7 @@ from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
-    LocalOptimizer, ModelGradients, PolicyID
+    LocalOptimizer, ModelGradients
 from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
@@ -429,17 +429,17 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy, config)
 
 
-def validate_spaces(pid: PolicyID, observation_space: gym.spaces.Space,
+def validate_spaces(policy: Policy, observation_space: gym.spaces.Space,
                     action_space: gym.spaces.Space,
                     config: TrainerConfigDict) -> None:
     if not isinstance(action_space, Box):
         raise UnsupportedSpaceException(
             "Action space ({}) of {} is not supported for "
-            "DDPG.".format(action_space, pid))
+            "DDPG.".format(action_space, policy))
     elif len(action_space.shape) > 1:
         raise UnsupportedSpaceException(
             "Action space ({}) of {} has multiple dimensions "
-            "{}. ".format(action_space, pid, action_space.shape) +
+            "{}. ".format(action_space, policy, action_space.shape) +
             "Consider reshaping this into a single dimension, "
             "using a Tuple action space, or the multi-agent API.")
 

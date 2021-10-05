@@ -245,8 +245,7 @@ class Monitor:
                     resource_message.node_id.hex())
                 resources = {}
                 for k, v in resource_message.resources_total.items():
-                    if not k.startswith("node:"):
-                        resources[k] = v
+                    resources[k] = v
                 mirror_node_types[node_type] = {
                     "resources": resources,
                     "node_config": {},

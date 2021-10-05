@@ -1,13 +1,15 @@
 import argparse
+import numpy as np
 
 import ray
-from ray import tune
+from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.models.trajectory_view_utilizing_models import \
     FrameStackingCartPoleModel, TorchFrameStackingCartPoleModel
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray import tune
 
 tf1, tf, tfv = try_import_tf()
 
@@ -47,18 +49,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=3)
 
+    num_frames = 16
+
     ModelCatalog.register_custom_model(
         "frame_stack_model", FrameStackingCartPoleModel
         if args.framework != "torch" else TorchFrameStackingCartPoleModel)
-    tune.register_env("stateless_cartpole", lambda c: StatelessCartPole())
 
     config = {
-        "env": "stateless_cartpole",
+        "env": StatelessCartPole,
         "model": {
             "vf_share_layers": True,
             "custom_model": "frame_stack_model",
             "custom_model_config": {
-                "num_frames": 16,
+                "num_frames": num_frames,
             },
 
             # To compare against a simple LSTM:
@@ -81,8 +84,45 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
         "episode_reward_mean": args.stop_reward,
     }
-    results = tune.run(args.run, config=config, stop=stop, verbose=2)
+    results = tune.run(
+        args.run, config=config, stop=stop, verbose=2, checkpoint_at_end=True)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
+
+    checkpoints = results.get_trial_checkpoints_paths(
+        trial=results.get_best_trial("episode_reward_mean", mode="max"),
+        metric="episode_reward_mean")
+
+    checkpoint_path = checkpoints[0][0]
+    trainer = PPOTrainer(config)
+    trainer.restore(checkpoint_path)
+
+    # Inference loop.
+    env = StatelessCartPole()
+
+    # Run manual inference loop for n episodes.
+    for _ in range(10):
+        episode_reward = 0.0
+        reward = 0.0
+        action = 0
+        done = False
+        obs = env.reset()
+        while not done:
+            # Create a dummy action using the same observation n times,
+            # as well as dummy prev-n-actions and prev-n-rewards.
+            action, state, logits = trainer.compute_single_action(
+                input_dict={
+                    "obs": obs,
+                    "prev_n_obs": np.stack([obs for _ in range(num_frames)]),
+                    "prev_n_actions": np.stack([0 for _ in range(num_frames)]),
+                    "prev_n_rewards": np.stack(
+                        [1.0 for _ in range(num_frames)]),
+                },
+                full_fetch=True)
+            obs, reward, done, info = env.step(action)
+            episode_reward += reward
+
+        print(f"Episode reward={episode_reward}")
+
     ray.shutdown()
