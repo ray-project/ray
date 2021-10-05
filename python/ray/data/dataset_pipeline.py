@@ -253,22 +253,25 @@ class DatasetPipeline(Generic[T]):
             blocks_per_window: The new target blocks per window.
         """
 
-        class Iterator:
+        class WindowIterator:
             def __init__(self, original_iter):
                 self._original_iter = original_iter
                 self._buffer: Optional[Dataset[T]] = None
 
             def __next__(self) -> Dataset[T]:
                 try:
+                    # Merge windows until we meet the requested window size.
                     if self._buffer is None:
                         self._buffer = next(self._original_iter)
                     while self._buffer.num_blocks() < blocks_per_window:
                         self._buffer = self._buffer.union(
                             next(self._original_iter), preserve_order=True)
+                    # Slice off the left-most chunk and return it.
                     res, self._buffer = self._buffer._divide(blocks_per_window)
                     assert res.num_blocks() <= blocks_per_window, res
                     return lambda: res
                 except StopIteration:
+                    # Return the left-over data as a single window.
                     if self._buffer:
                         res = self._buffer
                         assert res.num_blocks() <= blocks_per_window, res
@@ -277,14 +280,15 @@ class DatasetPipeline(Generic[T]):
                     else:
                         raise
 
-        class ReWindow:
+        class WindowIterable:
             def __init__(self, original_iter):
                 self._original_iter = original_iter
 
             def __iter__(self):
-                return Iterator(self._original_iter)
+                return WindowIterator(self._original_iter)
 
-        return DatasetPipeline(ReWindow(self.iter_datasets()), length=None)
+        return DatasetPipeline(
+            WindowIterable(self.iter_datasets()), length=None)
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
@@ -304,11 +308,14 @@ class DatasetPipeline(Generic[T]):
         if self._length is None:
             raise ValueError("Cannot repeat a pipeline of unknown length.")
 
-        class Iterator:
+        class RepeatIterator:
             def __init__(self, original_iter, original_len):
                 self._original_iter = original_iter
+                # Holds results to repeat.
                 self._results = []
+                # Incrementing cursor over results.
                 self._i = 0
+                # Calculate the cursor limit.
                 if times:
                     self._max_i = original_len * (times - 1)
                 else:
@@ -331,13 +338,13 @@ class DatasetPipeline(Generic[T]):
                 else:
                     raise StopIteration
 
-        class Repeat:
+        class RepeatIterable:
             def __init__(self, original_iter, original_len):
                 self._original_iter = original_iter
                 self._original_len = original_len
 
             def __iter__(self):
-                return Iterator(self._original_iter, self._original_len)
+                return RepeatIterator(self._original_iter, self._original_len)
 
         if times:
             length = times * self._length
