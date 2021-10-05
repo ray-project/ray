@@ -286,7 +286,8 @@ def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s,
 
 def maybe_fetch_api_token():
     if GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"] is None:
-        print("Missing ANYSCALE_CLI_TOKEN, retrieving from AWS secrets store")
+        logger.info(
+            "Missing ANYSCALE_CLI_TOKEN, retrieving from AWS secrets store")
         # NOTE(simon) This should automatically retrieve
         # release-automation@anyscale.com's anyscale token
         GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"] = boto3.client(
@@ -2000,7 +2001,7 @@ if __name__ == "__main__":
         # If we get a result dict, check if any alerts should be raised
         from alert import SUITE_TO_FN, default_handle_result
 
-        print("Checking if results are valid...")
+        logger.info("Checking if results are valid...")
 
         handle_result_kwargs = result_dict.copy()
         handle_result_kwargs["created_on"] = None
@@ -2011,7 +2012,7 @@ if __name__ == "__main__":
 
         handle_fn = SUITE_TO_FN.get(test_suite, None)
         if not handle_fn:
-            print(f"No handle for suite {test_suite}")
+            logger.warning(f"No handle for suite {test_suite}")
             alert = default_handle_result(**handle_result_kwargs)
         else:
             alert = handle_fn(**handle_result_kwargs)
@@ -2020,5 +2021,5 @@ if __name__ == "__main__":
             # If we get an alert, the test failed.
             raise RuntimeError(alert)
         else:
-            print(f"No alert raised for test {test_suite}/{test_name} "
-                  f"({category}) - the test successfully passed!")
+            logger.info(f"No alert raised for test {test_suite}/{test_name} "
+                        f"({category}) - the test successfully passed!")
