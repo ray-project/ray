@@ -1,7 +1,7 @@
 import functools
 import time
 from typing import Any, Callable, List, Iterator, Iterable, Generic, Union, \
-    TYPE_CHECKING
+    Optional, TYPE_CHECKING
 
 import ray
 from ray.data.dataset import Dataset, T, U, BatchType
