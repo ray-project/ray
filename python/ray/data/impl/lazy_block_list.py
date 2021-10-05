@@ -37,6 +37,12 @@ class LazyBlockList(BlockList[T]):
             output.append(LazyBlockList(c.tolist(), m.tolist()))
         return output
 
+    def divide(self, block_idx: int) -> ("BlockList", "BlockList"):
+        self._check_if_cleared()
+        return (
+            LazyBlockList(self._calls[:block_idx], self._metadata[:block_idx]),
+            LazyBlockList(self._calls[block_idx:], self._metadata[block_idx:]))
+
     def __len__(self):
         self._check_if_cleared()
         return len(self._calls)

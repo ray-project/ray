@@ -150,7 +150,7 @@ def test_transform_failure(shutdown_only):
 
     def mapper(x):
         time.sleep(x)
-        assert False
+        raise ValueError("oops")
         return x
 
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -2692,7 +2692,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         def _read_file(self, f: "pa.NativeFile", path: str, **reader_args):
             count = self.counter.increment.remote()
             if ray.get(count) == 1:
-                raise ValueError()
+                raise ValueError("oops")
             else:
                 return CSVDatasource._read_file(self, f, path, **reader_args)
 
@@ -2700,7 +2700,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
                          **writer_args):
             count = self.counter.increment.remote()
             if ray.get(count) == 1:
-                raise ValueError()
+                raise ValueError("oops")
             else:
                 CSVDatasource._write_block(self, f, block, **writer_args)
 
@@ -2720,7 +2720,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
     def flaky_mapper(x):
         count = counter.increment.remote()
         if ray.get(count) == 1:
-            raise ValueError()
+            raise ValueError("oops")
         else:
             return ray.get(count)
 

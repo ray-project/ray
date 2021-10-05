@@ -1641,8 +1641,11 @@ class Dataset(Generic[T]):
 
             def __iter__(self):
                 return Iterator(self._ds)
+            
+            def __len__(self):
+                return times
 
-        return DatasetPipeline(Iterable(self), length=times)
+        return DatasetPipeline.from_iterable(Iterable(self))
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
         raise DeprecationWarning("Use .window(n) instead of .pipeline(n)")
@@ -1659,14 +1662,14 @@ class Dataset(Generic[T]):
         waiting for all transformations to fully execute, and can also improve
         efficiency if transforms use different resources (e.g., GPUs).
 
-        Without pipelining::
+        Without windowing::
 
             [preprocessing......]
                                   [inference.......]
                                                      [write........]
             Time ----------------------------------------------------------->
 
-        With pipelining::
+        With windowing::
 
             [prep1] [prep2] [prep3]
                     [infer1] [infer2] [infer3]
@@ -1718,8 +1721,11 @@ class Dataset(Generic[T]):
             def __iter__(self):
                 return Iterator(self._splits)
 
+            def __len__(self):
+                return len(self._splits)
+
         it = Iterable(self._blocks)
-        return DatasetPipeline(it, length=len(it._splits))
+        return DatasetPipeline.from_iterable(it)
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
@@ -1775,6 +1781,10 @@ class Dataset(Generic[T]):
         else:
             right = None
         return left, right
+
+    def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
+        left, right = self._blocks.divide(block_idx)
+        return Dataset(left), Dataset(right)
 
     def __repr__(self) -> str:
         schema = self.schema()

@@ -252,7 +252,35 @@ class DatasetPipeline(Generic[T]):
         Args:
             blocks_per_window: The new target blocks per window.
         """
-        raise NotImplementedError
+
+        class Iterator:
+            def __init__(self, original_iter):
+                self._original_iter = original_iter
+                self._buffer: Optional[Dataset[T]] = None
+
+            def __next__(self) -> Dataset[T]:
+                try:
+                    if self._buffer is None:
+                        self._buffer = next(self._original_iter)
+                    while self._buffer.num_blocks() < blocks_per_window:
+                        self._buffer = self._buffer.union(
+                            next(self._original_iter))
+                    res, self._buffer = self._buffer._divide(blocks_per_window)
+                    return res
+                except StopIteration:
+                    if self._buffer is None:
+                        return self._buffer
+                    else:
+                        raise
+
+        class ReWindow:
+            def __init__(self, original_iter):
+                self._original_iter = original_iter
+
+            def __iter__(self):
+                return Iterator(self._original_iter)
+
+        return DatasetPipeline.from_iterable(ReWindow(self.iter_datasets()))
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
@@ -260,11 +288,62 @@ class DatasetPipeline(Generic[T]):
         This operation is only allowed for pipelines of a finite length. An
         error will be raised for pipelines of infinite or unknown length.
 
+        Transformations prior to the call to ``repeat()`` are evaluated once.
+        Transformations done on the repeated pipeline are evaluated on each
+        loop of the pipeline over the base pipeline.
+
         Args:
             times: The number of times to loop over this pipeline, or None
                 to repeat indefinitely.
         """
-        raise NotImplementedError
+
+        if self._length is None:
+            raise ValueError("Cannot repeat a pipeline of unknown length.")
+
+        class Iterator:
+            def __init__(self, original_iter, original_len):
+                self._original_iter = original_iter
+                self._results = []
+                self._i = 0
+                if times:
+                    self._max_i = original_len * (times - 1)
+                else:
+                    self._max_i = float("inf")
+
+            def __next__(self) -> Dataset[T]:
+                # Still going through the original pipeline.
+                if self._original_iter:
+                    try:
+                        res = next(self._original_iter)
+                        self._results.append(res)
+                        return res
+                    except StopIteration:
+                        self._original_iter = None
+                # Going through a repeat of the pipeline.
+                if self._i < self._max_i:
+                    res = self._results[self._i]
+                    self._i += 1
+                    self._i %= len(self._results)
+                    return res
+                else:
+                    raise StopIteration
+
+        class Repeat:
+            def __init__(self, original_iter, original_len):
+                self._original_iter = original_iter
+                self._original_len = original_len
+
+            def __iter__(self):
+                return Iterator(self._original_iter)
+
+            def __len__(self):
+                if times:
+                    return times * len(self._original_len)
+                else:
+                    return None
+
+        return DatasetPipeline.from_iterable(
+            Repeat(self.iter_datasets(), self._length))
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
