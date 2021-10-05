@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import os
+import socket
 import redis
 import sys
 import threading
@@ -809,6 +810,12 @@ def init(
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
         node_ip_address = services.address_to_ip(_node_ip_address)
+        local_ip_address = socket.gethostbyname(socket.gethostname())
+        if node_ip_address != local_ip_address:
+            raise ValueError("Connect to a remote node is only allowed in ray"
+                             " client. Please add `ray://` to the beginning of"
+                             " the address")
+
     raylet_ip_address = node_ip_address
 
     if address:
