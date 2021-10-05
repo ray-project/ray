@@ -309,6 +309,7 @@ def test_dedupe_indirect(workflow_start_regular, tmp_path):
     @workflow.step
     def join(*a):
         return counter.read_text()
+
     # Here a is passed to two steps and we need to ensure
     # it's only executed once
     # a = incr.step()
@@ -319,6 +320,7 @@ def test_dedupe_indirect(workflow_start_regular, tmp_path):
     a = incr.step()
     assert "1" == join.step(a, a, a, a).run()
     assert "2" == join.step(a, a, a, a).run()
+
 
 if __name__ == "__main__":
     import sys
