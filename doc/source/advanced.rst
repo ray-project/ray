@@ -525,7 +525,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - ``worker_path`` (str): the absolute path for Ray's ``default_worker.py`` file.
     You can run ``python -m inspect -d ray.workers.default_worker | grep Origin | cut -d " " -f 2``
-    inside the container to retrieve it. By default it will be the Ray worker path of caller.
+    inside the container to retrieve it. By default it will be the Ray worker path of the caller.
   - ``image`` (str): the Docker image to run the worker inside.
     Using the full path like ``docker.io/rayproject/ray-ml:nightly-py38-cpu`` is preferred.
   
