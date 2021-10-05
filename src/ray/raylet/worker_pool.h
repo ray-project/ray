@@ -397,7 +397,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
-      std::unordered_map<std::string, std::string> override_environment_variables = {},
       const std::string &serialized_runtime_env_context = "{}",
       const std::string &allocated_instances_serialized_json = "{}");
 
