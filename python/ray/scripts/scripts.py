@@ -405,16 +405,6 @@ def debug(address):
     type=str,
     help="the file that contains the autoscaling config")
 @click.option(
-    "--no-redirect-worker-output",
-    is_flag=True,
-    default=False,
-    help="do not redirect worker stdout and stderr to files")
-@click.option(
-    "--no-redirect-output",
-    is_flag=True,
-    default=False,
-    help="do not redirect non-worker stdout and stderr to files")
-@click.option(
     "--plasma-store-socket-name",
     default=None,
     help="manually specify the socket name of the plasma store")
