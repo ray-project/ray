@@ -892,17 +892,18 @@ def deployment(func_or_class: Callable) -> Deployment:
 
 
 @overload
-def deployment(name: Optional[str] = None,
-               version: Optional[str] = None,
-               prev_version: Optional[str] = None,
-               num_replicas: Optional[int] = None,
-               init_args: Optional[Tuple[Any]] = None,
-               init_kwargs: Optional[Dict[Any, Any]] = None,
-               ray_actor_options: Optional[Dict] = None,
-               user_config: Optional[Any] = None,
-               max_concurrent_queries: Optional[int] = None,
-               _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None
-               ) -> Callable[[Callable], Deployment]:
+def deployment(
+        name: Optional[str] = None,
+        version: Optional[str] = None,
+        prev_version: Optional[str] = None,
+        num_replicas: Optional[int] = None,
+        init_args: Optional[Tuple[Any]] = None,
+        init_kwargs: Optional[Dict[Any, Any]] = None,
+        ray_actor_options: Optional[Dict] = None,
+        user_config: Optional[Any] = None,
+        max_concurrent_queries: Optional[int] = None,
+        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None
+) -> Callable[[Callable], Deployment]:
     pass
 
 

@@ -1,7 +1,7 @@
 import inspect
 import pickle
 from enum import Enum
-from typing import Any, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -126,8 +126,8 @@ class BackendConfig(BaseModel):
 class ReplicaConfig:
     def __init__(self,
                  backend_def: Callable,
-                 init_args: Optioal[Tuple[Any]] = None,
-                 init_kwargs: Optioal[Dict[Any, Any]] =None,
+                 init_args: Optional[Tuple[Any]] = None,
+                 init_kwargs: Optional[Dict[Any, Any]] = None,
                  ray_actor_options=None):
         # Validate that backend_def is an import path, function, or class.
         if isinstance(backend_def, str):

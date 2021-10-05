@@ -746,17 +746,16 @@ def test_init_kwargs(serve_instance):
         def __init__(self, **kwargs):
             self._kwargs = kwargs
 
-        def get_args(self, *args):
+        def get_kwargs(self, *args):
             return self._kwargs
 
     D.deploy()
     handle = D.get_handle()
 
     def check(kwargs):
-        assert ray.get(handle.get_args.remote()) == args
+        assert ray.get(handle.get_kwargs.remote()) == kwargs
 
     # Basic sanity check.
-    assert ray.get(handle.get_args.remote()) == {"a": 1, "b": 2}
     check({"a": 1, "b": 2})
 
     # Check passing args to `.deploy()`.
