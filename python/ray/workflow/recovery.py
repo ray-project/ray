@@ -51,8 +51,7 @@ def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any],
 
 
 def _construct_resume_workflow_from_step(
-        reader: workflow_storage.WorkflowStorage,
-        step_id: StepID,
+        reader: workflow_storage.WorkflowStorage, step_id: StepID,
         input_map: Dict[StepID, Any]) -> Union[Workflow, StepID]:
     """Try to construct a workflow (step) that recovers the workflow step.
     If the workflow step already has an output checkpointing file, we return
