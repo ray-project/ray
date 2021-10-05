@@ -374,7 +374,7 @@ build_wheels() {
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
   mkdir -p .whl
-  rm -rf .whl/*
+  rm -rf .whl/* || true
 
   case "${OSTYPE}" in
     linux*)
