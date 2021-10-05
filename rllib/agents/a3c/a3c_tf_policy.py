@@ -111,7 +111,7 @@ def grad_stats(policy: Policy, train_batch: SampleBatch,
         "grad_gnorm": tf.linalg.global_norm(grads),
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function()),
+            policy.model.value_function())
     }
 
 

@@ -103,10 +103,11 @@ void CoreWorkerProcess::Shutdown() {
   }
   RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::DRIVER)
       << "The `Shutdown` interface is for driver only.";
-  RAY_CHECK(core_worker_process->global_worker_);
-  core_worker_process->global_worker_->Disconnect();
-  core_worker_process->global_worker_->Shutdown();
-  core_worker_process->RemoveWorker(core_worker_process->global_worker_);
+  auto global_worker = core_worker_process->GetGlobalWorker();
+  RAY_CHECK(global_worker);
+  global_worker->Disconnect();
+  global_worker->Shutdown();
+  core_worker_process->RemoveWorker(global_worker);
   core_worker_process.reset();
 }
 
@@ -260,7 +261,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &work
   if (!core_worker_process) {
     return nullptr;
   }
-  absl::ReaderMutexLock workers_lock(&core_worker_process->worker_map_mutex_);
+  absl::ReaderMutexLock workers_lock(&core_worker_process->mutex_);
   auto it = core_worker_process->workers_.find(worker_id);
   if (it != core_worker_process->workers_.end()) {
     return it->second;
@@ -271,8 +272,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &work
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized();
   if (core_worker_process->options_.num_workers == 1) {
-    RAY_CHECK(core_worker_process->global_worker_) << "global_worker_ must not be NULL";
-    return *core_worker_process->global_worker_;
+    auto global_worker = core_worker_process->GetGlobalWorker();
+    RAY_CHECK(global_worker) << "global_worker_ must not be NULL";
+    return *global_worker;
   }
   auto ptr = current_core_worker_.lock();
   RAY_CHECK(ptr != nullptr)
@@ -283,7 +285,7 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
   EnsureInitialized();
   if (core_worker_process->options_.num_workers == 1) {
-    RAY_CHECK(core_worker_process->global_worker_->GetWorkerID() == worker_id);
+    RAY_CHECK(core_worker_process->GetGlobalWorker()->GetWorkerID() == worker_id);
     return;
   }
   current_core_worker_ = core_worker_process->GetWorker(worker_id);
@@ -291,10 +293,15 @@ void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
     const WorkerID &worker_id) const {
-  absl::ReaderMutexLock lock(&worker_map_mutex_);
+  absl::ReaderMutexLock lock(&mutex_);
   auto it = workers_.find(worker_id);
   RAY_CHECK(it != workers_.end()) << "Worker " << worker_id << " not found.";
   return it->second;
+}
+
+std::shared_ptr<CoreWorker> CoreWorkerProcess::GetGlobalWorker() {
+  absl::ReaderMutexLock lock(&mutex_);
+  return global_worker_;
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
@@ -302,12 +309,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
       options_,
       global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
   RAY_LOG(DEBUG) << "Worker " << worker->GetWorkerID() << " is created.";
+  absl::WriterMutexLock lock(&mutex_);
   if (options_.num_workers == 1) {
     global_worker_ = worker;
   }
   current_core_worker_ = worker;
 
-  absl::MutexLock lock(&worker_map_mutex_);
   workers_.emplace(worker->GetWorkerID(), worker);
   RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
   return worker;
@@ -315,6 +322,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
 
 void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
   worker->WaitForShutdown();
+  absl::WriterMutexLock lock(&mutex_);
   if (global_worker_) {
     RAY_CHECK(global_worker_ == worker);
   } else {
@@ -322,7 +330,6 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
   }
   current_core_worker_.reset();
   {
-    absl::MutexLock lock(&worker_map_mutex_);
     workers_.erase(worker->GetWorkerID());
     RAY_LOG(INFO) << "Removed worker " << worker->GetWorkerID();
   }
@@ -336,9 +343,10 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
   RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::WORKER);
   if (core_worker_process->options_.num_workers == 1) {
     // Run the task loop in the current thread only if the number of workers is 1.
-    auto worker = core_worker_process->global_worker_
-                      ? core_worker_process->global_worker_
-                      : core_worker_process->CreateWorker();
+    auto worker = core_worker_process->GetGlobalWorker();
+    if (!worker) {
+      worker = core_worker_process->CreateWorker();
+    }
     worker->RunTaskExecutionLoop();
     core_worker_process->RemoveWorker(worker);
   } else {
