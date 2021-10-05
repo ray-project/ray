@@ -389,7 +389,7 @@ class NodeUpdater:
                         "No initialization commands to run.",
                         _numbered=("[]", 4, NUM_SETUP_STEPS))
                 with cli_logger.group(
-                        "Initalizing command runner",
+                        "Initializing command runner",
                         # todo: fix command numbering
                         _numbered=("[]", 5, NUM_SETUP_STEPS)):
                     self.cmd_runner.run_init(
