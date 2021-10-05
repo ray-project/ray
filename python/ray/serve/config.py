@@ -150,7 +150,7 @@ class ReplicaConfig:
 
         self.serialized_backend_def = cloudpickle.dumps(backend_def)
         self.init_args = init_args if init_args is not None else ()
-        self.init_kwargs = init_args if init_args is not None else {}
+        self.init_kwargs = init_kwargs if init_kwargs is not None else {}
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:
