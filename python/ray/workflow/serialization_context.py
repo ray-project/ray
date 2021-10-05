@@ -48,7 +48,6 @@ def workflow_args_serialization_context(
     """
     workflow_deduplicator: Dict[Workflow, int] = {}
     workflowref_deduplicator: Dict[WorkflowRef, int] = {}
-    print("WorkflowArgsContext", workflows, workflow_refs)
 
     def workflow_serializer(workflow):
         if workflow in workflow_deduplicator:

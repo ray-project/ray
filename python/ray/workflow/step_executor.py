@@ -113,6 +113,7 @@ def _resolve_step_inputs(
     Returns:
         Instances of arguments.
     """
+
     objects_mapping = []
     for obj_ref in step_inputs.workflow_outputs:
         obj, ref = _resolve_object_ref(obj_ref)
@@ -168,8 +169,6 @@ def execute_workflow(
     workflow_data = workflow.data
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
-    print("ExecuteWorkflow: DBG>>>>>>>>", workflow, workflow.executed,
-          workflow.step_id, baked_inputs)
     persisted_output, volatile_output = _workflow_step_executor.options(
         **workflow_data.ray_options).remote(
             workflow_data.step_type, workflow_data.func_body,
@@ -198,7 +197,6 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
         # TODO(suquark): in the future we should write to storage directly
         # with plasma store object in memory.
         args_obj = ray.get(inputs.inputs.args)
-    print("DBG: Store:", step_id, inputs.inputs)
     workflow_id = wf_storage._workflow_id
     storage = wf_storage._storage
     save_tasks = [
@@ -286,7 +284,6 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
                 retry_msg = "Maximum retry reached, stop retry."
             else:
                 retry_msg = "The step will be retried."
-            print("e", type(e), e)
             logger.error(
                 f"{workflow_context.get_name()} failed with error message"
                 f" {e}. {retry_msg}")

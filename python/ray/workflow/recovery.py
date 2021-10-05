@@ -61,18 +61,21 @@ def _construct_resume_workflow_from_step(
     Args:
         reader: The storage reader for inspecting the step.
         step_id: The ID of the step we want to recover.
+        input_map: This is a context storing the input which has been loaded.
+            This context is important for dedupe
 
     Returns:
         A workflow that recovers the step, or a ID of a step
         that contains the output checkpoint file.
     """
+    print(input_map)
     result: workflow_storage.StepInspectResult = reader.inspect_step(step_id)
     if result.output_object_valid:
         # we already have the output
         return step_id
     if isinstance(result.output_step_id, str):
-        return _construct_resume_workflow_from_step(reader,
-                                                    result.output_step_id)
+        return _construct_resume_workflow_from_step(
+            reader, result.output_step_id, input_map)
     # output does not exists or not valid. try to reconstruct it.
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableError(step_id)
@@ -80,6 +83,8 @@ def _construct_resume_workflow_from_step(
     with serialization.objectref_cache():
         input_workflows = []
         for i, _step_id in enumerate(result.workflows):
+            # Check whether the step has been loaded or not to avoid
+            # duplication
             if _step_id in input_map:
                 r = input_map[_step_id]
             else:
@@ -87,6 +92,7 @@ def _construct_resume_workflow_from_step(
                     reader, _step_id, input_map)
                 input_map[_step_id] = r
             if isinstance(r, Workflow):
+                print("input:", _step_id, r, r.executed)
                 input_workflows.append(r)
             else:
                 assert isinstance(r, StepID)

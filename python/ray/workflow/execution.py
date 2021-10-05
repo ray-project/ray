@@ -34,8 +34,7 @@ def run(entry_workflow: Workflow,
 
     logger.info(
         f"Workflow job created. [id=\"{workflow_id}\", storage_url="
-        f"\"{store.storage_url}\"]. Type: {entry_workflow.data.step_type} "
-        f"Name: {entry_workflow.data.name}")
+        f"\"{store.storage_url}\"]. Type: {entry_workflow.data.step_type} ")
 
     with workflow_context.workflow_step_context(workflow_id,
                                                 store.storage_url):
