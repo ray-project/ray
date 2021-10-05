@@ -340,6 +340,10 @@ def run_cmd_redirected(cmd,
             stdout_file=sys.stdout,
             stderr_file=sys.stderr,
             use_login_shells=use_login_shells)
+
+        sys.stdout.flush()
+        sys.stderr.flush()
+
     else:
         tmpfile_path = os.path.join(
             tempfile.gettempdir(), "ray-up-{}-{}.txt".format(
