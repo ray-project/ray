@@ -242,8 +242,8 @@ class DatasetPipeline(Generic[T]):
             for idx in range(n)
         ]
 
-    def window_over_datasets(
-            self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
+    def window_over_datasets(self, *,
+                             blocks_per_window: int) -> "DatasetPipeline[T]":
         """Change the windowing (blocks per dataset) of this pipeline.
 
         Changes the windowing of this pipeline to the specified size. For
