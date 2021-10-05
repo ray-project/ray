@@ -52,7 +52,7 @@ def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any],
 
 def _construct_resume_workflow_from_step(
         reader: workflow_storage.WorkflowStorage,
-        step_id: StepID) -> Union[Workflow, StepID]:
+        step_id: StepID, input_map: Dict[StepID, Any] = {}) -> Union[Workflow, StepID]:
     """Try to construct a workflow (step) that recovers the workflow step.
     If the workflow step already has an output checkpointing file, we return
     the workflow step id instead.
@@ -78,9 +78,12 @@ def _construct_resume_workflow_from_step(
 
     with serialization.objectref_cache():
         input_workflows = []
-        print("recover:", result.workflows)
         for i, _step_id in enumerate(result.workflows):
-            r = _construct_resume_workflow_from_step(reader, _step_id)
+            if _step_id in input_map:
+                r = input_map[_step_id]
+            else:
+                r = _construct_resume_workflow_from_step(reader, _step_id, input_map)
+                input_map[_step_id] = r
             if isinstance(r, Workflow):
                 input_workflows.append(r)
             else:
