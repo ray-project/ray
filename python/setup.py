@@ -576,7 +576,7 @@ def pip_run(build_ext):
     copied_files = 0
     for filename in setup_spec.files_to_include:
         copied_files += copy_file(build_ext.build_lib, filename, ROOT_DIR)
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         # _raylet.pyd links to some MSVC runtime DLLS, this one may not be
         # present on a user's machine. While vcruntime140.dll and
         # vcruntime140_1.dll are also required, they are provided by CPython.
