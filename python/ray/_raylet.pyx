@@ -211,6 +211,47 @@ def compute_task_id(ObjectRef object_ref):
     return TaskID(object_ref.native().TaskId().Binary())
 
 
+def retrieve_arg_info(is_actor_task, function_descriptor, args, kwargs):
+    """Retrieve the arg information from the function descriptor.
+    
+    Returns:
+        A dictionary of arg info. If it fails to parse
+        arg info due to any internal error, it will return an empty dict.
+    """
+    # try:
+    args_info = {}
+    args_name = function_descriptor.args_name.split(",")
+    if is_actor_task:
+        # The first element of args_name of
+        # actor creation / actor tasks is "self", so we pop it.
+        args_name.pop(0)
+
+    print(args_name)
+    print(args)
+    print(kwargs)
+
+    assert len(args_name) <= len(args) + len(kwargs)
+    last_named_arg_index = 0
+    # Go through args with the name.
+    # f(a, <- this one b, c)
+    for i, arg_name in enumerate(args_name):
+        arg = args[i]
+        args_info[arg_name] = repr(arg)
+        last_named_arg_index = i
+    # Go through args without the name. e.g., *args
+    # f(a, *args <- this one)
+    for i in range(last_named_arg_index + 1, len(args)):
+        arg = args[i]
+        args_info[i] = arg
+    # Go through kwargs.
+    # f(b=3, *, c) <- both of kwargs.
+    for key, arg in kwargs.items():
+        args_info[key] = repr(arg)
+    return args_info
+    # except Exception:
+    #     return {}
+
+
 cdef increase_recursion_limit():
     """Double the recusion limit if current depth is close to the limit"""
     cdef:
@@ -640,29 +681,11 @@ cdef execute_task(
             args_info = {}
 
             if args_resolved:
-                args_name = function_descriptor.args_name.split(",")
-                if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK
-                        or <int>task_type == <int>TASK_TYPE_ACTOR_TASK):
-                    # The first element of args_name of
-                    # actor creation / actor tasks is "self", so we pop it.
-                    args_name.pop(0)
-                assert len(args_name) <= len(args)
-                last_named_arg_index = 0
-                # Go through args with the name.
-                # f(a, <- this one b, c)
-                for i, arg_name in enumerate(args_name):
-                    arg = args[i]
-                    args_info[arg_name] = repr(arg)
-                    last_named_arg_index = i
-                # Go through args without the name. e.g., *args
-                # f(a, *args <- this one)
-                for i in range(last_named_arg_index + 1, len(args)):
-                    arg = args[i]
-                    args_info[i] = arg
-                # Go through kwargs.
-                # f(b=3, *, c) <- both of kwargs.
-                for key, arg in kwargs.items():
-                    args_info[key] = repr(arg)
+                is_actor_task = (
+                    <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK
+                        or <int>task_type == <int>TASK_TYPE_ACTOR_TASK)
+                args_info = retrieve_arg_info(
+                    is_actor_task, function_descriptor, args, kwargs)
 
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.

@@ -10,6 +10,9 @@ import colorama
 import setproctitle
 
 
+MAX_ARGS_TO_PRINT = 15
+
+
 class RayError(Exception):
     """Super class of all ray exception types."""
 
@@ -97,7 +100,7 @@ class RayTaskError(RayError):
         # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
         assert traceback_str is not None
-        self.args_info = args_info or None
+        self.args_info = args_info or {}
 
     def as_instanceof_cause(self):
         """Returns an exception that is an instance of the cause's class.
@@ -140,25 +143,7 @@ class RayTaskError(RayError):
         """Format a RayTaskError as a string."""
         lines = self.traceback_str.strip().split("\n")
         out = []
-        code_from_internal_file = False
-
-        max_args_to_print = 30
-        args_printed = 0
-        if self.args_info:
-            out.append("Task failed with the following arguments:")
-            # args_info -> {name: repr}
-            # NOTE: Variable args such as `def f(*args)`,
-            # are recorded as the position integer.
-            for arg_key, arg_repr in self.args_info.items():
-                # arg_key is an integer when it is not a kwarg.
-                if isinstance(arg_key, int):
-                    arg_key = f"Arg {arg_key + 1} (variable arg)"
-                out.append(f"{arg_key}: {arg_repr}")
-                args_printed += 1
-                if args_printed > max_args_to_print:
-                    out.append(f"and {len(self.args_info) - max_args_to_print}"
-                               "+ args...")
-                    break
+        out.extend(self._parse_arg_info())
 
         # Format tracebacks.
         # Python stacktrace consists of
@@ -167,6 +152,7 @@ class RayTaskError(RayError):
         #     code
         # XError: [message]
         # NOTE: For _raylet.pyx (Cython), the code is not always included.
+        code_from_internal_file = False
         for i, line in enumerate(lines):
             # Convert traceback to the readable information.
             if line.startswith("Traceback "):
@@ -210,6 +196,29 @@ class RayTaskError(RayError):
             else:
                 out.append(line)
         return "\n".join(out)
+    
+    def _parse_arg_info(self):
+        if not self.args_info:
+            return []
+
+        args_printed = 0
+        arg_info_output = []
+        arg_info_output.append("Task failed with the following arguments:")
+        # args_info -> {name: repr}
+        # NOTE: Variable args such as `def f(*args)`,
+        # are recorded as the position integer.
+        for arg_key, arg_repr in self.args_info.items():
+            # arg_key is an integer when it is not a kwarg.
+            if isinstance(arg_key, int):
+                arg_key = f"Arg {arg_key + 1} (variable arg)"
+            arg_info_output.append(f"{arg_key}: {arg_repr}")
+            args_printed += 1
+            if args_printed > MAX_ARGS_TO_PRINT:
+                arg_info_output.append(
+                    f"and {len(self.args_info) - MAX_ARGS_TO_PRINT}"
+                    "+ args...")
+                break
+        return arg_info_output
 
 
 class WorkerCrashedError(RayError):

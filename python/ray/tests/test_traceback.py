@@ -1,6 +1,7 @@
 import re
 import sys
 
+import numpy as np
 import pytest
 import ray
 
@@ -280,6 +281,40 @@ def test_line_num_stacktrace(ray_start_regular):
 
     ray.get(some_function.remote(1, 0))
 
+
+def test_get_arg_spec_output():
+    import inspect
+
+    
+    arg_spec = inspect.getfullargspec(func_or_class)
+
+
+# def test_argument_information_stacktrace(shutdown_only):
+#     def inner():
+#         assert False
+
+#     def f():
+#         return inner()
+
+#     @ray.remote
+#     def g(x, y, c=4, *args):
+#         return f()
+
+#     # ray.get(g.remote(x=0, y=1))
+#     ray.get(g.remote(1, 2, 5, 10, 11))
+
+# Truncate ref
+# Max arg size
+# Max arg parse size
+# g(x, y, c=4)
+# g.remote(a, b)
+# g.remote(x=1, y=2)
+# g.remote(x, y, c=3)
+# g.remote(x, y, *, d=4)
+# g(x, y, *args, **kwargs)
+# g.remote (x, y, b, c, d=4)
+# g(x, y, *args, *, e)
+# g.remote(x, y, b, c, e=5)
 
 if __name__ == "__main__":
     import pytest
