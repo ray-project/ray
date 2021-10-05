@@ -28,6 +28,7 @@ class LazyBlockList(BlockList[T]):
         self._calls = None
 
     def split(self, split_size: int) -> List["LazyBlockList"]:
+        # TODO(ekl) isn't this not copying already computed blocks?
         self._check_if_cleared()
         num_splits = math.ceil(len(self._calls) / split_size)
         calls = np.array_split(self._calls, num_splits)
