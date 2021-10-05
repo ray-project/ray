@@ -23,25 +23,23 @@ if [ "$base_commit" = "$(git rev-parse HEAD)" ] && [ "$(git status --porcelain |
   base_commit="$(git rev-parse HEAD^)"
   printInfo "Running clang-tidy against parent commit $base_commit"
 else
-  printInfo "Running clang-tidy against parent commit $base_commit from master branch"
+  printInfo "Running clang-tidy against commit $base_commit from master branch"
 fi
 
-WORKSPACE=$(bazel info workspace)
-BAZEL_ROOT=$(bazel info execution_root)
-
-printInfo "Generating compilation database ..."
+WORKSPACE=$(bazel info workspace 2>/dev/null)
+BAZEL_ROOT=$(bazel info execution_root 2>/dev/null)
 
 case "${OSTYPE}" in
   linux*)
-    printInfo "Running on Linux, using clang to build C++ targets ..."
+    printInfo "Generating compile commands with clang (on Linux) ..."
     bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg --config=llvm \
         --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener;;
   darwin*)
-    printInfo "Running on MacOS, using default compiler to build C++ targets ..."
+    printInfo "Generating compile commands with clang (on MacOS) ..."
     bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg \
         --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener;;
   msys*)
-    printInfo "Running on Windows, using clang-cl to build C++ targets ..."
+    printInfo "Generating compile commands with clang (on Windows) ..."
     CC=clang-cl bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg \
         --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener;;
 esac

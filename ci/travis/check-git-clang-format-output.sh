@@ -15,7 +15,7 @@ if [ "$base_commit" = "$(git rev-parse HEAD)" ] && [ "$(git status --porcelain |
   base_commit="$(git rev-parse HEAD^)"
   printInfo "Running clang-format against parent commit $base_commit"
 else
-  printInfo "Running clang-format against parent commit $base_commit from master branch"
+  printInfo "Running clang-format against commit $base_commit from master branch"
 fi
 
 exclude_regex="(.*thirdparty/|.*redismodule.h|.*.java|.*.jsx?|.*.tsx?)"
