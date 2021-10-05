@@ -4,6 +4,7 @@ import logging
 import os
 
 from ray._private.runtime_env import RuntimeEnvContext
+from ray.core.generated.common_pb2 import Language
 
 logger = logging.getLogger(__name__)
 
@@ -120,4 +121,5 @@ if __name__ == "__main__":
         # probably not even go through this codepath.
         runtime_env_context = RuntimeEnvContext.deserialize(
             args.serialized_runtime_env_context or "{}")
-        runtime_env_context.exec_worker(remaining_args, args.language)
+        runtime_env_context.exec_worker(remaining_args,
+                                        Language.Value(args.language))

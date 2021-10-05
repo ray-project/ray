@@ -319,11 +319,8 @@ Process WorkerPool::StartWorkerProcess(
       // Allocated_resource_json is only used in "shim process".
       worker_command_args.push_back("--allocated-instances-serialized-json=" +
                                     allocated_instances_serialized_json);
-      if (language == Language::PYTHON) {
-        worker_command_args.push_back("--language=PYTHON");
-      } else {
-        worker_command_args.push_back("--language=JAVA");
-      }
+
+      worker_command_args.push_back("--language=" + Language_Name(language));
 
       worker_command_args.push_back("--runtime-env-hash=" +
                                     std::to_string(runtime_env_hash));
