@@ -352,7 +352,7 @@ class DatasetPipeline(Generic[T]):
             length = None
 
         return DatasetPipeline(
-            Repeat(self.iter_datasets(), self._length), length=length)
+            RepeatIterable(self.iter_datasets(), self._length), length=length)
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
