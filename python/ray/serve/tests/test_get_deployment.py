@@ -121,7 +121,8 @@ def test_init_kwargs(serve_instance):
 
     @serve.deployment(name=name)
     class D:
-        def __init__(self, *, val=val):
+        def __init__(self, *, val=None):
+            assert val is not None
             self._val = val
 
         def __call__(self, *arg):

@@ -214,8 +214,8 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def,
-            init_args,
-            init_kwargs,
+            init_args=init_args,
+            init_kwargs=init_kwargs,
             ray_actor_options=ray_actor_options)
 
         if isinstance(config, dict):

@@ -743,7 +743,7 @@ def test_init_kwargs(serve_instance):
 
     @serve.deployment(init_kwargs={"1": 1, "2": 2})
     class D:
-        def __init__(self, *, **kwargs):
+        def __init__(self, **kwargs):
             self._kwargs = kwargs
 
         def get_args(self, *args):

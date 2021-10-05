@@ -1,7 +1,7 @@
 import inspect
 import pickle
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -125,9 +125,9 @@ class BackendConfig(BaseModel):
 
 class ReplicaConfig:
     def __init__(self,
-                 backend_def,
-                 init_args,
-                 init_kwargs,
+                 backend_def: Callable,
+                 init_args: Optioal[Tuple[Any]] = None,
+                 init_kwargs: Optioal[Dict[Any, Any]] =None,
                  ray_actor_options=None):
         # Validate that backend_def is an import path, function, or class.
         if isinstance(backend_def, str):
@@ -135,10 +135,10 @@ class ReplicaConfig:
             pass
         elif inspect.isfunction(backend_def):
             self.func_or_class_name = backend_def.__name__
-            if len(init_args) != 0:
+            if init_args:
                 raise ValueError(
                     "init_args not supported for function backend.")
-            if len(init_kwargs) != 0:
+            if init_kwargs:
                 raise ValueError(
                     "init_kwargs not supported for function backend.")
         elif inspect.isclass(backend_def):
@@ -149,8 +149,8 @@ class ReplicaConfig:
                 format(type(backend_def)))
 
         self.serialized_backend_def = cloudpickle.dumps(backend_def)
-        self.init_args = init_args
-        self.init_kwargs = init_kwargs
+        self.init_args = init_args if init_args is not None else ()
+        self.init_kwargs = init_args if init_args is not None else {}
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:
