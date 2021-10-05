@@ -53,7 +53,7 @@ def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any],
 def _construct_resume_workflow_from_step(
         reader: workflow_storage.WorkflowStorage,
         step_id: StepID,
-        input_map: Dict[StepID, Any] = {}) -> Union[Workflow, StepID]:
+        input_map: Dict[StepID, Any]) -> Union[Workflow, StepID]:
     """Try to construct a workflow (step) that recovers the workflow step.
     If the workflow step already has an output checkpointing file, we return
     the workflow step id instead.
@@ -68,7 +68,6 @@ def _construct_resume_workflow_from_step(
         A workflow that recovers the step, or a ID of a step
         that contains the output checkpoint file.
     """
-    print(input_map)
     result: workflow_storage.StepInspectResult = reader.inspect_step(step_id)
     if result.output_object_valid:
         # we already have the output
@@ -92,7 +91,6 @@ def _construct_resume_workflow_from_step(
                     reader, _step_id, input_map)
                 input_map[_step_id] = r
             if isinstance(r, Workflow):
-                print("input:", _step_id, r, r.executed)
                 input_workflows.append(r)
             else:
                 assert isinstance(r, StepID)
@@ -131,7 +129,7 @@ def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
     try:
         store = storage.create_storage(store_url)
         wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
-        r = _construct_resume_workflow_from_step(wf_store, step_id)
+        r = _construct_resume_workflow_from_step(wf_store, step_id, {})
     except Exception as e:
         raise WorkflowNotResumableError(workflow_id) from e
 
