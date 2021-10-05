@@ -774,9 +774,8 @@ def test_container_option_serialize():
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
     job_config_serialized = job_config.serialize()
     # job_config_serialized is JobConfig protobuf serialized string,
-    # job_config.runtime_env.raw_json has container_option info
-    # job_config.serialized_runtime_env also has container_option info
-    assert job_config_serialized.count(b"image") == 2
+    # job_config.runtime_env.serialized_runtime_env has container_option info
+    assert job_config_serialized.count(b"image") == 1
 
 
 def test_working_dir_override_failure(shutdown_only):

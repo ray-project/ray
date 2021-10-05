@@ -40,7 +40,7 @@ class DatasetPipeline(Generic[T]):
 
     A DatasetPipeline can be created by either repeating a Dataset
     (``ds.repeat(times=None)``), by turning a single Dataset into a pipeline
-    (``ds.pipeline(parallelism=10)``), or defined explicitly using
+    (``ds.window(blocks_per_window=10)``), or defined explicitly using
     ``DatasetPipeline.from_iterable()``.
 
     DatasetPipeline supports the all the per-record transforms of Datasets
@@ -57,7 +57,7 @@ class DatasetPipeline(Generic[T]):
         """Construct a DatasetPipeline (internal API).
 
         The constructor is not part of the DatasetPipeline API. Use the
-        ``Dataset.repeat()``, ``Dataset.pipeline()``, or
+        ``Dataset.repeat()``, ``Dataset.window()``, or
         ``DatasetPipeline.from_iterable()`` methods to construct a pipeline.
         """
         self._base_iterable = base_iterable
@@ -239,6 +239,32 @@ class DatasetPipeline(Generic[T]):
                 SplitIterator(idx, coordinator), progress_bars=False)
             for idx in range(n)
         ]
+
+    def window(self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
+        """Change the windowing (blocks per dataset) of this pipeline.
+
+        Changes the windowing of this pipeline to the specified size. For
+        example, if the current pipeline has two blocks per dataset, and
+        `.window(4)` is requested, adjacent datasets will be merged until each
+        dataset is 4 blocks. If `.window(1)` was requested the datasets will
+        be split into smaller windows.
+
+        Args:
+            blocks_per_window: The new target blocks per window.
+        """
+        raise NotImplementedError
+
+    def repeat(self, times: int = None) -> "DatasetPipeline[T]":
+        """Repeat this pipeline a given number or times, or indefinitely.
+
+        This operation is only allowed for pipelines of a finite length. An
+        error will be raised for pipelines of infinite or unknown length.
+
+        Args:
+            times: The number of times to loop over this pipeline, or None
+                to repeat indefinitely.
+        """
+        raise NotImplementedError
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.

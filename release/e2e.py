@@ -264,6 +264,24 @@ GLOBAL_CONFIG = {
 }
 
 REPORT_S = 30
+RETRY_MULTIPLIER = 2
+
+
+def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s,
+                              max_retries):
+    retry_cnt = 0
+    retry_delay_s = initial_retry_delay_s
+    while True:
+        try:
+            return f()
+        except retry_exceptions as e:
+            retry_cnt += 1
+            if retry_cnt > max_retries:
+                raise
+            logger.info(f"Retry function call failed due to {e} "
+                        f"in {retry_delay_s} seconds...")
+            time.sleep(retry_delay_s)
+            retry_delay_s *= RETRY_MULTIPLIER
 
 
 def maybe_fetch_api_token():
@@ -405,7 +423,8 @@ def populate_wheels_sanity_check(commit: Optional[str] = None):
         raise RuntimeError(f"Could not populate wheels sanity check command: "
                            f"Commit hash missing. Got: {commit}")
 
-    cmd = f"python -c 'import ray; assert ray.__commit__ == \"{commit}\"'"
+    cmd = (f"python -c 'import ray; "
+           f"assert ray.__commit__ == \"{commit}\", ray.__commit__'")
     os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
@@ -477,67 +496,66 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
         f"results, artifacts, category) "
         f"VALUES (:created_on, :test_suite, :test_name, :status, :last_logs, "
         f":results, :artifacts, :category)")
+    parameters = [{
+        "name": "created_on",
+        "typeHint": "TIMESTAMP",
+        "value": {
+            "stringValue": now.strftime("%Y-%m-%d %H:%M:%S")
+        },
+    }, {
+        "name": "test_suite",
+        "value": {
+            "stringValue": test_suite
+        }
+    }, {
+        "name": "test_name",
+        "value": {
+            "stringValue": test_name
+        }
+    }, {
+        "name": "status",
+        "value": {
+            "stringValue": status
+        }
+    }, {
+        "name": "last_logs",
+        "value": {
+            "stringValue": logs
+        }
+    }, {
+        "name": "results",
+        "typeHint": "JSON",
+        "value": {
+            "stringValue": json.dumps(results)
+        },
+    }, {
+        "name": "artifacts",
+        "typeHint": "JSON",
+        "value": {
+            "stringValue": json.dumps(artifacts)
+        },
+    }, {
+        "name": "category",
+        "value": {
+            "stringValue": category
+        }
+    }]
 
-    rds_data_client.execute_statement(
-        database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
-        parameters=[
-            {
-                "name": "created_on",
-                "typeHint": "TIMESTAMP",
-                "value": {
-                    "stringValue": now.strftime("%Y-%m-%d %H:%M:%S")
-                },
-            },
-            {
-                "name": "test_suite",
-                "value": {
-                    "stringValue": test_suite
-                }
-            },
-            {
-                "name": "test_name",
-                "value": {
-                    "stringValue": test_name
-                }
-            },
-            {
-                "name": "status",
-                "value": {
-                    "stringValue": status
-                }
-            },
-            {
-                "name": "last_logs",
-                "value": {
-                    "stringValue": logs
-                }
-            },
-            {
-                "name": "results",
-                "typeHint": "JSON",
-                "value": {
-                    "stringValue": json.dumps(results)
-                },
-            },
-            {
-                "name": "artifacts",
-                "typeHint": "JSON",
-                "value": {
-                    "stringValue": json.dumps(artifacts)
-                },
-            },
-            {
-                "name": "category",
-                "value": {
-                    "stringValue": category
-                }
-            },
-        ],
-        secretArn=GLOBAL_CONFIG["RELEASE_AWS_DB_SECRET_ARN"],
-        resourceArn=GLOBAL_CONFIG["RELEASE_AWS_DB_RESOURCE_ARN"],
-        schema=schema,
-        sql=sql,
-    )
+    # Default boto3 call timeout is 45 seconds.
+    retry_delay_s = 64
+    MAX_RDS_RETRY = 3
+    exponential_backoff_retry(
+        lambda: rds_data_client.execute_statement(
+            database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
+            parameters=parameters,
+            secretArn=GLOBAL_CONFIG["RELEASE_AWS_DB_SECRET_ARN"],
+            resourceArn=GLOBAL_CONFIG["RELEASE_AWS_DB_RESOURCE_ARN"],
+            schema=schema,
+            sql=sql),
+        retry_exceptions=rds_data_client.exceptions.StatementTimeoutException,
+        initial_retry_delay_s=retry_delay_s,
+        max_retries=MAX_RDS_RETRY)
+    logger.info("Result has been persisted to the databse")
 
 
 def log_results_and_artifacts(result: Dict):
@@ -802,9 +820,7 @@ def run_job(cluster_name: str, compute_tpl_name: str, cluster_env_name: str,
             script_args: List[str], env_vars: Dict[str, str],
             autosuspend: int) -> Tuple[int, str]:
     # Start cluster and job
-    address = f"anyscale://{cluster_name}?cluster_compute={compute_tpl_name}" \
-              f"&cluster_env={cluster_env_name}&autosuspend={autosuspend}" \
-               "&&update=True"
+    address = f"anyscale://{cluster_name}?autosuspend={autosuspend}"
     logger.info(f"Starting job {job_name} with Ray address: {address}")
     env = copy.deepcopy(os.environ)
     env.update(GLOBAL_CONFIG)
@@ -905,7 +921,11 @@ def wait_for_session_command_to_complete(create_session_command_result,
         # Sleep 1 sec before next check.
         time.sleep(1)
 
-        result = sdk.get_session_command(session_command_id=scd_id)
+        result = exponential_backoff_retry(
+            lambda: sdk.get_session_command(session_command_id=scd_id),
+            retry_exceptions=Exception,
+            initial_retry_delay_s=10,
+            max_retries=3)
         completed = result.result.finished_at
 
         if state_str == "CMD_RUN":
@@ -936,10 +956,14 @@ def wait_for_session_command_to_complete(create_session_command_result,
 def get_command_logs(session_controller: SessionController,
                      scd_id: str,
                      lines: int = 50):
-    result = session_controller.api_client.get_execution_logs_api_v2_session_commands_session_command_id_execution_logs_get(  # noqa: E501
-        session_command_id=scd_id,
-        start_line=-1 * lines,
-        end_line=0)
+    result = exponential_backoff_retry(
+        lambda: session_controller.api_client.get_execution_logs_api_v2_session_commands_session_command_id_execution_logs_get(  # noqa: E501
+            session_command_id=scd_id,
+            start_line=-1 * lines,
+            end_line=0),
+        retry_exceptions=Exception,
+        initial_retry_delay_s=10,
+        max_retries=3)
 
     return result.result.lines
 
@@ -1304,6 +1328,7 @@ def run_test_config(
         session_url = None
         runtime = None
         anyscale.conf.CLI_TOKEN = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
+        test_uses_ray_connect = test_config["run"].get("use_connect")
 
         session_id = None
         scd_id = None
@@ -1360,17 +1385,71 @@ def run_test_config(
                     session_options["build_id"] = build_id
                     session_options["uses_app_config"] = True
 
-                if not test_config["run"].get("use_connect"):
-                    session_id = create_and_wait_for_session(
-                        sdk=sdk,
-                        stop_event=stop_event,
-                        session_name=session_name,
-                        session_options=session_options,
-                    )
+                # Start session
+                session_id = create_and_wait_for_session(
+                    sdk=sdk,
+                    stop_event=stop_event,
+                    session_name=session_name,
+                    session_options=session_options,
+                )
 
-            if test_config["run"].get("use_connect"):
-                assert compute_tpl_name, "Compute template must exist."
-                assert app_config_name, "Cluster environment must exist."
+            prepare_command = test_config["run"].get("prepare")
+
+            # Write test state json
+            test_state_file = os.path.join(local_dir, "test_state.json")
+            with open(test_state_file, "wt") as f:
+                json.dump({
+                    "start_time": time.time(),
+                    "test_name": test_name
+                }, f)
+
+            if prepare_command or not test_uses_ray_connect:
+                if test_uses_ray_connect:
+                    logger.info("Found a prepare command, so pushing it "
+                                "to the session.")
+                # Rsync up
+                logger.info("Syncing files to session...")
+                session_controller.push(
+                    session_name=session_name,
+                    source=None,
+                    target=None,
+                    config=None,
+                    all_nodes=False,
+                )
+
+                logger.info("Syncing test state to session...")
+                session_controller.push(
+                    session_name=session_name,
+                    source=test_state_file,
+                    target=state_json,
+                    config=None,
+                    all_nodes=False,
+                )
+
+                session_url = anyscale_session_url(
+                    project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"],
+                    session_id=session_id)
+                _check_stop(stop_event, "file_sync")
+
+                # Optionally run preparation command
+                if prepare_command:
+                    logger.info(
+                        f"Running preparation command: {prepare_command}")
+                    scd_id, result = run_session_command(
+                        sdk=sdk,
+                        session_id=session_id,
+                        cmd_to_run=prepare_command,
+                        result_queue=result_queue,
+                        env_vars=env_vars,
+                        state_str="CMD_PREPARE")
+                    _, _ = wait_for_session_command_to_complete(
+                        result,
+                        sdk=sdk,
+                        scd_id=scd_id,
+                        stop_event=stop_event,
+                        state_str="CMD_PREPARE")
+
+            if test_uses_ray_connect:
                 script_args = test_config["run"].get("args", [])
                 if smoke_test:
                     script_args += ["--smoke-test"]
@@ -1380,7 +1459,7 @@ def run_test_config(
                 # Build completed, use job timeout
                 result_queue.put(State("CMD_RUN", time.time(), None))
                 returncode, logs = run_job(
-                    cluster_name=test_name,
+                    cluster_name=session_name,
                     compute_tpl_name=compute_tpl_name,
                     cluster_env_name=app_config_name,
                     job_name=session_name,
@@ -1391,56 +1470,6 @@ def run_test_config(
                     autosuspend=autosuspend_mins)
                 _process_finished_client_command(returncode, logs)
                 return
-
-            # Write test state json
-            test_state_file = os.path.join(local_dir, "test_state.json")
-            with open(test_state_file, "wt") as f:
-                json.dump({
-                    "start_time": time.time(),
-                    "test_name": test_name
-                }, f)
-
-            # Rsync up
-            logger.info("Syncing files to session...")
-            session_controller.push(
-                session_name=session_name,
-                source=None,
-                target=None,
-                config=None,
-                all_nodes=False,
-            )
-
-            logger.info("Syncing test state to session...")
-            session_controller.push(
-                session_name=session_name,
-                source=test_state_file,
-                target=state_json,
-                config=None,
-                all_nodes=False,
-            )
-
-            session_url = anyscale_session_url(
-                project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"],
-                session_id=session_id)
-            _check_stop(stop_event, "file_sync")
-
-            # Optionally run preparation command
-            prepare_command = test_config["run"].get("prepare")
-            if prepare_command:
-                logger.info(f"Running preparation command: {prepare_command}")
-                scd_id, result = run_session_command(
-                    sdk=sdk,
-                    session_id=session_id,
-                    cmd_to_run=prepare_command,
-                    result_queue=result_queue,
-                    env_vars=env_vars,
-                    state_str="CMD_PREPARE")
-                _, _ = wait_for_session_command_to_complete(
-                    result,
-                    sdk=sdk,
-                    scd_id=scd_id,
-                    stop_event=stop_event,
-                    state_str="CMD_PREPARE")
 
             # Run release test command
             cmd_to_run = test_config["run"]["script"] + " "
@@ -1932,7 +1961,6 @@ if __name__ == "__main__":
             "You have to set the ANYSCALE_PROJECT environment variable!")
 
     maybe_fetch_api_token()
-
     if args.ray_wheels:
         os.environ["RAY_WHEELS"] = str(args.ray_wheels)
         url = str(args.ray_wheels)

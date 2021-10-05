@@ -82,6 +82,8 @@ CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
         "shuffle_data_loader",
+        "pipelined_training_50_gb",
+        "pipelined_ingestion_1500_gb_15_windows",
     ],
 }
 

@@ -3,6 +3,8 @@
 RaySGD User Guide
 =================
 
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
+
 In this guide, we cover examples for the following use cases:
 
 * How do I :ref:`port my code <sgd-porting-code>` to using RaySGD?
@@ -88,6 +90,7 @@ training.
     If you are using GPUs, you need to make sure to the CUDA devices are properly setup inside your training function.
 
     This involves 3 steps:
+
     1. Use the local rank to set the default CUDA device for the worker.
     2. Move the model to the default CUDA device (or a specific CUDA device).
     3. Specify ``device_ids`` when wrapping in ``DistributedDataParallel``.
@@ -341,7 +344,7 @@ You can plug all of these into RaySGD with the following interface:
 .. code-block:: python
 
     from ray import sgd
-    from sgd import SGDCallback, Trainer
+    from ray.sgd import SGDCallback, Trainer
     from typing import List, Dict
 
     class PrintingCallback(SGDCallback):
@@ -478,7 +481,7 @@ The latest saved checkpoint can be accessed through the ``Trainer``'s
 .. code-block:: python
 
     from ray import sgd
-    from sgd import Trainer
+    from ray.sgd import Trainer
 
     def train_func(config):
         model = 0 # This should be replaced with a real model.
@@ -520,7 +523,7 @@ As an example, to disable writing checkpoints to disk:
     :emphasize-lines: 8,12
 
     from ray import sgd
-    from sgd import CheckpointStrategy, Trainer
+    from ray.sgd import CheckpointStrategy, Trainer
 
     def train_func():
         for epoch in range(3):
@@ -551,7 +554,7 @@ Checkpoints can be loaded into the training function in 2 steps:
 .. code-block:: python
 
     from ray import sgd
-    from sgd import Trainer
+    from ray.sgd import Trainer
 
     def train_func(config):
         checkpoint = sgd.load_checkpoint() or {}
@@ -635,7 +638,7 @@ Underneath the hood, RaySGD will automatically shard the given dataset.
         return model
 
     trainer = Trainer(num_workers=8, backend="torch")
-    dataset = ray.data.read_csv("...").filter().pipeline(length=50)
+    dataset = ray.data.read_csv("...").filter().window(blocks_per_window=50)
 
     result = trainer.run(
         train_func,
@@ -663,7 +666,7 @@ produce an object ("Trainable") that will be passed to Ray Tune.
 .. code-block:: python
 
     from ray import sgd
-    from sgd import Trainer
+    from ray.sgd import Trainer
 
     def train_func(config):
         # In this example, nothing is expected to change over epochs,
@@ -705,7 +708,7 @@ A couple caveats:
 
     from ray import tune
     from ray import sgd
-    from sgd import Trainer
+    from ray.sgd import Trainer
 
     def train_func(config):
         # In this example, nothing is expected to change over epochs,
@@ -738,7 +741,7 @@ A couple caveats:
 
     # Declare the specification for training.
     trainer = Trainer(backend="torch", num_workers=12, use_gpu=True)
-    dataset = ray.dataset.pipeline()
+    dataset = ray.dataset.window()
 
     # Convert this to a trainable.
     trainable = trainer.to_tune_trainable(training_func, dataset=dataset)
