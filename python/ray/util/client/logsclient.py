@@ -66,9 +66,11 @@ class LogstreamClient:
                 continue
             try:
                 for record in log_stream:
+                    msg = f"(remote) {record.msg}"
                     if record.level < 0:
-                        self.stdstream(level=record.level, msg=record.msg)
-                    self.log(level=record.level, msg=record.msg)
+                        self.stdstream(level=record.level, msg=msg)
+                    else:
+                        self.log(level=record.level, msg=msg)
                 return
             except grpc.RpcError as e:
                 reconnecting = self._process_rpc_error(e)
