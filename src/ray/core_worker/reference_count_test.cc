@@ -656,7 +656,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   auto subscriber = std::make_shared<mock_pubsub::MockSubscriber>();
   auto rc = std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
       rpc::WorkerAddress(rpc::Address()), publisher.get(), subscriber.get()));
-  CoreWorkerMemoryStore store(nullptr, rc);
+  CoreWorkerMemoryStore store(rc);
 
   // Tests putting an object with no references is ignored.
   RAY_CHECK(store.Put(buffer, id2));

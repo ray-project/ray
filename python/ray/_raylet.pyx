@@ -1720,7 +1720,7 @@ cdef class CoreWorker:
         return CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
                 c_object_id).SerializeAsString()
 
-    def serialize_and_promote_object_ref(self, ObjectRef object_ref):
+    def serialize_object_ref(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()

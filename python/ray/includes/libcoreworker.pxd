@@ -177,7 +177,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_vector[CObjectReference] GetObjectRefs(
                 const c_vector[CObjectID] &object_ids) const
 
-        void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
                               CAddress *owner_address,
                               c_string *object_status)

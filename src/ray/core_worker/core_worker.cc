@@ -535,10 +535,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
        options_.worker_type != WorkerType::RESTORE_WORKER),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
-      [this](const RayObject &object, const ObjectID &object_id) {
-        PutObjectIntoPlasma(object, object_id);
-        return Status::OK();
-      },
       reference_counter_, local_raylet_client_, options_.check_signals,
       [this](const RayObject &obj) {
         // Run this on the event loop to avoid calling back into the language runtime
@@ -1009,37 +1005,6 @@ CoreWorker::GetAllReferenceCounts() const {
   return counts;
 }
 
-void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &object_id) {
-  bool object_exists;
-  // This call will only be used by PromoteObjectToPlasma, which means that the
-  // object will always owned by us.
-  RAY_CHECK_OK(plasma_store_provider_->Put(
-      object, object_id, /* owner_address = */ rpc_address_, &object_exists));
-  if (!object_exists) {
-    // Tell the raylet to pin the object **after** it is created.
-    RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-    local_raylet_client_->PinObjectIDs(
-        rpc_address_, {object_id},
-        [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
-          // Only release the object once the raylet has responded to avoid the race
-          // condition that the object could be evicted before the raylet pins it.
-          if (!plasma_store_provider_->Release(object_id).ok()) {
-            RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
-                           << "), might cause a leak in plasma.";
-          }
-        });
-  }
-  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
-}
-
-void CoreWorker::PromoteObjectToPlasma(const ObjectID &object_id) {
-  // TODO(swang): Remove.
-  auto value = memory_store_->GetOrPromoteToPlasma(object_id);
-  if (value) {
-    PutObjectIntoPlasma(*value, object_id);
-  }
-}
-
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
 rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
@@ -1079,7 +1044,6 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner
          "which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";
-  RAY_LOG(DEBUG) << "Promoted object to plasma " << object_id;
 
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also

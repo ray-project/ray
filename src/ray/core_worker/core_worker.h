@@ -439,22 +439,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
-  /// Put an object into plasma. It's a version of Put that directly put the
-  /// object into plasma and also pin the object.
-  ///
-  /// \param[in] The ray object.
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  void PutObjectIntoPlasma(const RayObject &object, const ObjectID &object_id);
-
-  /// Promote an object to plasma. If the
-  /// object already exists locally, it will be put into the plasma store. If
-  /// it doesn't yet exist, it will be spilled to plasma once available.
-  ///
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  void PromoteObjectToPlasma(const ObjectID &object_id);
-
   /// Get the RPC address of this worker.
   ///
   /// \param[out] The RPC address of this worker.
