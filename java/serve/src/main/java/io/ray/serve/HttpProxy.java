@@ -1,6 +1,7 @@
 package io.ray.serve;
 
 import com.google.common.collect.ImmutableMap;
+import io.ray.api.Ray;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
@@ -45,6 +46,8 @@ public class HttpProxy implements ServeProxy {
   private HttpServer httpServer;
 
   private ProxyRouter proxyRouter;
+
+  private Object asyncContext = Ray.getAsyncContext();
 
   @Override
   public void init(Map<String, String> config, ProxyRouter proxyRouter) {
@@ -97,6 +100,8 @@ public class HttpProxy implements ServeProxy {
     public void handle(
         ClassicHttpRequest request, ClassicHttpResponse response, HttpContext context)
         throws HttpException, IOException {
+
+      Ray.setAsyncContext(asyncContext);
 
       int code = HttpURLConnection.HTTP_OK;
       Object result = null;
