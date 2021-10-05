@@ -250,23 +250,29 @@ def cql_loss(policy: Policy, model: ModelV2,
             critic_loss[1].backward(retain_graph=False)
             policy.critic_optims[1].step()
 
-    # Save for stats function.
-    policy.q_t = q_t_selected
-    policy.policy_t = policy_t
-    policy.log_pis_t = log_pis_t
-    model.td_error = td_error
-    policy.actor_loss = actor_loss
-    policy.critic_loss = critic_loss
-    policy.alpha_loss = alpha_loss
-    policy.log_alpha_value = model.log_alpha
-    policy.alpha_value = alpha
-    policy.target_entropy = model.target_entropy
-    # CQL Stats.
-    policy.cql_loss = cql_loss
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    # SAC stats.
+    model.tower_stats["q_t"] = q_t_selected
+    model.tower_stats["policy_t"] = policy_t
+    model.tower_stats["log_pis_t"] = log_pis_t
+    model.tower_stats["actor_loss"] = actor_loss
+    model.tower_stats["critic_loss"] = critic_loss
+    model.tower_stats["alpha_loss"] = alpha_loss
+    model.tower_stats["log_alpha_value"] = model.log_alpha
+    model.tower_stats["alpha_value"] = alpha
+    model.tower_stats["target_entropy"] = model.target_entropy
+    # CQL stats.
+    model.tower_stats["cql_loss"] = cql_loss
+
+    # TD-error tensor in final stats
+    # will be concatenated and retrieved for each individual batch item.
+    model.tower_stats["td_error"] = td_error
+
     if use_lagrange:
-        policy.log_alpha_prime_value = model.log_alpha_prime[0]
-        policy.alpha_prime_value = alpha_prime
-        policy.alpha_prime_loss = alpha_prime_loss
+        model.tower_stats["log_alpha_prime_value"] = model.log_alpha_prime[0]
+        model.tower_stats["alpha_prime_value"] = alpha_prime
+        model.tower_stats["alpha_prime_loss"] = alpha_prime_loss
 
         if obs.shape[0] == policy.config["train_batch_size"]:
             policy.alpha_prime_optim.zero_grad()
@@ -274,22 +280,27 @@ def cql_loss(policy: Policy, model: ModelV2,
             policy.alpha_prime_optim.step()
 
     # Return all loss terms corresponding to our optimizers.
-    if use_lagrange:
-        return tuple([policy.actor_loss] + policy.critic_loss +
-                     [policy.alpha_loss] + [policy.alpha_prime_loss])
-    return tuple([policy.actor_loss] + policy.critic_loss +
-                 [policy.alpha_loss])
+    return tuple([actor_loss] + critic_loss + [alpha_loss] +
+                 ([alpha_prime_loss] if use_lagrange else []))
 
 
 def cql_stats(policy: Policy,
               train_batch: SampleBatch) -> Dict[str, TensorType]:
-    sac_dict = stats(policy, train_batch)
-    sac_dict["cql_loss"] = torch.mean(torch.stack(policy.cql_loss))
+    # Get SAC loss stats.
+    stats_dict = stats(policy, train_batch)
+
+    # Add CQL loss stats to the dict.
+    stats_dict["cql_loss"] = torch.mean(
+        torch.stack(*policy.get_tower_stats("cql_loss")))
+
     if policy.config["lagrangian"]:
-        sac_dict["log_alpha_prime_value"] = policy.log_alpha_prime_value
-        sac_dict["alpha_prime_value"] = policy.alpha_prime_value
-        sac_dict["alpha_prime_loss"] = policy.alpha_prime_loss
-    return sac_dict
+        stats_dict["log_alpha_prime_value"] = torch.mean(
+            torch.stack(policy.get_tower_stats("log_alpha_prime_value")))
+        stats_dict["alpha_prime_value"] = torch.mean(
+            torch.stack(policy.get_tower_stats("alpha_prime_value")))
+        stats_dict["alpha_prime_loss"] = torch.mean(
+            torch.stack(policy.get_tower_stats("alpha_prime_loss")))
+    return stats_dict
 
 
 def cql_optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
