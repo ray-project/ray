@@ -1,4 +1,6 @@
+import os
 import copy
+import tempfile
 from typing import Any
 from typing import Dict
 
@@ -69,12 +71,19 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
+def get_temp_path() -> str:
+    ray_temp = os.path.join(tempfile.gettempdir(), "ray")
+    if not os.path.exists(ray_temp):
+        os.makedirs(ray_temp)
+    return ray_temp
+
+
 def get_lock_path(cluster_name: str) -> str:
-    return "/tmp/cluster-{}.lock".format(cluster_name)
+    return os.path.join(get_temp_path(), "cluster-{}.lock".format(cluster_name))
 
 
 def get_state_path(cluster_name: str) -> str:
-    return "/tmp/cluster-{}.state".format(cluster_name)
+    return os.path.join(get_temp_path(), "cluster-{}.state".format(cluster_name))
 
 
 def bootstrap_local(config: Dict[str, Any]) -> Dict[str, Any]:
