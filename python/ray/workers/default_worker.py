@@ -128,7 +128,7 @@ parser.add_argument(
     "--startup-token",
     required=True,
     type=int,
-    help="The startup token of the process for setup worker runtime env.")
+    help="The startup token assigned to this worker process by the raylet.")
 parser.add_argument(
     "--ray-debugger-external",
     default=False,

@@ -187,7 +187,7 @@ struct CoreWorkerOptions {
   int runtime_env_hash;
   /// The PID of the process for setup worker runtime env.
   pid_t worker_shim_pid;
-  /// The startup token of the process assgined to it
+  /// The startup token of the process assigned to it
   /// during startup via command line arguments. 
   /// This is needed because the actual core worker process
   /// may not have the same pid as the process the worker pool
