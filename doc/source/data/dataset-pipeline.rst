@@ -137,6 +137,11 @@ Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` s
 
 .. image:: dataset-pipeline-3.svg
 
+Changing Pipeline Structure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).window(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``.
+
 Example: Per-Epoch Shuffle Pipeline
 -----------------------------------
 
