@@ -405,16 +405,6 @@ def debug(address):
     type=str,
     help="the file that contains the autoscaling config")
 @click.option(
-    "--no-redirect-worker-output",
-    is_flag=True,
-    default=False,
-    help="do not redirect worker stdout and stderr to files")
-@click.option(
-    "--no-redirect-output",
-    is_flag=True,
-    default=False,
-    help="do not redirect non-worker stdout and stderr to files")
-@click.option(
     "--plasma-store-socket-name",
     default=None,
     help="manually specify the socket name of the plasma store")
@@ -482,7 +472,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           redis_max_memory, num_cpus, num_gpus, resources, head,
           include_dashboard, dashboard_host, dashboard_port,
           dashboard_agent_listen_port, block, plasma_directory,
-          autoscaling_config, no_redirect_worker_output, no_redirect_output,
+          autoscaling_config,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
           system_config, lru_evict, enable_object_reconstruction,
           metrics_export_port, no_monitor, tracing_startup_hook,
@@ -512,8 +502,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
 
-    redirect_worker_output = None if not no_redirect_worker_output else True
-    redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         min_worker_port=min_worker_port,
@@ -526,8 +514,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         memory=memory,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
-        redirect_worker_output=redirect_worker_output,
-        redirect_output=redirect_output,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
