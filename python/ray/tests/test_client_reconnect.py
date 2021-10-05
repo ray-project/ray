@@ -332,6 +332,7 @@ def test_valid_actor_state():
         assert ray.get(ref) == 100
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_valid_actor_state_2():
     """
     Do a full disconnect (cancel channel) every 11 requests. Failure
