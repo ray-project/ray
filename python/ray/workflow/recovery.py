@@ -78,6 +78,7 @@ def _construct_resume_workflow_from_step(
 
     with serialization.objectref_cache():
         input_workflows = []
+        print("recover:", result.workflows)
         for i, _step_id in enumerate(result.workflows):
             r = _construct_resume_workflow_from_step(reader, _step_id)
             if isinstance(r, Workflow):

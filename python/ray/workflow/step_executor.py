@@ -113,8 +113,6 @@ def _resolve_step_inputs(
     Returns:
         Instances of arguments.
     """
-    print("DBG>>>>>>>>>>>", step_inputs,
-          workflow_context.get_current_step_id())
     objects_mapping = []
     for obj_ref in step_inputs.workflow_outputs:
         obj, ref = _resolve_object_ref(obj_ref)
@@ -200,7 +198,7 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
         # TODO(suquark): in the future we should write to storage directly
         # with plasma store object in memory.
         args_obj = ray.get(inputs.inputs.args)
-
+    print("DBG: Store:", step_id, inputs.inputs)
     workflow_id = wf_storage._workflow_id
     storage = wf_storage._storage
     save_tasks = [
