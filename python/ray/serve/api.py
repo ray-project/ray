@@ -652,6 +652,14 @@ class Deployment:
         if init_kwargs is None:
             init_kwargs = {}
 
+        # TODO(architkulkarni): Enforce that autoscaling_config and
+        # user-provided num_replicas should be mutually exclusive.
+        if version is None and config.autoscaling_config is not None:
+            # TODO(architkulkarni): Remove this restriction.
+            raise ValueError(
+                "Currently autoscaling is only supported for "
+                "versioned deployments. Try @serve.deployment(version=...).")
+
         self._func_or_class = func_or_class
         self._name = name
         self._version = version
@@ -798,6 +806,8 @@ class Deployment:
             ray_actor_options: Optional[Dict] = None,
             user_config: Optional[Any] = None,
             max_concurrent_queries: Optional[int] = None,
+            _autoscaling_config: Optional[Union[Dict,
+                                                AutoscalingConfig]] = None,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -835,6 +845,9 @@ class Deployment:
 
         if ray_actor_options is None:
             ray_actor_options = self._ray_actor_options
+
+        if _autoscaling_config is None:
+            new_config.autoscaling_config = _autoscaling_config
 
         return Deployment(
             func_or_class,
@@ -888,7 +901,7 @@ def deployment(name: Optional[str] = None,
                ray_actor_options: Optional[Dict] = None,
                user_config: Optional[Any] = None,
                max_concurrent_queries: Optional[int] = None,
-               _autoscaling_config: Optional[dict] = None
+               _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None
                ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -906,7 +919,7 @@ def deployment(
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[dict] = None,
+        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -975,8 +988,7 @@ def deployment(
         config.max_concurrent_queries = max_concurrent_queries
 
     if _autoscaling_config is not None:
-        config.autoscaling_config = AutoscalingConfig.parse_obj(
-            _autoscaling_config)
+        config.autoscaling_config = _autoscaling_config
 
     def decorator(_func_or_class):
         return Deployment(

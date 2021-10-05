@@ -708,6 +708,7 @@ def test_object_ref_cleanup():
         assert result == ""
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25552 --port 0"],
