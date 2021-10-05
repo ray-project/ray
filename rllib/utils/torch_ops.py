@@ -48,8 +48,8 @@ def atanh(x):
 def concat_multi_gpu_td_errors(policy):
     td_error = torch.cat(
         [
-            getattr(t, "td_error", torch.tensor([0.0])).to(policy.device)
-            for t in policy.model_gpu_towers
+            t.tower_stats.get("td_error", torch.tensor([0.0])).to(
+                policy.device) for t in policy.model_gpu_towers
         ],
         dim=0)
     policy.td_error = td_error

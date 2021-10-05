@@ -275,9 +275,10 @@ def _expand_paths(paths: Union[str, List[str]],
     return expanded_paths, file_infos
 
 
-def _expand_directory(path: str,
-                      filesystem: "pyarrow.fs.FileSystem",
-                      exclude_prefixes: List[str] = [".", "_"]) -> List[str]:
+def _expand_directory(
+        path: str,
+        filesystem: "pyarrow.fs.FileSystem",
+        exclude_prefixes: Optional[List[str]] = None) -> List[str]:
     """
     Expand the provided directory path to a list of file paths.
 
@@ -292,6 +293,9 @@ def _expand_directory(path: str,
     Returns:
         A list of file paths contained in the provided directory.
     """
+    if exclude_prefixes is None:
+        exclude_prefixes = [".", "_"]
+
     from pyarrow.fs import FileSelector
     selector = FileSelector(path, recursive=True)
     files = filesystem.get_file_info(selector)
@@ -304,7 +308,7 @@ def _expand_directory(path: str,
         if not file_path.startswith(base_path):
             continue
         relative = file_path[len(base_path):]
-        if any(relative.startswith(prefix) for prefix in [".", "_"]):
+        if any(relative.startswith(prefix) for prefix in exclude_prefixes):
             continue
         filtered_paths.append((file_path, file_))
     # We sort the paths to guarantee a stable order.
