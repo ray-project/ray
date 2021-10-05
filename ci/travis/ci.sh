@@ -334,7 +334,41 @@ install_ray() {
   )
 }
 
+validate_wheels_commit_str() {
+  if [ "${OSTYPE}" = msys ]; then
+    echo "Windows builds do not set the commit string, skipping wheel commit validity check."
+    return 0
+  fi
+
+  EXPECTED_COMMIT=$TRAVIS_COMMIT
+
+  if [ -z "$EXPECTED_COMMIT" ]; then
+    echo "Could not validate expected wheel commits: TRAVIS_COMMIT is empty."
+    return 0
+  fi
+
+  for whl in .whl/*.whl; do
+    basename=${whl##*/}
+    folder=${basename%%-cp*}
+    WHL_COMMIT=$(unzip -p "$whl" "${folder}.data/purelib/ray/__init__.py" | grep "__commit__" | awk -F'"' '{print $2}')
+
+    if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
+      echo "Error: Observed wheel commit (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
+      exit 1
+    fi
+
+    echo "Wheel ${basename} has the correct commit: ${WHL_COMMIT}"
+  done
+
+  echo "All wheels passed the sanity check and have the correct wheel commit set."
+}
+
 build_wheels() {
+  # Create wheel output directory and empty contents
+  # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
+  mkdir -p .whl
+  rm -rf .whl/*
+
   case "${OSTYPE}" in
     linux*)
       # Mount bazel cache dir to the docker container.
@@ -355,7 +389,6 @@ build_wheels() {
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
 
-
       if [ -z "${BUILDKITE-}" ]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
@@ -371,11 +404,15 @@ build_wheels() {
           quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
+
+      validate_wheels_commit_str
       fi
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
       "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+
+      validate_wheels_commit_str
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
