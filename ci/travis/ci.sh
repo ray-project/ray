@@ -349,6 +349,13 @@ validate_wheels_commit_str() {
 
   for whl in .whl/*.whl; do
     basename=${whl##*/}
+
+    if [[ "$basename" =~ "_cpp" ]]; then
+      # cpp wheels cannot be checked this way
+      echo "Skipping CPP wheel ${basename} for wheel commit validation."
+      continue
+    fi
+
     folder=${basename%%-cp*}
     WHL_COMMIT=$(unzip -p "$whl" "${folder}.data/purelib/ray/__init__.py" | grep "__commit__" | awk -F'"' '{print $2}')
 
