@@ -13,12 +13,14 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
-# Operations that can be naively applied per dataset in the pipeline.
+# Operations that can be naively applied per dataset row in the pipeline.
 PER_DATASET_OPS = [
-    "map", "map_batches", "flat_map", "filter", "repartition",
-    "random_shuffle", "sort", "write_json", "write_csv", "write_parquet",
-    "write_datasource"
+    "map", "map_batches", "flat_map", "filter", "write_json", "write_csv",
+    "write_parquet", "write_datasource"
 ]
+
+# Operations that apply to each dataset holistically in the pipeline.
+HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
 
 # Similar to above but we should force evaluation immediately.
 PER_DATASET_OUTPUT_OPS = [
@@ -240,14 +242,15 @@ class DatasetPipeline(Generic[T]):
             for idx in range(n)
         ]
 
-    def window(self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
+    def window_over_datasets(
+            self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
         """Change the windowing (blocks per dataset) of this pipeline.
 
         Changes the windowing of this pipeline to the specified size. For
         example, if the current pipeline has two blocks per dataset, and
-        `.window(4)` is requested, adjacent datasets will be merged until each
-        dataset is 4 blocks. If `.window(1)` was requested the datasets will
-        be split into smaller windows.
+        `.window_over_datasets(4)` is requested, adjacent datasets will be
+        merged until each dataset is 4 blocks. If `.window(1)` was requested
+        the datasets will be split into smaller windows.
 
         Args:
             blocks_per_window: The new target blocks per window.
@@ -479,6 +482,33 @@ for method in PER_DATASET_OPS:
         return impl
 
     setattr(DatasetPipeline, method, make_impl(method))
+
+for method in HOLISTIC_PER_DATASET_OPS:
+
+    def make_impl(method):
+        delegate = getattr(Dataset, method)
+
+        @functools.wraps(delegate)
+        def impl(self, *args, **kwargs):
+            return self.foreach_dataset(
+                lambda ds: getattr(ds, method)(*args, **kwargs))
+
+        if impl.__annotations__.get("return"):
+            impl.__annotations__["return"] = impl.__annotations__[
+                "return"].replace("Dataset", "DatasetPipeline")
+
+        return impl
+
+    def deprecation_warning(method: str):
+        def impl(*a, **kw):
+            raise DeprecationWarning(
+                "`{}` is deprecated, use `{}_each_window` instead.".format(
+                    method, method))
+
+        return impl
+
+    setattr(DatasetPipeline, method, deprecation_warning(method))
+    setattr(DatasetPipeline, method + "_each_dataset", make_impl(method))
 
 for method in PER_DATASET_OUTPUT_OPS:
 

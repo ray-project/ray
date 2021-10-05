@@ -157,7 +157,7 @@ Transformations made prior to the Dataset prior to the call to ``.repeat()`` are
     pipe: DatasetPipeline = ray.data \
         .read_datasource(...) \
         .repeat() \
-        .random_shuffle()
+        .random_shuffle_each_dataset()
 
     @ray.remote(num_gpus=1)
     def train_func(pipe: DatasetPipeline):
@@ -186,7 +186,7 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
     pipe: DatasetPipeline = ray.data \
         .read_parquet("s3://bucket/dir") \
         .repeat() \
-        .random_shuffle()
+        .random_shuffle_each_dataset()
 
     @ray.remote(num_gpus=1)
     class TrainingWorker:
@@ -207,4 +207,4 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
 Changing Pipeline Structure
 ---------------------------
 
-Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).window(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``.
+Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).window_over_datasets(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``.
