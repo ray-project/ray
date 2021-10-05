@@ -38,12 +38,10 @@ class CheckpointStrategy:
     checkpoint_score_order: str = MAX
 
     def __post_init__(self):
-        if self.num_to_keep:
-            # TODO(matt): Implement num_to_keep deletion.
-            raise NotImplementedError("Deleting checkpoints is not yet "
-                                      "supported. Please use None to persist "
-                                      "all checkpoints or 0 to not persist "
-                                      "any checkpoints.")
+        if self.num_to_keep is not None and self.num_to_keep < 0:
+            raise ValueError(f"Received invalidate num_to_keep: "
+                             f"{self.num_to_keep}. "
+                             f"Must be None or non-negative integer.")
         if self.checkpoint_score_order not in (MAX, MIN):
             raise ValueError(f"checkpoint_score_order must be either "
                              f"\"{MAX}\" or \"{MIN}\".")

@@ -10,7 +10,7 @@ import ray
 import ray.util.sgd.v2 as sgd
 from ray._private.test_utils import wait_for_condition
 from ray.util.sgd.v2 import Trainer, TorchConfig, TensorflowConfig, \
-    HorovodConfig
+    HorovodConfig, CheckpointStrategy
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
     BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
@@ -439,18 +439,19 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
     def train():
         for i in range(2):
             sgd.save_checkpoint(epoch=i)
+            time.sleep(1)
 
     trainer = Trainer(config, num_workers=2, logdir=logdir)
     trainer.start()
     trainer.run(train)
 
-    assert trainer.latest_checkpoint_path is not None
+    assert trainer.best_checkpoint_path is not None
     if logdir is not None:
         assert trainer.logdir == Path(logdir).expanduser().resolve()
     assert trainer.latest_checkpoint_dir.is_dir()
-    assert trainer.latest_checkpoint_path.is_file()
-    assert trainer.latest_checkpoint_path.name == f"checkpoint_{2:06d}"
-    assert trainer.latest_checkpoint_path.parent.name == "checkpoints"
+    assert trainer.best_checkpoint_path.is_file()
+    assert trainer.best_checkpoint_path.name == f"checkpoint_{2:06d}"
+    assert trainer.best_checkpoint_path.parent.name == "checkpoints"
     latest_checkpoint = trainer.latest_checkpoint
 
     def validate():
@@ -458,8 +459,90 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
         assert checkpoint is not None
         assert checkpoint == latest_checkpoint
 
-    trainer.run(validate, checkpoint=trainer.latest_checkpoint_path)
+    trainer.run(validate, checkpoint=trainer.best_checkpoint_path)
 
+
+def test_persisted_checkpoint_strategy(ray_start_2_cpus):
+    logdir = "/tmp/test/trainer/test_persisted_checkpoint_strategy"
+    config = TestConfig()
+
+    checkpoint_strategy = CheckpointStrategy(
+        num_to_keep=2,
+        checkpoint_score_attribute="loss",
+        checkpoint_score_order="min")
+
+    def train():
+        sgd.save_checkpoint(loss=3)  # best
+        sgd.save_checkpoint(loss=7)  # worst, deleted
+        sgd.save_checkpoint(loss=5)
+
+    trainer = Trainer(config, num_workers=2, logdir=logdir)
+    trainer.start()
+
+    with pytest.raises(ValueError):
+        trainer.run(
+            train, checkpoint_strategy=CheckpointStrategy(num_to_keep=-1))
+
+    with pytest.raises(ValueError):
+        trainer.run(
+            train,
+            checkpoint_strategy=CheckpointStrategy(
+                checkpoint_score_order="invalid_order"))
+
+    with pytest.raises(ValueError):
+        trainer.run(
+            train,
+            checkpoint_strategy=CheckpointStrategy(
+                checkpoint_score_attribute="missing_attribute"))
+
+    trainer.run(train, checkpoint_strategy=checkpoint_strategy)
+
+    assert trainer.best_checkpoint_path is not None
+    if logdir is not None:
+        assert trainer.logdir == Path(logdir).expanduser().resolve()
+    assert trainer.latest_checkpoint_dir.is_dir()
+    assert trainer.best_checkpoint_path.is_file()
+    assert trainer.best_checkpoint_path.name == f"checkpoint_{1:06d}"
+
+    checkpoint_dir = trainer.latest_checkpoint_dir
+    file_names = [f.name for f in checkpoint_dir.iterdir()]
+    assert len(file_names) == 2
+    assert f"checkpoint_{1:06d}" in file_names
+    assert f"checkpoint_{2:06d}" not in file_names
+    assert f"checkpoint_{3:06d}" in file_names
+
+    def validate():
+        checkpoint = sgd.load_checkpoint()
+        assert checkpoint is not None
+        assert checkpoint["loss"] == 3
+
+    trainer.run(validate, checkpoint=trainer.best_checkpoint_path)
+
+
+def test_persisted_checkpoint_strategy_failure(ray_start_2_cpus):
+    logdir = "/tmp/test/trainer/test_persisted_checkpoint_strategy_failure"
+    config = TestConfig()
+    def train():
+        sgd.save_checkpoint(epoch=0)
+
+    trainer = Trainer(config, num_workers=2, logdir=logdir)
+    trainer.start()
+
+    with pytest.raises(ValueError):
+        trainer.run(
+            train, checkpoint_strategy=CheckpointStrategy(num_to_keep=-1))
+
+    with pytest.raises(ValueError):
+        trainer.run(
+            train,
+            checkpoint_strategy=CheckpointStrategy(
+                checkpoint_score_order="invalid_order"))
+
+    with pytest.raises(ValueError):
+        trainer.run(
+            train,
+            checkpoint_strategy=CheckpointStrategy(
+                checkpoint_score_attribute="missing_attribute"))
 
 def test_world_rank(ray_start_2_cpus):
     config = TestConfig()

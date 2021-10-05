@@ -1,4 +1,5 @@
 import abc
+import heapq
 import logging
 import os
 from collections import defaultdict
@@ -9,7 +10,7 @@ import ray
 from ray import cloudpickle
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
-from ray.util.sgd.v2.checkpoint import CheckpointStrategy
+from ray.util.sgd.v2.checkpoint import CheckpointStrategy, MAX
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     TUNE_INSTALLED, TUNE_CHECKPOINT_FILE_NAME, \
     TUNE_CHECKPOINT_ID, ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
@@ -40,6 +41,18 @@ class SGDBackendError(Exception):
     """Errors with BackendExecutor that should not be exposed to user."""
 
 
+class PersistedCheckpoint:
+    def __init__(self, path, priority):
+        self.path = path
+        self.priority = priority
+
+    def __lt__(self, other):
+        return self.priority < other.priority
+
+    def __repr__(self):
+        return f"PersistedCheckpoint({repr(self.path)})"
+
+
 class CheckpointManager:
     """Manages checkpoint processing, writing, and loading.
 
@@ -60,6 +73,8 @@ class CheckpointManager:
             checkpoint.
         latest_checkpoint_path (Optional[Path]): Path to the latest persisted
             checkpoint from the latest run.
+        best_checkpoint_path (Optional[Path]): Path to the best persisted
+            checkpoint from the latest run.
         latest_checkpoint_id (Optional[int]): The id of the most recently
             saved checkpoint.
         latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
@@ -72,6 +87,13 @@ class CheckpointManager:
 
         # Incremental unique checkpoint ID of this run.
         self._latest_checkpoint_id = 0
+
+        # Used for keeping top K checkpoints.
+        self._top_persisted_checkpoints = []
+
+        # Best checkpoint altogether.
+        # Used for exposing best_checkpoint_path.
+        self._best_persisted_checkpoint = None
 
     def on_start_training(
             self,
@@ -121,18 +143,84 @@ class CheckpointManager:
 
     def write_checkpoint(self, checkpoint: Dict):
         """Writes checkpoint to disk."""
-        if self._checkpoint_strategy.num_to_keep == 0:
+        num_to_keep = self._checkpoint_strategy.num_to_keep
+
+        if num_to_keep == 0:
             # Checkpoints should not be persisted to disk.
             return
 
-        # TODO(matt): Implement additional checkpoint strategy functionality.
-        # Get or create checkpoint dir.
-        self.latest_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        # Write checkpoint to disk.
-        with self.latest_checkpoint_path.open("wb") as f:
-            cloudpickle.dump(checkpoint, f)
-            logger.debug(f"Checkpoint successfully written to: "
-                         f"{self.latest_checkpoint_path}")
+        checkpoint_score_attribute = \
+            self._checkpoint_strategy.checkpoint_score_attribute
+        checkpoint_score_order = \
+            self._checkpoint_strategy.checkpoint_score_order
+        if checkpoint_score_attribute not in checkpoint:
+            raise ValueError(f"Unable to persist checkpoint for "
+                             f"checkpoint_score_attribute: "
+                             f"{checkpoint_score_attribute}. "
+                             f"Include this attribute in the call to "
+                             f"save_checkpoint.")
+        checkpoint_score = checkpoint[checkpoint_score_attribute]
+        try:
+            checkpoint_score = float(checkpoint_score)
+        except ValueError:
+            raise ValueError(f"Unable to persist checkpoint for "
+                             f"checkpoint_score_attribute: "
+                             f"{checkpoint_score_attribute} with value "
+                             f"{checkpoint_score}. "
+                             f"This attribute must be numerical.")
+
+        def priority(checkpoint_score_order, checkpoint_score):
+            if checkpoint_score_order == MAX:
+                return checkpoint_score
+            else:
+                return -checkpoint_score
+
+        checkpoint_priority = priority(checkpoint_score_order,
+                                       checkpoint_score)
+
+        persisted_checkpoint = PersistedCheckpoint(self.latest_checkpoint_path,
+                                                   checkpoint_priority)
+
+        def write_to_disk(path: Path):
+            # Get or create checkpoint dir.
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # Write checkpoint to disk.
+            with path.open("wb") as f:
+                cloudpickle.dump(checkpoint, f)
+                logger.debug(f"Checkpoint successfully written to: " f"{path}")
+
+        def remove_from_disk(path: Path):
+            os.remove(path)
+
+        if num_to_keep is None:
+            # Keep all checkpoints.
+            write_to_disk(self.latest_checkpoint_path)
+        elif len(self._top_persisted_checkpoints) < num_to_keep:
+            # Keep first num_to_keep checkpoints.
+            write_to_disk(self.latest_checkpoint_path)
+            heapq.heappush(self._top_persisted_checkpoints,
+                           persisted_checkpoint)
+        elif (persisted_checkpoint.priority >
+              self._top_persisted_checkpoints[0].priority):
+            # Keep top num_to_keep checkpoints.
+            write_to_disk(self.latest_checkpoint_path)
+            worst_checkpoint = heapq.heappushpop(
+                self._top_persisted_checkpoints, persisted_checkpoint)
+            worst_checkpoint_path = worst_checkpoint.path
+            remove_from_disk(worst_checkpoint_path)
+            logger.debug(f"Removed worst checkpoint from "
+                         f"{worst_checkpoint_path}.")
+        else:
+            # If the latest checkpoint has the same or lower priority, skip it.
+            logger.debug(f"Skipping checkpoint due to low score:"
+                         f"{self.latest_checkpoint_path}.")
+
+        # Update single best checkpoint.
+        if (self._best_persisted_checkpoint is None
+                or persisted_checkpoint.priority >
+                self._best_persisted_checkpoint.priority):
+            # If the latest checkpoint has the same or lower priority, skip it.
+            self._best_persisted_checkpoint = persisted_checkpoint
 
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
@@ -154,6 +242,14 @@ class CheckpointManager:
         if self._latest_checkpoint_id > 0:
             checkpoint_file = self.latest_checkpoint_file_name
             return self.latest_checkpoint_dir.joinpath(checkpoint_file)
+        else:
+            return None
+
+    @property
+    def best_checkpoint_path(self) -> Optional[Path]:
+        """Path to the best persisted checkpoint."""
+        if self._best_persisted_checkpoint:
+            return self._best_persisted_checkpoint.path
         else:
             return None
 
@@ -220,8 +316,8 @@ class BackendExecutor:
     Attributes:
         latest_checkpoint_dir (Optional[Path]): Path to the file directory for
             the checkpoints from the latest run. Configured through
-            ``start_training``.
-        latest_checkpoint_path (Optional[Path]): Path to the latest persisted
+            ``start_training``
+        best_checkpoint_path (Optional[Path]): Path to the best persisted
             checkpoint from the latest run.
         latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
             checkpoint may not be saved to disk.
@@ -650,9 +746,9 @@ class BackendExecutor:
         return self.checkpoint_manager.latest_checkpoint_dir
 
     @property
-    def latest_checkpoint_path(self) -> Optional[Path]:
-        """Path to the latest persisted checkpoint."""
-        return self.checkpoint_manager.latest_checkpoint_path
+    def best_checkpoint_path(self) -> Optional[Path]:
+        """Path to the best persisted checkpoint."""
+        return self.checkpoint_manager.best_checkpoint_path
 
     @property
     def latest_checkpoint_id(self) -> Optional[int]:
