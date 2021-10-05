@@ -5,6 +5,7 @@ import tree  # pip install dm_tree
 from typing import Dict, List, Tuple, Any
 
 import ray
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import \
     AGENT_STEPS_TRAINED_COUNTER, APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, \

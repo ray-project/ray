@@ -12,10 +12,12 @@ import logging
 import time
 from typing import Optional, Type
 
+import ray
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
+from rllib.evaluation.metrics import collect_metrics
 from ray.rllib.execution import synchronous_parallel_sample, train_one_step, \
     load_train_batch_and_train_one_step
 from ray.rllib.policy.policy import Policy
@@ -86,24 +88,29 @@ def training_iteration_fn(trainer: Trainer) -> ResultDict:
         train_results = load_train_batch_and_train_one_step(
             trainer, train_batch)
 
-    #if trainer.
-    #report = False
+    report = False
+    time_now = time.time()
+    if time_now - config["min_iter_time_s"] > trainer._last_time_reported:
+        trainer._last_time_reported = time_now
+        report = True
+    elif trainer._timesteps_since_reported + len(train_batch) > config["timesteps_per_iteration"]:
+        trainer._last_timestep_reported = trainer._timesteps_since_reported + len(train_batch)
+        trainer._timesteps_since_reported = 0
+        report = True
+    else:
+        trainer._timesteps_since_reported += len(train_batch)
 
-    #time_now = time.time()
-    #if time_now - config["min_iter_time_s"] > trainer._last_time_reported:
-    #    trainer._last_time_reported = time_now
-    #    report = True
-    #elif trainer._last_timestep + len(train_batch) > config["timesteps_per_iteration"]:
+    if report:
+        #metrics = ray.get(workers.remote_workers()[0].get_metrics.remote())
+        return collect_metrics(
+            workers.remote_workers() or [workers.local_worker()],
+            min_history=config["metrics_smoothing_episodes"],
+            timeout_seconds=config["collect_metrics_timeout"],
+        )
 
-    #if report:
-    #    return collect_metrics(
-    #        workers.remote_workers() or [workers.local_worker()],
-    #        min_history=config["metrics_smoothing_episodes"],
-    #        timeout_seconds=config["collect_metrics_timeout"],
-    #    )
-    #return {}
-
-    return train_results
+    return {
+        train_results,
+    }
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:

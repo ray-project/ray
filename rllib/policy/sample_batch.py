@@ -677,7 +677,7 @@ class SampleBatch(dict):
             return default
 
     @PublicAPI
-    def as_multi_agent(self) -> MultiAgentBatch:
+    def as_multi_agent(self) -> "MultiAgentBatch":
         """Returns the respective MultiAgentBatch using DEFAULT_POLICY_ID.
         
         Returns:
@@ -1249,7 +1249,7 @@ class MultiAgentBatch:
         return self
 
     @DeveloperAPI
-    def as_multi_agent(self) -> MultiAgentBatch:
+    def as_multi_agent(self) -> "MultiAgentBatch":
         """Simply returns `self` (already a MultiAgentBatch).
 
         Returns:
