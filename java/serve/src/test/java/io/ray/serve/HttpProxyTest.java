@@ -11,10 +11,14 @@ import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class HttpProxyTest {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(HttpProxyTest.class);
 
   @Test
   public void test() throws IOException {
@@ -29,6 +33,8 @@ public class HttpProxyTest {
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new).setName(Constants.SERVE_CONTROLLER_NAME).remote();
+      LOGGER.info("HttpProxyTest.test controller handle id : {}", controllerHandle.getId());
+
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
           endpointName,
