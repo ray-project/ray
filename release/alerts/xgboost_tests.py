@@ -43,7 +43,9 @@ def handle_result(created_on: datetime.datetime, category: str,
     else:
         # train scripts
         if test_name == "train_small":
-            target_time = 30
+            # Leave a couple of seconds for ray connect setup
+            # (without connect it should finish in < 30)
+            target_time = 45
         elif test_name == "train_moderate":
             target_time = 60
         elif test_name == "train_gpu":

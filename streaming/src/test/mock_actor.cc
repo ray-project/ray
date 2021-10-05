@@ -639,11 +639,10 @@ class StreamingWorker {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc == 5);
+  RAY_CHECK(argc == 4);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
   auto node_manager_port = std::stoi(std::string(argv[3]));
-  // auto runtime_env_hash = std::string(argv[4]); // Unused in this test
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::streaming::StreamingWorker worker(store_socket, raylet_socket, node_manager_port,
