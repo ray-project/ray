@@ -22,7 +22,6 @@
 #include <sstream>
 #include <string>
 #include <thread>
-
 #include <unordered_map>
 
 #include "ray/util/logging.h"
@@ -168,7 +167,7 @@ class InitShutdownRAII {
   /// \param shutdown_func The shutdown function.
   /// \param args The arguments for the init function.
   template <class InitFunc, class... Args>
-  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&... args)
+  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&...args)
       : shutdown_(shutdown_func) {
     init_func(args...);
   }
@@ -260,7 +259,7 @@ template <typename T>
 class ThreadPrivate {
  public:
   template <typename... Ts>
-  ThreadPrivate(Ts &&... ts) : t_(std::forward<Ts>(ts)...) {}
+  ThreadPrivate(Ts &&...ts) : t_(std::forward<Ts>(ts)...) {}
 
   T &operator*() {
     ThreadCheck();
