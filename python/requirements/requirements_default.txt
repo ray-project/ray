@@ -1,4 +1,4 @@
-aiohttp
+aiohttp>=3.7,<4.0.0
 aiohttp_cors
 aioredis<2
 colorful
