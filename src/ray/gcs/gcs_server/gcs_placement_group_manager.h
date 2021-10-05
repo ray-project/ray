@@ -15,8 +15,10 @@
 #pragma once
 #include <gtest/gtest_prod.h>
 
+#include <optional>
 #include <utility>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -216,7 +218,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param placement_group The placement_group whose creation task is infeasible.
   /// \param is_feasible whether the scheduler can be retry or not currently.
   void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
-                                      bool is_feasible = true);
+                                      ExponentialBackOff backoff, bool is_feasible);
 
   /// Handle placement_group creation task success. This should be called when the
   /// placement_group creation task has been scheduled successfully.
@@ -284,6 +286,19 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   std::string DebugString() const;
 
  private:
+  /// Push a placement group to pending queue.
+  ///
+  /// \param pg The placementgroup we are adding
+  /// \param rank The rank for this placement group. Semantically it's the time
+  /// this placement group to be scheduled. By default it'll be assigned to be
+  /// the current time.
+  /// \param exp_backer The exponential backoff. A default one will be given if
+  /// it's not set. This will be used to generate the deferred time for this pg.
+  void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,
+                         std::optional<int64_t> rank = std::nullopt,
+                         std::optional<ExponentialBackOff> exp_backer = std::nullopt);
+  void RemoveFromPendingQueue(const PlacementGroupID &pg_id);
+
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
 
@@ -329,12 +344,17 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
       registered_placement_groups_;
 
-  /// The pending placement_groups which will not be scheduled until there's a resource
-  /// change.
-  /// NOTE: When we remove placement group, we need to look for
-  /// `pending_placement_groups_` and delete the specific placement group, so we can't use
-  /// `std::priority_queue`.
-  std::deque<std::shared_ptr<GcsPlacementGroup>> pending_placement_groups_;
+  /// The pending placement_groups which will not be scheduled until there's a
+  /// resource change. The pending queue is represented as an ordered map, where
+  /// the key is the time to schedule the pg and value if a pair containing the
+  /// actual placement group and a exp-backoff.
+  /// When error happens, we'll retry it later and this can be simply done by
+  /// inserting an element into the queue with a bigger key. With this, we don't
+  /// need to post retry job to io context. And when schedule pending placement
+  /// group, we always start with the one with the smallest key.
+  absl::btree_multimap<int64_t,
+                       std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
+      pending_placement_groups_;
 
   /// The infeasible placement_groups that can't be scheduled currently.
   std::deque<std::shared_ptr<GcsPlacementGroup>> infeasible_placement_groups_;
@@ -374,6 +394,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
+
+  FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
+  FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);
+  FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder);
 };
 
 }  // namespace gcs

@@ -212,6 +212,7 @@ int main(int argc, char *argv[]) {
 
         // Configuration for the object manager.
         ray::ObjectManagerConfig object_manager_config;
+        object_manager_config.object_manager_address = node_ip_address;
         object_manager_config.object_manager_port = object_manager_port;
         object_manager_config.store_socket_name = store_socket_name;
 

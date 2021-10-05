@@ -5,7 +5,6 @@ import itertools
 import ray
 import torch
 
-from ray.util.sgd.torch.constants import USE_FP16, NUM_STEPS
 from ray.util.sgd import utils
 from ray.util.sgd.torch.utils import choose_amp_backend
 
@@ -63,6 +62,7 @@ class TorchRunner:
             world_rank=0,
             local_rank=0,
             is_distributed=False,
+            device=None,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,
@@ -121,11 +121,6 @@ class TorchRunner:
         info = info or {}
         self._toggle_profiling(profile=profile)
 
-        info.update({
-            NUM_STEPS: num_steps,
-            USE_FP16: self.use_fp16,
-            "epoch_idx": self.epochs,
-        })
         with self.timers.record("train_epoch"):
             if iterator is not None:
                 # Dataset will provide us with a list of tuples but we
@@ -141,7 +136,11 @@ class TorchRunner:
             else:
                 iterator = self.make_iterator(
                     training=True, num_steps=num_steps)
-            train_stats = self.training_operator.train_epoch(iterator, info)
+            train_stats = self.training_operator.train_epoch(
+                iterator,
+                info=info,
+                num_steps=num_steps,
+                epoch_idx=self.epochs)
 
         # This is so that `epochs` is first in ordering.
         stats = dict(epoch=self.epochs, **train_stats)
@@ -151,7 +150,6 @@ class TorchRunner:
 
     def validate(self, num_steps=None, profile=False, info=None):
         """Evaluates the model on the validation data set."""
-        info = info or {}
         self._toggle_profiling(profile=profile)
 
         with self.timers.record("validation"):
