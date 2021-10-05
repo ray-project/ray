@@ -722,9 +722,9 @@ class BackendState:
                backend_info: BackendInfo) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
-        If the backend already exists with the same version, this is a no-op
-        and returns the GoalId corresponding to the existing update if there
-        is one.
+        If the backend already exists with the same version and BackendConfig,
+        this is a no-op and returns the GoalId corresponding to the existing
+        update if there is one.
 
         Returns:
             GoalId, bool: The GoalId for the client to wait for and whether or
@@ -1073,8 +1073,9 @@ class BackendState:
                 f"Deployment '{self._name}' has "
                 f"{len(slow_start_replicas)} replicas that have taken "
                 f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
-                "may be caused by waiting for the cluster to auto-scale "
-                "or because the constructor is slow. Resources required "
+                "may be caused by waiting for the cluster to auto-scale, "
+                "waiting for a runtime environment to install, or a slow "
+                "constructor. Resources required "
                 f"for each replica: {required}, resources available: "
                 f"{available}. component=serve deployment={self._name}")
 
@@ -1302,9 +1303,9 @@ class BackendStateManager:
                        ) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
-        If the backend already exists with the same version, this is a no-op
-        and returns the GoalId corresponding to the existing update if there
-        is one.
+        If the backend already exists with the same version and BackendConfig,
+        this is a no-op and returns the GoalId corresponding to the existing
+        update if there is one.
 
         Returns:
             GoalId, bool: The GoalId for the client to wait for and whether or

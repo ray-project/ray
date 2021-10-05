@@ -145,6 +145,10 @@ Datasource Compatibility Matrices
 Creating Datasets
 -----------------
 
+.. tip::
+
+   Run ``pip install ray[data]`` to get started!
+
 Get started by creating Datasets from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``. Datasets can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
 
 .. code-block:: python
@@ -198,7 +202,7 @@ Finally, you can create a ``Dataset`` from existing data in the Ray object store
 
     # Create a Dataset from a list of Pandas DataFrame objects.
     pdf = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([ray.put(pdf)])
+    ds = ray.data.from_pandas([pdf])
 
     # Create a Dataset from a Dask-on-Ray DataFrame.
     dask_df = dd.from_pandas(pdf, npartitions=10)

@@ -41,7 +41,6 @@ void BuildCommonTaskSpec(
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
     const std::string debugger_breakpoint, const std::string &serialized_runtime_env,
     const std::vector<std::string> &runtime_env_uris,
-    const std::unordered_map<std::string, std::string> &override_environment_variables,
     const std::string &concurrency_group_name = "") {
   // Build common task spec.
   builder.SetCommonTaskSpec(
@@ -49,7 +48,7 @@ void BuildCommonTaskSpec(
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
       debugger_breakpoint, serialized_runtime_env, runtime_env_uris,
-      override_environment_variables, concurrency_group_name);
+      concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -104,10 +103,11 @@ void CoreWorkerProcess::Shutdown() {
   }
   RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::DRIVER)
       << "The `Shutdown` interface is for driver only.";
-  RAY_CHECK(core_worker_process->global_worker_);
-  core_worker_process->global_worker_->Disconnect();
-  core_worker_process->global_worker_->Shutdown();
-  core_worker_process->RemoveWorker(core_worker_process->global_worker_);
+  auto global_worker = core_worker_process->GetGlobalWorker();
+  RAY_CHECK(global_worker);
+  global_worker->Disconnect();
+  global_worker->Shutdown();
+  core_worker_process->RemoveWorker(global_worker);
   core_worker_process.reset();
 }
 
@@ -261,7 +261,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &work
   if (!core_worker_process) {
     return nullptr;
   }
-  absl::ReaderMutexLock workers_lock(&core_worker_process->worker_map_mutex_);
+  absl::ReaderMutexLock workers_lock(&core_worker_process->mutex_);
   auto it = core_worker_process->workers_.find(worker_id);
   if (it != core_worker_process->workers_.end()) {
     return it->second;
@@ -272,8 +272,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &work
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized();
   if (core_worker_process->options_.num_workers == 1) {
-    RAY_CHECK(core_worker_process->global_worker_) << "global_worker_ must not be NULL";
-    return *core_worker_process->global_worker_;
+    auto global_worker = core_worker_process->GetGlobalWorker();
+    RAY_CHECK(global_worker) << "global_worker_ must not be NULL";
+    return *global_worker;
   }
   auto ptr = current_core_worker_.lock();
   RAY_CHECK(ptr != nullptr)
@@ -284,7 +285,7 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
   EnsureInitialized();
   if (core_worker_process->options_.num_workers == 1) {
-    RAY_CHECK(core_worker_process->global_worker_->GetWorkerID() == worker_id);
+    RAY_CHECK(core_worker_process->GetGlobalWorker()->GetWorkerID() == worker_id);
     return;
   }
   current_core_worker_ = core_worker_process->GetWorker(worker_id);
@@ -292,10 +293,15 @@ void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
     const WorkerID &worker_id) const {
-  absl::ReaderMutexLock lock(&worker_map_mutex_);
+  absl::ReaderMutexLock lock(&mutex_);
   auto it = workers_.find(worker_id);
   RAY_CHECK(it != workers_.end()) << "Worker " << worker_id << " not found.";
   return it->second;
+}
+
+std::shared_ptr<CoreWorker> CoreWorkerProcess::GetGlobalWorker() {
+  absl::ReaderMutexLock lock(&mutex_);
+  return global_worker_;
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
@@ -303,12 +309,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
       options_,
       global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
   RAY_LOG(DEBUG) << "Worker " << worker->GetWorkerID() << " is created.";
+  absl::WriterMutexLock lock(&mutex_);
   if (options_.num_workers == 1) {
     global_worker_ = worker;
   }
   current_core_worker_ = worker;
 
-  absl::MutexLock lock(&worker_map_mutex_);
   workers_.emplace(worker->GetWorkerID(), worker);
   RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
   return worker;
@@ -316,6 +322,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
 
 void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
   worker->WaitForShutdown();
+  absl::WriterMutexLock lock(&mutex_);
   if (global_worker_) {
     RAY_CHECK(global_worker_ == worker);
   } else {
@@ -323,7 +330,6 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
   }
   current_core_worker_.reset();
   {
-    absl::MutexLock lock(&worker_map_mutex_);
     workers_.erase(worker->GetWorkerID());
     RAY_LOG(INFO) << "Removed worker " << worker->GetWorkerID();
   }
@@ -337,9 +343,10 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
   RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::WORKER);
   if (core_worker_process->options_.num_workers == 1) {
     // Run the task loop in the current thread only if the number of workers is 1.
-    auto worker = core_worker_process->global_worker_
-                      ? core_worker_process->global_worker_
-                      : core_worker_process->CreateWorker();
+    auto worker = core_worker_process->GetGlobalWorker();
+    if (!worker) {
+      worker = core_worker_process->CreateWorker();
+    }
     worker->RunTaskExecutionLoop();
     core_worker_process->RemoveWorker(worker);
   } else {
@@ -1026,6 +1033,7 @@ void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &ob
 }
 
 void CoreWorker::PromoteObjectToPlasma(const ObjectID &object_id) {
+  // TODO(swang): Remove.
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
     PutObjectIntoPlasma(*value, object_id);
@@ -1662,22 +1670,13 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
-  // Propagate existing environment variable overrides, but override them with any new
-  // ones
-  std::unordered_map<std::string, std::string> current_override_environment_variables =
-      worker_context_.GetCurrentOverrideEnvironmentVariables();
-  std::unordered_map<std::string, std::string> override_environment_variables =
-      task_options.override_environment_variables;
-  override_environment_variables.insert(current_override_environment_variables.begin(),
-                                        current_override_environment_variables.end());
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, placement_options,
                       placement_group_capture_child_tasks, debugger_breakpoint,
-                      task_options.serialized_runtime_env, task_options.runtime_env_uris,
-                      override_environment_variables);
+                      task_options.serialized_runtime_env, task_options.runtime_env_uris);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
@@ -1713,12 +1712,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   // Propagate existing environment variable overrides, but override them with any new
   // ones
-  std::unordered_map<std::string, std::string> current_override_environment_variables =
-      worker_context_.GetCurrentOverrideEnvironmentVariables();
-  std::unordered_map<std::string, std::string> override_environment_variables =
-      actor_creation_options.override_environment_variables;
-  override_environment_variables.insert(current_override_environment_variables.begin(),
-                                        current_override_environment_variables.end());
+  std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
@@ -1739,8 +1733,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.placement_group_capture_child_tasks,
                       "", /* debugger_breakpoint */
                       actor_creation_options.serialized_runtime_env,
-                      actor_creation_options.runtime_env_uris,
-                      override_environment_variables);
+                      actor_creation_options.runtime_env_uris);
 
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id,
@@ -1917,7 +1910,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   const auto task_name = task_options.name.empty()
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
-  const std::unordered_map<std::string, std::string> override_environment_variables = {};
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
@@ -1926,7 +1918,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
                       "",   /* debugger_breakpoint */
                       "{}", /* serialized_runtime_env */
                       {},   /* runtime_env_uris */
-                      override_environment_variables,
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
@@ -2197,6 +2188,14 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
+  // Modify the worker's per function counters.
+  std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  {
+    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+    task_counter_.Add(TaskCounter::kPending, func_name, -1);
+    task_counter_.Add(TaskCounter::kRunning, func_name, 1);
+  }
+
   if (!options_.is_local_mode) {
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId());
@@ -2292,6 +2291,14 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       resource_ids_.reset(new ResourceMappingType());
     }
   }
+
+  // Modify the worker's per function counters.
+  {
+    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+    task_counter_.Add(TaskCounter::kRunning, func_name, -1);
+    task_counter_.Add(TaskCounter::kFinished, func_name, 1);
+  }
+
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
   if (status.IsCreationTaskError()) {
@@ -2460,8 +2467,15 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
     return;
   }
 
-  // Increment the task_queue_length
+  // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
+  std::string func_name =
+      FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
+          ->CallString();
+  {
+    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+    task_counter_.Add(TaskCounter::kPending, func_name, 1);
+  }
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
@@ -3204,6 +3218,25 @@ const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
 std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_client_; }
 
 bool CoreWorker::IsExiting() const { return exiting_; }
+
+std::unordered_map<std::string, std::vector<uint64_t>> CoreWorker::GetActorCallStats()
+    const {
+  absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
+  std::unordered_map<std::string, std::vector<uint64_t>> total_counts;
+
+  for (const auto &count : task_counter_.pending_tasks_counter_map_) {
+    total_counts[count.first].resize(3, 0);
+    total_counts[count.first][0] = count.second;
+  }
+  for (const auto &count : task_counter_.running_tasks_counter_map_) {
+    total_counts[count.first][1] = count.second;
+  }
+  for (const auto &count : task_counter_.finished_tasks_counter_map_) {
+    total_counts[count.first][2] = count.second;
+  }
+
+  return total_counts;
+}
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<ActorID> actor_ids;

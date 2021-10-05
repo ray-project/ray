@@ -23,7 +23,7 @@ import urllib.request
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
-SUPPORTED_BAZEL = (3, 4, 1)
+SUPPORTED_BAZEL = (4, 2, 1)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -184,6 +184,11 @@ ray_files += [
 # in this directory
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
+        "data": [
+            "pandas",
+            "pyarrow>=4.0.1",
+            "fsspec",
+        ],
         "default": [
             "aiohttp",
             "aiohttp_cors",
