@@ -729,7 +729,7 @@ class Dataset(Generic[T]):
             bl = ds._blocks
             if isinstance(bl, LazyBlockList):
                 if preserve_order:
-                    list(bl)
+                    list(bl)  # Force evaluation of blocks.
                 for block, meta in zip(bl._blocks, bl._metadata):
                     blocks.append(block)
                     metadata.append(meta)
