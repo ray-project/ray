@@ -340,7 +340,11 @@ validate_wheels_commit_str() {
     return 0
   fi
 
-  EXPECTED_COMMIT=$TRAVIS_COMMIT
+  if [ -n "${BUILDKITE_COMMIT}" ]; then
+    EXPECTED_COMMIT=${BUILDKITE_COMMIT:-}
+  else
+    EXPECTED_COMMIT=${TRAVIS_COMMIT:-}
+  fi
 
   if [ -z "$EXPECTED_COMMIT" ]; then
     echo "Could not validate expected wheel commits: TRAVIS_COMMIT is empty."
