@@ -2,7 +2,6 @@ from typing import Any, Dict, Optional
 import uuid
 
 import ray._private.gcs_utils as gcs_utils
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
 
 
 class JobConfig:
@@ -49,6 +48,7 @@ class JobConfig:
         return self.get_proto_job_config().SerializeToString()
 
     def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
+        from ray._private.runtime_env.validation import ParsedRuntimeEnv
         self._parsed_runtime_env = ParsedRuntimeEnv(runtime_env or {})
         self.runtime_env = runtime_env or dict()
         self._cached_pb = None
