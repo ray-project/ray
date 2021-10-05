@@ -93,7 +93,7 @@ class will allow you to load a model using its MLflow `Model URI`:
   model_uri = "model:/my_registered_model/Production"
   MLflowDeployment.deploy(model_uri)
 
-To serve multiple different MLflow models in the same program, use the `name` option:
+To serve multiple different MLflow models in the same program, use the ``name`` option:
 
 .. code-block:: python
 
