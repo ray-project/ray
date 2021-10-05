@@ -137,6 +137,8 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
 
         thing1 = f.remote(6)  # noqa
         thing2 = ray.put("Hello World")  # noqa
+        # Waits until server returns ObjectID for put.
+        assert ray.get(thing2) == "Hello World"
 
         # One put, one function -- the function result thing1 is
         # in a different category, according to the raylet.

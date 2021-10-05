@@ -412,8 +412,8 @@ class Worker:
                 response: Union[ray_client_pb2.DataResponse, Exception]):
             if isinstance(response, Exception):
                 if isinstance(response, grpc.RpcError):
-                    resp = decode_exception(response)
-                id_future.set_exception(resp)
+                    response = decode_exception(response)
+                id_future.set_exception(response)
                 return
 
             resp = response.put
