@@ -299,18 +299,21 @@ class CoreWorkerProcess {
   /// \param[in] workerId The worker ID.
   /// \return The `CoreWorker` instance.
   std::shared_ptr<CoreWorker> GetWorker(const WorkerID &worker_id) const
-      LOCKS_EXCLUDED(worker_map_mutex_);
+      LOCKS_EXCLUDED(mutex_);
 
   /// Create a new `CoreWorker` instance.
   ///
   /// \return The newly created `CoreWorker` instance.
-  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(worker_map_mutex_);
+  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(mutex_);
 
   /// Remove an existing `CoreWorker` instance.
   ///
   /// \param[in] The existing `CoreWorker` instance.
   /// \return Void.
-  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
+  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(mutex_);
+
+  /// Get the `GlobalWorker` instance, if the number of workers is 1.
+  std::shared_ptr<CoreWorker> GetGlobalWorker() LOCKS_EXCLUDED(mutex_);
 
   /// The various options.
   const CoreWorkerOptions options_;
@@ -320,17 +323,16 @@ class CoreWorkerProcess {
   static thread_local std::weak_ptr<CoreWorker> current_core_worker_;
 
   /// The only core worker instance, if the number of workers is 1.
-  std::shared_ptr<CoreWorker> global_worker_;
+  std::shared_ptr<CoreWorker> global_worker_ GUARDED_BY(mutex_);
 
   /// The worker ID of the global worker, if the number of workers is 1.
   const WorkerID global_worker_id_;
 
   /// Map from worker ID to worker.
-  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_
-      GUARDED_BY(worker_map_mutex_);
+  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_ GUARDED_BY(mutex_);
 
-  /// To protect accessing the `workers_` map.
-  mutable absl::Mutex worker_map_mutex_;
+  /// To protect access to workers_ and global_worker_
+  mutable absl::Mutex mutex_;
 };
 
 /// The root class that contains all the core and language-independent functionalities
