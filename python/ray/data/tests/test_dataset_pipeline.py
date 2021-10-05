@@ -71,6 +71,51 @@ def test_basic_pipeline(ray_start_regular_shared):
     assert pipe.sum() == 450
 
 
+def test_window(ray_start_regular_shared):
+    ds = ray.data.range(10)
+    pipe = ds.window(blocks_per_window=1)
+    assert str(pipe) == "DatasetPipeline(length=10, num_stages=1)"
+    pipe = pipe.window(blocks_per_window=3)
+    assert str(pipe) == "DatasetPipeline(length=None, num_stages=1)"
+    datasets = list(pipe.iter_datasets())
+    assert len(datasets) == 4
+    assert datasets[0].take() == [0, 1, 2]
+    assert datasets[1].take() == [3, 4, 5]
+    assert datasets[2].take() == [6, 7, 8]
+    assert datasets[3].take() == [9]
+
+    ds = ray.data.range(10)
+    pipe = ds.window(blocks_per_window=5)
+    assert str(pipe) == "DatasetPipeline(length=2, num_stages=1)"
+    pipe = pipe.window(blocks_per_window=3)
+    assert str(pipe) == "DatasetPipeline(length=None, num_stages=1)"
+    datasets = list(pipe.iter_datasets())
+    assert len(datasets) == 4
+    assert datasets[0].take() == [0, 1, 2]
+    assert datasets[1].take() == [3, 4, 5]
+    assert datasets[2].take() == [6, 7, 8]
+    assert datasets[3].take() == [9]
+
+
+def test_repeat(ray_start_regular_shared):
+    ds = ray.data.range(5)
+    pipe = ds.window(blocks_per_window=1)
+    assert str(pipe) == "DatasetPipeline(length=5, num_stages=1)"
+    pipe = pipe.repeat(2)
+    assert str(pipe) == "DatasetPipeline(length=10, num_stages=1)"
+    assert pipe.take() == (list(range(5)) + list(range(5)))
+
+    ds = ray.data.range(5)
+    pipe = ds.window(blocks_per_window=1)
+    pipe = pipe.repeat()
+    assert str(pipe) == "DatasetPipeline(length=None, num_stages=1)"
+    assert len(pipe.take(99)) == 99
+
+    pipe = ray.data.range(5).repeat()
+    with pytest.raises(ValueError):
+        pipe.repeat()
+
+
 def test_from_iterable(ray_start_regular_shared):
     pipe = DatasetPipeline.from_iterable(
         [lambda: ray.data.range(3), lambda: ray.data.range(2)])

@@ -264,12 +264,16 @@ class DatasetPipeline(Generic[T]):
                         self._buffer = next(self._original_iter)
                     while self._buffer.num_blocks() < blocks_per_window:
                         self._buffer = self._buffer.union(
-                            next(self._original_iter))
+                            next(self._original_iter), preserve_order=True)
                     res, self._buffer = self._buffer._divide(blocks_per_window)
-                    return res
+                    assert res.num_blocks() <= blocks_per_window, res
+                    return lambda: res
                 except StopIteration:
-                    if self._buffer is None:
-                        return self._buffer
+                    if self._buffer:
+                        res = self._buffer
+                        assert res.num_blocks() <= blocks_per_window, res
+                        self._buffer = None
+                        return lambda: res
                     else:
                         raise
 
@@ -280,7 +284,7 @@ class DatasetPipeline(Generic[T]):
             def __iter__(self):
                 return Iterator(self._original_iter)
 
-        return DatasetPipeline.from_iterable(ReWindow(self.iter_datasets()))
+        return DatasetPipeline(ReWindow(self.iter_datasets()), length=None)
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
@@ -316,15 +320,14 @@ class DatasetPipeline(Generic[T]):
                     try:
                         res = next(self._original_iter)
                         self._results.append(res)
-                        return res
+                        return lambda: res
                     except StopIteration:
                         self._original_iter = None
                 # Going through a repeat of the pipeline.
                 if self._i < self._max_i:
-                    res = self._results[self._i]
+                    res = self._results[self._i % len(self._results)]
                     self._i += 1
-                    self._i %= len(self._results)
-                    return res
+                    return lambda: res
                 else:
                     raise StopIteration
 
@@ -334,16 +337,15 @@ class DatasetPipeline(Generic[T]):
                 self._original_len = original_len
 
             def __iter__(self):
-                return Iterator(self._original_iter)
+                return Iterator(self._original_iter, self._original_len)
 
-            def __len__(self):
-                if times:
-                    return times * len(self._original_len)
-                else:
-                    return None
+        if times:
+            length = times * self._length
+        else:
+            length = None
 
-        return DatasetPipeline.from_iterable(
-            Repeat(self.iter_datasets(), self._length))
+        return DatasetPipeline(
+            Repeat(self.iter_datasets(), self._length), length=length)
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.

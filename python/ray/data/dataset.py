@@ -704,13 +704,15 @@ class Dataset(Generic[T]):
 
         return splits
 
-    def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
+    def union(self, *other: List["Dataset[T]"], preserve_order: bool = False) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
 
         Args:
             other: List of datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
                 behavior is undefined.
+            preserve_order: Whether to preserve the order of the data blocks.
+                This may trigger eager loading of data from disk.
 
         Returns:
             A new dataset holding the union of their data.
@@ -725,6 +727,8 @@ class Dataset(Generic[T]):
         for ds in datasets:
             bl = ds._blocks
             if isinstance(bl, LazyBlockList):
+                if preserve_order:
+                    list(bl)
                 for block, meta in zip(bl._blocks, bl._metadata):
                     blocks.append(block)
                     metadata.append(meta)
@@ -1641,11 +1645,8 @@ class Dataset(Generic[T]):
 
             def __iter__(self):
                 return Iterator(self._ds)
-            
-            def __len__(self):
-                return times
 
-        return DatasetPipeline.from_iterable(Iterable(self))
+        return DatasetPipeline(Iterable(self), length=times)
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
         raise DeprecationWarning("Use .window(n) instead of .pipeline(n)")
@@ -1721,11 +1722,8 @@ class Dataset(Generic[T]):
             def __iter__(self):
                 return Iterator(self._splits)
 
-            def __len__(self):
-                return len(self._splits)
-
         it = Iterable(self._blocks)
-        return DatasetPipeline.from_iterable(it)
+        return DatasetPipeline(it, length=len(it._splits))
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:

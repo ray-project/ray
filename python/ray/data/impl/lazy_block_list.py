@@ -39,9 +39,15 @@ class LazyBlockList(BlockList[T]):
 
     def divide(self, block_idx: int) -> ("BlockList", "BlockList"):
         self._check_if_cleared()
-        return (
-            LazyBlockList(self._calls[:block_idx], self._metadata[:block_idx]),
-            LazyBlockList(self._calls[block_idx:], self._metadata[block_idx:]))
+        left = self.copy()
+        right = self.copy()
+        left._calls = left._calls[:block_idx]
+        left._blocks = left._blocks[:block_idx]
+        left._metadata = left._metadata[:block_idx]
+        right._calls = right._calls[block_idx:]
+        right._blocks = right._blocks[block_idx:]
+        right._metadata = right._metadata[block_idx:]
+        return left, right
 
     def __len__(self):
         self._check_if_cleared()
