@@ -18,6 +18,9 @@
 # Dependencies
 /python/setup.py @richardliaw @ericl @edoakes
 
+# Formatting tool
+/ci/travis/format.sh @ericl
+
 # Python worker.
 #/python/ray/ @ray-project/ray-core-python
 #!/python/ray/tune/ @ray-project/ray-core-python
