@@ -179,14 +179,11 @@ class RayS3KVStore(KVStoreBase):
             namepsace: str,
             bucket="",
             prefix="",
-            region_name="us-west-2",
-            aws_access_key_id=None,
-            aws_secret_access_key=None,
-            aws_session_token=None,
+            region_name="us-west-2"
     ):
         self._namespace = namepsace
         self._bucket = bucket
-        self._prefix = prefix + "/" if prefix else ""
+        self._prefix = prefix
         if not boto3:
             raise ImportError(
                 "You tried to use S3KVstore client without boto3 installed."
@@ -194,12 +191,12 @@ class RayS3KVStore(KVStoreBase):
         self._s3 = boto3.client(
             "s3",
             region_name=region_name,
-            aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key,
-            aws_session_token=aws_session_token)
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", None),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", None),
+            aws_session_token=os.environ.get("AWS_SESSION_TOKEN", None))
 
     def get_storage_key(self, key: str) -> str:
-        return f"{self._prefix}{self._namespace}-{key}"
+        return f"{self._prefix}/{self._namespace}-{key}"
 
     def put(self, key: str, val: bytes) -> bool:
         """Put the key-value pair into the store.
