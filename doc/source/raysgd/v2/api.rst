@@ -55,7 +55,7 @@ Callbacks
 SGDCallback
 ~~~~~~~~~~~
 
-.. autoclass:: ray.sgd.callbacks.SGDCallback
+.. autoclass:: ray.sgd.SGDCallback
     :members:
 
 .. _sgd-api-json-logger-callback:
