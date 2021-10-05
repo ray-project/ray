@@ -424,6 +424,10 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
 
 void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklog() {
   absl::MutexLock lock(&mu_);
+  ReportWorkerBacklogInternal();
+}
+
+void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogInternal() {
   std::unordered_map<SchedulingClass, std::pair<TaskSpecification, int64_t>> backlogs;
   for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
     const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
@@ -456,7 +460,7 @@ void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
 
   if (scheduling_key_entry.last_reported_backlog_size !=
       scheduling_key_entry.BacklogSize()) {
-    ReportWorkerBacklog();
+    ReportWorkerBacklogInternal();
   }
 }
 

@@ -134,6 +134,11 @@ class CoreWorkerDirectTaskSubmitter {
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
       const rpc::Address *raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  /// Report worker backlog information to the local raylet
+  void ReportWorkerBacklogInternal() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Report backlog if the backlog size is changed for this scheduling key
+  /// since last report
   void ReportWorkerBacklogIfNeeded(const SchedulingKey &scheduling_key)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
