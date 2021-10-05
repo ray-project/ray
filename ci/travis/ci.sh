@@ -407,6 +407,7 @@ build_wheels() {
         quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
       else
         rm -rf /ray-mount/*
+        rm -rf /ray-mount/.whl || true
         cp -rT /ray /ray-mount
         ls -a /ray-mount
         docker run --rm -v /ray-mount:/ray-mounted ubuntu:focal ls /
