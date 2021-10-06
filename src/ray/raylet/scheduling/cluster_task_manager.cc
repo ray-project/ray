@@ -1075,8 +1075,13 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
 }
 
 void ClusterTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {
-  for (const auto &entry : backlog_tracker_) {
-    SetWorkerBacklog(entry.first, worker_id, 0);
+  for (auto it = backlog_tracker_.begin(); it != backlog_tracker_.end();) {
+    it->second.erase(worker_id);
+    if (it->second.empty()) {
+      it = backlog_tracker_.erase(it);
+    } else {
+      ++it;
+    }
   }
 }
 

@@ -36,8 +36,7 @@ message ReportWorkerBacklogRequest {
   repeated WorkerBacklogReport backlog_reports = 2;
 }
 
-message ReportWorkerBacklogReply {
-}
+message ReportWorkerBacklogReply {}
 
 // Request a worker from the raylet with the specified resources.
 message RequestWorkerLeaseRequest {
