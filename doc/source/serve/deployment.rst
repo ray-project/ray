@@ -207,6 +207,46 @@ Please refer to the Kubernetes documentation for more information.
 .. _`NodePort`: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 
 
+Failure Recovery
+================
+Ray Serve is resilient to any component failures within the Ray cluster out of the box.
+However, when the Ray cluster goes down, you would need to recover the state by creating a new Ray cluster and re-deploys all Serve deployments into that cluster.
+
+Ray Serve added an experimental feature to help recovering the state.
+This features enables Serve to write all your deployment configuration and code into a storage location. 
+Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state. 
+
+Here is how to use it:
+
+.. warning::
+  The API is experimental and subject to change. We welcome you to test it out
+  and leave us feedback through github issues or discussion forum!
+
+
+You can use both the start argument and the CLI to specify it:
+
+.. code-block:: python
+
+    serve.start(_checkpoint_path=...)
+
+or 
+
+.. code-block:: shell
+
+    serve start --checkpoint-path ...
+
+
+The checkpoint path argument accepts the following format:
+
+- ``file://local_file_path``
+- ``s3://bucket/path``
+- ``custom://importable.custom_python.Class/path``
+
+While we have native support for on disk and AWS S3 storage, there is no reason we cannot support more. 
+You can easily try to plug into your own implementation using the ``custom://`` path and inherit the `KVStoreBase`_ class.
+
+.. _`KVStoreBase`: https://github.com/ray-project/ray/blob/master/python/ray/serve/storage/kv_store_base.py
+
 .. _serve-monitoring:
 
 Monitoring
