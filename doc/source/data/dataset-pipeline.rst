@@ -92,58 +92,6 @@ While most Dataset operations are per-row (e.g., map, filter), some operations a
     # 0
     # 3
 
-Changing Pipeline Structure
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``:
-
-.. code-block:: python
-
-    # Window followed by repeat.
-    ray.data.range(5) \
-        .window(blocks_per_window=2) \
-        .repeat(2) \
-        .show_windows()
-    # ->
-    # === Window 0 ===
-    # 0
-    # 1
-    # === Window 1 ===
-    # 2
-    # 3
-    # === Window 2 ===
-    # 4
-    # === Window 3 ===
-    # 0
-    # 1
-    # === Window 4 ===
-    # 2
-    # 3
-    # === Window 5 ===
-    # 4
-
-    # Repeat followed by window.
-    ray.data.range(5) \
-        .repeat(2) \
-        .rewindow(blocks_per_window=2) \
-        .show_windows()
-    # ->
-    # === Window 0 ===
-    # 0
-    # 1
-    # === Window 1 ===
-    # 2
-    # 3
-    # === Window 2 ===
-    # 4
-    # 0
-    # === Window 3 ===
-    # 1
-    # 2
-    # === Window 4 ===
-    # 3
-    # 4
-
 Example: Pipelined Batch Inference
 ----------------------------------
 
@@ -274,3 +222,55 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
 **Pipeline**:
 
 .. image:: dataset-repeat-2.svg
+
+Changing Pipeline Structure
+---------------------------
+
+Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``:
+
+.. code-block:: python
+
+    # Window followed by repeat.
+    ray.data.range(5) \
+        .window(blocks_per_window=2) \
+        .repeat(2) \
+        .show_windows()
+    # ->
+    # === Window 0 ===
+    # 0
+    # 1
+    # === Window 1 ===
+    # 2
+    # 3
+    # === Window 2 ===
+    # 4
+    # === Window 3 ===
+    # 0
+    # 1
+    # === Window 4 ===
+    # 2
+    # 3
+    # === Window 5 ===
+    # 4
+
+    # Repeat followed by window.
+    ray.data.range(5) \
+        .repeat(2) \
+        .rewindow(blocks_per_window=2) \
+        .show_windows()
+    # ->
+    # === Window 0 ===
+    # 0
+    # 1
+    # === Window 1 ===
+    # 2
+    # 3
+    # === Window 2 ===
+    # 4
+    # 0
+    # === Window 3 ===
+    # 1
+    # 2
+    # === Window 4 ===
+    # 3
+    # 4
