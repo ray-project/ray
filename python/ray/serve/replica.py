@@ -32,7 +32,7 @@ from ray.exceptions import RayTaskError
 logger = _get_logger()
 
 
-def create_backend_replica(name: str, serialized_backend_def: bytes):
+def create_replica_wrapper(name: str, serialized_backend_def: bytes):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
