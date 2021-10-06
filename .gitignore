@@ -196,9 +196,6 @@ tags.temp
 # tools
 tools/prometheus*
 
-# Generated for clang-tidy
-compile_commands.json
-
 # ray project files
 project-id
 .mypy_cache/
