@@ -99,15 +99,6 @@ class ActorReplicaWrapper:
         self._ready_obj_ref = None
         self._graceful_shutdown_ref = None
 
-    def get_running_replica_info(self) -> RunningReplicaInfo:
-        assert self._actor_handle is not None, "Replica must be running!"
-        return RunningReplicaInfo(
-            backend_tag=self._backend_tag,
-            replica_tag=self._replica_tag,
-            actor_handle=self._actor_handle,
-            max_concurrent_queries=self._max_concurrent_queries,
-        )
-
     @property
     def replica_tag(self) -> str:
         return self._replica_tag
@@ -126,6 +117,10 @@ class ActorReplicaWrapper:
                 self._actor_handle = None
 
         return self._actor_handle
+
+    @property
+    def max_concurrent_queries(self) -> int:
+        return self._max_concurrent_queries
 
     def create_placement_group(self, placement_group_name: str,
                                actor_resources: dict) -> PlacementGroup:
@@ -331,8 +326,8 @@ class BackendReplica(VersionedReplica):
             format_actor_name(replica_tag), detached, controller_name,
             replica_tag, backend_tag)
         self._controller_name = controller_name
-        self._replica_tag = replica_tag
         self._backend_tag = backend_tag
+        self._replica_tag = replica_tag
         self._version = version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
@@ -344,6 +339,12 @@ class BackendReplica(VersionedReplica):
         self.__dict__ = d
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
+        return RunningReplicaInfo(
+            backend_tag=self._backend_tag,
+            replica_tag=self._replica_tag,
+            actor_handle=self._actor.actor_handle,
+            max_concurrent_queries=self._actor.max_concurrent_queries,
+        )
         return self._actor.get_running_replica_info()
 
     @property

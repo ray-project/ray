@@ -162,6 +162,10 @@ class MockReplicaActorWrapper:
     def actor_handle(self) -> ActorHandle:
         return None
 
+    @property
+    def max_concurrent_queries(self) -> int:
+        return 100
+
     def set_ready(self):
         self.ready = ReplicaStartupStatus.SUCCEEDED
 
