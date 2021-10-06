@@ -6,11 +6,11 @@ import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
-from ray import cloudpickle
+from ray import cloudpickle, ObjectRef
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
-                              ReplicaTag, ReplicaName)
+                              ReplicaTag, ReplicaName, RunningReplicaInfo)
 from ray.serve.config import BackendConfig
 from ray.serve.constants import (
     CONTROLLER_STARTUP_GRACE_PERIOD_S, GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -75,15 +75,18 @@ class ActorReplicaWrapper:
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
 
-        self._ready_obj_ref = None
-        self._graceful_shutdown_ref = None
-        self._actor_resources = None
-        self._health_check_ref = None
-
-        # Storing the handles is necessary to keep the actor and PG alive in
+        # Populated in self.start().
+        self._ready_obj_ref: ObjectRef = None
+        self._actor_resources: Dict[str, float] = None
+        self._max_concurrent_queries: int = None
+        self._health_check_ref: ObjectRef = None
+        # NOTE: storing these is necessary to keep the actor and PG alive in
         # the non-detached case.
-        self._actor_handle = None
-        self._placement_group = None
+        self._actor_handle: ActorHandle = None
+        self._placement_group: PlacementGroup = None
+
+        # Populated in self.stop().
+        self._graceful_shutdown_ref: ObjectRef = None
 
     def __get_state__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
@@ -95,6 +98,15 @@ class ActorReplicaWrapper:
         self.__dict__ = d
         self._ready_obj_ref = None
         self._graceful_shutdown_ref = None
+
+    def get_running_replica_info(self) -> RunningReplicaInfo:
+        assert self._actor_handle is not None, "Replica must be running!"
+        return RunningReplicaInfo(
+            backend_tag=self._backend_tag,
+            replica_tag=self._replica_tag,
+            actor_handle=self._actor_handle,
+            max_concurrent_queries=self._max_concurrent_queries,
+        )
 
     @property
     def replica_tag(self) -> str:
@@ -148,6 +160,8 @@ class ActorReplicaWrapper:
         Start a new actor for current BackendReplica instance.
         """
         self._actor_resources = backend_info.replica_config.resource_dict
+        self._max_concurrent_queries = (
+            backend_info.backend_config.max_concurrent_queries)
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources)
@@ -630,7 +644,6 @@ class BackendState:
         if self._curr_goal is not None:
             self._goal_manager.create_goal(self._curr_goal)
 
-        self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
 
     def recover_current_state_from_replica_actor_names(
@@ -658,12 +671,11 @@ class BackendState:
                 f"{new_backend_replica.replica_tag}, backend_tag: {self._name}"
             )
 
-        self._notify_backend_configs_changed()
         # Blocking grace period to avoid controller thrashing when cover
         # from replica actor names
         time.sleep(CONTROLLER_STARTUP_GRACE_PERIOD_S)
         # This halts all traffic in cluster.
-        self._notify_replica_handles_changed()
+        self._notify_running_replicas_changed()
 
     @property
     def target_info(self) -> BackendInfo:
@@ -673,22 +685,17 @@ class BackendState:
     def curr_goal(self) -> Optional[GoalId]:
         return self._curr_goal
 
-    def get_running_replica_handles(self) -> Dict[ReplicaTag, ActorHandle]:
+    def get_running_replica_infos(
+            self) -> Dict[ReplicaTag, RunningReplicaInfo]:
         return {
-            replica.replica_tag: replica.actor_handle
+            replica.replica_tag: replica.get_running_replica_info()
             for replica in self._replicas.get([ReplicaState.RUNNING])
         }
 
-    def _notify_replica_handles_changed(self):
+    def _notify_running_replicas_changed(self):
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.REPLICA_HANDLES, self._name),
-            list(self.get_running_replica_handles().values()),
-        )
-
-    def _notify_backend_configs_changed(self) -> None:
-        self._long_poll_host.notify_changed(
-            (LongPollNamespace.BACKEND_CONFIGS, self._name),
-            self._target_info.backend_config.to_proto_bytes(),
+            (LongPollNamespace.RUNING_REPLICAS, self._name),
+            self.get_running_replica_infos(),
         )
 
     def _set_backend_goal(self, backend_info: Optional[BackendInfo]) -> None:
@@ -756,7 +763,6 @@ class BackendState:
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
         self._save_checkpoint_func()
-        self._notify_backend_configs_changed()
 
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
@@ -766,7 +772,6 @@ class BackendState:
         new_goal_id, existing_goal_id = self._set_backend_goal(None)
 
         self._save_checkpoint_func()
-        self._notify_backend_configs_changed()
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
         return new_goal_id
@@ -992,14 +997,14 @@ class BackendState:
                 slow to reach running state.
         """
         slow_replicas = []
-        transitioned = False
+        transitioned_to_running = False
         for replica in self._replicas.pop(states=[original_state]):
             start_status = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
-                transitioned = True
+                transitioned_to_running = True
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
                 if self._replica_constructor_retry_counter >= 0:
@@ -1008,7 +1013,6 @@ class BackendState:
 
                 replica.stop(graceful_shutdown_timeout_s=0)
                 self._replicas.add(ReplicaState.STOPPING, replica)
-                transitioned = True
             elif start_status == ReplicaStartupStatus.PENDING:
                 # Not done yet, remain at same state
                 self._replicas.add(original_state, replica)
@@ -1020,22 +1024,22 @@ class BackendState:
                 else:
                     replica.stop(graceful_shutdown_timeout_s=0)
                     self._replicas.add(ReplicaState.STOPPING, replica)
-                    transitioned = True
                 slow_replicas.append(replica)
 
-        return slow_replicas, transitioned
+        return slow_replicas, transitioned_to_running
 
-    def _check_and_update_replicas(self) -> bool:
+    def _check_and_update_replicas(self):
         """
         Check current state of all BackendReplica being tracked, and compare
         with state container from previous update() cycle to see if any state
         transition happened.
         """
-        transitioned = False
+        running_replicas_changed = False
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
                 self._replicas.add(ReplicaState.RUNNING, replica)
             else:
+                running_replicas_changed = True
                 logger.warning(
                     f"Replica {replica.replica_tag} of deployment "
                     f"{self._name} failed health check, stopping it. "
@@ -1045,16 +1049,21 @@ class BackendState:
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
         slow_start_replicas = []
-        slow_start, start_transitioned = self._check_startup_replicas(
+        slow_start, starting_transitioned_to_running = self._check_startup_replicas(
             ReplicaState.STARTING)
-        slow_update, update_transitioned = self._check_startup_replicas(
+        slow_update, updating_transitioned_to_running = self._check_startup_replicas(
             ReplicaState.UPDATING)
-        slow_recover, recover_transitioned = self._check_startup_replicas(
+        slow_recover, recovering_transitioned_to_running = self._check_startup_replicas(
             ReplicaState.RECOVERING, stop_on_slow=True)
 
         slow_start_replicas = slow_start + slow_update + slow_recover
-        transitioned = (start_transitioned or update_transitioned
-                        or recover_transitioned)
+        running_replicas_changed = (running_replicas_changed
+                                    or starting_transitioned_to_running
+                                    or updating_transitioned_to_running
+                                    or recovering_transitioned_to_running)
+
+        if running_replicas_changed:
+            self._notify_running_replicas_changed()
 
         if (len(slow_start_replicas)
                 and time.time() - self._prev_startup_warning >
@@ -1074,12 +1083,9 @@ class BackendState:
             self._prev_startup_warning = time.time()
 
         for replica in self._replicas.pop(states=[ReplicaState.STOPPING]):
-            transitioned = True
             stopped = replica.check_stopped()
             if not stopped:
                 self._replicas.add(ReplicaState.STOPPING, replica)
-
-        return transitioned
 
     def update(self) -> bool:
         """Updates the state of all backends to match their goal state."""
@@ -1088,9 +1094,8 @@ class BackendState:
         # we manage.
         self._scale_backend_replicas()
 
-        transitioned = self._check_and_update_replicas()
-        if transitioned:
-            self._notify_replica_handles_changed()
+        # Check the state of existing replicas and transition if necessary.
+        self._check_and_update_replicas()
 
         status = self._check_curr_goal_status()
         if status == GoalStatus.SUCCEEDED:
@@ -1252,7 +1257,7 @@ class BackendStateManager:
             cloudpickle.dumps((backend_state_info,
                                self._deleted_backend_metadata)))
 
-    def get_running_replica_handles(
+    def get_running_replica_infos(
             self,
             filter_tag: Optional[BackendTag] = None,
     ) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
@@ -1260,7 +1265,7 @@ class BackendStateManager:
         for backend_tag, backend_state in self._backend_states.items():
             if filter_tag is None or backend_tag == filter_tag:
                 replicas[
-                    backend_tag] = backend_state.get_running_replica_handles()
+                    backend_tag] = backend_state.get_running_replica_infos()
 
         return replicas
 

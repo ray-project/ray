@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import random
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendTag
+from ray.serve.common import BackendTag, ReplicaTag, RunningReplicaInfo
 from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
@@ -51,17 +51,16 @@ class ReplicaSet:
             event_loop: asyncio.AbstractEventLoop,
     ):
         self.backend_tag = backend_tag
-        # NOTE(simon): We have to do this because max_concurrent_queries
-        # and the replica handles come from different long poll keys.
-        self.max_concurrent_queries: int = 8
-        self.in_flight_queries: Dict[ActorHandle, set] = dict()
+        self.in_flight_queries: Dict[ReplicaTag, set] = dict()
         # The iterator used for load balancing among replicas. Using itertools
         # cycle, we implements a round-robin policy, skipping overloaded
         # replicas.
         # NOTE(simon): We can make this more pluggable and consider different
         # policies like: min load, pick min of two replicas, pick replicas on
         # the same node.
-        self.replica_iterator = itertools.cycle(self.in_flight_queries.keys())
+        self.replica_tag_iterator = itertools.cycle(
+            self.in_flight_queries.keys())
+        self.replica_infos: Dict[ReplicaTag, RunningReplicaInfo] = dict()
 
         # Used to unblock this replica set waiting for free replicas. A newly
         # added replica or updated max_concurrent_queries value means the
@@ -78,31 +77,24 @@ class ReplicaSet:
             "deployment": self.backend_tag
         })
 
-    def set_max_concurrent_queries(self, backend_config_bytes: bytes):
-        backend_config = BackendConfig.from_proto_bytes(backend_config_bytes)
-        new_value: int = backend_config.max_concurrent_queries
-        if new_value != self.max_concurrent_queries:
-            self.max_concurrent_queries = new_value
-            logger.debug(
-                f"ReplicaSet: changing max_concurrent_queries to {new_value}")
-            self.config_updated_event.set()
-
-    def update_worker_replicas(self, worker_replicas: Iterable[ActorHandle]):
+    def update_running_replicas(
+            self, running_replicas: Dict[ReplicaTag, RunningReplicaInfo]):
         added, removed, _ = compute_iterable_delta(
-            self.in_flight_queries.keys(), worker_replicas)
+            self.in_flight_queries.keys(), running_replicas.keys())
 
-        for new_replica_handle in added:
-            self.in_flight_queries[new_replica_handle] = set()
+        self.replica_infos = running_replicas
+        for new_replica_tag in added:
+            self.in_flight_queries[new_replica_tag] = set()
 
-        for removed_replica_handle in removed:
+        for removed_replica_tag in removed:
             # Delete it directly because shutdown is processed by controller.
-            del self.in_flight_queries[removed_replica_handle]
+            del self.in_flight_queries[removed_replica_tag]
 
         if len(added) > 0 or len(removed) > 0:
             # Shuffle the keys to avoid synchronization across clients.
-            handles = list(self.in_flight_queries.keys())
-            random.shuffle(handles)
-            self.replica_iterator = itertools.cycle(handles)
+            replica_tags = list(self.in_flight_queries.keys())
+            random.shuffle(replica_tags)
+            self.replica_tag_iterator = itertools.cycle(replica_tags)
             logger.debug(
                 f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
             self.config_updated_event.set()
@@ -112,18 +104,18 @@ class ReplicaSet:
         or return None if it can't assign this query to any replicas.
         """
         for _ in range(len(self.in_flight_queries.keys())):
-            replica = next(self.replica_iterator)
-            if len(self.in_flight_queries[replica]
-                   ) >= self.max_concurrent_queries:
+            replica = self.replica_infos[next(self.replica_tag_iterator)]
+            if len(self.in_flight_queries[replica.replica_tag]
+                   ) >= replica.max_concurrent_queries:
                 # This replica is overloaded, try next one
                 continue
 
             logger.debug(f"Assigned query {query.metadata.request_id} "
-                         f"to replica {replica}.")
+                         f"to replica {replica.replica_tag}.")
             # Directly passing args because it might contain an ObjectRef.
-            tracker_ref, user_ref = replica.handle_request.remote(
+            tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
                 pickle.dumps(query.metadata), *query.args, **query.kwargs)
-            self.in_flight_queries[replica].add(tracker_ref)
+            self.in_flight_queries[replica.replica_tag].add(tracker_ref)
             return user_ref
         return None
 
@@ -200,10 +192,8 @@ class Router:
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
-                (LongPollNamespace.BACKEND_CONFIGS, backend_tag): self.
-                _replica_set.set_max_concurrent_queries,
-                (LongPollNamespace.REPLICA_HANDLES, backend_tag): self.
-                _replica_set.update_worker_replicas,
+                (LongPollNamespace.RUNNING_REPLICAS, backend_tag): self.
+                _replica_set.update_running_replicas,
             },
             call_in_event_loop=event_loop,
         )
