@@ -174,13 +174,11 @@ class RayS3KVStore(KVStoreBase):
     caller must handle serialization.
     """
 
-    def __init__(
-            self,
-            namepsace: str,
-            bucket="",
-            prefix="",
-            region_name="us-west-2"
-    ):
+    def __init__(self,
+                 namepsace: str,
+                 bucket="",
+                 prefix="",
+                 region_name="us-west-2"):
         self._namespace = namepsace
         self._bucket = bucket
         self._prefix = prefix
@@ -192,7 +190,8 @@ class RayS3KVStore(KVStoreBase):
             "s3",
             region_name=region_name,
             aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", None),
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", None),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY",
+                                                 None),
             aws_session_token=os.environ.get("AWS_SESSION_TOKEN", None))
 
     def get_storage_key(self, key: str) -> str:

@@ -13,9 +13,7 @@ NUM_CONNECTIONS = 10
 
 
 def setup_local_single_node_cluster(
-    num_nodes: int,
-    checkpoint_path: str = DEFAULT_CHECKPOINT_PATH
-):
+        num_nodes: int, checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
     """Setup ray cluster locally via ray.init() and Cluster()
 
     Each actor is simulated in local process on single node,

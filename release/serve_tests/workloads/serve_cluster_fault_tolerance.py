@@ -12,15 +12,10 @@ import os
 import time
 import requests
 
-from serve_test_cluster_utils import (
-    setup_local_single_node_cluster,
-    setup_anyscale_cluster
-)
+from serve_test_cluster_utils import (setup_local_single_node_cluster,
+                                      setup_anyscale_cluster)
 from serve_test_utils import (
-    save_test_results,
-)
-from ray.serve.backend_state import CHECKPOINT_KEY as backend_checkpoint_key
-from ray.serve.endpoint_state import CHECKPOINT_KEY as endpoint_state_key
+    save_test_results, )
 
 import ray
 from ray import serve
@@ -31,7 +26,8 @@ DEFAULT_NUM_REPLICAS = 4
 DEFAULT_MAX_BATCH_SIZE = 16
 
 # Checkpoint configs
-DEFAULT_CHECKPOINT_PATH = "s3://serve-nightly-tests/fault-tolerant-test-checkpoint"
+DEFAULT_CHECKPOINT_PATH = "s3://serve-nightly-tests/fault-tolerant-test-checkpoint"  # noqa: E501
+
 
 def request_with_retries(endpoint, timeout=30):
     start = time.time()
@@ -44,13 +40,15 @@ def request_with_retries(endpoint, timeout=30):
                 raise TimeoutError
             time.sleep(0.1)
 
+
 @click.command()
 def main():
     # (1) Setup cluster
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
     smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
     if smoke_test == "1":
-        setup_local_single_node_cluster(1, checkpoint_path=DEFAULT_CHECKPOINT_PATH)
+        setup_local_single_node_cluster(
+            1, checkpoint_path=DEFAULT_CHECKPOINT_PATH)
     else:
         setup_anyscale_cluster(checkpoint_path=DEFAULT_CHECKPOINT_PATH)
 
@@ -80,16 +78,17 @@ def main():
         response = request_with_retries("/echo/", timeout=30)
         assert response.text == "hii"
 
-    logger.info(
-        "Deployment recovery from s3 checkpoint is successful "
-        "with working endpoint.")
+    logger.info("Deployment recovery from s3 checkpoint is successful "
+                "with working endpoint.")
 
     # Checkpoints in S3 bucket are moved after 7 days with explicit lifecycle
     # rules. Each checkpoint is ~260 Bytes in size from this test.
 
     # Save results
     save_test_results(
-        {"result": "success"},
+        {
+            "result": "success"
+        },
         default_output_file="/tmp/serve_cluster_fault_tolerance.json")
 
 
