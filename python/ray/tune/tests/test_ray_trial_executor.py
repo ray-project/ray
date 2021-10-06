@@ -12,7 +12,7 @@ from ray.tune import Trainable
 from ray.tune.callback import Callback
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.result import DONE, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
@@ -258,7 +258,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         class B(Trainable):
             def step(self):
                 time.sleep(5)
-                return dict(timesteps_this_iter=1, done=True)
+                return dict(my_metric=1, timesteps_this_iter=1, done=True)
 
             def reset_config(self, config):
                 self.config = config
@@ -299,6 +299,12 @@ class RayTrialExecutorTest(unittest.TestCase):
         start = time.time()
         self.trial_executor.cleanup([trial])
         self.assertLess(time.time() - start, 2.0)
+
+        # also check if auto-filled metrics were returned
+        self.assertIn(TRAINING_ITERATION, trial.last_result)
+        self.assertIn(DONE, trial.last_result)
+        self.assertIn(TRIAL_ID, trial.last_result)
+        self.assertNotIn("my_metric", trial.last_result)
 
     @staticmethod
     def generate_trials(spec, name):

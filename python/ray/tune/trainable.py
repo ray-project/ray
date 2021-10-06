@@ -182,13 +182,12 @@ class Trainable:
             timesteps_since_restore=self._timesteps_since_restore,
             iterations_since_restore=self._iterations_since_restore)
         if add_user_overridable_metrics:
-            autofilled.update(
-                dict(
-                    DONE=False,
-                    TIMESTEPS_TOTAL=self._timesteps_total,
-                    EPISODES_TOTAL=self._episodes_total,
-                    TRAINING_ITERATION=self._iteration,
-                ))
+            autofilled.update({
+                DONE: False,
+                TIMESTEPS_TOTAL: self._timesteps_total,
+                EPISODES_TOTAL: self._episodes_total,
+                TRAINING_ITERATION: self._iteration,
+            })
         return autofilled
 
     def is_actor(self):
