@@ -312,6 +312,7 @@ def test_client_deprecation_warn():
     a copy pasteable replacement for the client().connect() call converted
     to ray.init style.
     """
+    # Test warning when local client mode is used
     with warnings.catch_warnings(record=True) as w:
         ray.client().connect()
         assert any(
@@ -321,53 +322,76 @@ def test_client_deprecation_warn():
 
     with warnings.catch_warnings(record=True) as w:
         ray.client().namespace("nmspc").env({"pip": ["requests"]}).connect()
-
-        expected = 'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
-        assert any(
-            has_client_deprecation_warn(warning, expected)  # noqa E501
-            for warning in w)
-        ray.shutdown()
+    expected = 'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+    assert any(
+        has_client_deprecation_warn(warning, expected)  # noqa E501
+        for warning in w)
+    ray.shutdown()
 
     server = ray_client_server.serve("localhost:50055")
+
+    # Test warning when namespace and runtime env aren't specified
     with warnings.catch_warnings(record=True) as w:
         with ray.client("localhost:50055").connect():
             pass
-
     assert any(
         has_client_deprecation_warn(
             warning, 'ray.init("ray://localhost:50055")') for warning in w)
 
+    # Test warning when just namespace specified
     with warnings.catch_warnings(record=True) as w:
         with ray.client("localhost:50055").namespace("nmspc").connect():
             pass
-
     assert any(
         has_client_deprecation_warn(
             warning, 'ray.init("ray://localhost:50055", namespace="nmspc")')
         for warning in w)
 
+    # Test that passing namespace through env doesn't add namespace to the
+    # replacement
+    with warnings.catch_warnings(record=True) as w, \
+            patch.dict(os.environ, {"RAY_NAMESPACE": "aksdj"}):
+        with ray.client("localhost:50055").namespace("nmspc").connect():
+            pass
+    assert any(
+        has_client_deprecation_warn(
+            warning, 'ray.init("ray://localhost:50055")') for warning in w)
+
+    # Skip actually connecting on these, since updating the runtime env is
+    # time consuming
     with patch("ray.util.client_connect.connect", mock_connect):
-        # Skip actually connecting on these, since updating the runtime env is
-        # time consuming
+        # Test warning when just runtime_env specified
         with warnings.catch_warnings(record=True) as w:
             try:
                 ray.client("localhost:50055") \
                     .env({"pip": ["requests"]}).connect()
             except ConnectionError:
                 pass
-
         expected = 'ray.init("ray://localhost:50055", runtime_env=<your_runtime_env>)'  # noqa E501
         assert any(
             has_client_deprecation_warn(warning, expected) for warning in w)
 
+        # Test warning works if both runtime env and namespace specified
         with warnings.catch_warnings(record=True) as w:
             try:
                 ray.client("localhost:50055").namespace("nmspc") \
                     .env({"pip": ["requests"]}).connect()
             except ConnectionError:
                 pass
-
         expected = 'ray.init("ray://localhost:50055", namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+        assert any(
+            has_client_deprecation_warn(warning, expected) for warning in w)
+
+        # We don't expect namespace to appear in the warning message, since
+        # it was configured through an env var
+        with warnings.catch_warnings(record=True) as w, \
+                patch.dict(os.environ, {"RAY_NAMESPACE": "abcdef"}):
+            try:
+                ray.client("localhost:50055") \
+                    .env({"pip": ["requests"]}).connect()
+            except ConnectionError:
+                pass
+        expected = 'ray.init("ray://localhost:50055", runtime_env=<your_runtime_env>)'  # noqa E501
         assert any(
             has_client_deprecation_warn(warning, expected) for warning in w)
 
