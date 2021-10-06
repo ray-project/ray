@@ -127,6 +127,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
                critical_resource_utilization < best_utilization_score &&
                !require_available) {
       // Pick the best feasible node by critical resource utilization.
+      RAY_LOG(INFO) << "Best is not available and critical utilization is high enough";
       update_best_node = true;
     }
 
@@ -150,15 +151,23 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
   }
 
   // Try schedule on CPU-only nodes.
-  const auto node_id =
-      HybridPolicyWithFilter(resource_request, local_node_id, nodes, spread_threshold,
-                             force_spillback, require_available, NodeFilter::kCPUOnly);
-  if (node_id != -1) {
-    return node_id;
+  auto best_node_id = HybridPolicyWithFilter(
+      resource_request, local_node_id, nodes, spread_threshold, force_spillback,
+      /*require_available*/ true, NodeFilter::kCPUOnly);
+  if (best_node_id != -1) {
+    return best_node_id;
   }
   // Could not schedule on CPU-only nodes, schedule on GPU nodes as a last resort.
+  best_node_id = HybridPolicyWithFilter(resource_request, local_node_id, nodes,
+                                        spread_threshold, force_spillback,
+                                        /*require_available*/ true, NodeFilter::kGPU);
+  if (best_node_id != -1) {
+    return best_node_id;
+  }
+
+  // If we cannot find any available node, fallback to the original scheduling
   return HybridPolicyWithFilter(resource_request, local_node_id, nodes, spread_threshold,
-                                force_spillback, require_available, NodeFilter::kGPU);
+                                force_spillback, require_available);
 }
 
 }  // namespace raylet_scheduling_policy
