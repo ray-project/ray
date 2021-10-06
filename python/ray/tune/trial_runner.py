@@ -858,7 +858,9 @@ class TrialRunner:
             result = trial.last_result
             result.update(done=True)
 
-        self._total_time += result.get(TIME_THIS_ITER_S, 0)
+        time_this_iter = result.get(TIME_THIS_ITER_S, 0)
+        if time_this_iter:
+            self._total_time += time_this_iter
 
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
