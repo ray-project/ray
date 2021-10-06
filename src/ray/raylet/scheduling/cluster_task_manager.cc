@@ -137,6 +137,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<Work> work) {
         task_dependency_manager_.RequestTaskDependencies(task_id, task.GetDependencies());
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
+      num_tasks_waiting_for_dispatch_++;
       tasks_to_dispatch_[scheduling_key].push_back(work);
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
@@ -148,6 +149,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<Work> work) {
   } else {
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
+    num_tasks_waiting_for_dispatch_++;
     tasks_to_dispatch_[scheduling_key].push_back(work);
   }
   return can_dispatch;
@@ -231,6 +233,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
         work->status = WorkStatus::WAITING;
+        num_tasks_waiting_for_dispatch_++;
         // Return here because we shouldn't remove task dependencies.
         return dispatched;
       }
@@ -263,6 +266,11 @@ bool ClusterTaskManager::PoppedWorkerHandler(
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
+  if (num_tasks_waiting_for_dispatch_ == 0) {
+    RAY_LOG(DEBUG) << "No new tasks since last call to dispatch, skipping";
+    return;
+  }
+
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -282,6 +290,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         work_it++;
         continue;
       }
+      RAY_CHECK(work->status == WorkStatus::WAITING);
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
@@ -295,6 +304,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
                                                std::move(*work_it));
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
+          RAY_CHECK(num_tasks_waiting_for_dispatch_ > 0);
+          num_tasks_waiting_for_dispatch_--;
           work_it = dispatch_queue.erase(work_it);
         } else {
           // The task's args cannot be pinned due to lack of memory. We should
@@ -326,6 +337,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
         ReleaseTaskArgs(task_id);
+        RAY_CHECK(num_tasks_waiting_for_dispatch_ > 0);
+        num_tasks_waiting_for_dispatch_--;
         work_it = dispatch_queue.erase(work_it);
         continue;
       }
@@ -351,6 +364,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
         }
+        RAY_CHECK(num_tasks_waiting_for_dispatch_ > 0);
+        num_tasks_waiting_for_dispatch_--;
         work_it = dispatch_queue.erase(work_it);
       } else {
         // The local node has the available resources to run the task, so we should run
@@ -374,6 +389,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                                          is_detached_actor, owner_address);
             },
             allocated_instances_serialized_json);
+        RAY_CHECK(num_tasks_waiting_for_dispatch_ > 0);
+        num_tasks_waiting_for_dispatch_--;
         work_it++;
       }
     }
@@ -441,6 +458,8 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
       const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
+      RAY_CHECK(work->status == WorkStatus::WAITING);
+      num_tasks_waiting_for_dispatch_++;
       tasks_to_dispatch_[scheduling_key].push_back(work);
       waiting_task_queue_.erase(it->second);
       waiting_tasks_index_.erase(it);
@@ -607,6 +626,10 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
         if (!task.GetTaskSpecification().GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
+        }
+        if ((*work_it)->status == WorkStatus::WAITING) {
+          RAY_CHECK(num_tasks_waiting_for_dispatch_ > 0);
+          num_tasks_waiting_for_dispatch_--;
         }
         (*work_it)->status = WorkStatus::CANCELLED;
         work_queue.erase(work_it);
