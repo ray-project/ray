@@ -283,7 +283,8 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.cleanup([trial])
         self.assertGreaterEqual(time.time() - start, 8.0)
 
-        # Forceful termination should be much quicker
+        # Check forceful termination. It should run for much less than the
+        # sleep periods in the Trainable
         trials = self.generate_trials({
             "run": B,
             "config": {
@@ -291,7 +292,9 @@ class RayTrialExecutorTest(unittest.TestCase):
             },
         }, "grid_search")
         trial = trials[0]
-        self.trial_executor._trial_cleanup._force_cleanup = True
+        os.environ["TUNE_FORCE_TRIAL_CLEANUP"] = "1"
+        self.trial_executor = RayTrialExecutor(queue_trials=False)
+        os.environ["TUNE_FORCE_TRIAL_CLEANUP"] = "0"
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         time.sleep(1)
