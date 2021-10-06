@@ -1650,7 +1650,8 @@ class Dataset(Generic[T]):
         return DatasetPipeline(Iterable(self), length=times)
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        raise DeprecationWarning("Use .window(n) instead of .pipeline(n)")
+        raise DeprecationWarning("Use .window(blocks_per_window=n) instead of "
+                                 ".pipeline(parallelism=n)")
 
     def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
@@ -1660,18 +1661,18 @@ class Dataset(Generic[T]):
         pipeline are evaluated incrementally per window of blocks as data is
         read from the output of the pipeline.
 
-        Pipelining execution allows for output to be read sooner without
+        Windowing execution allows for output to be read sooner without
         waiting for all transformations to fully execute, and can also improve
         efficiency if transforms use different resources (e.g., GPUs).
 
-        Without pipelining::
+        Without windowing::
 
             [preprocessing......]
                                   [inference.......]
                                                      [write........]
             Time ----------------------------------------------------------->
 
-        With pipelining::
+        With windowing::
 
             [prep1] [prep2] [prep3]
                     [infer1] [infer2] [infer3]
