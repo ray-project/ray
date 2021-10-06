@@ -2,6 +2,7 @@
 
 import os
 import pytest
+import time
 import unittest
 
 import ray
@@ -251,6 +252,53 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(trial.config.get("hi"), 1)
         self.assertEqual(trial.experiment_tag, "modified_mock")
         self.assertEqual(Trial.RUNNING, trial.status)
+
+    @patch("ray.tune.ray_trial_executor.DEFAULT_GET_TIMEOUT", 1.0)
+    def testForceTrialCleanup(self):
+        class B(Trainable):
+            def step(self):
+                time.sleep(5)
+                return dict(timesteps_this_iter=1, done=True)
+
+            def reset_config(self, config):
+                self.config = config
+                return True
+
+            def cleanup(self):
+                time.sleep(5)
+
+        # First check if the trials terminate gracefully by default
+        trials = self.generate_trials({
+            "run": B,
+            "config": {
+                "foo": 0
+            },
+        }, "grid_search")
+        trial = trials[0]
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        time.sleep(1)
+        self.trial_executor.stop_trial(trial)
+        start = time.time()
+        self.trial_executor.cleanup([trial])
+        self.assertGreaterEqual(time.time() - start, 8.0)
+
+        # Forceful termination should be much quicker
+        trials = self.generate_trials({
+            "run": B,
+            "config": {
+                "foo": 0
+            },
+        }, "grid_search")
+        trial = trials[0]
+        self.trial_executor._trial_cleanup._force_cleanup = True
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        time.sleep(1)
+        self.trial_executor.stop_trial(trial)
+        start = time.time()
+        self.trial_executor.cleanup([trial])
+        self.assertLess(time.time() - start, 2.0)
 
     @staticmethod
     def generate_trials(spec, name):

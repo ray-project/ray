@@ -4,7 +4,6 @@ from collections import deque
 from functools import partial
 import logging
 import os
-import gc
 import random
 import time
 import traceback
@@ -94,11 +93,17 @@ class _TrialCleanup:
     Args:
         threshold (int): Number of futures to hold at once. If the threshold
             is passed, cleanup will kick in and remove futures.
+        force_cleanup (bool): Whether to force the termination of Trainables
+            if they do not gracefully terminate in ``DEFAULT_GET_TIMEOUT``
+            seconds.
     """
 
-    def __init__(self, threshold: int = TRIAL_CLEANUP_THRESHOLD):
+    def __init__(self,
+                 threshold: int = TRIAL_CLEANUP_THRESHOLD,
+                 force_cleanup: bool = False):
         self.threshold = threshold
         self._cleanup_map = {}
+        self._force_cleanup = force_cleanup
 
     def add(self, trial: Trial, actor: ActorHandle):
         """Adds a trial actor to be stopped.
@@ -133,8 +138,11 @@ class _TrialCleanup:
                 logger.warning(
                     "Skipping cleanup - trainable.stop did not return in "
                     "time. Consider making `stop` a faster operation.")
-                self._cleanup_map = {}
-                return
+                if not partial and self._force_cleanup:
+                    logger.warning(
+                        "Forcing trainable cleanup by terminating actors.")
+                    self._cleanup_map = {}
+                    return
             else:
                 done = dones[0]
                 del self._cleanup_map[done]
@@ -168,7 +176,9 @@ class RayTrialExecutor(TrialExecutor):
         # We use self._paused to store paused trials here.
         self._paused = {}
 
-        self._trial_cleanup = _TrialCleanup()
+        force_trial_cleanup = bool(
+            int(os.environ.get("TUNE_FORCE_TRIAL_CLEANUP", "0")))
+        self._trial_cleanup = _TrialCleanup(force_cleanup=force_trial_cleanup)
         self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
         # The maxlen will be updated when `set_max_pending_trials()` is called
@@ -1100,7 +1110,6 @@ class RayTrialExecutor(TrialExecutor):
         self._pg_manager.reconcile_placement_groups(trials)
         self._pg_manager.cleanup(force=True)
         self._pg_manager.cleanup_existing_pg(block=True)
-        gc.collect()
 
     @contextmanager
     def _change_working_directory(self, trial):

@@ -871,6 +871,10 @@ These are the environment variables Ray Tune currently considers:
   Ctrl+C) to gracefully shutdown and do a final checkpoint. Setting this variable
   to ``1`` will disable signal handling and stop execution right away. Defaults to
   ``0``.
+* **TUNE_FORCE_TRIAL_CLEANUP**: By default, Ray Tune will gracefully terminate trials,
+  letting them finish the current training step and any user-defined cleanup. 
+  Setting this variable to ``1`` will cause trials to be forcefully terminated
+  after a grace period of 60 seconds. Defaults to ``0``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
   for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
