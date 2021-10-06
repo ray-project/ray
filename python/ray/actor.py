@@ -5,8 +5,8 @@ import weakref
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-from ray._private.runtime_env import (override_task_or_actor_runtime_env,
-                                      ParsedRuntimeEnv)
+from ray._private.runtime_env.validation import (
+    override_task_or_actor_runtime_env, ParsedRuntimeEnv)
 import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import (

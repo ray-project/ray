@@ -12,9 +12,9 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import ray
-from ray._private.runtime_env import RuntimeEnvContext
 from ray._private.runtime_env.conda_utils import (get_conda_activate_commands,
                                                   get_or_create_conda_env)
+from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url, try_to_create_directory)
 

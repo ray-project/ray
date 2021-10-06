@@ -48,6 +48,9 @@ class JobConfig:
         return self.get_proto_job_config().SerializeToString()
 
     def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
+        # TODO(edoakes): this is really unfortunate, but JobConfig is imported
+        # all over the place so this causes circular imports. We should remove
+        # this dependency and pass in a validated runtime_env instead.
         from ray._private.runtime_env.validation import ParsedRuntimeEnv
         self._parsed_runtime_env = ParsedRuntimeEnv(runtime_env or {})
         self.runtime_env = runtime_env or dict()

@@ -14,8 +14,8 @@ from ray.util.placement_group import (
     get_current_placement_group,
 )
 import ray._private.signature
-from ray._private.runtime_env import (override_task_or_actor_runtime_env,
-                                      ParsedRuntimeEnv)
+from ray._private.runtime_env.validation import (
+    override_task_or_actor_runtime_env, ParsedRuntimeEnv)
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
 
