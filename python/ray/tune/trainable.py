@@ -8,7 +8,7 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 import uuid
 
 import ray
@@ -154,10 +154,17 @@ class Trainable:
         self._local_ip = ray.util.get_node_ip_address()
         return self._local_ip
 
-    def get_auto_filled_metrics(self,
-                                now=None,
-                                time_this_iter=None,
-                                get_defaults=False):
+    def get_auto_filled_metrics(
+            self,
+            now: Optional[datetime] = None,
+            time_this_iter: Optional[float] = None,
+            add_user_overridable_metrics: bool = False) -> dict:
+        """Return a dict with metrics auto-filled by the trainable.
+
+        If ``add_user_overridable_metrics`` is True, metrics that can be
+        overriden by the user (such as ``done``) will be added to the dict as
+        well.
+        """
         if now is None:
             now = datetime.today()
         autofilled = dict(
@@ -174,11 +181,14 @@ class Trainable:
             time_since_restore=self._time_since_restore,
             timesteps_since_restore=self._timesteps_since_restore,
             iterations_since_restore=self._iterations_since_restore)
-        if get_defaults:
-            autofilled.setdefault(DONE, False)
-            autofilled.setdefault(TIMESTEPS_TOTAL, self._timesteps_total)
-            autofilled.setdefault(EPISODES_TOTAL, self._episodes_total)
-            autofilled.setdefault(TRAINING_ITERATION, self._iteration)
+        if add_user_overridable_metrics:
+            autofilled.update(
+                dict(
+                    DONE=False,
+                    TIMESTEPS_TOTAL=self._timesteps_total,
+                    EPISODES_TOTAL=self._episodes_total,
+                    TRAINING_ITERATION=self._iteration,
+                ))
         return autofilled
 
     def is_actor(self):

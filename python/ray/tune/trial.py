@@ -8,7 +8,7 @@ import platform
 import re
 import shutil
 import time
-from typing import Callable, Dict, Sequence, Union
+from typing import Callable, Dict, Optional, Sequence, Union
 import uuid
 
 import ray
@@ -300,7 +300,7 @@ class Trial:
 
         # Local trial state that is updated during the run
         self._last_result = {}
-        self._default_result_future = None
+        self._default_result_future: Optional[ray.ObjectRef] = None
         self.last_update_time = -float("inf")
 
         # stores in memory max/min/avg/last-n-avg/last result for each
@@ -397,6 +397,15 @@ class Trial:
 
     @property
     def last_result(self) -> dict:
+        # The logic in here is as follows:
+        # 1. If the trial has reported at least once, last_result would have
+        #    been set and therefore would not be empty. We can just return it.
+        # 2. If the trial has not reported at least once but we have the
+        #    future for the default results dict, (obtained through
+        #    Trainable.get_auto_filled_metrics), we get that future
+        #    and return it.
+        # 3. In the worst case where we have nothing, we just set the
+        #    trial_id and done keys and return that.
         result = self._last_result
         if not result and self._default_result_future:
             if isinstance(self._default_result_future, ray.ObjectRef):
@@ -517,8 +526,11 @@ class Trial:
     def set_runner(self, runner):
         self.runner = runner
         if runner:
+            # Do not block here, the result will be gotten when last_result
+            # property is accessed
             self._default_result_future = (
-                runner.get_auto_filled_metrics.remote(get_defaults=True))
+                runner.get_auto_filled_metrics.remote(
+                    add_user_overridable_metrics=True))
         self.checkpoint_manager.delete = CheckpointDeleter(
             self._trainable_name(), runner, self.node_ip)
         # No need to invalidate state cache: runner is not stored in json
