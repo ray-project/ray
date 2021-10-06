@@ -409,7 +409,9 @@ class Trial:
         # 3. In the worst case where we have nothing, we just set the
         #    trial_id and return that.
         result = self._last_result
-        if not result and self._default_result_or_future:
+        if not {k
+                for k in result
+                if k != TRIAL_ID} and self._default_result_or_future:
             if isinstance(self._default_result_or_future, ray.ObjectRef):
                 self._default_result_or_future = ray.get(
                     self._default_result_or_future)
@@ -531,8 +533,6 @@ class Trial:
             # property is accessed
             self._default_result_or_future = (
                 runner.get_auto_filled_metrics.remote(debug_metrics_only=True))
-        else:
-            self._default_result_or_future = None
         self.checkpoint_manager.delete = CheckpointDeleter(
             self._trainable_name(), runner, self.node_ip)
         # No need to invalidate state cache: runner is not stored in json

@@ -12,7 +12,7 @@ from ray.tune import Trainable
 from ray.tune.callback import Callback
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import DONE, TRAINING_ITERATION, TRIAL_ID
+from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
@@ -257,7 +257,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def testForceTrialCleanup(self):
         class B(Trainable):
             def step(self):
-                time.sleep(5)
+                time.sleep(10)
                 return dict(my_metric=1, timesteps_this_iter=1, done=True)
 
             def reset_config(self, config):
@@ -265,7 +265,7 @@ class RayTrialExecutorTest(unittest.TestCase):
                 return True
 
             def cleanup(self):
-                time.sleep(5)
+                time.sleep(10)
 
         # First check if the trials terminate gracefully by default
         trials = self.generate_trials({
@@ -277,11 +277,11 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = trials[0]
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        time.sleep(1)
+        time.sleep(5)
         self.trial_executor.stop_trial(trial)
         start = time.time()
         self.trial_executor.cleanup([trial])
-        self.assertGreaterEqual(time.time() - start, 8.0)
+        self.assertGreaterEqual(time.time() - start, 12.0)
 
         # Check forceful termination. It should run for much less than the
         # sleep periods in the Trainable
@@ -297,15 +297,14 @@ class RayTrialExecutorTest(unittest.TestCase):
         os.environ["TUNE_FORCE_TRIAL_CLEANUP"] = "0"
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        time.sleep(1)
+        time.sleep(5)
         self.trial_executor.stop_trial(trial)
         start = time.time()
         self.trial_executor.cleanup([trial])
-        self.assertLess(time.time() - start, 2.0)
+        self.assertLess(time.time() - start, 5.0)
 
         # also check if auto-filled metrics were returned
-        self.assertIn(TRAINING_ITERATION, trial.last_result)
-        self.assertIn(DONE, trial.last_result)
+        self.assertIn(PID, trial.last_result)
         self.assertIn(TRIAL_ID, trial.last_result)
         self.assertNotIn("my_metric", trial.last_result)
 
