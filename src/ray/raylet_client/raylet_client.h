@@ -68,6 +68,10 @@ class WorkerLeaseInterface {
       const ray::TaskSpecification &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1) = 0;
+  virtual void RequestWorkerLease(
+      const rpc::TaskSpec &task_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size = -1) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -117,7 +121,7 @@ class ResourceReserveInterface {
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
   virtual void CancelResourceReserve(
-      BundleSpecification &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
   virtual void ReleaseUnusedBundles(
@@ -214,7 +218,6 @@ class RayletClient : public RayletClientInterface {
   /// \param worker_type The type of the worker. If it is a certain worker type, an
   /// additional message will be sent to register as one.
   /// \param job_id The job ID of the driver or worker.
-  /// \param runtime_env_hash The hash of the runtime env of the worker.
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
   /// \param status This will be populated with the result of connection attempt.
@@ -230,8 +233,7 @@ class RayletClient : public RayletClientInterface {
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
-               rpc::WorkerType worker_type, const JobID &job_id,
-               const int &runtime_env_hash, const Language &language,
+               rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
                int *port, std::string *serialized_job_config, pid_t worker_shim_pid);
 
@@ -360,6 +362,13 @@ class RayletClient : public RayletClientInterface {
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size) override {
+    RequestWorkerLease(resource_spec.GetMessage(), callback, backlog_size);
+  }
+
+  void RequestWorkerLease(
+      const rpc::TaskSpec &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size) override;
 
   /// Implements WorkerLeaseInterface.
@@ -389,7 +398,7 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements CancelResourceReserveInterface.
   void CancelResourceReserve(
-      BundleSpecification &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 

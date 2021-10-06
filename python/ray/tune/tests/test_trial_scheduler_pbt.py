@@ -201,7 +201,10 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def synchSetup(self, synch, param=[10, 20, 30]):
+    def synchSetup(self, synch, param=None):
+        if param is None:
+            param = [10, 20, 30]
+
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
             metric="mean_accuracy",

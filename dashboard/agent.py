@@ -362,14 +362,34 @@ if __name__ == "__main__":
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())
     except Exception as e:
-        # Something went wrong, so push an error to all drivers.
-        redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
-        traceback_str = ray._private.utils.format_error_message(
-            traceback.format_exc())
-        message = ("The agent on node {} failed with the following "
-                   "error:\n{}".format(platform.uname()[1], traceback_str))
-        ray._private.utils.push_error_to_driver_through_redis(
-            redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
-        logger.exception(message)
-        raise e
+        # All these env vars should be available because
+        # they are provided by the parent raylet.
+        restart_count = os.environ["RESTART_COUNT"]
+        max_restart_count = os.environ["MAX_RESTART_COUNT"]
+        raylet_pid = os.environ["RAY_RAYLET_PID"]
+        node_ip = args.node_ip_address
+        if restart_count >= max_restart_count:
+            # Agent is failed to be started many times.
+            # Push an error to all drivers, so that users can know the
+            # impact of the issue.
+            redis_client = ray._private.services.create_redis_client(
+                args.redis_address, password=args.redis_password)
+            traceback_str = ray._private.utils.format_error_message(
+                traceback.format_exc())
+            message = (
+                f"(ip={node_ip}) "
+                f"The agent on node {platform.uname()[1]} failed to "
+                f"be restarted {max_restart_count} "
+                "times. There are 3 possible problems if you see this error."
+                "\n  1. The dashboard might not display correct "
+                "information on this node."
+                "\n  2. Metrics on this node won't be reported."
+                "\n  3. runtime_env APIs won't work."
+                "\nCheck out the `dashboard_agent.log` to see the "
+                "detailed failure messages.")
+            ray._private.utils.push_error_to_driver_through_redis(
+                redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR,
+                message)
+            logger.error(message)
+        logger.exception(e)
+        exit(1)

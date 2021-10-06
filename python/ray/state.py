@@ -1,7 +1,6 @@
 from collections import defaultdict
 import json
 import logging
-import os
 
 import ray
 
@@ -50,10 +49,6 @@ class GlobalState:
 
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
-            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
-                ray.client().connect()
-                # Retry connect!
-                return self._check_connected()
             raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
                 "'ray.init()'.")
@@ -811,7 +806,7 @@ def next_job_id():
 
 
 @DeveloperAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -875,7 +870,7 @@ def actors(actor_id=None):
 
 
 @DeveloperAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
@@ -917,7 +912,7 @@ def object_transfer_timeline(filename=None):
 
 
 @DeveloperAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -932,7 +927,7 @@ def cluster_resources():
 
 
 @DeveloperAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def available_resources():
     """Get the current available cluster resources.
 

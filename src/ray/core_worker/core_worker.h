@@ -101,7 +101,6 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0),
         worker_shim_pid(0) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
@@ -182,8 +181,6 @@ struct CoreWorkerOptions {
   /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
   /// TODO(sang): Use this method for Java and cpp frontend too.
   bool connect_on_start;
-  /// The hash of the runtime env for this worker.
-  int runtime_env_hash;
   /// The PID of the process for setup worker runtime env.
   pid_t worker_shim_pid;
 };
@@ -299,18 +296,21 @@ class CoreWorkerProcess {
   /// \param[in] workerId The worker ID.
   /// \return The `CoreWorker` instance.
   std::shared_ptr<CoreWorker> GetWorker(const WorkerID &worker_id) const
-      LOCKS_EXCLUDED(worker_map_mutex_);
+      LOCKS_EXCLUDED(mutex_);
 
   /// Create a new `CoreWorker` instance.
   ///
   /// \return The newly created `CoreWorker` instance.
-  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(worker_map_mutex_);
+  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(mutex_);
 
   /// Remove an existing `CoreWorker` instance.
   ///
   /// \param[in] The existing `CoreWorker` instance.
   /// \return Void.
-  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
+  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(mutex_);
+
+  /// Get the `GlobalWorker` instance, if the number of workers is 1.
+  std::shared_ptr<CoreWorker> GetGlobalWorker() LOCKS_EXCLUDED(mutex_);
 
   /// The various options.
   const CoreWorkerOptions options_;
@@ -320,17 +320,16 @@ class CoreWorkerProcess {
   static thread_local std::weak_ptr<CoreWorker> current_core_worker_;
 
   /// The only core worker instance, if the number of workers is 1.
-  std::shared_ptr<CoreWorker> global_worker_;
+  std::shared_ptr<CoreWorker> global_worker_ GUARDED_BY(mutex_);
 
   /// The worker ID of the global worker, if the number of workers is 1.
   const WorkerID global_worker_id_;
 
   /// Map from worker ID to worker.
-  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_
-      GUARDED_BY(worker_map_mutex_);
+  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_ GUARDED_BY(mutex_);
 
-  /// To protect accessing the `workers_` map.
-  mutable absl::Mutex worker_map_mutex_;
+  /// To protect access to workers_ and global_worker_
+  mutable absl::Mutex mutex_;
 };
 
 /// The root class that contains all the core and language-independent functionalities
@@ -1044,6 +1043,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
 
+  /// Retrieve the current statistics about tasks being received and executing.
+  /// \return an unordered_map mapping function name to list of (num_received,
+  /// num_executing, num_executed). It is a std map instead of absl due to its
+  /// interface with language bindings.
+  std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
+
  private:
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -1366,12 +1371,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
 
-  /// Event loop where tasks are processed.
-  instrumented_io_context task_execution_service_;
-
-  /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work task_execution_service_work_;
-
   /// Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;
 
@@ -1389,6 +1388,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
+
+  /// Event loop where tasks are processed.
+  /// task_execution_service_ should be destructed first to avoid
+  /// issues like https://github.com/ray-project/ray/issues/18857
+  instrumented_io_context task_execution_service_;
+
+  /// The asio work to keep task_execution_service_ alive.
+  boost::asio::io_service::work task_execution_service_work_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
@@ -1408,14 +1415,47 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
                       ObjectID object_id, void *py_future);
 
-  /// Whether we are shutting down and not running further tasks.
-  bool exiting_ = false;
+  /// we are shutting down and not running further tasks.
+  /// when exiting_ is set to true HandlePushTask becomes no-op.
+  std::atomic<bool> exiting_ = false;
 
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
 
   std::unique_ptr<rpc::JobConfig> job_config_;
+
+  /// Simple container for per function task counters. The counters will be
+  /// keyed by the function name in task spec.
+  struct TaskCounter {
+    /// A task can only be one of the following state. Received state in particular
+    /// covers from the point of RPC call to beginning execution.
+    enum TaskStatusType { kPending, kRunning, kFinished };
+
+    /// This mutex should be used by caller to ensure consistency when transitioning
+    /// a task's state.
+    mutable absl::Mutex tasks_counter_mutex_;
+    absl::flat_hash_map<std::string, int> pending_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> running_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+
+    void Add(TaskStatusType type, const std::string &func_name, int value) {
+      tasks_counter_mutex_.AssertHeld();
+      if (type == kPending) {
+        pending_tasks_counter_map_[func_name] += value;
+      } else if (type == kRunning) {
+        running_tasks_counter_map_[func_name] += value;
+      } else if (type == kFinished) {
+        finished_tasks_counter_map_[func_name] += value;
+      } else {
+        RAY_CHECK(false) << "This line should not be reached.";
+      }
+    }
+  };
+  TaskCounter task_counter_;
 };
 
 }  // namespace core

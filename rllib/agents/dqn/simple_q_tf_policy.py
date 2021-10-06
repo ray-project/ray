@@ -181,7 +181,7 @@ def compute_q_values(policy: Policy,
                      explore,
                      is_training=None) -> TensorType:
     model_out, _ = model({
-        SampleBatch.CUR_OBS: obs,
+        SampleBatch.OBS: obs,
         "is_training": is_training
         if is_training is not None else policy._get_is_training_placeholder(),
     }, [], None)

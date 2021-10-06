@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
     dqn.DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
     {
-        # Learning rate for adam optimizer
+        # Learning rate for adam optimizer.
         "lr": 1e-4,
         # Discount factor.
         "gamma": 0.997,
@@ -40,8 +40,6 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
         "num_workers": 2,
         # Batch mode must be complete_episodes.
         "batch_mode": "complete_episodes",
-        # R2D2 does not suport n-step > 1 yet!
-        "n_step": 1,
 
         # If True, assume a zero-initialized state input (no matter where in
         # the episode the sequence is located).
@@ -71,7 +69,6 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
         # Size of the replay buffer (in sequences, not timesteps).
         "buffer_size": 100000,
         # If True prioritized replay buffer will be used.
-        # Note: Not supported yet by R2D2!
         "prioritized_replay": False,
         # Set automatically: The number of contiguous environment steps to
         # replay at once. Will be calculated via
@@ -91,7 +88,8 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
 def validate_config(config: TrainerConfigDict) -> None:
     """Checks and updates the config based on settings.
 
-    Rewrites rollout_fragment_length to take into account n_step truncation.
+    Rewrites rollout_fragment_length to take into account burn-in and
+    max_seq_len truncation.
     """
     if config["replay_sequence_length"] != -1:
         raise ValueError(
@@ -102,14 +100,8 @@ def validate_config(config: TrainerConfigDict) -> None:
     config["replay_sequence_length"] = \
         config["burn_in"] + config["model"]["max_seq_len"]
 
-    if config.get("prioritized_replay"):
-        raise ValueError("Prioritized replay is not supported for R2D2 yet!")
-
     if config.get("batch_mode") != "complete_episodes":
         raise ValueError("`batch_mode` must be 'complete_episodes'!")
-
-    if config["n_step"] > 1:
-        raise ValueError("`n_step` > 1 not yet supported by R2D2!")
 
 
 def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:

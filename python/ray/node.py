@@ -572,7 +572,10 @@ class Node:
             log_stderr = os.path.join(self._logs_dir, f"{name}.err")
         return log_stdout, log_stderr
 
-    def _get_unused_port(self, close_on_exit=True):
+    def _get_unused_port(self, allocated_ports=None):
+        if allocated_ports is None:
+            allocated_ports = set()
+
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind(("", 0))
         port = s.getsockname()[1]
@@ -582,6 +585,10 @@ class Node:
         # from this method has been used by a different process.
         for _ in range(NUM_PORT_RETRIES):
             new_port = random.randint(port, 65535)
+            if new_port in allocated_ports:
+                # This port is allocated for other usage already,
+                # so we shouldn't use it even if it's not in use right now.
+                continue
             new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
                 new_s.bind(("", new_port))
@@ -589,13 +596,11 @@ class Node:
                 new_s.close()
                 continue
             s.close()
-            if close_on_exit:
-                new_s.close()
-            return new_port, new_s
+            new_s.close()
+            return new_port
         logger.error("Unable to succeed in selecting a random port.")
-        if close_on_exit:
-            s.close()
-        return port, s
+        s.close()
+        return port
 
     def _prepare_socket_file(self, socket_path, default_prefix):
         """Prepare the socket file for raylet and plasma.
@@ -613,7 +618,7 @@ class Node:
         if sys.platform == "win32":
             if socket_path is None:
                 result = (f"tcp://{self._localhost}"
-                          f":{self._get_unused_port()[0]}")
+                          f":{self._get_unused_port()}")
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -665,7 +670,8 @@ class Node:
             port = int(ports_by_node[self.unique_id][port_name])
         else:
             # Pick a new port to use and cache it at this node.
-            port = (default_port or self._get_unused_port()[0])
+            port = (default_port or self._get_unused_port(
+                set(ports_by_node[self.unique_id].values())))
             ports_by_node[self.unique_id][port_name] = port
             with open(file_path, "w") as f:
                 json.dump(ports_by_node, f)

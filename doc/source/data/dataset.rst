@@ -16,7 +16,7 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 
 Concepts
 --------
-Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__, `Arrow tensor <https://arrow.apache.org/docs/python/generated/pyarrow.Tensor.html>`__, or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
+Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
 
 The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
@@ -145,6 +145,10 @@ Datasource Compatibility Matrices
 Creating Datasets
 -----------------
 
+.. tip::
+
+   Run ``pip install ray[data]`` to get started!
+
 Get started by creating Datasets from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``. Datasets can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
 
 .. code-block:: python
@@ -198,7 +202,7 @@ Finally, you can create a ``Dataset`` from existing data in the Ray object store
 
     # Create a Dataset from a list of Pandas DataFrame objects.
     pdf = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([ray.put(pdf)])
+    ds = ray.data.from_pandas([pdf])
 
     # Create a Dataset from a Dask-on-Ray DataFrame.
     dask_df = dd.from_pandas(pdf, npartitions=10)
