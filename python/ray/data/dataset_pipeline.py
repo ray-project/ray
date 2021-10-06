@@ -245,8 +245,9 @@ class DatasetPipeline(Generic[T]):
 
         Changes the windowing of this pipeline to the specified size. For
         example, if the current pipeline has two blocks per dataset, and
-        `.window(4)` is requested, adjacent datasets will be merged until each
-        dataset is 4 blocks. If `.window(1)` was requested the datasets will
+        `.window(blocks_per_window=4)` is requested, adjacent datasets will
+        be merged until each dataset is 4 blocks. If
+        `.window(blocks_per_window=1)` was requested the datasets will
         be split into smaller windows.
 
         Args:

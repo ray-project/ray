@@ -9,9 +9,9 @@
 # -modernize-pass-by-value (too restrictive)
 # -modernize-return-braced-init-list (inconsistent style)
 # -modernize-use-emplace (more subtle behavior)
-# -modernize-use-nodiscard (too much noise)
 # -modernize-use-trailing-return-type (inconsistent style)
-# Other readability-* rules (potentially too noisy, inconsistent style)
+# -modernize-use-trailing-return-type (inconsistent style)
+# -readability-convert-member-functions-to-static (potentially too restrictive)
 # Other rules not mentioned here or below (not yet evaluated)
 #
 # TODO: enable google-* and readability-* families of checks.
@@ -30,7 +30,6 @@ Checks: >
   -modernize-pass-by-value,
   -modernize-return-braced-init-list,
   -modernize-use-emplace,
-  -modernize-use-nodiscard,
   -modernize-use-trailing-return-type,
   performance-*,
   readability-avoid-const-params-in-decls,
@@ -39,16 +38,6 @@ Checks: >
   readability-container-size-empty,
   readability-delete-null-pointer,
   readability-else-after-return,
-  readability-implicit-bool-conversion,
-  readability-make-member-function-const,
-  readability-misleading-indentation,
-  readability-misplaced-array-index,
-  readability-named-parameter,
-  readability-non-const-parameter,
-  readability-redundant-*,
-  readability-static-definition-in-anonymous-namespace,
-  readability-string-compare,
-  readability-suspicious-call-argument,
 
 CheckOptions:
   # Reduce noisiness of the bugprone-narrowing-conversions check.
