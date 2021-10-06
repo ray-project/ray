@@ -19,8 +19,8 @@ from ray.serve.common import (
     NodeId,
     ReplicaTag,
 )
-from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
-from ray.serve.constants import (CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY)
+from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.replica import create_replica_wrapper

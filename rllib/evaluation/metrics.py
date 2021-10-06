@@ -56,10 +56,15 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
 
 @DeveloperAPI
 def collect_metrics(local_worker: Optional["RolloutWorker"] = None,
-                    remote_workers: List[ActorHandle] = [],
-                    to_be_collected: List[ObjectRef] = [],
+                    remote_workers: Optional[List[ActorHandle]] = None,
+                    to_be_collected: Optional[List[ObjectRef]] = None,
                     timeout_seconds: int = 180) -> ResultDict:
     """Gathers episode metrics from RolloutWorker instances."""
+    if remote_workers is None:
+        remote_workers = []
+
+    if to_be_collected is None:
+        to_be_collected = []
 
     episodes, to_be_collected = collect_episodes(
         local_worker,
@@ -73,11 +78,16 @@ def collect_metrics(local_worker: Optional["RolloutWorker"] = None,
 @DeveloperAPI
 def collect_episodes(
         local_worker: Optional["RolloutWorker"] = None,
-        remote_workers: List[ActorHandle] = [],
-        to_be_collected: List[ObjectRef] = [],
+        remote_workers: Optional[List[ActorHandle]] = None,
+        to_be_collected: Optional[List[ObjectRef]] = None,
         timeout_seconds: int = 180
 ) -> Tuple[List[Union[RolloutMetrics, OffPolicyEstimate]], List[ObjectRef]]:
     """Gathers new episodes metrics tuples from the given evaluators."""
+    if remote_workers is None:
+        remote_workers = []
+
+    if to_be_collected is None:
+        to_be_collected = []
 
     if remote_workers:
         pending = [
