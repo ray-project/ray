@@ -755,7 +755,7 @@ void ClusterTaskManager::FillResourceUsage(
 
       by_shape_entry->set_num_ready_requests_queued(ready_count);
       by_shape_entry->set_num_infeasible_requests_queued(infeasible_count);
-      by_shape_entry->set_backlog_size(AggregateWorkerBacklog(one_cpu_scheduling_cls));
+      by_shape_entry->set_backlog_size(TotalBacklogSize(one_cpu_scheduling_cls));
     }
   }
 
@@ -793,7 +793,7 @@ void ClusterTaskManager::FillResourceUsage(
     // ClusterResourceScheduler::GetBestSchedulableNode for more details.
     int num_ready = by_shape_entry->num_ready_requests_queued();
     by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-    by_shape_entry->set_backlog_size(AggregateWorkerBacklog(scheduling_class));
+    by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
   }
 
   for (const auto &pair : tasks_to_dispatch_) {
@@ -826,7 +826,7 @@ void ClusterTaskManager::FillResourceUsage(
     }
     int num_ready = by_shape_entry->num_ready_requests_queued();
     by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-    by_shape_entry->set_backlog_size(AggregateWorkerBacklog(scheduling_class));
+    by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
   }
 
   for (const auto &pair : infeasible_tasks_) {
@@ -862,7 +862,7 @@ void ClusterTaskManager::FillResourceUsage(
     // ClusterResourceScheduler::GetBestSchedulableNode for more details.
     int num_infeasible = by_shape_entry->num_infeasible_requests_queued();
     by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
-    by_shape_entry->set_backlog_size(AggregateWorkerBacklog(scheduling_class));
+    by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
   }
 
   if (RayConfig::instance().enable_light_weight_resource_report()) {
@@ -1121,7 +1121,7 @@ void ClusterTaskManager::SetWorkerBacklog(SchedulingClass scheduling_class,
   }
 }
 
-int64_t ClusterTaskManager::AggregateWorkerBacklog(SchedulingClass scheduling_class) {
+int64_t ClusterTaskManager::TotalBacklogSize(SchedulingClass scheduling_class) {
   auto backlog_it = backlog_tracker_.find(scheduling_class);
   if (backlog_it == backlog_tracker_.end()) {
     return 0;

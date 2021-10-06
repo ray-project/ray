@@ -110,7 +110,9 @@ class CoreWorkerDirectTaskSubmitter {
     return num_leases_requested_;
   }
 
-  /// Report worker backlog information to the local raylet
+  /// Report worker backlog information to the local raylet.
+  /// Since each worker only reports to its local rayet
+  /// we avoid double counting backlogs in autoscaler.
   void ReportWorkerBacklog();
 
  private:
@@ -365,7 +367,7 @@ class CoreWorkerDirectTaskSubmitter {
         return 0;
       }
 
-      // Subtract tasks with pending lesae requests so we don't double count them.
+      // Subtract tasks with pending lease requests so we don't double count them.
       return task_queue.size() - pending_lease_requests.size();
     }
   };

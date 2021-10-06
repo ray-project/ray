@@ -428,7 +428,7 @@ void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklog() {
 }
 
 void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogInternal() {
-  std::unordered_map<SchedulingClass, std::pair<TaskSpecification, int64_t>> backlogs;
+  absl::flat_hash_map<SchedulingClass, std::pair<TaskSpecification, int64_t>> backlogs;
   for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
     const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
     if (backlogs.find(scheduling_class) == backlogs.end()) {

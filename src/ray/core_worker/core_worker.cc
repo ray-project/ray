@@ -989,6 +989,10 @@ void CoreWorker::InternalHeartbeat() {
     direct_actor_submitter_->CheckTimeoutTasks();
   }
 
+  // Periodically report the lastest backlog so that
+  // local raylet will have the eventually consistent view of worker backlogs
+  // even in cases where backlog reports from direct_task_transport
+  // are lost or reordered.
   direct_task_submitter_->ReportWorkerBacklog();
 
   // Check for unhandled exceptions to raise after a timeout on the driver.

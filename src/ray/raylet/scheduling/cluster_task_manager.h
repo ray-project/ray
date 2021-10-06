@@ -370,7 +370,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<Work> &work);
 
   /// Sum up the backlog size across all workers for a given scheduling class.
-  int64_t AggregateWorkerBacklog(SchedulingClass scheduling_class);
+  int64_t TotalBacklogSize(SchedulingClass scheduling_class);
 
   // Helper function to pin a task's args immediately before dispatch. This
   // returns false if there are missing args (due to eviction) or if there is
