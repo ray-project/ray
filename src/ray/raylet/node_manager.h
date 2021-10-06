@@ -48,7 +48,6 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::ActorTableData;
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
 using rpc::HeartbeatTableData;
@@ -273,13 +272,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// returned to idle.
   bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr);
 
-  /// Helper function to produce actor table data for a newly created actor.
-  ///
-  /// \param task_spec RayTask specification of the actor creation task that created the
-  /// actor.
-  /// \param worker The port that the actor is listening on.
-  std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
-      const TaskSpecification &task_spec, int port, const WorkerID &worker_id);
   /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
@@ -602,11 +594,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       const std::shared_ptr<ClientConnection> &client,
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
-
-  /// Delete URI in local node.
-  ///
-  /// \param uri The URI of the resource.
-  void DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb);
 
   /// ID of this node.
   NodeID self_node_id_;

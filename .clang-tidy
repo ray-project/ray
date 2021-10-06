@@ -1,0 +1,50 @@
+# Disable the following checks with reasons in parenthesis:
+#
+# -bugprone-macro-parentheses (inconsistent style)
+# -google-readability-todo (potentially too restrictive)
+# -misc-non-private-member-variables-in-classes (potentially too restrictive)
+# -misc-unused-parameters (can be cleaned up in batch and enabled)
+# -modernize-avoid-c-arrays (too restrictive)
+# -modernize-concat-nested-namespaces (inconsistent style)
+# -modernize-pass-by-value (too restrictive)
+# -modernize-return-braced-init-list (inconsistent style)
+# -modernize-use-emplace (more subtle behavior)
+# -modernize-use-trailing-return-type (inconsistent style)
+# -modernize-use-trailing-return-type (inconsistent style)
+# -readability-convert-member-functions-to-static (potentially too restrictive)
+# Other rules not mentioned here or below (not yet evaluated)
+#
+# TODO: enable google-* and readability-* families of checks.
+Checks: >
+  abseil-*,
+  bugprone-*,
+  -bugprone-macro-parentheses,
+  google-*,
+  -google-readability-todo,
+  misc-*,
+  -misc-non-private-member-variables-in-classes,
+  -misc-unused-parameters,
+  modernize-*,
+  -modernize-avoid-c-arrays,
+  -modernize-concat-nested-namespaces,
+  -modernize-pass-by-value,
+  -modernize-return-braced-init-list,
+  -modernize-use-emplace,
+  -modernize-use-trailing-return-type,
+  performance-*,
+  readability-avoid-const-params-in-decls,
+  readability-braces-around-statements,
+  readability-const-return-type,
+  readability-container-size-empty,
+  readability-delete-null-pointer,
+  readability-else-after-return,
+
+CheckOptions:
+  # Reduce noisiness of the bugprone-narrowing-conversions check.
+  - key:   bugprone-narrowing-conversions.IgnoreConversionFromTypes
+    value: 'size_t;ptrdiff_t;size_type;difference_type'
+  - key:   bugprone-narrowing-conversions.WarnOnEquivalentBitWidth
+    value: 'false'
+
+# Turn all the warnings from the checks above into errors.
+WarningsAsErrors: "*"

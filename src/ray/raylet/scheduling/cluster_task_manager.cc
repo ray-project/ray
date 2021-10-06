@@ -138,6 +138,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<Work> work) {
         task_dependency_manager_.RequestTaskDependencies(task_id, task.GetDependencies());
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
+      num_tasks_waiting_for_dispatch_++;
       tasks_to_dispatch_[scheduling_key].push_back(work);
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
@@ -149,6 +150,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<Work> work) {
   } else {
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
+    num_tasks_waiting_for_dispatch_++;
     tasks_to_dispatch_[scheduling_key].push_back(work);
   }
   return can_dispatch;
@@ -232,6 +234,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
         work->status = WorkStatus::WAITING;
+        num_tasks_waiting_for_dispatch_++;
         // Return here because we shouldn't remove task dependencies.
         return dispatched;
       }
@@ -264,6 +267,11 @@ bool ClusterTaskManager::PoppedWorkerHandler(
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
+  if (num_tasks_waiting_for_dispatch_ == 0) {
+    RAY_LOG(DEBUG) << "No new tasks since last call to dispatch, skipping";
+    return;
+  }
+
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -283,6 +291,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         work_it++;
         continue;
       }
+      RAY_CHECK(work->status == WorkStatus::WAITING);
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
@@ -296,6 +305,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
                                                std::move(*work_it));
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
+          RAY_CHECK(num_tasks_waiting_for_dispatch_ > 0);
+          num_tasks_waiting_for_dispatch_--;
           work_it = dispatch_queue.erase(work_it);
         } else {
           // The task's args cannot be pinned due to lack of memory. We should
@@ -327,6 +338,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
         ReleaseTaskArgs(task_id);
+        RAY_CHECK(num_tasks_waiting_for_dispatch_ > 0);
+        num_tasks_waiting_for_dispatch_--;
         work_it = dispatch_queue.erase(work_it);
         continue;
       }
@@ -352,6 +365,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
         }
+        RAY_CHECK(num_tasks_waiting_for_dispatch_ > 0);
+        num_tasks_waiting_for_dispatch_--;
         work_it = dispatch_queue.erase(work_it);
       } else {
         // The local node has the available resources to run the task, so we should run
@@ -375,6 +390,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                                          is_detached_actor, owner_address);
             },
             allocated_instances_serialized_json);
+        RAY_CHECK(num_tasks_waiting_for_dispatch_ > 0);
+        num_tasks_waiting_for_dispatch_--;
         work_it++;
       }
     }
@@ -443,6 +460,8 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
       const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
+      RAY_CHECK(work->status == WorkStatus::WAITING);
+      num_tasks_waiting_for_dispatch_++;
       tasks_to_dispatch_[scheduling_key].push_back(work);
       waiting_task_queue_.erase(it->second);
       waiting_tasks_index_.erase(it);
@@ -618,6 +637,10 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
         }
+        if ((*work_it)->status == WorkStatus::WAITING) {
+          RAY_CHECK(num_tasks_waiting_for_dispatch_ > 0);
+          num_tasks_waiting_for_dispatch_--;
+        }
         (*work_it)->status = WorkStatus::CANCELLED;
         work_queue.erase(work_it);
         if (work_queue.empty()) {
@@ -716,31 +739,34 @@ void ClusterTaskManager::FillResourceUsage(
       TaskSpecification::GetSchedulingClass(one_cpu_resource_set));
   {
     num_reported++;
-    int count = 0;
+    int ready_count = 0;
     auto it = tasks_to_schedule_.find(one_cpu_scheduling_cls);
     if (it != tasks_to_schedule_.end()) {
-      count += it->second.size();
+      ready_count += it->second.size();
     }
     it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
     if (it != tasks_to_dispatch_.end()) {
-      count += it->second.size();
+      ready_count += it->second.size();
     }
-
-    if (count > 0) {
+    int infeasible_count = 0;
+    it = infeasible_tasks_.find(one_cpu_scheduling_cls);
+    if (it != infeasible_tasks_.end()) {
+      infeasible_count += it->second.size();
+    }
+    const int total_count = ready_count + infeasible_count;
+    if (total_count > 0) {
       auto by_shape_entry = resource_load_by_shape->Add();
 
-      for (const auto &resource : one_cpu_resource_set.GetResourceMap()) {
+      for (const auto &[label, quantity] : one_cpu_resource_set.GetResourceMap()) {
         // Add to `resource_loads`.
-        const auto &label = resource.first;
-        const auto &quantity = resource.second;
-        (*resource_loads)[label] += quantity * count;
+        (*resource_loads)[label] += quantity * total_count;
 
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
       }
 
-      int num_ready = by_shape_entry->num_ready_requests_queued();
-      by_shape_entry->set_num_ready_requests_queued(num_ready + count);
+      by_shape_entry->set_num_ready_requests_queued(ready_count);
+      by_shape_entry->set_num_infeasible_requests_queued(infeasible_count);
 
       auto backlog_it = backlog_tracker_.find(one_cpu_scheduling_cls);
       if (backlog_it != backlog_tracker_.end()) {
@@ -1090,6 +1116,10 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_port(node_info_opt->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    reply->set_rejected(true);
+  }
+
   auto send_reply_callback = work->callback;
   send_reply_callback();
 }
@@ -1252,6 +1282,12 @@ void ClusterTaskManager::SpillWaitingTasks() {
       break;
     }
   }
+}
+
+bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
+  const auto &spec = task.GetTaskSpecification();
+  return cluster_resource_scheduler_->IsLocallySchedulable(
+      spec.GetRequiredResources().GetResourceMap());
 }
 
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {

@@ -40,7 +40,7 @@ class DatasetPipeline(Generic[T]):
 
     A DatasetPipeline can be created by either repeating a Dataset
     (``ds.repeat(times=None)``), by turning a single Dataset into a pipeline
-    (``ds.pipeline(parallelism=10)``), or defined explicitly using
+    (``ds.window(blocks_per_window=10)``), or defined explicitly using
     ``DatasetPipeline.from_iterable()``.
 
     DatasetPipeline supports the all the per-record transforms of Datasets
@@ -52,11 +52,12 @@ class DatasetPipeline(Generic[T]):
                  base_iterable: Iterable[Callable[[], Dataset[T]]],
                  stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
                  length: int = None,
-                 progress_bars: bool = progress_bar._enabled):
+                 progress_bars: bool = progress_bar._enabled,
+                 _executed: List[bool] = None):
         """Construct a DatasetPipeline (internal API).
 
         The constructor is not part of the DatasetPipeline API. Use the
-        ``Dataset.repeat()``, ``Dataset.pipeline()``, or
+        ``Dataset.repeat()``, ``Dataset.window()``, or
         ``DatasetPipeline.from_iterable()`` methods to construct a pipeline.
         """
         self._base_iterable = base_iterable
@@ -64,6 +65,9 @@ class DatasetPipeline(Generic[T]):
         self._length = length
         self._progress_bars = progress_bars
         self._uuid = None  # For testing only.
+        # Whether the pipeline execution has started.
+        # This variable is shared across all pipelines descending from this.
+        self._executed = _executed or [False]
 
     def iter_batches(self,
                      *,
@@ -139,12 +143,68 @@ class DatasetPipeline(Generic[T]):
         Returns:
             A list of ``n`` disjoint pipeline splits.
         """
+        return self._split(
+            n,
+            lambda ds: ds.split(n, equal=equal, locality_hints=locality_hints))
+
+    def split_at_indices(self,
+                         indices: List[int]) -> List["DatasetPipeline[T]"]:
+        """Split the datasets within the pipeline at the given indices
+        (like np.split).
+
+        This will split each dataset contained within this pipeline, thereby
+        producing len(indices) + 1 pipelines with the first pipeline containing
+        the [0, indices[0]) slice from each dataset, the second pipeline
+        containing the [indices[0], indices[1]) slice from each dataset, and so
+        on, with the final pipeline will containing the
+        [indices[-1], self.count()) slice from each dataset.
+
+        Examples:
+            >>> p1, p2, p3 = ray.data.range(
+                    8).repeat(2).split_at_indices([2, 5])
+            >>> p1.take()
+            [0, 1, 0, 1]
+            >>> p2.take()
+            [2, 3, 4, 2, 3, 4]
+            >>> p3.take()
+            [5, 6, 7, 5, 6, 7]
+
+        Time complexity: O(num splits)
+
+        See also: ``DatasetPipeline.split``
+
+        Args:
+            indices: List of sorted integers which indicate where the pipeline
+                will be split. If an index exceeds the length of the pipeline,
+                an empty pipeline will be returned.
+
+        Returns:
+            The pipeline splits.
+        """
+
+        if len(indices) < 1:
+            raise ValueError("indices must be at least of length 1")
+        if sorted(indices) != indices:
+            raise ValueError("indices must be sorted")
+        if indices[0] < 0:
+            raise ValueError("indices must be positive")
+
+        return self._split(
+            len(indices) + 1, lambda ds: ds.split_at_indices(indices))
+
+    def _split(self, n: int,
+               splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
+
         coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, equal, locality_hints)
+            self, n, splitter)
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
+        self._executed[0] = True
 
         class SplitIterator:
-            def __init__(self, split_index):
+            def __init__(self, split_index, coordinator):
                 self.split_index = split_index
+                self.coordinator = coordinator
                 self.warn_threshold = 100
                 self.wait_delay_s = 0.1
 
@@ -156,29 +216,55 @@ class DatasetPipeline(Generic[T]):
                 tries = 0
                 while ds is None:
                     ds = ray.get(
-                        coordinator.next_dataset_if_ready.remote(
+                        self.coordinator.next_dataset_if_ready.remote(
                             self.split_index))
                     # Wait for other shards to catch up reading.
                     if not ds:
                         time.sleep(self.wait_delay_s)
                         tries += 1
                     if tries > self.warn_threshold:
-                        print("Warning: shard {} of the pipeline has been "
-                              "stalled more than {}s waiting for other shards "
-                              "to catch up.".format(
+                        print("Warning: reader on shard {} of the pipeline "
+                              "has been blocked more than {}s waiting for "
+                              "other readers to catch up. All pipeline shards "
+                              "must be read from concurrently.".format(
                                   self.split_index,
                                   self.wait_delay_s * self.warn_threshold))
                         self.warn_threshold *= 2
                 return lambda: ds
 
-        splits = []
-        for i in range(n):
+        return [
             # Disable progress bars for the split readers since they would
             # overwhelm the console.
-            splits.append(
-                DatasetPipeline(SplitIterator(i), progress_bars=False))
+            DatasetPipeline(
+                SplitIterator(idx, coordinator), progress_bars=False)
+            for idx in range(n)
+        ]
 
-        return splits
+    def window(self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
+        """Change the windowing (blocks per dataset) of this pipeline.
+
+        Changes the windowing of this pipeline to the specified size. For
+        example, if the current pipeline has two blocks per dataset, and
+        `.window(4)` is requested, adjacent datasets will be merged until each
+        dataset is 4 blocks. If `.window(1)` was requested the datasets will
+        be split into smaller windows.
+
+        Args:
+            blocks_per_window: The new target blocks per window.
+        """
+        raise NotImplementedError
+
+    def repeat(self, times: int = None) -> "DatasetPipeline[T]":
+        """Repeat this pipeline a given number or times, or indefinitely.
+
+        This operation is only allowed for pipelines of a finite length. An
+        error will be raised for pipelines of infinite or unknown length.
+
+        Args:
+            times: The number of times to loop over this pipeline, or None
+                to repeat indefinitely.
+        """
+        raise NotImplementedError
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
@@ -234,6 +320,9 @@ class DatasetPipeline(Generic[T]):
         Returns:
             Iterator over the datasets outputted from this pipeline.
         """
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
+        self._executed[0] = True
         return PipelineExecutor(self)
 
     @DeveloperAPI
@@ -247,8 +336,14 @@ class DatasetPipeline(Generic[T]):
         Returns:
             The transformed DatasetPipeline.
         """
-        return DatasetPipeline(self._base_iterable, self._stages + [fn],
-                               self._length, self._progress_bars)
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
+        return DatasetPipeline(
+            self._base_iterable,
+            self._stages + [fn],
+            self._length,
+            self._progress_bars,
+            _executed=self._executed)
 
     @staticmethod
     def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]],

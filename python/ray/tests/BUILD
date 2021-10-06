@@ -10,7 +10,6 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
-#    "test_dynres.py",  # dyn res not implemented
     "test_actor_pool.py",
     "test_async.py",
     "test_actor_failures.py",
@@ -30,6 +29,7 @@ py_test_module_list(
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
     "test_global_gc.py",
+    "test_grpc_client_credentials.py",
     "test_iter.py",
     "test_joblib.py",
     "test_get_locations.py",
@@ -48,13 +48,15 @@ py_test_module_list(
   files = [
     "test_client.py",
     "test_client_builder.py",
+    "test_client_compat.py",
     "test_client_init.py",
-    "test_client_multi.py",    
+    "test_client_multi.py",
     "test_client_proxy.py",
     "test_client_server.py",
     "test_client_references.py",
     "test_client_warnings.py",
     "test_client_library_integration.py",
+    "test_client_reconnect.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -73,12 +75,15 @@ py_test_module_list(
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
     "test_object_assign_owner.py",
-    "test_output.py",
+    "test_placement_group.py",
+    "test_placement_group_2.py",
+    "test_placement_group_3.py",
     "test_ray_init.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_env_env_vars.py",
+    "test_runtime_env_plugin.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",
@@ -134,6 +139,7 @@ py_test_module_list(
     "test_dataclient_disconnect.py",
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
+    "test_response_cache.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -156,10 +162,12 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_output.py",
     "test_failure_2.py",
     "test_failure_4.py",
     "test_object_spilling.py",
     "test_plasma_unlimited.py",
+    "test_placement_group_mini_integration.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -195,6 +203,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_object_manager.py",
     "test_multi_tenancy.py",
     "test_scheduling.py",
@@ -224,16 +233,6 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky-mac", "team:core"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_placement_group.py",
-  ],
-  size = "large",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "flaky-mac", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -340,6 +339,7 @@ py_test_module_list(
   files = [
     "test_object_spilling.py",
     "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_scheduling.py",
     "test_array.py"
   ],
@@ -354,6 +354,7 @@ py_test_module_list(
   files = [
     "test_object_spilling.py",
     "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_scheduling.py",
     "test_array.py"
   ],

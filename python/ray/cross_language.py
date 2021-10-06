@@ -77,7 +77,8 @@ def java_function(class_name, function_name):
         None,  # accelerator_type,
         None,  # num_returns,
         None,  # max_calls,
-        None,  # max_retries
+        None,  # max_retries,
+        None,  # retry_exceptions,
         None)  # runtime_env
 
 

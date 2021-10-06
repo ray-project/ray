@@ -21,10 +21,7 @@ import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 from ray.util.queue import Queue, _QueueActor, Empty
-import requests
 from ray.scripts.scripts import main as ray_main
-from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
-                                               get_hook_logger)
 try:
     from prometheus_client.parser import text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
@@ -585,6 +582,9 @@ def object_memory_usage() -> bool:
 
 
 def fetch_prometheus(prom_addresses):
+    # Local import so minimal dependency tests can run without requests
+    import requests
+
     components_dict = {}
     metric_names = set()
     metric_samples = []
@@ -621,15 +621,6 @@ def load_test_config(config_file_name):
 def set_setup_func():
     import ray._private.runtime_env as runtime_env
     runtime_env.VAR = "hello world"
-
-
-def sleep_setup_runtime_env(runtime_env: dict, session_dir):
-    logger = get_hook_logger()
-    logger.info(f"Setting up runtime environment {runtime_env}")
-    logger.info("Simulating long runtime env setup.  Sleeping for 15s...")
-    time.sleep(15)
-    logger.info("Finished sleeping for 15s")
-    return RuntimeEnvContext()
 
 
 class BatchQueue(Queue):
@@ -694,3 +685,10 @@ class _BatchQueueActor(_QueueActor):
                 except asyncio.TimeoutError:
                     break
         return batch
+
+
+def is_placement_group_removed(pg):
+    table = ray.util.placement_group_table(pg)
+    if "state" not in table:
+        return False
+    return table["state"] == "REMOVED"

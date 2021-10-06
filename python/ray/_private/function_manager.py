@@ -23,7 +23,6 @@ from ray._private.utils import (
     decode,
     ensure_str,
     format_error_message,
-    push_error_to_driver,
 )
 from ray.util.inspect import (
     is_function_or_method,
@@ -76,6 +75,7 @@ class FunctionActorManager:
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
+        self.cv = threading.Condition(lock=self.lock)
         self.execution_infos = {}
 
     def increase_task_counter(self, function_descriptor):
@@ -144,13 +144,15 @@ class FunctionActorManager:
                     module_name, function_name) is not None:
                 return
         function = remote_function._function
-        pickled_function = pickle.dumps(function)
+        pickled_function = remote_function._pickled_function
 
         check_oversized_function(pickled_function,
                                  remote_function._function_name,
                                  "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
+        if self._worker.redis_client.exists(key) == 1:
+            return
         self._worker.redis_client.hset(
             key,
             mapping={
@@ -190,9 +192,17 @@ class FunctionActorManager:
                 function = pickle.loads(serialized_function)
             except Exception:
 
+                # If an exception was thrown when the remote function was
+                # imported, we record the traceback and notify the scheduler
+                # of the failure.
+                traceback_str = format_error_message(traceback.format_exc())
+
                 def f(*args, **kwargs):
                     raise RuntimeError(
-                        "This function was not imported properly.")
+                        "The remote function failed to import on the "
+                        "worker. This may be because needed library "
+                        "dependencies are not installed in the worker "
+                        "environment:\n\n{}".format(traceback_str))
 
                 # Use a placeholder method when function pickled failed
                 self._function_execution_info[function_id] = (
@@ -200,11 +210,10 @@ class FunctionActorManager:
                         function=f,
                         function_name=function_name,
                         max_calls=max_calls))
-                # If an exception was thrown when the remote function was
-                # imported, we record the traceback and notify the scheduler
-                # of the failure.
-                traceback_str = format_error_message(traceback.format_exc())
-                # Log the error message.
+
+                # Log the error message. Log at DEBUG level to avoid overly
+                # spamming the log on import failure. The user gets the error
+                # via the RuntimeError message above.
                 logger.debug("Failed to unpickle the remote function "
                              f"'{function_name}' with "
                              f"function ID {function_id.hex()}. "
@@ -468,14 +477,17 @@ class FunctionActorManager:
         else:
             return None
 
-    def _create_fake_actor_class(self, actor_class_name, actor_method_names):
+    def _create_fake_actor_class(self, actor_class_name, actor_method_names,
+                                 traceback_str):
         class TemporaryActor:
             pass
 
         def temporary_actor_method(*args, **kwargs):
-            raise RuntimeError(f"The actor with name {actor_class_name} "
-                               "failed to be imported, "
-                               "and so cannot execute this method.")
+            raise RuntimeError(
+                f"The actor with name {actor_class_name} "
+                "failed to import on the worker. This may be because "
+                "needed library dependencies are not installed in the "
+                f"worker environment:\n\n{traceback_str}")
 
         for method in actor_method_names:
             setattr(TemporaryActor, method, temporary_actor_method)
@@ -492,7 +504,15 @@ class FunctionActorManager:
         # up in an infinite loop here, but we should push an error to
         # the driver if too much time is spent here.
         while key not in self.imported_actor_classes:
-            time.sleep(0.001)
+            try:
+                # If we're in the process of deserializing an ActorHandle
+                # and we hold the function_manager lock, we may be blocking
+                # the import_thread from loading the actor class. Use cv.wait
+                # to temporarily yield control to the import thread.
+                self.cv.wait()
+            except RuntimeError:
+                # We don't hold the function_manager lock, just sleep regularly
+                time.sleep(0.001)
 
         # Fetch raw data from GCS.
         (job_id_str, class_name, module, pickled_class,
@@ -510,27 +530,15 @@ class FunctionActorManager:
             with self.lock:
                 actor_class = pickle.loads(pickled_class)
         except Exception:
-            logger.exception("Failed to load actor class %s.", class_name)
+            logger.debug("Failed to load actor class %s.", class_name)
+            # If an exception was thrown when the actor was imported, we record
+            # the traceback and notify the scheduler of the failure.
+            traceback_str = format_error_message(traceback.format_exc())
             # The actor class failed to be unpickled, create a fake actor
             # class instead (just to produce error messages and to prevent
             # the driver from hanging).
             actor_class = self._create_fake_actor_class(
-                class_name, actor_method_names)
-            # If an exception was thrown when the actor was imported, we record
-            # the traceback and notify the scheduler of the failure.
-            traceback_str = ray._private.utils.format_error_message(
-                traceback.format_exc())
-            # Log the error message.
-            push_error_to_driver(
-                self._worker,
-                ray_constants.REGISTER_ACTOR_PUSH_ERROR,
-                f"Failed to unpickle actor class '{class_name}' "
-                f"for actor ID {self._worker.actor_id.hex()}. "
-                f"Traceback:\n{traceback_str}",
-                job_id=job_id)
-            # TODO(rkn): In the future, it might make sense to have the worker
-            # exit here. However, currently that would lead to hanging if
-            # someone calls ray.get on a method invoked on the actor.
+                class_name, actor_method_names, traceback_str)
 
         # The below line is necessary. Because in the driver process,
         # if the function is defined in the file where the python script

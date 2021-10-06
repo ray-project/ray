@@ -113,11 +113,12 @@ def test_kill_cancel_metadata(ray_start_regular):
         class MetadataIsCorrectlyPassedException(Exception):
             pass
 
-        def mock_terminate(term, metadata):
-            raise MetadataIsCorrectlyPassedException(metadata[1][0])
+        def mock_terminate(self, term):
+            raise MetadataIsCorrectlyPassedException(self._metadata[1][0])
 
         # Mock stub's Terminate method to raise an exception.
-        ray.get_context().api.worker.server.Terminate = mock_terminate
+        stub = ray.get_context().api.worker.data_client
+        stub.Terminate = mock_terminate.__get__(stub)
 
         # Verify the expected exception is raised with ray.kill.
         # Check that argument of the exception matches "key" from the

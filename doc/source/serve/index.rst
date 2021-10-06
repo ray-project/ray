@@ -1,8 +1,8 @@
 .. _rayserve:
 
-============================================
-Ray Serve: Scalable and Programmable Serving
-============================================
+========================================
+Serve: Scalable and Programmable Serving
+========================================
 
 .. warning::
   You're probably running the latest pip release and not the nightly build, so please ensure you're viewing the correct version of this documentation.

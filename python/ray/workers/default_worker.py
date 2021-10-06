@@ -113,22 +113,11 @@ parser.add_argument(
     help="Specify the backup count of rotated log file, default is "
     f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
 parser.add_argument(
-    "--runtime-env-hash",
-    required=False,
-    type=int,
-    default=0,
-    help="The computed hash of the runtime env for this worker.")
-parser.add_argument(
     "--worker-shim-pid",
     required=False,
     type=int,
     default=0,
     help="The PID of the process for setup worker runtime env.")
-parser.add_argument(
-    "--serialized-runtime-env",
-    type=str,
-    default="{}",
-    help="The serialized and validated runtime env json.")
 parser.add_argument(
     "--ray-debugger-external",
     default=False,
@@ -150,8 +139,6 @@ if __name__ == "__main__":
         mode = ray.SPILL_WORKER_MODE
     elif args.worker_type == "RESTORE_WORKER":
         mode = ray.RESTORE_WORKER_MODE
-    elif args.worker_type == "UTIL_WORKER":
-        mode = ray.UTIL_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
@@ -194,8 +181,6 @@ if __name__ == "__main__":
     ray.worker.connect(
         node,
         mode=mode,
-        runtime_env_hash=args.runtime_env_hash,
-        runtime_env_json=args.serialized_runtime_env,
         worker_shim_pid=args.worker_shim_pid,
         ray_debugger_external=args.ray_debugger_external)
 
@@ -218,8 +203,7 @@ if __name__ == "__main__":
 
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
-    elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE
-          or mode == ray.UTIL_WORKER_MODE):
+    elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.
         while True:

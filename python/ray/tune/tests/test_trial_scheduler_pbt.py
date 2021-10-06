@@ -172,6 +172,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         ray.init(num_cpus=2)
 
         def MockTrainingFuncSync(config, checkpoint_dir=None):
@@ -200,7 +201,10 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def synchSetup(self, synch, param=[10, 20, 30]):
+    def synchSetup(self, synch, param=None):
+        if param is None:
+            param = [10, 20, 30]
+
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
             metric="mean_accuracy",
