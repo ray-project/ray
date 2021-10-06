@@ -1,20 +1,25 @@
 import asyncio
+import os
 import time
 
 import pytest
 
 import ray
 from ray import serve
+from ray.serve.constants import (GRACEFUL_SHUTDOWN_TIMEOUT_S_ENV_VAR,
+                                 GRACEFUL_SHUTDOWN_WAIT_LOOP_S_ENV_VAR)
 from ray._private.test_utils import SignalActor
 
 
-def test_serve_forceful_shutdown(serve_instance):
+def test_serve_forceful_shutdown():
+    os.environ[GRACEFUL_SHUTDOWN_TIMEOUT_S_ENV_VAR] = "0.1"
+    serve.start()
+
     @serve.deployment
     def sleeper():
         while True:
             time.sleep(1000)
 
-    sleeper._config.experimental_graceful_shutdown_timeout_s = 0.1
     sleeper.deploy()
 
     handle = sleeper.get_handle()
@@ -25,17 +30,18 @@ def test_serve_forceful_shutdown(serve_instance):
         ray.get(ref)
 
 
-def test_serve_graceful_shutdown(serve_instance):
+def test_serve_graceful_shutdown():
+    os.environ[GRACEFUL_SHUTDOWN_TIMEOUT_S_ENV_VAR] = "1000"
+    os.environ[GRACEFUL_SHUTDOWN_WAIT_LOOP_S_ENV_VAR] = "0.5"
+    serve.start(detached=True)
+
     signal = SignalActor.remote()
 
     @serve.deployment(name="wait", max_concurrent_queries=10)
     class Wait:
         async def __call__(self, signal_actor):
             await signal_actor.wait.remote()
-            return ""
 
-    Wait._config.experimental_graceful_shutdown_wait_loop_s = 0.5
-    Wait._config.experimental_graceful_shutdown_timeout_s = 1000
     Wait.deploy()
     handle = Wait.get_handle()
     refs = [handle.remote(signal) for _ in range(10)]

@@ -12,6 +12,7 @@ from ray.serve.common import (
     ReplicaConfig,
     ReplicaTag,
 )
+from ray.serve.constants import GRACEFUL_SHUTDOWN_TIMEOUT_S
 from ray.serve.backend_state import (
     BackendState,
     BackendStateManager,
@@ -555,9 +556,7 @@ def test_create_delete_single_replica(mock_backend_state):
 def test_force_kill(mock_backend_state):
     backend_state, timer, goal_manager = mock_backend_state
 
-    grace_period_s = 10
-    b_info_1, b_version_1 = backend_info(
-        experimental_graceful_shutdown_timeout_s=grace_period_s)
+    b_info_1, b_version_1 = backend_info()
 
     # Create and delete the backend.
     backend_state.deploy(b_info_1)
@@ -580,7 +579,7 @@ def test_force_kill(mock_backend_state):
     check_counts(backend_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
 
     # Advance the timer, now the replica should be force stopped.
-    timer.advance(grace_period_s + 0.1)
+    timer.advance(GRACEFUL_SHUTDOWN_TIMEOUT_S + 0.1)
     backend_state.update()
     assert backend_state._replicas.get()[0]._actor.force_stopped_counter == 1
     assert not backend_state._replicas.get()[0]._actor.cleaned_up

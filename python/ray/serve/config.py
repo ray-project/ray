@@ -5,7 +5,7 @@ from typing import Any, List, Optional
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
-from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
+from pydantic import BaseModel, PositiveInt, validator
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
 from ray.serve.generated.serve_pb2 import (BackendConfig as BackendConfigProto,
                                            AutoscalingConfig as
@@ -66,20 +66,11 @@ class BackendConfig(BaseModel):
         user_config (Optional[Any]): Arguments to pass to the reconfigure
             method of the backend. The reconfigure method is called if
             user_config is not None.
-        experimental_graceful_shutdown_wait_loop_s (Optional[float]): Duration
-            that backend workers will wait until there is no more work to be
-            done before shutting down. Defaults to 2s.
-        experimental_graceful_shutdown_timeout_s (Optional[float]):
-            Controller waits for this duration to forcefully kill the replica
-            for shutdown. Defaults to 20s.
     """
 
     num_replicas: PositiveInt = 1
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
-
-    experimental_graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
-    experimental_graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
 
     autoscaling_config: Optional[AutoscalingConfig] = None
 

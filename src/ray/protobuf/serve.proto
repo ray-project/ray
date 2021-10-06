@@ -59,22 +59,14 @@ message BackendConfig {
   // called if user_config is not None.
   bytes user_config = 3;
 
-  // Duration that backend workers will wait until there is no more work to be done before
-  // shutting down. Defaults to 2s.
-  double experimental_graceful_shutdown_wait_loop_s = 4;
-
-  // Controller waits for this duration to forcefully kill the replica for shutdown.
-  // Defaults to 20s.
-  double experimental_graceful_shutdown_timeout_s = 5;
-
   // Is the construction of backend is cross language?
-  bool is_cross_language = 6;
+  bool is_cross_language = 4;
 
   // The backend's programming language.
-  BackendLanguage backend_language = 7;
+  BackendLanguage backend_language = 5;
 
   // The backend's autoscaling configuration.
-  AutoscalingConfig autoscaling_config = 8;
+  AutoscalingConfig autoscaling_config = 6;
 }
 
 // Backend language.

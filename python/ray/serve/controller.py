@@ -319,8 +319,7 @@ class ServeController:
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
-        return self.backend_state_manager.delete_backend(
-            name, force_kill=False)
+        return self.backend_state_manager.delete_backend(name)
 
     def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
         """Get the current information about a deployment.

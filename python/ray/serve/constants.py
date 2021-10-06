@@ -1,3 +1,5 @@
+import os
+
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
@@ -59,3 +61,14 @@ SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
 #: Number of historically deleted deployments to store in the checkpoint.
 MAX_NUM_DELETED_DEPLOYMENTS = 1000
+
+# Duration that the controller will wait for graceful shutdown before killing
+# a replica forcefully.
+GRACEFUL_SHUTDOWN_TIMEOUT_S_ENV_VAR = "RAY_SERVE_GRACEFUL_SHUTDOWN_TIMEOUT_S"
+GRACEFUL_SHUTDOWN_TIMEOUT_S = float(
+    os.getenv(GRACEFUL_SHUTDOWN_TIMEOUT_S_ENV_VAR, "20"))
+
+# Duration that workers will wait until there is no more work to be done.
+GRACEFUL_SHUTDOWN_WAIT_LOOP_S_ENV_VAR = "RAY_SERVE_GRACEFUL_SHUTDOWN_WAIT_LOOP_S"  # noqa: E501
+GRACEFUL_SHUTDOWN_WAIT_LOOP_S = float(
+    os.getenv(GRACEFUL_SHUTDOWN_WAIT_LOOP_S_ENV_VAR, "2"))
