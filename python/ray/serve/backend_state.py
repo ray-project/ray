@@ -13,8 +13,7 @@ from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag, ReplicaName)
 from ray.serve.config import BackendConfig
 from ray.serve.constants import (
-    CONTROLLER_STARTUP_GRACE_PERIOD_S, GRACEFUL_SHUTDOWN_TIMEOUT_S,
-    SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
+    CONTROLLER_STARTUP_GRACE_PERIOD_S, SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT, MAX_NUM_DELETED_DEPLOYMENTS)
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
@@ -77,6 +76,7 @@ class ActorReplicaWrapper:
 
         self._ready_obj_ref = None
         self._graceful_shutdown_ref = None
+        self._graceful_shutdown_timeout_s = None
         self._actor_resources = None
         self._health_check_ref = None
 
@@ -148,6 +148,8 @@ class ActorReplicaWrapper:
         Start a new actor for current BackendReplica instance.
         """
         self._actor_resources = backend_info.replica_config.resource_dict
+        self._graceful_shutdown_timeout_s = (
+            backend_info.backend_config.graceful_shutdown_timeout_s)
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources)
@@ -245,13 +247,18 @@ class ActorReplicaWrapper:
     def available_resources(self) -> Dict[str, float]:
         return ray.available_resources()
 
-    def graceful_stop(self) -> None:
-        """Request the actor to exit gracefully."""
+    def graceful_stop(self) -> Duration:
+        """Request the actor to exit gracefully.
+
+        Returns the timeout after which to kill the actor.
+        """
         try:
             handle = ray.get_actor(self._actor_name)
             self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
             pass
+
+        return self._graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:
         """Check if the actor has exited."""
@@ -388,14 +395,15 @@ class BackendReplica(VersionedReplica):
 
         return status
 
-    def stop(self, graceful_shutdown_timeout_s: Duration = 0) -> None:
+    def stop(self, force: bool = False) -> None:
         """Stop the replica.
 
         Should handle the case where the replica is already stopped.
         """
-        self._actor.graceful_stop()
-        self._graceful_shutdown_timeout_s = graceful_shutdown_timeout_s
-        self._shutdown_deadline = time.time() + graceful_shutdown_timeout_s
+        timeout_s = self._actor.graceful_stop()
+        if force:
+            timeout_s = 0
+        self._shutdown_deadline = time.time() + timeout_s
 
     def check_stopped(self) -> bool:
         """Check if the replica has finished stopping."""
@@ -404,14 +412,13 @@ class BackendReplica(VersionedReplica):
             self._actor.cleanup()
             return True
 
-        timeout_passed = time.time() >= self._shutdown_deadline
-
+        timeout_passed = time.time() > self._shutdown_deadline
         if timeout_passed:
             # Graceful period passed, kill it forcefully.
             # This will be called repeatedly until the replica shuts down.
             logger.debug(
-                f"Replica {self.replica_tag} did not shutdown after "
-                f"{self._graceful_shutdown_timeout_s}s, force-killing. "
+                f"Replica {self.replica_tag} did not shut down after grace "
+                "period, force-killing it. "
                 f"component=serve deployment={self.backend_tag} "
                 f"replica={self.replica_tag}")
 
@@ -830,8 +837,7 @@ class BackendState:
             if (replica.version.code_version !=
                     self._target_version.code_version):
                 code_version_changes += 1
-                replica.stop(
-                    graceful_shutdown_timeout_s=GRACEFUL_SHUTDOWN_TIMEOUT_S)
+                replica.stop()
                 self._replicas.add(ReplicaState.STOPPING, replica)
             # If only the user_config is a mismatch, we update it dynamically
             # without restarting the replica.
@@ -916,8 +922,7 @@ class BackendState:
             for replica in replicas_to_stop:
                 logger.debug(f"Adding STOPPING to replica_tag: {replica}, "
                              f"backend_tag: {self._name}")
-                replica.stop(
-                    graceful_shutdown_timeout_s=GRACEFUL_SHUTDOWN_TIMEOUT_S)
+                replica.stop()
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
         return True
@@ -1006,7 +1011,7 @@ class BackendState:
                     # Increase startup failure counter if we're tracking it
                     self._replica_constructor_retry_counter += 1
 
-                replica.stop(graceful_shutdown_timeout_s=0)
+                replica.stop(force=True)
                 self._replicas.add(ReplicaState.STOPPING, replica)
                 transitioned = True
             elif start_status == ReplicaStartupStatus.PENDING:
@@ -1018,7 +1023,7 @@ class BackendState:
                 if not stop_on_slow:
                     self._replicas.add(original_state, replica)
                 else:
-                    replica.stop(graceful_shutdown_timeout_s=0)
+                    replica.stop(force=True)
                     self._replicas.add(ReplicaState.STOPPING, replica)
                     transitioned = True
                 slow_replicas.append(replica)
@@ -1041,7 +1046,7 @@ class BackendState:
                     f"{self._name} failed health check, stopping it. "
                     f"component=serve deployment={self._name} "
                     f"replica={replica.replica_tag}")
-                replica.stop(graceful_shutdown_timeout_s=0)
+                replica.stop(force=True)
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
         slow_start_replicas = []
