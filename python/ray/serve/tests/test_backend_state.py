@@ -1888,11 +1888,11 @@ def test_shutdown(mock_backend_state_manager):
 
     shutdown_goal = backend_state_manager.shutdown()[0]
 
+    timer.advance(GRACEFUL_SHUTDOWN_TIMEOUT_S + 0.1)
     backend_state_manager.update()
 
     check_counts(backend_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert backend_state._replicas.get()[0]._actor.stopped
-    assert backend_state._replicas.get()[0]._actor.force_stopped_counter == 1
     assert not backend_state._replicas.get()[0]._actor.cleaned_up
     assert not goal_manager.check_complete(shutdown_goal)
 
