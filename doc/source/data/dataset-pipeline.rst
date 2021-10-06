@@ -6,7 +6,7 @@ Overview
 
 Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <package-ref.html#datasetpipeline-api>`__.
 
-A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets, each of which represents a *window* over the original data. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset window on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.). You can also apply holistic transformations to each window of the pipeline (e.g., sort_each_window(), random_shuffle_each_window(), etc.).
+A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets, each of which represents a *window* over the original data. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset window on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
 
 Creating a DatasetPipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -69,45 +69,35 @@ You can also create a DatasetPipeline from a custom iterator over dataset creato
     splits = ray.data.range(1000, parallelism=200).split(20)
     pipe = DatasetPipeline.from_iterable([lambda s=s: s for s in splits])
 
-Changing Pipeline Structure
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Per-Window Transformations
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``.
-
-Visualizing Pipelines
-~~~~~~~~~~~~~~~~~~~~~
-
-To better understand pipeline structures, you can use the ``DatasetPipeline.show_windows()`` method. For example:
+While most Dataset operations are per-row (e.g., map, filter), some operations apply to the Dataset as a whole (e.g., sort, shuffle). When applied to a pipeline, holistic transforms like shuffle are applied separately to each window in the pipeline:
 
 .. code-block:: python
 
-    # Just windowing.
-    ray.data.range(5).window(blocks_per_window=2).show_windows()
-    # ->
+    # Example of randomly shuffling each window of a pipeline.
+    ray.data.range(5).repeat(2).random_shuffle_each_window().show_windows()
+    # -> 
     # === Window 0 ===
-    # 0
+    # 4
+    # 3
     # 1
+    # 0
+    # 2
     # === Window 1 ===
     # 2
-    # 3
-    # === Window 2 ===
+    # 1
     # 4
+    # 0
+    # 3
 
-    # Just repeat.
-    ray.data.range(5).repeat(2).show_windows()
-    # ->
-    # === Window 0 ===
-    # 0
-    # 1
-    # 2
-    # 3
-    # 4
-    # === Window 1 ===
-    # 0
-    # 1
-    # 2
-    # 3
-    # 4
+Changing Pipeline Structure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``:
+
+.. code-block:: python
 
     # Window followed by repeat.
     ray.data.range(5) \
