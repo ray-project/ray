@@ -17,8 +17,11 @@ worker_node_types:
       min_workers: 0
       max_workers: 2
       use_spot: false
-    - name: gpu_node
-      instance_type: g3.4xlarge
+    - name: fake_gpu_node
+      instance_type: m5.4xlarge
       min_workers: 0 
       max_workers: 2
       use_spot: false
+      resources:
+        cpu: 16
+        gpu: 1

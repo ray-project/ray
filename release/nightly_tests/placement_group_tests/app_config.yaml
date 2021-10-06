@@ -1,5 +1,5 @@
 base_image: "anyscale/ray-ml:pinned-nightly-py37"
-env_vars: {"RAY_event_log_reporter_enabled": "1"}
+# env_vars: {"RAY_scheduler_avoid_gpu_nodes": "0"}
 debian_packages: []
 
 python:
