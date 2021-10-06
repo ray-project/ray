@@ -741,7 +741,7 @@ def test_init_kwargs(serve_instance):
         class BadInitArgs:
             pass
 
-    @serve.deployment(init_kwargs={"1": 1, "2": 2})
+    @serve.deployment(init_kwargs={"a": 1, "b": 2})
     class D:
         def __init__(self, **kwargs):
             self._kwargs = kwargs
