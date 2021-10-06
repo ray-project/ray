@@ -69,7 +69,7 @@ class ReplicaName:
         return self.replica_tag
 
 
-@dataclass
+@dataclass(frozen=True)
 class RunningReplicaInfo:
     backend_tag: BackendTag
     replica_tag: ReplicaTag

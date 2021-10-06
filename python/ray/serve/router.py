@@ -2,12 +2,11 @@ import asyncio
 import pickle
 import itertools
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 import random
 
 from ray.actor import ActorHandle
 from ray.serve.common import BackendTag, ReplicaTag, RunningReplicaInfo
-from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
 
@@ -58,8 +57,7 @@ class ReplicaSet:
         # NOTE(simon): We can make this more pluggable and consider different
         # policies like: min load, pick min of two replicas, pick replicas on
         # the same node.
-        self.replica_tag_iterator = itertools.cycle(
-            self.in_flight_queries.keys())
+        self.replica_iterator = itertools.cycle(self.in_flight_queries.keys())
         self.replica_infos: Dict[ReplicaTag, RunningReplicaInfo] = dict()
 
         # Used to unblock this replica set waiting for free replicas. A newly
@@ -77,24 +75,23 @@ class ReplicaSet:
             "deployment": self.backend_tag
         })
 
-    def update_running_replicas(
-            self, running_replicas: Dict[ReplicaTag, RunningReplicaInfo]):
+    def update_running_replicas(self,
+                                running_replicas: List[RunningReplicaInfo]):
         added, removed, _ = compute_iterable_delta(
-            self.in_flight_queries.keys(), running_replicas.keys())
+            self.in_flight_queries.keys(), running_replicas)
 
-        self.replica_infos = running_replicas
-        for new_replica_tag in added:
-            self.in_flight_queries[new_replica_tag] = set()
+        for new_replica in added:
+            self.in_flight_queries[new_replica] = set()
 
-        for removed_replica_tag in removed:
+        for removed_replica in removed:
             # Delete it directly because shutdown is processed by controller.
-            del self.in_flight_queries[removed_replica_tag]
+            del self.in_flight_queries[removed_replica]
 
         if len(added) > 0 or len(removed) > 0:
             # Shuffle the keys to avoid synchronization across clients.
-            replica_tags = list(self.in_flight_queries.keys())
-            random.shuffle(replica_tags)
-            self.replica_tag_iterator = itertools.cycle(replica_tags)
+            replicas = list(self.in_flight_queries.keys())
+            random.shuffle(replicas)
+            self.replica_iterator = itertools.cycle(replicas)
             logger.debug(
                 f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
             self.config_updated_event.set()
@@ -104,8 +101,8 @@ class ReplicaSet:
         or return None if it can't assign this query to any replicas.
         """
         for _ in range(len(self.in_flight_queries.keys())):
-            replica = self.replica_infos[next(self.replica_tag_iterator)]
-            if len(self.in_flight_queries[replica.replica_tag]
+            replica = next(self.replica_iterator)
+            if len(self.in_flight_queries[replica]
                    ) >= replica.max_concurrent_queries:
                 # This replica is overloaded, try next one
                 continue
@@ -115,7 +112,7 @@ class ReplicaSet:
             # Directly passing args because it might contain an ObjectRef.
             tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
                 pickle.dumps(query.metadata), *query.args, **query.kwargs)
-            self.in_flight_queries[replica.replica_tag].add(tracker_ref)
+            self.in_flight_queries[replica].add(tracker_ref)
             return user_ref
         return None
 

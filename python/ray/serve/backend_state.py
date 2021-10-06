@@ -688,12 +688,11 @@ class BackendState:
     def curr_goal(self) -> Optional[GoalId]:
         return self._curr_goal
 
-    def get_running_replica_infos(
-            self) -> Dict[ReplicaTag, RunningReplicaInfo]:
-        return {
-            replica.replica_tag: replica.get_running_replica_info()
+    def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
+        return [
+            replica.get_running_replica_info()
             for replica in self._replicas.get([ReplicaState.RUNNING])
-        }
+        ]
 
     def _notify_running_replicas_changed(self):
         self._long_poll_host.notify_changed(
@@ -1052,18 +1051,18 @@ class BackendState:
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
         slow_start_replicas = []
-        slow_start, starting_transitioned_to_running = self._check_startup_replicas(
+        slow_start, starting_to_running = self._check_startup_replicas(
             ReplicaState.STARTING)
-        slow_update, updating_transitioned_to_running = self._check_startup_replicas(
+        slow_update, updating_to_running = self._check_startup_replicas(
             ReplicaState.UPDATING)
-        slow_recover, recovering_transitioned_to_running = self._check_startup_replicas(
+        slow_recover, recovering_to_running = self._check_startup_replicas(
             ReplicaState.RECOVERING, stop_on_slow=True)
 
         slow_start_replicas = slow_start + slow_update + slow_recover
         running_replicas_changed = (running_replicas_changed
-                                    or starting_transitioned_to_running
-                                    or updating_transitioned_to_running
-                                    or recovering_transitioned_to_running)
+                                    or starting_to_running
+                                    or updating_to_running
+                                    or recovering_to_running)
 
         if running_replicas_changed:
             self._notify_running_replicas_changed()
@@ -1263,7 +1262,7 @@ class BackendStateManager:
     def get_running_replica_infos(
             self,
             filter_tag: Optional[BackendTag] = None,
-    ) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
+    ) -> Dict[BackendTag, List[RunningReplicaInfo]]:
         replicas = {}
         for backend_tag, backend_state in self._backend_states.items():
             if filter_tag is None or backend_tag == filter_tag:
