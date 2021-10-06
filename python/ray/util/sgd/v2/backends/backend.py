@@ -1,6 +1,5 @@
 import abc
 import logging
-import math
 import os
 from collections import defaultdict
 from pathlib import Path
@@ -385,9 +384,6 @@ class BackendExecutor:
 
         Args:
             train_func (Callable): The training function to run on each worker.
-            checkpoint (Optional[Dict]): The checkpoint data that should be
-                loaded onto each worker and accessed by the training function
-                via ``sgd.load_checkpoint()``.
             run_dir (Path): The directory to use for this run.
             dataset (Optional[Union[Dataset, DatasetPipeline]]):
                 Distributed Ray Dataset or DatasetPipeline to pass into
@@ -413,14 +409,14 @@ class BackendExecutor:
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
 
         # First initialize the session.
-        def initialize_session(world_rank, local_rank, train_func,
-                               checkpoint, dataset_shard=None):
+        def initialize_session(train_func, world_rank, local_rank, checkpoint,
+                               dataset_shard):
             try:
                 init_session(
                     training_func=train_func,
                     world_rank=world_rank,
-                    dataset_shard=dataset_shard,
                     local_rank=local_rank,
+                    dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics
                 )
@@ -431,19 +427,30 @@ class BackendExecutor:
                     "You must call `finish_training` before "
                     "calling `start_training` again.")
 
-        if dataset is not None:
-            if isinstance(dataset, dict):
-                dataset_shards = []
-                for key, val in dataset.items():
-                    split_datasets = self._split_dataset(val)
+        def get_dataset_shards(dataset_or_dict):
+            actors = [worker.actor for worker in self.worker_group.workers]
+
+            if dataset_or_dict is None:
+                # Return None for each shard.
+                return [None] * len(self.worker_group)
+
+            if isinstance(dataset_or_dict, dict):
+                # Return a smaller dict for each shard.
+                dataset_shards = [{}] * len(self.worker_group)
+                for key, dataset in dataset_or_dict.items():
+                    split_datasets = dataset.split(
+                        len(self.worker_group),
+                        equal=True,
+                        locality_hints=actors)
                     for i in range(len(split_datasets)):
-                        if i >= len(dataset_shards):
-                            dataset_shards.append({})
                         dataset_shards[i][key] = split_datasets[i]
+                return dataset_shards
             else:
-                dataset_shards = self._split_dataset(dataset)
-        else:
-            dataset_shards = [None] * len(self.worker_group)
+                # return a smaller RayDataset for each shard.
+                return dataset_or_dict.split(
+                    len(self.worker_group), equal=True, locality_hints=actors)
+
+        dataset_shards = get_dataset_shards(dataset)
 
         checkpoint_dict = self.checkpoint_manager._load_checkpoint(checkpoint)
 
@@ -698,25 +705,6 @@ class BackendExecutor:
         """Latest checkpoint object."""
         return self.checkpoint_manager.latest_checkpoint
 
-    def _split_dataset(self, dataset: RayDataset) -> List[RayDataset]:
-        # First make sure size of dataset is divisible by num_workers.
-        dataset_size = dataset.count()
-        num_workers = len(self.worker_group)
-        total_rows = math.ceil(dataset_size / num_workers) * num_workers
-        assert dataset_size <= total_rows
-        # Pad the dataset so it's divisible by ``num_workers``.
-        if dataset_size < total_rows:
-            dataset = dataset.union(
-                dataset.limit(limit=total_rows - dataset_size))
-        assert dataset.count() == total_rows
-
-        per_worker_size = total_rows / len(self.worker_group)
-        split_indices = [per_worker_size*(i+1) for i in range(len(
-            self.worker_group))]
-        datasets = dataset.split_at_indices(split_indices)
-        #assert [ds.count() == datasets[0].count() for ds in datasets]
-        return datasets
-
     def _restart(self):
         self.worker_group.shutdown()
         if self._initialization_hook is not None:
@@ -734,6 +722,7 @@ class BackendExecutor:
                                "failure attempts by setting the "
                                "`max_retries` arg in your `Trainer`.") \
                 from None
+
 
 class Backend(metaclass=abc.ABCMeta):
     """Metaclass for distributed communication backend.

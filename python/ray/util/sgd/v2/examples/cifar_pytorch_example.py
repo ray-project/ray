@@ -15,6 +15,7 @@ from torchvision import datasets, transforms, models
 
 from PIL import Image
 
+
 def download_data():
     filename, _ = urllib.request.urlretrieve(
         "https://download.pytorch.org/tutorial/hymenoptera_data.zip",
@@ -27,7 +28,6 @@ data_dir = "hymenoptera_data"
 if not os.path.exists(data_dir):
     download_data()
 
-
 train_root_dir = os.path.join(data_dir, "train")
 val_root_dir = os.path.join(data_dir, "val")
 
@@ -38,24 +38,25 @@ val_samples = datasets.ImageFolder(val_root_dir).samples
 val_dataset = ray.data.from_items(val_samples)
 
 train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
+    transforms.RandomResizedCrop(224),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
 
 val_transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
 
 # dataloader = torch.utils.data.DataLoader(datasets.ImageFolder(
 #     train_root_dir, transform), batch_size=4, shuffle=True, num_workers=4)
 #
 # for inputs, labels in dataloader:
 #     import pdb; pdb.set_trace()
+
 
 def load_image(item, transform):
     path, target = item
@@ -65,11 +66,12 @@ def load_image(item, transform):
         sample = img.convert('RGB')
     return transform(sample), torch.tensor(target)
 
+
 #dataset = dataset.map(load_image).repeat(times=2).random_shuffle()
-train_dataset = train_dataset.map(lambda item: load_image(item,
-                                                          train_transform)).repeat(3).random_shuffle()
-val_dataset = val_dataset.map(lambda item: load_image(item,
-                                                      val_transform)).repeat(3).random_shuffle()
+train_dataset = train_dataset.map(
+    lambda item: load_image(item, train_transform)).repeat(3).random_shuffle()
+val_dataset = val_dataset.map(
+    lambda item: load_image(item, val_transform)).repeat(3).random_shuffle()
 
 data_transforms = {
     'train': transforms.Compose([
@@ -96,11 +98,14 @@ data_dir = 'hymenoptera_data'
 # dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
 # class_names = image_datasets['train'].classes
 
-image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
-                                              data_transforms[x])
-                      for x in ['train', 'val']}
-image_datasets = {k: torch.utils.data.random_split(v, [2, len(v)-2])[0] for
-                  k, v in image_datasets.items()}
+image_datasets = {
+    x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms[x])
+    for x in ['train', 'val']
+}
+image_datasets = {
+    k: torch.utils.data.random_split(v, [2, len(v) - 2])[0]
+    for k, v in image_datasets.items()
+}
 
 assert len(image_datasets["train"]) == 2
 for item in image_datasets["train"]:
@@ -112,8 +117,7 @@ for item in image_datasets["train"]:
 
 def train_model(config):
     since = time.time()
-    num_epochs=2
-
+    num_epochs = 2
 
     model = models.resnet18(pretrained=True)
     num_ftrs = model.fc.in_features
@@ -139,14 +143,10 @@ def train_model(config):
 
     #model_ft = model_ft.to(config["device"])
 
-
-
     # Observe that all parameters are being optimized
 
-
     # Decay LR by a factor of 0.1 every 7 epochs
-    scheduler = lr_scheduler.StepLR(optimizer, step_size=7,
-                                           gamma=0.1)
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
 
     best_acc = 0.0
 
@@ -230,9 +230,10 @@ def train_model(config):
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
 
-        sgd.save_checkpoint(model=model.state_dict(),
-                            optimizer=optimizer.state_dict(), epoch=epoch+1)
-
+        sgd.save_checkpoint(
+            model=model.state_dict(),
+            optimizer=optimizer.state_dict(),
+            epoch=epoch + 1)
 
     time_elapsed = time.time() - since
     if sgd.world_rank() == 0:
@@ -241,6 +242,7 @@ def train_model(config):
         print('Best val Acc: {:4f}'.format(best_acc))
 
     return model.module
+
 
 trainer = sgd.Trainer(backend="torch", num_workers=2)
 trainer.start()

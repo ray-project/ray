@@ -8,8 +8,8 @@ from ray.util.sgd.v2.session import (get_dataset_shard, local_rank,
 from ray.util.sgd.v2.trainer import Trainer, SGDIterator
 
 __all__ = [
-    "BackendConfig", "CheckpointStrategy", "get_dataset_shard", "HorovodConfig",
-    "load_checkpoint",
-    "local_rank", "report", "save_checkpoint", "SGDIterator",
-    "TensorflowConfig", "SGDCallback", "TorchConfig", "Trainer", "world_rank"
+    "BackendConfig", "CheckpointStrategy", "get_dataset_shard",
+    "HorovodConfig", "load_checkpoint", "local_rank", "report",
+    "save_checkpoint", "SGDIterator", "TensorflowConfig", "SGDCallback",
+    "TorchConfig", "Trainer", "world_rank"
 ]

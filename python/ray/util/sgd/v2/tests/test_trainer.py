@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import horovod.torch as hvd_torch
 import pytest
+import torch
 
 import ray
 import ray.util.sgd.v2 as sgd
@@ -14,9 +15,9 @@ from ray.util.sgd.v2 import Trainer, TorchConfig, TensorflowConfig, \
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
     BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
     horovod_torch_train_func, HorovodTrainClass
-from ray.util.sgd.v2.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func \
@@ -32,6 +33,7 @@ def ray_start_2_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
 
 @pytest.fixture
 def ray_start_4_cpus():
@@ -897,6 +899,7 @@ def test_run_after_user_error(ray_start_2_cpus):
 
     output = trainer.run(train)
     assert output == [1, 1]
+
 
 def test_dataset_torch(ray_start_4_cpus):
     import pandas as pd

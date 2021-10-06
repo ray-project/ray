@@ -190,8 +190,7 @@ class Trainer:
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
             callbacks: Optional[List[SGDCallback]] = None,
-            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] =
-    None,
+            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
             ) -> List[T]:
@@ -315,11 +314,10 @@ class Trainer:
         return SGDIterator(
             backend_executor=self._executor,
             train_func=train_func,
+            run_dir=self.latest_run_dir,
             dataset=dataset,
             checkpoint=checkpoint,
-            checkpoint_strategy=checkpoint_strategy,
-            run_dir=self.latest_run_dir,
-        )
+            checkpoint_strategy=checkpoint_strategy)
 
     def _get_train_func(
             self,
@@ -396,9 +394,11 @@ class Trainer:
         """Shuts down the training execution service."""
         self._executor.shutdown()
 
-    def to_tune_trainable(self, train_func: Callable[[Dict[str, Any]], T],
-                          dataset: Optional[RayDataset] = None,
-                          ) -> Type[Trainable]:
+    def to_tune_trainable(
+            self,
+            train_func: Callable[[Dict[str, Any]], T],
+            dataset: Optional[RayDataset] = None,
+    ) -> Type[Trainable]:
         """Creates a Tune ``Trainable`` from the input training function.
 
         Args:
@@ -517,17 +517,21 @@ class SGDIterator:
     def __init__(
             self, backend_executor: BackendExecutor,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+            run_dir: Path,
             dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
             checkpoint: Optional[Dict],
-            checkpoint_strategy: Optional[CheckpointStrategy],
-            run_dir: Path):
+            checkpoint_strategy: Optional[CheckpointStrategy]):
         self._executor = backend_executor
         self._train_func = train_func
-        self._checkpoint_strategy = checkpoint_strategy
+        self._dataset = dataset
         self._run_dir = run_dir
-        self._start_training(train_func=train_func, dataset=dataset,
-                             checkpoint=checkpoint,
-                             checkpoint_strategy=checkpoint_strategy, run_dir=run_dir)
+        self._checkpoint_strategy = checkpoint_strategy
+        self._start_training(
+            train_func=train_func,
+            run_dir=run_dir,
+            dataset=dataset,
+            checkpoint=checkpoint,
+            checkpoint_strategy=checkpoint_strategy)
 
         self._final_results = None
         self._finished_training = False
@@ -537,18 +541,18 @@ class SGDIterator:
 
     def _start_training(self,
                         train_func,
+                        run_dir,
                         dataset,
                         checkpoint,
                         checkpoint_strategy,
-                        run_dir,
                         latest_checkpoint_id=None):
         self._run_with_error_handling(
             lambda: self._executor.start_training(
                 train_func=train_func,
+                run_dir=run_dir,
                 dataset=dataset,
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
-                run_dir=run_dir,
                 latest_checkpoint_id=latest_checkpoint_id
             )
         )
@@ -560,9 +564,10 @@ class SGDIterator:
             # Workers have already been restarted.
             self._start_training(
                 self._train_func,
+                self._run_dir,
+                self._dataset,
                 self._executor.latest_checkpoint,
                 self._checkpoint_strategy,
-                run_dir=self._run_dir,
                 latest_checkpoint_id=self._executor.latest_checkpoint_id)
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:

@@ -219,8 +219,8 @@ def shutdown_session():
     _session = None
 
 
-def get_dataset_shard(dataset_name: Optional[str]=None) -> Optional[
-    RayDataset]:
+def get_dataset_shard(
+        dataset_name: Optional[str] = None) -> Optional[RayDataset]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
     You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
@@ -264,10 +264,11 @@ def get_dataset_shard(dataset_name: Optional[str]=None) -> Optional[
                       "function.")
     elif isinstance(shard, dict):
         if not dataset_name:
-            raise RuntimeError("Multiple datasets were passed into ``Trainer``, "
-                          "but no ``dataset_name`` is passed into "
-                          "``get_dataset_shard``. Please specify which "
-                          "dataset shard to retrieve.")
+            raise RuntimeError(
+                "Multiple datasets were passed into ``Trainer``, "
+                "but no ``dataset_name`` is passed into "
+                "``get_dataset_shard``. Please specify which "
+                "dataset shard to retrieve.")
         return shard[dataset_name]
     return shard
 
