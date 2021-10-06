@@ -165,6 +165,7 @@ class ActorReplicaWrapper:
             **backend_info.replica_config.ray_actor_options).remote(
                 self.backend_tag, self.replica_tag,
                 backend_info.replica_config.init_args,
+                backend_info.replica_config.init_kwargs,
                 backend_info.backend_config.to_proto_bytes(), version,
                 self._controller_name, self._detached)
 

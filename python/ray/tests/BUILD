@@ -48,6 +48,7 @@ py_test_module_list(
   files = [
     "test_client.py",
     "test_client_builder.py",
+    "test_client_compat.py",
     "test_client_init.py",
     "test_client_multi.py",
     "test_client_proxy.py",
@@ -82,6 +83,7 @@ py_test_module_list(
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_env_env_vars.py",
+    "test_runtime_env_plugin.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",

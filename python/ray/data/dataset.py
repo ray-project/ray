@@ -808,8 +808,8 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        blocks1 = self.get_blocks()
-        blocks2 = other.get_blocks()
+        blocks1 = self.get_internal_block_refs()
+        blocks2 = other.get_internal_block_refs()
 
         if len(blocks1) != len(blocks2):
             # TODO(ekl) consider supporting if num_rows are equal.
@@ -1448,14 +1448,15 @@ class Dataset(Generic[T]):
         """Convert this dataset into a Modin dataframe.
 
         This works by first converting this dataset into a distributed set of
-        Pandas dataframes (using ``.to_pandas()``). Please see caveats there.
-        Then the individual dataframes are used to create the modin DataFrame
-        using
+        Pandas dataframes (using ``.to_pandas_refs()``). Please see caveats
+        there. Then the individual dataframes are used to create the modin
+        DataFrame using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+        underlying data, consider using ``.to_arrow()`` or
+        ``.get_internal_block_refs()``.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1465,7 +1466,7 @@ class Dataset(Generic[T]):
 
         from modin.distributed.dataframe.pandas.partitions import (
             from_partitions)
-        pd_objs = self.to_pandas()
+        pd_objs = self.to_pandas_refs()
         return from_partitions(pd_objs, axis=0)
 
     def to_spark(self,
@@ -1481,17 +1482,45 @@ class Dataset(Generic[T]):
         core_worker = ray.worker.global_worker.core_worker
         locations = [
             core_worker.get_owner_address(block)
-            for block in self.get_blocks()
+            for block in self.get_internal_block_refs()
         ]
         return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, self.schema(), self.get_blocks(), locations)
+            spark, self.schema(), self.get_internal_block_refs(), locations)
 
-    def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
+    def to_pandas(self, limit: int = 1000) -> "pandas.DataFrame":
+        """Convert this dataset into a single Pandas DataFrame.
+
+        This is only supported for datasets convertible to Arrow records. This
+        limits the number of records returned to the provided limit.
+
+        Time complexity: O(limit)
+
+        Args:
+            limit: The maximum number of records to return.
+
+        Returns:
+            A Pandas DataFrame created from this dataset, containing a limited
+            number of records.
+        """
+
+        if self.count() > limit:
+            logger.warning(f"Only returning the first {limit} records from "
+                           "to_pandas()")
+        limited_ds = self.limit(limit)
+        blocks = limited_ds.get_internal_block_refs()
+        output = DelegatingArrowBlockBuilder()
+        for block in ray.get(blocks):
+            output.add_block(block)
+        return output.build().to_pandas()
+
+    @DeveloperAPI
+    def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+        underlying data, consider using ``.to_arrow()`` or
+        ``.get_internal_block_refs()``.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1508,7 +1537,8 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+        underlying data, consider using ``.to_arrow()`` or
+        ``.get_internal_block_refs()``.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1526,7 +1556,23 @@ class Dataset(Generic[T]):
             for block in self._blocks
         ]
 
-    def to_arrow(self) -> List[ObjectRef["pyarrow.Table"]]:
+    def to_arrow(self) -> List["pyarrow.Table"]:
+        """Convert this dataset into a list of Arrow tables.
+
+        This is only supported for datasets convertible to Arrow records.
+        This function is zero-copy if the existing data is already in Arrow
+        format. Otherwise, the data will be converted to Arrow format.
+
+        Time complexity: O(1) unless conversion is required.
+
+        Returns:
+            A list of Arrow tables created from this dataset.
+        """
+
+        return ray.get(self.to_arrow_refs())
+
+    @DeveloperAPI
+    def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1599,25 +1645,29 @@ class Dataset(Generic[T]):
         return DatasetPipeline(Iterable(self), length=times)
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        """Pipeline the dataset execution by splitting its blocks into groups.
+        raise DeprecationWarning("Use .window(blocks_per_window=n) instead of "
+                                 ".pipeline(parallelism=n)")
 
-        Transformations prior to the call to ``pipeline()`` are evaluated in
+    def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
+        """Convert this into a DatasetPipeline by windowing over data blocks.
+
+        Transformations prior to the call to ``window()`` are evaluated in
         bulk on the entire dataset. Transformations done on the returned
-        pipeline are evaluated incrementally per group of blocks as data is
+        pipeline are evaluated incrementally per window of blocks as data is
         read from the output of the pipeline.
 
-        Pipelining execution allows for output to be read sooner without
+        Windowing execution allows for output to be read sooner without
         waiting for all transformations to fully execute, and can also improve
         efficiency if transforms use different resources (e.g., GPUs).
 
-        Without pipelining::
+        Without windowing::
 
             [preprocessing......]
                                   [inference.......]
                                                      [write........]
             Time ----------------------------------------------------------->
 
-        With pipelining::
+        With windowing::
 
             [prep1] [prep2] [prep3]
                     [infer1] [infer2] [infer3]
@@ -1627,11 +1677,11 @@ class Dataset(Generic[T]):
         Examples:
             >>> # Create an inference pipeline.
             >>> ds = ray.data.read_binary_files(dir)
-            >>> pipe = ds.pipeline(parallelism=10).map(infer)
+            >>> pipe = ds.window(blocks_per_window=10).map(infer)
             DatasetPipeline(num_stages=2, length=40)
 
             >>> # The higher the stage parallelism, the shorter the pipeline.
-            >>> pipe = ds.pipeline(parallelism=20).map(infer)
+            >>> pipe = ds.window(blocks_per_window=20).map(infer)
             DatasetPipeline(num_stages=2, length=20)
 
             >>> # Outputs can be incrementally read from the pipeline.
@@ -1639,8 +1689,8 @@ class Dataset(Generic[T]):
             ...    print(item)
 
         Args:
-            parallelism: The parallelism (number of blocks) per stage.
-                Increasing parallelism increases pipeline throughput, but also
+            blocks_per_window: The window size (parallelism) in blocks.
+                Increasing window size increases pipeline throughput, but also
                 increases the latency to initial output, since it decreases the
                 length of the pipeline. Setting this to infinity effectively
                 disables pipelining.
@@ -1664,7 +1714,7 @@ class Dataset(Generic[T]):
 
         class Iterable:
             def __init__(self, blocks):
-                self._splits = blocks.split(split_size=parallelism)
+                self._splits = blocks.split(split_size=blocks_per_window)
 
             def __iter__(self):
                 return Iterator(self._splits)
@@ -1673,7 +1723,7 @@ class Dataset(Generic[T]):
         return DatasetPipeline(it, length=len(it._splits))
 
     @DeveloperAPI
-    def get_blocks(self) -> List[ObjectRef[Block]]:
+    def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
 
         This function can be used for zero-copy access to the data.

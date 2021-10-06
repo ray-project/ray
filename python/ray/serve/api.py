@@ -188,7 +188,8 @@ class Client:
     def deploy(self,
                name: str,
                backend_def: Union[Callable, Type[Callable], str],
-               *init_args: Any,
+               init_args: Tuple[Any],
+               init_kwargs: Dict[Any, Any],
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
                version: Optional[str] = None,
@@ -212,7 +213,10 @@ class Client:
             del ray_actor_options["runtime_env"]["working_dir"]
 
         replica_config = ReplicaConfig(
-            backend_def, *init_args, ray_actor_options=ray_actor_options)
+            backend_def,
+            init_args=init_args,
+            init_kwargs=init_kwargs,
+            ray_actor_options=ray_actor_options)
 
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj(config)
@@ -601,6 +605,7 @@ class Deployment:
                  version: Optional[str] = None,
                  prev_version: Optional[str] = None,
                  init_args: Optional[Tuple[Any]] = None,
+                 init_kwargs: Optional[Tuple[Any]] = None,
                  route_prefix: Optional[str] = None,
                  ray_actor_options: Optional[Dict] = None,
                  _internal=False) -> None:
@@ -626,6 +631,8 @@ class Deployment:
             raise TypeError("prev_version must be a string.")
         if not (init_args is None or isinstance(init_args, tuple)):
             raise TypeError("init_args must be a tuple.")
+        if not (init_kwargs is None or isinstance(init_kwargs, dict)):
+            raise TypeError("init_kwargs must be a dict.")
         if route_prefix is not None:
             if not isinstance(route_prefix, str):
                 raise TypeError("route_prefix must be a string.")
@@ -642,6 +649,8 @@ class Deployment:
 
         if init_args is None:
             init_args = ()
+        if init_kwargs is None:
+            init_kwargs = {}
 
         # TODO(architkulkarni): Enforce that autoscaling_config and
         # user-provided num_replicas should be mutually exclusive.
@@ -657,6 +666,7 @@ class Deployment:
         self._prev_version = prev_version
         self._config = config
         self._init_args = init_args
+        self._init_kwargs = init_kwargs
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
 
@@ -714,7 +724,12 @@ class Deployment:
 
     @property
     def init_args(self) -> Tuple[Any]:
-        """Arguments passed to the underlying class's constructor."""
+        """Positional args passed to the underlying class's constructor."""
+        return self._init_args
+
+    @property
+    def init_kwargs(self) -> Tuple[Any]:
+        """Keyword args passed to the underlying class's constructor."""
         return self._init_args
 
     @property
@@ -728,20 +743,25 @@ class Deployment:
                            "Use `deployment.deploy() instead.`")
 
     @PublicAPI
-    def deploy(self, *init_args, _blocking=True):
+    def deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
 
         Args:
             init_args (optional): args to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
+            init_kwargs (optional): kwargs to pass to the class __init__
+                method. Not valid if this deployment wraps a function.
         """
         if len(init_args) == 0 and self._init_args is not None:
             init_args = self._init_args
+        if len(init_kwargs) == 0 and self._init_kwargs is not None:
+            init_kwargs = self._init_kwargs
 
         return _get_global_client().deploy(
             self._name,
             self._func_or_class,
-            *init_args,
+            init_args,
+            init_kwargs,
             ray_actor_options=self._ray_actor_options,
             config=self._config,
             version=self._version,
@@ -780,6 +800,7 @@ class Deployment:
             version: Optional[str] = None,
             prev_version: Optional[str] = None,
             init_args: Optional[Tuple[Any]] = None,
+            init_kwargs: Optional[Dict[Any, Any]] = None,
             route_prefix: Optional[str] = None,
             num_replicas: Optional[int] = None,
             ray_actor_options: Optional[Dict] = None,
@@ -813,6 +834,9 @@ class Deployment:
         if init_args is None:
             init_args = self._init_args
 
+        if init_kwargs is None:
+            init_kwargs = self._init_kwargs
+
         if route_prefix is None:
             if self._route_prefix == f"/{self._name}":
                 route_prefix = None
@@ -832,6 +856,7 @@ class Deployment:
             version=version,
             prev_version=prev_version,
             init_args=init_args,
+            init_kwargs=init_kwargs,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
@@ -843,6 +868,7 @@ class Deployment:
             self._version == other._version,
             self._config == other._config,
             self._init_args == other._init_args,
+            self._init_kwargs == other._init_kwargs,
             self._route_prefix == other._route_prefix,
             self._ray_actor_options == self._ray_actor_options,
         ])
@@ -872,6 +898,7 @@ def deployment(
         prev_version: Optional[str] = None,
         num_replicas: Optional[int] = None,
         init_args: Optional[Tuple[Any]] = None,
+        init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
@@ -888,6 +915,7 @@ def deployment(
         prev_version: Optional[str] = None,
         num_replicas: Optional[int] = None,
         init_args: Optional[Tuple[Any]] = None,
+        init_kwargs: Optional[Dict[Any, Any]] = None,
         route_prefix: Optional[str] = None,
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
@@ -911,7 +939,10 @@ def deployment(
             not check the existing deployment's version.
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this deployment. Defaults to 1.
-        init_args (Optional[Tuple]): Arguments to be passed to the class
+        init_args (Optional[Tuple]): Positional args to be passed to the class
+            constructor when starting up deployment replicas. These can also be
+            passed when you call `.deploy()` on the returned Deployment.
+        init_kwargs (Optional[Dict]): Keyword args to be passed to the class
             constructor when starting up deployment replicas. These can also be
             passed when you call `.deploy()` on the returned Deployment.
         route_prefix (Optional[str]): Requests to paths under this HTTP path
@@ -968,6 +999,7 @@ def deployment(
             version=version,
             prev_version=prev_version,
             init_args=init_args,
+            init_kwargs=init_kwargs,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
@@ -1009,6 +1041,7 @@ def get_deployment(name: str) -> Deployment:
         backend_info.backend_config,
         version=backend_info.version,
         init_args=backend_info.replica_config.init_args,
+        init_kwargs=backend_info.replica_config.init_kwargs,
         route_prefix=route_prefix,
         ray_actor_options=backend_info.replica_config.ray_actor_options,
         _internal=True,
@@ -1032,6 +1065,7 @@ def list_deployments() -> Dict[str, Deployment]:
             backend_info.backend_config,
             version=backend_info.version,
             init_args=backend_info.replica_config.init_args,
+            init_kwargs=backend_info.replica_config.init_kwargs,
             route_prefix=route_prefix,
             ray_actor_options=backend_info.replica_config.ray_actor_options,
             _internal=True,
