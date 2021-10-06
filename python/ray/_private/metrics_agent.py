@@ -221,9 +221,9 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         temp_file_name = self.get_temp_file_name()
         with open(temp_file_name, "w") as json_file:
             json_file.write(self.get_file_discovery_content())
-        # NOTE: os.rename is atomic, so we won't have race condition reading
-        # this file.
-        os.rename(temp_file_name, self.get_target_file_name())
+        # NOTE: os.replace is atomic on both Linux and Windows, so we won't
+        # have race condition reading this file.
+        os.replace(temp_file_name, self.get_target_file_name())
 
     def get_target_file_name(self):
         return os.path.join(

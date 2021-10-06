@@ -40,11 +40,11 @@ class RuntimeEnvContext:
         if sys.platform == "linux":
             exec_command = " ".join([f"exec {self.py_executable}"] + passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
-            os.execvp("bash", ["bash", "-c", command_str])
+            os.execvp(file="bash", args=["bash", "-c", command_str])
         elif sys.platform == "win32":
             exec_command = " ".join([f'"{self.py_executable}"'] + passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
-            os.execvp("cmd", [command_str])
+            os.execvp(file="cmd", args=["/c", command_str])
         else:
             raise NotImplementedError("Only supports linux and win32 platforms")
         logger.info(f"Exec'ing worker with command: {command_str}")
