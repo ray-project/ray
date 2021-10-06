@@ -329,3 +329,12 @@
 #     script: python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000
 #     # TODO: enable failure test later
 #     #&& python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --fail --no-report && python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --no-report
+
+- name: pg_test
+  cluster:
+    app_config: pg_tests/app_config.yaml
+    compute_template: pg_tests/compute.yaml
+
+  run:
+    timeout: 1200
+    script: python pg_tests/pg_run.py
