@@ -217,8 +217,8 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *env, 
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(
-    JNIEnv *env, jclass, jbyteArray objectId) {
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *env, jclass,
+                                                                    jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ObjectID>(env, objectId);
   rpc::Address address;
   // TODO(ekl) send serialized object status to Java land.

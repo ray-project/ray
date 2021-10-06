@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/synchronization/mutex.h"
-
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
+#include "absl/synchronization/mutex.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 
@@ -29,8 +28,7 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 
   std::shared_ptr<CoreWorkerMemoryStore> provider =
       std::make_shared<CoreWorkerMemoryStore>(
-          nullptr, nullptr, nullptr,
-          [&](const RayObject &obj) { unhandled_count++; });
+          nullptr, nullptr, nullptr, [&](const RayObject &obj) { unhandled_count++; });
   RayObject obj1(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   RayObject obj2(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   auto id1 = ObjectID::FromRandom();
@@ -68,8 +66,7 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 TEST(TestMemoryStore, TestMemoryStoreStats) {
   /// Simple validation for test memory store stats.
   std::shared_ptr<CoreWorkerMemoryStore> provider =
-      std::make_shared<CoreWorkerMemoryStore>(nullptr, nullptr, nullptr,
-                                              nullptr);
+      std::make_shared<CoreWorkerMemoryStore>(nullptr, nullptr, nullptr, nullptr);
 
   // Iterate through the memory store and compare the values that are obtained by
   // GetMemoryStoreStatisticalData.
