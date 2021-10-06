@@ -531,6 +531,8 @@ class Trial:
             self._default_result_future = (
                 runner.get_auto_filled_metrics.remote(
                     add_user_overridable_metrics=True))
+        else:
+            self._default_result_future = None
         self.checkpoint_manager.delete = CheckpointDeleter(
             self._trainable_name(), runner, self.node_ip)
         # No need to invalidate state cache: runner is not stored in json
