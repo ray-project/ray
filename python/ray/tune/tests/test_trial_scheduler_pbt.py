@@ -192,8 +192,13 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                                                    "checkpoint")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, iter), fp)
+                # Different sleep times so that asynch test runs do not
+                # randomly succeed. If well performing trials finish later,
+                # then bad performing trials will already have continued
+                # to train, which is exactly what we want to test when
+                # comparing sync vs. async.
+                time.sleep(a / 20)
                 # Score gets better every iteration.
-                time.sleep(1)
                 tune.report(mean_accuracy=iter + a, a=a)
 
         self.MockTrainingFuncSync = MockTrainingFuncSync
