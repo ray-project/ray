@@ -723,7 +723,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=?, "
+        "Dataset(num_blocks=2, num_rows=None "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
         "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
@@ -736,7 +736,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=?, "
+        "Dataset(num_blocks=1, num_rows=None "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
         "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
@@ -2523,7 +2523,7 @@ def test_random_shuffle(shutdown_only, pipelined):
         ds = ray.data.range(n, parallelism=parallelism)
         if pipelined:
             pipe = ds.repeat(2)
-            pipe.random_shuffle = pipe.random_shuffle_each_dataset
+            pipe.random_shuffle = pipe.random_shuffle_each_window
             return pipe
         else:
             return ds

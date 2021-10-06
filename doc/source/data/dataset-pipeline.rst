@@ -6,16 +6,12 @@ Overview
 
 Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <package-ref.html#datasetpipeline-api>`__.
 
-A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets, each of which represents a *window* over the original data. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
+A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets, each of which represents a *window* over the original data. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset window on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
 
 Creating a DatasetPipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A DatasetPipeline can be constructed in two ways: either by pipelining the execution of an existing Dataset (via ``Dataset.window``), or generating repeats of an existing Dataset (via ``Dataset.repeat``). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started with this synthetic data example:
-
-.. tip::
-
-  The "window size" of a pipeline is defined as the number of blocks per Dataset in the pipeline.
 
 .. code-block:: python
 
@@ -36,14 +32,14 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     # -> Dataset(num_blocks=200, num_rows=1000000, schema=<class 'int'>)
     pipe = base.window(blocks_per_window=10)
     print(pipe)
-    # -> DatasetPipeline(length=20, num_stages=1)
+    # -> DatasetPipeline(num_windows=20, num_stages=1)
 
     # Applying transforms to pipelines adds more pipeline stages.
     pipe = pipe.map(func1)
     pipe = pipe.map(func2)
     pipe = pipe.map(func3)
     print(pipe)
-    # -> DatasetPipeline(length=20, num_stages=4)
+    # -> DatasetPipeline(num_windows=20, num_stages=4)
 
     # Output can be pulled from the pipeline concurrently with its execution.
     num_rows = 0
@@ -157,7 +153,7 @@ Transformations made prior to the Dataset prior to the call to ``.repeat()`` are
     pipe: DatasetPipeline = ray.data \
         .read_datasource(...) \
         .repeat() \
-        .random_shuffle_each_dataset()
+        .random_shuffle_each_window()
 
     @ray.remote(num_gpus=1)
     def train_func(pipe: DatasetPipeline):
@@ -186,7 +182,7 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
     pipe: DatasetPipeline = ray.data \
         .read_parquet("s3://bucket/dir") \
         .repeat() \
-        .random_shuffle_each_dataset()
+        .random_shuffle_each_window()
 
     @ray.remote(num_gpus=1)
     class TrainingWorker:
@@ -207,7 +203,7 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
 Changing Pipeline Structure
 ---------------------------
 
-Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).window_over_datasets(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``.
+Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``.
 
 Visualizing Pipelines
 ~~~~~~~~~~~~~~~~~~~~~
@@ -270,7 +266,7 @@ To better understand pipeline structures, you can use the ``DatasetPipeline.show
     # Repeat followed by window.
     ray.data.range(5) \
         .repeat(2) \
-        .window_over_datasets(blocks_per_window=2) \
+        .rewindow(blocks_per_window=2) \
         .show_windows()
     # ->
     # === Window 0 ===

@@ -242,14 +242,13 @@ class DatasetPipeline(Generic[T]):
             for idx in range(n)
         ]
 
-    def window_over_datasets(self, *,
-                             blocks_per_window: int) -> "DatasetPipeline[T]":
+    def rewindow(self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
         """Change the windowing (blocks per dataset) of this pipeline.
 
         Changes the windowing of this pipeline to the specified size. For
         example, if the current pipeline has two blocks per dataset, and
-        `.window_over_datasets(4)` is requested, adjacent datasets will be
-        merged until each dataset is 4 blocks. If `.window(1)` was requested
+        `.rewindow(4)` is requested, adjacent datasets will be
+        merged until each dataset is 4 blocks. If `.rewindow(1)` was requested
         the datasets will be split into smaller windows.
 
         Args:
@@ -430,9 +429,9 @@ class DatasetPipeline(Generic[T]):
         return PipelineExecutor(self)
 
     @DeveloperAPI
-    def foreach_dataset(self, fn: Callable[[Dataset[T]], Dataset[U]]
-                        ) -> "DatasetPipeline[U]":
-        """Apply a transform to each dataset in this pipeline.
+    def foreach_window(self, fn: Callable[[Dataset[T]], Dataset[U]]
+                       ) -> "DatasetPipeline[U]":
+        """Apply a transform to each dataset/window in this pipeline.
 
         Args:
             fn: The function to transform each dataset with.
@@ -448,6 +447,10 @@ class DatasetPipeline(Generic[T]):
             self._length,
             self._progress_bars,
             _executed=self._executed)
+
+    def foreach_dataset(self, *a, **kw) -> None:
+        raise DeprecationWarning(
+            "`foreach_dataset` has been renamed to `foreach_window`.")
 
     @staticmethod
     def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]],
@@ -465,7 +468,7 @@ class DatasetPipeline(Generic[T]):
         return DatasetPipeline(iterable, length=length)
 
     def __repr__(self) -> str:
-        return "DatasetPipeline(length={}, num_stages={})".format(
+        return "DatasetPipeline(num_windows={}, num_stages={})".format(
             self._length, 1 + len(self._stages))
 
     def __str__(self) -> str:
@@ -485,7 +488,7 @@ for method in PER_DATASET_OPS:
 
         @functools.wraps(delegate)
         def impl(self, *args, **kwargs):
-            return self.foreach_dataset(
+            return self.foreach_window(
                 lambda ds: getattr(ds, method)(*args, **kwargs))
 
         if impl.__annotations__.get("return"):
@@ -503,7 +506,7 @@ for method in HOLISTIC_PER_DATASET_OPS:
 
         @functools.wraps(delegate)
         def impl(self, *args, **kwargs):
-            return self.foreach_dataset(
+            return self.foreach_window(
                 lambda ds: getattr(ds, method)(*args, **kwargs))
 
         if impl.__annotations__.get("return"):
@@ -515,13 +518,13 @@ for method in HOLISTIC_PER_DATASET_OPS:
     def deprecation_warning(method: str):
         def impl(*a, **kw):
             raise DeprecationWarning(
-                "`{}` has been renamed to `{}_each_dataset`.".format(
+                "`{}` has been renamed to `{}_each_window`.".format(
                     method, method))
 
         return impl
 
     setattr(DatasetPipeline, method, deprecation_warning(method))
-    setattr(DatasetPipeline, method + "_each_dataset", make_impl(method))
+    setattr(DatasetPipeline, method + "_each_window", make_impl(method))
 
 for method in PER_DATASET_OUTPUT_OPS:
 

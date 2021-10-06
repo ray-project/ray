@@ -1664,14 +1664,14 @@ class Dataset(Generic[T]):
         waiting for all transformations to fully execute, and can also improve
         efficiency if transforms use different resources (e.g., GPUs).
 
-        Without windowing::
+        Without pipelining::
 
             [preprocessing......]
                                   [inference.......]
                                                      [write........]
             Time ----------------------------------------------------------->
 
-        With windowing::
+        With pipelining::
 
             [prep1] [prep2] [prep3]
                     [infer1] [infer2] [infer3]
@@ -1682,11 +1682,11 @@ class Dataset(Generic[T]):
             >>> # Create an inference pipeline.
             >>> ds = ray.data.read_binary_files(dir)
             >>> pipe = ds.window(blocks_per_window=10).map(infer)
-            DatasetPipeline(length=40, num_stages=2)
+            DatasetPipeline(num_windows=40, num_stages=2)
 
             >>> # The higher the stage parallelism, the shorter the pipeline.
             >>> pipe = ds.window(blocks_per_window=20).map(infer)
-            DatasetPipeline(length=20, num_stages=2)
+            DatasetPipeline(num_windows=20, num_stages=2)
 
             >>> # Outputs can be incrementally read from the pipeline.
             >>> for item in pipe.iter_rows():
@@ -1800,8 +1800,6 @@ class Dataset(Generic[T]):
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
-        if count is None:
-            count = "?"
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
             len(self._blocks), count, schema_str)
 
