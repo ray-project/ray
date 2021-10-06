@@ -72,11 +72,13 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_lock_path(cluster_name: str) -> str:
-    return os.path.join(get_ray_temp_dir(), "cluster-{}.lock".format(cluster_name))
+    return os.path.join(get_ray_temp_dir(),
+                        "cluster-{}.lock".format(cluster_name))
 
 
 def get_state_path(cluster_name: str) -> str:
-    return os.path.join(get_ray_temp_dir(), "cluster-{}.state".format(cluster_name))
+    return os.path.join(get_ray_temp_dir(),
+                        "cluster-{}.state".format(cluster_name))
 
 
 def bootstrap_local(config: Dict[str, Any]) -> Dict[str, Any]:
