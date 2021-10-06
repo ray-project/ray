@@ -291,7 +291,12 @@ def mock_connect(*args, **kwargs):
     raise ConnectionError
 
 
-def has_client_deprecation_warn(warning, expected_replacement):
+def has_client_deprecation_warn(warning: Warning,
+                                expected_replacement: str) -> bool:
+    """
+    Returns true if expected_replacement is in the message of the passed
+    warning, and that the warning mentions deprecation.
+    """
     start = "Starting a connection through `ray.client` is deprecated"
     message = str(warning.message)
     if start not in message:
@@ -307,74 +312,68 @@ def test_client_deprecation_warn():
     a copy pasteable replacement for the client().connect() call converted
     to ray.init style.
     """
-    # Don't actually try to connect
+    with warnings.catch_warnings(record=True) as w:
+        ray.client().connect()
+        assert any(
+            has_client_deprecation_warn(warning, "ray.init()")
+            for warning in w)
+        ray.shutdown()
+
+    with warnings.catch_warnings(record=True) as w:
+        ray.client().namespace("nmspc").env({"pip": ["requests"]}).connect()
+
+        expected = 'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+        assert any(
+            has_client_deprecation_warn(warning, expected)  # noqa E501
+            for warning in w)
+        ray.shutdown()
+
+    server = ray_client_server.serve("localhost:50055")
+    with warnings.catch_warnings(record=True) as w:
+        with ray.client("localhost:50055").connect():
+            pass
+
+    assert any(
+        has_client_deprecation_warn(
+            warning, 'ray.init("ray://localhost:50055")') for warning in w)
+
+    with warnings.catch_warnings(record=True) as w:
+        with ray.client("localhost:50055").namespace("nmspc").connect():
+            pass
+
+    assert any(
+        has_client_deprecation_warn(
+            warning, 'ray.init("ray://localhost:50055", namespace="nmspc")')
+        for warning in w)
+
     with patch("ray.util.client_connect.connect", mock_connect):
-        with warnings.catch_warnings(record=True) as w:
-            ray.client().connect()
-            assert any(
-                has_client_deprecation_warn(warning, "ray.init()")
-                for warning in w)
-            ray.shutdown()
-
+        # Skip actually connecting on these, since updating the runtime env is
+        # time consuming
         with warnings.catch_warnings(record=True) as w:
             try:
-                ray.client("localhost:1234").connect()
-            except ConnectionError:
-                pass
-
-            assert any(
-                has_client_deprecation_warn(
-                    warning, 'ray.init("ray://localhost:1234")')
-                for warning in w)
-
-        with warnings.catch_warnings(record=True) as w:
-            try:
-                ray.client("localhost:1234").namespace("nmspc").connect()
-            except ConnectionError:
-                pass
-
-            assert any(
-                has_client_deprecation_warn(
-                    warning,
-                    'ray.init("ray://localhost:1234", namespace="nmspc")')
-                for warning in w)
-
-        with warnings.catch_warnings(record=True) as w:
-            try:
-                ray.client("localhost:1234") \
+                ray.client("localhost:50055") \
                     .env({"pip": ["requests"]}).connect()
             except ConnectionError:
                 pass
 
-            expected = 'ray.init("ray://localhost:1234", runtime_env=<your_runtime_env>)'  # noqa E501
-            assert any(
-                has_client_deprecation_warn(warning, expected)
-                for warning in w)
+        expected = 'ray.init("ray://localhost:50055", runtime_env=<your_runtime_env>)'  # noqa E501
+        assert any(
+            has_client_deprecation_warn(warning, expected) for warning in w)
 
         with warnings.catch_warnings(record=True) as w:
             try:
-                ray.client("localhost:1234").namespace("nmspc") \
+                ray.client("localhost:50055").namespace("nmspc") \
                     .env({"pip": ["requests"]}).connect()
             except ConnectionError:
                 pass
 
-            expected = 'ray.init("ray://localhost:1234", namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
-            assert any(
-                has_client_deprecation_warn(warning, expected)
-                for warning in w)
+        expected = 'ray.init("ray://localhost:50055", namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+        assert any(
+            has_client_deprecation_warn(warning, expected) for warning in w)
 
-        with warnings.catch_warnings(record=True) as w:
-            try:
-                ray.client().namespace("nmspc") \
-                    .env({"pip": ["requests"]}).connect()
-            except ConnectionError:
-                pass
-
-            expected = 'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
-            assert any(
-                has_client_deprecation_warn(warning, expected)  # noqa E501
-                for warning in w)
-            ray.shutdown()
+    # cleanup
+    server.stop(0)
+    subprocess.check_output("ray stop --force", shell=True)
 
 
 if __name__ == "__main__":
