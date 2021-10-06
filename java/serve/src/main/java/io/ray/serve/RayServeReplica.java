@@ -211,8 +211,8 @@ public class RayServeReplica {
    */
   public void drainPendingQueries() {
     while (true) {
+      long graceful_shutdown_wait_loop_s = 20;
       try {
-        long graceful_shutdown_wait_loop_s = 20;
         Thread.sleep((long) (graceful_shutdown_wait_loop_s * 1000));
       } catch (InterruptedException e) {
         LOGGER.error(
