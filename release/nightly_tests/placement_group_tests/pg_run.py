@@ -7,6 +7,7 @@ from ray.util.placement_group import placement_group
 
 # Tests are supposed to run for 10 minutes.
 RUNTIME = 600
+NUM_CPU_BUNDLES = 30
 
 
 @ray.remote(num_cpus=1)
@@ -33,19 +34,22 @@ def main():
     ray.init(address="auto")
 
     bundles = [{"CPU": 1, "GPU": 1}]
-    bundles += [{"CPU": 1} for _ in range(30)]
+    bundles += [{"CPU": 1} for _ in range(NUM_CPU_BUNDLES)]
 
     pg = placement_group(bundles, strategy="PACK")
 
     ray.get(pg.ready())
 
-    workers = [Worker.options(placement_group=pg).remote(i) for i in range(30)]
+    workers = [
+        Worker.options(placement_group=pg).remote(i)
+        for i in range(NUM_CPU_BUNDLES)
+    ]
 
     trainer = Trainer.options(placement_group=pg).remote(0)
 
     start = time.time()
     while True:
-        ray.get([workers[i].work.remote() for i in range(30)])
+        ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)])
         ray.get(trainer.train.remote())
         end = time.time()
         if end - start > RUNTIME:
