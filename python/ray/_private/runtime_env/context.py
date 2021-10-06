@@ -36,8 +36,16 @@ class RuntimeEnvContext:
 
     def exec_worker(self, passthrough_args: List[str]):
         os.environ.update(self.env_vars)
-        exec_command = " ".join([f"exec {self.py_executable}"] +
-                                passthrough_args)
-        command_str = " && ".join(self.command_prefix + [exec_command])
+
+        if sys.platform == "linux":
+            exec_command = " ".join([f"exec {self.py_executable}"] + passthrough_args)
+            command_str = " && ".join(self.command_prefix + [exec_command])
+            os.execvp("bash", ["bash", "-c", command_str])
+        elif sys.platform == "win32":
+            exec_command = " ".join([f'"{self.py_executable}"'] + passthrough_args)
+            command_str = " && ".join(self.command_prefix + [exec_command])
+            os.execvp("cmd", [command_str])
+        else:
+            raise NotImplementedError("Only supports linux and win32 platforms")
         logger.info(f"Exec'ing worker with command: {command_str}")
-        os.execvp("bash", ["bash", "-c", command_str])
+
