@@ -40,14 +40,6 @@ public class ServeProtoUtil {
       builder.setMaxConcurrentQueries(100);
     }
 
-    if (builder.getExperimentalGracefulShutdownWaitLoopS() == 0) {
-      builder.setExperimentalGracefulShutdownWaitLoopS(2);
-    }
-
-    if (builder.getExperimentalGracefulShutdownTimeoutS() == 0) {
-      builder.setExperimentalGracefulShutdownTimeoutS(20);
-    }
-
     if (builder.getBackendLanguage() == BackendLanguage.UNRECOGNIZED) {
       throw new RayServeException(
           LogUtil.format(
