@@ -143,7 +143,7 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler)
-    : ref_counter_(counter),
+    : ref_counter_(std::move(counter)),
       raylet_client_(raylet_client),
       check_signals_(check_signals),
       unhandled_exception_handler_(unhandled_exception_handler) {}
