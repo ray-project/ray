@@ -15,8 +15,9 @@ from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import (DEFAULT_METRIC, DONE, TIME_THIS_ITER_S,
-                             RESULT_DUPLICATE, SHOULD_CHECKPOINT, TRIAL_ID)
+from ray.tune.result import (DEBUG_METRICS, DEFAULT_METRIC, DONE,
+                             TIME_THIS_ITER_S, RESULT_DUPLICATE,
+                             SHOULD_CHECKPOINT)
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -934,16 +935,18 @@ class TrialRunner:
     def _validate_result_metrics(self, result):
         """
         Check if any of the required metrics was not reported
-        in the last result. If the only items are ``done`` and ``trial_id``,
-        this means that no result was ever received and the trial just
-        returned. This is also okay and will not raise an error.
+        in the last result. If the only items are ``done`` or any of
+        DEBUG_METRICS, this means that no result was ever received and
+        the trial just returned. This is also okay and will not raise
+        an error.
 
         This will ignore checking for the DEFAULT_METRIC.
         """
         if int(os.environ.get(
-                "TUNE_DISABLE_STRICT_METRIC_CHECKING", 0)) != 1 and (len(
-                    {k
-                     for k in result if k not in (DONE, TRIAL_ID)}) > 1):
+                "TUNE_DISABLE_STRICT_METRIC_CHECKING", 0)) != 1 and (len({
+                    k
+                    for k in result if k not in list(DEBUG_METRICS) + [DONE]
+                }) > 1):
             base_metric = self._metric \
                 if self._metric != DEFAULT_METRIC else None
             scheduler_metric = self._scheduler_alg.metric \

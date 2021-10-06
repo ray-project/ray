@@ -15,10 +15,11 @@ import ray
 import ray.cloudpickle as pickle
 from ray.tune.resources import Resources
 from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, SHOULD_CHECKPOINT, TIME_THIS_ITER_S,
-    TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER,
-    EPISODES_TOTAL, TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO,
-    STDOUT_FILE, STDERR_FILE)
+    DEBUG_METRICS, DEFAULT_RESULTS_DIR, HOSTNAME, NODE_IP, PID,
+    SHOULD_CHECKPOINT, TIME_THIS_ITER_S, TIME_TOTAL_S, TIMESTEPS_THIS_ITER,
+    DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL,
+    TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_ID, TRIAL_INFO, STDOUT_FILE,
+    STDERR_FILE)
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
@@ -154,40 +155,37 @@ class Trainable:
         self._local_ip = ray.util.get_node_ip_address()
         return self._local_ip
 
-    def get_auto_filled_metrics(
-            self,
-            now: Optional[datetime] = None,
-            time_this_iter: Optional[float] = None,
-            add_user_overridable_metrics: bool = False) -> dict:
+    def get_auto_filled_metrics(self,
+                                now: Optional[datetime] = None,
+                                time_this_iter: Optional[float] = None,
+                                debug_metrics_only: bool = False) -> dict:
         """Return a dict with metrics auto-filled by the trainable.
 
-        If ``add_user_overridable_metrics`` is True, metrics that can be
-        overriden by the user (such as ``done``) will be added to the dict as
-        well.
+        If ``debug_metrics_only`` is True, only metrics that don't
+        require at least one iteration will be returned.
         """
         if now is None:
             now = datetime.today()
-        autofilled = dict(
-            trial_id=self.trial_id,
-            experiment_id=self._experiment_id,
-            date=now.strftime("%Y-%m-%d_%H-%M-%S"),
-            timestamp=int(time.mktime(now.timetuple())),
-            time_this_iter_s=time_this_iter,
-            time_total_s=self._time_total,
-            pid=os.getpid(),
-            hostname=platform.node(),
-            node_ip=self._local_ip,
-            config=self.config,
-            time_since_restore=self._time_since_restore,
-            timesteps_since_restore=self._timesteps_since_restore,
-            iterations_since_restore=self._iterations_since_restore)
-        if add_user_overridable_metrics:
-            autofilled.update({
-                DONE: False,
-                TIMESTEPS_TOTAL: self._timesteps_total,
-                EPISODES_TOTAL: self._episodes_total,
-                TRAINING_ITERATION: self._iteration,
-            })
+        autofilled = {
+            TRIAL_ID: self.trial_id,
+            "experiment_id": self._experiment_id,
+            "date": now.strftime("%Y-%m-%d_%H-%M-%S"),
+            "timestamp": int(time.mktime(now.timetuple())),
+            TIME_THIS_ITER_S: time_this_iter,
+            TIME_TOTAL_S: self._time_total,
+            PID: os.getpid(),
+            HOSTNAME: platform.node(),
+            NODE_IP: self._local_ip,
+            "config": self.config,
+            "time_since_restore": self._time_since_restore,
+            "timesteps_since_restore": self._timesteps_since_restore,
+            "iterations_since_restore": self._iterations_since_restore
+        }
+        if debug_metrics_only:
+            autofilled = {
+                k: v
+                for k, v in autofilled.items() if k in DEBUG_METRICS
+            }
         return autofilled
 
     def is_actor(self):

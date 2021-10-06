@@ -400,24 +400,20 @@ class Trial:
     @property
     def last_result(self) -> dict:
         # The logic in here is as follows:
-        # 1. If the trial is still running or pending, we get the last result
-        #    and only set trial_id.
-        # 2. If the trial has reported at least once, last_result would have
+        # 1. If the trial has reported at least once, last_result would have
         #    been set and therefore would not be empty. We can just return it.
-        # 3. If the trial has not reported at least once but we have the
+        # 2. If the trial has not reported at least once but we have the
         #    future for the default results dict, (obtained through
         #    Trainable.get_auto_filled_metrics), we get that future
         #    and return it.
-        # 4. In the worst case where we have nothing, we just set the
+        # 3. In the worst case where we have nothing, we just set the
         #    trial_id and return that.
         result = self._last_result
-        if (not result and self._default_result_or_future
-                and self.status not in (Trial.RUNNING, Trial.PENDING)):
+        if not result and self._default_result_or_future:
             if isinstance(self._default_result_or_future, ray.ObjectRef):
                 self._default_result_or_future = ray.get(
                     self._default_result_or_future)
             result = self._default_result_or_future
-        result = result.copy()
         result.setdefault(TRIAL_ID, self.trial_id)
         return result
 
@@ -534,8 +530,7 @@ class Trial:
             # Do not block here, the result will be gotten when last_result
             # property is accessed
             self._default_result_or_future = (
-                runner.get_auto_filled_metrics.remote(
-                    add_user_overridable_metrics=True))
+                runner.get_auto_filled_metrics.remote(debug_metrics_only=True))
         else:
             self._default_result_or_future = None
         self.checkpoint_manager.delete = CheckpointDeleter(
