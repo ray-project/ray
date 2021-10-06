@@ -708,7 +708,6 @@ class TrialRunner:
         if (self._stopper.stop_all() or fail_fast
                 or self._should_stop_experiment):
             self._search_alg.set_finished()
-            self._callbacks.on_experiment_stop(trials=self._trials)
             [
                 self.trial_executor.stop_trial(t) for t in self._trials
                 if t.status is not Trial.ERROR

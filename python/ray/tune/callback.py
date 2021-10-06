@@ -201,15 +201,6 @@ class Callback(ABC):
         """
         pass
 
-    def on_experiment_stop(self, trials: List["Trial"], **info):
-        """Called after a call has been made to stop the experiment.
-
-        Arguments:
-            trials (List[Trial]): List of trials.
-            **info: Kwargs dict for forward compatibility.
-        """
-        pass
-
 
 class CallbackList:
     """Call multiple callbacks at once."""
@@ -270,7 +261,3 @@ class CallbackList:
     def on_experiment_end(self, **info):
         for callback in self._callbacks:
             callback.on_experiment_end(**info)
-
-    def on_experiment_stop(self, **info):
-        for callback in self._callbacks:
-            callback.on_experiment_stop(**info)
