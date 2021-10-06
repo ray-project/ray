@@ -2522,7 +2522,9 @@ def test_random_shuffle(shutdown_only, pipelined):
     def range(n, parallelism=200):
         ds = ray.data.range(n, parallelism=parallelism)
         if pipelined:
-            return ds.repeat(2)
+            pipe = ds.repeat(2)
+            pipe.random_shuffle = pipe.random_shuffle_each_dataset
+            return pipe
         else:
             return ds
 
