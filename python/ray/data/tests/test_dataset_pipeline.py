@@ -134,11 +134,11 @@ def test_repeat_forever(ray_start_regular_shared):
 
 def test_repartition(ray_start_regular_shared):
     pipe = ray.data.range(10).repeat(10)
-    assert pipe.repartition(1).sum() == 450
+    assert pipe.repartition_each_dataset(1).sum() == 450
     pipe = ray.data.range(10).repeat(10)
-    assert pipe.repartition(10).sum() == 450
+    assert pipe.repartition_each_dataset(10).sum() == 450
     pipe = ray.data.range(10).repeat(10)
-    assert pipe.repartition(100).sum() == 450
+    assert pipe.repartition_each_dataset(100).sum() == 450
 
 
 def test_iter_batches(ray_start_regular_shared):
