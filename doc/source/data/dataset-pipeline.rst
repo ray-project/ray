@@ -92,6 +92,26 @@ While most Dataset operations are per-row (e.g., map, filter), some operations a
     # 0
     # 3
 
+You can also apply arbitrary transformations to each window using ``DatasetPipeline.foreach_window()``:
+
+.. code-block:: python
+
+    # Equivalent transformation using .foreach_window() 
+    ray.data.range(5).repeat(2).foreach_window(lambda w: w.random_shuffle()).show_windows()
+    # -> 
+    # === Window 0 ===
+    # 1
+    # 0
+    # 4
+    # 2
+    # 3
+    # === Window 1 ===
+    # 4
+    # 2
+    # 0
+    # 3
+    # 1
+
 Example: Pipelined Batch Inference
 ----------------------------------
 
