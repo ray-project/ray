@@ -127,7 +127,7 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
     Agents may publish their observations at any timestep, together or not with
     other agents. Actions are not expected to arrive in the very next step.
     Multiple rewards can be returned by the env in consecutive steps, even
-    though no new observation was published in the meantime (RLlib will add
+    though no new observation was published in the meantime (RLlib will add up
     those rewards).
 
     New agents spawned at any time:

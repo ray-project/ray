@@ -67,7 +67,6 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    # main part: RLlib config with AttentionNet model
     config = {
         # Env will automatically spawn new agents (3 out of 4 steps)
         # and remove existing ones (1 out of 4 steps). On top of that,
@@ -90,8 +89,14 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", 0)),
         "num_envs_per_worker": 20,
+
         "entropy_coeff": 0.001,
-        "num_sgd_iter": 10,
+
+        # APPO settings.
+        "replay_proportion": 1.0,
+        "replay_buffer_num_slots": 50,
+        #"num_sgd_iter": 10,
+
         "vf_loss_coeff": 1e-5,
         "framework": args.framework,
     }
