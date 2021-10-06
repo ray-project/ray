@@ -1645,7 +1645,8 @@ class Dataset(Generic[T]):
         return DatasetPipeline(Iterable(self), length=times)
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        raise DeprecationWarning("Use .window(n) instead of .pipeline(n)")
+        raise DeprecationWarning("Use .window(blocks_per_window=n) instead of "
+                                 ".pipeline(parallelism=n)")
 
     def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
