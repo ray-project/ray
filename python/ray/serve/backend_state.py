@@ -413,13 +413,13 @@ class BackendReplica(VersionedReplica):
 
         return status
 
-    def stop(self, force: bool = False) -> None:
+    def stop(self, graceful: bool = True) -> None:
         """Stop the replica.
 
         Should handle the case where the replica is already stopped.
         """
         timeout_s = self._actor.graceful_stop()
-        if force:
+        if not graceful:
             timeout_s = 0
         self._shutdown_deadline = time.time() + timeout_s
 
@@ -1019,7 +1019,7 @@ class BackendState:
                     # Increase startup failure counter if we're tracking it
                     self._replica_constructor_retry_counter += 1
 
-                replica.stop(force=True)
+                replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
             elif start_status == ReplicaStartupStatus.PENDING:
                 # Not done yet, remain at same state
@@ -1030,7 +1030,7 @@ class BackendState:
                 if not stop_on_slow:
                     self._replicas.add(original_state, replica)
                 else:
-                    replica.stop(force=True)
+                    replica.stop(graceful=False)
                     self._replicas.add(ReplicaState.STOPPING, replica)
                 slow_replicas.append(replica)
 
@@ -1053,7 +1053,7 @@ class BackendState:
                     f"{self._name} failed health check, stopping it. "
                     f"component=serve deployment={self._name} "
                     f"replica={replica.replica_tag}")
-                replica.stop(force=True)
+                replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
         slow_start_replicas = []
