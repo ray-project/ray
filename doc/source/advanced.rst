@@ -517,6 +517,29 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
 
+- ``container`` (Dict[str, Any]): **EXPERIMENTAL**. A dictionary configuring the options for running
+  a Ray worker inside a container. This is an experimental feature. Currently Ray requires the
+  ``podman`` container runtime and is tested for running container-in-container.
+
+  The following options are required:
+
+  - ``worker_path`` (str): the absolute path for Ray's ``default_worker.py`` file.
+    You can run ``python -m inspect -d ray.workers.default_worker | grep Origin | cut -d " " -f 2``
+    inside the container to retrieve it. By default it will be the Ray worker path of the caller.
+  - ``image`` (str): the Docker image to run the worker inside.
+    Using the full path like ``docker.io/rayproject/ray-ml:nightly-py38-cpu`` is preferred.
+  
+  To configure the container runtime, you can use the ``run_options`` field with a list of command
+  line options (https://docs.docker.com/engine/reference/run/). 
+
+  You can also enable the internal configuration ``worker_resource_limits_enabled`` via 
+  ``ray.init(_system_config={"worker_resource_limits_enabled": True})``. This will enforce
+  Ray's per-task/actor resource requirement with the container's resource limits. In particular,
+  ``--cpu-share, --cpuset-cpus, --memory`` will be added to the container spec. When this is
+  enabled, a task using ``num_cpus=1`` can only use 100% of a CPU time and it will be enforced
+  by the kernel.
+
+
 The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor, once set.
 
 If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.
