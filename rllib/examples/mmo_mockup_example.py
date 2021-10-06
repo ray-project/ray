@@ -27,6 +27,8 @@ def get_cli_args():
         choices=["tf", "tf2", "tfe", "torch"],
         default="tf",
         help="The DL framework specifier.")
+    parser.add_argument("--num-workers", type=int, default=2,
+                        help="The number of workers to use.")
     parser.add_argument(
         "--stop-iters",
         type=int,
@@ -88,6 +90,7 @@ if __name__ == "__main__":
         "gamma": 0.99,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", 0)),
+        "num_workers": args.num_workers,
         "num_envs_per_worker": 20,
 
         "entropy_coeff": 0.001,
