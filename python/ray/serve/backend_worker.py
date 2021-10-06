@@ -3,7 +3,7 @@ import logging
 import pickle
 import traceback
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 import time
 
 import starlette.responses
@@ -233,16 +233,19 @@ class RayServeReplica:
                     f" component=serve deployment={self.backend_tag} "
                     f"replica={self.replica_tag}"))
 
-    def _collect_autoscaling_metrics(self):
+    def _get_handle_request_stats(self) -> Dict[str, int]:
         actor_stats = (
             ray.runtime_context.get_runtime_context()._get_actor_call_stats())
         method_stat = actor_stats.get("RayServeWrappedReplica.handle_request")
+        return method_stat
 
-        if method_stat:
+    def _collect_autoscaling_metrics(self):
+        method_stat = self._get_handle_request_stats()
+
+        num_inflight_requests = 0
+        if method_stat is not None:
             num_inflight_requests = (
                 method_stat["pending"] + method_stat["running"])
-        else:
-            num_inflight_requests = 0
 
         return {self.replica_tag: num_inflight_requests}
 
@@ -335,11 +338,10 @@ class RayServeReplica:
         logger.debug("Replica {} received request {}".format(
             self.replica_tag, request.metadata.request_id))
 
-        self.num_ongoing_requests += 1
-        self.num_processing_items.set(self.num_ongoing_requests)
+        num_running_requests = self._get_handle_request_stats()["running"]
+        self.num_processing_items.set(num_running_requests)
 
         result = await self.invoke_single(request)
-        self.num_ongoing_requests -= 1
         request_time_ms = (time.time() - request.tick_enter_replica) * 1000
         logger.debug("Replica {} finished request {} in {:.2f}ms".format(
             self.replica_tag, request.metadata.request_id, request_time_ms))
@@ -358,12 +360,13 @@ class RayServeReplica:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
             await asyncio.sleep(sleep_time)
-            if self.num_ongoing_requests == 0:
+            method_stat = self._get_handle_request_stats()
+            if method_stat["running"] + method_stat["pending"] == 0:
                 break
             else:
                 logger.info(
                     f"Waiting for an additional {sleep_time}s to shut down "
-                    f"because there are {self.num_ongoing_requests} "
+                    f"because there are {method_stat} "
                     "ongoing requests.")
 
         # Explicitly call the del method to trigger clean up.
