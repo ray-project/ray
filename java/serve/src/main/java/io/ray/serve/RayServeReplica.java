@@ -211,9 +211,9 @@ public class RayServeReplica {
    */
   public void drainPendingQueries() {
     while (true) {
-      long graceful_shutdown_wait_loop_s = 20;
+      long gracefulShutdownWaitLoopS = 20;
       try {
-        Thread.sleep((long) (graceful_shutdown_wait_loop_s * 1000));
+        Thread.sleep((long) (gracefulShutdownWaitLoopS * 1000));
       } catch (InterruptedException e) {
         LOGGER.error(
             "Replica {} was interrupted in sheep when draining pending queries", replicaTag);
@@ -223,7 +223,7 @@ public class RayServeReplica {
       } else {
         LOGGER.debug(
             "Waiting for an additional {}s to shut down because there are {} ongoing requests.",
-            graceful_shutdown_wait_loop_s,
+            gracefulShutdownWaitLoopS,
             numOngoingRequests.get());
       }
     }
