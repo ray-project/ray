@@ -162,7 +162,8 @@ class Trainable:
         """Return a dict with metrics auto-filled by the trainable.
 
         If ``debug_metrics_only`` is True, only metrics that don't
-        require at least one iteration will be returned.
+        require at least one iteration will be returned
+        (``ray.tune.result.DEBUG_METRICS``).
         """
         if now is None:
             now = datetime.today()
