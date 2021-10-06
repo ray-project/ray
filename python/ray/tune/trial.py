@@ -8,7 +8,7 @@ import platform
 import re
 import shutil
 import time
-from typing import Callable, Dict, Optional, Sequence, Union
+from typing import Callable, Dict, Sequence, Union
 import uuid
 
 import ray
@@ -20,7 +20,8 @@ from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
-from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
+from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION,
+                             TRIAL_ID)
 from ray.tune.resources import Resources, \
     json_to_resources, resources_to_json
 from ray.tune.utils.placement_groups import PlacementGroupFactory, \
@@ -300,7 +301,8 @@ class Trial:
 
         # Local trial state that is updated during the run
         self._last_result = {}
-        self._default_result_future: Optional[ray.ObjectRef] = None
+        self._default_result_or_future: Union[ray.ObjectRef, dict, None] = (
+            None)
         self.last_update_time = -float("inf")
 
         # stores in memory max/min/avg/last-n-avg/last result for each
@@ -398,22 +400,25 @@ class Trial:
     @property
     def last_result(self) -> dict:
         # The logic in here is as follows:
-        # 1. If the trial has reported at least once, last_result would have
+        # 1. If the trial is still running or pending, we get the last result
+        #    and only set trial_id.
+        # 2. If the trial has reported at least once, last_result would have
         #    been set and therefore would not be empty. We can just return it.
-        # 2. If the trial has not reported at least once but we have the
+        # 3. If the trial has not reported at least once but we have the
         #    future for the default results dict, (obtained through
         #    Trainable.get_auto_filled_metrics), we get that future
         #    and return it.
-        # 3. In the worst case where we have nothing, we just set the
-        #    trial_id and done keys and return that.
+        # 4. In the worst case where we have nothing, we just set the
+        #    trial_id and return that.
         result = self._last_result
-        if not result and self._default_result_future:
-            if isinstance(self._default_result_future, ray.ObjectRef):
-                self._default_result_future = ray.get(
-                    self._default_result_future)
-            result = self._default_result_future
-        result.setdefault("trial_id", self.trial_id)
-        result.setdefault("done", False)
+        if (not result and self._default_result_or_future
+                and self.status not in (Trial.RUNNING, Trial.PENDING)):
+            if isinstance(self._default_result_or_future, ray.ObjectRef):
+                self._default_result_or_future = ray.get(
+                    self._default_result_or_future)
+            result = self._default_result_or_future
+        result = result.copy()
+        result.setdefault(TRIAL_ID, self.trial_id)
         return result
 
     @last_result.setter
@@ -528,11 +533,11 @@ class Trial:
         if runner:
             # Do not block here, the result will be gotten when last_result
             # property is accessed
-            self._default_result_future = (
+            self._default_result_or_future = (
                 runner.get_auto_filled_metrics.remote(
                     add_user_overridable_metrics=True))
         else:
-            self._default_result_future = None
+            self._default_result_or_future = None
         self.checkpoint_manager.delete = CheckpointDeleter(
             self._trainable_name(), runner, self.node_ip)
         # No need to invalidate state cache: runner is not stored in json
@@ -763,7 +768,7 @@ class Trial:
 
         state["_state_json"] = None
         state["_state_valid"] = False
-        state["_default_result_future"] = None
+        state["_default_result_or_future"] = None
 
         return copy.deepcopy(state)
 
