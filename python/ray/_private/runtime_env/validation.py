@@ -48,7 +48,9 @@ def parse_and_validate_working_dir(working_dir: str,
     return working_dir
 
 
-def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
+def parse_and_validate_conda(conda: Union[str, dict],
+                             is_task_or_actor: bool = False
+                             ) -> Union[str, dict]:
     """Parses and validates a user-provided 'conda' option.
 
     Conda can be one of three cases:
@@ -87,7 +89,9 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
-def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
+def parse_and_validate_pip(pip: Union[str, List[str]],
+                           is_task_or_actor: bool = False
+                           ) -> Optional[List[str]]:
     """Parses and validates a user-provided 'pip' option.
 
     Conda can be one of two cases:
@@ -120,7 +124,8 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     return result
 
 
-def parse_and_validate_uris(uris: List[str]) -> List[str]:
+def parse_and_validate_uris(uris: List[str],
+                            is_task_or_actor: bool = False) -> List[str]:
     """Parses and validates a user-provided 'uris' option.
 
     These are passed through without validation (for now).
@@ -129,7 +134,8 @@ def parse_and_validate_uris(uris: List[str]) -> List[str]:
     return uris
 
 
-def parse_and_validate_container(container: List[str]) -> List[str]:
+def parse_and_validate_container(container: List[str],
+                                 is_task_or_actor: bool = False) -> List[str]:
     """Parses and validates a user-provided 'container' option.
 
     This is passed through without validation (for now).
@@ -138,8 +144,9 @@ def parse_and_validate_container(container: List[str]) -> List[str]:
     return container
 
 
-def parse_and_validate_env_vars(
-        env_vars: Dict[str, str]) -> Optional[Dict[str, str]]:
+def parse_and_validate_env_vars(env_vars: Dict[str, str],
+                                is_task_or_actor: bool = False
+                                ) -> Optional[Dict[str, str]]:
     """Parses and validates a user-provided 'env_vars' option.
 
     This is validated to verify that all keys and vals are strings.
@@ -251,7 +258,8 @@ class ParsedRuntimeEnv(dict):
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = runtime_env.get(option)
             if option_val is not None:
-                validated_option_val = validate_fn(option_val)
+                validated_option_val = validate_fn(
+                    option_val, is_task_or_actor=is_task_or_actor)
                 if validated_option_val is not None:
                     self[option] = validated_option_val
 
