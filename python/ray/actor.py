@@ -410,10 +410,15 @@ class ActorClass:
             resources, accelerator_type, runtime_env):
         self = ActorClass.__new__(ActorClass)
 
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
             max_restarts, max_task_retries, num_cpus, num_gpus, memory,
-            object_store_memory, resources, accelerator_type, runtime_env)
+            object_store_memory, resources, accelerator_type, new_runtime_env)
 
         return self
 
