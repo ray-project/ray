@@ -16,6 +16,7 @@ Summary
 -------
 
 .. list-table::
+   :widths: 5 5 2 10
    :header-rows: 1
 
    * - SearchAlgorithm
