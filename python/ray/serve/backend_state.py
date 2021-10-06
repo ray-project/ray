@@ -336,6 +336,9 @@ class BackendReplica(VersionedReplica):
     def __set_state__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
 
+    def get_running_replica_info(self) -> RunningReplicaInfo:
+        return self._actor.get_running_replica_info()
+
     @property
     def replica_tag(self) -> ReplicaTag:
         return self._replica_tag
@@ -694,7 +697,7 @@ class BackendState:
 
     def _notify_running_replicas_changed(self):
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNING_REPLICAS, self._name),
+            (LongPollNamespace.RUNNING_REPLICAS, self._name),
             self.get_running_replica_infos(),
         )
 
