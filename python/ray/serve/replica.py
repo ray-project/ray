@@ -24,7 +24,6 @@ from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
-    GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
 )
 from ray.serve.version import BackendVersion
 from ray.exceptions import RayTaskError
@@ -32,7 +31,7 @@ from ray.exceptions import RayTaskError
 logger = _get_logger()
 
 
-def create_backend_replica(name: str, serialized_backend_def: bytes):
+def create_replica_wrapper(name: str, serialized_backend_def: bytes):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
@@ -206,6 +205,9 @@ class RayServeReplica:
 
         self.restart_counter.inc()
 
+        self._shutdown_wait_loop_s = (
+            backend_config.graceful_shutdown_wait_loop_s)
+
         if backend_config.autoscaling_config:
             config = backend_config.autoscaling_config
             start_metrics_pusher(
@@ -339,13 +341,13 @@ class RayServeReplica:
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
-            await asyncio.sleep(GRACEFUL_SHUTDOWN_WAIT_LOOP_S)
+            await asyncio.sleep(self._shutdown_wait_loop_s)
             if self.num_ongoing_requests == 0:
                 break
             else:
                 logger.info(
                     "Waiting for an additional "
-                    f"{GRACEFUL_SHUTDOWN_WAIT_LOOP_S}s to shut down because "
+                    f"{self._shutdown_wait_loop_s}s to shut down because "
                     f"there are {self.num_ongoing_requests} ongoing requests.")
 
         # Explicitly call the del method to trigger clean up.

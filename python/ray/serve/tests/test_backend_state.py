@@ -12,7 +12,6 @@ from ray.serve.common import (
     ReplicaConfig,
     ReplicaTag,
 )
-from ray.serve.constants import GRACEFUL_SHUTDOWN_TIMEOUT_S
 from ray.serve.backend_state import (
     BackendState,
     BackendStateManager,
@@ -182,6 +181,7 @@ class MockReplicaActorWrapper:
     def start(self, backend_info: BackendInfo, version: BackendVersion):
         self.started = True
         self.version = version
+        self.backend_info = backend_info
 
     def update_user_config(self, user_config: Any):
         self.started = True
@@ -219,6 +219,7 @@ class MockReplicaActorWrapper:
     def graceful_stop(self) -> None:
         assert self.started
         self.stopped = True
+        return self.backend_info.backend_config.graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:
         return self.done_stopping
@@ -556,7 +557,9 @@ def test_create_delete_single_replica(mock_backend_state):
 def test_force_kill(mock_backend_state):
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info()
+    grace_period_s = 10
+    b_info_1, b_version_1 = backend_info(
+        graceful_shutdown_timeout_s=grace_period_s)
 
     # Create and delete the backend.
     backend_state.deploy(b_info_1)
@@ -579,7 +582,7 @@ def test_force_kill(mock_backend_state):
     check_counts(backend_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
 
     # Advance the timer, now the replica should be force stopped.
-    timer.advance(GRACEFUL_SHUTDOWN_TIMEOUT_S + 0.1)
+    timer.advance(grace_period_s + 0.1)
     backend_state.update()
     assert backend_state._replicas.get()[0]._actor.force_stopped_counter == 1
     assert not backend_state._replicas.get()[0]._actor.cleaned_up
@@ -1869,7 +1872,9 @@ def test_shutdown(mock_backend_state_manager):
 
     tag = "test"
 
-    b_info_1, b_version_1 = backend_info()
+    grace_period_s = 10
+    b_info_1, b_version_1 = backend_info(
+        graceful_shutdown_timeout_s=grace_period_s)
     create_goal, updating = backend_state_manager.deploy_backend(tag, b_info_1)
 
     backend_state = backend_state_manager._backend_states[tag]
@@ -1888,11 +1893,11 @@ def test_shutdown(mock_backend_state_manager):
 
     shutdown_goal = backend_state_manager.shutdown()[0]
 
+    timer.advance(grace_period_s + 0.1)
     backend_state_manager.update()
 
     check_counts(backend_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert backend_state._replicas.get()[0]._actor.stopped
-    assert backend_state._replicas.get()[0]._actor.force_stopped_counter == 1
     assert not backend_state._replicas.get()[0]._actor.cleaned_up
     assert not goal_manager.check_complete(shutdown_goal)
 
