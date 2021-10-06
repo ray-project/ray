@@ -75,7 +75,7 @@ def test_window(ray_start_regular_shared):
     ds = ray.data.range(10)
     pipe = ds.window(blocks_per_window=1)
     assert str(pipe) == "DatasetPipeline(length=10, num_stages=1)"
-    pipe = pipe.window(blocks_per_window=3)
+    pipe = pipe.window_over_datasets(blocks_per_window=3)
     assert str(pipe) == "DatasetPipeline(length=None, num_stages=1)"
     datasets = list(pipe.iter_datasets())
     assert len(datasets) == 4
@@ -87,7 +87,7 @@ def test_window(ray_start_regular_shared):
     ds = ray.data.range(10)
     pipe = ds.window(blocks_per_window=5)
     assert str(pipe) == "DatasetPipeline(length=2, num_stages=1)"
-    pipe = pipe.window(blocks_per_window=3)
+    pipe = pipe.window_over_datasets(blocks_per_window=3)
     assert str(pipe) == "DatasetPipeline(length=None, num_stages=1)"
     datasets = list(pipe.iter_datasets())
     assert len(datasets) == 4

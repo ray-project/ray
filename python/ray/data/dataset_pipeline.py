@@ -515,7 +515,7 @@ for method in HOLISTIC_PER_DATASET_OPS:
     def deprecation_warning(method: str):
         def impl(*a, **kw):
             raise DeprecationWarning(
-                "`{}` is deprecated, use `{}_each_window` instead.".format(
+                "`{}` is deprecated, use `{}_each_dataset` instead.".format(
                     method, method))
 
         return impl
