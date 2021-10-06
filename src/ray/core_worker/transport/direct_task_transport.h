@@ -358,15 +358,15 @@ class CoreWorkerDirectTaskSubmitter {
     }
 
     // Get the current backlog size for this scheduling key
-    inline int64_t BacklogSize() const {
+    [[nodiscard]] inline int64_t BacklogSize() const {
       if (task_queue.size() < pending_lease_requests.size()) {
         // During work stealing we may have more pending lease requests than the number of
         // queued tasks
         return 0;
-      } else {
-        // Subtract tasks with pending lesae requests so we don't double count them.
-        return task_queue.size() - pending_lease_requests.size();
       }
+
+      // Subtract tasks with pending lesae requests so we don't double count them.
+      return task_queue.size() - pending_lease_requests.size();
     }
   };
 
