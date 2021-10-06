@@ -8,15 +8,15 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import (_initialize_internal_kv,
                                           _internal_kv_initialized,
                                           _internal_kv_get, _internal_kv_list)
-
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 
 import json
+import aiohttp.web
 
 routes = dashboard_utils.ClassMethodRouteTable
 
 
-class SnapshotHead(dashboard_utils.DashboardHeadModule):
+class APIHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._gcs_job_info_stub = None
@@ -26,6 +26,27 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         # Initialize internal KV to be used by the working_dir setup code.
         _initialize_internal_kv(dashboard_head.gcs_client)
         assert _internal_kv_initialized()
+
+    @routes.get("/api/actors/kill")
+    async def kill_actor_gcs(self, req) -> aiohttp.web.Response:
+        actor_id = req.query.get("actor_id")
+        force_kill = req.query.get("force_kill", False) in ("true", "True")
+        no_restart = req.query.get("no_restart", False) in ("true", "True")
+        if not actor_id:
+            return dashboard_utils.rest_response(
+                success=False, message="actor_id is required.")
+
+        request = gcs_service_pb2.KillActorViaGcsRequest()
+        request.actor_id = bytes.fromhex(actor_id)
+        request.force_kill = force_kill
+        request.no_restart = no_restart
+        await self._gcs_actor_info_stub.KillActorViaGcs(request, timeout=5)
+
+        message = (f"Force killed actor with id {actor_id}" if force_kill else
+                   f"Requested actor with id {actor_id} to terminate. " +
+                   "It will exit once running tasks complete")
+
+        return dashboard_utils.rest_response(success=True, message=message)
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
@@ -56,7 +77,7 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": dict(job_table_entry.config.metadata),
                 "runtime_env": json.loads(
-                    job_table_entry.config.serialized_runtime_env),
+                    job_table_entry.config.runtime_env.serialized_runtime_env),
             }
             entry = {
                 "is_dead": job_table_entry.is_dead,

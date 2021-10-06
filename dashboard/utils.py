@@ -20,15 +20,15 @@ from typing import Any
 
 from google.protobuf.json_format import MessageToDict
 
-import ray.new_dashboard.consts as dashboard_consts
+import ray.dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
 from ray._private.utils import binary_to_hex
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.new_dashboard.optional_deps import (aiohttp, aioredis, hdrs,
-                                             FrozenList, PathLike, RouteDef)
+from ray.dashboard.optional_deps import (aiohttp, aioredis, hdrs, FrozenList,
+                                         PathLike, RouteDef)
 
 try:
     create_task = asyncio.create_task
@@ -199,11 +199,11 @@ def dashboard_module(enable):
 
 def get_all_modules(module_type):
     logger.info(f"Get all modules by type: {module_type.__name__}")
-    import ray.new_dashboard.modules
+    import ray.dashboard.modules
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
-            ray.new_dashboard.modules.__path__,
-            ray.new_dashboard.modules.__name__ + "."):
+            ray.dashboard.modules.__path__,
+            ray.dashboard.modules.__name__ + "."):
         importlib.import_module(name)
     return [
         m for m in module_type.__subclasses__()

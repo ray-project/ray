@@ -34,6 +34,8 @@ namespace ray {
 typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
+using RuntimeEnvHash = int64_t;
+
 /// ConcurrencyGroup is a group of actor methods that shares
 /// a executing thread pool.
 struct ConcurrencyGroup {
@@ -100,11 +102,13 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
+  [[nodiscard]] rpc::RuntimeEnv RuntimeEnv() const;
+
   std::string SerializedRuntimeEnv() const;
 
   bool HasRuntimeEnv() const;
 
-  int GetRuntimeEnvHash() const;
+  [[nodiscard]] RuntimeEnvHash GetRuntimeEnvHash() const;
 
   size_t NumArgs() const;
 
@@ -114,7 +118,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ArgId(size_t arg_index) const;
 
-  rpc::ObjectReference ArgRef(size_t arg_index) const;
+  const rpc::ObjectReference &ArgRef(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
 
@@ -169,8 +173,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
       bool add_dummy_dependency = true) const;
 
   std::string GetDebuggerBreakpoint() const;
-
-  std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
 
   bool IsDriverTask() const;
 
@@ -272,16 +274,17 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 /// Class used to cache workers, keyed by runtime_env.
 class WorkerCacheKey {
  public:
+  /// Constructor for a default runtime env.
+  ///
+  explicit WorkerCacheKey(const JobID &job_id);
+
   /// Create a cache key with the given environment variable overrides and serialized
   /// runtime_env.
   ///
-  /// \param override_environment_variables The environment variable overrides set in this
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
-  WorkerCacheKey(
-      const std::unordered_map<std::string, std::string> override_environment_variables,
-      const std::string serialized_runtime_env,
-      const std::unordered_map<std::string, double> required_resources);
+  WorkerCacheKey(const JobID &job_id, const std::string &serialized_runtime_env,
+                 const std::unordered_map<std::string, double> required_resources);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -295,17 +298,10 @@ class WorkerCacheKey {
   ///
   /// \return The hash of the override_environment_variables and the serialized
   /// runtime_env.
-  std::size_t Hash() const;
-
-  /// Get the int-valued hash for this worker's environment, useful for portability in
-  /// flatbuffers.
-  ///
-  /// \return The hash truncated to an int.
-  int IntHash() const;
+  RuntimeEnvHash Hash() const;
 
  private:
-  /// The environment variable overrides for this worker.
-  const std::unordered_map<std::string, std::string> override_environment_variables;
+  const JobID job_id_;
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
   /// The required resources for this worker.

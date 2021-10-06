@@ -35,8 +35,13 @@ namespace raylet {
 /// This includes the task, the information we need to communicate to
 /// dispatch/spillback and the callback to trigger it.
 enum WorkStatus {
+  // This task is waiting for its arguments to be pinned, resources to be
+  // acquired, and a worker to execute the task.
   WAITING,
+  // This task has its arguments pinned and resources acquired but is waiting
+  // for a worker to be assigned.
   WAITING_FOR_WORKER,
+  // This task has been canceled by its caller and should not be executed.
   CANCELLED,
 };
 
@@ -57,7 +62,7 @@ struct Work {
   Work &operator=(const Work &work) = delete;
 };
 
-typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
+typedef std::function<absl::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
 
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
@@ -200,6 +205,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
+  /// Check if there are enough available resources for the given input.
+  bool IsLocallySchedulable(const RayTask &task) const override;
+
   /// Calculate normal task resources.
   ResourceSet CalcNormalTaskResources() const override;
 
@@ -276,6 +284,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// is still queued.
   std::unordered_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
       tasks_to_dispatch_;
+
+  /// The total number of tasks in the dispatch queue with status WAITING. We
+  /// use this to check whether we should run the dispatch loop again. Running
+  /// the dispatch loop can be expensive because it could require iterating
+  /// over every task in the dispatch queue.
+  int64_t num_tasks_waiting_for_dispatch_ = 0;
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.

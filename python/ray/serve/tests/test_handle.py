@@ -1,8 +1,10 @@
+import concurrent.futures
 import pytest
 import requests
 
 import ray
 from ray import serve
+from ray.serve.exceptions import RayServeException
 
 
 @pytest.mark.asyncio
@@ -41,6 +43,23 @@ def test_sync_handle_serializable(serve_instance):
     handle = f.get_handle(sync=True)
     result_ref = task.remote(handle)
     assert ray.get(result_ref) == "hello"
+
+
+def test_sync_handle_in_thread(serve_instance):
+    @serve.deployment
+    def f():
+        return "hello"
+
+    f.deploy()
+
+    def thread_get_handle(deploy):
+        handle = deploy.get_handle(sync=True)
+        return handle
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        fut = executor.submit(thread_get_handle, f)
+        handle = fut.result()
+        assert ray.get(handle.remote()) == "hello"
 
 
 def test_handle_in_endpoint(serve_instance):
@@ -147,6 +166,30 @@ async def test_args_kwargs(sync):
         obj_ref = await call()
 
     ray.get(obj_ref)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sync", [True, False])
+async def test_nonexistent_method(serve_instance, sync):
+    @serve.deployment
+    class A:
+        def exists(self):
+            pass
+
+    A.deploy()
+    handle = A.get_handle(sync=sync)
+
+    if sync:
+        obj_ref = handle.does_not_exist.remote()
+    else:
+        obj_ref = await handle.does_not_exist.remote()
+
+    with pytest.raises(RayServeException) as excinfo:
+        ray.get(obj_ref)
+
+    exception_string = str(excinfo.value)
+    assert "'does_not_exist'" in exception_string
+    assert "Available methods: ['exists']" in exception_string
 
 
 if __name__ == "__main__":

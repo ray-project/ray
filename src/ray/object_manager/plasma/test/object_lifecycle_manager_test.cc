@@ -44,9 +44,6 @@ class MockObjectStore : public IObjectStore {
   MOCK_CONST_METHOD1(GetObject, const LocalObject *(const ObjectID &));
   MOCK_METHOD1(SealObject, const LocalObject *(const ObjectID &));
   MOCK_METHOD1(DeleteObject, bool(const ObjectID &));
-  MOCK_CONST_METHOD0(GetNumBytesCreatedTotal, int64_t());
-  MOCK_CONST_METHOD0(GetNumBytesUnsealed, int64_t());
-  MOCK_CONST_METHOD0(GetNumObjectsUnsealed, int64_t());
   MOCK_CONST_METHOD1(GetDebugDump, void(std::stringstream &buffer));
 };
 

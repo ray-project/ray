@@ -238,10 +238,11 @@ void LocalObjectManager::SpillObjectsInternal(
         rpc::SpillObjectsRequest request;
         for (const auto &object_id : objects_to_spill) {
           RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
-          request.add_object_ids_to_spill(object_id.Binary());
+          auto ref = request.add_object_refs_to_spill();
+          ref->set_object_id(object_id.Binary());
           auto it = objects_pending_spill_.find(object_id);
           RAY_CHECK(it != objects_pending_spill_.end());
-          request.add_owner_addresses()->MergeFrom(it->second.second);
+          ref->mutable_owner_address()->CopyFrom(it->second.second);
         }
         io_worker->rpc_client()->SpillObjects(
             request, [this, objects_to_spill, callback, io_worker](

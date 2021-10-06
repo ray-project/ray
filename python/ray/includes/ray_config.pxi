@@ -107,3 +107,7 @@ cdef class Config:
     @staticmethod
     def max_grpc_message_size():
         return RayConfig.instance().max_grpc_message_size()
+
+    @staticmethod
+    def record_ref_creation_sites():
+        return RayConfig.instance().record_ref_creation_sites()

@@ -1,3 +1,4 @@
+import uuid
 import logging
 import inspect
 from functools import wraps
@@ -7,6 +8,7 @@ from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
+from ray._private.runtime_env import parse_pip_and_conda
 from ray.util.placement_group import (
     PlacementGroup,
     check_placement_group_index,
@@ -107,13 +109,17 @@ class RemoteFunction:
         self._retry_exceptions = (DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS
                                   if retry_exceptions is None else
                                   retry_exceptions)
-        self._runtime_env = runtime_env
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        self._runtime_env = parse_pip_and_conda(runtime_env)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
             self._function)
 
         self._last_export_session_and_job = None
+        self._uuid = uuid.uuid4()
 
         # Override task.remote's signature and docstring
         @wraps(function)
@@ -143,7 +149,6 @@ class RemoteFunction:
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                override_environment_variables=None,
                 name=""):
         """Configures and overrides the task invocation parameters.
 
@@ -162,6 +167,10 @@ class RemoteFunction:
         """
 
         func_cls = self
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = parse_pip_and_conda(runtime_env)
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
@@ -181,9 +190,7 @@ class RemoteFunction:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=runtime_env,
-                    override_environment_variables=(
-                        override_environment_variables),
+                    runtime_env=new_runtime_env,
                     name=name)
 
         return FuncWrapper()
@@ -205,10 +212,10 @@ class RemoteFunction:
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
-        if client_mode_should_convert():
+
+        if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(
                 self,
                 args,
@@ -227,7 +234,6 @@ class RemoteFunction:
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
                 runtime_env=runtime_env,
-                override_environment_variables=override_environment_variables,
                 name=name)
 
         worker = ray.worker.global_worker
@@ -248,9 +254,8 @@ class RemoteFunction:
             # first driver. This is an argument for repickling the function,
             # which we do here.
             self._pickled_function = pickle.dumps(self._function)
-
             self._function_descriptor = PythonFunctionDescriptor.from_function(
-                self._function, self._pickled_function)
+                self._function, self._uuid)
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
@@ -289,15 +294,10 @@ class RemoteFunction:
 
         if runtime_env is None:
             runtime_env = self._runtime_env
-        job_config = worker.core_worker.get_job_config()
-        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
-            runtime_env, job_config)
 
-        if override_environment_variables:
-            logger.warning("override_environment_variables is deprecated and "
-                           "will be removed in Ray 1.6.  Please use "
-                           ".options(runtime_env={'env_vars': {...}}).remote()"
-                           "instead.")
+        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
+        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
+            runtime_env, job_runtime_env)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -313,21 +313,12 @@ class RemoteFunction:
                     "Cross language remote function " \
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
-                self._language,
-                self._function_descriptor,
-                list_args,
-                name,
-                num_returns,
-                resources,
-                max_retries,
-                retry_exceptions,
-                placement_group.id,
-                placement_group_bundle_index,
+                self._language, self._function_descriptor, list_args, name,
+                num_returns, resources, max_retries, retry_exceptions,
+                placement_group.id, placement_group_bundle_index,
                 placement_group_capture_child_tasks,
-                worker.debugger_breakpoint,
-                runtime_env_dict,
-                override_environment_variables=override_environment_variables
-                or dict())
+                worker.debugger_breakpoint, runtime_env_dict,
+                runtime_env_dict.get("uris") or [])
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""

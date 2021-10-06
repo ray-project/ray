@@ -132,22 +132,28 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
+rpc::RuntimeEnv TaskSpecification::RuntimeEnv() const { return message_->runtime_env(); }
+
 std::string TaskSpecification::SerializedRuntimeEnv() const {
-  return message_->serialized_runtime_env();
+  return message_->runtime_env().serialized_runtime_env();
 }
 
 bool TaskSpecification::HasRuntimeEnv() const {
   return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
 }
 
-int TaskSpecification::GetRuntimeEnvHash() const {
+RuntimeEnvHash TaskSpecification::GetRuntimeEnvHash() const {
+  const auto &job_id = JobId();
+  if (!HasRuntimeEnv() && job_id.IsNil()) {
+    return 0;
+  }
+
   std::unordered_map<std::string, double> required_resource{};
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv(),
-                        required_resource};
-  return env.IntHash();
+  WorkerCacheKey env = {job_id, SerializedRuntimeEnv(), required_resource};
+  return env.Hash();
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
@@ -171,7 +177,7 @@ ObjectID TaskSpecification::ArgId(size_t arg_index) const {
   return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
 }
 
-rpc::ObjectReference TaskSpecification::ArgRef(size_t arg_index) const {
+const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   RAY_CHECK(ArgByRef(arg_index));
   return message_->args(arg_index).object_ref();
 }
@@ -237,11 +243,6 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
 
 std::string TaskSpecification::GetDebuggerBreakpoint() const {
   return message_->debugger_breakpoint();
-}
-
-std::unordered_map<std::string, std::string>
-TaskSpecification::OverrideEnvironmentVariables() const {
-  return MapFromProtobuf(message_->override_environment_variables());
 }
 
 bool TaskSpecification::IsDriverTask() const {
@@ -397,11 +398,12 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
+WorkerCacheKey::WorkerCacheKey(const JobID &job_id) : WorkerCacheKey(job_id, "", {}) {}
+
 WorkerCacheKey::WorkerCacheKey(
-    const std::unordered_map<std::string, std::string> override_environment_variables,
-    const std::string serialized_runtime_env,
+    const JobID &job_id, const std::string &serialized_runtime_env,
     const std::unordered_map<std::string, double> required_resources)
-    : override_environment_variables(override_environment_variables),
+    : job_id_(job_id),
       serialized_runtime_env(serialized_runtime_env),
       required_resources(std::move(required_resources)) {}
 
@@ -411,32 +413,17 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return override_environment_variables.size() == 0 &&
-         (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
+  return (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
          required_resources.empty();
 }
 
-std::size_t WorkerCacheKey::Hash() const {
+RuntimeEnvHash WorkerCacheKey::Hash() const {
   // Cache the hash value.
   if (!hash_) {
-    if (EnvIsEmpty()) {
-      // It's useful to have the same predetermined value for both unspecified and empty
-      // runtime envs.
-      hash_ = 0;
-    } else {
-      std::vector<std::pair<std::string, std::string>> env_vars(
-          override_environment_variables.begin(), override_environment_variables.end());
-      // The environment doesn't depend the order of the variables, so the hash should not
-      // either.  Sort the variables so different permutations yield the same hash.
-      std::sort(env_vars.begin(), env_vars.end());
-      for (auto &pair : env_vars) {
-        // TODO(architkulkarni): boost::hash_combine isn't guaranteed to be equal during
-        // separate runs of a program, which may cause problems if these hashes are
-        // communicated between different Raylets and compared.
-        boost::hash_combine(hash_, pair.first);
-        boost::hash_combine(hash_, pair.second);
-      }
-
+    if (!job_id_.IsNil()) {
+      hash_ = job_id_.Hash();
+    }
+    if (!EnvIsEmpty()) {
       boost::hash_combine(hash_, serialized_runtime_env);
 
       std::vector<std::pair<std::string, double>> resource_vars(
@@ -451,8 +438,6 @@ std::size_t WorkerCacheKey::Hash() const {
   }
   return hash_;
 }
-
-int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   RAY_CHECK(IsActorCreationTask());

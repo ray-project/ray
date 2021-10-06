@@ -1,7 +1,7 @@
 import ray
 
-from dataclasses import dataclass, field
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Optional
 from uuid import UUID
 
 from ray.actor import ActorClass
@@ -17,7 +17,6 @@ Duration = float
 
 @dataclass
 class EndpointInfo:
-    python_methods: Optional[List[str]] = field(default_factory=list)
     route: Optional[str] = None
 
 
@@ -39,3 +38,32 @@ class BackendInfo:
         self.deployer_job_id = deployer_job_id
         # The time when this deployment was deleted.
         self.end_time_ms = end_time_ms
+
+
+@dataclass
+class ReplicaName:
+    deployment_tag: BackendTag
+    replica_suffix: str
+    replica_tag: ReplicaTag = ""
+    delimiter: str = "#"
+
+    def __init__(self, deployment_tag: str, replica_suffix: str):
+        self.deployment_tag = deployment_tag
+        self.replica_suffix = replica_suffix
+        self.replica_tag = f"{deployment_tag}{self.delimiter}{replica_suffix}"
+
+    @classmethod
+    def from_str(self, replica_name):
+        parsed = replica_name.split(self.delimiter)
+        assert len(parsed) == 2, (
+            f"Given replica name {replica_name} didn't match pattern, please "
+            f"ensure it has exactly two fields with delimiter {self.delimiter}"
+        )
+        self.deployment_tag = parsed[0]
+        self.replica_suffix = parsed[1]
+        self.replica_tag = replica_name
+
+        return self
+
+    def __str__(self):
+        return self.replica_tag

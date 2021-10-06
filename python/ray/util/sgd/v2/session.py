@@ -33,6 +33,7 @@ class Session:
     def __init__(self,
                  training_func: Callable,
                  world_rank: int,
+                 local_rank: int,
                  dataset_shard: Optional[RayDataset] = None,
                  checkpoint: Optional[Dict] = None,
                  detailed_autofilled_metrics: bool = False):
@@ -43,6 +44,7 @@ class Session:
         self.training_thread = PropagatingThread(
             target=training_func, daemon=True)
         self.world_rank = world_rank
+        self.local_rank = local_rank
         self.loaded_checkpoint = checkpoint
 
         # This lock is used to control the execution of the training thread.
@@ -319,6 +321,29 @@ def world_rank() -> int:
     """
     session = get_session()
     return session.world_rank
+
+
+def local_rank() -> int:
+    """Get the local rank of this worker (rank of the worker on its node).
+
+    .. code-block:: python
+
+        import time
+        from ray.util import sgd
+
+        def train_func():
+            if torch.cuda.is_available():
+                torch.cuda.set_device(sgd.local_rank())
+            ...
+
+        trainer = Trainer(backend="torch", use_gpu=True)
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
+
+    """
+    session = get_session()
+    return session.local_rank
 
 
 def load_checkpoint() -> Optional[Dict]:

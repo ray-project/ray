@@ -23,17 +23,17 @@ from ray._private.test_utils import (
     run_string_as_driver, wait_until_succeeded_without_exception)
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
-from ray.new_dashboard import dashboard
-import ray.new_dashboard.consts as dashboard_consts
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.modules
+from ray.dashboard import dashboard
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.modules
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
 def cleanup_test_files():
-    module_path = ray.new_dashboard.modules.__path__[0]
+    module_path = ray.dashboard.modules.__path__[0]
     filename = os.path.join(module_path, "test_for_bad_import.py")
     logger.info("Remove test file: %s", filename)
     try:
@@ -43,7 +43,7 @@ def cleanup_test_files():
 
 
 def prepare_test_files():
-    module_path = ray.new_dashboard.modules.__path__[0]
+    module_path = ray.dashboard.modules.__path__[0]
     filename = os.path.join(module_path, "test_for_bad_import.py")
     logger.info("Prepare test file: %s", filename)
     with open(filename, "w") as f:
@@ -92,7 +92,7 @@ def test_basic(ray_start_with_dashboard):
         for p in processes:
             try:
                 for c in p.cmdline():
-                    if "new_dashboard/agent.py" in c:
+                    if "dashboard/agent.py" in c:
                         return p
             except Exception:
                 pass
@@ -107,7 +107,7 @@ def test_basic(ray_start_with_dashboard):
         agent_proc.kill()
         agent_proc.wait()
         # The agent will be restarted for imports failure.
-        for x in range(50):
+        for _ in range(300):
             agent_proc = _search_agent(raylet_proc.children())
             if agent_proc:
                 agent_pids.add(agent_proc.pid)
@@ -348,7 +348,7 @@ def test_dashboard_module_decorator(enable_test_module):
 
     test_code = """
 import os
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 
 os.environ.pop("RAY_DASHBOARD_MODULE_TEST")
 head_cls_list = dashboard_utils.get_all_modules(
@@ -452,7 +452,6 @@ def test_get_cluster_status(ray_start_with_dashboard):
         print(response.json())
         assert response.json()["result"]
         assert "autoscalingStatus" in response.json()["data"]
-        assert response.json()["data"]["autoscalingStatus"] is None
         assert "autoscalingError" in response.json()["data"]
         assert response.json()["data"]["autoscalingError"] is None
         assert "clusterStatus" in response.json()["data"]

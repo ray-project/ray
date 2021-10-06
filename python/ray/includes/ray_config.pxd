@@ -64,3 +64,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         c_bool enable_timeline() const
 
         uint32_t max_grpc_message_size() const
+
+        c_bool record_ref_creation_sites() const

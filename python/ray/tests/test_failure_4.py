@@ -156,5 +156,72 @@ if __name__ == "__main__":
     assert x == 42
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize("debug_enabled", [False, True])
+def test_object_lost_error(ray_start_cluster, debug_enabled):
+    cluster = ray_start_cluster
+    system_config = {
+        "num_heartbeats_timeout": 3,
+    }
+    if debug_enabled:
+        system_config["record_ref_creation_sites"] = True
+    cluster.add_node(num_cpus=0, _system_config=system_config)
+    ray.init(address=cluster.address)
+    worker_node = cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            return
+
+        def foo(self):
+            return "x" * 1000_000
+
+        def done(self):
+            return
+
+    @ray.remote
+    def borrower(ref):
+        ray.get(ref[0])
+
+    @ray.remote
+    def task_arg(ref):
+        return
+
+    a = Actor.remote()
+    x = a.foo.remote()
+    ray.get(a.done.remote())
+    cluster.remove_node(worker_node, allow_graceful=False)
+    cluster.add_node(num_cpus=1)
+
+    y = borrower.remote([x])
+
+    try:
+        ray.get(x)
+        assert False
+    except ray.exceptions.ObjectLostError as e:
+        error = str(e)
+        print(error)
+        assert ("actor call" in error) == debug_enabled
+        assert ("test_object_lost_error" in error) == debug_enabled
+
+    try:
+        ray.get(y)
+        assert False
+    except ray.exceptions.RayTaskError as e:
+        error = str(e)
+        print(error)
+        assert ("actor call" in error) == debug_enabled
+        assert ("test_object_lost_error" in error) == debug_enabled
+
+    try:
+        ray.get(task_arg.remote(x))
+    except ray.exceptions.RayTaskError as e:
+        error = str(e)
+        print(error)
+        assert ("actor call" in error) == debug_enabled
+        assert ("test_object_lost_error" in error) == debug_enabled
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

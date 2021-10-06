@@ -174,9 +174,9 @@ ZeroDivisionError: division by zero"""
 def test_dep_failure(ray_start_regular):
     """Test the stacktrace genereated due to dependency failures."""
     expected_output = """ray::f() (pid=XXX, ip=YYY) # noqa
-  Some of the input arguments for this task could not be computed:
+  At least one of the input arguments for this task could not be computed:
 ray.exceptions.RayTaskError: ray::a() (pid=XXX, ip=YYY)
-  Some of the input arguments for this task could not be computed:
+  At least one of the input arguments for this task could not be computed:
 ray.exceptions.RayTaskError: ray::b() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in b
     raise ValueError("FILE")

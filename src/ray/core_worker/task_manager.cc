@@ -30,9 +30,9 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-void TaskManager::AddPendingTask(const rpc::Address &caller_address,
-                                 const TaskSpecification &spec,
-                                 const std::string &call_site, int max_retries) {
+std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
+    const rpc::Address &caller_address, const TaskSpecification &spec,
+    const std::string &call_site, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries";
 
@@ -62,8 +62,9 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
   if (spec.IsActorTask()) {
     num_returns--;
   }
-  if (!spec.IsActorCreationTask()) {
-    for (size_t i = 0; i < num_returns; i++) {
+  std::vector<rpc::ObjectReference> returned_refs;
+  for (size_t i = 0; i < num_returns; i++) {
+    if (!spec.IsActorCreationTask()) {
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
       // publish the WaitForRefRemoved message that we are now a borrower for
@@ -73,6 +74,12 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
                                          /*inner_ids=*/{}, caller_address, call_site, -1,
                                          /*is_reconstructable=*/true);
     }
+
+    rpc::ObjectReference ref;
+    ref.set_object_id(spec.ReturnId(i).Binary());
+    ref.mutable_owner_address()->CopyFrom(caller_address);
+    ref.set_call_site(call_site);
+    returned_refs.push_back(std::move(ref));
   }
 
   {
@@ -82,6 +89,8 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
                   .second);
     num_pending_tasks_++;
   }
+
+  return returned_refs;
 }
 
 Status TaskManager::ResubmitTask(const TaskID &task_id,
@@ -363,9 +372,9 @@ bool TaskManager::PendingTaskFailed(
         }
         last_log_time_ms_ = current_time_ms();
         if (status != nullptr) {
-          RAY_LOG(ERROR) << "Task failed: " << *status << ": " << spec.DebugString();
+          RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
         } else {
-          RAY_LOG(ERROR) << "Task failed: " << spec.DebugString();
+          RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
         }
       }
     }
@@ -374,7 +383,7 @@ bool TaskManager::PendingTaskFailed(
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
     if (immediately_mark_object_fail) {
-      MarkPendingTaskFailed(task_id, spec, error_type, creation_task_exception);
+      MarkPendingTaskFailed(spec, error_type, creation_task_exception);
     }
   }
 
@@ -483,8 +492,9 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
 }
 
 void TaskManager::MarkPendingTaskFailed(
-    const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
+    const TaskSpecification &spec, rpc::ErrorType error_type,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
+  const TaskID task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();

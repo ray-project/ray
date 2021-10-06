@@ -19,8 +19,8 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, FLOAT_MIN, \
-    huber_loss, sequence_mask
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+    concat_multi_gpu_td_errors, FLOAT_MIN, huber_loss, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -52,8 +52,12 @@ def build_r2d2_model_and_distribution(
     model, distribution_cls = build_q_model_and_distribution(
         policy, obs_space, action_space, config)
 
-    # Assert correct model type.
-    assert model.get_initial_state() != [], \
+    # Assert correct model type by checking the init state to be present.
+    # For attention nets: These don't necessarily publish their init state via
+    # Model.get_initial_state, but may only use the trajectory view API
+    # (view_requirements).
+    assert (model.get_initial_state() != [] or
+            model.view_requirements.get("state_in_0") is not None), \
         "R2D2 requires its model to be a recurrent one! Try using " \
         "`model.use_lstm` or `model.use_attention` in your config " \
         "to auto-wrap your model with an LSTM- or attention net."
@@ -115,8 +119,8 @@ def r2d2_loss(policy: Policy, model, _,
     # Q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(actions, policy.action_space.n)
     q_selected = torch.sum(
-        torch.where(q > FLOAT_MIN, q, torch.tensor(0.0, device=policy.device))
-        * one_hot_selection, 1)
+        torch.where(q > FLOAT_MIN, q, torch.tensor(0.0, device=q.device)) *
+        one_hot_selection, 1)
 
     if config["double_q"]:
         best_actions = torch.argmax(q, dim=1)
@@ -126,16 +130,17 @@ def r2d2_loss(policy: Policy, model, _,
     best_actions_one_hot = F.one_hot(best_actions, policy.action_space.n)
     q_target_best = torch.sum(
         torch.where(q_target > FLOAT_MIN, q_target,
-                    torch.tensor(0.0, device=policy.device)) *
+                    torch.tensor(0.0, device=q_target.device)) *
         best_actions_one_hot,
         dim=1)
 
     if config["num_atoms"] > 1:
         raise ValueError("Distributional R2D2 not supported yet!")
     else:
-        q_target_best_masked_tp1 = (1.0 - dones) * torch.cat(
-            [q_target_best[1:],
-             torch.tensor([0.0], device=policy.device)])
+        q_target_best_masked_tp1 = (1.0 - dones) * torch.cat([
+            q_target_best[1:],
+            torch.tensor([0.0], device=q_target_best.device)
+        ])
 
         if config["use_h_function"]:
             h_inv = h_inverse(q_target_best_masked_tp1,
@@ -165,16 +170,20 @@ def r2d2_loss(policy: Policy, model, _,
         td_error = q_selected - target.reshape([B, T])[:, :-1].detach()
         td_error = td_error * seq_mask
         weights = weights.reshape([B, T])[:, :-1]
-        policy._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
-        policy._td_error = td_error.reshape([-1])
-        policy._loss_stats = {
-            "mean_q": reduce_mean_valid(q_selected),
-            "min_q": torch.min(q_selected),
-            "max_q": torch.max(q_selected),
-            "mean_td_error": reduce_mean_valid(td_error),
-        }
+        total_loss = reduce_mean_valid(weights * huber_loss(td_error))
 
-    return policy._total_loss
+        # Store values for stats function in model (tower), such that for
+        # multi-GPU, we do not override them during the parallel loss phase.
+        model.tower_stats["total_loss"] = total_loss
+        model.tower_stats["mean_q"] = reduce_mean_valid(q_selected)
+        model.tower_stats["min_q"] = torch.min(q_selected)
+        model.tower_stats["max_q"] = torch.max(q_selected)
+        model.tower_stats["mean_td_error"] = reduce_mean_valid(td_error)
+        # Store per time chunk (b/c we need only one mean
+        # prioritized replay weight per stored sequence).
+        model.tower_stats["td_error"] = torch.mean(td_error, dim=-1)
+
+    return total_loss
 
 
 def h_function(x, epsilon=1.0):
@@ -228,15 +237,23 @@ class ComputeTDErrorMixin:
             # Do forward pass on loss to update td error attribute
             r2d2_loss(self, self.model, None, input_dict)
 
-            return self._td_error
+            return self.model.tower_stats["td_error"]
 
         self.compute_td_error = compute_td_error
 
 
-def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
-    return dict({
+def build_q_stats(policy: Policy, batch: SampleBatch) -> Dict[str, TensorType]:
+
+    return {
         "cur_lr": policy.cur_lr,
-    }, **policy._loss_stats)
+        "total_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("total_loss"))),
+        "mean_q": torch.mean(torch.stack(policy.get_tower_stats("mean_q"))),
+        "min_q": torch.mean(torch.stack(policy.get_tower_stats("min_q"))),
+        "max_q": torch.mean(torch.stack(policy.get_tower_stats("max_q"))),
+        "mean_td_error": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_td_error"))),
+    }
 
 
 def setup_early_mixins(policy: Policy, obs_space, action_space,
@@ -274,7 +291,7 @@ R2D2TorchPolicy = build_policy_class(
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     extra_grad_process_fn=grad_process_and_td_error_fn,
-    extra_learn_fetches_fn=lambda policy: {"td_error": policy._td_error},
+    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     extra_action_out_fn=extra_action_out_fn,
     before_init=setup_early_mixins,
     before_loss_init=before_loss_init,

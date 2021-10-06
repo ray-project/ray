@@ -45,7 +45,7 @@ class TaskFinisherInterface {
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
 
   virtual void MarkPendingTaskFailed(
-      const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
+      const TaskSpecification &spec, rpc::ErrorType error_type,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
 
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
@@ -94,9 +94,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
-  /// \return Void.
-  void AddPendingTask(const rpc::Address &caller_address, const TaskSpecification &spec,
-                      const std::string &call_site, int max_retries = 0);
+  /// \return ObjectRefs returned by this task.
+  std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
+                                                   const TaskSpecification &spec,
+                                                   const std::string &call_site,
+                                                   int max_retries = 0);
 
   /// Resubmit a task that has completed execution before. This is used to
   /// reconstruct objects stored in Plasma that were lost.
@@ -146,10 +148,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Treat a pending task as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.
-  void MarkPendingTaskFailed(
-      const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception =
-          nullptr) override LOCKS_EXCLUDED(mu_);
+  void MarkPendingTaskFailed(const TaskSpecification &spec, rpc::ErrorType error_type,
+                             const std::shared_ptr<rpc::RayException>
+                                 &creation_task_exception = nullptr) override
+      LOCKS_EXCLUDED(mu_);
 
   /// A task's dependencies were inlined in the task spec. This will decrement
   /// the ref count for the dependency IDs. If the dependencies contained other
