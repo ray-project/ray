@@ -456,8 +456,9 @@ void ClusterResourceScheduler::AddLocalResourceInstances(
 
   for (size_t i = 0; i < instances.size(); i++) {
     node_instances->available[i] += instances[i];
-    node_instances->total[i] =
-        std::max(node_instances->total[i], node_instances->available[i]);
+    node_instances->total[i] += instances[i];
+
+        // std::max(node_instances->total[i], node_instances->available[i]);
   }
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
@@ -490,6 +491,7 @@ bool ClusterResourceScheduler::IsAvailableResourceEmpty(
   int64_t resource_id = string_to_int_map_.Get(resource_name);
   auto itr = local_view->custom_resources.find(resource_id);
   if (itr != local_view->custom_resources.end()) {
+    RAY_LOG(INFO) << "[IsAvailableResourceEmpty] Available resources for resource name " << resource_name << ": " << itr->second.available;
     return itr->second.available <= 0;
   } else {
     return true;
@@ -707,6 +709,8 @@ std::vector<FixedPoint> ClusterResourceScheduler::AddAvailableResourceInstances(
     std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances) {
   std::vector<FixedPoint> overflow(available.size(), 0.);
   for (size_t i = 0; i < available.size(); i++) {
+    RAY_LOG(INFO) << "[AddAvailableResourceInstances] total resoureces " << resource_instances->total[i].Double();
+    RAY_LOG(INFO) << "[AddAvailableResourceInstances] available resoureces " << resource_instances->available[i].Double();
     resource_instances->available[i] = resource_instances->available[i] + available[i];
     if (resource_instances->available[i] > resource_instances->total[i]) {
       overflow[i] = (resource_instances->available[i] - resource_instances->total[i]);
@@ -756,6 +760,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
       return true;
     } else {
       // Not enough capacity.
+      RAY_LOG(INFO) << "[AllocateResourceInstances] Not enough capacity. available: " << available[0] << " available in double: " << available[0].Double() << " remaining demand: " << remaining_demand;
       return false;
     }
   }
@@ -787,6 +792,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
 
   if (remaining_demand >= 1.) {
     // Cannot satisfy a demand greater than one if no unit capacity resource is available.
+      RAY_LOG(INFO) << "[AllocateResourceInstances] Cannot satisfy a demand greater than one if no unit capacity resource is available.";
     return false;
   }
 
@@ -804,6 +810,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
       }
     }
     if (idx_best_fit == -1) {
+      RAY_LOG(INFO) << "[AllocateResourceInstances] No best fit";
       return false;
     } else {
       (*allocation)[idx_best_fit] = remaining_demand;
@@ -818,6 +825,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
   if (nodes_.find(local_node_id_) == nodes_.end()) {
+    RAY_LOG(INFO) << "[AllocateTaskResourceInstances] Local node not found";
     return false;
   }
   task_allocation->predefined_resources.resize(PredefinedResources_MAX);
@@ -829,6 +837,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
         // Allocation failed. Restore node's local resources by freeing the resources
         // of the failed allocation.
         FreeTaskResourceInstances(task_allocation);
+        RAY_LOG(INFO) << "[AllocateTaskResourceInstances] Default allocation failed";
         return false;
       }
     }
@@ -848,6 +857,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
           // Allocation failed. Restore node's local resources by freeing the resources
           // of the failed allocation.
           FreeTaskResourceInstances(task_allocation);
+          RAY_LOG(INFO) << "[AllocateTaskResourceInstances] custom resources allocation failed. Resource name " << GetStringIdMap().Get(it->first);
           return false;
         }
       }
@@ -880,6 +890,8 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
                                            instances.available.end(), FixedPoint());
     FixedPoint total =
         std::accumulate(instances.total.begin(), instances.total.end(), FixedPoint());
+    RAY_LOG(INFO) << "Available: " << available.Double();
+    RAY_LOG(INFO) << "Total: " << total.Double();
 
     local_view->custom_resources[resource_name].available = available;
     local_view->custom_resources[resource_name].total = total;
@@ -897,8 +909,12 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
   for (const auto &task_allocation_custom_resource : task_allocation->custom_resources) {
     auto it =
         local_resources_.custom_resources.find(task_allocation_custom_resource.first);
+    RAY_LOG(INFO) << "[FreeTaskResourceInstances] Custom resources " << string_to_int_map_.Get(it->first);
     if (it != local_resources_.custom_resources.end()) {
+      RAY_LOG(INFO) << "[FreeTaskResourceInstances] Add available custom resources";
       AddAvailableResourceInstances(task_allocation_custom_resource.second, &it->second);
+    } else {
+      RAY_LOG(INFO) << "[FreeTaskResourceInstances] No available custom resources";
     }
   }
 }
@@ -1019,6 +1035,7 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
 void ClusterResourceScheduler::ReleaseWorkerResources(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   if (task_allocation == nullptr || task_allocation->IsEmpty()) {
+    RAY_LOG(INFO) << "[ReleaseWorkerResources] failed to release worker resources"; 
     return;
   }
   FreeTaskResourceInstances(task_allocation);

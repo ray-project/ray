@@ -138,7 +138,7 @@ class TaskResourceInstances {
   /// Check whether there are no resource instances.
   bool IsEmpty() const;
   /// Returns human-readable string for these resources.
-  std::string DebugString() const;
+  std::string DebugString(const StringIdMap &string_id_map) const;
 };
 
 /// Total and available capacities of each resource of a node.

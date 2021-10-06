@@ -1139,6 +1139,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> 
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
+  RAY_LOG(INFO) << "[HandleWorkerAvailable]";
   RAY_CHECK(worker);
 
   if (worker->GetWorkerType() == rpc::WorkerType::SPILL_WORKER) {
@@ -1652,6 +1653,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
+  RAY_LOG(INFO) << "[HandleReturnWorker]";
   auto worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
 
@@ -1660,6 +1662,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
 
   if (worker) {
     if (request.disconnect_worker()) {
+      RAY_LOG(INFO) << "[DisconnectClient]";
       DisconnectClient(worker->Connection());
     } else {
       // Handle the edge case where the worker was returned before we got the

@@ -268,7 +268,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
   if (num_tasks_waiting_for_dispatch_ == 0) {
-    RAY_LOG(DEBUG) << "No new tasks since last call to dispatch, skipping";
+    // RAY_LOG(DEBUG) << "No new tasks since last call to dispatch, skipping";
     return;
   }
 
@@ -476,7 +476,10 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   *task = worker->GetAssignedTask();
   ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
   if (worker->GetAllocatedInstances() != nullptr) {
+    RAY_LOG(INFO) << "[TaskFinished] Release worker resources";
     ReleaseWorkerResources(worker);
+  } else {
+    RAY_LOG(INFO) << "[TaskFinished] No allocated resources";
   }
 }
 
@@ -1027,6 +1030,7 @@ void ClusterTaskManager::Dispatch(
     // The actor belongs to this worker now.
     worker->SetLifetimeAllocatedInstances(allocated_instances);
   } else {
+    RAY_LOG(INFO) << "Allocated instances: " << allocated_instances->DebugString(cluster_resource_scheduler_->GetStringIdMap());
     worker->SetAllocatedInstances(allocated_instances);
   }
   worker->AssignTaskId(task_spec.TaskId());
@@ -1088,6 +1092,7 @@ void ClusterTaskManager::Dispatch(
       }
     }
   }
+  RAY_LOG(INFO) << "Allocated instances 2: " << allocated_instances->DebugString(cluster_resource_scheduler_->GetStringIdMap());
   // Send the result back.
   send_reply_callback();
 }
@@ -1148,11 +1153,15 @@ void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface>
     if (worker->IsBlocked()) {
       // If the worker is blocked, its CPU instances have already been released. We clear
       // the CPU instances to avoid double freeing.
+      RAY_LOG(INFO) << "[ReleaseWorkerResources] Worker is blocked. Clear cpu instances";
       allocated_instances->ClearCPUInstances();
     }
+    RAY_LOG(INFO) << "[ReleaseWorkerResources]";
     cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
     worker->ClearAllocatedInstances();
     return;
+  } else {
+    RAY_LOG(INFO) << "[ReleaseWorkerResources] No allocated resources";
   }
 
   auto lifetime_allocated_instances = worker->GetLifetimeAllocatedInstances();
@@ -1222,8 +1231,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
-  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: "
-                 << waiting_task_queue_.size();
+  // RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: "
+  //                << waiting_task_queue_.size();
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
