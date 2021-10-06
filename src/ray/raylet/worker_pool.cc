@@ -974,7 +974,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                            const PopWorkerCallback &callback,
                            const std::string &allocated_instances_serialized_json) {
   RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " runtime env hash "
-                 << task_spec.GetRuntimeEnvHash() << " task name " << task_spec.FunctionDescriptor()->ToString();
+                 << task_spec.GetRuntimeEnvHash() << " task name "
+                 << task_spec.FunctionDescriptor()->ToString();
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;

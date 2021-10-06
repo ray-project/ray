@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/scheduling/cluster_resource_data.h"
+
 #include "ray/common/bundle_spec.h"
 #include "ray/common/task/scheduling_resources.h"
 

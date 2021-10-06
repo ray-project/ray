@@ -192,9 +192,10 @@ class Worker : public WorkerInterface {
     return allocated_instances_;
   };
 
-  void ClearAllocatedInstances() override { 
+  void ClearAllocatedInstances() override {
     RAY_LOG(INFO) << "Clear allocated instances";
-    allocated_instances_ = nullptr; };
+    allocated_instances_ = nullptr;
+  };
 
   void SetLifetimeAllocatedInstances(
       const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {

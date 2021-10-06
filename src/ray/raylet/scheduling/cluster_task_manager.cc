@@ -1030,7 +1030,9 @@ void ClusterTaskManager::Dispatch(
     // The actor belongs to this worker now.
     worker->SetLifetimeAllocatedInstances(allocated_instances);
   } else {
-    RAY_LOG(INFO) << "Allocated instances: " << allocated_instances->DebugString(cluster_resource_scheduler_->GetStringIdMap());
+    RAY_LOG(INFO) << "Allocated instances: "
+                  << allocated_instances->DebugString(
+                         cluster_resource_scheduler_->GetStringIdMap());
     worker->SetAllocatedInstances(allocated_instances);
   }
   worker->AssignTaskId(task_spec.TaskId());
@@ -1092,7 +1094,9 @@ void ClusterTaskManager::Dispatch(
       }
     }
   }
-  RAY_LOG(INFO) << "Allocated instances 2: " << allocated_instances->DebugString(cluster_resource_scheduler_->GetStringIdMap());
+  RAY_LOG(INFO) << "Allocated instances 2: "
+                << allocated_instances->DebugString(
+                       cluster_resource_scheduler_->GetStringIdMap());
   // Send the result back.
   send_reply_callback();
 }

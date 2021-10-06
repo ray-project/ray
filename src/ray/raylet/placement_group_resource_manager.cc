@@ -141,10 +141,11 @@ void NewPlacementGroupResourceManager::ReturnBundle(
   // `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
   auto resource_instances = std::make_shared<TaskResourceInstances>();
-  auto success = cluster_resource_scheduler_->AllocateLocalTaskResources(placement_group_resources,
-                                                          resource_instances);
+  auto success = cluster_resource_scheduler_->AllocateLocalTaskResources(
+      placement_group_resources, resource_instances);
   RAY_LOG(INFO) << "[AllocateLocalTaskResources] succeed? " << success;
-  RAY_LOG(INFO) << "Local resoureces: " << cluster_resource_scheduler_->GetLocalResourceViewString();
+  RAY_LOG(INFO) << "Local resoureces: "
+                << cluster_resource_scheduler_->GetLocalResourceViewString();
 
   std::vector<std::string> deleted;
   for (const auto &resource : placement_group_resources) {
