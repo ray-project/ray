@@ -540,7 +540,7 @@ def time_passed_str(start_time: float, current_time: float):
     seconds = rest - minutes * 60
 
     if days > 0:
-        running_for_str = f"{days} days, "
+        running_for_str = f"{days:.0f} days, "
     else:
         running_for_str = ""
 
