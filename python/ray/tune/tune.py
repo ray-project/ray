@@ -35,7 +35,8 @@ from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.tune.utils import force_on_current_node
 
 # Must come last to avoid circular imports
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers import (FIFOScheduler, TrialScheduler,
+                                 HyperBandScheduler)
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
@@ -341,8 +342,26 @@ def run(
     if num_samples == -1:
         num_samples = sys.maxsize
 
+    result_buffer_length = None
+    if isinstance(scheduler, HyperBandScheduler):
+        # Result buffering with a Hyperband scheduler is a bad idea, as
+        # hyperband tries to stop trials when processing brackets. With result
+        # buffering, we might trigger this multiple times when evaluating
+        # a single trial, which leads to unexpected behavior.
+        env_result_buffer_length = os.getenv("TUNE_RESULT_BUFFER_LENGTH", "")
+        if env_result_buffer_length:
+            warnings.warn(
+                f"You are using a Hypberband scheduler, but "
+                f"TUNE_RESULT_BUFFER_LENGTH is set "
+                f"({env_result_buffer_length}). This can lead to undesired "
+                f"and faulty behavior, so the buffer length was foracbly set "
+                f"to 1 instead.")
+        result_buffer_length = 1
+
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors, queue_trials=queue_trials)
+        reuse_actors=reuse_actors,
+        queue_trials=queue_trials,
+        result_buffer_length=result_buffer_length)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
