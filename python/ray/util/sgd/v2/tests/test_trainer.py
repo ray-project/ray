@@ -901,28 +901,139 @@ def test_run_after_user_error(ray_start_2_cpus):
     assert output == [1, 1]
 
 
-def test_dataset_torch(ray_start_4_cpus):
-    import pandas as pd
-    config = TestConfig()
+def check_dataset_output(num_data, num_epochs, data_all_epochs):
+    assert all(
+        len(worker_data) == num_epochs for worker_data in data_all_epochs)
+    for i in range(num_epochs):
+        epoch_data = []
+        for worker_data in data_all_epochs:
+            epoch_data.extend(worker_data[i])
+        assert len(epoch_data) == num_data
+        assert set(epoch_data) == set(range(num_data))
 
-    df = pd.DataFrame({
-        "one": [1, 2, 3],
-        "two": [1.0, 2.0, 3.0],
-        "label": [1.0, 2.0, 3.0]
-    })
-    dataset = ray.data.from_pandas([ray.put(df)])
+
+def test_dataset(ray_start_4_cpus):
+    """Checks that Dataset is correctly sharded even with multiple epochs."""
+    num_epochs = 2
+    num_data = 10
+
+    dataset = ray.data.range(num_data)
 
     def get_dataset():
-        torch_ds = sgd.get_dataset_shard().to_torch(label_column="label")
-        for batch in iter(torch_ds):
-            print(torch.cat((*batch[0], batch[1]), axis=1).numpy())
+        data_all_epochs = []
+        for _ in range(2):
+            data_this_epoch = []
+            for batch in sgd.get_dataset_shard().iter_batches():
+                data_this_epoch.extend(batch)
+            data_all_epochs.append(data_this_epoch)
+        return data_all_epochs
+
+    config = TestConfig()
 
     trainer = Trainer(config, num_workers=2)
     trainer.start()
-    trainer.run(get_dataset, dataset=dataset)
+    results = trainer.run(get_dataset, dataset=dataset)
+    check_dataset_output(num_data, num_epochs, results)
+    trainer.shutdown()
 
 
-def test_dataset_tensorflow(ray_start_2_cpus):
+def test_multiple_datasets(ray_start_4_cpus):
+    num_epochs = 2
+    num_data_1 = 10
+    num_data_2 = 6
+
+    train_data = ray.data.range(num_data_1)
+    val_data = ray.data.range(num_data_2)
+
+    def get_dataset():
+        data_train_all_epochs = []
+        data_val_all_epochs = []
+        for _ in range(2):
+            data_this_epoch_train = []
+            for batch in sgd.get_dataset_shard("train").iter_batches():
+                data_this_epoch_train.extend(batch)
+            data_train_all_epochs.append(data_this_epoch_train)
+
+            data_this_epoch_val = []
+            for batch in sgd.get_dataset_shard("val").iter_batches():
+                data_this_epoch_val.extend(batch)
+            data_val_all_epochs.append(data_this_epoch_val)
+
+        return data_train_all_epochs, data_val_all_epochs
+
+    config = TestConfig()
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    results = trainer.run(
+        get_dataset, dataset={
+            "train": train_data,
+            "val": val_data
+        })
+    check_dataset_output(num_data_1, num_epochs,
+                         [worker_data[0] for worker_data in results])
+    check_dataset_output(num_data_2, num_epochs,
+                         [worker_data[1] for worker_data in results])
+    trainer.shutdown()
+
+
+def test_dataset_pipeline(ray_start_4_cpus):
+    """Checks that Pipeline is correctly sharded even with multiple epochs."""
+    num_epochs = 2
+    num_data = 10
+
+    dataset = ray.data.range(num_data).repeat()
+
+    def get_dataset():
+        pipeline_iterator = sgd.get_dataset_shard().iter_datasets()
+        data_all_epochs = []
+        for _ in range(num_epochs):
+            dataset_this_epoch = next(pipeline_iterator)
+            data_this_epoch = []
+            for batch in dataset_this_epoch.iter_batches():
+                data_this_epoch.extend(batch)
+            data_all_epochs.append(data_this_epoch)
+        return data_all_epochs
+
+    config = TestConfig()
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    results = trainer.run(get_dataset, dataset=dataset)
+    check_dataset_output(num_data, num_epochs, results)
+
+
+def test_dataset_pipeline_shuffle(ray_start_4_cpus):
+    num_epochs = 2
+    num_data = 20
+
+    dataset = ray.data.range(num_data).repeat().random_shuffle()
+
+    def get_dataset():
+        pipeline_iterator = sgd.get_dataset_shard().iter_datasets()
+        data_all_epochs = []
+        for _ in range(2):
+            dataset_this_epoch = next(pipeline_iterator)
+            data_this_epoch = []
+            for batch in dataset_this_epoch.iter_batches():
+                data_this_epoch.extend(batch)
+
+            if len(data_all_epochs) > 0:
+                # Make sure data is shuffled per epoch.
+                assert data_this_epoch != data_all_epochs[-1]
+
+            data_all_epochs.append(data_this_epoch)
+        return data_all_epochs
+
+    config = TestConfig()
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    results = trainer.run(get_dataset, dataset=dataset)
+    check_dataset_output(num_data, num_epochs, results)
+
+
+def test_dataset_fault_tolerance():
     pass
 
 

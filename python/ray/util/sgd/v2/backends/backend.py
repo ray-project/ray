@@ -436,12 +436,15 @@ class BackendExecutor:
 
             if isinstance(dataset_or_dict, dict):
                 # Return a smaller dict for each shard.
-                dataset_shards = [{}] * len(self.worker_group)
+                dataset_shards = []
+                for _ in range(len(self.worker_group)):
+                    dataset_shards.append({})
                 for key, dataset in dataset_or_dict.items():
                     split_datasets = dataset.split(
                         len(self.worker_group),
                         equal=True,
                         locality_hints=actors)
+                    assert len(split_datasets) == len(self.worker_group)
                     for i in range(len(split_datasets)):
                         dataset_shards[i][key] = split_datasets[i]
                 return dataset_shards
@@ -673,6 +676,7 @@ class BackendExecutor:
                            "expected if one of the workers has crashed.")
         self.worker_group.shutdown()
         self.worker_group = InactiveWorkerGroup()
+        self.dataset_shard = None
 
     @property
     def is_started(self):
