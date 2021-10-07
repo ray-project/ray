@@ -29,7 +29,10 @@ ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 OBJECTS_DIR = "objects"
 STEPS_DIR = "steps"
 STEP_INPUTS_METADATA = "inputs.json"
+STEP_USER_METADATA = "user_metadata.json"
+PRE_STEP_METADATA = "pre_step_metadata.json"
 STEP_OUTPUTS_METADATA = "outputs.json"
+POST_STEP_METADATA = "post_step_metadata.json"
 STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
 STEP_EXCEPTION = "exception.pkl"
@@ -37,6 +40,7 @@ STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
 WORKFLOW_PROGRESS = "progress.json"
+WORKFLOW_USER_METADATA = "user_metadata.json"
 # Without this counter, we're going to scan all steps to get the number of
 # steps with a given name. This can be very expensive if there are too
 # many duplicates.
@@ -518,6 +522,12 @@ class WorkflowStorage:
     def _key_step_input_metadata(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_INPUTS_METADATA]
 
+    def _key_step_user_metadata(self, step_id):
+        return [self._workflow_id, STEPS_DIR, step_id, STEP_USER_METADATA]
+
+    def _key_pre_step_metadata(self, step_id):
+        return [self._workflow_id, STEPS_DIR, step_id, PRE_STEP_METADATA]
+
     def _key_step_output(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_OUTPUT]
 
@@ -526,6 +536,9 @@ class WorkflowStorage:
 
     def _key_step_output_metadata(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_OUTPUTS_METADATA]
+
+    def _key_post_step_metadata(self, step_id):
+        return [self._workflow_id, STEPS_DIR, step_id, POST_STEP_METADATA]
 
     def _key_step_function_body(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_FUNC_BODY]
@@ -544,6 +557,9 @@ class WorkflowStorage:
 
     def _key_workflow_metadata(self):
         return [self._workflow_id, WORKFLOW_META]
+
+    def _key_workflow_user_metadata(self):
+        return [self._workflow_id, WORKFLOW_USER_METADATA]
 
     def _key_num_steps_with_name(self, name):
         return [self._workflow_id, DUPLICATE_NAME_COUNTER, name]

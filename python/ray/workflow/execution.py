@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Set, List, Tuple, Optional, TYPE_CHECKING
+from typing import Set, List, Tuple, Optional, TYPE_CHECKING, Dict
 import uuid
 
 import ray
@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 def run(entry_workflow: Workflow,
-        workflow_id: Optional[str] = None) -> ray.ObjectRef:
+        workflow_id: Optional[str] = None,
+        metadata: Optional[Dict] = None) -> ray.ObjectRef:
     """Run a workflow asynchronously.
     """
     store = get_global_storage()
@@ -39,6 +40,8 @@ def run(entry_workflow: Workflow,
                                                 store.storage_url):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
+        asyncio.get_event_loop().run_until_complete(ws._put(
+            ws._key_workflow_user_metadata(), metadata, True))
 
         wf_exists = True
         try:

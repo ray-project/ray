@@ -1,3 +1,5 @@
+import time
+import datetime
 import asyncio
 from dataclasses import dataclass
 import logging
@@ -204,6 +206,8 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
         # TODO (Alex): Handle the json case better?
         wf_storage._put(
             wf_storage._key_step_input_metadata(step_id), metadata, True),
+        wf_storage._put(
+            wf_storage._key_step_user_metadata(step_id), inputs.metadata, True),
         serialization.dump_to_storage(
             wf_storage._key_step_function_body(step_id), inputs.func_body,
             workflow_id, storage),
@@ -357,6 +361,9 @@ def _workflow_step_executor(
     args, kwargs = _resolve_step_inputs(baked_inputs)
     store = workflow_storage.get_workflow_storage()
     try:
+        step_start_metadata = {'start_time': time.time()}
+        asyncio.get_event_loop().run_until_complete(store._put(
+            store._key_pre_step_metadata(step_id), step_start_metadata, True))
         persisted_output, volatile_output = _wrap_run(
             func, step_type, step_id, catch_exceptions, max_retries, *args,
             **kwargs)
@@ -394,6 +401,9 @@ def _workflow_step_executor(
             # advance the progress of the workflow
             store.advance_progress(step_id)
         _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
+    step_end_metadata = {'end_time': time.time()}
+    asyncio.get_event_loop().run_until_complete(store._put(
+        store._key_post_step_metadata(step_id), step_end_metadata, True))
     logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
     if isinstance(volatile_output, Workflow):
         # This is the case where a step method is called in the virtual actor.
