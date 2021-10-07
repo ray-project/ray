@@ -297,7 +297,7 @@ class RayServeReplica:
 
         return result
 
-    async def reconfigure(self, user_config: Any, version: BackendVersion):
+    async def reconfigure(self, user_config: Any):
         self.user_config = user_config
         self.version = BackendVersion(
             self.version.code_version, user_config=user_config)
