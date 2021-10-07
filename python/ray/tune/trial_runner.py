@@ -65,7 +65,7 @@ class _ExperimentCheckpointManager:
                  start_time: float,
                  session_str: str,
                  syncer: CloudSyncer,
-                 sync_trial_checkpoints: bool = False):
+                 sync_trial_checkpoints: bool = True):
         self._checkpoint_dir = checkpoint_dir
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
         if self._auto_checkpoint_enabled:
@@ -222,7 +222,8 @@ class TrialRunner:
                  checkpoint_period=None,
                  trial_executor=None,
                  callbacks=None,
-                 metric=None):
+                 metric=None,
+                 driver_sync_trial_checkpoints=False):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
@@ -341,7 +342,8 @@ class TrialRunner:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
         self._checkpoint_period = checkpoint_period
-        self._checkpoint_manager = self._create_checkpoint_manager()
+        self._checkpoint_manager = self._create_checkpoint_manager(
+            driver_sync_trial_checkpoints)
 
     def setup_experiments(self, experiments: List[Experiment],
                           total_num_samples: int) -> None:
@@ -364,13 +366,14 @@ class TrialRunner:
         """Calls ``on_experiment_end`` method in callbacks."""
         self._callbacks.on_experiment_end(trials=self._trials)
 
-    def _create_checkpoint_manager(self):
+    def _create_checkpoint_manager(self, sync_trial_checkpoints: bool = True):
         return _ExperimentCheckpointManager(
             checkpoint_dir=self._local_checkpoint_dir,
             checkpoint_period=self._checkpoint_period,
             start_time=self._start_time,
             session_str=self._session_str,
-            syncer=self._syncer)
+            syncer=self._syncer,
+            sync_trial_checkpoints=sync_trial_checkpoints)
 
     @property
     def resumed(self):
@@ -460,9 +463,13 @@ class TrialRunner:
 
             # Try syncing down the upload directory.
             logger.info("Downloading from %s", self._remote_checkpoint_dir)
-            # Todo: we're excluding trial checkpoints here, maybe check
-            # for flag instead?
-            self._syncer.sync_down_if_needed(exclude=["*/checkpoint_*"])
+
+            if self._sync_trial_checkpoints:
+                exclude = None
+            else:
+                exclude = ["*/checkpoint_*"]
+
+            self._syncer.sync_down_if_needed(exclude=exclude)
             self._syncer.wait()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
