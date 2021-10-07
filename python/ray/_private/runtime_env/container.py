@@ -66,4 +66,4 @@ class ContainerManager:
         container_command.append("python")
         container_command.append(container_option.get("image"))
         context.py_executable = " ".join(container_command)
-        logger.warning("start worker in container with prefix: {}".format(context.py_executable))
+        logger.info("start worker in container with prefix: {}".format(context.py_executable))
