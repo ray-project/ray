@@ -176,7 +176,7 @@ class _Registry:
         self._to_flush.clear()
 
 
-_global_registry = _Registry()
+_global_registry = _Registry(prefix="global")
 ray.worker._post_init_hooks.append(_global_registry.flush_values)
 
 
