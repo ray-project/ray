@@ -1655,7 +1655,8 @@ class ApiTestFast(unittest.TestCase):
                          checkpoint_period=None,
                          trial_executor=None,
                          callbacks=None,
-                         metric=None):
+                         metric=None,
+                         driver_sync_trial_checkpoints=True):
                 # should be converted from strings at this case
                 # and not None
                 capture["search_alg"] = search_alg
@@ -1673,7 +1674,8 @@ class ApiTestFast(unittest.TestCase):
                     checkpoint_period=checkpoint_period,
                     trial_executor=trial_executor,
                     callbacks=callbacks,
-                    metric=metric)
+                    metric=metric,
+                    driver_sync_trial_checkpoints=True)
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
             tune.run(
