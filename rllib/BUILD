@@ -1061,7 +1061,7 @@ py_test(
 
 py_test(
     name = "test_memory_leak_a3c",
-    tags = ["memory_leak_tests"],
+    tags = ["team:ml", "memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
     size = "large",
     srcs = ["tests/run_memory_leak_tests.py"],
@@ -1071,7 +1071,7 @@ py_test(
 
 py_test(
     name = "test_memory_leak_ddpg",
-    tags = ["memory_leak_tests"],
+    tags = ["team:ml", "memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
     size = "large",
     srcs = ["tests/run_memory_leak_tests.py"],
@@ -1081,7 +1081,7 @@ py_test(
 
 py_test(
     name = "test_memory_leak_impala",
-    tags = ["memory_leak_tests"],
+    tags = ["team:ml", "memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
     size = "large",
     srcs = ["tests/run_memory_leak_tests.py"],
@@ -1091,7 +1091,7 @@ py_test(
 
 py_test(
     name = "test_memory_leak_ppo",
-    tags = ["memory_leak_tests"],
+    tags = ["team:ml", "memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
     size = "large",
     srcs = ["tests/run_memory_leak_tests.py"],
@@ -1101,7 +1101,7 @@ py_test(
 
 py_test(
     name = "test_memory_leak_sac",
-    tags = ["memory_leak_tests"],
+    tags = ["team:ml", "memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
     size = "large",
     srcs = ["tests/run_memory_leak_tests.py"],

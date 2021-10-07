@@ -24,6 +24,7 @@ import sys
 import yaml
 
 import ray
+from ray.rllib.agents.callbacks import MemoryTrackingCallbacks
 from ray.tune import run_experiments
 from ray.rllib import _register_all
 
@@ -46,6 +47,7 @@ parser.add_argument(
     type=int,
     default=10,
     help="The number of past iters to search through for memory leaks.")
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -78,9 +80,10 @@ if __name__ == "__main__":
         assert len(experiments) == 1,\
             "Error, can only run a single experiment per yaml file!"
 
-        # Add torch option to exp configs.
+        # Add framework option and memory callback to exp configs.
         for exp in experiments.values():
             exp["config"]["framework"] = args.framework
+            exp["config"]["callbacks"] = MemoryTrackingCallbacks
 
         # Print out the actual config.
         print("== Test config ==")
