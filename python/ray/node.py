@@ -360,6 +360,7 @@ class Node:
                     env_resources = json.loads(env_string)
                 except Exception:
                     logger.exception("Failed to load {}".format(env_string))
+                    raise
                 logger.debug(
                     f"Autoscaler overriding resources: {env_resources}.")
             num_cpus, num_gpus, memory, object_store_memory, resources = \
