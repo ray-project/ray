@@ -535,7 +535,7 @@ class FunctionRunner(Trainable):
 def wrap_function(train_func: Callable[[Any], Any],
                   durable: bool = False,
                   warn: bool = True,
-                  new_name: Optional[str] = None):
+                  name: Optional[str] = None):
     inherit_from = (FunctionRunner, )
 
     if hasattr(train_func, "__mixins__"):
@@ -567,8 +567,8 @@ def wrap_function(train_func: Callable[[Any], Any],
                 "arguments to be `func(config, checkpoint_dir=None)`.")
 
     class ImplicitFunc(*inherit_from):
-        _name = new_name or (train_func.__name__
-                             if hasattr(train_func, "__name__") else "func")
+        _name = name or (train_func.__name__
+                         if hasattr(train_func, "__name__") else "func")
 
         def _trainable_func(self, config, reporter, checkpoint_dir):
             if not use_checkpoint and not use_reporter:

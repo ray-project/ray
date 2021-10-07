@@ -180,8 +180,7 @@ def durable(trainable: Union[str, Type[Trainable], Callable]):
 
     if not inspect.isclass(trainable_cls):
         # Function API
-        return wrap_function(
-            trainable_cls, durable=True, new_name=overwrite_name)
+        return wrap_function(trainable_cls, durable=True, name=overwrite_name)
 
     if not issubclass(trainable_cls, Trainable):
         raise ValueError(
@@ -192,17 +191,12 @@ def durable(trainable: Union[str, Type[Trainable], Callable]):
     # else: Class API
 
     # Class is already durable
-    if isinstance(trainable_cls, DurableTrainable):
+
+    if issubclass(trainable_cls, DurableTrainable):
         return trainable_cls
 
-    try:
-
-        class _WrappedDurableTrainable(DurableTrainable, trainable_cls):
-            _name = (trainable_cls.__name__
-                     if hasattr(trainable_cls, "__name__") else
-                     "durable_trainable")
-    except TypeError:
-        # MRO resolution error, which means class has already been wrapped
-        return trainable_cls
+    class _WrappedDurableTrainable(DurableTrainable, trainable_cls):
+        _name = (trainable_cls.__name__ if hasattr(trainable_cls, "__name__")
+                 else "durable_trainable")
 
     return _WrappedDurableTrainable
