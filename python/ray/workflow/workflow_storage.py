@@ -460,7 +460,6 @@ class WorkflowStorage:
         # if len(deleted) == 0:
         #     raise WorkflowNotFoundError(self._workflow_id)
 
-
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> str:
         """
