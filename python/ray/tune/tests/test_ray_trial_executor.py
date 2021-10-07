@@ -257,7 +257,9 @@ class RayTrialExecutorTest(unittest.TestCase):
     def testForceTrialCleanup(self):
         class B(Trainable):
             def step(self):
+                print("Step start")
                 time.sleep(10)
+                print("Step done")
                 return dict(my_metric=1, timesteps_this_iter=1, done=True)
 
             def reset_config(self, config):
@@ -265,7 +267,9 @@ class RayTrialExecutorTest(unittest.TestCase):
                 return True
 
             def cleanup(self):
+                print("Cleanup start")
                 time.sleep(10)
+                print("Cleanup done")
 
         # First check if the trials terminate gracefully by default
         trials = self.generate_trials({
@@ -278,7 +282,9 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         time.sleep(5)
+        print("Stop trial")
         self.trial_executor.stop_trial(trial)
+        print("Start trial cleanup")
         start = time.time()
         self.trial_executor.cleanup([trial])
         self.assertGreaterEqual(time.time() - start, 12.0)
@@ -298,7 +304,9 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         time.sleep(5)
+        print("Stop trial")
         self.trial_executor.stop_trial(trial)
+        print("Start trial cleanup")
         start = time.time()
         self.trial_executor.cleanup([trial])
         self.assertLess(time.time() - start, 5.0)
