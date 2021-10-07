@@ -297,7 +297,7 @@ class DatasetPipeline(Generic[T]):
         """Repeat this pipeline a given number or times, or indefinitely.
 
         This operation is only allowed for pipelines of a finite length. An
-        error will be raised for pipelines of infinite or unknown length.
+        error will be raised for pipelines of infinite length.
 
         Transformations prior to the call to ``repeat()`` are evaluated once.
         Transformations done on the repeated pipeline are evaluated on each
@@ -308,21 +308,18 @@ class DatasetPipeline(Generic[T]):
                 to repeat indefinitely.
         """
 
-        if self._length is None:
-            raise ValueError("Cannot repeat a pipeline of unknown length.")
+        if self._length == float("inf"):
+            raise ValueError("Cannot repeat a pipeline of infinite length.")
 
         class RepeatIterator:
-            def __init__(self, original_iter, original_len):
+            def __init__(self, original_iter):
                 self._original_iter = original_iter
                 # Holds results to repeat.
                 self._results = []
                 # Incrementing cursor over results.
                 self._i = 0
-                # Calculate the cursor limit.
-                if times:
-                    self._max_i = original_len * (times - 1)
-                else:
-                    self._max_i = float("inf")
+                # This is calculated later.
+                self._max_i = None
 
             def __next__(self) -> Dataset[T]:
                 # Still going through the original pipeline.
@@ -333,6 +330,11 @@ class DatasetPipeline(Generic[T]):
                         return lambda: res
                     except StopIteration:
                         self._original_iter = None
+                        # Calculate the cursor limit.
+                        if times:
+                            self._max_i = len(self._results) * (times - 1)
+                        else:
+                            self._max_i = float("inf")
                 # Going through a repeat of the pipeline.
                 if self._i < self._max_i:
                     res = self._results[self._i % len(self._results)]
@@ -342,20 +344,21 @@ class DatasetPipeline(Generic[T]):
                     raise StopIteration
 
         class RepeatIterable:
-            def __init__(self, original_iter, original_len):
+            def __init__(self, original_iter):
                 self._original_iter = original_iter
-                self._original_len = original_len
 
             def __iter__(self):
-                return RepeatIterator(self._original_iter, self._original_len)
+                return RepeatIterator(self._original_iter)
 
-        if times:
+        if not times:
+            length = float("inf")
+        elif times and self._length:
             length = times * self._length
         else:
             length = None
 
         return DatasetPipeline(
-            RepeatIterable(self.iter_datasets(), self._length), length=length)
+            RepeatIterable(self.iter_datasets()), length=length)
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.

@@ -729,7 +729,10 @@ class Dataset(Generic[T]):
             bl = ds._blocks
             if isinstance(bl, LazyBlockList):
                 if preserve_order:
-                    list(bl)  # Force evaluation of blocks.
+                    # Force evaluation of blocks, which preserves order since
+                    # then we don't need to move evaluated blocks to the front
+                    # of LazyBlockList.
+                    list(bl)
                 for block, meta in zip(bl._blocks, bl._metadata):
                     blocks.append(block)
                     metadata.append(meta)
@@ -1647,7 +1650,7 @@ class Dataset(Generic[T]):
             def __iter__(self):
                 return Iterator(self._ds)
 
-        return DatasetPipeline(Iterable(self), length=times)
+        return DatasetPipeline(Iterable(self), length=times or float("inf"))
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
         raise DeprecationWarning("Use .window(blocks_per_window=n) instead of "
