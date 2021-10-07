@@ -780,33 +780,31 @@ def test_container_option_serialize():
 def test_working_dir_override_failure(shutdown_only):
     ray.init()
 
-    @ray.remote(runtime_env={"working_dir": "."})
-    def f():
-        pass
-
     with pytest.raises(NotImplementedError):
-        f.remote()
+
+        @ray.remote(runtime_env={"working_dir": "."})
+        def f():
+            pass
 
     @ray.remote
     def g():
         pass
 
     with pytest.raises(NotImplementedError):
-        g.options(runtime_env={"working_dir": "."}).remote()
-
-    @ray.remote(runtime_env={"working_dir": "."})
-    class A:
-        pass
+        g.options(runtime_env={"working_dir": "."})
 
     with pytest.raises(NotImplementedError):
-        A.remote()
+
+        @ray.remote(runtime_env={"working_dir": "."})
+        class A:
+            pass
 
     @ray.remote
     class B:
         pass
 
     with pytest.raises(NotImplementedError):
-        B.options(runtime_env={"working_dir": "."}).remote()
+        B.options(runtime_env={"working_dir": "."})
 
 
 @pytest.mark.skipif(
