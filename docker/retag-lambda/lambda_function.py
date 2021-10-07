@@ -1,10 +1,39 @@
 import json
 import subprocess
 
+import boto3
+
+DOCKER_USER = None
+DOCKER_PASS = None
+
+
+def get_secrets():
+    global DOCKER_PASS, DOCKER_USER
+    secret_name = "dockerRetagLatestCredentials"
+    region_name = "us-west-2"
+
+    session = boto3.session.Session()
+    client = session.client(
+        service_name="secretsmanager", region_name=region_name)
+    get_secret_value_response = client.get_secret_value(SecretId=secret_name)
+    secret_string = get_secret_value_response["SecretString"]
+    dct = json.loads(secret_string)
+    DOCKER_PASS = dct["DOCKER_PASS"]
+    DOCKER_USER = dct["DOCKER_USER"]
+
 
 def retag(repo: str, source: str, destination: str) -> str:
+    global DOCKER_PASS, DOCKER_USER
+    if DOCKER_PASS is None or DOCKER_USER is None:
+        get_secrets()
+    assert (DOCKER_PASS is not None and
+            DOCKER_USER is not None), "Docker Username or Password not set()"
     return subprocess.run(
-        ["./docker-retag", f"rayproject/{repo}:{source}", destination])
+        ["./docker-retag", f"rayproject/{repo}:{source}", destination],
+        env={
+            "DOCKER_USER": DOCKER_USER,
+            "DOCKER_PASS": DOCKER_PASS
+        })
 
 
 def lambda_handler(event, context):
