@@ -321,7 +321,10 @@ def run(
         # process stdout. So we introduce a queue here that accepts
         # callables, which will then be executed on the driver side.
         if isinstance(progress_reporter, JupyterNotebookReporter):
-            execute_queue = Queue(actor_options=force_on_current_node(None))
+            execute_queue = Queue(actor_options={
+                "num_cpus": 0,
+                **force_on_current_node(None)
+            })
             progress_reporter.set_output_queue(execute_queue)
 
             def get_next_queue_item():
@@ -336,17 +339,23 @@ def run(
             def get_next_queue_item():
                 return None
 
-        remote_future = remote_run.remote(_remote=False, **remote_run_kwargs)
-
-        # ray.wait(...)[1] returns futures that are not ready, yet
-        while ray.wait([remote_future], timeout=1)[1]:
-            # Check if we have items to execute
+        def _handle_execute_queue():
             execute_item = get_next_queue_item()
             while execute_item:
                 if isinstance(execute_item, Callable):
                     execute_item()
 
                 execute_item = get_next_queue_item()
+
+        remote_future = remote_run.remote(_remote=False, **remote_run_kwargs)
+
+        # ray.wait(...)[1] returns futures that are not ready, yet
+        while ray.wait([remote_future], timeout=0.2)[1]:
+            # Check if we have items to execute
+            _handle_execute_queue()
+
+        # Handle queue one last time
+        _handle_execute_queue()
 
         return ray.get(remote_future)
 
