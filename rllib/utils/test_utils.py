@@ -509,6 +509,8 @@ def check_train_results(train_results):
             f"train_results['infos']['learner'] ({learner_info})!"
 
     for pid, policy_stats in learner_info.items():
+        if pid == "batch_count":
+            continue
         # Expect td-errors to be per batch-item.
         if "td_error" in policy_stats:
             configured_b = train_results["config"]["train_batch_size"]
