@@ -1,5 +1,5 @@
 import functools
-from typing import Callable
+from typing import Callable, Dict, Any
 
 from ray._private import signature
 from ray.workflow import serialization_context
@@ -16,11 +16,14 @@ class WorkflowStepFunction:
                  max_retries=3,
                  catch_exceptions=False,
                  name=None,
+                 metadata=None,
                  ray_options=None):
         if not isinstance(max_retries, int) or max_retries < 1:
             raise ValueError("max_retries should be greater or equal to 1.")
         if ray_options is not None and not isinstance(ray_options, dict):
             raise ValueError("ray_options must be a dict.")
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dict.")
 
         self._func = func
         self._max_retries = max_retries
@@ -28,6 +31,7 @@ class WorkflowStepFunction:
         self._ray_options = ray_options or {}
         self._func_signature = signature.extract_signature(func)
         self._name = name or ""
+        self._metadata = metadata or {}
 
         # Override signature and docstring
         @functools.wraps(func)
@@ -48,6 +52,7 @@ class WorkflowStepFunction:
                 catch_exceptions=self._catch_exceptions,
                 ray_options=self._ray_options,
                 name=self._name,
+                metadata=self._metadata
             )
             return Workflow(workflow_data, prepare_inputs)
 
@@ -64,6 +69,7 @@ class WorkflowStepFunction:
                 max_retries: int = 3,
                 catch_exceptions: bool = False,
                 name: str = None,
+                metadata: Dict = None,
                 **ray_options) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
 
@@ -79,6 +85,7 @@ class WorkflowStepFunction:
                 generate the step_id of the step. The name will be used
                 directly as the step id if possible, otherwise deduplicated by
                 appending .N suffixes.
+            metadata: metadata to add to the step.
             **ray_options: All parameters in this fields will be passed
                 to ray remote function options.
 
@@ -86,4 +93,4 @@ class WorkflowStepFunction:
             The step function itself.
         """
         return WorkflowStepFunction(self._func, max_retries, catch_exceptions,
-                                    name, ray_options)
+                                    name, metadata, ray_options)

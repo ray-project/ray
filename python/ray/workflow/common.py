@@ -128,6 +128,8 @@ class WorkflowData:
     ray_options: Dict[str, Any]
     # name of the step
     name: str
+    # meta data to store
+    metadata: Dict
 
     def to_metadata(self) -> Dict[str, Any]:
         f = self.func_body
@@ -139,6 +141,7 @@ class WorkflowData:
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
+            "metadata": self.metadata
         }
         return metadata
 
@@ -261,7 +264,7 @@ class Workflow:
             "remote, or stored in Ray objects.")
 
     @PublicAPI(stability="beta")
-    def run(self, workflow_id: Optional[str] = None) -> Any:
+    def run(self, workflow_id: Optional[str] = None, metadata: Optional[Dict] = None) -> Any:
         """Run a workflow.
 
         If the workflow with the given id already exists, it will be resumed.
@@ -288,11 +291,12 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
+            metadata: metadata to add to the workflow.
         """
-        return ray.get(self.run_async(workflow_id))
+        return ray.get(self.run_async(workflow_id, metadata))
 
     @PublicAPI(stability="beta")
-    def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
+    def run_async(self, workflow_id: Optional[str] = None, metadata: Optional[Dict] = None) -> ObjectRef:
         """Run a workflow asynchronously.
 
         If the workflow with the given id already exists, it will be resumed.
@@ -319,8 +323,9 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
+            metadata: metadata to add to the workflow.
         """
         # TODO(suquark): avoid cyclic importing
         from ray.workflow.execution import run
         self._step_id = None
-        return run(self, workflow_id)
+        return run(self, workflow_id, metadata)
