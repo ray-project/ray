@@ -110,7 +110,6 @@ void NewPlacementGroupResourceManager::CommitBundle(
           task_resource_instances.Get(original_resource_name, string_id_map);
       cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
     } else {
-      RAY_LOG(INFO) << "Add bundle resources value: " << resource.second;
       cluster_resource_scheduler_->AddLocalResourceInstances(resource_name,
                                                              {resource.second});
     }
@@ -141,11 +140,8 @@ void NewPlacementGroupResourceManager::ReturnBundle(
   // `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
   auto resource_instances = std::make_shared<TaskResourceInstances>();
-  auto success = cluster_resource_scheduler_->AllocateLocalTaskResources(
-      placement_group_resources, resource_instances);
-  RAY_LOG(INFO) << "[AllocateLocalTaskResources] succeed? " << success;
-  RAY_LOG(INFO) << "Local resoureces: "
-                << cluster_resource_scheduler_->GetLocalResourceViewString();
+  cluster_resource_scheduler_->AllocateLocalTaskResources(placement_group_resources,
+                                                          resource_instances);
 
   std::vector<std::string> deleted;
   for (const auto &resource : placement_group_resources) {
@@ -158,7 +154,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
       deleted.push_back(resource.first);
     } else {
       RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
-                     << "] is not empty.";
+                     << "] is not empty. Resources are not deleted from the local node.";
     }
   }
   pg_bundles_.erase(it);

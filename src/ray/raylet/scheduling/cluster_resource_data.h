@@ -189,7 +189,7 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString(StringIdMap string_to_int_map) const;
+  [[nodiscard]] std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 struct Node {
