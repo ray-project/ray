@@ -1,9 +1,11 @@
 import distutils
 import distutils.spawn
+import inspect
 import logging
 import subprocess
 import tempfile
 import types
+import warnings
 
 from typing import Optional, List
 
@@ -11,6 +13,7 @@ from shlex import quote
 
 from ray.tune.error import TuneError
 from ray.util.annotations import PublicAPI
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -153,18 +156,41 @@ class SyncClient:
         pass
 
 
+def _num_args(func):
+    sig = inspect.signature(func)
+    return len(sig.parameters)
+
+
 class FunctionBasedClient(SyncClient):
     def __init__(self, sync_up_func, sync_down_func, delete_func=None):
         self.sync_up_func = sync_up_func
+        self._sync_up_legacy = _num_args(sync_up_func) <= 2
+
         self.sync_down_func = sync_down_func
+        self._sync_down_legacy = _num_args(sync_up_func) <= 2
+
+        if self._sync_up_legacy or self._sync_down_legacy:
+            if log_once("func_sync_up_legacy"):
+                warnings.warn(
+                    "Your sync functions currently only accepts two params "
+                    "(a `source` and a `target`). In the future, we will "
+                    "pass an additional `exclude` parameter. Please adjust "
+                    "your sync function accordingly.")
+
         self.delete_func = delete_func or noop
 
     def sync_up(self, source, target, exclude: Optional[List] = None):
-        self.sync_up_func(source, target, exclude)
+        if self._sync_up_legacy:
+            self.sync_up_func(source, target)
+        else:
+            self.sync_up_func(source, target, exclude)
         return True
 
     def sync_down(self, source, target, exclude: Optional[List] = None):
-        self.sync_down_func(source, target, exclude)
+        if self._sync_down_legacy:
+            self.sync_down_func(source, target)
+        else:
+            self.sync_down_func(source, target, exclude)
         return True
 
     def delete(self, target):
