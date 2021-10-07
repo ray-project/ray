@@ -66,5 +66,5 @@ class ContainerManager:
         container_command.append("bash")
         container_command.append(container_option.get("image"))
         container_command.append("-c")
-        context.container_command_prefix = container_command
-        logger.warning("start worker in container with prefix: {}".format(" ".join(container_command)))
+        context.py_executable = " ".join(container_command)
+        logger.warning("start worker in container with prefix: {}".format(context.py_executable))

@@ -12,12 +12,10 @@ class RuntimeEnvContext:
 
     def __init__(self,
                  command_prefix: List[str] = None,
-                 container_command_prefix: List[str] = None,
                  env_vars: Dict[str, str] = None,
                  py_executable: Optional[str] = None,
                  resources_dir: Optional[str] = None):
         self.command_prefix = command_prefix or []
-        self.container_command_prefix = container_command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable
         # TODO(edoakes): this should not be in the context but just passed to
@@ -39,7 +37,5 @@ class RuntimeEnvContext:
                                 passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
         command = ["bash", "-c", command_str]
-        if self.container_command_prefix:
-            command = self.container_command_prefix + [command_str]
         logger.info(f"Exec'ing worker with command: {command_str}")
         os.execvp(command[0], command)
