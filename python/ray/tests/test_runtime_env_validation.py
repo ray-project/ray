@@ -1,5 +1,6 @@
 import os
 import pytest
+import sys
 import tempfile
 from pathlib import Path
 import yaml
@@ -82,6 +83,8 @@ class TestValidateWorkingDir:
                 }, is_task_or_actor=True)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Conda option not supported on Windows.")
 class TestValidateConda:
     def test_validate_conda_invalid_types(self):
         with pytest.raises(TypeError):
@@ -120,6 +123,8 @@ class TestValidateConda:
         assert parse_and_validate_conda(CONDA_DICT) == CONDA_DICT
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Pip option not supported on Windows.")
 class TestValidatePip:
     def test_validate_pip_invalid_types(self):
         with pytest.raises(TypeError):
@@ -162,6 +167,8 @@ class TestParsedRuntimeEnv:
     def test_empty(self, is_task_or_actor):
         assert ParsedRuntimeEnv({}, is_task_or_actor=is_task_or_actor) == {}
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Pip option not supported on Windows.")
     @pytest.mark.parametrize("is_task_or_actor", [True, False])
     def test_serialization(self, is_task_or_actor):
         env1 = ParsedRuntimeEnv(
@@ -207,6 +214,9 @@ class TestParsedRuntimeEnv:
                 },
                 is_task_or_actor=is_task_or_actor)
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Conda and pip options not supported on Windows.")
     @pytest.mark.parametrize("is_task_or_actor", [True, False])
     def test_ray_commit_injection(self, is_task_or_actor):
         # Should not be injected if no pip and conda.
@@ -347,5 +357,4 @@ class TestOverrideRuntimeEnvs:
 
 
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-sv", __file__]))
