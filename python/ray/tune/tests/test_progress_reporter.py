@@ -60,33 +60,49 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 END_TO_END_COMMAND = """
 import ray
 from ray import tune
+from ray.tune.trial import Location
+from ray.tune.progress_reporter import _get_trial_location
+from unittest.mock import patch
 
-reporter = tune.progress_reporter.CLIReporter(metric_columns=["done"])
 
-def f(config):
-    return {"done": True}
+def mock_get_trial_location(trial, result):
+    location = _get_trial_location(trial, result)
+    if location.pid:
+        return Location("123.123.123.123", "1")
+    return location
 
-ray.init(num_cpus=1)
-tune.run_experiments({
-    "one": {
-        "run": f,
-        "config": {
-            "a": tune.grid_search(list(range(10))),
+
+with patch("ray.tune.progress_reporter._get_trial_location",
+           mock_get_trial_location):
+    reporter = tune.progress_reporter.CLIReporter(metric_columns=["done"])
+
+    def f(config):
+        return {"done": True}
+
+    ray.init(num_cpus=1)
+    tune.run_experiments(
+        {
+            "one": {
+                "run": f,
+                "config": {
+                    "a": tune.grid_search(list(range(10))),
+                },
+            },
+            "two": {
+                "run": f,
+                "config": {
+                    "b": tune.grid_search(list(range(10))),
+                },
+            },
+            "three": {
+                "run": f,
+                "config": {
+                    "c": tune.grid_search(list(range(10))),
+                },
+            },
         },
-    },
-    "two": {
-        "run": f,
-        "config": {
-            "b": tune.grid_search(list(range(10))),
-        },
-    },
-    "three": {
-        "run": f,
-        "config": {
-            "c": tune.grid_search(list(range(10))),
-        },
-    },
-}, verbose=3, progress_reporter=reporter)"""
+        verbose=3,
+        progress_reporter=reporter)"""
 
 EXPECTED_END_TO_END_START = """Number of trials: 30/30 (29 PENDING, 1 RUNNING)
 +---------------+----------+-------+-----+-----+
@@ -96,40 +112,40 @@ EXPECTED_END_TO_END_START = """Number of trials: 30/30 (29 PENDING, 1 RUNNING)
 | f_xxxxx_00001 | PENDING  |       |   1 |     |"""
 
 EXPECTED_END_TO_END_END = """Number of trials: 30/30 (30 TERMINATED)
-+---------------+------------+-------+-----+-----+-----+--------+
-| Trial name    | status     | loc   |   a |   b |   c | done   |
-|---------------+------------+-------+-----+-----+-----+--------|
-| f_xxxxx_00000 | TERMINATED |       |   0 |     |     | True   |
-| f_xxxxx_00001 | TERMINATED |       |   1 |     |     | True   |
-| f_xxxxx_00002 | TERMINATED |       |   2 |     |     | True   |
-| f_xxxxx_00003 | TERMINATED |       |   3 |     |     | True   |
-| f_xxxxx_00004 | TERMINATED |       |   4 |     |     | True   |
-| f_xxxxx_00005 | TERMINATED |       |   5 |     |     | True   |
-| f_xxxxx_00006 | TERMINATED |       |   6 |     |     | True   |
-| f_xxxxx_00007 | TERMINATED |       |   7 |     |     | True   |
-| f_xxxxx_00008 | TERMINATED |       |   8 |     |     | True   |
-| f_xxxxx_00009 | TERMINATED |       |   9 |     |     | True   |
-| f_xxxxx_00010 | TERMINATED |       |     |   0 |     | True   |
-| f_xxxxx_00011 | TERMINATED |       |     |   1 |     | True   |
-| f_xxxxx_00012 | TERMINATED |       |     |   2 |     | True   |
-| f_xxxxx_00013 | TERMINATED |       |     |   3 |     | True   |
-| f_xxxxx_00014 | TERMINATED |       |     |   4 |     | True   |
-| f_xxxxx_00015 | TERMINATED |       |     |   5 |     | True   |
-| f_xxxxx_00016 | TERMINATED |       |     |   6 |     | True   |
-| f_xxxxx_00017 | TERMINATED |       |     |   7 |     | True   |
-| f_xxxxx_00018 | TERMINATED |       |     |   8 |     | True   |
-| f_xxxxx_00019 | TERMINATED |       |     |   9 |     | True   |
-| f_xxxxx_00020 | TERMINATED |       |     |     |   0 | True   |
-| f_xxxxx_00021 | TERMINATED |       |     |     |   1 | True   |
-| f_xxxxx_00022 | TERMINATED |       |     |     |   2 | True   |
-| f_xxxxx_00023 | TERMINATED |       |     |     |   3 | True   |
-| f_xxxxx_00024 | TERMINATED |       |     |     |   4 | True   |
-| f_xxxxx_00025 | TERMINATED |       |     |     |   5 | True   |
-| f_xxxxx_00026 | TERMINATED |       |     |     |   6 | True   |
-| f_xxxxx_00027 | TERMINATED |       |     |     |   7 | True   |
-| f_xxxxx_00028 | TERMINATED |       |     |     |   8 | True   |
-| f_xxxxx_00029 | TERMINATED |       |     |     |   9 | True   |
-+---------------+------------+-------+-----+-----+-----+--------+"""
++---------------+------------+-------------------+-----+-----+-----+--------+
+| Trial name    | status     | loc               |   a |   b |   c | done   |
+|---------------+------------+-------------------+-----+-----+-----+--------|
+| f_xxxxx_00000 | TERMINATED | 123.123.123.123:1 |   0 |     |     | True   |
+| f_xxxxx_00001 | TERMINATED | 123.123.123.123:1 |   1 |     |     | True   |
+| f_xxxxx_00002 | TERMINATED | 123.123.123.123:1 |   2 |     |     | True   |
+| f_xxxxx_00003 | TERMINATED | 123.123.123.123:1 |   3 |     |     | True   |
+| f_xxxxx_00004 | TERMINATED | 123.123.123.123:1 |   4 |     |     | True   |
+| f_xxxxx_00005 | TERMINATED | 123.123.123.123:1 |   5 |     |     | True   |
+| f_xxxxx_00006 | TERMINATED | 123.123.123.123:1 |   6 |     |     | True   |
+| f_xxxxx_00007 | TERMINATED | 123.123.123.123:1 |   7 |     |     | True   |
+| f_xxxxx_00008 | TERMINATED | 123.123.123.123:1 |   8 |     |     | True   |
+| f_xxxxx_00009 | TERMINATED | 123.123.123.123:1 |   9 |     |     | True   |
+| f_xxxxx_00010 | TERMINATED | 123.123.123.123:1 |     |   0 |     | True   |
+| f_xxxxx_00011 | TERMINATED | 123.123.123.123:1 |     |   1 |     | True   |
+| f_xxxxx_00012 | TERMINATED | 123.123.123.123:1 |     |   2 |     | True   |
+| f_xxxxx_00013 | TERMINATED | 123.123.123.123:1 |     |   3 |     | True   |
+| f_xxxxx_00014 | TERMINATED | 123.123.123.123:1 |     |   4 |     | True   |
+| f_xxxxx_00015 | TERMINATED | 123.123.123.123:1 |     |   5 |     | True   |
+| f_xxxxx_00016 | TERMINATED | 123.123.123.123:1 |     |   6 |     | True   |
+| f_xxxxx_00017 | TERMINATED | 123.123.123.123:1 |     |   7 |     | True   |
+| f_xxxxx_00018 | TERMINATED | 123.123.123.123:1 |     |   8 |     | True   |
+| f_xxxxx_00019 | TERMINATED | 123.123.123.123:1 |     |   9 |     | True   |
+| f_xxxxx_00020 | TERMINATED | 123.123.123.123:1 |     |     |   0 | True   |
+| f_xxxxx_00021 | TERMINATED | 123.123.123.123:1 |     |     |   1 | True   |
+| f_xxxxx_00022 | TERMINATED | 123.123.123.123:1 |     |     |   2 | True   |
+| f_xxxxx_00023 | TERMINATED | 123.123.123.123:1 |     |     |   3 | True   |
+| f_xxxxx_00024 | TERMINATED | 123.123.123.123:1 |     |     |   4 | True   |
+| f_xxxxx_00025 | TERMINATED | 123.123.123.123:1 |     |     |   5 | True   |
+| f_xxxxx_00026 | TERMINATED | 123.123.123.123:1 |     |     |   6 | True   |
+| f_xxxxx_00027 | TERMINATED | 123.123.123.123:1 |     |     |   7 | True   |
+| f_xxxxx_00028 | TERMINATED | 123.123.123.123:1 |     |     |   8 | True   |
+| f_xxxxx_00029 | TERMINATED | 123.123.123.123:1 |     |     |   9 | True   |
++---------------+------------+-------------------+-----+-----+-----+--------+"""  # noqa
 
 EXPECTED_END_TO_END_AC = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+
