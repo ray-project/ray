@@ -239,7 +239,6 @@ class Trainer:
             iterator = SGDIterator(
                 backend_executor=self._executor,
                 train_func=train_func,
-                config=config,
                 dataset=dataset,
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,

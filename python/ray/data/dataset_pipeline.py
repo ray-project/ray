@@ -313,7 +313,6 @@ class DatasetPipeline(Generic[T]):
             total += elem
         return total
 
-    @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
         """Iterate over the output datasets of this pipeline.
 
