@@ -1255,6 +1255,7 @@ def connect(node,
             job_id=None,
             namespace=None,
             job_config=None,
+            runtime_env_hash=0,
             worker_shim_pid=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
@@ -1269,6 +1270,7 @@ def connect(node,
         driver_object_store_memory: Deprecated.
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
+        runtime_env_hash (int): The hash of the runtime env for this worker.
         worker_shim_pid (int): The PID of the process for setup worker
             runtime env.
         ray_debugger_host (bool): The host to bind a Ray debugger to on
@@ -1388,7 +1390,8 @@ def connect(node,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port, worker_shim_pid)
+        serialized_job_config, node.metrics_agent_port, runtime_env_hash,
+        worker_shim_pid)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # If it's a driver and it's not coming from ray client, we'll prepare the

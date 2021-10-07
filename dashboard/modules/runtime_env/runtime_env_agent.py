@@ -18,8 +18,8 @@ from ray.experimental.internal_kv import (_initialize_internal_kv,
                                           _internal_kv_initialized)
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaManager
+from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.working_dir import WorkingDirManager
-from ray._private.runtime_env import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
 

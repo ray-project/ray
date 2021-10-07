@@ -117,7 +117,7 @@
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:
-    - RAY_BACKEND_LOG_LEVEL=debug ./java/test.sh
+    - ./java/test.sh
 
 - label: ":java: Streaming"
   conditions:
