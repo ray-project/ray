@@ -247,7 +247,7 @@ class _AgentCollector:
                 else:
                     d0 = np_data[data_col][0]
                     shift_win = view_req.shift_to - view_req.shift_from + 1
-                    data_size = d0.itemsize * np.product(d0.shape[1:])
+                    data_size = d0.itemsize * int(np.product(d0.shape[1:]))
                     strides = [
                         d0.itemsize * np.product(d0.shape[i + 1:])
                         for i in range(1, len(d0.shape))

@@ -476,7 +476,7 @@ def build_eager_tf_policy(
             timestep = timestep if timestep is not None else \
                 self.global_timestep
             if isinstance(timestep, tf.Tensor):
-                timestep = timestep.numpy()
+                timestep = int(timestep.numpy())
             self._is_recurrent = state_batches is not None and \
                 state_batches != []
             self._is_training = False
@@ -567,7 +567,7 @@ def build_eager_tf_policy(
                 extra_fetches.update(extra_action_out_fn(self))
 
             # Update our global timestep by the batch size.
-            self.global_timestep += batch_size
+            self.global_timestep += int(batch_size)
 
             return actions, state_out, extra_fetches
 
