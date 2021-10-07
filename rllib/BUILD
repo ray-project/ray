@@ -1440,6 +1440,13 @@ py_test(
 )
 
 py_test(
+    name = "env/tests/test_remote_worker_envs",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_remote_worker_envs.py"]
+)
+
+py_test(
     name = "env/wrappers/tests/test_unity3d_env",
     tags = ["team:ml", "env"],
     size = "small",
