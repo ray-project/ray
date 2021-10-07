@@ -112,13 +112,9 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-<<<<<<< Updated upstream
         self._runtime_env = ParsedRuntimeEnv(
             runtime_env or {}, is_task_or_actor=True)
-=======
-        self._runtime_env = parse_pip_and_conda(runtime_env)
         self._placement_group = placement_group
->>>>>>> Stashed changes
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
