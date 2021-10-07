@@ -175,7 +175,7 @@ class MockReplicaActorWrapper:
         self.healthy = False
 
     def set_starting_version(self, version: BackendVersion):
-        """Mocked backend_worker return version from reconfigure()"""
+        """Mocked replica returns the version from reconfigure()."""
         self.starting_version = version
 
     def start(self, backend_info: BackendInfo, version: BackendVersion):

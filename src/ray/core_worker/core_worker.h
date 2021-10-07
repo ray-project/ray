@@ -291,6 +291,9 @@ class CoreWorkerProcess {
 
   void InitializeSystemConfig();
 
+  /// Check that if the global worker should be created on construction.
+  bool ShouldCreateGlobalWorkerOnConstruction() const;
+
   /// Get the `CoreWorker` instance by worker ID.
   ///
   /// \param[in] workerId The worker ID.
