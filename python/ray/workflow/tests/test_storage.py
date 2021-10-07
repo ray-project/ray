@@ -6,7 +6,7 @@ from ray import workflow
 from ray.workflow import workflow_storage
 from ray.workflow import storage
 from ray.workflow.workflow_storage import asyncio_run
-from ray.workflow.common import StepType
+from ray.workflow.common import StepType, WorkflowNotFoundError
 from ray.workflow.tests import utils
 import subprocess
 import time
@@ -40,7 +40,6 @@ async def test_kv_storage(workflow_start_regular):
     # TODO(suquark): Test "delete" once fully implemented.
 
 
-@pytest.mark.asyncio
 def test_delete(workflow_start_regular):
     _storage = storage.get_global_storage()
 
@@ -62,8 +61,8 @@ def test_delete(workflow_start_regular):
     with pytest.raises(ValueError):
         workflow.resume("finishes")
 
-    # Deleting is idempotent.
-    workflow.delete(workflow_id="finishes")
+    with pytest.raises(WorkflowNotFoundError):
+        workflow.delete(workflow_id="finishes")
 
     # The workflow can be re-run as if it was never run before.
     assert basic_step.step("123").run(workflow_id="finishes") == "123"
@@ -71,7 +70,6 @@ def test_delete(workflow_start_regular):
     # Delete a workflow that has not finished and is not running.
     @workflow.step
     def never_ends(x):
-        print("RUNNINGGGGGGGGGGG")
         utils.set_global_mark()
         time.sleep(1000000)
         return x
@@ -99,8 +97,12 @@ def test_delete(workflow_start_regular):
     with pytest.raises(ValueError):
         workflow.resume("never_finishes")
 
-    # Deleting is idempotent.
-    workflow.delete(workflow_id="never_finishes")
+    with pytest.raises(WorkflowNotFoundError):
+        workflow.delete(workflow_id="never_finishes")
+
+    # Try deleting a random workflow that never existed.
+    with pytest.raises(WorkflowNotFoundError):
+        workflow.delete(workflow_id="never_existed")
 
 
 def test_workflow_storage(workflow_start_regular):

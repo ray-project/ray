@@ -13,7 +13,8 @@ from ray import cloudpickle
 from ray._private import signature
 from ray.workflow import storage
 from ray.workflow.common import (Workflow, StepID, WorkflowMetaData,
-                                 WorkflowStatus, WorkflowRef, StepType)
+                                 WorkflowStatus, WorkflowRef, StepType,
+                                 WorkflowNotFoundError)
 from ray.workflow import workflow_context
 from ray.workflow import serialization
 from ray.workflow import serialization_context
@@ -445,7 +446,20 @@ class WorkflowStorage:
 
     def delete_workflow(self):
         prefix = self._storage.make_key(self._workflow_id)
-        asyncio_run(self._storage.delete_prefix(prefix))
+
+        delete_future = self._storage.delete_prefix(prefix)
+
+        try:
+            asyncio_run(delete_future)
+        except FileNotFoundError:
+            raise WorkflowNotFoundError(self._workflow_id)
+
+        # TODO (Alex): There's a race condition here if someone starts a
+        # workflow after our scan.
+        # deleted, _ = asyncio_run(asyncio.gather(scan_future, delete_future))
+        # if len(deleted) == 0:
+        #     raise WorkflowNotFoundError(self._workflow_id)
+
 
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> str:

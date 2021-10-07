@@ -354,13 +354,14 @@ def delete(workflow_id: str) -> None:
     Examples:
         >>> workflow_step = some_job.step()
         >>> output = workflow_step.run_async(workflow_id="some_job")
-        >>> workflow.cancel(workflow_id="some_job")
+        >>> workflow.delete(workflow_id="some_job")
         >>> assert [("some_job", workflow.CANCELED)] == workflow.list_all()
 
     Returns:
         None
 
     """
+    # TODO (Alex): We should eventually support deleting a running workflow.
     wf_storage = get_workflow_storage(workflow_id)
     wf_storage.delete_workflow()
 
