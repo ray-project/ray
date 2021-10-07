@@ -150,7 +150,7 @@ def test_transform_failure(shutdown_only):
 
     def mapper(x):
         time.sleep(x)
-        assert False
+        raise ValueError("oops")
         return x
 
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -723,7 +723,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=?, "
+        "Dataset(num_blocks=2, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
         "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
@@ -736,7 +736,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=?, "
+        "Dataset(num_blocks=1, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
         "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
@@ -2522,7 +2522,9 @@ def test_random_shuffle(shutdown_only, pipelined):
     def range(n, parallelism=200):
         ds = ray.data.range(n, parallelism=parallelism)
         if pipelined:
-            return ds.repeat(2)
+            pipe = ds.repeat(2)
+            pipe.random_shuffle = pipe.random_shuffle_each_window
+            return pipe
         else:
             return ds
 
@@ -2692,7 +2694,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         def _read_file(self, f: "pa.NativeFile", path: str, **reader_args):
             count = self.counter.increment.remote()
             if ray.get(count) == 1:
-                raise ValueError()
+                raise ValueError("oops")
             else:
                 return CSVDatasource._read_file(self, f, path, **reader_args)
 
@@ -2700,7 +2702,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
                          **writer_args):
             count = self.counter.increment.remote()
             if ray.get(count) == 1:
-                raise ValueError()
+                raise ValueError("oops")
             else:
                 CSVDatasource._write_block(self, f, block, **writer_args)
 
@@ -2720,7 +2722,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
     def flaky_mapper(x):
         count = counter.increment.remote()
         if ray.get(count) == 1:
-            raise ValueError()
+            raise ValueError("oops")
         else:
             return ray.get(count)
 
