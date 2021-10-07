@@ -28,6 +28,7 @@ class LazyBlockList(BlockList[T]):
         self._calls = None
 
     def split(self, split_size: int) -> List["LazyBlockList"]:
+        # TODO(ekl) isn't this not copying already computed blocks?
         self._check_if_cleared()
         num_splits = math.ceil(len(self._calls) / split_size)
         calls = np.array_split(self._calls, num_splits)
@@ -36,6 +37,18 @@ class LazyBlockList(BlockList[T]):
         for c, m in zip(calls, meta):
             output.append(LazyBlockList(c.tolist(), m.tolist()))
         return output
+
+    def divide(self, block_idx: int) -> ("BlockList", "BlockList"):
+        self._check_if_cleared()
+        left = self.copy()
+        right = self.copy()
+        left._calls = left._calls[:block_idx]
+        left._blocks = left._blocks[:block_idx]
+        left._metadata = left._metadata[:block_idx]
+        right._calls = right._calls[block_idx:]
+        right._blocks = right._blocks[block_idx:]
+        right._metadata = right._metadata[block_idx:]
+        return left, right
 
     def __len__(self):
         self._check_if_cleared()
