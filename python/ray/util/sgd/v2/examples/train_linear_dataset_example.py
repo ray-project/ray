@@ -10,7 +10,8 @@ from torch.nn.parallel import DistributedDataParallel
 
 
 def get_dataset(a, b, size=1000) -> ray.data.Dataset:
-    dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in range(size)])
+    items = [i / size for i in range(size)]
+    dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
     return dataset
 
 
@@ -27,11 +28,12 @@ def train(iterable_dataset, model, loss_fn, optimizer):
 
 
 def validate(iterable_dataset, model, loss_fn):
-    num_batches = len(iterable_dataset)
+    num_batches = 0
     model.eval()
     loss = 0
     with torch.no_grad():
         for X, y in iterable_dataset:
+            num_batches += 1
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
@@ -65,10 +67,19 @@ def train_func(config):
         train_dataset = next(train_dataset_iterator)
         validation_dataset = next(validation_dataset_iterator)
 
-        train_torch_dataset = train_dataset.to_torch(label_column="y",
-                                                     batch_size=batch_size)
-        validation_torch_dataset = validation_dataset.to_torch(label_column="y",
-                                                               batch_size=batch_size)
+        train_torch_dataset = train_dataset.to_torch(
+            label_column="y",
+            feature_columns=["x"],
+            label_column_dtype=torch.float,
+            feature_column_dtypes=[torch.float],
+            batch_size=batch_size,
+        )
+        validation_torch_dataset = validation_dataset.to_torch(
+            label_column="y",
+            feature_columns=["x"],
+            label_column_dtype=torch.float,
+            feature_column_dtypes=[torch.float],
+            batch_size=batch_size)
 
         train(train_torch_dataset, model, loss_fn, optimizer)
         result = validate(validation_torch_dataset, model, loss_fn)
@@ -89,8 +100,10 @@ def train_linear(num_workers=2):
     train_dataset_pipeline = train_dataset.repeat().random_shuffle()
     validation_dataset_pipeline = validation_dataset.repeat()
 
-    datasets = {"train": train_dataset_pipeline,
-                "validation": validation_dataset_pipeline}
+    datasets = {
+        "train": train_dataset_pipeline,
+        "validation": validation_dataset_pipeline
+    }
 
     trainer = Trainer(TorchConfig(backend="gloo"), num_workers=num_workers)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
@@ -102,7 +115,6 @@ def train_linear(num_workers=2):
         callbacks=[JsonLoggerCallback(),
                    TBXLoggerCallback()])
     trainer.shutdown()
-
     print(results)
     return results
 

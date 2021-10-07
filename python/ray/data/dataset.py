@@ -1336,7 +1336,7 @@ class Dataset(Generic[T]):
                     t = t.view(-1, 1)
                     feature_tensor.append(t)
 
-                yield (feature_tensor, label_tensor)
+                yield (torch.cat(feature_tensor, dim=1), label_tensor)
 
         return TorchIterableDataset(make_generator)
 

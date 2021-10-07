@@ -436,9 +436,7 @@ class BackendExecutor:
             def split_dataset(dataset_or_pipeline):
                 actors = [worker.actor for worker in self.worker_group.workers]
                 return dataset_or_pipeline.split(
-                    len(self.worker_group),
-                    equal=True,
-                    locality_hints=actors)
+                    len(self.worker_group), equal=True, locality_hints=actors)
 
             if isinstance(dataset_or_dict, dict):
                 # Return a smaller dict for each shard.
