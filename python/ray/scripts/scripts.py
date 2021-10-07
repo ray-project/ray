@@ -560,7 +560,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 port = s.getsockname()[1]
 
         if os.environ.get("RAY_FAKE_HEAD"):
-            ray_params.env_vars = {"RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID}
+            ray_params.env_vars = {
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+            }
 
         num_redis_shards = None
         # Start Ray on the head node.
