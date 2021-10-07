@@ -14,6 +14,7 @@ from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized)
 from ray.workflow import serialization
 from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
+from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -316,7 +317,8 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 
 @PublicAPI(stability="beta")
 def cancel(workflow_id: str) -> None:
-    """Cancel a workflow.
+    """Cancel a workflow. Workflow checkpoints will still be saved in storage. To
+       clean up saved checkpoints, see `workflow.delete()`.
 
     Args:
         workflow_id: The workflow to cancel.
@@ -329,11 +331,34 @@ def cancel(workflow_id: str) -> None:
 
     Returns:
         None
+
     """
     ensure_ray_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.cancel(workflow_id)
+
+
+@PublicAPI(stability="beta")
+def delete(workflow_id: str) -> None:
+    """Delete all traces of a workflow from storage. To stop a running workflow,
+       see `workflow.cancel()`.
+
+    Args:
+        workflow_id: The workflow to cancel.
+
+    Examples:
+        >>> workflow_step = some_job.step()
+        >>> output = workflow_step.run_async(workflow_id="some_job")
+        >>> workflow.cancel(workflow_id="some_job")
+        >>> assert [("some_job", workflow.CANCELED)] == workflow.list_all()
+
+    Returns:
+        None
+
+    """
+    wf_storage = get_workflow_storage(workflow_id)
+    wf_storage.delete_workflow()
 
 
 __all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor",

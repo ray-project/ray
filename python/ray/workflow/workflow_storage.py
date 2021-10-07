@@ -443,6 +443,10 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
+    def delete_workflow(self):
+        prefix = self._storage.make_key(self._workflow_id)
+        asyncio_run(self._storage.delete_prefix(prefix))
+
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> str:
         """
