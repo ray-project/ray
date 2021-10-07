@@ -1,6 +1,6 @@
 # Example command to start a cluster with this config:
 #
-# RAY_FAKE_HEAD=1 ray start --autoscaling-config=example.yaml --head --block
+# RAY_FAKE_CLUSTER=1 ray start --autoscaling-config=example.yaml --head --block
 #
 cluster_name: fake_multinode
 max_workers: 8

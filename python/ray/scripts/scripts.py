@@ -559,7 +559,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 s.bind(("", 0))
                 port = s.getsockname()[1]
 
-        if os.environ.get("RAY_FAKE_HEAD"):
+        if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
             }

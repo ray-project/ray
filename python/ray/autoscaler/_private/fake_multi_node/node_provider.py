@@ -25,10 +25,10 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        if "RAY_FAKE_HEAD" not in os.environ:
+        if "RAY_FAKE_CLUSTER" not in os.environ:
             raise RuntimeError(
                 "FakeMultiNodeProvider requires ray to be started with "
-                "RAY_FAKE_HEAD=1 ray start ...")
+                "RAY_FAKE_CLUSTER=1 ray start ...")
         self._nodes = {
             FAKE_HEAD_NODE_ID: {
                 "tags": {
