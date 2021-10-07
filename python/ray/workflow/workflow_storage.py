@@ -447,18 +447,21 @@ class WorkflowStorage:
     def delete_workflow(self):
         prefix = self._storage.make_key(self._workflow_id)
 
+        scan = []
+        scan_future = self._storage.scan_prefix(prefix)
         delete_future = self._storage.delete_prefix(prefix)
 
         try:
-            asyncio_run(delete_future)
+            scan, delete = asyncio_run(
+                asyncio.gather(scan_future, delete_future))
         except FileNotFoundError:
-            raise WorkflowNotFoundError(self._workflow_id)
+            # TODO (Alex): Different file systems seem to have different
+            # behavior when deleting a prefix that doesn't exist, so we may
+            # need to catch a broader class of exceptions.
+            pass
 
-        # TODO (Alex): There's a race condition here if someone starts a
-        # workflow after our scan.
-        # deleted, _ = asyncio_run(asyncio.gather(scan_future, delete_future))
-        # if len(deleted) == 0:
-        #     raise WorkflowNotFoundError(self._workflow_id)
+        if not scan:
+            raise WorkflowNotFoundError(self._workflow_id)
 
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> str:
