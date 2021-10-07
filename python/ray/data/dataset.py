@@ -704,13 +704,16 @@ class Dataset(Generic[T]):
 
         return splits
 
-    def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
+    def union(self, *other: List["Dataset[T]"],
+              preserve_order: bool = False) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
 
         Args:
             other: List of datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
                 behavior is undefined.
+            preserve_order: Whether to preserve the order of the data blocks.
+                This may trigger eager loading of data from disk.
 
         Returns:
             A new dataset holding the union of their data.
@@ -725,6 +728,11 @@ class Dataset(Generic[T]):
         for ds in datasets:
             bl = ds._blocks
             if isinstance(bl, LazyBlockList):
+                if preserve_order:
+                    # Force evaluation of blocks, which preserves order since
+                    # then we don't need to move evaluated blocks to the front
+                    # of LazyBlockList.
+                    list(bl)
                 for block, meta in zip(bl._blocks, bl._metadata):
                     blocks.append(block)
                     metadata.append(meta)
@@ -1642,10 +1650,11 @@ class Dataset(Generic[T]):
             def __iter__(self):
                 return Iterator(self._ds)
 
-        return DatasetPipeline(Iterable(self), length=times)
+        return DatasetPipeline(Iterable(self), length=times or float("inf"))
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        raise DeprecationWarning("Use .window(n) instead of .pipeline(n)")
+        raise DeprecationWarning("Use .window(blocks_per_window=n) instead of "
+                                 ".pipeline(parallelism=n)")
 
     def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
@@ -1655,18 +1664,18 @@ class Dataset(Generic[T]):
         pipeline are evaluated incrementally per window of blocks as data is
         read from the output of the pipeline.
 
-        Pipelining execution allows for output to be read sooner without
+        Windowing execution allows for output to be read sooner without
         waiting for all transformations to fully execute, and can also improve
         efficiency if transforms use different resources (e.g., GPUs).
 
-        Without pipelining::
+        Without windowing::
 
             [preprocessing......]
                                   [inference.......]
                                                      [write........]
             Time ----------------------------------------------------------->
 
-        With pipelining::
+        With windowing::
 
             [prep1] [prep2] [prep3]
                     [infer1] [infer2] [infer3]
@@ -1677,11 +1686,11 @@ class Dataset(Generic[T]):
             >>> # Create an inference pipeline.
             >>> ds = ray.data.read_binary_files(dir)
             >>> pipe = ds.window(blocks_per_window=10).map(infer)
-            DatasetPipeline(num_stages=2, length=40)
+            DatasetPipeline(num_windows=40, num_stages=2)
 
             >>> # The higher the stage parallelism, the shorter the pipeline.
             >>> pipe = ds.window(blocks_per_window=20).map(infer)
-            DatasetPipeline(num_stages=2, length=20)
+            DatasetPipeline(num_windows=20, num_stages=2)
 
             >>> # Outputs can be incrementally read from the pipeline.
             >>> for item in pipe.iter_rows():
@@ -1776,6 +1785,10 @@ class Dataset(Generic[T]):
             right = None
         return left, right
 
+    def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
+        left, right = self._blocks.divide(block_idx)
+        return Dataset(left), Dataset(right)
+
     def __repr__(self) -> str:
         schema = self.schema()
         if schema is None:
@@ -1791,8 +1804,6 @@ class Dataset(Generic[T]):
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
-        if count is None:
-            count = "?"
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
             len(self._blocks), count, schema_str)
 

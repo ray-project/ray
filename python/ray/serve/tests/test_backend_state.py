@@ -1,3 +1,4 @@
+import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import patch, Mock
@@ -175,7 +176,7 @@ class MockReplicaActorWrapper:
         self.healthy = False
 
     def set_starting_version(self, version: BackendVersion):
-        """Mocked backend_worker return version from reconfigure()"""
+        """Mocked replica returns the version from reconfigure()."""
         self.starting_version = version
 
     def start(self, backend_info: BackendInfo, version: BackendVersion):
@@ -1859,6 +1860,7 @@ def mock_backend_state_manager(
         yield backend_state_manager, timer, goal_manager
         # Clear checkpoint at the end of each test
         kv_store.delete(CHECKPOINT_KEY)
+        os.remove("test_kv_store.db")
 
 
 def test_shutdown(mock_backend_state_manager):

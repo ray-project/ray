@@ -19,11 +19,9 @@
 #include <boost/bind.hpp>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/memory_object_reader.h"
@@ -70,14 +68,14 @@ class ObjectBufferPool {
   ///
   /// \param data_size The size of the object + metadata.
   /// \return The number of chunks into which the object will be split.
-  uint64_t GetNumChunks(uint64_t data_size) const;
+  uint64_t GetNumChunks(uint64_t data_size);
 
   /// Computes the buffer length of a chunk of an object.
   ///
   /// \param chunk_index The chunk index for which to obtain the buffer length.
   /// \param data_size The size of the object + metadata.
   /// \return The buffer length of the chunk at chunk_index.
-  uint64_t GetBufferLength(uint64_t chunk_index, uint64_t data_size) const;
+  uint64_t GetBufferLength(uint64_t chunk_index, uint64_t data_size);
 
   /// Returns an object reader for read.
   ///
@@ -87,7 +85,7 @@ class ObjectBufferPool {
   /// this method. An IOError status is returned if the Get call on the plasma store
   /// fails, and the MemoryObjectReader will be empty.
   std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status> CreateObjectReader(
-      const ObjectID &object_id, rpc::Address owner_address) LOCKS_EXCLUDED(pool_mutex_);
+      const ObjectID &object_id, rpc::Address owner_address);
 
   /// Returns a chunk of an empty object at the given chunk_index. The object chunk
   /// serves as the buffer that is to be written to by a connection receiving an
@@ -108,7 +106,7 @@ class ObjectBufferPool {
   /// (with no intermediate AbortCreateChunk).
   ray::Status CreateChunk(const ObjectID &object_id, const rpc::Address &owner_address,
                           uint64_t data_size, uint64_t metadata_size,
-                          uint64_t chunk_index) LOCKS_EXCLUDED(pool_mutex_);
+                          uint64_t chunk_index);
 
   /// Write to a Chunk of an object. If all chunks of an object is written,
   /// it seals the object.
@@ -121,44 +119,34 @@ class ObjectBufferPool {
   /// \param chunk_index The index of the chunk.
   /// \param data The data to write into the chunk.
   void WriteChunk(const ObjectID &object_id, uint64_t chunk_index,
-                  const std::string &data) LOCKS_EXCLUDED(pool_mutex_);
+                  const std::string &data);
 
   /// Free a list of objects from object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
   /// \return Void.
-  void FreeObjects(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(pool_mutex_);
+  void FreeObjects(const std::vector<ObjectID> &object_ids);
 
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
-  void AbortCreate(const ObjectID &object_id) LOCKS_EXCLUDED(pool_mutex_);
+  void AbortCreate(const ObjectID &object_id);
 
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const LOCKS_EXCLUDED(pool_mutex_);
+  std::string DebugString() const;
 
  private:
   /// Splits an object into ceil(data_size/chunk_size) chunks, which will
   /// either be read or written to in parallel.
   std::vector<ChunkInfo> BuildChunks(const ObjectID &object_id, uint8_t *data,
                                      uint64_t data_size,
-                                     std::shared_ptr<Buffer> buffer_ref)
-      EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
-
-  /// Ensures buffer for the object exists, and creates the buffer if needed.
-  /// Returns OK if buffer exists.
-  /// Must hold pool_mutex_ when calling this function. pool_mutex_ can be released
-  /// during the call.
-  ray::Status EnsureBufferExists(const ObjectID &object_id,
-                                 const rpc::Address &owner_address, uint64_t data_size,
-                                 uint64_t metadata_size, uint64_t chunk_index)
-      EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
+                                     std::shared_ptr<Buffer> buffer_ref);
 
   /// The state of a chunk associated with a create operation.
   enum class CreateChunkState : unsigned int { AVAILABLE = 0, REFERENCED, SEALED };
 
-  /// Holds the state of creating chunks. Members are protected by pool_mutex_.
+  /// Holds the state of a create buffer.
   struct CreateBufferState {
     CreateBufferState() {}
     CreateBufferState(std::vector<ChunkInfo> chunk_info)
@@ -178,29 +166,18 @@ class ObjectBufferPool {
   /// Returned when GetChunk or CreateChunk fails.
   const ChunkInfo errored_chunk_ = {0, nullptr, 0, nullptr};
 
-  /// Socket name of plasma store.
-  const std::string store_socket_name_;
-
+  /// Mutex on public methods for thread-safe operations on
+  /// get_buffer_state_, create_buffer_state_, and store_client_.
+  mutable std::mutex pool_mutex_;
   /// Determines the maximum chunk size to be transferred by a single thread.
   const uint64_t default_chunk_size_;
-
-  /// Mutex to protect create_buffer_ops_, create_buffer_state_ and following invariants:
-  /// - create_buffer_ops_ contains an object_id iff there is an inflight operation to
-  ///   create the buffer for the object.
-  /// - An object_id cannot appear in both create_buffer_ops_ and create_buffer_state_.
-  mutable absl::Mutex pool_mutex_;
-  /// Makes sure each object has at most one inflight create buffer operation.
-  /// Other operations can wait on the std::condition_variable for the operation
-  /// to complete. If successful, the corresponding entry in create_buffer_state_
-  /// will be created.
-  absl::flat_hash_map<ray::ObjectID, std::shared_ptr<absl::CondVar>> create_buffer_ops_
-      GUARDED_BY(pool_mutex_);
   /// The state of a buffer that's currently being used.
-  absl::flat_hash_map<ray::ObjectID, CreateBufferState> create_buffer_state_
-      GUARDED_BY(pool_mutex_);
+  std::unordered_map<ray::ObjectID, CreateBufferState> create_buffer_state_;
 
   /// Plasma client pool.
   plasma::PlasmaClient store_client_;
+  /// Socket name of plasma store.
+  std::string store_socket_name_;
 };
 
 }  // namespace ray
