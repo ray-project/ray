@@ -1,0 +1,36 @@
+# Given a SAC-generated offline file generated via:
+# rllib train -f tuned_examples/sac/pendulum-sac.yaml --no-ray-ui
+
+# Pendulum CQL can attain ~ -300 reward in 10k from that file.
+pendulum-cql:
+    env: Pendulum-v0
+    run: CQL
+    stop:
+        evaluation/episode_reward_mean: -700
+        timesteps_total: 100000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+
+        # Use one or more offline files or "input: sampler" for online learning.
+        input: ["tests/data/pendulum/enormous.zip"]
+        # Our input file above comes from an SAC run. Actions in there
+        # are already normalized (produced by SquashedGaussian).
+        actions_in_input_normalized: true
+        clip_actions: true
+
+        twin_q: true
+        train_batch_size: 2000
+        learning_starts: 0
+        bc_iters: 100
+
+        metrics_smoothing_episodes: 5
+
+        # Evaluate in an actual environment.
+        evaluation_interval: 1
+        evaluation_num_workers: 2
+        evaluation_num_episodes: 10
+        evaluation_parallel_to_training: true
+        evaluation_config:
+            input: sampler
+            explore: False

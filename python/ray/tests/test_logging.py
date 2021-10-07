@@ -1,10 +1,14 @@
 import os
-from collections import defaultdict
+import re
+
+from datetime import datetime
+from collections import defaultdict, Counter
 from pathlib import Path
 
 import ray
 from ray import ray_constants
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import (wait_for_condition, init_log_pubsub,
+                                     get_log_message)
 
 
 def set_logging_config(max_bytes, backup_count):
@@ -104,12 +108,12 @@ def test_log_rotation(shutdown_only):
             f"backup count {backup_count}, file count: {file_cnt}")
 
 
-def test_periodic_asio_stats(shutdown_only):
+def test_periodic_event_stats(shutdown_only):
     ray.init(
         num_cpus=1,
         _system_config={
-            "asio_stats_print_interval_ms": 100,
-            "asio_event_loop_stats_collection_enabled": True
+            "event_stats_print_interval_ms": 100,
+            "event_stats": True
         })
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
@@ -127,7 +131,7 @@ def test_periodic_asio_stats(shutdown_only):
     def is_event_loop_stats_found(path):
         found = False
         with open(path) as f:
-            event_loop_stats_identifier = "Event loop stats"
+            event_loop_stats_identifier = "Event stats"
             for line in f.readlines():
                 if event_loop_stats_identifier in line:
                     found = True
@@ -141,6 +145,82 @@ def test_periodic_asio_stats(shutdown_only):
             wait_for_condition(lambda: is_event_loop_stats_found(path))
         if "gcs_server.out" in str(path):
             wait_for_condition(lambda: is_event_loop_stats_found(path))
+
+
+def test_worker_id_names(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "event_stats_print_interval_ms": 100,
+            "event_stats": True
+        })
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        print("hello")
+
+    ray.get(f.remote())
+
+    paths = list(log_dir_path.iterdir())
+
+    ids = []
+    for path in paths:
+        if "python-core-worker" in str(path):
+            pattern = ".*-([a-f0-9]*).*"
+        elif "worker" in str(path):
+            pattern = ".*worker-([a-f0-9]*)-.*-.*"
+        else:
+            continue
+        worker_id = re.match(pattern, str(path)).group(1)
+        ids.append(worker_id)
+    counts = Counter(ids).values()
+    for count in counts:
+        # There should be a "python-core-.*.log", "worker-.*.out",
+        # and "worker-.*.err"
+        assert count == 3
+
+
+def test_log_monitor_backpressure(ray_start_cluster):
+    update_interval = 3
+    os.environ["LOG_NAME_UPDATE_INTERVAL_S"] = str(update_interval)
+    # Intentionally set low to trigger the backpressure condition.
+    os.environ["RAY_LOG_MONITOR_MANY_FILES_THRESHOLD"] = "1"
+    expected_str = "abc"
+
+    # Test log monitor still works with backpressure.
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    # Connect a driver to the Ray cluster.
+    ray.init(address=cluster.address)
+    p = init_log_pubsub()
+    # It always prints the monitor messages.
+    logs = get_log_message(p, 1)
+
+    @ray.remote
+    class Actor:
+        def print(self):
+            print(expected_str)
+
+    now = datetime.now()
+    a = Actor.remote()
+    a.print.remote()
+    logs = get_log_message(p, 1)
+    assert logs[0] == expected_str
+    # Since the log file update is delayed,
+    # it should take more than update_interval
+    # to publish a message for a new worker.
+    assert (datetime.now() - now).seconds >= update_interval
+
+    now = datetime.now()
+    a = Actor.remote()
+    a.print.remote()
+    logs = get_log_message(p, 1)
+    assert logs[0] == expected_str
+    assert (datetime.now() - now).seconds >= update_interval
 
 
 if __name__ == "__main__":

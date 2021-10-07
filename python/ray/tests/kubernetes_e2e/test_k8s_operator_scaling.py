@@ -19,24 +19,29 @@ import pytest
 import yaml
 
 import ray
-from test_k8s_operator_examples import\
-    get_operator_config_path, wait_for_pods, IMAGE, PULL_POLICY, NAMESPACE
+from test_k8s_operator_basic import client_connect_to_k8s
+from test_k8s_operator_basic import get_crd_path
+from test_k8s_operator_basic import get_component_config_path
+from test_k8s_operator_basic import retry_until_true
+from test_k8s_operator_basic import wait_for_pods
+from test_k8s_operator_basic import IMAGE
+from test_k8s_operator_basic import PULL_POLICY
+from test_k8s_operator_basic import NAMESPACE
 
 
-def submit_scaling_job(client_port, num_tasks):
+def submit_scaling_job(num_tasks):
     @ray.remote(num_cpus=1)
     def f(i):
         time.sleep(60)
         return i
 
     print(">>>Submitting tasks with Ray client.")
-    ray.util.connect(f"127.0.0.1:{client_port}")
     futures = [f.remote(i) for i in range(num_tasks)]
 
     print(">>>Verifying scale-up.")
-    # Operator pod plus number of tasks
-    # (each Ray pod has 1 CPU).
-    wait_for_pods(num_tasks + 1)
+    # Expect as many pods as tasks.
+    # (each Ray pod has 1 CPU)
+    wait_for_pods(num_tasks)
 
     print(">>>Waiting for task output.")
     task_output = ray.get(futures, timeout=360)
@@ -45,14 +50,26 @@ def submit_scaling_job(client_port, num_tasks):
         "complete with expected output."
 
 
+@retry_until_true
+def wait_for_operator():
+    cmd = "kubectl get pods"
+    out = subprocess.check_output(cmd, shell=True).decode()
+    for line in out.splitlines():
+        if "ray-operator" in line and "Running" in line:
+            return True
+    return False
+
+
 class KubernetesScaleTest(unittest.TestCase):
     def test_scaling(self):
         with tempfile.NamedTemporaryFile("w+") as example_cluster_file, \
+                tempfile.NamedTemporaryFile("w+") as example_cluster_file2, \
                 tempfile.NamedTemporaryFile("w+") as operator_file:
 
-            example_cluster_config_path = get_operator_config_path(
+            example_cluster_config_path = get_component_config_path(
                 "example_cluster.yaml")
-            operator_config_path = get_operator_config_path("operator.yaml")
+            operator_config_path = get_component_config_path(
+                "operator_cluster_scoped.yaml")
 
             operator_config = list(
                 yaml.safe_load_all(open(operator_config_path).read()))
@@ -61,7 +78,7 @@ class KubernetesScaleTest(unittest.TestCase):
 
             # Set image and pull policy
             podTypes = example_cluster_config["spec"]["podTypes"]
-            pod_specs = [operator_config[-1]["spec"]] + [
+            pod_specs = [operator_config[-1]["spec"]["template"]["spec"]] + [
                 podType["podConfig"]["spec"] for podType in podTypes
             ]
             for pod_spec in pod_specs:
@@ -78,23 +95,56 @@ class KubernetesScaleTest(unittest.TestCase):
             # Key for the first part of this test:
             worker_type["minWorkers"] = 30
 
+            # Config for a small cluster with the same name to be launched
+            # in another namespace.
+            example_cluster_config2 = copy.deepcopy(example_cluster_config)
+            example_cluster_config2["spec"]["podTypes"][1]["minWorkers"] = 1
+
+            # Test overriding default client port.
+            example_cluster_config["spec"]["headServicePorts"] = [{
+                "name": "client",
+                "port": 10002,
+                "targetPort": 10001
+            }]
+
             yaml.dump(example_cluster_config, example_cluster_file)
+            yaml.dump(example_cluster_config2, example_cluster_file2)
             yaml.dump_all(operator_config, operator_file)
 
             files = [example_cluster_file, operator_file]
             for file in files:
                 file.flush()
 
-            # Start operator and a 30-pod-cluster.
-            print(">>>Starting operator and a cluster.")
-            for file in files:
-                cmd = f"kubectl -n {NAMESPACE} apply -f {file.name}"
-                subprocess.check_call(cmd, shell=True)
+            # Must create CRD before operator.
+            print("\n>>>Creating RayCluster CRD.")
+            cmd = f"kubectl apply -f {get_crd_path()}"
+            subprocess.check_call(cmd, shell=True)
+            # Takes a bit of time for CRD to register.
+            time.sleep(10)
+
+            print(">>>Creating operator.")
+            cmd = f"kubectl apply -f {operator_file.name}"
+            subprocess.check_call(cmd, shell=True)
+
+            print(">>>Waiting for Ray operator to enter running state.")
+            wait_for_operator()
+
+            # Start a 30-pod cluster.
+            print(">>>Starting a cluster.")
+            cd = f"kubectl -n {NAMESPACE} apply -f {example_cluster_file.name}"
+            subprocess.check_call(cd, shell=True)
+
+            print(">>>Starting a cluster with same name in another namespace")
+            # Assumes a namespace called {NAMESPACE}2 has been created.
+            cd = f"kubectl -n {NAMESPACE}2 apply -f "\
+                f"{example_cluster_file2.name}"
+            subprocess.check_call(cd, shell=True)
 
             # Check that autoscaling respects minWorkers by waiting for
-            # 32 pods in the namespace.
+            # 32 pods in one namespace and 2 pods in the other.
             print(">>>Waiting for pods to join cluster.")
-            wait_for_pods(32)
+            wait_for_pods(31)
+            wait_for_pods(2, namespace=f"{NAMESPACE}2")
 
             # Check scale-down.
             print(">>>Decreasing min workers to 0.")
@@ -108,36 +158,16 @@ class KubernetesScaleTest(unittest.TestCase):
             print(">>>Sleeping for a minute while workers time-out.")
             time.sleep(60)
             print(">>>Verifying scale-down.")
-            wait_for_pods(2)
+            wait_for_pods(1)
 
-            # Test scale up and scale down after task submission.
-            command = f"kubectl -n {NAMESPACE}"\
-                " port-forward service/example-cluster-ray-head 10001:10001"
-            command = command.split()
-            print(">>>Port-forwarding head service.")
-            self.proc = subprocess.Popen(command)
-            try:
-                # Wait a bit for the port-forwarding connection to be
-                # established.
-                time.sleep(10)
-                # Check that job submission works
-                submit_scaling_job(client_port="10001", num_tasks=15)
-                # Clean up
-                self.proc.kill()
-            except Exception as e:
-                # Clean up on failure
-                self.proc.kill()
-                raise (e)
+            with client_connect_to_k8s(port="10002"):
+                # Test scale up and scale down after task submission.
+                submit_scaling_job(num_tasks=15)
 
             print(">>>Sleeping for a minute while workers time-out.")
             time.sleep(60)
             print(">>>Verifying scale-down.")
-            wait_for_pods(2)
-
-    def __del__(self):
-        # To be safer, kill again:
-        # (does not raise an error if the process has already been killed)
-        self.proc.kill()
+            wait_for_pods(1)
 
 
 if __name__ == "__main__":

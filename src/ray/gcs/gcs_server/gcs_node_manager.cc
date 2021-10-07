@@ -17,6 +17,8 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -82,11 +84,15 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
 void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
                                           rpc::GetAllNodeInfoReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  // Here the unsafe allocate is safe here, because entry.second's life cycle is longer
+  // then reply.
+  // The request will be sent when call send_reply_callback and after that, reply will
+  // not be used any more. But entry is still valid.
   for (const auto &entry : alive_nodes_) {
-    reply->add_node_info_list()->CopyFrom(*entry.second);
+    reply->mutable_node_info_list()->UnsafeArenaAddAllocated(entry.second.get());
   }
   for (const auto &entry : dead_nodes_) {
-    reply->add_node_info_list()->CopyFrom(*entry.second);
+    reply->mutable_node_info_list()->UnsafeArenaAddAllocated(entry.second.get());
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
@@ -155,6 +161,10 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
                        "raylet crashes unexpectedly or has lagging heartbeats.";
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+      RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
+              .WithField("node_id", node_id.Hex())
+              .WithField("ip", removed_node->node_manager_address())
+          << error_message.str();
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, node_id.Hex(),
                                          error_data_ptr->SerializeAsString(), nullptr));
     }

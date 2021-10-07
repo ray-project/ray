@@ -11,13 +11,13 @@ import copy
 import numpy as np
 import logging
 import collections
-from numbers import Number
+from numbers import Real
 from typing import Dict
 from typing import List
 from typing import Optional
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.gcs_utils import PlacementGroupTableData
+from ray._private.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import PlacementStrategy
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler.tags import (
@@ -37,7 +37,7 @@ NodeType = str
 NodeTypeConfigDict = str
 
 # e.g., {"GPU": 1}.
-ResourceDict = Dict[str, Number]
+ResourceDict = Dict[str, Real]
 
 # e.g., "node-1".
 NodeID = str
@@ -112,6 +112,14 @@ class ResourceDemandScheduler:
         return (NODE_TYPE_LEGACY_HEAD in node_types
                 and NODE_TYPE_LEGACY_WORKER in node_types)
 
+    def is_feasible(self, bundle: ResourceDict) -> bool:
+        for node_type, config in self.node_types.items():
+            max_of_type = config.get("max_workers", 0)
+            node_resources = config["resources"]
+            if max_of_type > 0 and _fits(node_resources, bundle):
+                return True
+        return False
+
     def get_nodes_to_launch(
             self,
             nodes: List[NodeID],
@@ -121,7 +129,7 @@ class ResourceDemandScheduler:
             pending_placement_groups: List[PlacementGroupTableData],
             max_resources_by_ip: Dict[NodeIP, ResourceDict],
             ensure_min_cluster_size: List[ResourceDict] = None,
-    ) -> Dict[NodeType, int]:
+    ) -> (Dict[NodeType, int], List[ResourceDict]):
         """Given resource demands, return node types to add to the cluster.
 
         This method:
@@ -144,6 +152,10 @@ class ResourceDemandScheduler:
             ensure_min_cluster_size: Try to ensure the cluster can fit at least
                 this set of resources. This differs from resources_demands in
                 that we don't take into account existing usage.
+
+        Returns:
+            Dict of count to add for each node type, and residual of resources
+            that still cannot be fulfilled.
         """
         if self.is_legacy_yaml():
             # When using legacy yaml files we need to infer the head & worker
@@ -190,7 +202,7 @@ class ResourceDemandScheduler:
                 request_resources_demands = []
             return self._legacy_worker_node_to_launch(
                 nodes, launching_nodes, node_resources,
-                resource_demands + request_resources_demands)
+                resource_demands + request_resources_demands), []
 
         spread_pg_nodes_to_add, node_resources, node_type_counts = \
             self.reserve_and_allocate_spread(
@@ -202,7 +214,7 @@ class ResourceDemandScheduler:
             node_resources, placement_group_demand_vector)
         # Add 1 to account for the head node.
         max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
-        pg_demands_nodes_max_launch_limit = get_nodes_for(
+        pg_demands_nodes_max_launch_limit, _ = get_nodes_for(
             self.node_types, node_type_counts, self.head_node_type, max_to_add,
             unfulfilled_placement_groups_demands)
         placement_groups_nodes_max_limit = {
@@ -217,9 +229,10 @@ class ResourceDemandScheduler:
                                                resource_demands)
         logger.debug("Resource demands: {}".format(resource_demands))
         logger.debug("Unfulfilled demands: {}".format(unfulfilled))
-        nodes_to_add_based_on_demand = get_nodes_for(
+        nodes_to_add_based_on_demand, final_unfulfilled = get_nodes_for(
             self.node_types, node_type_counts, self.head_node_type, max_to_add,
             unfulfilled)
+        logger.debug("Final unfulfilled: {}".format(final_unfulfilled))
         # Merge nodes to add based on demand and nodes to add based on
         # min_workers constraint. We add them because nodes to add based on
         # demand was calculated after the min_workers constraint was respected.
@@ -239,7 +252,7 @@ class ResourceDemandScheduler:
             placement_groups_nodes_max_limit)
 
         logger.debug("Node requests: {}".format(total_nodes_to_add))
-        return total_nodes_to_add
+        return total_nodes_to_add, final_unfulfilled
 
     def _legacy_worker_node_to_launch(
             self, nodes: List[NodeID], launching_nodes: Dict[NodeType, int],
@@ -459,13 +472,16 @@ class ResourceDemandScheduler:
 
         def add_node(node_type, available_resources=None):
             if node_type not in self.node_types:
-                logger.warn(
+                # We should not get here, but if for some reason we do, log an
+                # error and skip the errant node_type.
+                logger.error(
                     f"Missing entry for node_type {node_type} in "
                     f"cluster config: {self.node_types} under entry "
-                    f"available_node_types. This node's resources will be "
-                    f"ignored. If you are using an unmanaged node, manually "
-                    f"set the user_node_type tag to \"{NODE_KIND_UNMANAGED}\""
-                    f"in your cloud provider's management console.")
+                    "available_node_types. This node's resources will be "
+                    "ignored. If you are using an unmanaged node, manually "
+                    f"set the {TAG_RAY_NODE_KIND} tag to "
+                    f"\"{NODE_KIND_UNMANAGED}\" in your cloud provider's "
+                    "management console.")
                 return None
             # Careful not to include the same dict object multiple times.
             available = copy.deepcopy(self.node_types[node_type]["resources"])
@@ -521,7 +537,7 @@ class ResourceDemandScheduler:
                 node_resources, bundles, strict_spread=True)
             max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
             # Allocate new nodes for the remaining bundles that don't fit.
-            to_launch = get_nodes_for(
+            to_launch, _ = get_nodes_for(
                 self.node_types,
                 node_type_counts,
                 self.head_node_type,
@@ -639,7 +655,7 @@ def _add_min_workers_nodes(
         resource_requests_unfulfilled, _ = get_bin_pack_residual(
             max_node_resources, ensure_min_cluster_size)
         # Get the nodes to meet the unfulfilled.
-        nodes_to_add_request_resources = get_nodes_for(
+        nodes_to_add_request_resources, _ = get_nodes_for(
             node_types, node_type_counts, head_node_type, max_to_add,
             resource_requests_unfulfilled)
         # Update the resources, counts and total nodes to add.
@@ -664,7 +680,8 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
                   head_node_type: NodeType,
                   max_to_add: int,
                   resources: List[ResourceDict],
-                  strict_spread: bool = False) -> Dict[NodeType, int]:
+                  strict_spread: bool = False
+                  ) -> (Dict[NodeType, int], List[ResourceDict]):
     """Determine nodes to add given resource demands and constraints.
 
     Args:
@@ -677,8 +694,8 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
             different node.
 
     Returns:
-        Dict of count to add for each node type.
-
+        Dict of count to add for each node type, and residual of resources
+        that still cannot be fulfilled.
     """
     nodes_to_add = collections.defaultdict(int)
 
@@ -731,13 +748,13 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
             assert len(residual) < len(resources), (resources, residual)
             resources = residual
 
-    return nodes_to_add
+    return nodes_to_add, resources
 
 
 def _utilization_score(node_resources: ResourceDict,
                        resources: List[ResourceDict]) -> Optional[float]:
     remaining = copy.deepcopy(node_resources)
-    is_gpu_node = "GPU" in node_resources
+    is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
     any_gpu_task = any("GPU" in r for r in resources)
 
     # Avoid launching GPU nodes if there aren't any GPU tasks at all. Note that

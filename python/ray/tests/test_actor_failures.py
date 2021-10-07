@@ -8,9 +8,8 @@ import sys
 import time
 
 import ray
-import ray.test_utils
 import ray.cluster_utils
-from ray.test_utils import (
+from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
     generate_system_config_map,
@@ -49,7 +48,7 @@ def test_actor_spilled(ray_start_regular):
     # Submit enough methods on the actor so that they exceed the size of the
     # object store.
     objects = []
-    num_objects = 20
+    num_objects = 40
     for _ in range(num_objects):
         obj = a.create_object.remote(object_store_memory // num_objects)
         objects.append(obj)

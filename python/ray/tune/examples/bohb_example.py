@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import argparse
 import json
 import time
 import os
@@ -45,7 +46,21 @@ class MyTrainableClass(Trainable):
 
 if __name__ == "__main__":
     import ConfigSpace as CS  # noqa: F401
-    ray.init(num_cpus=8)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+
+    if args.server_address:
+        ray.init(f"ray://{args.server_address}")
+    else:
+        ray.init(num_cpus=8)
 
     config = {
         "iterations": 100,
@@ -72,7 +87,9 @@ if __name__ == "__main__":
 
     bohb_search = TuneBOHB(
         # space=config_space,  # If you want to set the space manually
-        max_concurrent=4)
+    )
+    bohb_search = tune.suggest.ConcurrencyLimiter(
+        bohb_search, max_concurrent=4)
 
     analysis = tune.run(
         MyTrainableClass,

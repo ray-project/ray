@@ -191,17 +191,28 @@ class TransformerOperator(TrainingOperator):
             inputs["token_type_ids"] = (batch[2] if args.model_type in [
                 "bert", "xlnet", "albert"
             ] else None)
-        outputs = model(**inputs)
+        if self.use_fp16_native:
+            with self._amp.autocast():
+                outputs = model(**inputs)
+                # model outputs are always tuple in transformers (see doc)
+                loss = outputs[0]
 
-        # model outputs are always tuple in transformers (see doc)
-        loss = outputs[0]
+                if args.gradient_accumulation_steps > 1:
+                    loss = loss / args.gradient_accumulation_steps
+        else:
+            outputs = model(**inputs)
 
-        if args.gradient_accumulation_steps > 1:
-            loss = loss / args.gradient_accumulation_steps
+            # model outputs are always tuple in transformers (see doc)
+            loss = outputs[0]
 
-        if args.fp16:
-            with amp.scale_loss(loss, optimizer) as scaled_loss:
+            if args.gradient_accumulation_steps > 1:
+                loss = loss / args.gradient_accumulation_steps
+
+        if self.use_fp16_apex:
+            with self._amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
+        elif self.use_fp16_native:
+            self._amp_scaler.scale(loss).backward()
         else:
             loss.backward()
 
@@ -212,14 +223,20 @@ class TransformerOperator(TrainingOperator):
         ending = (self.train_data_len <= args.gradient_accumulation_steps
                   and (step + 1) == self.train_data_len)
         if (step + 1) % args.gradient_accumulation_steps == 0 or ending:
-            if args.fp16:
+            if self.use_fp16_apex:
                 torch.nn.utils.clip_grad_norm_(
                     amp.master_params(optimizer), args.max_grad_norm)
             else:
+                if self.use_fp16_native:
+                    self._amp_scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(),
                                                args.max_grad_norm)
 
-            self.optimizer.step()
+            if self.use_fp16_native:
+                self._amp_scaler.step(self.optimizer)
+                self._amp_scaler.update()
+            else:
+                self.optimizer.step()
             self._warmup_scheduler.step()  # Update learning rate schedule
             model.zero_grad()
             self._global_step += 1

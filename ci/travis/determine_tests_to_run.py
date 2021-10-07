@@ -55,7 +55,7 @@ def get_commit_range():
         base = event["pull_request"]["base"]["sha"]
         commit_range = "{}...{}".format(base, event.get("after", ""))
     elif os.environ.get("BUILDKITE"):
-        commit_range = "{}...{}".format(
+        commit_range = "origin/{}...{}".format(
             os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"],
             os.environ["BUILDKITE_COMMIT"],
         )
@@ -122,8 +122,14 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/dashboard"):
                 RAY_CI_DASHBOARD_AFFECTED = 1
+                # https://github.com/ray-project/ray/pull/15981
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("dashboard"):
                 RAY_CI_DASHBOARD_AFFECTED = 1
+                # https://github.com/ray-project/ray/pull/15981
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
@@ -135,6 +141,9 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
+                # Python changes might impact cross language stack in Java.
+                # Java also depends on Python CLI to manage processes.
+                RAY_CI_JAVA_AFFECTED = 1
                 if changed_file.startswith("python/setup.py") or re.match(
                         ".*requirements.*\.txt", changed_file):
                     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 1
@@ -154,6 +163,7 @@ if __name__ == "__main__":
                 pass
             elif changed_file.endswith("build-docker-images.py"):
                 RAY_CI_DOCKER_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
             elif changed_file.startswith("src/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1

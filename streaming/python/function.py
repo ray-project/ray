@@ -347,4 +347,4 @@ def _get_simple_function_class(function_interface):
                     "Simple"):
                 return obj
     raise Exception(
-        "SimpleFunction for %s doesn't exist".format(function_interface))
+        "SimpleFunction for {} doesn't exist".format(function_interface))

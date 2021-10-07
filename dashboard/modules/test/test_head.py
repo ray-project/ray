@@ -3,10 +3,10 @@ import logging
 
 import aiohttp.web
 
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.modules.test.test_utils as test_utils
-import ray.new_dashboard.modules.test.test_consts as test_consts
-from ray.new_dashboard.datacenter import DataSource
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.modules.test.test_utils as test_utils
+import ray.dashboard.modules.test.test_consts as test_consts
+from ray.dashboard.datacenter import DataSource
 from ray.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
@@ -92,6 +92,12 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         value = req.query.get("value")
         return dashboard_utils.rest_response(
             success=True, message="OK", value=value, timestamp=time.time())
+
+    @routes.get("/test/file")
+    async def test_file(self, req) -> aiohttp.web.FileResponse:
+        file_path = req.query.get("path")
+        logger.info("test file: %s", file_path)
+        return aiohttp.web.FileResponse(file_path)
 
     async def run(self, server):
         pass

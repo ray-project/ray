@@ -15,11 +15,7 @@ from transformers import glue_tasks_num_labels, AutoConfig, \
     GlueDataTrainingArguments, TrainingArguments
 
 
-def tune_transformer(num_samples=8,
-                     gpus_per_trial=0,
-                     smoke_test=False,
-                     ray_address=None):
-    ray.init(ray_address, log_to_driver=True)
+def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
     data_dir_name = "./data" if not smoke_test else "./test_data"
     data_dir = os.path.abspath(os.path.join(os.getcwd(), data_dir_name))
     if not os.path.exists(data_dir):
@@ -72,6 +68,7 @@ def tune_transformer(num_samples=8,
         do_eval=True,
         no_cuda=gpus_per_trial <= 0,
         evaluation_strategy="epoch",
+        save_strategy="epoch",
         load_best_model_at_end=True,
         num_train_epochs=2,  # config
         max_steps=-1,
@@ -80,9 +77,8 @@ def tune_transformer(num_samples=8,
         warmup_steps=0,
         weight_decay=0.1,  # config
         logging_dir="./logs",
-    )
-
-    training_args._n_gpu = gpus_per_trial
+        skip_memory_metrics=True,
+        report_to="none")
 
     trainer = Trainer(
         model_init=get_model,
@@ -151,15 +147,25 @@ if __name__ == "__main__":
         help="Address to use for Ray. "
         "Use \"auto\" for cluster. "
         "Defaults to None for local.")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_transformer(
-            num_samples=1,
-            gpus_per_trial=0,
-            smoke_test=True,
-            ray_address=args.ray_address)
+        ray.init()
+    elif args.server_address:
+        ray.init(f"ray://{args.server_address}")
+    else:
+        ray.init(args.ray_address)
+
+    if args.smoke_test:
+        tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True)
     else:
         # You can change the number of GPUs here:
-        tune_transformer(
-            num_samples=8, gpus_per_trial=1, ray_address=args.ray_address)
+        tune_transformer(num_samples=8, gpus_per_trial=1)

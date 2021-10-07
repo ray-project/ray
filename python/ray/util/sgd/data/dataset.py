@@ -1,6 +1,8 @@
+from ray.util.annotations import Deprecated
 from ray.util.iter import ParallelIterator, from_iterators
 
 
+@Deprecated
 class Dataset():
     """A simple Dataset abstraction for RaySGD.
 

@@ -1,4 +1,5 @@
 import ray
+import ray.cloudpickle as pickle
 
 
 def register_serializer(cls, *, serializer, deserializer):
@@ -27,3 +28,20 @@ def deregister_serializer(cls):
     """
     context = ray.worker.global_worker.get_serialization_context()
     context._unregister_cloudpickle_reducer(cls)
+
+
+class StandaloneSerializationContext:
+    # NOTE(simon): Used for registering custom serializers. We cannot directly
+    # use the SerializationContext because it requires Ray workers. Please
+    # make sure to keep the API consistent.
+
+    def _unregister_cloudpickle_reducer(self, cls):
+        pickle.CloudPickler.dispatch.pop(cls, None)
+
+    def _register_cloudpickle_serializer(self, cls, custom_serializer,
+                                         custom_deserializer):
+        def _CloudPicklerReducer(obj):
+            return custom_deserializer, (custom_serializer(obj), )
+
+        # construct a reducer
+        pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer

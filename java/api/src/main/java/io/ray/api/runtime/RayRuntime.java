@@ -5,13 +5,13 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
+import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
-import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
@@ -34,6 +34,19 @@ public interface RayRuntime {
    * @return A ObjectRef instance that represents the in-store object.
    */
   <T> ObjectRef<T> put(T obj);
+
+  /**
+   * Store an object in the object store, and assign its ownership to owner. This function is
+   * experimental.
+   *
+   * @param obj The Java object to be stored.
+   * @param owner The actor that should own this object. This allows creating objects with lifetimes
+   *     decoupled from that of the creating process. Note that the owner actor must be passed a
+   *     reference to the object prior to the object creator exiting, otherwise the reference will
+   *     still be lost.
+   * @return A ObjectRef instance that represents the in-store object.
+   */
+  <T> ObjectRef<T> put(T obj, BaseActorHandle owner);
 
   /**
    * Get an object from the object store.
@@ -74,15 +87,6 @@ public interface RayRuntime {
    * @param localOnly Whether only free objects for local object store or not.
    */
   void free(List<ObjectRef<?>> objectRefs, boolean localOnly);
-
-  /**
-   * Set the resource for the specific node.
-   *
-   * @param resourceName The name of resource.
-   * @param capacity The capacity of the resource.
-   * @param nodeId The node that we want to set its resource.
-   */
-  void setResource(String resourceName, double capacity, UniqueId nodeId);
 
   <T extends BaseActorHandle> T getActorHandle(ActorId actorId);
 
@@ -134,7 +138,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args);
+  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote Python function on an actor.
@@ -236,8 +240,11 @@ public interface RayRuntime {
    * Wait for the placement group to be ready within the specified time.
    *
    * @param id Id of placement group.
-   * @param timeoutMs Timeout in milliseconds.
+   * @param timeoutSeconds Timeout in seconds.
    * @return True if the placement group is created. False otherwise.
    */
-  boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs);
+  boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutSeconds);
+
+  /** Create concurrency group instance at runtime. */
+  ConcurrencyGroup createConcurrencyGroup(String name, int maxConcurrency, List<RayFunc> funcs);
 }

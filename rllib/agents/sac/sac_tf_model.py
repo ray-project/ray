@@ -1,6 +1,7 @@
 import gym
 from gym.spaces import Box, Discrete
 import numpy as np
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -170,7 +171,7 @@ class SACTFModel(TFModelV2):
                 self.concat_obs_and_actions = True
             else:
                 if isinstance(orig_space, gym.spaces.Tuple):
-                    spaces = orig_space.spaces
+                    spaces = list(orig_space.spaces)
                 elif isinstance(orig_space, gym.spaces.Dict):
                     spaces = list(orig_space.spaces.values())
                 else:
@@ -267,13 +268,18 @@ class SACTFModel(TFModelV2):
         Returns:
             TensorType: Distribution inputs for sampling actions.
         """
-        # Model outs may come as original Tuple observations, concat them
+        # Model outs may come as original Tuple/Dict observations, concat them
         # here if this is the case.
         if isinstance(self.action_model.obs_space, Box):
             if isinstance(model_out, (list, tuple)):
                 model_out = tf.concat(model_out, axis=-1)
             elif isinstance(model_out, dict):
-                model_out = tf.concat(list(model_out.values()), axis=-1)
+                model_out = tf.concat(
+                    [
+                        tf.expand_dims(val, 1) if len(val.shape) == 1 else val
+                        for val in tree.flatten(model_out.values())
+                    ],
+                    axis=-1)
         out, _ = self.action_model({"obs": model_out}, [], None)
         return out
 

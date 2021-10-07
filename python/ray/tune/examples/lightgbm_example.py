@@ -6,12 +6,7 @@ from sklearn.model_selection import train_test_split
 
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
-
-
-def LightGBMCallback(env):
-    """Assumes that `valid_0` is the target validation score."""
-    _, metric, score, _ = env.evaluation_result_list[0]
-    tune.report(**{metric: score})
+from ray.tune.integration.lightgbm import TuneReportCheckpointCallback
 
 
 def train_breast_cancer(config):
@@ -24,8 +19,14 @@ def train_breast_cancer(config):
         config,
         train_set,
         valid_sets=[test_set],
+        valid_names=["eval"],
         verbose_eval=False,
-        callbacks=[LightGBMCallback])
+        callbacks=[
+            TuneReportCheckpointCallback({
+                "binary_error": "eval-binary_error",
+                "binary_logloss": "eval-binary_logloss"
+            })
+        ])
     preds = gbm.predict(test_x)
     pred_labels = np.rint(preds)
     tune.report(
@@ -34,9 +35,25 @@ def train_breast_cancer(config):
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+
+    if args.server_address:
+        import ray
+
+        ray.init(f"ray://{args.server_address}")
+
     config = {
         "objective": "binary",
-        "metric": "binary_error",
+        "metric": ["binary_error", "binary_logloss"],
         "verbose": -1,
         "boosting_type": tune.grid_search(["gbdt", "dart"]),
         "num_leaves": tune.randint(10, 1000),

@@ -1,5 +1,6 @@
 import glob
 import os
+import pickle
 import shutil
 import sys
 import tempfile
@@ -23,6 +24,7 @@ class TestSyncFunctionality(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         ray.init(num_cpus=2)
 
@@ -169,10 +171,16 @@ class TestSyncFunctionality(unittest.TestCase):
                 time.sleep(1)
                 tune.report(score=i)
 
-        mock = unittest.mock.Mock()
-
         def counter(local, remote):
-            mock()
+            count_file = os.path.join(tmpdir, "count.txt")
+            if not os.path.exists(count_file):
+                count = 0
+            else:
+                with open(count_file, "rb") as fp:
+                    count = pickle.load(fp)
+            count += 1
+            with open(count_file, "wb") as fp:
+                pickle.dump(count, fp)
 
         sync_config = tune.SyncConfig(
             upload_dir="test", sync_to_cloud=counter, cloud_sync_period=1)
@@ -191,7 +199,11 @@ class TestSyncFunctionality(unittest.TestCase):
             sync_config=sync_config,
         ).trials
 
-        self.assertEqual(mock.call_count, 12)
+        count_file = os.path.join(tmpdir, "count.txt")
+        with open(count_file, "rb") as fp:
+            count = pickle.load(fp)
+
+        self.assertEqual(count, 12)
         shutil.rmtree(tmpdir)
 
     def testClusterSyncFunction(self):

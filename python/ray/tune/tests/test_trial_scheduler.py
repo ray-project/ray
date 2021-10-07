@@ -22,6 +22,7 @@ from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
 
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
+from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
@@ -216,6 +217,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         self._test_metrics(result2, "mean_loss", "min")
 
 
+# Only barebone impl for start/stop_trial. No internal state maintained.
 class _MockTrialExecutor(TrialExecutor):
     def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
@@ -223,7 +225,11 @@ class _MockTrialExecutor(TrialExecutor):
         trial.status = Trial.RUNNING
         return True
 
-    def stop_trial(self, trial, error=False, error_msg=None):
+    def stop_trial(self,
+                   trial,
+                   error=False,
+                   error_msg=None,
+                   destroy_pg_if_cannot_replace=True):
         trial.status = Trial.ERROR if error else Trial.TERMINATED
 
     def restore(self, trial, checkpoint=None, block=False):
@@ -234,6 +240,30 @@ class _MockTrialExecutor(TrialExecutor):
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
+
+    def debug_string(self):
+        return "This is a mock TrialExecutor."
+
+    def export_trial_if_needed(self):
+        return {}
+
+    def fetch_result(self):
+        return []
+
+    def get_next_available_trial(self):
+        return None
+
+    def get_next_failed_trial(self):
+        return None
+
+    def get_running_trials(self):
+        return []
+
+    def has_resources(self):
+        return False
+
+    def resource_string(self):
+        return "This is a mock resource_string."
 
 
 class _MockTrialRunner():
@@ -787,7 +817,7 @@ class BOHBSuite(unittest.TestCase):
         config = {"test_variable": tune.uniform(0, 20)}
         sched = HyperBandForBOHB(
             max_t=10, reduction_factor=3, stop_last_trials=False)
-        alg = TuneBOHB(max_concurrent=4)
+        alg = ConcurrencyLimiter(TuneBOHB(), 4)
         analysis = tune.run(
             train,
             scheduler=sched,
@@ -2048,6 +2078,51 @@ class AsyncHyperBandSuite(unittest.TestCase):
             TrialScheduler.STOP)
         self.assertEqual(
             scheduler.on_trial_result(None, t3, result(2, 260)),
+            TrialScheduler.STOP)
+
+    def testAsyncHBSaveRestore(self):
+        tmpfile = tempfile.mktemp()
+
+        scheduler = AsyncHyperBandScheduler(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=1,
+            max_t=10,
+            reduction_factor=2,
+            brackets=1)
+
+        # Add some trials
+        trials = [Trial("PPO") for i in range(10)]
+        for t in trials:
+            scheduler.on_trial_add(None, t)
+
+        # Report some results
+        for t in trials[0:5]:
+            self.assertNotEqual(
+                scheduler.on_trial_result(None, t, result(1, 10)),
+                TrialScheduler.STOP)
+
+        # Report worse result: Trial should stop
+        self.assertEqual(
+            scheduler.on_trial_result(None, trials[5], result(1, 5)),
+            TrialScheduler.STOP)
+
+        scheduler.save(tmpfile)
+
+        scheduler2 = AsyncHyperBandScheduler()
+        scheduler2.restore(tmpfile)
+
+        # Report a new bad result: Trial should stop
+        self.assertEqual(
+            scheduler2.on_trial_result(None, trials[6], result(1, 4)),
+            TrialScheduler.STOP)
+
+        # Create a new trial and report bad result: Trial should stop
+        # Report a new bad result: Trial should stop
+        new_trial = Trial("PPO")
+        scheduler2.on_trial_add(None, new_trial)
+        self.assertEqual(
+            scheduler2.on_trial_result(None, new_trial, result(1, 2)),
             TrialScheduler.STOP)
 
     def testMedianStoppingNanInf(self):

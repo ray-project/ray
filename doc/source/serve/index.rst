@@ -1,12 +1,13 @@
-.. warning::
-  Ray Serve is changing fast!  You're probably running the latest pip release and not the nightly build, so please ensure you're viewing the correct version of this documentation.
-  `Here's the documentation for the latest pip release of Ray Serve <https://docs.ray.io/en/latest/serve/index.html>`_.
-
 .. _rayserve:
 
-============================================
-Ray Serve: Scalable and Programmable Serving
-============================================
+========================================
+Serve: Scalable and Programmable Serving
+========================================
+
+.. warning::
+  You're probably running the latest pip release and not the nightly build, so please ensure you're viewing the correct version of this documentation.
+  `Here's the documentation for the latest pip release of Ray Serve <https://docs.ray.io/en/latest/serve/index.html>`_.
+
 
 .. image:: logo.svg
     :align: center
@@ -20,8 +21,7 @@ Ray Serve is an easy-to-use scalable model serving library built on Ray.  Ray Se
 - **Framework-agnostic**: Use a single toolkit to serve everything from deep learning models
   built with frameworks like :ref:`PyTorch <serve-pytorch-tutorial>`,
   :ref:`Tensorflow, and Keras <serve-tensorflow-tutorial>`, to :ref:`Scikit-Learn <serve-sklearn-tutorial>` models, to arbitrary Python business logic.
-- **Python-first**: Configure your model serving with pure Python code---no more YAML or
-  JSON configs.
+- **Python-first**: Configure your model serving declaratively in pure Python, without needing YAML or JSON configs.
 
 Since Ray Serve is built on Ray, it allows you to easily scale to many machines, both in your datacenter and in the cloud.
 
@@ -35,10 +35,7 @@ Ray Serve can be used in two primary ways to deploy your models at scale:
 
 .. tip::
   Chat with Ray Serve users and developers on our `forum <https://discuss.ray.io/>`_!
-
-.. note::
-  Starting with Ray version 1.2.0, Ray Serve backends take in a Starlette Request object instead of a Flask Request object.
-  See the `migration guide <https://docs.google.com/document/d/1CG4y5WTTc4G_MRQGyjnb_eZ7GK3G9dUX6TNLKLnKRAc/edit?usp=sharing>`_ for details.
+ 
 
 Ray Serve Quickstart
 ====================
@@ -59,7 +56,7 @@ Now you can serve a function...
 .. literalinclude:: ../../../python/ray/serve/examples/doc/quickstart_class.py
 
 
-See :doc:`core-apis` for more exhaustive coverage about Ray Serve and its core concepts: backends and endpoints.
+See :doc:`core-apis` for more exhaustive coverage about Ray Serve and its core concept of a ``Deployment``.
 For a high-level view of the architecture underlying Ray Serve, see :doc:`architecture`.
 
 Why Ray Serve?
@@ -75,10 +72,10 @@ lack of flexibility.
 Ray Serve solves these problems by giving you a simple web server (and the ability to :ref:`use your own <serve-web-server-integration-tutorial>`) while still handling the complex routing, scaling, and testing logic
 necessary for production deployments.
 
-Beyond scaling up your backends with multiple replicas, Ray Serve also enables:
+Beyond scaling up your deployments with multiple replicas, Ray Serve also enables:
 
-- :ref:`serve-split-traffic` with zero downtime, by decoupling routing logic from response-handling logic.
-- :ref:`serve-batching`---built in to help you meet your performance objectives.
+- :ref:`serve-model-composition`---ability to flexibly compose multiple models and independently scale and update each.
+- :ref:`serve-batching`---built in request batching to help you meet your performance objectives.
 - :ref:`serve-cpus-gpus`---specify fractional resource requirements to fully saturate each of your GPUs with several models.
 
 For more on the motivation behind Ray Serve, check out these `meetup slides <https://tinyurl.com/serve-meetup>`_ and this `blog post <https://medium.com/distributed-computing-with-ray/machine-learning-serving-is-broken-f59aff2d607f>`_.
@@ -86,12 +83,11 @@ For more on the motivation behind Ray Serve, check out these `meetup slides <htt
 When should I use Ray Serve?
 ----------------------------
 
-Ray Serve is a simple (but flexible) tool for deploying, operating, and monitoring Python-based machine learning models.
-Ray Serve excels when scaling out to serve models in production is a necessity. This might be because of large-scale batch processing
-requirements or because you're going to serve a number of models behind different endpoints and may need to run A/B tests or control
-traffic between different models.
+Ray Serve is a flexible tool that's easy to use for deploying, operating, and monitoring Python-based machine learning applications.
+Ray Serve excels when you want to mix business logic with ML models and scaling out in production is a necessity. This might be because of large-scale batch processing
+requirements or because you want to scale up a model pipeline consisting of many individual models with different performance properties.
 
-If you plan on running on multiple machines, Ray Serve will serve you well.
+If you plan on running on multiple machines, Ray Serve will serve you well!
 
 What's next?
 ============
@@ -104,5 +100,3 @@ For more, see the following blog posts about Ray Serve:
 - `How to Scale Up Your FastAPI Application Using Ray Serve <https://medium.com/distributed-computing-with-ray/how-to-scale-up-your-fastapi-application-using-ray-serve-c9a7b69e786>`_ by Archit Kulkarni
 - `Machine Learning is Broken <https://medium.com/distributed-computing-with-ray/machine-learning-serving-is-broken-f59aff2d607f>`_ by Simon Mo
 - `The Simplest Way to Serve your NLP Model in Production with Pure Python <https://medium.com/distributed-computing-with-ray/the-simplest-way-to-serve-your-nlp-model-in-production-with-pure-python-d42b6a97ad55>`_ by Edward Oakes and Bill Chambers
-
-

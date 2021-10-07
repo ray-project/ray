@@ -1,4 +1,4 @@
-from typing import Callable, Type, Union
+from typing import Callable, Optional, Type, Union
 
 import inspect
 import logging
@@ -6,8 +6,11 @@ import os
 
 from ray.tune.function_runner import wrap_function
 from ray.tune.registry import get_trainable_cls
+from ray.tune.sync_client import get_sync_client
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.syncer import get_cloud_sync_client
+
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -31,15 +34,23 @@ class DurableTrainable(Trainable):
 
     >>> tune.run(MyDurableTrainable, sync_to_driver=False)
     """
+    _sync_function_tpl = None
 
-    def __init__(self, remote_checkpoint_dir, *args, **kwargs):
+    def __init__(self,
+                 remote_checkpoint_dir: str,
+                 sync_function_tpl: Optional[str] = None,
+                 *args,
+                 **kwargs):
         """Initializes a DurableTrainable.
 
         Args:
             remote_checkpoint_dir (str): Upload directory (S3 or GS path).
+            sync_function_tpl (str): Sync function template to use. Defaults
+              to `cls._sync_function` (which defaults to `None`).
         """
         super(DurableTrainable, self).__init__(*args, **kwargs)
         self.remote_checkpoint_dir = remote_checkpoint_dir
+        self.sync_function_tpl = sync_function_tpl or self._sync_function_tpl
         self.storage_client = self._create_storage_client()
 
     def save(self, checkpoint_dir=None):
@@ -96,13 +107,16 @@ class DurableTrainable(Trainable):
 
     def _create_storage_client(self):
         """Returns a storage client."""
-        return get_cloud_sync_client(self.remote_checkpoint_dir)
+        return get_sync_client(
+            self.sync_function_tpl) or get_cloud_sync_client(
+                self.remote_checkpoint_dir)
 
     def _storage_path(self, local_path):
         rel_local_path = os.path.relpath(local_path, self.logdir)
         return os.path.join(self.remote_checkpoint_dir, rel_local_path)
 
 
+@PublicAPI(stability="beta")
 def durable(trainable: Union[str, Type[Trainable], Callable]):
     """Convert trainable into a durable trainable.
 

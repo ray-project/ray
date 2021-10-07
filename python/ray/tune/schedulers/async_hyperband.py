@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Optional, Union
 
 import numpy as np
+import pickle
 
 from ray.tune import trial_runner
 from ray.tune.result import DEFAULT_METRIC
@@ -43,7 +44,6 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
     def __init__(self,
                  time_attr: str = "training_iteration",
-                 reward_attr: Optional[str] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  max_t: int = 100,
@@ -57,14 +57,6 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         assert brackets > 0, "brackets must be positive!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
@@ -159,6 +151,16 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         out = "Using AsyncHyperBand: num_stopped={}".format(self._num_stopped)
         out += "\n" + "\n".join([b.debug_str() for b in self._brackets])
         return out
+
+    def save(self, checkpoint_path: str):
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            pickle.dump(save_object, outputFile)
+
+    def restore(self, checkpoint_path: str):
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = pickle.load(inputFile)
+        self.__dict__.update(save_object)
 
 
 class _Bracket():

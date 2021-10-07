@@ -1,24 +1,28 @@
 import requests
 from ray import serve
-import tensorflow as tf
 
 serve.start()
 
 
-def tf_version(request):
-    return ("Tensorflow " + tf.__version__)
+@serve.deployment
+def requests_version(request):
+    return requests.__version__
 
 
-serve.create_backend(
-    "tf1", tf_version, ray_actor_options={"runtime_env": {
-        "conda": "ray-tf1"
-    }})
-serve.create_endpoint("tf1", backend="tf1", route="/tf1")
-serve.create_backend(
-    "tf2", tf_version, ray_actor_options={"runtime_env": {
-        "conda": "ray-tf2"
-    }})
-serve.create_endpoint("tf2", backend="tf2", route="/tf2")
+requests_version.options(
+    name="25",
+    ray_actor_options={
+        "runtime_env": {
+            "pip": ["ray[serve]", "requests==2.25.1"]
+        }
+    }).deploy()
+requests_version.options(
+    name="26",
+    ray_actor_options={
+        "runtime_env": {
+            "pip": ["ray[serve]", "requests==2.26.0"]
+        }
+    }).deploy()
 
-print(requests.get("http://127.0.0.1:8000/tf1").text)  # Tensorflow 1.15.0
-print(requests.get("http://127.0.0.1:8000/tf2").text)  # Tensorflow 2.3.0
+assert requests.get("http://127.0.0.1:8000/25").text == "2.25.1"
+assert requests.get("http://127.0.0.1:8000/26").text == "2.26.0"

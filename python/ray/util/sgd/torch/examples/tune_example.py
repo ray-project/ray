@@ -97,6 +97,14 @@ def tune_example_manual(operator_cls, num_workers=1, use_gpu=False):
 # __end_torch_tune_manual_lr_example__
 
 
+def get_custom_training_operator(lr_reduce_on_plateau=False):
+    return TrainingOperator.from_creators(
+        model_creator=model_creator, optimizer_creator=optimizer_creator,
+        data_creator=data_creator, loss_creator=nn.MSELoss,
+        scheduler_creator=scheduler_creator if lr_reduce_on_plateau
+        else None)
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
@@ -106,6 +114,13 @@ if __name__ == "__main__":
         "--address",
         type=str,
         help="the address to use for Ray")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+             "Ray Client.")
     parser.add_argument(
         "--num-workers",
         "-n",
@@ -129,13 +144,13 @@ if __name__ == "__main__":
 
     if args.smoke_test:
         ray.init(num_cpus=3)
+    elif args.server_address:
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(address=args.address)
-    CustomTrainingOperator = TrainingOperator.from_creators(
-        model_creator=model_creator, optimizer_creator=optimizer_creator,
-        data_creator=data_creator, loss_creator=nn.MSELoss,
-        scheduler_creator=scheduler_creator if args.lr_reduce_on_plateau
-        else None)
+
+    CustomTrainingOperator = get_custom_training_operator(
+        args.lr_reduce_on_plateau)
     if not args.lr_reduce_on_plateau:
         tune_example(CustomTrainingOperator, num_workers=args.num_workers,
                      use_gpu=args.use_gpu)

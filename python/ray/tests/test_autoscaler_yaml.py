@@ -9,17 +9,19 @@ import yaml
 import copy
 from unittest.mock import MagicMock, Mock, patch
 import pytest
+from click.exceptions import ClickException
 
-from ray.autoscaler._private.azure.config import (_configure_key_pair as
-                                                  _azure_configure_key_pair)
+from ray.autoscaler._private._azure.config import (_configure_key_pair as
+                                                   _azure_configure_key_pair)
+from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.util import prepare_config, validate_config,\
-    _get_default_config, merge_setup_commands
+    _get_default_config, merge_setup_commands, fill_node_type_min_max_workers
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private._kubernetes.node_provider import\
     KubernetesNodeProvider
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
-from ray.test_utils import load_test_config, recursive_fnmatch
+from ray._private.test_utils import load_test_config, recursive_fnmatch
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(
@@ -38,6 +40,46 @@ def ignore_k8s_operator_configs(paths):
 
 CONFIG_PATHS = ignore_k8s_operator_configs(CONFIG_PATHS)
 
+EXPECTED_LOCAL_CONFIG_STR = """
+cluster_name: minimal-manual
+provider:
+  head_ip: xxx.yyy
+  type: local
+  worker_ips:
+  - aaa.bbb
+  - ccc.ddd
+  - eee.fff
+auth:
+  ssh_private_key: ~/.ssh/id_rsa
+  ssh_user: user
+docker: {}
+max_workers: 3
+available_node_types:
+  local.cluster.node:
+    max_workers: 3
+    min_workers: 3
+    node_config: {}
+    resources: {}
+head_node_type: local.cluster.node
+head_start_ray_commands:
+- ray stop
+- ulimit -c unlimited; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+worker_start_ray_commands:
+- ray stop
+- ray start --address=$RAY_HEAD_IP:6379
+cluster_synced_files: []
+idle_timeout_minutes: 5
+upscaling_speed: 1.0
+file_mounts: {}
+file_mounts_sync_continuously: false
+head_setup_commands: []
+initialization_commands: []
+rsync_exclude: []
+rsync_filter: []
+setup_commands: []
+worker_setup_commands: []
+"""  # noqa E501
+
 
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
@@ -45,6 +87,9 @@ class AutoscalingConfigTest(unittest.TestCase):
             try:
                 if "aws/example-multi-node-type.yaml" in config_path:
                     # aws tested in testValidateDefaultConfigAWSMultiNodeTypes.
+                    continue
+                if "local" in config_path:
+                    # local tested in testValidateLocal
                     continue
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
@@ -152,15 +197,14 @@ class AutoscalingConfigTest(unittest.TestCase):
                 }
             }]
         }
-        boto3_mock = Mock()
         describe_instance_types_mock = Mock()
         describe_instance_types_mock.describe_instance_types = MagicMock(
             return_value=boto3_dict)
-        boto3_mock.client = MagicMock(
+        client_cache_mock = MagicMock(
             return_value=describe_instance_types_mock)
         with patch.multiple(
                 "ray.autoscaler._private.aws.node_provider",
-                boto3=boto3_mock,
+                client_cache=client_cache_mock,
         ):
             new_config = prepare_config(new_config)
             importer = _NODE_PROVIDERS.get(new_config["provider"]["type"])
@@ -176,6 +220,46 @@ class AutoscalingConfigTest(unittest.TestCase):
             except Exception:
                 self.fail(
                     "Config did not pass multi node types auto fill test!")
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testValidateLocal(self):
+        """
+        Tests local node provider config validation for the most common use
+        case of bootstrapping a cluster at a static set of ips.
+        """
+        local_config_path = os.path.join(
+            RAY_PATH, "autoscaler/local/example-minimal-manual.yaml")
+        base_config = yaml.safe_load(open(local_config_path).read())
+        base_config["provider"]["head_ip"] = "xxx.yyy"
+        base_config["provider"]["worker_ips"] = [
+            "aaa.bbb", "ccc.ddd", "eee.fff"
+        ]
+        base_config["auth"]["ssh_user"] = "user"
+        base_config["auth"]["ssh_private_key"] = "~/.ssh/id_rsa"
+
+        test_prepare_config = copy.deepcopy(base_config)
+        prepared_config = prepare_config(test_prepare_config)
+        try:
+            validate_config(prepared_config)
+        except Exception:
+            self.fail("Failed to validate local/example-minimal-manual.yaml")
+        expected_prepared = yaml.safe_load(EXPECTED_LOCAL_CONFIG_STR)
+        assert prepared_config == expected_prepared
+
+        no_worker_config = copy.deepcopy(base_config)
+        del no_worker_config["provider"]["worker_ips"]
+        with pytest.raises(ClickException):
+            prepare_config(no_worker_config)
+        no_head_config = copy.deepcopy(base_config)
+        del no_head_config["provider"]["head_ip"]
+        with pytest.raises(ClickException):
+            prepare_config(no_head_config)
+        for field in "head_node", "worker_nodes", "available_node_types":
+            faulty_config = copy.deepcopy(base_config)
+            faulty_config[field] = "This field shouldn't be in here."
+            with pytest.raises(ClickException):
+                prepare_config(faulty_config)
 
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \
@@ -332,7 +416,8 @@ class AutoscalingConfigTest(unittest.TestCase):
     def testExampleFull(self):
         """
         Test that example-full yamls are unmodified by prepared_config,
-        except possibly by having setup_commands merged.
+        except possibly by having setup_commands merged and
+        default per-node max/min workers set.
         """
         providers = ["aws", "gcp", "azure"]
         for provider in providers:
@@ -341,13 +426,14 @@ class AutoscalingConfigTest(unittest.TestCase):
             config = yaml.safe_load(open(path).read())
             config_copy = copy.deepcopy(config)
             merge_setup_commands(config_copy)
+            fill_node_type_min_max_workers(config_copy)
             assert config_copy == prepare_config(config)
 
     @pytest.mark.skipif(
         sys.platform.startswith("win"), reason="Fails on Windows.")
     def testLegacyYaml(self):
         # Test correct default-merging behavior for legacy yamls.
-        providers = ["aws", "gcp", "azure"]
+        providers = ["aws", "azure"]
         for provider in providers:
             path = os.path.join(RAY_PATH, "autoscaler", provider,
                                 "example-full-legacy.yaml")
@@ -395,6 +481,145 @@ class AutoscalingConfigTest(unittest.TestCase):
 
             assert node_type["node_config"]["azure_arm_parameters"][
                 "publicKey"] == "PUBLICKEY"
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testGCPSubnets(self):
+        """Validates gcp _configure_subnet logic.
+
+        Checks that _configure_subnet fills default networkInterfaces data for
+        each node type that doesn't specify networkInterfaces.
+
+        Checks that _list_subnets is not called if all node types specify
+        networkInterfaces.
+        """
+        path = os.path.join(RAY_PATH, "autoscaler", "gcp", "example-full.yaml")
+        config = yaml.safe_load(open(path).read())
+
+        config_subnets_configured = copy.deepcopy(config)
+        config_subnets_worker_configured = copy.deepcopy(config)
+        config_subnets_head_configured = copy.deepcopy(config)
+        config_subnets_no_type_configured = copy.deepcopy(config)
+
+        config_subnets_configured["available_node_types"]["ray_head_default"][
+            "node_config"]["networkInterfaces"] = "mock_interfaces"
+        config_subnets_configured["available_node_types"]["ray_worker_small"][
+            "node_config"]["networkInterfaces"] = "mock_interfaces"
+
+        config_subnets_worker_configured["available_node_types"][
+            "ray_worker_small"]["node_config"][
+                "networkInterfaces"] = "mock_interfaces"
+
+        config_subnets_head_configured["available_node_types"][
+            "ray_head_default"]["node_config"][
+                "networkInterfaces"] = "mock_interfaces"
+
+        assert "networkInterfaces" not in config_subnets_no_type_configured[
+            "available_node_types"]["ray_head_default"]["node_config"]
+        assert "networkInterfaces" not in config_subnets_no_type_configured[
+            "available_node_types"]["ray_worker_small"]["node_config"]
+
+        # Configure subnets modifies configs in place so we need to copy
+        # the configs for comparision after passing into the method.
+        config_subnets_configured_post = copy.deepcopy(
+            config_subnets_configured)
+        config_subnets_worker_configured_post = copy.deepcopy(
+            config_subnets_worker_configured)
+        config_subnets_head_configured_post = copy.deepcopy(
+            config_subnets_head_configured)
+        config_subnets_no_type_configured_post = copy.deepcopy(
+            config_subnets_no_type_configured)
+
+        # Track number of times list_subnets has been called.
+        list_subnets_counter = 0
+
+        def mock_list_subnets(*args):
+            nonlocal list_subnets_counter
+            list_subnets_counter += 1
+            return [{"selfLink": "link"}]
+
+        # Attempting to patch produces an error in the CI.
+        gcp_config._list_subnets = mock_list_subnets
+        config_subnets_configured_post = gcp_config._configure_subnet(
+            config_subnets_configured, compute="mock_compute")
+        # List subnets wasn't called
+        assert list_subnets_counter == 0
+        config_subnets_worker_configured_post = gcp_config\
+            ._configure_subnet(
+                config_subnets_worker_configured, compute="mock_compute")
+        # List subnets was called
+        assert list_subnets_counter == 1
+        config_subnets_head_configured_post = gcp_config._configure_subnet(
+            config_subnets_head_configured, compute="mock_compute")
+        # List subnets was called
+        assert list_subnets_counter == 2
+        config_subnets_no_type_configured_post = gcp_config.\
+            _configure_subnet(
+                config_subnets_no_type_configured, compute="mock_compute")
+        # List subnets was called
+        assert list_subnets_counter == 3
+
+        # networkInterfaces field generated by configure subnets with mocked
+        # _list_subnets
+        default_interfaces = [{
+            "subnetwork": "link",
+            "accessConfigs": [{
+                "name": "External NAT",
+                "type": "ONE_TO_ONE_NAT",
+            }],
+        }]
+
+        # Unchanged
+        assert config_subnets_configured_post == config_subnets_configured
+        assert config_subnets_configured_post["available_node_types"][
+            "ray_head_default"]["node_config"][
+                "networkInterfaces"] == "mock_interfaces"
+        assert config_subnets_configured_post["available_node_types"][
+            "ray_worker_small"]["node_config"][
+                "networkInterfaces"] == "mock_interfaces"
+
+        # Head subnets filled
+        assert config_subnets_worker_configured_post["available_node_types"][
+            "ray_worker_small"]["node_config"][
+                "networkInterfaces"] == "mock_interfaces"
+        assert config_subnets_worker_configured_post["available_node_types"][
+            "ray_head_default"]["node_config"][
+                "networkInterfaces"] == default_interfaces
+
+        # Worker subnets filled
+        assert config_subnets_head_configured_post["available_node_types"][
+            "ray_worker_small"]["node_config"][
+                "networkInterfaces"] == default_interfaces
+        assert config_subnets_head_configured_post["available_node_types"][
+            "ray_head_default"]["node_config"][
+                "networkInterfaces"] == "mock_interfaces"
+
+        # Head and worker subnets filled
+        assert config_subnets_no_type_configured_post["available_node_types"][
+            "ray_worker_small"]["node_config"][
+                "networkInterfaces"] == default_interfaces
+        assert config_subnets_no_type_configured_post["available_node_types"][
+            "ray_head_default"]["node_config"][
+                "networkInterfaces"] == default_interfaces
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testFaultyResourceValidation(self):
+        """Checks that schema validation catches invalid node type resource
+        field.
+
+        Demonstrates a fix in https://github.com/ray-project/ray/pull/16691."""
+        path = os.path.join(RAY_PATH, "autoscaler", "aws", "example-full.yaml")
+        config = yaml.safe_load(open(path).read())
+        node_type = config["available_node_types"]["ray.head.default"]
+        # Invalid `resources` field, say user entered `resources: `.
+        node_type["resources"] = None
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            validate_config(config)
+        # Invalid value in resource dict.
+        node_type["resources"] = {"CPU": "a string is not valid here"}
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            validate_config(config)
 
 
 if __name__ == "__main__":

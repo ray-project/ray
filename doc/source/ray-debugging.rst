@@ -16,6 +16,11 @@ drop into a PDB session that you can then use to:
 Getting Started
 ---------------
 
+.. note::
+
+    On Python 3.6, the ``breakpoint()`` function is not supported and you need to use
+    ``ray.util.pdb.set_trace()`` instead.
+
 Take the following example:
 
 .. code-block:: python
@@ -25,7 +30,7 @@ Take the following example:
 
     @ray.remote
     def f(x):
-        ray.util.pdb.set_trace()
+        breakpoint()
         return x * x
 
     futures = [f.remote(i) for i in range(2)]
@@ -38,8 +43,8 @@ Put the program into a file named ``debugging.py`` and execute it using:
     python debugging.py
 
 
-Each of the 4 executed tasks will drop into a breakpoint when the line
-``ray.util.pdb.set_trace()`` is executed. You can attach to the debugger by running
+Each of the 2 executed tasks will drop into a breakpoint when the line
+``breakpoint()`` is executed. You can attach to the debugger by running
 the following command on the head node of the cluster:
 
 .. code-block:: bash
@@ -50,12 +55,12 @@ The ``ray debug`` command will print an output like this:
 
 .. code-block:: text
 
-    2020-11-04 15:35:50,011	INFO worker.py:672 -- Connecting to existing Ray cluster at address: 192.168.1.105:6379
+    2021-07-13 16:30:40,112	INFO scripts.py:216 -- Connecting to Ray instance at 192.168.2.61:6379.
+    2021-07-13 16:30:40,112	INFO worker.py:740 -- Connecting to existing Ray cluster at address: 192.168.2.61:6379
     Active breakpoints:
-    0: ray::f() | debugging.py:6
-
-    1: ray::f() | debugging.py:6
-
+    index | timestamp           | Ray task | filename:lineno
+    0     | 2021-07-13 23:30:37 | ray::f() | debugging.py:6
+    1     | 2021-07-13 23:30:37 | ray::f() | debugging.py:6
     Enter breakpoint index or press enter to refresh:
 
 
@@ -66,11 +71,11 @@ of the execution:
 .. code-block:: text
 
     (Pdb) bt
-      /Users/pcmoritz/ray/python/ray/workers/default_worker.py(170)<module>()
+      /home/ubuntu/ray/python/ray/workers/default_worker.py(170)<module>()
     -> ray.worker.global_worker.main_loop()
-      /Users/pcmoritz/ray/python/ray/worker.py(385)main_loop()
+      /home/ubuntu/ray/python/ray/worker.py(385)main_loop()
     -> self.core_worker.run_task_loop()
-    > /Users/pcmoritz/tmp/debugging.py(7)f()
+    > /home/ubuntu/tmp/debugging.py(7)f()
     -> return x * x
 
 You can inspect the value of ``x`` with ``print(x)``. You can see the current source code with ``ll``
@@ -81,6 +86,17 @@ the other break point and hit ``c`` again to continue the execution.
 
 The Ray program ``debugging.py`` now finished and should have printed ``[0, 1]``. Congratulations, you
 have finished your first Ray debugging session!
+
+Running on a Cluster
+--------------------
+
+The Ray debugger supports setting breakpoints inside of tasks and actors that are running across your
+Ray cluster. In order to attach to these from the head node of the cluster using ``ray debug``, you'll
+need to make sure to pass in the ``--ray-debugger-external`` flag to ``ray start`` when starting the
+cluster (likely in your ``cluster.yaml`` file or k8s Ray cluster spec).
+
+Note that this flag will cause the workers to listen for PDB commands on an external-facing IP address,
+so this should *only* be used if your cluster is behind a firewall.
 
 Debugger Commands
 -----------------
@@ -106,12 +122,16 @@ following recursive function as an example:
         if n == 1:
             return n
         else:
-            n_id = fact.remote(n - 1)
-            return n * ray.get(n_id)
+            n_ref = fact.remote(n - 1)
+            return n * ray.get(n_ref)
 
-    ray.util.pdb.set_trace()
-    result_ref = fact.remote(5)
-    result = ray.get(result_ref)
+    @ray.remote
+    def compute():
+        breakpoint()
+        result_ref = fact.remote(5)
+        result = ray.get(result_ref)
+
+    ray.get(compute.remote())
 
 
 After running the program by executing the Python file and calling
@@ -121,7 +141,7 @@ enter. This will result in the following output:
 .. code-block:: python
 
     Enter breakpoint index or press enter to refresh: 0
-    > /Users/pcmoritz/tmp/stepping.py(14)<module>()
+    > /home/ubuntu/tmp/stepping.py(16)<module>()
     -> result_ref = fact.remote(5)
     (Pdb)
 
@@ -136,7 +156,7 @@ the following output:
     *** Connection closed by remote host ***
     Continuing pdb session in different process...
     --Call--
-    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    > /home/ubuntu/tmp/stepping.py(5)fact()
     -> @ray.remote
     (Pdb) ll
       5  ->	@ray.remote
@@ -144,8 +164,8 @@ the following output:
       7  	    if n == 1:
       8  	        return n
       9  	    else:
-     10  	        n_id = fact.remote(n - 1)
-     11  	        return n * ray.get(n_id)
+     10  	        n_ref = fact.remote(n - 1)
+     11  	        return n * ray.get(n_ref)
     (Pdb) p(n)
     5
     (Pdb)
@@ -160,13 +180,13 @@ call site and use ``p(result)`` to print the result:
 .. code-block:: python
 
     Enter breakpoint index or press enter to refresh: 0
-    > /Users/pcmoritz/tmp/stepping.py(14)<module>()
+    > /home/ubuntu/tmp/stepping.py(14)<module>()
     -> result_ref = fact.remote(5)
     (Pdb) remote
     *** Connection closed by remote host ***
     Continuing pdb session in different process...
     --Call--
-    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    > /home/ubuntu/tmp/stepping.py(5)fact()
     -> @ray.remote
     (Pdb) p(n)
     5
@@ -174,7 +194,7 @@ call site and use ``p(result)`` to print the result:
     *** Connection closed by remote host ***
     Continuing pdb session in different process...
     --Call--
-    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    > /home/ubuntu/tmp/stepping.py(5)fact()
     -> @ray.remote
     (Pdb) p(n)
     4
@@ -182,13 +202,13 @@ call site and use ``p(result)`` to print the result:
     *** Connection closed by remote host ***
     Continuing pdb session in different process...
     --Return--
-    > /Users/pcmoritz/tmp/stepping.py(5)fact()->120
+    > /home/ubuntu/tmp/stepping.py(5)fact()->120
     -> @ray.remote
     (Pdb) get
     *** Connection closed by remote host ***
     Continuing pdb session in different process...
     --Return--
-    > /Users/pcmoritz/tmp/stepping.py(14)<module>()->None
+    > /home/ubuntu/tmp/stepping.py(14)<module>()->None
     -> result_ref = fact.remote(5)
     (Pdb) p(result)
     120
@@ -259,28 +279,29 @@ When the ``serve_debugging.py`` driver hits the breakpoint, it will tell you to 
 .. code-block:: text
 
     Active breakpoints:
-    0: ray::RayServeWorker_BoostingModel.handle_request() | /Users/pcmoritz/ray/python/ray/serve/backend_worker.py:249
+    index | timestamp           | Ray task                                     | filename:lineno
+    0     | 2021-07-13 23:49:14 | ray::RayServeWrappedReplica.handle_request() | /home/ubuntu/ray/python/ray/serve/backend_worker.py:249
     Traceback (most recent call last):
 
-      File "/Users/pcmoritz/ray/python/ray/serve/backend_worker.py", line 244, in invoke_single
-        result = await method_to_call(arg)
+      File "/home/ubuntu/ray/python/ray/serve/backend_worker.py", line 242, in invoke_single
+        result = await method_to_call(*args, **kwargs)
 
-      File "/Users/pcmoritz/ray/python/ray/async_compat.py", line 29, in wrapper
-        return func(*args, **kwargs)
-
-      File "serve_debugging.py", line 23, in __call__
+      File "serve_debugging.py", line 24, in __call__
         prediction = self.model.predict([payload])[0]
 
-      File "/Users/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 2165, in predict
+      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 1188, in predict
         raw_predictions = self.decision_function(X)
 
-      File "/Users/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 2120, in decision_function
+      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 1143, in decision_function
         X = check_array(X, dtype=DTYPE, order="C", accept_sparse='csr')
 
-      File "/Users/pcmoritz/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 531, in check_array
+      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 63, in inner_f
+        return f(*args, **kwargs)
+
+      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 673, in check_array
         array = np.asarray(array, order=order, dtype=dtype)
 
-      File "/Users/pcmoritz/anaconda3/lib/python3.7/site-packages/numpy/core/_asarray.py", line 83, in asarray
+      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/numpy/core/_asarray.py", line 83, in asarray
         return array(a, dtype, copy=False, order=order)
 
     ValueError: could not convert string to float: 'a'

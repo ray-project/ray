@@ -1,16 +1,18 @@
 from gym.spaces import Space
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Union, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.typing import LocalOptimizer, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
+    from ray.rllib.utils import try_import_tf
+    _, tf, _ = try_import_tf()
 
 _, nn = try_import_torch()
 
@@ -176,17 +178,34 @@ class Exploration:
         return optimizers
 
     @DeveloperAPI
-    def get_info(self, sess: Optional["tf.Session"] = None):
-        """Returns a description of the current exploration state.
-
-        This is not necessarily the state itself (and cannot be used in
-        set_state!), but rather useful (e.g. debugging) information.
+    def get_state(self, sess: Optional["tf.Session"] = None) -> \
+            Dict[str, TensorType]:
+        """Returns the current exploration state.
 
         Args:
             sess (Optional[tf.Session]): An optional tf Session object to use.
 
         Returns:
-            dict: A description of the Exploration (not necessarily its state).
-                This may include tf.ops as values in graph mode.
+            Dict[str, TensorType]: The Exploration object's current state.
         """
         return {}
+
+    @DeveloperAPI
+    def set_state(self, state: object,
+                  sess: Optional["tf.Session"] = None) -> None:
+        """Sets the Exploration object's state to the given values.
+
+        Note that some exploration components are stateless, even though they
+        decay some values over time (e.g. EpsilonGreedy). However the decay is
+        only dependent on the current global timestep of the policy and we
+        therefore don't need to keep track of it.
+
+        Args:
+            state (object): The state to set this Exploration to.
+            sess (Optional[tf.Session]): An optional tf Session object to use.
+        """
+        pass
+
+    @Deprecated(new="get_state", error=False)
+    def get_info(self, sess: Optional["tf.Session"] = None):
+        return self.get_state(sess)

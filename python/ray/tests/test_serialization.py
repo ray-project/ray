@@ -13,7 +13,6 @@ import pytest
 
 import ray
 import ray.cluster_utils
-import ray.test_utils
 
 logger = logging.getLogger(__name__)
 
@@ -632,6 +631,23 @@ def test_numpy_ufunc(ray_start_shared_local_modes):
         log
 
     ray.get(f.remote())
+
+
+class _SelfDereferenceObject:
+    """A object that dereferences itself during deserialization"""
+
+    def __init__(self, ref: ray.ObjectRef):
+        self.ref = ref
+
+    def __reduce__(self):
+        return ray.get, (self.ref, )
+
+
+def test_recursive_resolve(ray_start_shared_local_modes):
+    ref = ray.put(42)
+    for _ in range(10):
+        ref = ray.put(_SelfDereferenceObject(ref))
+    assert ray.get(ref) == 42
 
 
 if __name__ == "__main__":

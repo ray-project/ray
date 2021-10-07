@@ -5,16 +5,40 @@ from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="PPO")
+parser.add_argument(
+    "--run",
+    type=str,
+    default="PPO",
+    help="The RLlib-registered algorithm to use.")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
-    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
-parser.add_argument("--as-test", action="store_true")
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
+parser.add_argument("--eager-tracing", action="store_true")
 parser.add_argument("--use-prev-action", action="store_true")
 parser.add_argument("--use-prev-reward", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=200)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=150.0)
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=200,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=150.0,
+    help="Reward at which we stop training.")
 
 if __name__ == "__main__":
     import ray
@@ -52,8 +76,8 @@ if __name__ == "__main__":
                 "lstm_use_prev_reward": args.use_prev_reward,
             },
             "framework": args.framework,
-            # Run with tracing enabled for tfe/tf2.
-            "eager_tracing": args.framework in ["tfe", "tf2"],
+            # Run with tracing enabled for tfe/tf2?
+            "eager_tracing": args.eager_tracing,
         })
 
     stop = {
@@ -82,7 +106,7 @@ if __name__ == "__main__":
     # >> prev_r = 0.0
     # >>
     # >> while True:
-    # >>     a, state_out, _ = trainer.compute_action(
+    # >>     a, state_out, _ = trainer.compute_single_action(
     # ..         obs, state, prev_a, prev_r)
     # >>     obs, reward, done, _ = env.step(a)
     # >>     if done:

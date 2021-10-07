@@ -33,6 +33,19 @@ def train_model(config):
 # __train_end__
 
 
+# __load_begin__
+def load_best_model(best_logdir):
+    import xgboost as xgb
+    import os
+
+    best_bst = xgb.Booster()
+    best_bst.load_model(os.path.join(best_logdir, "model.xgb"))
+    return best_bst
+
+
+# __load_end__
+
+
 def main():
     # __tune_begin__
     from ray import tune
@@ -60,13 +73,19 @@ def main():
             "extra_cpu": num_actors * num_cpus_per_actor
         })
 
-    # Load the best model checkpoint
-    import xgboost as xgb
-    import os
-
     # Load in the best performing model.
-    best_bst = xgb.Booster()
-    best_bst.load_model(os.path.join(analysis.best_logdir, "model.xgb"))
+    best_bst = load_best_model(analysis.best_logdir)
+
+    # Use the following code block instead if using Ray Client.
+    # import ray
+    # if ray.util.client.ray.is_connected():
+    #     # If using Ray Client best_logdir is a directory on the server.
+    #     # So we want to make sure we wrap model loading in a task.
+    #     remote_load_fn = ray.remote(load_best_model)
+    #     best_bst = ray.get(remote_load_fn.remote(analysis.best_logdir))
+
+    # Do something with the best model.
+    _ = best_bst
 
     accuracy = 1. - analysis.best_result["eval-error"]
     print(f"Best model parameters: {analysis.best_config}")

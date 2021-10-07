@@ -6,7 +6,7 @@ import time
 import pytest
 import ray
 from ray import serve
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -47,7 +47,7 @@ def test_controller_failure(serve_instance):
 
     ray.kill(serve.api._global_client._controller, no_restart=False)
 
-    function.options(backend_def=function2).deploy()
+    function.options(func_or_class=function2).deploy()
 
     def check_controller_failure():
         response = request_with_retries("/controller_failure/", timeout=30)
@@ -96,7 +96,7 @@ def test_http_proxy_failure(serve_instance):
     def function2(_):
         return "hello2"
 
-    function.options(backend_def=function2).deploy()
+    function.options(func_or_class=function2).deploy()
 
     def check_new():
         for _ in range(10):

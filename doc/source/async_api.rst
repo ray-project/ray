@@ -83,6 +83,26 @@ you can do:
 Please refer to `asyncio doc <https://docs.python.org/3/library/asyncio-task.html>`__
 for more `asyncio` patterns including timeouts and ``asyncio.gather``.
 
+If you need to directly access the future object, you can call:
+
+.. code-block:: python
+
+    fut: asyncio.Future = asyncio.wrap_future(ref.future())
+
+ObjectRefs as concurrent.futures.Futures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ObjectRefs can also be wrapped into ``concurrent.futures.Future`` objects. This
+is useful for interfacing with existing ``concurrent.futures`` APIs:
+
+.. code-block:: python
+
+    refs = [fun.remote() for _ in range(4)]
+    futs = [ref.future() for ref in refs]
+    for fut in concurrent.futures.as_completed(futs):
+        assert fut.done()
+        print(fut.result())
+
+
 Defining an Async Actor
 ~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -98,6 +98,14 @@ class TrialScheduler:
 
         raise NotImplementedError
 
+    def save(self, checkpoint_path: str):
+        """Save trial scheduler to a checkpoint"""
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path: str):
+        """Restore trial scheduler from checkpoint."""
+        raise NotImplementedError
+
 
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""

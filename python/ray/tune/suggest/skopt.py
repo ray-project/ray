@@ -1,11 +1,13 @@
 import copy
 import logging
+import numpy as np
 import pickle
 from typing import Dict, List, Optional, Tuple, Union, Any
 
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     LogUniform
+from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
@@ -17,8 +19,6 @@ try:
     import skopt as sko
 except ImportError:
     sko = None
-
-from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,9 @@ class SkOptSearch(Searcher):
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/skopt_example.py)
+        convert_to_python (bool): SkOpt outputs numpy primitives (e.g.
+            ``np.int64``) instead of Python types. If this setting is set
+            to ``True``, the values will be converted to Python primitives.
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
 
@@ -121,6 +124,7 @@ class SkOptSearch(Searcher):
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
                  evaluated_rewards: Optional[List] = None,
+                 convert_to_python: bool = True,
                  max_concurrent: Optional[int] = None,
                  use_early_stopped_trials: Optional[bool] = None):
         assert sko is not None, ("skopt must be installed! "
@@ -166,6 +170,8 @@ class SkOptSearch(Searcher):
         self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
 
         self._evaluated_rewards = evaluated_rewards
+
+        self._convert_to_python = convert_to_python
 
         self._skopt_opt = optimizer
         if self._skopt_opt or self._space:
@@ -214,7 +220,7 @@ class SkOptSearch(Searcher):
             self._metric = DEFAULT_METRIC
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._skopt_opt:
             return False
         space = self.convert_search_space(config)
@@ -253,6 +259,12 @@ class SkOptSearch(Searcher):
             skopt_config = self._skopt_opt.ask()
             suggested_config = dict(zip(self._parameters, skopt_config))
         self._live_trial_mapping[trial_id] = skopt_config
+
+        if self._convert_to_python:
+            for k, v in list(suggested_config.items()):
+                if isinstance(v, np.number):
+                    suggested_config[k] = v.item()
+
         return unflatten_dict(suggested_config)
 
     def on_trial_complete(self,
@@ -284,13 +296,18 @@ class SkOptSearch(Searcher):
         self.__dict__.update(state)
 
     def save(self, checkpoint_path: str):
-        with open(checkpoint_path, "wb") as f:
-            pickle.dump((self._initial_points, self._skopt_opt), f)
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            pickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
-        with open(checkpoint_path, "rb") as f:
-            state = pickle.load(f)
-        self._initial_points, self._skopt_opt = state
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = pickle.load(inputFile)
+        if not isinstance(save_object, dict):
+            # backwards compatibility
+            # Deprecate: 1.8
+            self._initial_points, self._skopt_opt = save_object
+        self.__dict__.update(save_object)
 
     @staticmethod
     def convert_search_space(spec: Dict, join: bool = False) -> Dict:
@@ -322,12 +339,12 @@ class SkOptSearch(Searcher):
             elif isinstance(domain, Integer):
                 if isinstance(domain.sampler, LogUniform):
                     return sko.space.Integer(
-                        domain.lower, domain.upper, prior="log-uniform")
+                        domain.lower, domain.upper - 1, prior="log-uniform")
                 return sko.space.Integer(
-                    domain.lower, domain.upper, prior="uniform")
+                    domain.lower, domain.upper - 1, prior="uniform")
 
             elif isinstance(domain, Categorical):
-                return domain.categories
+                return sko.space.Categorical(domain.categories)
 
             raise ValueError("SkOpt does not support parameters of type "
                              "`{}` with samplers of type `{}`".format(

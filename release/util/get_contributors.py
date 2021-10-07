@@ -42,7 +42,7 @@ def run(access_token, prev_release_commit, curr_release_commit):
 
     # Sort the PR numbers
     pr_numbers = [
-        int(l.lstrip("#")) for l in check_output(cmd).decode().split()
+        int(line.lstrip("#")) for line in check_output(cmd).decode().split()
     ]
     print("PR numbers", pr_numbers)
 

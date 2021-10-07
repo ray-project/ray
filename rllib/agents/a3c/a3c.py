@@ -1,4 +1,5 @@
 import logging
+from typing import Optional, Type
 
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import with_common_config
@@ -6,6 +7,10 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.util.iter import LocalIterator
+from ray.rllib.policy.policy import Policy
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +47,16 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def get_policy_class(config):
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     if config["framework"] == "torch":
         from ray.rllib.agents.a3c.a3c_torch_policy import \
             A3CTorchPolicy
@@ -51,14 +65,30 @@ def get_policy_class(config):
         return A3CTFPolicy
 
 
-def validate_config(config):
+def validate_config(config: TrainerConfigDict) -> None:
+    """Checks and updates the config based on settings.
+
+    Rewrites rollout_fragment_length to take into account n_step truncation.
+    """
     if config["entropy_coeff"] < 0:
         raise ValueError("`entropy_coeff` must be >= 0.0!")
     if config["num_workers"] <= 0 and config["sample_async"]:
         raise ValueError("`num_workers` for A3C must be >= 1!")
 
 
-def execution_plan(workers, config):
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the MARWIL/BC algorithm. Defines the distributed
+    dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: A local iterator over training metrics.
+    """
     # For A3C, compute policy gradients remotely on the rollout workers.
     grads = AsyncGradients(workers)
 

@@ -240,7 +240,7 @@ class Integer(Domain):
             logmax = np.log(domain.upper) / np.log(self.base)
 
             items = self.base**(np.random.uniform(logmin, logmax, size=size))
-            items = np.round(items).astype(int)
+            items = np.floor(items).astype(int)
             return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform
@@ -466,7 +466,7 @@ def qloguniform(lower: float, upper: float, q: float, base: float = 10):
     return Float(lower, upper).loguniform(base).quantized(q)
 
 
-def choice(categories: List):
+def choice(categories: Sequence):
     """Sample a categorical value.
 
     Sampling from ``tune.choice([1, 2])`` is equivalent to sampling from
@@ -484,6 +484,11 @@ def randint(lower: int, upper: int):
     Sampling from ``tune.randint(10)`` is equivalent to sampling from
     ``np.random.randint(10)``
 
+    .. versionchanged:: 1.5.0
+        When converting Ray Tune configs to searcher-specific search spaces,
+        the lower and upper limits are adjusted to keep compatibility with
+        the bounds stated in the docstring above.
+
     """
     return Integer(lower, upper).uniform()
 
@@ -493,6 +498,11 @@ def lograndint(lower: int, upper: int, base: float = 10):
     with ``base`` being the base of logarithm.
 
     ``lower`` is inclusive, ``upper`` is exclusive.
+
+    .. versionchanged:: 1.5.0
+        When converting Ray Tune configs to searcher-specific search spaces,
+        the lower and upper limits are adjusted to keep compatibility with
+        the bounds stated in the docstring above.
 
     """
     return Integer(lower, upper).loguniform(base)
@@ -506,6 +516,11 @@ def qrandint(lower: int, upper: int, q: int = 1):
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
     Quantization makes the upper bound inclusive.
 
+    .. versionchanged:: 1.5.0
+        When converting Ray Tune configs to searcher-specific search spaces,
+        the lower and upper limits are adjusted to keep compatibility with
+        the bounds stated in the docstring above.
+
     """
     return Integer(lower, upper).uniform().quantized(q)
 
@@ -518,6 +533,11 @@ def qlograndint(lower: int, upper: int, q: int, base: float = 10):
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
     Quantization makes the upper bound inclusive.
+
+    .. versionchanged:: 1.5.0
+        When converting Ray Tune configs to searcher-specific search spaces,
+        the lower and upper limits are adjusted to keep compatibility with
+        the bounds stated in the docstring above.
 
     """
     return Integer(lower, upper).loguniform(base).quantized(q)

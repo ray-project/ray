@@ -112,6 +112,18 @@ parser.add_argument(
     default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
     help="Specify the backup count of rotated log file, default is "
     f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
+parser.add_argument(
+    "--worker-shim-pid",
+    required=False,
+    type=int,
+    default=0,
+    help="The PID of the process for setup worker runtime env.")
+parser.add_argument(
+    "--ray-debugger-external",
+    default=False,
+    action="store_true",
+    help="True if Ray debugger is made available externally.")
+
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
@@ -127,8 +139,6 @@ if __name__ == "__main__":
         mode = ray.SPILL_WORKER_MODE
     elif args.worker_type == "RESTORE_WORKER":
         mode = ray.RESTORE_WORKER_MODE
-    elif args.worker_type == "UTIL_WORKER":
-        mode = ray.UTIL_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
@@ -168,7 +178,11 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True)
     ray.worker._global_node = node
-    ray.worker.connect(node, mode=mode)
+    ray.worker.connect(
+        node,
+        mode=mode,
+        worker_shim_pid=args.worker_shim_pid,
+        ray_debugger_external=args.ray_debugger_external)
 
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker
@@ -189,8 +203,7 @@ if __name__ == "__main__":
 
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
-    elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE
-          or mode == ray.UTIL_WORKER_MODE):
+    elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.
         while True:

@@ -36,11 +36,12 @@ class HEBOSearch(Searcher):
     by Huawei's Noah Ark. More info can be found here:
     https://github.com/huawei-noah/noah-research/tree/master/HEBO.
 
-    You will need to install HEBO via the following:
+    You will need to install HEBO via the following (dependencies are
+    pinned to avoid HEBO 0.1.0 errors):
 
     .. code-block:: bash
 
-        pip install HEBO
+        pip install "scipy<1.7.0" "pymoo<0.5.0" "HEBO==0.1.0"
 
     `space` can either be a HEBO's `DesignSpace` object or a dict of Tune
     search spaces.
@@ -127,8 +128,10 @@ class HEBOSearch(Searcher):
             max_concurrent: int = 8,
             **kwargs):
         assert hebo is not None, (
-            "HEBO must be installed!. You can install HEBO with"
-            " the command: `pip install HEBO`.")
+            "HEBO must be installed! You can install HEBO with"
+            " the command: `pip install 'scipy<1.7.0' 'pymoo<0.5.0'"
+            " 'HEBO==0.1.0'`. This error may also be caused if HEBO"
+            " dependencies have bad versions.")
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         assert isinstance(max_concurrent, int) and max_concurrent >= 1, (
@@ -213,7 +216,7 @@ class HEBOSearch(Searcher):
                 self._initial_points = self._points_to_evaluate
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._opt:
             return False
         space = self.convert_search_space(config)
@@ -277,6 +280,22 @@ class HEBOSearch(Searcher):
         if result and not is_nan_or_inf(result[self._metric]):
             self._opt.observe(
                 trial_info, np.array([self._metric_op * result[self._metric]]))
+
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        if intermediate_values:
+            logger.warning("HEBO doesn't use intermediate_values. Ignoring.")
+        if not error and not pruned:
+            self._opt.observe(
+                pd.DataFrame([parameters]),
+                np.array([value]) * self._metric_op)
+        else:
+            logger.warning("Only non errored and non pruned points"
+                           " can be added to HEBO.")
 
     def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
@@ -349,7 +368,7 @@ class HEBOSearch(Searcher):
                         "name": par,
                         "type": "pow_int",
                         "lb": domain.lower,
-                        "ub": domain.upper,
+                        "ub": domain.upper - 1,  # Upper bound exclusive
                         "base": sampler.base
                     }
                 elif isinstance(sampler, Uniform):
@@ -357,7 +376,7 @@ class HEBOSearch(Searcher):
                         "name": par,
                         "type": "int",
                         "lb": domain.lower,
-                        "ub": domain.upper
+                        "ub": domain.upper - 1,  # Upper bound exclusive
                     }
             elif isinstance(domain, Categorical):
                 return {

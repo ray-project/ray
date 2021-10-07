@@ -67,6 +67,8 @@ class InMemoryStoreClient : public StoreClient {
   Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;
 
+  int GetNextJobID() override;
+
  private:
   struct InMemoryTable {
     /// Mutex to protect the records_ field and the index_keys_ field.
@@ -89,6 +91,8 @@ class InMemoryStoreClient : public StoreClient {
   /// Async API Callback needs to post to main_io_service_ to ensure the orderly execution
   /// of the callback.
   instrumented_io_context &main_io_service_;
+
+  int job_id_ = 0;
 };
 
 }  // namespace gcs

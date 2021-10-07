@@ -17,6 +17,7 @@
 #include <fstream>
 #include <functional>
 
+#include "absl/strings/escaping.h"
 #include "ray/common/buffer.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_object.h"
@@ -54,9 +55,6 @@ int TestSetupUtil::StartUpRedisServer(const int &port) {
 
   std::string program = TEST_REDIS_SERVER_EXEC_PATH;
   std::vector<std::string> cmdargs({program, "--loglevel", "warning"});
-  if (!TEST_REDIS_MODULE_LIBRARY_PATH.empty()) {
-    cmdargs.insert(cmdargs.end(), {"--loadmodule", TEST_REDIS_MODULE_LIBRARY_PATH});
-  }
   cmdargs.insert(cmdargs.end(), {"--port", std::to_string(actual_port)});
   RAY_LOG(INFO) << "Start redis command is: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
@@ -102,7 +100,8 @@ std::string TestSetupUtil::StartGcsServer(const std::string &redis_address) {
       ray::JoinPaths(ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex());
   std::vector<std::string> cmdargs(
       {TEST_GCS_SERVER_EXEC_PATH, "--redis_address=" + redis_address, "--redis_port=6379",
-       "--config_list=object_timeout_milliseconds,2000"});
+       "--config_list=" +
+           absl::Base64Escape(R"({"object_timeout_milliseconds": 2000})")});
   RAY_LOG(INFO) << "Start gcs server command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, gcs_server_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -222,16 +221,19 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
 
 std::shared_ptr<RayObject> GenerateRandomObject(
     const std::vector<ObjectID> &inlined_ids) {
-  return std::shared_ptr<RayObject>(
-      new RayObject(GenerateRandomBuffer(), nullptr, inlined_ids));
+  std::vector<rpc::ObjectReference> refs;
+  for (const auto &inlined_id : inlined_ids) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(inlined_id.Binary());
+    refs.push_back(ref);
+  }
+  return std::shared_ptr<RayObject>(new RayObject(GenerateRandomBuffer(), nullptr, refs));
 }
 
 /// Path to redis server executable binary.
 std::string TEST_REDIS_SERVER_EXEC_PATH;
 /// Path to redis client executable binary.
 std::string TEST_REDIS_CLIENT_EXEC_PATH;
-/// Path to redis module library.
-std::string TEST_REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
 std::vector<int> TEST_REDIS_SERVER_PORTS;
 

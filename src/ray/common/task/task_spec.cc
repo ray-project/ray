@@ -1,7 +1,23 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/common/task/task_spec.h"
 
+#include <boost/functional/hash.hpp>
 #include <sstream>
 
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -78,7 +94,7 @@ void TaskSpecification::ComputeResources() {
     // the actor tasks need not be scheduled.
 
     // Map the scheduling class descriptor to an integer for performance.
-    auto sched_cls = GetRequiredResources();
+    auto sched_cls = GetRequiredPlacementResources();
     sched_cls_id_ = GetSchedulingClass(sched_cls);
   }
 }
@@ -89,6 +105,11 @@ TaskID TaskSpecification::TaskId() const {
     return TaskID::Nil();
   }
   return TaskID::FromBinary(message_->task_id());
+}
+
+const std::string TaskSpecification::GetSerializedActorHandle() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().serialized_actor_handle();
 }
 
 JobID TaskSpecification::JobId() const {
@@ -109,6 +130,30 @@ size_t TaskSpecification::ParentCounter() const { return message_->parent_counte
 
 ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
+}
+
+rpc::RuntimeEnv TaskSpecification::RuntimeEnv() const { return message_->runtime_env(); }
+
+std::string TaskSpecification::SerializedRuntimeEnv() const {
+  return message_->runtime_env().serialized_runtime_env();
+}
+
+bool TaskSpecification::HasRuntimeEnv() const {
+  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
+}
+
+RuntimeEnvHash TaskSpecification::GetRuntimeEnvHash() const {
+  const auto &job_id = JobId();
+  if (!HasRuntimeEnv() && job_id.IsNil()) {
+    return 0;
+  }
+
+  std::unordered_map<std::string, double> required_resource{};
+  if (RayConfig::instance().worker_resource_limits_enabled()) {
+    required_resource = GetRequiredResources().GetResourceMap();
+  }
+  WorkerCacheKey env = {job_id, SerializedRuntimeEnv(), required_resource};
+  return env.Hash();
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
@@ -132,7 +177,7 @@ ObjectID TaskSpecification::ArgId(size_t arg_index) const {
   return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
 }
 
-rpc::ObjectReference TaskSpecification::ArgRef(size_t arg_index) const {
+const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   RAY_CHECK(ArgByRef(arg_index));
   return message_->args(arg_index).object_ref();
 }
@@ -153,8 +198,10 @@ size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
   return message_->args(arg_index).metadata().size();
 }
 
-const std::vector<ObjectID> TaskSpecification::ArgInlinedIds(size_t arg_index) const {
-  return IdVectorFromProtobuf<ObjectID>(message_->args(arg_index).nested_inlined_ids());
+const std::vector<rpc::ObjectReference> TaskSpecification::ArgInlinedRefs(
+    size_t arg_index) const {
+  return VectorFromProtobuf<rpc::ObjectReference>(
+      message_->args(arg_index).nested_inlined_refs());
 }
 
 const ResourceSet &TaskSpecification::GetRequiredResources() const {
@@ -196,11 +243,6 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
 
 std::string TaskSpecification::GetDebuggerBreakpoint() const {
   return message_->debugger_breakpoint();
-}
-
-std::unordered_map<std::string, std::string>
-TaskSpecification::OverrideEnvironmentVariables() const {
-  return MapFromProtobuf(message_->override_environment_variables());
 }
 
 bool TaskSpecification::IsDriverTask() const {
@@ -287,6 +329,11 @@ int TaskSpecification::MaxActorConcurrency() const {
   return message_->actor_creation_task_spec().max_concurrency();
 }
 
+std::string TaskSpecification::ConcurrencyGroupName() const {
+  RAY_CHECK(IsActorTask());
+  return message_->concurrency_group_name();
+}
+
 bool TaskSpecification::IsAsyncioActor() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().is_asyncio();
@@ -349,6 +396,71 @@ std::string TaskSpecification::CallSiteString() const {
   }
   stream << FunctionDescriptor()->CallSiteString();
   return stream.str();
+}
+
+WorkerCacheKey::WorkerCacheKey(const JobID &job_id) : WorkerCacheKey(job_id, "", {}) {}
+
+WorkerCacheKey::WorkerCacheKey(
+    const JobID &job_id, const std::string &serialized_runtime_env,
+    const std::unordered_map<std::string, double> required_resources)
+    : job_id_(job_id),
+      serialized_runtime_env(serialized_runtime_env),
+      required_resources(std::move(required_resources)) {}
+
+bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
+  // FIXME we should compare fields
+  return Hash() == k.Hash();
+}
+
+bool WorkerCacheKey::EnvIsEmpty() const {
+  return (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
+         required_resources.empty();
+}
+
+RuntimeEnvHash WorkerCacheKey::Hash() const {
+  // Cache the hash value.
+  if (!hash_) {
+    if (!job_id_.IsNil()) {
+      hash_ = job_id_.Hash();
+    }
+    if (!EnvIsEmpty()) {
+      boost::hash_combine(hash_, serialized_runtime_env);
+
+      std::vector<std::pair<std::string, double>> resource_vars(
+          required_resources.begin(), required_resources.end());
+      // Sort the variables so different permutations yield the same hash.
+      std::sort(resource_vars.begin(), resource_vars.end());
+      for (auto &pair : resource_vars) {
+        boost::hash_combine(hash_, pair.first);
+        boost::hash_combine(hash_, pair.second);
+      }
+    }
+  }
+  return hash_;
+}
+
+std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
+  RAY_CHECK(IsActorCreationTask());
+  std::vector<ConcurrencyGroup> concurrency_groups;
+  auto &actor_creation_task_spec = message_->actor_creation_task_spec();
+  const auto size = actor_creation_task_spec.concurrency_groups().size();
+
+  for (auto i = 0; i < size; ++i) {
+    auto &curr_group_message = actor_creation_task_spec.concurrency_groups(i);
+    std::vector<ray::FunctionDescriptor> function_descriptors;
+    const auto func_descriptors_size = curr_group_message.function_descriptors_size();
+    for (auto j = 0; j < func_descriptors_size; ++j) {
+      function_descriptors.push_back(FunctionDescriptorBuilder::FromProto(
+          curr_group_message.function_descriptors(j)));
+    }
+
+    concurrency_groups.push_back(
+        {std::string{curr_group_message.name()},
+         static_cast<uint32_t>(curr_group_message.max_concurrency()),
+         function_descriptors});
+  }
+
+  return concurrency_groups;
 }
 
 }  // namespace ray

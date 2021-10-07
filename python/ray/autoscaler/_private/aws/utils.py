@@ -1,6 +1,12 @@
 from collections import defaultdict
+from functools import lru_cache
+
+from boto3.exceptions import ResourceNotExistsError
+from botocore.config import Config
+import boto3
 
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
 
 
 class LazyDefaultDict(defaultdict):
@@ -120,3 +126,38 @@ def boto_exception_handler(msg, *args, **kwargs):
                 handle_boto_error(value, msg, *args, **kwargs)
 
     return ExceptionHandlerContextManager()
+
+
+@lru_cache()
+def resource_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
+    cli_logger.verbose("Creating AWS resource `{}` in `{}`", cf.bold(name),
+                       cf.bold(region))
+    kwargs.setdefault(
+        "config",
+        Config(retries={"max_attempts": max_retries}),
+    )
+    return boto3.resource(
+        name,
+        region,
+        **kwargs,
+    )
+
+
+@lru_cache()
+def client_cache(name, region, max_retries=BOTO_MAX_RETRIES, **kwargs):
+    try:
+        # try to re-use a client from the resource cache first
+        return resource_cache(name, region, max_retries, **kwargs).meta.client
+    except ResourceNotExistsError:
+        # fall back for clients without an associated resource
+        cli_logger.verbose("Creating AWS client `{}` in `{}`", cf.bold(name),
+                           cf.bold(region))
+        kwargs.setdefault(
+            "config",
+            Config(retries={"max_attempts": max_retries}),
+        )
+        return boto3.client(
+            name,
+            region,
+            **kwargs,
+        )

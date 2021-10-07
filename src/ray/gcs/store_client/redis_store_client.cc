@@ -334,9 +334,11 @@ Status RedisStoreClient::MGetValues(
         if (!reply->IsNil()) {
           auto value = reply->ReadAsStringArray();
           // The 0 th element of mget_keys is "MGET", so we start from the 1 th element.
-          for (int index = 0; index < (int)value.size(); ++index) {
-            (*key_value_map)[GetKeyFromRedisKey(mget_keys[index + 1], table_name)] =
-                value[index];
+          for (size_t index = 0; index < value.size(); ++index) {
+            if (value[index].has_value()) {
+              (*key_value_map)[GetKeyFromRedisKey(mget_keys[index + 1], table_name)] =
+                  *(value[index]);
+            }
           }
         }
 
@@ -446,6 +448,8 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
     Scan(match_pattern, callback);
   }
 }
+
+int RedisStoreClient::GetNextJobID() { return redis_client_->GetNextJobID(); }
 
 }  // namespace gcs
 

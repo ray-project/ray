@@ -3,7 +3,6 @@ import sys
 
 import ray
 import ray.cluster_utils
-import ray.test_utils
 
 
 def test_cross_language_raise_kwargs(shutdown_only):

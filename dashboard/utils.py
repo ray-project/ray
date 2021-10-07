@@ -10,6 +10,7 @@ import logging
 import os
 import pkgutil
 import socket
+import time
 import traceback
 from abc import ABCMeta, abstractmethod
 from base64 import b64decode
@@ -17,19 +18,17 @@ from collections import namedtuple
 from collections.abc import MutableMapping, Mapping, Sequence
 from typing import Any
 
-import aiohttp.signals
-import aiohttp.web
-import aioredis
-import time
-from aiohttp import hdrs
-from aiohttp.frozenlist import FrozenList
-from aiohttp.typedefs import PathLike
-from aiohttp.web import RouteDef
 from google.protobuf.json_format import MessageToDict
 
-import ray.new_dashboard.consts as dashboard_consts
+import ray.dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
 from ray._private.utils import binary_to_hex
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.dashboard.optional_deps import (aiohttp, aioredis, hdrs, FrozenList,
+                                         PathLike, RouteDef)
 
 try:
     create_task = asyncio.create_task
@@ -200,11 +199,11 @@ def dashboard_module(enable):
 
 def get_all_modules(module_type):
     logger.info(f"Get all modules by type: {module_type.__name__}")
-    import ray.new_dashboard.modules
+    import ray.dashboard.modules
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
-            ray.new_dashboard.modules.__path__,
-            ray.new_dashboard.modules.__name__ + "."):
+            ray.dashboard.modules.__path__,
+            ray.dashboard.modules.__name__ + "."):
         importlib.import_module(name)
     return [
         m for m in module_type.__subclasses__()
@@ -669,13 +668,21 @@ async def get_aioredis_client(redis_address, redis_password,
         address=redis_address, password=redis_password)
 
 
-def async_loop_forever(interval_seconds):
+def async_loop_forever(interval_seconds, cancellable=False):
     def _wrapper(coro):
         @functools.wraps(coro)
         async def _looper(*args, **kwargs):
             while True:
                 try:
                     await coro(*args, **kwargs)
+                except asyncio.CancelledError as ex:
+                    if cancellable:
+                        logger.info(f"An async loop forever coroutine "
+                                    f"is cancelled {coro}.")
+                        raise ex
+                    else:
+                        logger.exception(f"Can not cancel the async loop "
+                                         f"forever coroutine {coro}.")
                 except Exception:
                     logger.exception(f"Error looping coroutine {coro}.")
                 await asyncio.sleep(interval_seconds)

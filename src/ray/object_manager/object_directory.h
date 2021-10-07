@@ -46,9 +46,9 @@ using OnLocationsFound = std::function<void(
     const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &,
     const std::string &, const NodeID &, size_t object_size)>;
 
-class ObjectDirectoryInterface {
+class IObjectDirectory {
  public:
-  virtual ~ObjectDirectoryInterface() {}
+  virtual ~IObjectDirectory() {}
 
   /// Lookup how to connect to a remote object manager.
   ///
@@ -113,19 +113,16 @@ class ObjectDirectoryInterface {
   /// \param object_id The object id that was put into the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
-  /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
-                                        const ObjectInfo &object_info) = 0;
+  virtual void ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+                                 const ObjectInfo &object_info) = 0;
 
   /// Report objects removed from this node's store to the object directory.
   ///
   /// \param object_id The object id that was removed from the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
-  /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
-                                          const NodeID &node_id,
-                                          const ObjectInfo &object_info) = 0;
+  virtual void ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
+                                   const ObjectInfo &object_info) = 0;
 
   /// Record metrics.
   virtual void RecordMetrics(uint64_t duration_ms) = 0;
@@ -134,80 +131,6 @@ class ObjectDirectoryInterface {
   ///
   /// \return string.
   virtual std::string DebugString() const = 0;
-};
-
-/// Ray ObjectDirectory declaration.
-class ObjectDirectory : public ObjectDirectoryInterface {
- public:
-  /// Create an object directory.
-  ///
-  /// \param io_service The event loop to dispatch callbacks to. This should
-  /// usually be the same event loop that the given gcs_client runs on.
-  /// \param gcs_client A Ray GCS client to request object and node
-  /// information from.
-  ObjectDirectory(instrumented_io_context &io_service,
-                  std::shared_ptr<gcs::GcsClient> &gcs_client);
-
-  virtual ~ObjectDirectory() {}
-
-  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
-
-  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
-
-  ray::Status LookupLocations(const ObjectID &object_id,
-                              const rpc::Address &owner_address,
-                              const OnLocationsFound &callback) override;
-
-  void HandleNodeRemoved(const NodeID &node_id) override;
-
-  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                       const ObjectID &object_id,
-                                       const rpc::Address &owner_address,
-                                       const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                         const ObjectID &object_id) override;
-
-  ray::Status ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
-                                const ObjectInfo &object_info) override;
-
-  ray::Status ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
-                                  const ObjectInfo &object_info) override;
-
-  void RecordMetrics(uint64_t duration_ms) override;
-
-  std::string DebugString() const override;
-
-  /// ObjectDirectory should not be copied.
-  RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
-
- protected:
-  /// Callbacks associated with a call to GetLocations.
-  struct LocationListenerState {
-    /// The callback to invoke when object locations are found.
-    std::unordered_map<UniqueID, OnLocationsFound> callbacks;
-    /// The current set of known locations of this object.
-    std::unordered_set<NodeID> current_object_locations;
-    /// The location where this object has been spilled, if any.
-    std::string spilled_url = "";
-    // The node id that spills the object to the disk.
-    // It will be Nil if it uses a distributed external storage.
-    NodeID spilled_node_id = NodeID::Nil();
-    /// The size of the object.
-    size_t object_size = 0;
-    /// This flag will get set to true if received any notification of the object.
-    /// It means current_object_locations is up-to-date with GCS. It
-    /// should never go back to false once set to true. If this is true, and
-    /// the current_object_locations is empty, then this means that the object
-    /// does not exist on any nodes due to eviction or the object never getting created.
-    bool subscribed;
-  };
-
-  /// Reference to the event loop.
-  instrumented_io_context &io_service_;
-  /// Reference to the gcs client.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// Info about subscribers to object locations.
-  std::unordered_map<ObjectID, LocationListenerState> listeners_;
 };
 
 }  // namespace ray

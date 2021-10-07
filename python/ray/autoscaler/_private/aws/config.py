@@ -1,22 +1,22 @@
 from distutils.version import StrictVersion
 from functools import lru_cache
 from functools import partial
+import copy
 import itertools
 import json
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import logging
 
 import boto3
-from botocore.config import Config
 import botocore
 
-from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
-from ray.autoscaler.tags import NODE_KIND_WORKER, NODE_KIND_HEAD
+from ray.autoscaler._private.util import check_legacy_fields
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
 from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
-    handle_boto_error
+    handle_boto_error, resource_cache
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.event_system import (CreateClusterEvent,
                                                   global_event_system)
@@ -27,13 +27,6 @@ RAY = "ray-autoscaler"
 DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
 DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
-
-# Mapping from the node type tag to the section of the autoscaler yaml that
-# contains the config for the node type.
-NODE_KIND_CONFIG_KEYS = {
-    NODE_KIND_WORKER: "worker_nodes",
-    NODE_KIND_HEAD: "head_node",
-}
 
 DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V30.0"
 
@@ -101,95 +94,130 @@ def _arn_to_name(arn):
     return arn.split(":")[-1].split("/")[-1]
 
 
-def log_to_cli(config):
+def log_to_cli(config: Dict[str, Any]) -> None:
     provider_name = _PROVIDER_PRETTY_NAMES.get("aws", None)
 
     cli_logger.doassert(provider_name is not None,
                         "Could not find a pretty name for the AWS provider.")
 
+    head_node_type = config["head_node_type"]
+    head_node_config = config["available_node_types"][head_node_type][
+        "node_config"]
+
     with cli_logger.group("{} config", provider_name):
 
-        def same_everywhere(key):
-            return config["head_node"][key] == config["worker_nodes"][key]
-
-        def print_info(resource_string,
-                       key,
-                       head_src_key,
-                       workers_src_key,
-                       allowed_tags=None,
-                       list_value=False):
+        def print_info(resource_string: str,
+                       key: str,
+                       src_key: str,
+                       allowed_tags: Optional[List[str]] = None,
+                       list_value: bool = False) -> None:
             if allowed_tags is None:
                 allowed_tags = ["default"]
 
-            head_tags = {}
-            workers_tags = {}
+            node_tags = {}
 
-            if _log_info[head_src_key] in allowed_tags:
-                head_tags[_log_info[head_src_key]] = True
-            if _log_info[workers_src_key] in allowed_tags:
-                workers_tags[_log_info[workers_src_key]] = True
+            # set of configurations corresponding to `key`
+            unique_settings = set()
 
-            head_value_str = config["head_node"][key]
+            for node_type_key, node_type in config[
+                    "available_node_types"].items():
+                node_tags[node_type_key] = {}
+                tag = _log_info[src_key][node_type_key]
+                if tag in allowed_tags:
+                    node_tags[node_type_key][tag] = True
+                setting = node_type["node_config"].get(key)
+
+                if list_value:
+                    unique_settings.add(tuple(setting))
+                else:
+                    unique_settings.add(setting)
+
+            head_value_str = head_node_config[key]
             if list_value:
                 head_value_str = cli_logger.render_list(head_value_str)
 
-            if same_everywhere(key):
-                cli_logger.labeled_value(  # todo: handle plural vs singular?
-                    resource_string + " (head & workers)",
+            if len(unique_settings) == 1:
+                # all node types are configured the same, condense
+                # log output
+                cli_logger.labeled_value(
+                    resource_string + " (all available node types)",
                     "{}",
                     head_value_str,
-                    _tags=head_tags)
+                    _tags=node_tags[config["head_node_type"]])
             else:
-                workers_value_str = config["worker_nodes"][key]
-                if list_value:
-                    workers_value_str = cli_logger.render_list(
-                        workers_value_str)
-
+                # do head node type first
                 cli_logger.labeled_value(
-                    resource_string + " (head)",
+                    resource_string + f" ({head_node_type})",
                     "{}",
                     head_value_str,
-                    _tags=head_tags)
-                cli_logger.labeled_value(
-                    resource_string + " (workers)",
-                    "{}",
-                    workers_value_str,
-                    _tags=workers_tags)
+                    _tags=node_tags[head_node_type])
+
+                # go through remaining types
+                for node_type_key, node_type in config[
+                        "available_node_types"].items():
+                    if node_type_key == head_node_type:
+                        continue
+                    workers_value_str = node_type["node_config"][key]
+                    if list_value:
+                        workers_value_str = cli_logger.render_list(
+                            workers_value_str)
+                    cli_logger.labeled_value(
+                        resource_string + f" ({node_type_key})",
+                        "{}",
+                        workers_value_str,
+                        _tags=node_tags[node_type_key])
 
         tags = {"default": _log_info["head_instance_profile_src"] == "default"}
-        profile_arn = config["head_node"]["IamInstanceProfile"].get("Arn")
+        # head_node_config is the head_node_type's config,
+        # config["head_node"] is a field that gets applied only to the actual
+        # head node (and not workers of the head's node_type)
+        assert ("IamInstanceProfile" in head_node_config
+                or "IamInstanceProfile" in config["head_node"])
+        if "IamInstanceProfile" in head_node_config:
+            # If the user manually configured the role we're here.
+            IamProfile = head_node_config["IamInstanceProfile"]
+        elif "IamInstanceProfile" in config["head_node"]:
+            # If we filled the default IAM role, we're here.
+            IamProfile = config["head_node"]["IamInstanceProfile"]
+        profile_arn = IamProfile.get("Arn")
         profile_name = _arn_to_name(profile_arn) \
             if profile_arn \
-            else config["head_node"]["IamInstanceProfile"]["Name"]
+            else IamProfile["Name"]
         cli_logger.labeled_value("IAM Profile", "{}", profile_name, _tags=tags)
 
-        if ("KeyName" in config["head_node"]
-                and "KeyName" in config["worker_nodes"]):
-            print_info("EC2 Key pair", "KeyName", "keypair_src", "keypair_src")
+        if all("KeyName" in node_type["node_config"]
+               for node_type in config["available_node_types"].values()):
+            print_info("EC2 Key pair", "KeyName", "keypair_src")
 
-        print_info(
-            "VPC Subnets",
-            "SubnetIds",
-            "head_subnet_src",
-            "workers_subnet_src",
-            list_value=True)
+        print_info("VPC Subnets", "SubnetIds", "subnet_src", list_value=True)
         print_info(
             "EC2 Security groups",
             "SecurityGroupIds",
-            "head_security_group_src",
-            "workers_security_group_src",
+            "security_group_src",
             list_value=True)
-        print_info(
-            "EC2 AMI",
-            "ImageId",
-            "head_ami_src",
-            "workers_ami_src",
-            allowed_tags=["dlami"])
+        print_info("EC2 AMI", "ImageId", "ami_src", allowed_tags=["dlami"])
 
     cli_logger.newline()
 
 
 def bootstrap_aws(config):
+    # create a copy of the input config to modify
+    config = copy.deepcopy(config)
+
+    # Log warnings if user included deprecated `head_node` or `worker_nodes`
+    # fields. Raise error if no `available_node_types`
+    check_legacy_fields(config)
+    # Used internally to store head IAM role.
+    config["head_node"] = {}
+
+    # If a LaunchTemplate is provided, extract the necessary fields for the
+    # config stages below.
+    config = _configure_from_launch_template(config)
+
+    # If NetworkInterfaces are provided, extract the necessary fields for the
+    # config stages below.
+    config = _configure_from_network_interfaces(config)
+
     # The head node needs to have an IAM role that allows it to create further
     # EC2 instances.
     config = _configure_iam_role(config)
@@ -214,7 +242,10 @@ def bootstrap_aws(config):
 
 
 def _configure_iam_role(config):
-    if "IamInstanceProfile" in config["head_node"]:
+    head_node_type = config["head_node_type"]
+    head_node_config = config["available_node_types"][head_node_type][
+        "node_config"]
+    if "IamInstanceProfile" in head_node_config:
         _set_config_info(head_instance_profile_src="config")
         return config
     _set_config_info(head_instance_profile_src="default")
@@ -267,36 +298,41 @@ def _configure_iam_role(config):
             PolicyArn="arn:aws:iam::aws:policy/AmazonS3FullAccess")
         profile.add_role(RoleName=role.name)
         time.sleep(15)  # wait for propagation
-
+    # Add IAM role to "head_node" field so that it is applied only to
+    # the head node -- not to workers with the same node type as the head.
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
     return config
 
 
 def _configure_key_pair(config):
+    node_types = config["available_node_types"]
+
+    # map from node type key -> source of KeyName field
+    key_pair_src_info = {}
+    _set_config_info(keypair_src=key_pair_src_info)
+
     if "ssh_private_key" in config["auth"]:
-        _set_config_info(keypair_src="config")
+        for node_type_key in node_types:
+            # keypairs should be provided in the config
+            key_pair_src_info[node_type_key] = "config"
 
         # If the key is not configured via the cloudinit
         # UserData, it should be configured via KeyName or
         # else we will risk starting a node that we cannot
         # SSH into:
 
-        if "UserData" not in config["head_node"]:
-            cli_logger.doassert(  # todo: verify schema beforehand?
-                "KeyName" in config["head_node"],
-                "`KeyName` missing for head node.")  # todo: err msg
-            assert "KeyName" in config["head_node"]
-
-        if "UserData" not in config["worker_nodes"]:
-            cli_logger.doassert(
-                "KeyName" in config["worker_nodes"],
-                "`KeyName` missing for worker nodes.")  # todo: err msg
-            assert "KeyName" in config["worker_nodes"]
+        for node_type in node_types:
+            node_config = node_types[node_type]["node_config"]
+            if "UserData" not in node_config:
+                cli_logger.doassert("KeyName" in node_config,
+                                    _key_assert_msg(node_type))
+                assert "KeyName" in node_config
 
         return config
 
-    _set_config_info(keypair_src="default")
+    for node_type_key in node_types:
+        key_pair_src_info[node_type_key] = "default"
 
     ec2 = _resource("ec2", config)
 
@@ -337,11 +373,7 @@ def _configure_key_pair(config):
             "No matching local key file for any of the key pairs in this "
             "account with ids from 0..{}. "
             "Consider deleting some unused keys pairs from your account.",
-            key_name)  # todo: err msg
-        raise ValueError(
-            "No matching local key file for any of the key pairs in this "
-            "account with ids from 0..{}. ".format(key_name) +
-            "Consider deleting some unused keys pairs from your account.")
+            key_name)
 
     cli_logger.doassert(
         os.path.exists(key_path), "Private key file " + cf.bold("{}") +
@@ -350,10 +382,21 @@ def _configure_key_pair(config):
         "Private key file {} not found for {}".format(key_path, key_name)
 
     config["auth"]["ssh_private_key"] = key_path
-    config["head_node"]["KeyName"] = key_name
-    config["worker_nodes"]["KeyName"] = key_name
+    for node_type in node_types.values():
+        node_config = node_type["node_config"]
+        node_config["KeyName"] = key_name
 
     return config
+
+
+def _key_assert_msg(node_type: str) -> str:
+    if node_type == NODE_TYPE_LEGACY_WORKER:
+        return "`KeyName` missing for worker nodes."
+    elif node_type == NODE_TYPE_LEGACY_HEAD:
+        return "`KeyName` missing for head node."
+    else:
+        return ("`KeyName` missing from the `node_config` of"
+                f" node type `{node_type}`.")
 
 
 def _configure_subnet(config):
@@ -362,8 +405,10 @@ def _configure_subnet(config):
 
     # If head or worker security group is specified, filter down to subnets
     # belonging to the same VPC as the security group.
-    sg_ids = (config["head_node"].get("SecurityGroupIds", []) +
-              config["worker_nodes"].get("SecurityGroupIds", []))
+    sg_ids = []
+    for node_type in config["available_node_types"].values():
+        node_config = node_type["node_config"]
+        sg_ids.extend(node_config.get("SecurityGroupIds", []))
     if sg_ids:
         vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
     else:
@@ -391,13 +436,8 @@ def _configure_subnet(config):
             "and trying this again.\n"
             "Note that the subnet must map public IPs "
             "on instance launch unless you set `use_internal_ips: true` in "
-            "the `provider` config.")  # todo: err msg
-        raise Exception(
-            "No usable subnets found, try manually creating an instance in "
-            "your specified region to populate the list of subnets "
-            "and trying this again. Note that the subnet must map public IPs "
-            "on instance launch unless you set 'use_internal_ips': True in "
-            "the 'provider' config.")
+            "the `provider` config.")
+
     if "availability_zone" in config["provider"]:
         azs = config["provider"]["availability_zone"].split(",")
         subnets = [s for s in subnets if s.availability_zone in azs]
@@ -407,13 +447,7 @@ def _configure_subnet(config):
                 "Choose a different availability zone or try "
                 "manually creating an instance in your specified region "
                 "to populate the list of subnets and trying this again.",
-                config["provider"]["availability_zone"])  # todo: err msg
-            raise Exception(
-                "No usable subnets matching availability zone {} "
-                "found. Choose a different availability zone or try "
-                "manually creating an instance in your specified region "
-                "to populate the list of subnets and trying this again.".
-                format(config["provider"]["availability_zone"]))
+                config["provider"]["availability_zone"])
 
     # Use subnets in only one VPC, so that _configure_security_groups only
     # needs to create a security group in this one VPC. Otherwise, we'd need
@@ -423,17 +457,16 @@ def _configure_subnet(config):
     subnet_ids = [
         s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id
     ]
-    if "SubnetIds" not in config["head_node"]:
-        _set_config_info(head_subnet_src="default")
-        config["head_node"]["SubnetIds"] = subnet_ids
-    else:
-        _set_config_info(head_subnet_src="config")
-
-    if "SubnetIds" not in config["worker_nodes"]:
-        _set_config_info(workers_subnet_src="default")
-        config["worker_nodes"]["SubnetIds"] = subnet_ids
-    else:
-        _set_config_info(workers_subnet_src="config")
+    # map from node type key -> source of SubnetIds field
+    subnet_src_info = {}
+    _set_config_info(subnet_src=subnet_src_info)
+    for key, node_type in config["available_node_types"].items():
+        node_config = node_type["node_config"]
+        if "SubnetIds" not in node_config:
+            subnet_src_info[key] = "default"
+            node_config["SubnetIds"] = subnet_ids
+        else:
+            subnet_src_info[key] = "config"
 
     return config
 
@@ -445,7 +478,8 @@ def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
     Errors if the provided security groups belong to multiple VPCs.
     Errors if no security group with any of the provided ids is identified.
     """
-    sg_ids = list(set(sg_ids))
+    # sort security group IDs to support deterministic unit test stubbing
+    sg_ids = sorted(set(sg_ids))
 
     ec2 = _resource("ec2", config)
     filters = [{"Name": "group-id", "Values": sg_ids}]
@@ -467,29 +501,34 @@ def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
 
 
 def _configure_security_group(config):
-    _set_config_info(
-        head_security_group_src="config", workers_security_group_src="config")
+    # map from node type key -> source of SecurityGroupIds field
+    security_group_info_src = {}
+    _set_config_info(security_group_src=security_group_info_src)
+
+    for node_type_key in config["available_node_types"]:
+        security_group_info_src[node_type_key] = "config"
 
     node_types_to_configure = [
-        node_type for node_type, config_key in NODE_KIND_CONFIG_KEYS.items()
-        if "SecurityGroupIds" not in config[NODE_KIND_CONFIG_KEYS[node_type]]
+        node_type_key
+        for node_type_key, node_type in config["available_node_types"].items()
+        if "SecurityGroupIds" not in node_type["node_config"]
     ]
     if not node_types_to_configure:
         return config  # have user-defined groups
-
+    head_node_type = config["head_node_type"]
+    if config["head_node_type"] in node_types_to_configure:
+        # configure head node security group last for determinism
+        # in tests
+        node_types_to_configure.remove(head_node_type)
+        node_types_to_configure.append(head_node_type)
     security_groups = _upsert_security_groups(config, node_types_to_configure)
 
-    if NODE_KIND_HEAD in node_types_to_configure:
-        head_sg = security_groups[NODE_KIND_HEAD]
-
-        _set_config_info(head_security_group_src="default")
-        config["head_node"]["SecurityGroupIds"] = [head_sg.id]
-
-    if NODE_KIND_WORKER in node_types_to_configure:
-        workers_sg = security_groups[NODE_KIND_WORKER]
-
-        _set_config_info(workers_security_group_src="default")
-        config["worker_nodes"]["SecurityGroupIds"] = [workers_sg.id]
+    for node_type_key in node_types_to_configure:
+        node_config = config["available_node_types"][node_type_key][
+            "node_config"]
+        sg = security_groups[node_type_key]
+        node_config["SecurityGroupIds"] = [sg.id]
+        security_group_info_src[node_type_key] = "default"
 
     return config
 
@@ -497,7 +536,9 @@ def _configure_security_group(config):
 def _check_ami(config):
     """Provide helpful message for missing ImageId for node configuration."""
 
-    _set_config_info(head_ami_src="config", workers_ami_src="config")
+    # map from node type key -> source of ImageId field
+    ami_src_info = {key: "config" for key in config["available_node_types"]}
+    _set_config_info(ami_src=ami_src_info)
 
     region = config["provider"]["region"]
     default_ami = DEFAULT_AMI.get(region)
@@ -505,15 +546,12 @@ def _check_ami(config):
         # If we do not provide a default AMI for the given region, noop.
         return
 
-    head_ami = config["head_node"].get("ImageId", "").lower()
-    if head_ami in ["", "latest_dlami"]:
-        config["head_node"]["ImageId"] = default_ami
-        _set_config_info(head_ami_src="dlami")
-
-    worker_ami = config["worker_nodes"].get("ImageId", "").lower()
-    if worker_ami in ["", "latest_dlami"]:
-        config["worker_nodes"]["ImageId"] = default_ami
-        _set_config_info(workers_ami_src="dlami")
+    for key, node_type in config["available_node_types"].items():
+        node_config = node_type["node_config"]
+        node_ami = node_config.get("ImageId", "").lower()
+        if node_ami in ["", "latest_dlami"]:
+            node_config["ImageId"] = default_ami
+            ami_src_info[key] = "dlami"
 
 
 def _upsert_security_groups(config, node_types):
@@ -529,7 +567,8 @@ def _get_or_create_vpc_security_groups(conf, node_types):
     node_type_to_vpc = {
         node_type: _get_vpc_id_or_die(
             ec2,
-            conf[NODE_KIND_CONFIG_KEYS[node_type]]["SubnetIds"][0],
+            conf["available_node_types"][node_type]["node_config"]["SubnetIds"]
+            [0],
         )
         for node_type in node_types
     }
@@ -624,8 +663,9 @@ def _upsert_security_group_rules(conf, security_groups):
     # Update sgids to include user-specified security groups.
     # This is necessary if the user specifies the head node type's security
     # groups but not the worker's, or vice-versa.
-    for node_type in NODE_KIND_CONFIG_KEYS.values():
-        sgids.update(conf[node_type].get("SecurityGroupIds", []))
+    for node_type in conf["available_node_types"]:
+        sgids.update(conf["available_node_types"][node_type].get(
+            "SecurityGroupIds", []))
 
     # sort security group items for deterministic inbound rule config order
     # (mainly supports more precise stub-based boto3 unit testing)
@@ -730,6 +770,257 @@ def _get_key(key_name, config):
         raise exc
 
 
+def _configure_from_launch_template(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Merges any launch template data referenced by the node config of all
+    available node type's into their parent node config. Any parameters
+    specified in node config override the same parameters in the launch
+    template, in compliance with the behavior of the ec2.create_instances
+    API.
+
+    Args:
+        config (Dict[str, Any]): config to bootstrap
+    Returns:
+        config (Dict[str, Any]): The input config with all launch template
+        data merged into the node config of all available node types. If no
+        launch template data is found, then the config is returned
+        unchanged.
+    Raises:
+        ValueError: If no launch template is found for any launch
+        template [name|id] and version, or more than one launch template is
+        found.
+    """
+    # create a copy of the input config to modify
+    config = copy.deepcopy(config)
+    node_types = config["available_node_types"]
+
+    # iterate over sorted node types to support deterministic unit test stubs
+    for name, node_type in sorted(node_types.items()):
+        node_types[name] = _configure_node_type_from_launch_template(
+            config, node_type)
+    return config
+
+
+def _configure_node_type_from_launch_template(
+        config: Dict[str, Any], node_type: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Merges any launch template data referenced by the given node type's
+    node config into the parent node config. Any parameters specified in
+    node config override the same parameters in the launch template.
+
+    Args:
+        config (Dict[str, Any]): config to bootstrap
+        node_type (Dict[str, Any]): node type config to bootstrap
+    Returns:
+        node_type (Dict[str, Any]): The input config with all launch template
+        data merged into the node config of the input node type. If no
+        launch template data is found, then the config is returned
+        unchanged.
+    Raises:
+        ValueError: If no launch template is found for the given launch
+        template [name|id] and version, or more than one launch template is
+        found.
+    """
+    # create a copy of the input config to modify
+    node_type = copy.deepcopy(node_type)
+
+    node_cfg = node_type["node_config"]
+    if "LaunchTemplate" in node_cfg:
+        node_type["node_config"] = \
+            _configure_node_cfg_from_launch_template(config, node_cfg)
+    return node_type
+
+
+def _configure_node_cfg_from_launch_template(
+        config: Dict[str, Any], node_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Merges any launch template data referenced by the given node type's
+    node config into the parent node config. Any parameters specified in
+    node config override the same parameters in the launch template.
+
+    Note that this merge is simply a bidirectional dictionary update, from
+    the node config to the launch template data, and from the launch
+    template data to the node config. Thus, the final result captures the
+    relative complement of launch template data with respect to node config,
+    and allows all subsequent config bootstrapping code paths to act as
+    if the complement was explicitly specified in the user's node config. A
+    deep merge of nested elements like tag specifications isn't required
+    here, since the AWSNodeProvider's ec2.create_instances call will do this
+    for us after it fetches the referenced launch template data.
+
+    Args:
+        config (Dict[str, Any]): config to bootstrap
+        node_cfg (Dict[str, Any]): node config to bootstrap
+    Returns:
+        node_cfg (Dict[str, Any]): The input node config merged with all launch
+        template data. If no launch template data is found, then the node
+        config is returned unchanged.
+    Raises:
+        ValueError: If no launch template is found for the given launch
+        template [name|id] and version, or more than one launch template is
+        found.
+    """
+    # create a copy of the input config to modify
+    node_cfg = copy.deepcopy(node_cfg)
+
+    ec2 = _client("ec2", config)
+    kwargs = copy.deepcopy(node_cfg["LaunchTemplate"])
+    template_version = str(kwargs.pop("Version", "$Default"))
+    # save the launch template version as a string to prevent errors from
+    # passing an integer to ec2.create_instances in AWSNodeProvider
+    node_cfg["LaunchTemplate"]["Version"] = template_version
+    kwargs["Versions"] = [template_version] if template_version else []
+
+    template = ec2.describe_launch_template_versions(**kwargs)
+    lt_versions = template["LaunchTemplateVersions"]
+    if len(lt_versions) != 1:
+        raise ValueError(f"Expected to find 1 launch template but found "
+                         f"{len(lt_versions)}")
+
+    lt_data = template["LaunchTemplateVersions"][0]["LaunchTemplateData"]
+    # override launch template parameters with explicit node config parameters
+    lt_data.update(node_cfg)
+    # copy all new launch template parameters back to node config
+    node_cfg.update(lt_data)
+
+    return node_cfg
+
+
+def _configure_from_network_interfaces(config: Dict[str, Any]) \
+        -> Dict[str, Any]:
+    """
+    Copies all network interface subnet and security group IDs up to their
+    parent node config for each available node type.
+
+    Args:
+        config (Dict[str, Any]): config to bootstrap
+    Returns:
+        config (Dict[str, Any]): The input config with all network interface
+        subnet and security group IDs copied into the node config of all
+        available node types. If no network interfaces are found, then the
+        config is returned unchanged.
+    Raises:
+        ValueError: If [1] subnet and security group IDs exist at both the
+        node config and network interface levels, [2] any network interface
+        doesn't have a subnet defined, or [3] any network interface doesn't
+        have a security group defined.
+    """
+    # create a copy of the input config to modify
+    config = copy.deepcopy(config)
+
+    node_types = config["available_node_types"]
+    for name, node_type in node_types.items():
+        node_types[name] = _configure_node_type_from_network_interface(
+            node_type)
+    return config
+
+
+def _configure_node_type_from_network_interface(node_type: Dict[str, Any]) \
+        -> Dict[str, Any]:
+    """
+    Copies all network interface subnet and security group IDs up to the
+    parent node config for the given node type.
+
+    Args:
+        node_type (Dict[str, Any]): node type config to bootstrap
+    Returns:
+        node_type (Dict[str, Any]): The input config with all network interface
+        subnet and security group IDs copied into the node config of the
+        given node type. If no network interfaces are found, then the
+        config is returned unchanged.
+    Raises:
+        ValueError: If [1] subnet and security group IDs exist at both the
+        node config and network interface levels, [2] any network interface
+        doesn't have a subnet defined, or [3] any network interface doesn't
+        have a security group defined.
+    """
+    # create a copy of the input config to modify
+    node_type = copy.deepcopy(node_type)
+
+    node_cfg = node_type["node_config"]
+    if "NetworkInterfaces" in node_cfg:
+        node_type["node_config"] = \
+            _configure_subnets_and_groups_from_network_interfaces(node_cfg)
+    return node_type
+
+
+def _configure_subnets_and_groups_from_network_interfaces(
+        node_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Copies all network interface subnet and security group IDs into their
+    parent node config.
+
+    Args:
+        node_cfg (Dict[str, Any]): node config to bootstrap
+    Returns:
+        node_cfg (Dict[str, Any]): node config with all copied network
+        interface subnet and security group IDs
+    Raises:
+        ValueError: If [1] subnet and security group IDs exist at both the
+        node config and network interface levels, [2] any network interface
+        doesn't have a subnet defined, or [3] any network interface doesn't
+        have a security group defined.
+    """
+    # create a copy of the input config to modify
+    node_cfg = copy.deepcopy(node_cfg)
+
+    # If NetworkInterfaces are defined, SubnetId and SecurityGroupIds
+    # can't be specified in the same node type config.
+    conflict_keys = ["SubnetId", "SubnetIds", "SecurityGroupIds"]
+    if any(conflict in node_cfg for conflict in conflict_keys):
+        raise ValueError(
+            "If NetworkInterfaces are defined, subnets and security groups "
+            "must ONLY be given in each NetworkInterface.")
+    subnets = _subnets_in_network_config(node_cfg)
+    if not all(subnets):
+        raise ValueError(
+            "NetworkInterfaces are defined but at least one is missing a "
+            "subnet. Please ensure all interfaces have a subnet assigned.")
+    security_groups = _security_groups_in_network_config(node_cfg)
+    if not all(security_groups):
+        raise ValueError(
+            "NetworkInterfaces are defined but at least one is missing a "
+            "security group. Please ensure all interfaces have a security "
+            "group assigned.")
+    node_cfg["SubnetIds"] = subnets
+    node_cfg["SecurityGroupIds"] = list(itertools.chain(*security_groups))
+
+    return node_cfg
+
+
+def _subnets_in_network_config(config: Dict[str, Any]) -> List[str]:
+    """
+    Returns all subnet IDs found in the given node config's network interfaces.
+
+    Args:
+        config (Dict[str, Any]): node config
+    Returns:
+        subnet_ids (List[str]): List of subnet IDs for all network interfaces,
+        or an empty list if no network interfaces are defined. An empty string
+        is returned for each missing network interface subnet ID.
+    """
+    return [
+        ni.get("SubnetId", "") for ni in config.get("NetworkInterfaces", [])
+    ]
+
+
+def _security_groups_in_network_config(config: Dict[str, Any]) \
+        -> List[List[str]]:
+    """
+    Returns all security group IDs found in the given node config's network
+    interfaces.
+
+    Args:
+        config (Dict[str, Any]): node config
+    Returns:
+        security_group_ids (List[List[str]]): List of security group ID lists
+        for all network interfaces, or an empty list if no network interfaces
+        are defined. An empty list is returned for each missing network
+        interface security group list.
+    """
+    return [ni.get("Groups", []) for ni in config.get("NetworkInterfaces", [])]
+
+
 def _client(name, config):
     return _resource(name, config).meta.client
 
@@ -737,15 +1028,4 @@ def _client(name, config):
 def _resource(name, config):
     region = config["provider"]["region"]
     aws_credentials = config["provider"].get("aws_credentials", {})
-    return _resource_cache(name, region, **aws_credentials)
-
-
-@lru_cache()
-def _resource_cache(name, region, **kwargs):
-    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-    return boto3.resource(
-        name,
-        region,
-        config=boto_config,
-        **kwargs,
-    )
+    return resource_cache(name, region, **aws_credentials)

@@ -69,8 +69,6 @@ enum MessageType:int {
   FreeObjectsInObjectStoreRequest,
   // A node manager requests to connect to another node manager.
   ConnectClient,
-  // Set dynamic custom resource.
-  SetResourceRequest,
   // Subscribe to Plasma updates.
   SubscribePlasmaReady,
 }
@@ -128,6 +126,8 @@ table RegisterClientRequest {
   worker_id: string;
   // The process ID of this worker.
   worker_pid: long;
+  // The PID of the process for setup worker runtime env.
+  worker_shim_pid: long;
   // The job ID if the client is a driver, otherwise it should be NIL.
   job_id: string;
   // Language of this worker.

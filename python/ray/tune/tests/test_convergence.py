@@ -75,6 +75,24 @@ class ConvergenceTest(unittest.TestCase):
         assert len(analysis.trials) < 50
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
 
+    def testConvergenceBlendSearch(self):
+        from ray.tune.suggest.flaml import BlendSearch
+
+        np.random.seed(0)
+        searcher = BlendSearch()
+        analysis = self._testConvergence(searcher, patience=10)
+
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
+
+    def testConvergenceCFO(self):
+        from ray.tune.suggest.flaml import CFO
+
+        np.random.seed(0)
+        searcher = CFO()
+        analysis = self._testConvergence(searcher, patience=10)
+
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
+
     def testConvergenceDragonfly(self):
         from ray.tune.suggest.dragonfly import DragonflySearch
 

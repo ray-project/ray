@@ -61,11 +61,20 @@ def bootstrap_kubernetes(config):
             "Exposing external IP addresses for ray containers isn't "
             "currently supported. Please set "
             "'use_internal_ips' to false.")
-    namespace = _configure_namespace(config["provider"])
-    _configure_autoscaler_service_account(namespace, config["provider"])
-    _configure_autoscaler_role(namespace, config["provider"])
-    _configure_autoscaler_role_binding(namespace, config["provider"])
+
+    if config["provider"].get("_operator"):
+        namespace = config["provider"]["namespace"]
+    else:
+        namespace = _configure_namespace(config["provider"])
+
     _configure_services(namespace, config["provider"])
+
+    if not config["provider"].get("_operator"):
+        # These steps are unecessary when using the Operator.
+        _configure_autoscaler_service_account(namespace, config["provider"])
+        _configure_autoscaler_role(namespace, config["provider"])
+        _configure_autoscaler_role_binding(namespace, config["provider"])
+
     return config
 
 
@@ -115,11 +124,6 @@ def get_autodetected_resources(container_data):
         resource_name.upper(): get_resource(container_resources, resource_name)
         for resource_name in ["cpu", "gpu"]
     }
-
-    # Throw out GPU from resource dict if the amount is 0.
-    for key in copy.deepcopy(node_type_resources):
-        if node_type_resources[key] == 0:
-            del node_type_resources[key]
 
     memory_limits = get_resource(container_resources, "memory")
     node_type_resources["memory"] = int(

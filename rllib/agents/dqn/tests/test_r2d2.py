@@ -4,7 +4,7 @@ import ray
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -36,13 +36,14 @@ class TestR2D2(unittest.TestCase):
         config["lr"] = 5e-4
         config["exploration_config"]["epsilon_timesteps"] = 100000
 
-        num_iterations = 2
+        num_iterations = 1
 
         # Test building an R2D2 agent in all frameworks.
         for _ in framework_iterator(config):
             trainer = dqn.R2D2Trainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
 
             check_compute_single_action(trainer, include_state=True)

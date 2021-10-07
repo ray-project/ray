@@ -48,13 +48,20 @@ class GroupAgentsWrapper(MultiAgentEnv):
             for agent_id in agent_ids:
                 if agent_id in self.agent_id_to_group:
                     raise ValueError(
-                        "Agent id {} is in multiple groups".format(
-                            agent_id, groups))
+                        "Agent id {} is in multiple groups".format(agent_id))
                 self.agent_id_to_group[agent_id] = group_id
         if obs_space is not None:
             self.observation_space = obs_space
         if act_space is not None:
             self.action_space = act_space
+
+    def seed(self, seed=None):
+        if not hasattr(self.env, "seed"):
+            # This is a silent fail. However, OpenAI gyms also silently fail
+            # here.
+            return
+
+        self.env.seed(seed)
 
     def reset(self):
         obs = self.env.reset()

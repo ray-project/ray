@@ -16,6 +16,7 @@ from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
                              EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE,
                              EXPR_PROGRESS_FILE, EXPR_RESULT_FILE)
 from ray.tune.utils import flatten_dict
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial  # noqa: F401
@@ -333,6 +334,7 @@ class UnifiedLogger(Logger):
             _logger.flush()
 
 
+@PublicAPI
 class LoggerCallback(Callback):
     """Base class for experiment-level logger callbacks
 
@@ -584,7 +586,8 @@ class TBXLoggerCallback(LoggerCallback):
     """
 
     # NoneType is not supported on the last TBX release yet.
-    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
+    VALID_HPARAMS = (str, bool, int, float, list)
+    VALID_NP_HPARAMS = (np.bool8, np.float32, np.float64, np.int32, np.int64)
 
     def __init__(self):
         try:
@@ -679,10 +682,18 @@ class TBXLoggerCallback(LoggerCallback):
             if isinstance(v, self.VALID_HPARAMS)
         }
 
+        np_params = {
+            k: v.tolist()
+            for k, v in flat_params.items()
+            if isinstance(v, self.VALID_NP_HPARAMS)
+        }
+
+        scrubbed_params.update(np_params)
+
         removed = {
             k: v
             for k, v in flat_params.items()
-            if not isinstance(v, self.VALID_HPARAMS)
+            if not isinstance(v, self.VALID_HPARAMS + self.VALID_NP_HPARAMS)
         }
         if removed:
             logger.info(

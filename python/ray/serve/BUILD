@@ -2,42 +2,33 @@
 # re-run if any of these files changes.
 py_library(
     name = "serve_lib",
-    srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    srcs = glob(["**/*.py"], exclude=["tests/**/*.py"]),
+    visibility = ["//python/ray/serve:__subpackages__", "//release:__pkg__"],
 )
 
-serve_tests_srcs = glob(["tests/*.py"],
-     exclude=["tests/test_serve.py",
-             ])
+serve_tests_srcs = glob(["tests/**/*.py"])
 
 py_test(
     name = "test_api",
-    size = "large",
+    size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_api_new",
-    size = "large",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
     name = "test_deploy",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
     name = "test_get_deployment",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -45,7 +36,7 @@ py_test(
     name = "test_http_prefix_matching",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -53,31 +44,47 @@ py_test(
     name = "test_http_routes",
     size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
     name = "test_advanced",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_autoscaling_metrics",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
     name = "test_metrics",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
     name = "test_batching",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -85,7 +92,15 @@ py_test(
     name = "test_controller",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_constructor_failure",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -93,7 +108,7 @@ py_test(
     name = "test_ray_client",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serverless"],
     deps = [":serve_lib"],
 )
 
@@ -101,7 +116,7 @@ py_test(
     name = "test_async_goal_manager",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -109,15 +124,7 @@ py_test(
     name = "test_backend_state",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_backend_worker",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -126,25 +133,25 @@ py_test(
     name = "test_config",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 
 py_test(
     name = "test_failure",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 
 py_test(
     name = "test_handle",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -153,7 +160,7 @@ py_test(
     name = "test_kv_store",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -162,7 +169,7 @@ py_test(
     name = "test_persistence",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -171,7 +178,7 @@ py_test(
     name = "test_router",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve", "flaky"],
     deps = [":serve_lib"],
 )
 
@@ -179,7 +186,7 @@ py_test(
     name = "test_regression",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -187,7 +194,7 @@ py_test(
     name = "test_long_poll",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -195,15 +202,15 @@ py_test(
     name = "test_standalone",
     size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
     name = "test_cluster",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -211,44 +218,60 @@ py_test(
     name = "test_util",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_imported_backend",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
     name = "test_fastapi",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_runtime_env",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "post_wheel_build", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_cli",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_autoscaling_policy",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["team:serve"],
     deps = [":serve_lib"],
 )
 
 # Runs test_api and test_failure with injected failures in the controller.
-# TODO(simon): Tests are disabled until #11683 is fixed.
-# py_test(
-#     name = "test_controller_crashes",
-#     size = "large",
-#     srcs = glob(["tests/test_controller_crashes.py",
-#                 "tests/test_api.py",
-#                 "tests/test_failure.py",
-#                 "**/conftest.py"],
-#                 exclude=["tests/test_serve.py"]),
-# )
+py_test(
+   name = "test_controller_crashes",
+   size = "medium",
+   srcs = glob(["tests/test_controller_crashes.py",
+               "tests/test_api.py",
+               "tests/test_failure.py",
+               "**/conftest.py"]),
+   tags = ["exclusive", "team:serve"],
+   deps = [":serve_lib"],
+)
 
 py_test(
-    name = "echo_full",
+    name = "test_controller_recovery",
     size = "small",
-    srcs = glob(["examples/*.py"]),
-    tags = ["exclusive"],
-    deps = [":serve_lib"]
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
 )
 
 # Make sure the example showing in doc is tested
@@ -256,7 +279,7 @@ py_test(
     name = "quickstart_class",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
 
@@ -264,7 +287,7 @@ py_test(
     name = "quickstart_function",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
 
@@ -272,7 +295,7 @@ py_test(
     name = "tutorial_tensorflow",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
 
@@ -280,7 +303,7 @@ py_test(
     name = "tutorial_pytorch",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
 
@@ -288,7 +311,7 @@ py_test(
     name = "tutorial_sklearn",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
 
@@ -296,15 +319,15 @@ py_test(
     name = "tutorial_batch",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
 
 py_test(
     name = "tutorial_rllib",
-    size = "medium",
+    size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
 
@@ -312,17 +335,14 @@ py_test(
     name = "snippet_model_composition",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
 
-# Disable the deployment tutorial test because it requires
-# ray start --head in the background.
-# py_test(
-    #name = "tutorial_deploy",
-    #size = "small",
-    #srcs = glob(["examples/doc/*.py"]),
-    #tags = ["exclusive"],
-    #deps = [":serve_lib"]
-# )
-
+py_test(
+    name = "conda_env",
+    size = "medium",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive", "post_wheel_build", "team:serve"],
+    deps = [":serve_lib"]
+)

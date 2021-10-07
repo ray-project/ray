@@ -3,7 +3,7 @@
 import traceback
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 
 
 def _import_a2c():
@@ -116,6 +116,11 @@ def _import_sac():
     return sac.SACTrainer, sac.DEFAULT_CONFIG
 
 
+def _import_rnnsac():
+    from ray.rllib.agents import sac
+    return sac.RNNSACTrainer, sac.RNNSAC_DEFAULT_CONFIG
+
+
 def _import_simple_q():
     from ray.rllib.agents import dqn
     return dqn.SimpleQTrainer, dqn.simple_q.DEFAULT_CONFIG
@@ -155,6 +160,7 @@ ALGORITHMS = {
     "QMIX": _import_qmix,
     "R2D2": _import_r2d2,
     "SAC": _import_sac,
+    "RNNSAC": _import_rnnsac,
     "SimpleQ": _import_simple_q,
     "TD3": _import_td3,
 }
@@ -174,9 +180,8 @@ def get_trainer_class(alg: str, return_config=False) -> type:
         return class_
 
 
-# Deprecated: Use `get_trainer_class` instead.
+@Deprecated(new="get_trainer_class", error=False)
 def get_agent_class(alg: str) -> type:
-    deprecation_warning("get_agent_class", "get_trainer_class", error=False)
     return get_trainer_class(alg)
 
 

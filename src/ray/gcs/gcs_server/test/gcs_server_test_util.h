@@ -21,8 +21,8 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_actor_schedule_strategy.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -79,6 +79,14 @@ struct GcsServerMocker {
       callbacks.push_back(callback);
     }
 
+    void RequestWorkerLease(
+        const rpc::TaskSpec &spec,
+        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
+        const int64_t backlog_size = -1) override {
+      num_workers_requested += 1;
+      callbacks.push_back(callback);
+    }
+
     /// WorkerLeaseInterface
     void ReleaseUnusedWorkers(
         const std::vector<WorkerID> &workers_in_use,
@@ -102,7 +110,7 @@ struct GcsServerMocker {
     // Trigger reply to RequestWorkerLease.
     bool GrantWorkerLease(const std::string &address, int port, const WorkerID &worker_id,
                           const NodeID &raylet_id, const NodeID &retry_at_raylet_id,
-                          Status status = Status::OK()) {
+                          Status status = Status::OK(), bool rejected = false) {
       rpc::RequestWorkerLeaseReply reply;
       if (!retry_at_raylet_id.IsNil()) {
         reply.mutable_retry_at_raylet_address()->set_ip_address(address);
@@ -115,6 +123,16 @@ struct GcsServerMocker {
         reply.mutable_worker_address()->set_raylet_id(raylet_id.Binary());
         reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
       }
+      if (rejected) {
+        reply.set_rejected(true);
+        auto resources_data = reply.mutable_resources_data();
+        resources_data->set_node_id(raylet_id.Binary());
+        resources_data->set_resources_normal_task_changed(true);
+        auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
+        normal_task_map[kMemory_ResourceLabel] = double(std::numeric_limits<int>::max());
+        resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
+      }
+
       if (callbacks.size() == 0) {
         return false;
       } else {
@@ -170,7 +188,7 @@ struct GcsServerMocker {
 
     /// ResourceReserveInterface
     void CancelResourceReserve(
-        BundleSpecification &bundle_spec,
+        const BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
         override {
       num_return_requested += 1;
@@ -240,9 +258,20 @@ struct GcsServerMocker {
     void GetSystemConfig(const ray::rpc::ClientCallback<ray::rpc::GetSystemConfigReply>
                              &callback) override {}
 
-    /// ResourceRequestInterface
+    void GetGcsServerAddress(
+        const ray::rpc::ClientCallback<ray::rpc::GetGcsServerAddressReply> &callback)
+        override {}
+
+    /// ResourceUsageInterface
     void RequestResourceReport(
         const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override {
+      RAY_CHECK(false) << "Unused";
+    };
+
+    /// ResourceUsageInterface
+    void UpdateResourceUsage(
+        std::string &address,
+        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override {
       RAY_CHECK(false) << "Unused";
     };
 
@@ -267,9 +296,38 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
 
-  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
+  class MockedRayletBasedActorScheduler : public gcs::RayletBasedActorScheduler {
    public:
-    using gcs::GcsActorScheduler::GcsActorScheduler;
+    using gcs::RayletBasedActorScheduler::RayletBasedActorScheduler;
+
+    void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
+                                     std::shared_ptr<rpc::GcsNodeInfo> node) {
+      DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
+    }
+
+   protected:
+    void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
+                                    std::shared_ptr<rpc::GcsNodeInfo> node) override {
+      ++num_retry_leasing_count_;
+      if (num_retry_leasing_count_ <= 1) {
+        DoRetryLeasingWorkerFromNode(actor, node);
+      }
+    }
+
+    void RetryCreatingActorOnWorker(std::shared_ptr<gcs::GcsActor> actor,
+                                    std::shared_ptr<GcsLeasedWorker> worker) override {
+      ++num_retry_creating_count_;
+      DoRetryCreatingActorOnWorker(actor, worker);
+    }
+
+   public:
+    int num_retry_leasing_count_ = 0;
+    int num_retry_creating_count_ = 0;
+  };
+
+  class MockedGcsBasedActorScheduler : public gcs::GcsBasedActorScheduler {
+   public:
+    using gcs::GcsBasedActorScheduler::GcsBasedActorScheduler;
 
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
                                      std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -364,9 +422,9 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
-                                          bool filter_dead_nodes = true) const override {
-      return boost::none;
+    absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
+                                         bool filter_dead_nodes = true) const override {
+      return absl::nullopt;
     }
 
     const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override {

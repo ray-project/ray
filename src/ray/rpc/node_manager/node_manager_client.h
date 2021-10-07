@@ -70,6 +70,9 @@ class NodeManagerWorkerClient
     return std::shared_ptr<NodeManagerWorkerClient>(instance);
   }
 
+  /// Update cluster resource usage.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, UpdateResourceUsage, grpc_client_, )
+
   /// Request a resource report.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReport, grpc_client_, )
 
@@ -108,6 +111,9 @@ class NodeManagerWorkerClient
 
   /// Get the system config from Raylet.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GetSystemConfig, grpc_client_, )
+
+  /// Get gcs server address.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetGcsServerAddress, grpc_client_, )
 
  private:
   /// Constructor.

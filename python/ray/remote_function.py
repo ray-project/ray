@@ -1,4 +1,6 @@
+import uuid
 import logging
+import inspect
 from functools import wraps
 
 from ray import cloudpickle as pickle
@@ -6,6 +8,7 @@ from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
+from ray._private.runtime_env import parse_pip_and_conda
 from ray.util.placement_group import (
     PlacementGroup,
     check_placement_group_index,
@@ -13,6 +16,8 @@ from ray.util.placement_group import (
 )
 import ray._private.signature
 import ray._private.runtime_env as runtime_support
+from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
+                                             _inject_tracing_into_function)
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -21,6 +26,7 @@ DEFAULT_REMOTE_FUNCTION_MAX_CALLS = 0
 # Normal tasks may be retried on failure this many times.
 # TODO(swang): Allow this to be set globally for an application.
 DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES = 3
+DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS = False
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +56,10 @@ class RemoteFunction:
             of this remote function.
         _max_calls: The number of times a worker can execute this function
             before exiting.
+        _max_retries: The number of times this task may be retried
+            on worker failure.
+        _retry_exceptions: Whether application-level errors should be retried.
+        _runtime_env: The runtime environment for this task.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
             invoking the function. The decorator must return a function that
@@ -68,11 +78,16 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 accelerator_type, num_returns, max_calls, max_retries):
+                 accelerator_type, num_returns, max_calls, max_retries,
+                 retry_exceptions, runtime_env):
+        if inspect.iscoroutinefunction(function):
+            raise ValueError("'async def' should not be used for remote "
+                             "tasks. You can wrap the async function with "
+                             "`asyncio.get_event_loop.run_until(f())`. "
+                             "See more at docs.ray.io/async_api.html")
         self._language = language
-        self._function = function
-        self._function_name = (
-            self._function.__module__ + "." + self._function.__name__)
+        self._function = _inject_tracing_into_function(function)
+        self._function_name = (function.__module__ + "." + function.__name__)
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -91,12 +106,20 @@ class RemoteFunction:
                            if max_calls is None else max_calls)
         self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
                              if max_retries is None else max_retries)
+        self._retry_exceptions = (DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS
+                                  if retry_exceptions is None else
+                                  retry_exceptions)
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        self._runtime_env = parse_pip_and_conda(runtime_env)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
             self._function)
 
         self._last_export_session_and_job = None
+        self._uuid = uuid.uuid4()
 
         # Override task.remote's signature and docstring
         @wraps(function)
@@ -121,11 +144,11 @@ class RemoteFunction:
                 accelerator_type=None,
                 resources=None,
                 max_retries=None,
-                placement_group=None,
+                retry_exceptions=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                override_environment_variables=None,
                 name=""):
         """Configures and overrides the task invocation parameters.
 
@@ -144,6 +167,10 @@ class RemoteFunction:
         """
 
         func_cls = self
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = parse_pip_and_conda(runtime_env)
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
@@ -158,17 +185,17 @@ class RemoteFunction:
                     accelerator_type=accelerator_type,
                     resources=resources,
                     max_retries=max_retries,
+                    retry_exceptions=retry_exceptions,
                     placement_group=placement_group,
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=runtime_env,
-                    override_environment_variables=(
-                        override_environment_variables),
+                    runtime_env=new_runtime_env,
                     name=name)
 
         return FuncWrapper()
 
+    @_tracing_task_invocation
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -180,14 +207,15 @@ class RemoteFunction:
                 accelerator_type=None,
                 resources=None,
                 max_retries=None,
-                placement_group=None,
+                retry_exceptions=None,
+                placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
-        if client_mode_should_convert():
+
+        if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(
                 self,
                 args,
@@ -200,12 +228,12 @@ class RemoteFunction:
                 accelerator_type=accelerator_type,
                 resources=resources,
                 max_retries=max_retries,
+                retry_exceptions=retry_exceptions,
                 placement_group=placement_group,
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
                 runtime_env=runtime_env,
-                override_environment_variables=override_environment_variables,
                 name=name)
 
         worker = ray.worker.global_worker
@@ -226,9 +254,8 @@ class RemoteFunction:
             # first driver. This is an argument for repickling the function,
             # which we do here.
             self._pickled_function = pickle.dumps(self._function)
-
             self._function_descriptor = PythonFunctionDescriptor.from_function(
-                self._function, self._pickled_function)
+                self._function, self._uuid)
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
@@ -240,14 +267,18 @@ class RemoteFunction:
             num_returns = self._num_returns
         if max_retries is None:
             max_retries = self._max_retries
+        if retry_exceptions is None:
+            retry_exceptions = self._retry_exceptions
 
         if placement_group_capture_child_tasks is None:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
 
-        if placement_group is None:
+        if placement_group == "default":
             if placement_group_capture_child_tasks:
                 placement_group = get_current_placement_group()
+            else:
+                placement_group = PlacementGroup.empty()
 
         if not placement_group:
             placement_group = PlacementGroup.empty()
@@ -261,10 +292,12 @@ class RemoteFunction:
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
 
-        if runtime_env:
-            parsed = runtime_support.RuntimeEnvDict(runtime_env)
-            override_environment_variables = parsed.to_worker_env_vars(
-                override_environment_variables)
+        if runtime_env is None:
+            runtime_env = self._runtime_env
+
+        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
+        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
+            runtime_env, job_runtime_env)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -280,19 +313,12 @@ class RemoteFunction:
                     "Cross language remote function " \
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
-                self._language,
-                self._function_descriptor,
-                list_args,
-                name,
-                num_returns,
-                resources,
-                max_retries,
-                placement_group.id,
-                placement_group_bundle_index,
+                self._language, self._function_descriptor, list_args, name,
+                num_returns, resources, max_retries, retry_exceptions,
+                placement_group.id, placement_group_bundle_index,
                 placement_group_capture_child_tasks,
-                worker.debugger_breakpoint,
-                override_environment_variables=override_environment_variables
-                or dict())
+                worker.debugger_breakpoint, runtime_env_dict,
+                runtime_env_dict.get("uris") or [])
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""

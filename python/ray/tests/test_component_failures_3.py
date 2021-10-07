@@ -6,7 +6,7 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.test_utils import get_other_nodes
+from ray._private.test_utils import get_other_nodes
 
 
 @pytest.mark.parametrize(
@@ -104,6 +104,18 @@ def test_driver_lives_parallel(ray_start_regular):
         process_info.process.wait()
 
     # If the driver can reach the tearDown method, then it is still alive.
+
+
+def test_dying_worker(ray_start_2_cpus):
+    @ray.remote(num_cpus=0, max_calls=1)
+    def foo():
+        pass
+
+    for _ in range(20):
+        ray.get([foo.remote() for _ in range(5)])
+
+    # Make sure that nothing has died.
+    assert ray._private.services.remaining_processes_alive()
 
 
 if __name__ == "__main__":

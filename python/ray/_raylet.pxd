@@ -15,7 +15,8 @@ from libcpp.memory cimport (
 
 from ray.includes.common cimport (
     CBuffer,
-    CRayObject
+    CRayObject,
+    CAddress,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -76,12 +77,21 @@ cdef class BaseID:
 cdef class ObjectRef(BaseID):
     cdef:
         CObjectID data
+        c_string owner_addr
         # Flag indicating whether or not this object ref was added to the set
         # of active IDs in the core worker so we know whether we should clean
         # it up.
         c_bool in_core_worker
+        c_string call_site_data
 
     cdef CObjectID native(self)
+
+cdef class ClientObjectRef(ObjectRef):
+    cdef object _mutex
+    cdef object _id_future
+
+    cdef _set_id(self, id)
+    cdef inline _wait_for_id(self, timeout=None)
 
 cdef class ActorID(BaseID):
     cdef CActorID data
@@ -90,6 +100,13 @@ cdef class ActorID(BaseID):
 
     cdef size_t hash(self)
 
+cdef class ClientActorRef(ActorID):
+    cdef object _mutex
+    cdef object _id_future
+
+    cdef _set_id(self, id)
+    cdef inline _wait_for_id(self, timeout=None)
+
 cdef class CoreWorker:
     cdef:
         c_bool is_driver
@@ -97,13 +114,17 @@ cdef class CoreWorker:
         object async_event_loop
         object plasma_event_handler
         object job_config
+        object current_runtime_env_dict
         c_bool is_local_mode
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
-                            owner_address=*)
+                            c_bool created_by_worker,
+                            owner_address=*,
+                            c_bool inline_small_object=*)
+    cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)

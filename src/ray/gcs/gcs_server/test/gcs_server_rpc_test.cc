@@ -33,6 +33,7 @@ class GcsServerTest : public ::testing::Test {
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
+    config.node_ip_address = "127.0.0.1";
     config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     gcs_server_.reset(new gcs::GcsServer(config, io_service_));
@@ -602,9 +603,8 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
   ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

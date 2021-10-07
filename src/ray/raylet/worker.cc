@@ -65,6 +65,16 @@ void Worker::SetProcess(Process proc) {
   proc_ = std::move(proc);
 }
 
+Process Worker::GetShimProcess() const {
+  RAY_CHECK(worker_type_ != rpc::WorkerType::DRIVER);
+  return shim_proc_;
+}
+
+void Worker::SetShimProcess(Process proc) {
+  RAY_CHECK(shim_proc_.IsNull());  // this procedure should not be called multiple times
+  shim_proc_ = std::move(proc);
+}
+
 Language Worker::GetLanguage() const { return language_; }
 
 const std::string Worker::IpAddress() const { return ip_address_; }
@@ -115,6 +125,12 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
 }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
+
+void Worker::SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) {
+  runtime_env_hash_ = runtime_env_hash;
+}
+
+RuntimeEnvHash Worker::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {
   RAY_CHECK(actor_id_.IsNil())

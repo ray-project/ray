@@ -81,7 +81,10 @@ build_wheel_windows() {
       unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
       install_ray
       cd "${WORKSPACE_DIR}"/python
+      # build ray wheel
       python setup.py --quiet bdist_wheel
+      # build ray-cpp wheel
+      RAY_INSTALL_CPP=1 python setup.py --quiet bdist_wheel
       uninstall_ray
     )
   done
