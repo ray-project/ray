@@ -26,6 +26,8 @@ from ray.autoscaler._private.commands import (
     get_local_dump_archive, get_cluster_dump_archive, debug_status,
     RUN_ENV_TYPES)
 from ray.autoscaler._private.constants import RAY_PROCESSES
+from ray.autoscaler._private.fake_multi_node.node_provider import \
+    FAKE_HEAD_NODE_ID
 
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
@@ -556,6 +558,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             with socket() as s:
                 s.bind(("", 0))
                 port = s.getsockname()[1]
+
+        if os.environ.get("RAY_FAKE_HEAD"):
+            ray_params.env_vars = {"RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID}
 
         num_redis_shards = None
         # Start Ray on the head node.

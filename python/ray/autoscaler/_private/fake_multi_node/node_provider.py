@@ -1,4 +1,5 @@
 import logging
+import os
 import json
 
 import ray
@@ -10,12 +11,11 @@ from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
 
 logger = logging.getLogger(__name__)
 
-# TODO(ekl) make it so you don't need to pass this to ray start
-# RAY_OVERRIDE_NODE_ID_FOR_TESTING=fffffffffffffffffffffffffffffffffffffffffffffffffff00000
-# ray start \
-#   --autoscaling-config=~/Desktop/foo.yaml --head --block
-FIXED_HEAD_NODE_ID = "fffffffffffffffffffffffffffffffffffffffffffffffffff00000"
-FIXED_HEAD_NODE_TYPE = "ray.head.default"
+# We generate the node ids determinstically in the fake node provider, so that
+# we can associated launched nodes with their resource reports. IDs increment
+# starting with fffff*00000 for the head node, fffff*00001, etc. for workers.
+FAKE_HEAD_NODE_ID = "fffffffffffffffffffffffffffffffffffffffffffffffffff00000"
+FAKE_HEAD_NODE_TYPE = "ray.head.default"
 
 
 class FakeMultiNodeProvider(NodeProvider):
@@ -25,12 +25,16 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
+        if "RAY_FAKE_HEAD" not in os.environ:
+            raise RuntimeError(
+                "FakeMultiNodeProvider requires ray to be started with "
+                "RAY_FAKE_HEAD=1 ray start ...")
         self._nodes = {
-            FIXED_HEAD_NODE_ID: {
+            FAKE_HEAD_NODE_ID: {
                 "tags": {
                     TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
-                    TAG_RAY_USER_NODE_TYPE: FIXED_HEAD_NODE_TYPE,
-                    TAG_RAY_NODE_NAME: FIXED_HEAD_NODE_ID,
+                    TAG_RAY_USER_NODE_TYPE: FAKE_HEAD_NODE_TYPE,
+                    TAG_RAY_NODE_NAME: FAKE_HEAD_NODE_ID,
                     TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 }
             },
@@ -45,12 +49,6 @@ class FakeMultiNodeProvider(NodeProvider):
     def non_terminated_nodes(self, tag_filters):
         nodes = []
         for node_id in self._nodes:
-            if not node_id.startswith("fffff"):
-                raise RuntimeError(
-                    "All nodes managed by FakeMultiNodeProvider must have ids "
-                    "starting with fffff*, but have: {}. Ensure the cluster "
-                    "was started with the `ray start --fake-head-id` option."
-                    .format(self._nodes))
             tags = self.node_tags(node_id)
             ok = True
             for k, v in tag_filters.items():

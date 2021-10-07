@@ -1,6 +1,6 @@
 # Example command to start a cluster with this config:
 #
-# ray start --autoscaling-config=example.yaml --head --block --fixed-head-id
+# RAY_FAKE_HEAD=1 ray start --autoscaling-config=example.yaml --head --block
 #
 cluster_name: fake_multinode
 max_workers: 8
@@ -11,10 +11,10 @@ provider:
     disable_launch_config_check: True
 available_node_types:
     ray.head.default:
-        # You must set this manually to your default node resources!!
+        # You must set this manually to your "head" node resources!!
         resources:
-            CPU: 8
-            GPU: 0
+            CPU: 8   # <-- set this to num CPUs of current machine
+            GPU: 0   # <-- set this to num GPUs of current machine
         node_config: {}
         max_workers: 0
     ray.worker.cpu:

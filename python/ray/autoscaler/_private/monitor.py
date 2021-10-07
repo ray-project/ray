@@ -29,6 +29,8 @@ from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.fake_multi_node.node_provider import \
+    FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
     DEBUG_AUTOSCALING_ERROR, format_readonly_node_type
 
@@ -163,10 +165,8 @@ class Monitor:
         head_node_ip = redis_address.split(":")[0]
         self.redis_address = redis_address
         self.redis_password = redis_password
-        # TODO(ekl) clean this up
-        override_node_id = os.environ.get("RAY_OVERRIDE_NODE_ID_FOR_TESTING")
-        if override_node_id:
-            self.load_metrics = LoadMetrics(local_ip=override_node_id)
+        if os.environ.get("RAY_FAKE_HEAD"):
+            self.load_metrics = LoadMetrics(local_ip=FAKE_HEAD_NODE_ID)
         else:
             self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
