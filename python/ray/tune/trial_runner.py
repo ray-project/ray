@@ -59,9 +59,13 @@ class _ExperimentCheckpointManager:
 
     """
 
-    def __init__(self, checkpoint_dir: str,
-                 checkpoint_period: Union[int, float, str], start_time: float,
-                 session_str: str, syncer: CloudSyncer):
+    def __init__(self,
+                 checkpoint_dir: str,
+                 checkpoint_period: Union[int, float, str],
+                 start_time: float,
+                 session_str: str,
+                 syncer: CloudSyncer,
+                 sync_trial_checkpoints: bool = False):
         self._checkpoint_dir = checkpoint_dir
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
         if self._auto_checkpoint_enabled:
@@ -73,6 +77,7 @@ class _ExperimentCheckpointManager:
         self._session_str = session_str
 
         self._syncer = syncer
+        self._sync_trial_checkpoints = sync_trial_checkpoints
 
         self._last_checkpoint_time = 0.
 
@@ -125,10 +130,16 @@ class _ExperimentCheckpointManager:
 
         checkpoint_time_start = time.monotonic()
         _serialize_and_write()
-        if force:
-            self._syncer.sync_up()
+
+        if self._sync_trial_checkpoints:
+            exclude = None
         else:
-            self._syncer.sync_up_if_needed()
+            exclude = ["*/checkpoint_*"]
+
+        if force:
+            self._syncer.sync_up(exclude=exclude)
+        else:
+            self._syncer.sync_up_if_needed(exclude=exclude)
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
         if self._auto_checkpoint_enabled:
