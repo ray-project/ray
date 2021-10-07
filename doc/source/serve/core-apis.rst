@@ -155,6 +155,39 @@ To scale out a deployment to many processes, simply configure the number of repl
   # Scale back down to 1 replica.
   func.options(num_replicas=1).deploy()
 
+Serve also has experimental support for a demand-based replica autoscaler.
+It reacts to traffic spikes via observing queue sizes and making scaling decisions.
+To configure it, you can set the ``_autoscaling`` field in deployment options.
+
+.. warning::
+  The API is experimental and subject to change. We welcome you to test it out
+  and leave us feedback through github issues or discussion forum!
+
+.. code-block:: python
+
+  @serve.deployment(
+      _autoscaling_config={
+          "min_replicas": 1,
+          "max_replicas": 5,
+          "target_num_ongoing_requests_per_replica": 10,
+      },
+      version="v1")
+  def func(_):
+      time.sleep(1)
+      return ""
+  
+  func.deploy()
+
+The ``min_replicas`` and ``max_replicas`` fields configures the range for autoscaler
+to choose from. 
+Deployments will start with ``min_replicas`` and the replicas configuration overtime.
+``target_num_ongoing_requests_per_replica`` configuration specifies how much should the
+autoscaler react to traffic. In general, it will try to match existing state against this target 
+
+
+
+
+
 .. _`serve-cpus-gpus`:
 
 Resource Management (CPUs, GPUs)
