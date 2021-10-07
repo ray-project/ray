@@ -41,7 +41,7 @@ class TestMemoryLeaks(unittest.TestCase):
             _config = config.copy()
             _config["env"] = RandomLargeObsSpaceEnv
             trainer = ppo.appo.APPOTrainer(config=_config)
-            check_memory_leaks(trainer)
+            check_memory_leaks(trainer, to_check="policy")#TODO
             trainer.stop()
 
     def test_ddppo_memory_leaks(self):

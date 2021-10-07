@@ -23,7 +23,8 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
     Raises:
         MemoryError: If a memory leak in one of the components is found.
     """
-    tracemalloc.start(10)
+    # Store up to n frames of each call stack.
+    tracemalloc.start(5)
 
     local_worker = trainer.workers.local_worker()
 
@@ -41,10 +42,14 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             table = defaultdict(list)
 
             # Play n episodes and check for leaks.
-            print(desc)
+            actual_repeats = repeats * (trial + 1)
+
+            print(desc, end="")
+            print(f" {actual_repeats} times.")
+
             if init is not None:
                 init()
-            for i in range(repeats * (trial + 1)):
+            for i in range(actual_repeats):
                 _i_print(i)
                 func()
                 _snapshot(table, suspicious)
@@ -59,7 +64,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
                 else:
                     print(f"Found suspect {e.args[1]} -> retrying.")
                     suspicious.add(e.args[1])
-            # Nothing suspicious found
+            # Nothing suspicious found.
             if len(suspicious) == 0:
                 break
 
@@ -72,7 +77,6 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
         # Isolate the first sub-env in the vectorized setup and test it.
         env = local_worker.async_env.get_unwrapped()[0]
         action_space = env.action_space
-        num_episodes = 200
 
         def func():
             while True:
@@ -86,18 +90,16 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
                     break
 
         _test(
-            desc="Looking for leaks in env: "
-                 f"Running through {num_episodes} episodes.",
+            desc="Looking for leaks in env, running through episodes.",
             init=lambda: env.reset(),
             func=func,
-            repeats=num_episodes,
+            repeats=200,
             max_num_trials=max_num_trials,
         )
 
     # Test the policy (single-agent case only so far).
     if "policy" in to_check:
         policy = local_worker.policy_map[DEFAULT_POLICY_ID]
-        num_calls = 500
 
         # Get a fixed obs.
         obs = tree.map_structure(
@@ -113,10 +115,10 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
 
         # Call `compute_actions_from_input_dict()` n times.
         _test(
-            desc=f"Calling `compute_actions_from_input_dict()` {num_calls} times.",
+            desc=f"Calling `compute_actions_from_input_dict()`.",
             init=None,
             func=func,
-            repeats=num_calls,
+            repeats=500,
             max_num_trials=max_num_trials,
         )
 
@@ -128,26 +130,26 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             policy.learn_on_batch(dummy_batch)
 
         _test(
-            desc=f"Calling `learn_on_batch()` {num_calls} times.",
+            desc=f"Calling `learn_on_batch()`.",
             init=None,
             func=func,
-            repeats=num_calls,
+            repeats=100,
             max_num_trials=max_num_trials,
         )
 
 
 def _snapshot(table, suspicious=None):
     snapshot = tracemalloc.take_snapshot()
-    top_stats = snapshot.statistics("lineno")
+    top_stats = snapshot.statistics("traceback")
 
-    for stat in top_stats[:100]:
-        trace = str(stat.traceback)
+    for stat in top_stats[:1000]:
+        #trace = str(stat.traceback)
         if suspicious is None or trace in suspicious:
-            table[trace].append(stat.size)
+            table[stat.traceback].append(stat.size)
 
 
 def _analyze_table(table):
-    for key, hist in table.items():
+    for traceback, hist in table.items():
         # Ignore this very module here (we are collecting lots of data
         # so an increase is expected).
         if any(s in key for s in ["tracemalloc", "pycharm", "thirdparty_files/psutil"]) or \
@@ -164,7 +166,7 @@ def _analyze_table(table):
             # - If stronger positive slope -> error.
             # deltas = np.array([0.0 if i == 0 else h - hist[i - 1] for i, h in
             #          enumerate(hist)])
-            if memory_increase > 100 and (line.slope > 0.05 or (
+            if memory_increase > 20 and (line.slope > 0.03 or (
                     line.slope > 0.0 and line.rvalue > 0.2)):
                 raise MemoryError(
                     f"Found a memory leak inside {key}!\n"
