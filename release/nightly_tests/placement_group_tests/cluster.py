@@ -1,10 +1,10 @@
+import time
 from ray.cluster_utils import Cluster
 
 cluster = Cluster()
 
 cluster.add_node(num_cpus=16)
 
-import time
 time.sleep(20)
 print("Scaling up.")
 cluster.add_node(num_cpus=16, num_gpus=1)
