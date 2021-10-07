@@ -342,7 +342,7 @@ def run(
         num_samples = sys.maxsize
 
     result_buffer_length = None
-    if not scheduler.supports_buffered_results:
+    if scheduler and not scheduler.supports_buffered_results:
         # Result buffering with a Hyperband scheduler is a bad idea, as
         # hyperband tries to stop trials when processing brackets. With result
         # buffering, we might trigger this multiple times when evaluating
