@@ -183,6 +183,15 @@ def traced_eager_policy(eager_policy_cls):
     return TracedEagerPolicy
 
 
+class OptimizerWrapper:
+    def __init__(self, tape):
+        self.tape = tape
+
+    def compute_gradients(self, loss, var_list):
+        return list(
+            zip(self.tape.gradient(loss, var_list), var_list))
+
+
 def build_eager_tf_policy(
         name,
         loss_fn,
@@ -747,15 +756,6 @@ def build_eager_tf_policy(
                 variables = self.model.trainable_variables()
 
             if compute_gradients_fn:
-
-                class OptimizerWrapper:
-                    def __init__(self, tape):
-                        self.tape = tape
-
-                    def compute_gradients(self, loss, var_list):
-                        return list(
-                            zip(self.tape.gradient(loss, var_list), var_list))
-
                 grads_and_vars = compute_gradients_fn(self,
                                                       OptimizerWrapper(tape),
                                                       loss)

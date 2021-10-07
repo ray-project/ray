@@ -24,7 +24,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
         MemoryError: If a memory leak in one of the components is found.
     """
     # Store up to n frames of each call stack.
-    tracemalloc.start(5)
+    tracemalloc.start(10)
 
     local_worker = trainer.workers.local_worker()
 
@@ -52,17 +52,23 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             for i in range(actual_repeats):
                 _i_print(i)
                 func()
-                _snapshot(table, suspicious)
+                _take_snapshot(table, suspicious)
             print("\n")
             # Check, which traces have moved up constantly over time.
             suspicious = set()
             try:
-                _analyze_table(table)
+                _find_memory_leaks_in_table(table)
             except MemoryError as e:
                 if trial == max_num_trials - 1:
                     raise e
                 else:
-                    print(f"Found suspect {e.args[1]} -> retrying.")
+                    print("Found suspicious memory allocation in traceback:")
+                    for f in e.args[1].format():
+                        print(f)
+                    print(f"Increase total={e.args[2]}")
+                    print(f"Slope={e.args[3]}")
+                    print(f"Rval={e.args[4]}")
+                    print("-> added to retry list")
                     suspicious.add(e.args[1])
             # Nothing suspicious found.
             if len(suspicious) == 0:
@@ -93,6 +99,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             desc="Looking for leaks in env, running through episodes.",
             init=lambda: env.reset(),
             func=func,
+            # How many times to repeat the function call?
             repeats=200,
             max_num_trials=max_num_trials,
         )
@@ -118,7 +125,10 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             desc=f"Calling `compute_actions_from_input_dict()`.",
             init=None,
             func=func,
-            repeats=500,
+            # How many times to repeat the function call?
+            repeats=400,
+            # How many times to re-try if we find a suspicious memory
+            # allocation?
             max_num_trials=max_num_trials,
         )
 
@@ -133,32 +143,42 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             desc=f"Calling `learn_on_batch()`.",
             init=None,
             func=func,
+            # How many times to repeat the function call?
             repeats=100,
             max_num_trials=max_num_trials,
         )
 
 
-def _snapshot(table, suspicious=None):
+def _take_snapshot(table, suspicious=None):
+    # Take a memory snapshot.
     snapshot = tracemalloc.take_snapshot()
+    # Group all memory allocations by their stacktrace (going n frames
+    # deep as defined above in tracemalloc.start(n)).
+    # Then sort groups by size, then count, then trace.
     top_stats = snapshot.statistics("traceback")
 
-    for stat in top_stats[:1000]:
-        #trace = str(stat.traceback)
-        if suspicious is None or trace in suspicious:
+    # Loop only through n largest sizes and store these in our table.
+    # Discard the rest.
+    for stat in top_stats[:100]:
+        if suspicious is None or stat.traceback in suspicious:
             table[stat.traceback].append(stat.size)
 
 
-def _analyze_table(table):
+def _find_memory_leaks_in_table(table):
     for traceback, hist in table.items():
-        # Ignore this very module here (we are collecting lots of data
-        # so an increase is expected).
-        if any(s in key for s in ["tracemalloc", "pycharm", "thirdparty_files/psutil"]) or \
-                re.sub("\\.", "/", __name__) + ".py" in key:
-            continue
+        top_stack = str(traceback[-1])
         # Do a quick mem increase check.
         memory_increase = hist[-1] - hist[0]
         # Only if memory increased, do we check further.
         if memory_increase > 0.0:
+            # Ignore this very module here (we are collecting lots of data
+            # so an increase is expected).
+            if any(s in top_stack for s in [
+                "tracemalloc", "pycharm", "thirdparty_files/psutil",
+                re.sub("\\.", "/", __name__) + ".py"
+            ]):
+                continue
+
             # Do a linear regression to get the slope and R-value.
             line = scipy.stats.linregress(x=np.arange(len(hist)), y=np.array(hist))
             # - If weak positive slope and some confidence and
@@ -169,8 +189,8 @@ def _analyze_table(table):
             if memory_increase > 20 and (line.slope > 0.03 or (
                     line.slope > 0.0 and line.rvalue > 0.2)):
                 raise MemoryError(
-                    f"Found a memory leak inside {key}!\n"
+                    f"Found a memory leak inside {traceback}!\n"
                     f"increase={memory_increase}\n"
                     f"slope={line.slope}\n"
                     f"R={line.rvalue}\n"
-                    f"hist={hist}", key)
+                    f"hist={hist}", traceback, memory_increase, line.slope, line.rvalue)
