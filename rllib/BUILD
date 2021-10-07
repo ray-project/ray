@@ -2516,6 +2516,15 @@ py_test(
     args = ["--framework=torch", "--stop-reward=0.0"]
 )
 
+py_test(
+     name = "examples/mmo_mockup_example",
+     main = "examples/mmo_mockup_example.py",
+     tags = ["team:ml", "examples", "examples_M"],
+     size = "small",
+     srcs = ["examples/mmo_mockup_example.py"],
+     args = [],
+)
+
 # Do not run this test (MobileNetV2 is gigantic and takes forever for 1 iter).
 # py_test(
 #     name = "examples/mobilenet_v2_with_lstm_tf",
