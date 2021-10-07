@@ -203,7 +203,6 @@ def durable(trainable: Union[str, Type[Trainable], Callable]):
                      "durable_trainable")
     except TypeError:
         # MRO resolution error, which means class has already been wrapped
-        raise
         return trainable_cls
 
     return _WrappedDurableTrainable
