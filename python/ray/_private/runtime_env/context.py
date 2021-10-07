@@ -39,11 +39,13 @@ class RuntimeEnvContext:
         os.environ.update(self.env_vars)
 
         if shutil.which("bash") is not None:
-            exec_command = " ".join([f"exec {self.py_executable}"] + passthrough_args)
+            exec_command = " ".join([f"exec {self.py_executable}"] +
+                                    passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
             os.execvp(file="bash", args=["bash", "-c", command_str])
         elif shutil.which("cmd") is not None:
-            exec_command = " ".join([f'"{self.py_executable}"'] + passthrough_args)
+            exec_command = " ".join([f'"{self.py_executable}"'] +
+                                    passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
             os.execvp(file="cmd", args=["/c", command_str])
         else:
