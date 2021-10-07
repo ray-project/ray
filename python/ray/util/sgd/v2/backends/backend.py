@@ -428,27 +428,29 @@ class BackendExecutor:
                     "calling `start_training` again.")
 
         def get_dataset_shards(dataset_or_dict):
-            actors = [worker.actor for worker in self.worker_group.workers]
 
             if dataset_or_dict is None:
                 # Return None for each shard.
                 return [None] * len(self.worker_group)
 
+            def split_dataset(dataset_or_pipeline):
+                actors = [worker.actor for worker in self.worker_group.workers]
+                return dataset_or_pipeline.split(
+                    len(self.worker_group),
+                    equal=True,
+                    locality_hints=actors)
+
             if isinstance(dataset_or_dict, dict):
                 # Return a smaller dict for each shard.
                 dataset_shards = [{}] * len(self.worker_group)
                 for key, dataset in dataset_or_dict.items():
-                    split_datasets = dataset.split(
-                        len(self.worker_group),
-                        equal=True,
-                        locality_hints=actors)
+                    split_datasets = split_dataset(dataset)
                     for i in range(len(split_datasets)):
                         dataset_shards[i][key] = split_datasets[i]
                 return dataset_shards
             else:
                 # return a smaller RayDataset for each shard.
-                return dataset_or_dict.split(
-                    len(self.worker_group), equal=True, locality_hints=actors)
+                return split_dataset(dataset_or_dict)
 
         dataset_shards = get_dataset_shards(dataset)
 
