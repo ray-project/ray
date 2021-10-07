@@ -5,7 +5,6 @@ from ray.tests.conftest import *  # noqa
 from ray import workflow
 from ray.workflow import workflow_storage
 from ray.workflow import storage
-from ray.workflow.workflow_access import WorkflowExecutionError
 from ray.workflow.workflow_storage import asyncio_run
 from ray.workflow.common import StepType
 from ray.workflow.tests import utils
@@ -44,6 +43,7 @@ async def test_kv_storage(workflow_start_regular):
 @pytest.mark.asyncio
 def test_delete(workflow_start_regular):
     _storage = storage.get_global_storage()
+
     # Delete a workflow which has finished.
     @workflow.step
     def basic_step(arg):
