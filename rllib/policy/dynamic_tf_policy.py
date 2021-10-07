@@ -14,7 +14,7 @@ from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.debug.summary import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import get_placeholder

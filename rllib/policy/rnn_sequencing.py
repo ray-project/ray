@@ -17,7 +17,7 @@ from typing import List, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.debug.summary import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import TensorType, ViewRequirementsDict
 from ray.util import log_once

@@ -27,7 +27,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.debug.summary import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import convert_to_numpy

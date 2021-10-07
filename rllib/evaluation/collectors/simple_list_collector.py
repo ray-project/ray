@@ -13,7 +13,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.debug.summary import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.typing import AgentID, EpisodeID, EnvID, PolicyID, \

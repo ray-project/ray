@@ -16,7 +16,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override
-from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.debug.summary import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY

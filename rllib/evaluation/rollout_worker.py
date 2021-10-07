@@ -32,7 +32,8 @@ from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
+from ray.rllib.utils.debug.deterministic import update_global_seed_if_necessary
+from ray.rllib.utils.debug.summary import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.error import EnvError, ERR_MSG_NO_GPUS, \
     HOWTO_CHANGE_CONFIG
