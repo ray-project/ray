@@ -46,7 +46,7 @@ def build_ddpg_models(policy: Policy, observation_space: gym.spaces.Space,
     else:
         default_model = TorchNoopModel if config["framework"] == "torch" \
             else NoopModel
-        num_outputs = int(np.product(observation_space.shape))
+        num_outputs = np.product(observation_space.shape)
 
     policy.model = ModelCatalog.get_model_v2(
         obs_space=observation_space,

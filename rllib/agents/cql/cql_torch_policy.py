@@ -48,7 +48,7 @@ def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
 def q_values_repeat(model, obs, actions, twin=False):
     action_shape = actions.shape[0]
     obs_shape = obs.shape[0]
-    num_repeat = int(action_shape / obs_shape)
+    num_repeat = action_shape // obs_shape
     obs_temp = obs.unsqueeze(1).repeat(1, num_repeat, 1).view(
         obs.shape[0] * num_repeat, obs.shape[1])
     if not twin:

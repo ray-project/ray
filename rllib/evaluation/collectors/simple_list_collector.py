@@ -227,10 +227,9 @@ class _AgentCollector:
                 # Batch repeat value > 1: Only repeat the shift_from/to range
                 # every n timesteps.
                 if view_req.batch_repeat_value > 1:
-                    count = int(
-                        math.ceil(
-                            (len(np_data[data_col][0]) - self.shift_before) /
-                            view_req.batch_repeat_value))
+                    count = math.ceil(
+                        (len(np_data[data_col][0]) - self.shift_before) /
+                        view_req.batch_repeat_value)
                     data = [
                         np.asarray([
                             d[self.shift_before +
@@ -247,9 +246,9 @@ class _AgentCollector:
                 else:
                     d0 = np_data[data_col][0]
                     shift_win = view_req.shift_to - view_req.shift_from + 1
-                    data_size = d0.itemsize * int(np.product(d0.shape[1:]))
+                    data_size = d0.itemsize * np.product(d0.shape[1:])
                     strides = [
-                        d0.itemsize * int(np.product(d0.shape[i + 1:]))
+                        d0.itemsize * np.product(d0.shape[i + 1:])
                         for i in range(1, len(d0.shape))
                     ]
                     start = self.shift_before - shift_win + 1 + obs_shift + \
@@ -279,10 +278,9 @@ class _AgentCollector:
 
                 # Batch repeat (only provide a value every n timesteps).
                 if view_req.batch_repeat_value > 1:
-                    count = int(
-                        math.ceil(
-                            (len(np_data[data_col][0]) - self.shift_before) /
-                            view_req.batch_repeat_value))
+                    count = math.ceil(
+                        (len(np_data[data_col][0]) - self.shift_before) /
+                        view_req.batch_repeat_value)
                     data = [
                         np.asarray([
                             d[self.shift_before +

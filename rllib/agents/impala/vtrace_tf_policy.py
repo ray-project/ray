@@ -153,7 +153,7 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
 
     # swap B and T axes
     res = tf.transpose(
-        rs, [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
+        rs, [1, 0] + list(range(2, 1 + tf.shape(tensor).shape[0])))
 
     if drop_last:
         return res[:-1]
