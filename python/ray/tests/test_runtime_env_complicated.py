@@ -761,7 +761,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         "ray[serve, tune]",
         "texthero",
         "PyGithub",
-        "xgboost_ray[default]",
+        "xgboost_ray",
         "pandas==1.1",  # pandas 1.2.4 in the demo, but not supported on py36
         "typer",
         "aiofiles",
