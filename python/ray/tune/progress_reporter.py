@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import datetime
 from typing import Dict, List, Optional, Union
 
 import collections
@@ -159,6 +160,8 @@ class TuneReporterBase(ProgressReporter):
         self._max_report_freqency = max_report_frequency
         self._last_report_time = 0
 
+        self._start_time = time.time()
+
         self._metric = metric
         self._mode = mode
 
@@ -187,6 +190,12 @@ class TuneReporterBase(ProgressReporter):
 
     def set_total_samples(self, total_samples: int):
         self._total_samples = total_samples
+
+    def set_start_time(self, timestamp: Optional[float] = None):
+        if timestamp is not None:
+            self._start_time = time.time()
+        else:
+            self._start_time = timestamp
 
     def should_report(self, trials: List[Trial], done: bool = False):
         if time.time() - self._last_report_time > self._max_report_freqency:
@@ -267,7 +276,11 @@ class TuneReporterBase(ProgressReporter):
         if not self._metrics_override:
             user_metrics = self._infer_user_metrics(trials, self._infer_limit)
             self._metric_columns.update(user_metrics)
-        messages = ["== Status ==", memory_debug_str(), *sys_info]
+        messages = [
+            "== Status ==",
+            time_passed_str(self._start_time, time.time()),
+            memory_debug_str(), *sys_info
+        ]
         if done:
             max_progress = None
             max_error = None
@@ -508,6 +521,33 @@ def memory_debug_str():
     except ImportError:
         return ("Unknown memory usage. Please run `pip install psutil` "
                 "to resolve)")
+
+
+def time_passed_str(start_time: float, current_time: float):
+    current_time_dt = datetime.datetime.fromtimestamp(current_time)
+    start_time_dt = datetime.datetime.fromtimestamp(start_time)
+    delta: datetime.timedelta = current_time_dt - start_time_dt
+
+    rest = delta.total_seconds()
+    days = rest // (60 * 60 * 24)
+
+    rest -= days * (60 * 60 * 24)
+    hours = rest // (60 * 60)
+
+    rest -= hours * (60 * 60)
+    minutes = rest // 60
+
+    seconds = rest - minutes * 60
+
+    if days > 0:
+        running_for_str = f"{days:.0f} days, "
+    else:
+        running_for_str = ""
+
+    running_for_str += f"{hours:02.0f}:{minutes:02.0f}:{seconds:05.2f}"
+
+    return (f"Current time: {current_time_dt:%Y-%m-%d %H:%M:%S} "
+            f"(running for {running_for_str})")
 
 
 def _get_trials_by_state(trials: List[Trial]):

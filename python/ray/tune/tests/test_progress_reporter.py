@@ -3,13 +3,14 @@ import collections
 import os
 import unittest
 from unittest.mock import MagicMock, Mock, patch
+
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
-from ray.tune.progress_reporter import (CLIReporter, JupyterNotebookReporter,
-                                        _fair_filter_trials, best_trial_str,
-                                        detect_reporter, trial_progress_str)
+from ray.tune.progress_reporter import (
+    CLIReporter, JupyterNotebookReporter, _fair_filter_trials, best_trial_str,
+    detect_reporter, trial_progress_str, time_passed_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -439,6 +440,27 @@ class ProgressReporterTest(unittest.TestCase):
         # Current best trial
         best1 = best_trial_str(trials[1], "metric_1")
         assert best1 == EXPECTED_BEST_1
+
+    def testTimeElapsed(self):
+        # Sun Feb 7 14:18:40 2016 -0800
+        # (time of the first Ray commit)
+        time_start = 1454825920
+        time_now = (
+            time_start + 1 * 60 * 60  # 1 hour
+            + 31 * 60  # 31 minutes
+            + 22  # 22 seconds
+        )  # time to second commit
+
+        # Local timezone output can be tricky, so we don't check the
+        # day and the hour in this test.
+        output = time_passed_str(time_start, time_now)
+        self.assertIn("Current time: 2016-02-", output)
+        self.assertIn(":50:02 (running for 01:31:22.00)", output)
+
+        time_now += 2 * 60 * 60 * 24  # plus two days
+        output = time_passed_str(time_start, time_now)
+        self.assertIn("Current time: 2016-02-", output)
+        self.assertIn(":50:02 (running for 2 days, 01:31:22.00)", output)
 
     def testCurrentBestTrial(self):
         trials = []
