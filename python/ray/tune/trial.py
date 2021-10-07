@@ -8,7 +8,7 @@ import platform
 import re
 import shutil
 import time
-from typing import Callable, Dict, Sequence, Union
+from typing import Callable, Dict, Optional, Sequence, Union
 import uuid
 
 import ray
@@ -20,8 +20,8 @@ from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
-from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION,
-                             TRIAL_ID)
+from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, NODE_IP, PID,
+                             TRAINING_ITERATION, TRIAL_ID)
 from ray.tune.resources import Resources, \
     json_to_resources, resources_to_json
 from ray.tune.utils.placement_groups import PlacementGroupFactory, \
@@ -397,6 +397,26 @@ class Trial:
             resource_kwargs["has_placement_group"] = True
             self.resources = Resources(**resource_kwargs)
 
+    def _get_default_result_or_future(self) -> Optional[dict]:
+        """Calls ray.get on self._default_result_or_future and assigns back.
+
+        Returns None in case of exceptions.
+        Will also set the trial location if runner is set.
+        """
+        if self._default_result_or_future and isinstance(
+                self._default_result_or_future, ray.ObjectRef):
+            try:
+                self._default_result_or_future = ray.get(
+                    self._default_result_or_future)
+            except RayActorError:  # error during initialization
+                self._default_result_or_future = None
+        if self._default_result_or_future and self.runner:
+            self.set_location(
+                Location(
+                    self._default_result_or_future.get(NODE_IP),
+                    self._default_result_or_future.get(PID)))
+        return self._default_result_or_future
+
     @property
     def last_result(self) -> dict:
         # The logic in here is as follows:
@@ -409,17 +429,9 @@ class Trial:
         # 3. In the worst case where we have nothing, we just set the
         #    trial_id and return that.
         result = self._last_result
-        if not {k
-                for k in result
-                if k != TRIAL_ID} and self._default_result_or_future:
-            if isinstance(self._default_result_or_future, ray.ObjectRef):
-                try:
-                    self._default_result_or_future = ray.get(
-                        self._default_result_or_future)
-                except RayActorError:  # error during initialization
-                    self._default_result_or_future = None
-            if self._default_result_or_future:
-                result = self._default_result_or_future
+        if not {k for k in result if k != TRIAL_ID}:
+            self._get_default_result_or_future()
+            result = self._default_result_or_future or result
         result.setdefault(TRIAL_ID, self.trial_id)
         return result
 
@@ -645,7 +657,7 @@ class Trial:
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
 
-        self.set_location(Location(result.get("node_ip"), result.get("pid")))
+        self.set_location(Location(result.get(NODE_IP), result.get(PID)))
         self.last_result = result
         self.last_update_time = time.time()
 
