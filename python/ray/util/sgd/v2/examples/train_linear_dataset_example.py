@@ -1,18 +1,44 @@
 import argparse
+from typing import Dict
 
-import ray
 import torch
 import torch.nn as nn
-import ray.util.sgd.v2 as sgd
-from ray.util.sgd.v2 import Trainer, TorchConfig
-from ray.util.sgd.v2.callbacks import JsonLoggerCallback, TBXLoggerCallback
 from torch.nn.parallel import DistributedDataParallel
 
+import ray
+import ray.util.sgd.v2 as sgd
+from ray.data import Dataset
+from ray.data.dataset_pipeline import DatasetPipeline
+from ray.util.sgd.v2 import Trainer, TorchConfig
+from ray.util.sgd.v2.callbacks import JsonLoggerCallback, TBXLoggerCallback
 
-def get_dataset(a, b, size=1000) -> ray.data.Dataset:
-    items = [i / size for i in range(size)]
-    dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
-    return dataset
+
+def get_datasets(a=5, b=10, size=1000,
+                 split=0.8) -> Dict[str, DatasetPipeline]:
+    def get_dataset(a, b, size) -> Dataset:
+        items = [i / size for i in range(size)]
+        dataset = ray.data.from_items([{
+            "x": x,
+            "y": a * x + b
+        } for x in items])
+        return dataset
+
+    dataset = get_dataset(a, b, size)
+
+    split_index = int(dataset.count() * split)
+
+    train_dataset, validation_dataset = \
+        dataset.random_shuffle().split_at_indices([split_index])
+
+    train_dataset_pipeline = train_dataset.repeat().random_shuffle()
+    validation_dataset_pipeline = validation_dataset.repeat()
+
+    datasets = {
+        "train": train_dataset_pipeline,
+        "validation": validation_dataset_pipeline
+    }
+
+    return datasets
 
 
 def train(iterable_dataset, model, loss_fn, optimizer):
@@ -90,20 +116,7 @@ def train_func(config):
 
 
 def train_linear(num_workers=2):
-    dataset = get_dataset(5, 10)
-
-    split_index = int(dataset.count() * 0.8)
-
-    train_dataset, validation_dataset = \
-        dataset.random_shuffle().split_at_indices([split_index])
-
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle()
-    validation_dataset_pipeline = validation_dataset.repeat()
-
-    datasets = {
-        "train": train_dataset_pipeline,
-        "validation": validation_dataset_pipeline
-    }
+    datasets = get_datasets()
 
     trainer = Trainer(TorchConfig(backend="gloo"), num_workers=num_workers)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
@@ -139,8 +152,6 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
 
     args, _ = parser.parse_known_args()
-
-    import ray
 
     if args.smoke_test:
         ray.init(num_cpus=2)
