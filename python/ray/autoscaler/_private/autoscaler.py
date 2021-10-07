@@ -326,7 +326,6 @@ class StandardAutoscaler:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
                 self.schedule_node_termination(node_id, "idle", logger.info)
-
             elif not self.launch_config_ok(node_id):
                 self.schedule_node_termination(node_id, "outdated",
                                                logger.info)

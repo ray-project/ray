@@ -1,7 +1,7 @@
 # Example command to start a cluster with this config:
-# AUTOSCALER_UPDATE_INTERVAL_S=1 \
-# RAY_OVERRIDE_NODE_ID_FOR_TESTING=fffffffffffffffffffffffffffffffffffffffffffffffffff00000 \
-#    ray start --autoscaling-config=example.yaml --head --block
+#
+# ray start --autoscaling-config=example.yaml --head --block --fixed-head-id
+#
 cluster_name: fake_multinode
 max_workers: 8
 provider:
