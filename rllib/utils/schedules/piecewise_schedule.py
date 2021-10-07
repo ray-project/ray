@@ -51,7 +51,7 @@ class PiecewiseSchedule(Schedule):
         for (l_t, l), (r_t, r) in zip(self.endpoints[:-1], self.endpoints[1:]):
             # When found, return an interpolation (default: linear).
             if l_t <= t < r_t:
-                alpha = (t - l_t) / (r_t - l_t)
+                alpha = float(t - l_t) / (r_t - l_t)
                 return self.interpolation(l, r, alpha)
 
         # t does not belong to any of the pieces, return `self.outside_value`.

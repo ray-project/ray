@@ -227,9 +227,10 @@ class _AgentCollector:
                 # Batch repeat value > 1: Only repeat the shift_from/to range
                 # every n timesteps.
                 if view_req.batch_repeat_value > 1:
-                    count = math.ceil(
-                        (len(np_data[data_col][0]) - self.shift_before) /
-                        view_req.batch_repeat_value)
+                    count = int(
+                        math.ceil(
+                            (len(np_data[data_col][0]) - self.shift_before) /
+                            view_req.batch_repeat_value))
                     data = [
                         np.asarray([
                             d[self.shift_before +
@@ -278,9 +279,10 @@ class _AgentCollector:
 
                 # Batch repeat (only provide a value every n timesteps).
                 if view_req.batch_repeat_value > 1:
-                    count = math.ceil(
-                        (len(np_data[data_col][0]) - self.shift_before) /
-                        view_req.batch_repeat_value)
+                    count = int(
+                        math.ceil(
+                            (len(np_data[data_col][0]) - self.shift_before) /
+                            view_req.batch_repeat_value))
                     data = [
                         np.asarray([
                             d[self.shift_before +

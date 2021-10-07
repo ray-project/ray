@@ -388,7 +388,7 @@ def timeslice_along_seq_lens_with_overlap(
                                                        0:end]
             is_last_episode_ids = eps_ids == eps_ids[-1]
             if not is_last_episode_ids[0]:
-                zero_length = sum(1.0 - is_last_episode_ids)
+                zero_length = int(sum(1.0 - is_last_episode_ids))
                 data_begin = begin + zero_length
                 zero_init_states_ = True
 
