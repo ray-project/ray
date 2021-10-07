@@ -308,7 +308,9 @@ class TrialRunner:
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
-        if self._validate_resume(resume_type=resume):
+        if self._validate_resume(
+                resume_type=resume,
+                driver_sync_trial_checkpoints=driver_sync_trial_checkpoints):
             errored_only = False
             if isinstance(resume, str):
                 errored_only = resume.upper() == "ERRORED_ONLY"
@@ -424,12 +426,14 @@ class TrialRunner:
                     "weird behaviors may happen.")
                 func(self)
 
-    def _validate_resume(self, resume_type):
+    def _validate_resume(self, resume_type,
+                         driver_sync_trial_checkpoints=True):
         """Checks whether to resume experiment.
 
         Args:
             resume_type: One of True, "REMOTE", "LOCAL",
                 "PROMPT", "ERRORED_ONLY".
+            driver_sync_trial_checkpoints: Boolean
         """
         # TODO: Consider supporting ERRORED_ONLY+REMOTE?
         if not resume_type:
@@ -464,7 +468,7 @@ class TrialRunner:
             # Try syncing down the upload directory.
             logger.info("Downloading from %s", self._remote_checkpoint_dir)
 
-            if self._sync_trial_checkpoints:
+            if driver_sync_trial_checkpoints:
                 exclude = None
             else:
                 exclude = ["*/checkpoint_*"]
