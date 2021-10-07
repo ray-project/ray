@@ -449,10 +449,9 @@ class TrialRunner:
 
             # Try syncing down the upload directory.
             logger.info("Downloading from %s", self._remote_checkpoint_dir)
-            # TODO(ujvl): Note that this syncs down the entire directory,
-            #  which may also contain trial checkpoints. We should selectively
-            #  sync the necessary files instead.
-            self._syncer.sync_down_if_needed()
+            # Todo: we're excluding trial checkpoints here, maybe check
+            # for flag instead?
+            self._syncer.sync_down_if_needed(exclude=["*/checkpoint_*"])
             self._syncer.wait()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
