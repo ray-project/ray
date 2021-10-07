@@ -8,6 +8,7 @@ from ray.workflow import storage
 from ray.workflow.workflow_storage import asyncio_run
 from ray.workflow.common import StepType
 from ray.workflow.tests import utils
+import time
 
 
 def some_func(x):
@@ -77,7 +78,6 @@ def test_delete(workflow_start_regular):
     output = the_failed_step.step("fails").run_async(workflow_id="fails")
     time.sleep(1)
     ray.shutdown()
-
 
     print(output)
 
