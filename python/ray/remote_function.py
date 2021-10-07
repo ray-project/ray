@@ -1,21 +1,21 @@
-import uuid
-import logging
-import inspect
 from functools import wraps
+import inspect
+import logging
+import uuid
 
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
-from ray._private.runtime_env import parse_pip_and_conda
 from ray.util.placement_group import (
     PlacementGroup,
     check_placement_group_index,
     get_current_placement_group,
 )
 import ray._private.signature
-import ray._private.runtime_env as runtime_support
+from ray._private.runtime_env.validation import (
+    override_task_or_actor_runtime_env, ParsedRuntimeEnv)
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
 
@@ -112,7 +112,8 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        self._runtime_env = parse_pip_and_conda(runtime_env)
+        self._runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
@@ -170,7 +171,8 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = parse_pip_and_conda(runtime_env)
+        new_runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
@@ -292,12 +294,16 @@ class RemoteFunction:
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
 
-        if runtime_env is None:
+        if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
+            runtime_env = ParsedRuntimeEnv(runtime_env)
+        elif isinstance(runtime_env, ParsedRuntimeEnv):
+            pass
+        else:
             runtime_env = self._runtime_env
 
-        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
-        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
-            runtime_env, job_runtime_env)
+        parent_runtime_env = worker.core_worker.get_current_runtime_env()
+        parsed_runtime_env = override_task_or_actor_runtime_env(
+            runtime_env, parent_runtime_env)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -317,8 +323,8 @@ class RemoteFunction:
                 num_returns, resources, max_retries, retry_exceptions,
                 placement_group.id, placement_group_bundle_index,
                 placement_group_capture_child_tasks,
-                worker.debugger_breakpoint, runtime_env_dict,
-                runtime_env_dict.get("uris") or [])
+                worker.debugger_breakpoint, parsed_runtime_env.serialize(),
+                parsed_runtime_env.get("uris") or [])
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""
