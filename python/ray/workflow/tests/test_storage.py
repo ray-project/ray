@@ -5,9 +5,11 @@ from ray.tests.conftest import *  # noqa
 from ray import workflow
 from ray.workflow import workflow_storage
 from ray.workflow import storage
+from ray.workflow.workflow_access import WorkflowExecutionError
 from ray.workflow.workflow_storage import asyncio_run
 from ray.workflow.common import StepType
 from ray.workflow.tests import utils
+import subprocess
 import time
 
 
@@ -41,45 +43,64 @@ async def test_kv_storage(workflow_start_regular):
 
 @pytest.mark.asyncio
 def test_delete(workflow_start_regular):
-    # # Delete a workflow which has finished.
-    # @workflow.step
-    # def basic_step(arg):
-    #     return arg
-
-    # result = basic_step.step("hello world").run(workflow_id="finishes")
-    # assert result == "hello world"
-    # ouput = workflow.get_output("finishes")
-    # assert ray.get(ouput) == "hello world"
-
-    # workflow.delete(workflow_id="finishes")
-
-    # with pytest.raises(ValueError):
-    #     ouput = workflow.get_output("finishes")
-
-    # with pytest.raises(ValueError):
-    #     workflow.resume("finishes")
-
-    # # Deleting is idempotent.
-    # workflow.delete(workflow_id="finishes")
-
-    # # The workflow can be re-run as if it was never run before.
-    # basic_step.step("hello world").run(workflow_id="finishes")
-
-    # Delete a failed workflow.
+    _storage = storage.get_global_storage()
+    # Delete a workflow which has finished.
     @workflow.step
-    def the_failed_step(x):
-        if not utils.check_global_mark():
-            import subprocess
-            subprocess.check_output("ray stop --force", shell=True)
+    def basic_step(arg):
+        return arg
 
+    result = basic_step.step("hello world").run(workflow_id="finishes")
+    assert result == "hello world"
+    ouput = workflow.get_output("finishes")
+    assert ray.get(ouput) == "hello world"
+
+    workflow.delete(workflow_id="finishes")
+
+    with pytest.raises(ValueError):
+        ouput = workflow.get_output("finishes")
+
+    with pytest.raises(ValueError):
+        workflow.resume("finishes")
+
+    # Deleting is idempotent.
+    workflow.delete(workflow_id="finishes")
+
+    # The workflow can be re-run as if it was never run before.
+    assert basic_step.step("123").run(workflow_id="finishes") == "123"
+
+    # Delete a workflow that has not finished and is not running.
+    @workflow.step
+    def never_ends(x):
+        print("RUNNINGGGGGGGGGGG")
+        utils.set_global_mark()
+        time.sleep(1000000)
         return x
 
-    utils.unset_global_mark()
-    output = the_failed_step.step("fails").run_async(workflow_id="fails")
-    time.sleep(1)
-    ray.shutdown()
+    never_ends.step("hello world").run_async("never_finishes")
 
-    print(output)
+    # Make sure the step is actualy executing before killing the cluster
+    while not utils.check_global_mark():
+        time.sleep(1)
+
+    # Restart
+    ray.shutdown()
+    subprocess.check_output("ray stop --force", shell=True)
+    workflow.init(storage=_storage)
+
+    with pytest.raises(ray.exceptions.RaySystemError):
+        result = workflow.get_output("never_finishes")
+        ray.get(result)
+
+    workflow.delete("never_finishes")
+
+    with pytest.raises(ValueError):
+        ouput = workflow.get_output("never_finishes")
+
+    with pytest.raises(ValueError):
+        workflow.resume("never_finishes")
+
+    # Deleting is idempotent.
+    workflow.delete(workflow_id="never_finishes")
 
 
 def test_workflow_storage(workflow_start_regular):

@@ -341,8 +341,12 @@ def cancel(workflow_id: str) -> None:
 
 @PublicAPI(stability="beta")
 def delete(workflow_id: str) -> None:
-    """Delete all traces of a workflow from storage. To stop a running workflow,
-       see `workflow.cancel()`.
+    """Delete a workflow, its checkpoints, and other information it may have
+       persisted to storage. To stop a running workflow, see
+       `workflow.cancel()`.
+
+        NOTE: The caller should ensure that the workflow is not currently
+        running before deleting it.
 
     Args:
         workflow_id: The workflow to cancel.
