@@ -253,7 +253,6 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(trial.experiment_tag, "modified_mock")
         self.assertEqual(Trial.RUNNING, trial.status)
 
-    @patch("ray.tune.ray_trial_executor.DEFAULT_GET_TIMEOUT", 1.0)
     def testForceTrialCleanup(self):
         class B(Trainable):
             def step(self):
@@ -298,9 +297,9 @@ class RayTrialExecutorTest(unittest.TestCase):
             },
         }, "grid_search")
         trial = trials[0]
-        os.environ["TUNE_FORCE_TRIAL_CLEANUP"] = "1"
+        os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "1"
         self.trial_executor = RayTrialExecutor(queue_trials=False)
-        os.environ["TUNE_FORCE_TRIAL_CLEANUP"] = "0"
+        os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "0"
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         time.sleep(5)
