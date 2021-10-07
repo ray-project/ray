@@ -531,6 +531,7 @@ def run(
         signal.signal(signal.SIGINT, sigint_handler)
 
     tune_start = time.time()
+    progress_reporter.set_start_time(tune_start)
     while not runner.is_finished() and not state[signal.SIGINT]:
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
