@@ -41,7 +41,9 @@ def parse_allocated_resource(allocated_instances_serialized_json):
 
 class ContainerManager:
     def __init__(self, tmp_dir: str):
-        self._tmp_dir = tmp_dir
+        # _ray_tmp_dir will be mounted into container, so the worker process
+        # can connect to raylet.
+        self._ray_tmp_dir = tmp_dir
 
     def setup(self,
               runtime_env: dict,
@@ -53,7 +55,7 @@ class ContainerManager:
 
         container_driver = "podman"
         container_command = [
-            container_driver, "run", "-v", self._tmp_dir + ":" + self._tmp_dir,
+            container_driver, "run", "-v", self._ray_tmp_dir + ":" + self._ray_tmp_dir,
             "--cgroup-manager=cgroupfs", "--network=host", "--pid=host",
             "--ipc=host", "--env-host"
         ]
