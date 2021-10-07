@@ -13,7 +13,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import GetTimeoutError, RayActorError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -413,15 +413,23 @@ class Trial:
                 for k in result
                 if k != TRIAL_ID} and self._default_result_or_future:
             if isinstance(self._default_result_or_future, ray.ObjectRef):
-                self._default_result_or_future = ray.get(
-                    self._default_result_or_future)
-            result = self._default_result_or_future
+                try:
+                    self._default_result_or_future = ray.get(
+                        self._default_result_or_future)
+                except RayActorError:  # error during initialization
+                    self._default_result_or_future = None
+            if self._default_result_or_future:
+                result = self._default_result_or_future
         result.setdefault(TRIAL_ID, self.trial_id)
         return result
 
     @last_result.setter
     def last_result(self, val: dict):
         self._last_result = val
+
+    @property
+    def has_reported_at_least_once(self) -> bool:
+        return bool(self._last_result)
 
     @property
     def node_ip(self):
