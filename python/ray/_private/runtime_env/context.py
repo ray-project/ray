@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+import shutil
 from typing import Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
@@ -37,15 +38,14 @@ class RuntimeEnvContext:
     def exec_worker(self, passthrough_args: List[str]):
         os.environ.update(self.env_vars)
 
-        if sys.platform == "linux":
+        if shutil.which("bash") is not None:
             exec_command = " ".join([f"exec {self.py_executable}"] + passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
             os.execvp(file="bash", args=["bash", "-c", command_str])
-        elif sys.platform == "win32":
+        elif shutil.which("cmd") is not None:
             exec_command = " ".join([f'"{self.py_executable}"'] + passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
             os.execvp(file="cmd", args=["/c", command_str])
         else:
-            raise NotImplementedError("Only supports linux and win32 platforms")
+            raise FileNotFoundError("Cannot find neither 'bash' nor 'cmd'")
         logger.info(f"Exec'ing worker with command: {command_str}")
-
