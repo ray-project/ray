@@ -435,7 +435,8 @@ class TrialRunner:
         Args:
             resume_type: One of True, "REMOTE", "LOCAL",
                 "PROMPT", "ERRORED_ONLY", "AUTO".
-            driver_sync_trial_checkpoints: Boolean
+            driver_sync_trial_checkpoints: Boolean indicating if the driver
+                should sync trial checkpoints from the driver node to cloud.
         """
         # TODO: Consider supporting ERRORED_ONLY+REMOTE?
         if not resume_type:
