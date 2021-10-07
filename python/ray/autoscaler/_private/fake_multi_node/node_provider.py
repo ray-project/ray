@@ -1,7 +1,5 @@
 import logging
 import json
-from typing import Tuple, List
-import subprocess
 
 import ray
 from ray.autoscaler.node_provider import NodeProvider
@@ -9,7 +7,6 @@ from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
                                  NODE_KIND_WORKER, TAG_RAY_USER_NODE_TYPE,
                                  TAG_RAY_NODE_NAME, TAG_RAY_NODE_STATUS,
                                  STATUS_UP_TO_DATE)
-from ray.autoscaler._private.util import format_readonly_node_type
 
 logger = logging.getLogger(__name__)
 
