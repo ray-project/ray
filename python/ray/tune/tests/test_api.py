@@ -1725,7 +1725,8 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                          checkpoint_period=None,
                          trial_executor=None,
                          callbacks=None,
-                         metric=None):
+                         metric=None,
+                         driver_sync_trial_checkpoints=True):
                 capture["search_alg"] = search_alg
                 capture["scheduler"] = scheduler
                 super().__init__(
@@ -1741,7 +1742,9 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     checkpoint_period=checkpoint_period,
                     trial_executor=trial_executor,
                     callbacks=callbacks,
-                    metric=metric)
+                    metric=metric,
+                    driver_sync_trial_checkpoints=driver_sync_trial_checkpoints
+                )
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
             tune.run(
