@@ -63,8 +63,7 @@ class ContainerManager:
             container_command.extend(container_option.get("run_options"))
         # TODO(chenk008): add resource limit
         container_command.append("--entrypoint")
-        container_command.append("bash")
+        container_command.append("python")
         container_command.append(container_option.get("image"))
-        container_command.append("-c")
         context.py_executable = " ".join(container_command)
         logger.warning("start worker in container with prefix: {}".format(context.py_executable))
