@@ -125,7 +125,7 @@ parser.add_argument(
     default=0,
     help="The PID of the process for setup worker runtime env.")
 parser.add_argument(
-    "--startup-token",
+    "--startup_token",
     required=True,
     type=int,
     help="The startup token assigned to this worker process by the raylet.")

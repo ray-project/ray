@@ -429,7 +429,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
       stream << " " << arg;
     }
     stream << " "
-           << "--startup-token=" << startup_token_;
+           << "--startup_token=" << startup_token_;
     RAY_LOG(DEBUG) << stream.str();
   }
 
@@ -439,7 +439,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   for (const std::string &arg : worker_command_args) {
     argv.push_back(arg.c_str());
   }
-  const std::string &arg = "--startup-token=" + std::to_string(startup_token_);
+  const std::string &arg = "--startup_token=" + std::to_string(startup_token_);
   argv.push_back(arg.c_str());
   argv.push_back(NULL);
 

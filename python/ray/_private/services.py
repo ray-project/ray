@@ -51,7 +51,7 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
+    RAY_PATH, "core/src/ray/cpp/default_worker")
 
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "

@@ -53,6 +53,8 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
+  StartupToken startup_token;
+
   std::vector<std::string> head_args = {};
 
   static ConfigInternal &Instance() {
