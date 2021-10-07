@@ -137,8 +137,6 @@ identifier.
     search_alg2.restore_from_dir(
       os.path.join("~/my_results", "my-experiment-1"))
 
-.. note:: This is currently not implemented for: AxSearch, TuneBOHB, SigOptSearch, and DragonflySearch.
-
 .. _tune-basicvariant:
 
 Random search and grid search (tune.suggest.basic_variant.BasicVariantGenerator)
