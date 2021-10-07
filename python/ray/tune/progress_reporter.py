@@ -11,10 +11,10 @@ import time
 
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print, logger
-from ray.tune.result import (DEFAULT_METRIC, EPISODE_REWARD_MEAN,
-                             MEAN_ACCURACY, MEAN_LOSS, TRAINING_ITERATION,
-                             TIME_TOTAL_S, TIMESTEPS_TOTAL, AUTO_RESULT_KEYS)
-from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial
+from ray.tune.result import (
+    DEFAULT_METRIC, EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS, NODE_IP,
+    PID, TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL, AUTO_RESULT_KEYS)
+from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial, Location
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.util.annotations import PublicAPI, DeveloperAPI
@@ -814,6 +814,18 @@ def _fair_filter_trials(trials_by_state: Dict[str, List[Trial]],
     return filtered_trials
 
 
+def _get_trial_location(trial: Trial, result: dict) -> Location:
+    # we get the location from the result, as the one in trial will be
+    # reset when trial terminates
+    node_ip, pid = result.get(NODE_IP, None), result.get(PID, None)
+    if node_ip and pid:
+        location = Location(node_ip, pid)
+    else:
+        # fallback to trial location if there hasn't been a report yet
+        location = trial.location
+    return location
+
+
 def _get_trial_info(trial: Trial, parameters: List[str], metrics: List[str]):
     """Returns the following information about a trial:
 
@@ -826,7 +838,8 @@ def _get_trial_info(trial: Trial, parameters: List[str], metrics: List[str]):
     """
     result = trial.last_result
     config = trial.config
-    trial_info = [str(trial), trial.status, str(trial.location)]
+    location = _get_trial_location(trial, result)
+    trial_info = [str(trial), trial.status, str(location)]
     trial_info += [
         unflattened_lookup(param, config, default=None) for param in parameters
     ]
