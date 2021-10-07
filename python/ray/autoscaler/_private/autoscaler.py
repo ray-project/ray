@@ -165,6 +165,12 @@ class StandardAutoscaler:
         self.disable_node_updaters = self.config["provider"].get(
             "disable_node_updaters", False)
 
+        # Disable launch config checking if true.
+        # This is set in the fake_multinode situations where there isn't any
+        # meaningful node "type" to enforce.
+        self.disable_launch_config_check = self.config["provider"].get(
+            "disable_launch_config_check", False)
+
         # Node launchers
         self.launch_queue = queue.Queue()
         self.pending_launches = ConcurrentCounter()
@@ -313,8 +319,7 @@ class StandardAutoscaler:
                 continue
             if ((should_keep_or_terminate == KeepOrTerminate.keep
                  or node_id in nodes_not_allowed_to_terminate)
-#                    and self.launch_config_ok(node_id)
-                    ):
+                    and self.launch_config_ok(node_id)):
                 keep_node(node_id)
                 continue
 
@@ -322,10 +327,9 @@ class StandardAutoscaler:
             if node_ip in last_used and last_used[node_ip] < horizon:
                 self.schedule_node_termination(node_id, "idle", logger.info)
 
-
-#            elif not self.launch_config_ok(node_id):
-#                self.schedule_node_termination(node_id, "outdated",
-#                                               logger.info)
+            elif not self.launch_config_ok(node_id):
+                self.schedule_node_termination(node_id, "outdated",
+                                               logger.info)
             else:
                 keep_node(node_id)
                 nodes_we_could_terminate.append(node_id)
@@ -759,6 +763,8 @@ class StandardAutoscaler:
                                  "Error parsing config.")
 
     def launch_config_ok(self, node_id):
+        if self.disable_launch_config_check:
+            return True
         node_tags = self.provider.node_tags(node_id)
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)

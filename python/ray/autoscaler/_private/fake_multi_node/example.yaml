@@ -8,6 +8,7 @@ provider:
     type: fake_multinode
     use_node_id_as_ip: True
     disable_node_updaters: True
+    disable_launch_config_check: True
 available_node_types:
     ray.head.default:
         # You must set this manually to your default node resources!!
