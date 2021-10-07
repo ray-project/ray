@@ -29,6 +29,9 @@ Workflows also provides a *virtual actors* abstraction, which can be thought of 
     # Initialize a Counter actor with id="my_counter".
     counter = Counter.get_or_create("my_counter", 0)
 
+    # Wait to ensure virtual actor is initialized
+    ray.get(counter.ready())
+
     # Similar to workflow steps, actor methods support:
     # - `run()`, which will return the value
     # - `run_async()`, which will return a ObjectRef
@@ -51,7 +54,7 @@ We can retrieve the actor via its ``workflow_id`` in another process, to get the
     counter = workflow.get_actor(workflow_id="counter")
     assert 30 == counter.value.run()
 
-Readonly methods are not only lower overhead since they skip action logging, but can be executed concurrently with respect to mutating methods on the actor.
+Readonly methods are not only lower overhead since they skip action logging, but can be executed concurrently with respect to mutating methods on the actor. Readonly method has to be called after the virtual actor is initialized. ``ray.get(counter.ready())`` can be used to make sure initialization step is finished.
 
 Launching sub-workflows from actor methods
 ------------------------------------------
