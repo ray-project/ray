@@ -443,7 +443,7 @@ class DatasetPipeline(Generic[T]):
             ...         print(row)
 
         Returns:
-            Iterator over epochs objects, where each epoch is a DatasetPipeline
+            Iterator over epoch objects, where each epoch is a DatasetPipeline
             containing data from that epoch only.
         """
 
