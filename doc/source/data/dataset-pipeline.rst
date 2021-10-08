@@ -144,6 +144,8 @@ It's common in ML training to want to divide data ingest into epochs, or repetit
     # 3
     # 4
 
+Note that while epochs commonly consist of a single window, they can also contain multiple windows if ``.rewindow()`` is used after the repeat call or there are multiple ``.repeat()`` calls.
+
 Example: Pipelined Batch Inference
 ----------------------------------
 
