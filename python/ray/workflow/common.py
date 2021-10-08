@@ -14,6 +14,7 @@ from ray import ObjectRef
 from ray.util.annotations import PublicAPI
 
 # Alias types
+Event = Any
 StepID = str
 WorkflowOutputType = ObjectRef
 
