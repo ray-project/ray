@@ -10,6 +10,7 @@ from ray import tune
 from ray.rllib.examples.env.env_using_remote_actor import \
     CartPoleWithRemoteParamServer, ParameterStorage
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check
 
 parser = argparse.ArgumentParser()
@@ -60,6 +61,7 @@ if __name__ == "__main__":
         check(results1["hist_stats"], results2["hist_stats"])
         # As well as training behavior (minibatch sequence during SGD
         # iterations).
-        check(results1["info"]["learner"][DEFAULT_POLICY_ID]["learner_stats"],
-              results2["info"]["learner"][DEFAULT_POLICY_ID]["learner_stats"])
+        check(
+            results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+            results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"])
     ray.shutdown()

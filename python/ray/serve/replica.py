@@ -32,7 +32,7 @@ from ray.exceptions import RayTaskError
 logger = _get_logger()
 
 
-def create_backend_replica(name: str, serialized_backend_def: bytes):
+def create_replica_wrapper(name: str, serialized_backend_def: bytes):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
@@ -43,7 +43,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
-                           backend_config_proto_bytes: bytes,
+                           init_kwargs, backend_config_proto_bytes: bytes,
                            version: BackendVersion, controller_name: str,
                            detached: bool):
             backend = cloudpickle.loads(serialized_backend_def)
@@ -72,7 +72,8 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                 # This allows backends to define an async __init__ method
                 # (required for FastAPI backend definition).
                 _callable = backend.__new__(backend)
-                await sync_to_async(_callable.__init__)(*init_args)
+                await sync_to_async(_callable.__init__)(*init_args,
+                                                        **init_kwargs)
             # Setting the context again to update the servable_object.
             ray.serve.api._set_internal_replica_context(
                 backend_tag,
@@ -240,10 +241,19 @@ class RayServeReplica:
     def get_runner_method(self, request_item: Query) -> Callable:
         method_name = request_item.metadata.call_method
         if not hasattr(self.callable, method_name):
-            raise RayServeException("Backend doesn't have method {} "
-                                    "which is specified in the request. "
-                                    "The available methods are {}".format(
-                                        method_name, dir(self.callable)))
+            # Filter to methods that don't start with '__' prefix.
+            def callable_method_filter(attr):
+                if attr.startswith("__"):
+                    return False
+                elif not callable(getattr(self.callable, attr)):
+                    return False
+
+                return True
+
+            methods = list(filter(callable_method_filter, dir(self.callable)))
+            raise RayServeException(f"Tried to call a method '{method_name}' "
+                                    "that does not exist. Available methods: "
+                                    f"{methods}.")
         if self.is_function:
             return self.callable
         return getattr(self.callable, method_name)

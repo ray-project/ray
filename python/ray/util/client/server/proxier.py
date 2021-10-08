@@ -27,7 +27,7 @@ from ray.util.client.common import (
 from ray.util.client.server.dataservicer import _get_reconnecting_from_context
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
-from ray._private.runtime_env import RuntimeEnvContext
+from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
 
@@ -263,7 +263,9 @@ class ProxyManager():
             f"ray_client_server_{specific_server.port}", unique=True)
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
-        if serialized_runtime_env == "{}":
+        if not serialized_runtime_env or serialized_runtime_env == "{}":
+            # TODO(edoakes): can we just remove this case and always send it
+            # to the agent?
             serialized_runtime_env_context = RuntimeEnvContext().serialize()
         else:
             serialized_runtime_env_context = self._create_runtime_env(

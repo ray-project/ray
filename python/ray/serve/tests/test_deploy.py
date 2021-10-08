@@ -10,6 +10,7 @@ import requests
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
+from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
 
 
@@ -676,8 +677,8 @@ def test_deploy_handle_validation(serve_instance):
     assert ray.get(handle.options(method_name="b").remote()) == "hello"
     # New code path
     assert ray.get(handle.b.remote()) == "hello"
-    with pytest.raises(AttributeError):
-        handle.c.remote()
+    with pytest.raises(RayServeException):
+        ray.get(handle.c.remote())
 
 
 def test_init_args(serve_instance):
@@ -731,6 +732,58 @@ def test_init_args(serve_instance):
 
     D.options(version="2").deploy(10, 11, 12)
     check(10, 11, 12)
+
+
+def test_init_kwargs(serve_instance):
+    with pytest.raises(TypeError):
+
+        @serve.deployment(init_kwargs=[1, 2, 3])
+        class BadInitArgs:
+            pass
+
+    @serve.deployment(init_kwargs={"a": 1, "b": 2})
+    class D:
+        def __init__(self, **kwargs):
+            self._kwargs = kwargs
+
+        def get_kwargs(self, *args):
+            return self._kwargs
+
+    D.deploy()
+    handle = D.get_handle()
+
+    def check(kwargs):
+        assert ray.get(handle.get_kwargs.remote()) == kwargs
+
+    # Basic sanity check.
+    check({"a": 1, "b": 2})
+
+    # Check passing args to `.deploy()`.
+    D.deploy(a=3, b=4)
+    check({"a": 3, "b": 4})
+
+    # Passing args to `.deploy()` shouldn't override those passed in decorator.
+    D.deploy()
+    check({"a": 1, "b": 2})
+
+    # Check setting with `.options()`.
+    new_D = D.options(init_kwargs={"c": 8, "d": 10})
+    new_D.deploy()
+    check({"c": 8, "d": 10})
+
+    # Should not have changed old deployment object.
+    D.deploy()
+    check({"a": 1, "b": 2})
+
+    # Check that args are only updated on version change.
+    D.options(version="1").deploy()
+    check({"a": 1, "b": 2})
+
+    D.options(version="1").deploy(c=10, d=11)
+    check({"a": 1, "b": 2})
+
+    D.options(version="2").deploy(c=10, d=11)
+    check({"c": 10, "d": 11})
 
 
 def test_input_validation():

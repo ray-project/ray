@@ -1,7 +1,7 @@
-import uuid
-import logging
-import inspect
 from functools import wraps
+import inspect
+import logging
+import uuid
 
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
@@ -14,7 +14,8 @@ from ray.util.placement_group import (
     get_current_placement_group,
 )
 import ray._private.signature
-import ray._private.runtime_env as runtime_support
+from ray._private.runtime_env.validation import (
+    override_task_or_actor_runtime_env, ParsedRuntimeEnv)
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
 
@@ -108,7 +109,11 @@ class RemoteFunction:
         self._retry_exceptions = (DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS
                                   if retry_exceptions is None else
                                   retry_exceptions)
-        self._runtime_env = runtime_env
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        self._runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
@@ -145,7 +150,6 @@ class RemoteFunction:
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                override_environment_variables=None,
                 name=""):
         """Configures and overrides the task invocation parameters.
 
@@ -164,6 +168,11 @@ class RemoteFunction:
         """
 
         func_cls = self
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
@@ -183,9 +192,7 @@ class RemoteFunction:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=runtime_env,
-                    override_environment_variables=(
-                        override_environment_variables),
+                    runtime_env=new_runtime_env,
                     name=name)
 
         return FuncWrapper()
@@ -207,10 +214,10 @@ class RemoteFunction:
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
-        if client_mode_should_convert():
+
+        if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(
                 self,
                 args,
@@ -229,7 +236,6 @@ class RemoteFunction:
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
                 runtime_env=runtime_env,
-                override_environment_variables=override_environment_variables,
                 name=name)
 
         worker = ray.worker.global_worker
@@ -288,18 +294,16 @@ class RemoteFunction:
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
 
-        if runtime_env is None:
+        if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
+            runtime_env = ParsedRuntimeEnv(runtime_env)
+        elif isinstance(runtime_env, ParsedRuntimeEnv):
+            pass
+        else:
             runtime_env = self._runtime_env
 
-        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
-        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
-            runtime_env, job_runtime_env)
-
-        if override_environment_variables:
-            logger.warning("override_environment_variables is deprecated and "
-                           "will be removed in Ray 1.6.  Please use "
-                           ".options(runtime_env={'env_vars': {...}}).remote()"
-                           "instead.")
+        parent_runtime_env = worker.core_worker.get_current_runtime_env()
+        parsed_runtime_env = override_task_or_actor_runtime_env(
+            runtime_env, parent_runtime_env)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -315,21 +319,12 @@ class RemoteFunction:
                     "Cross language remote function " \
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
-                self._language,
-                self._function_descriptor,
-                list_args,
-                name,
-                num_returns,
-                resources,
-                max_retries,
-                retry_exceptions,
-                placement_group.id,
-                placement_group_bundle_index,
+                self._language, self._function_descriptor, list_args, name,
+                num_returns, resources, max_retries, retry_exceptions,
+                placement_group.id, placement_group_bundle_index,
                 placement_group_capture_child_tasks,
-                worker.debugger_breakpoint,
-                runtime_env_dict,
-                override_environment_variables=override_environment_variables
-                or dict())
+                worker.debugger_breakpoint, parsed_runtime_env.serialize(),
+                parsed_runtime_env.get("uris") or [])
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""

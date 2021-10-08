@@ -140,7 +140,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-        >>> read_df = ray.get(read_ds.to_pandas())[0]
+        >>> read_df = ray.get(read_ds.to_pandas_refs())[0]
         >>> read_df.dtypes
         one          int64
         two    TensorDtype
@@ -422,7 +422,7 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-        >>> read_df = ray.get(read_ds.to_pandas())[0]
+        >>> read_df = ray.get(read_ds.to_pandas_refs())[0]
         >>> read_df.dtypes
         one          int64
         two    TensorDtype
@@ -1154,6 +1154,10 @@ class ArrowTensorType(pa.PyExtensionType):
             A subclass of pd.api.extensions.ExtensionArray.
         """
         return ArrowTensorArray
+
+    def __str__(self):
+        return "<ArrowTensorType: shape={}, dtype={}>".format(
+            self.shape, self.storage_type.value_type)
 
 
 @PublicAPI(stability="beta")
