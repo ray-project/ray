@@ -922,7 +922,8 @@ def test_dataset(ray_start_4_cpus):
         data_all_epochs = []
         for _ in range(2):
             data_this_epoch = []
-            for batch in sgd.get_dataset_shard().iter_batches():
+            dataset = sgd.get_dataset_shard()
+            for batch in dataset.iter_batches():
                 data_this_epoch.extend(batch)
             data_all_epochs.append(data_this_epoch)
         return data_all_epochs
@@ -949,12 +950,14 @@ def test_multiple_datasets(ray_start_4_cpus):
         data_val_all_epochs = []
         for _ in range(2):
             data_this_epoch_train = []
-            for batch in sgd.get_dataset_shard("train").iter_batches():
+            train_dataset = sgd.get_dataset_shard("train")
+            for batch in train_dataset.iter_batches():
                 data_this_epoch_train.extend(batch)
             data_train_all_epochs.append(data_this_epoch_train)
 
             data_this_epoch_val = []
-            for batch in sgd.get_dataset_shard("val").iter_batches():
+            val_dataset = sgd.get_dataset_shard("val")
+            for batch in val_dataset.iter_batches():
                 data_this_epoch_val.extend(batch)
             data_val_all_epochs.append(data_this_epoch_val)
 
