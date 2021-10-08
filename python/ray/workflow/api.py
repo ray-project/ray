@@ -12,7 +12,8 @@ from ray.workflow.step_function import WorkflowStepFunction
 
 from ray.workflow import virtual_actor_class
 from ray.workflow import storage as storage_base
-from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized, Workflow, Event)
+from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized,
+                                 Workflow, Event)
 from ray.workflow import serialization
 from ray.workflow.event_listener import EventListenerType, TimerListener
 from ray.workflow.storage import Storage
@@ -318,23 +319,22 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 
 
 @PublicAPI(stability="beta")
-def wait_for_event(event_listener_type: EventListenerType, *args, **kwargs
-                   ) -> Workflow:
+def wait_for_event(event_listener_type: EventListenerType, *args,
+                   **kwargs) -> Workflow:
     @step
-    def get_message(event_listener_type: EventListenerType, *args, **kwargs
-                    ) -> Event:
+    def get_message(event_listener_type: EventListenerType, *args,
+                    **kwargs) -> Event:
         event_listener = event_listener_type()
         loop = asyncio.get_event_loop()
         return loop.run_until_complete(
-            event_listener.poll_for_event(*args, **kwargs)
-        )
+            event_listener.poll_for_event(*args, **kwargs))
+
     @step
-    def message_committed(event_listener_type: EventListenerType, event: Event):
+    def message_committed(event_listener_type: EventListenerType,
+                          event: Event):
         event_listener = event_listener_type()
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(
-            event_listener.event_checkpointed(event)
-        )
+        loop.run_until_complete(event_listener.event_checkpointed(event))
         return event
 
     return message_committed.step(
@@ -347,7 +347,6 @@ def sleep(duration: float) -> Workflow:
     """
     A workfow that resolves after sleeping for a given duration.
     """
-    wakeup_time = time.time() + duration
     return wait_for_event(TimerListener, time.time() + duration)
 
 
