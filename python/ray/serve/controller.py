@@ -10,7 +10,6 @@ from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.autoscaling_policy import calculate_desired_num_replicas
 from ray.serve.backend_state import ReplicaState, BackendStateManager
-from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
     BackendTag,
@@ -20,10 +19,11 @@ from ray.serve.common import (
     NodeId,
     ReplicaTag,
 )
-from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
-from ray.serve.constants import (CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY)
+from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
+from ray.serve.replica import create_replica_wrapper
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
@@ -299,7 +299,7 @@ class ServeController:
                                  f"version '{existing_backend_info.version}'.")
         backend_info = BackendInfo(
             actor_def=ray.remote(
-                create_backend_replica(name,
+                create_replica_wrapper(name,
                                        replica_config.serialized_backend_def)),
             version=version,
             backend_config=backend_config,
