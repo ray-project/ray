@@ -262,6 +262,11 @@ Process WorkerPool::StartWorkerProcess(
                       std::to_string(workers_to_start));
   }
 
+  // Append startup-token for JAVA here
+  if (language == Language::JAVA) {
+    options.push_back("-Dray.raylet.startup-token=" + std::to_string(startup_token_));
+  }
+
   // Append user-defined per-process options here
   options.insert(options.end(), dynamic_options.begin(), dynamic_options.end());
 
@@ -358,6 +363,12 @@ Process WorkerPool::StartWorkerProcess(
     env.insert({"SPT_NOENV", "1"});
   }
 
+  if (language == Language::PYTHON) {
+    worker_command_args.push_back("--startup-token=" + std::to_string(startup_token_));
+  } else if (language == Language::CPP) {
+    worker_command_args.push_back("--startup_token=" + std::to_string(startup_token_));
+  }
+
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
   Process proc = StartProcess(worker_command_args, env);
@@ -428,8 +439,6 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     for (const auto &arg : worker_command_args) {
       stream << " " << arg;
     }
-    stream << " "
-           << "--startup_token=" << startup_token_;
     RAY_LOG(DEBUG) << stream.str();
   }
 
@@ -439,8 +448,6 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   for (const std::string &arg : worker_command_args) {
     argv.push_back(arg.c_str());
   }
-  const std::string &arg = "--startup_token=" + std::to_string(startup_token_);
-  argv.push_back(arg.c_str());
   argv.push_back(NULL);
 
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);

@@ -47,6 +47,8 @@ public class RayConfig {
   // Listening port for node manager.
   public int nodeManagerPort;
 
+  public int startupToken;
+
   public static class LoggerConf {
     public final String loggerName;
     public final String fileName;
@@ -158,6 +160,14 @@ public class RayConfig {
           "Worker started by raylet should accept the node manager port from raylet.");
     }
 
+    if (config.hasPath("ray.raylet.startup-token")) {
+      startupToken = config.getInt("ray.raylet.startup-token");
+    } else {
+      Preconditions.checkState(
+          workerMode != WorkerType.WORKER,
+          "Worker started by raylet should accept the startup token from raylet.");
+    }
+
     // Job code search path.
     String codeSearchPathString = null;
     if (config.hasPath("ray.job.code-search-path")) {
@@ -232,6 +242,7 @@ public class RayConfig {
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
     dynamic.put("ray.address", redisAddress);
+    dynamic.put("ray.raylet.startup-token", startupToken);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());
   }
