@@ -919,7 +919,8 @@ void WorkerPool::TryKillingIdleWorkers() {
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                            const PopWorkerCallback &callback,
                            const std::string &allocated_instances_serialized_json) {
-  RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId();
+  RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " task name "
+                 << task_spec.FunctionDescriptor()->ToString();
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
@@ -977,6 +978,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       if (task_spec.HasRuntimeEnv()) {
         agent_manager_->CreateRuntimeEnv(
             task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
+            allocated_instances_serialized_json,
             [start_worker_process_fn, callback, &state, task_spec, dynamic_options,
              allocated_instances_serialized_json](
                 bool success, const std::string &serialized_runtime_env_context) {
@@ -1035,6 +1037,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         agent_manager_->CreateRuntimeEnv(
             task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
+            allocated_instances_serialized_json,
             [start_worker_process_fn, callback, &state, task_spec](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (successful) {

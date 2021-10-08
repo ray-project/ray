@@ -268,7 +268,7 @@ class DatasetPipeline(Generic[T]):
                         self._buffer = next(self._original_iter)
                     while self._buffer.num_blocks() < blocks_per_window:
                         self._buffer = self._buffer.union(
-                            next(self._original_iter), preserve_order=True)
+                            next(self._original_iter))
                     # Slice off the left-most chunk and return it.
                     res, self._buffer = self._buffer._divide(blocks_per_window)
                     assert res.num_blocks() <= blocks_per_window, res
