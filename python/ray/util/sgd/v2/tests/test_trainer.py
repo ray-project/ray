@@ -1006,7 +1006,7 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
     num_epochs = 2
     num_data = 20
 
-    dataset = ray.data.range(num_data).repeat().random_shuffle()
+    dataset = ray.data.range(num_data).repeat().random_shuffle_each_window()
 
     def get_dataset():
         pipeline_iterator = sgd.get_dataset_shard().iter_datasets()
