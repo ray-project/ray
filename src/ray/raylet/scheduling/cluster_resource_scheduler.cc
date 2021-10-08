@@ -456,8 +456,7 @@ void ClusterResourceScheduler::AddLocalResourceInstances(
 
   for (size_t i = 0; i < instances.size(); i++) {
     node_instances->available[i] += instances[i];
-    node_instances->total[i] =
-        std::max(node_instances->total[i], node_instances->available[i]);
+    node_instances->total[i] += instances[i];
   }
   UpdateLocalAvailableResourcesFromResourceInstances();
 }

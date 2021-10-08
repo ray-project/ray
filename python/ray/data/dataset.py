@@ -706,55 +706,36 @@ class Dataset(Generic[T]):
 
         return splits
 
-    def union(self, *other: List["Dataset[T]"],
-              preserve_order: bool = False) -> "Dataset[T]":
+    def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
+
+        The order of the blocks in the datasets is preserved, as is the
+        relative ordering between the datasets passed in the argument list.
 
         Args:
             other: List of datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
                 behavior is undefined.
-            preserve_order: Whether to preserve the order of the data blocks.
-                This may trigger eager loading of data from disk.
 
         Returns:
             A new dataset holding the union of their data.
         """
 
-        blocks: List[ObjectRef[Block]] = []
+        calls: List[Callable[[], ObjectRef[Block]]] = []
         metadata: List[BlockMetadata] = []
-        pending_blocks: List[Callable[[], ObjectRef[Block]]] = []
-        pending_metadata: List[BlockMetadata] = []
+        blocks: List[ObjectRef[Block]] = []
 
         datasets = [self] + list(other)
         for ds in datasets:
             bl = ds._blocks
             if isinstance(bl, LazyBlockList):
-                if preserve_order:
-                    # Force evaluation of blocks, which preserves order since
-                    # then we don't need to move evaluated blocks to the front
-                    # of LazyBlockList.
-                    list(bl)
-                for block, meta in zip(bl._blocks, bl._metadata):
-                    blocks.append(block)
-                    metadata.append(meta)
-                lim = len(bl._blocks)
-                for call, meta in zip(bl._calls[lim:], bl._metadata[lim:]):
-                    pending_blocks.append(call)
-                    pending_metadata.append(meta)
+                calls.extend(bl._calls)
             else:
-                assert isinstance(bl, BlockList), bl
-                blocks.extend(list(bl._blocks))
-                metadata.extend(bl.get_metadata())
+                calls.extend([None] * len(bl))
+            metadata.extend(bl._metadata)
+            blocks.extend(bl._blocks)
 
-        result = LazyBlockList([], [])
-        result._calls = ([None] * len(blocks)) + pending_blocks
-        result._blocks = blocks
-        result._metadata = metadata + pending_metadata
-
-        assert len(result._calls) == len(result._metadata), result
-        assert len(result._blocks) <= len(result._calls), result
-        return Dataset(result)
+        return Dataset(LazyBlockList(calls, metadata, blocks))
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
