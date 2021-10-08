@@ -1,7 +1,7 @@
 from abc import ABC, abstractstaticmethod
 
-from ray._private.runtime_env.context import RuntimeEnvContext
 from ray.util.annotations import DeveloperAPI
+from ray._private.runtime_env.context import RuntimeEnvContext
 
 
 @DeveloperAPI
