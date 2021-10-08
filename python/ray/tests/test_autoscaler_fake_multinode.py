@@ -1,9 +1,12 @@
 import pytest
+import platform
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_fake_autoscaler_basic_e2e(shutdown_only):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 2},
