@@ -298,7 +298,8 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
   if (!error) {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = Client::Create(
-        boost::bind(&PlasmaStore::ProcessMessage, this, ph::_1, ph::_2, ph::_3),
+        boost::bind(&PlasmaStore::ProcessMessage,
+		    this, ph::_1, ph::_2, ph::_3),  // NOLINT
         std::move(socket_));
   }
   // We're ready to accept another client.
