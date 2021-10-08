@@ -152,6 +152,9 @@ void NewPlacementGroupResourceManager::ReturnBundle(
       // will be resource leak.
       cluster_resource_scheduler_->DeleteLocalResource(resource.first);
       deleted.push_back(resource.first);
+    } else {
+      RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
+                     << "] is not empty. Resources are not deleted from the local node.";
     }
   }
   pg_bundles_.erase(it);

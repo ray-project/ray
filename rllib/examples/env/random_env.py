@@ -16,6 +16,7 @@ class RandomEnv(gym.Env):
 
     def __init__(self, config=None):
         config = config or {}
+
         # Action space.
         self.action_space = config.get("action_space", Discrete(2))
         # Observation space from which to sample.
