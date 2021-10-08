@@ -1,7 +1,13 @@
 from abc import ABC
 from collections.abc import Iterable
-from ray.serve.utils import get_random_letters
+import os
 from typing import Any, Optional
+
+from ray.serve.utils import get_random_letters
+
+# Set the hash seed to ensure the hashes are consistent across processes.
+# We should probably use a purpose-built hashing algorithm like CRC32 instead.
+os.environ["PYTHONHASHSEED"] = "0"
 
 
 class BackendVersion:

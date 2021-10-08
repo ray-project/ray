@@ -860,6 +860,8 @@ class BackendState:
             # without restarting the replica.
             elif (replica.version.user_config_hash !=
                   self._target_version.user_config_hash):
+                print("TARGET HASH", self._target_version.user_config_hash)
+                print("ACTUAL HASH", replica.version.user_config_hash)
                 user_config_changes += 1
                 replica.update_user_config(self._target_version.user_config)
                 self._replicas.add(ReplicaState.UPDATING, replica)

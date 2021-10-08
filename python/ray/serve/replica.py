@@ -113,7 +113,7 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
             if user_config is not None:
                 await self.backend.reconfigure(user_config)
 
-            return self.backend.backend_config, self.backend.version
+            return self.get_metadata()
 
         def get_metadata(self) -> Tuple[BackendConfig, BackendVersion]:
             return self.backend.backend_config, self.backend.version
