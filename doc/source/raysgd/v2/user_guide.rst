@@ -673,7 +673,7 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
         "val": val_dataset
     })
 
-.. sgd-dataset-pipeline:
+.. _sgd-dataset-pipeline:
 
 Pipelined Execution
 ~~~~~~~~~~~~~~~~~~~
@@ -699,7 +699,6 @@ This is very simple to do with Ray Datasets + Ray SGD.
 
     # Pass in the pipeline to the Trainer.
     # The Trainer will automatically split the DatasetPipeline for you.
-
     trainer = Trainer(num_workers=8, backend="torch")
     result = trainer.run(
         train_func,
