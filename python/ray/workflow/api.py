@@ -365,7 +365,6 @@ def delete(workflow_id: str) -> None:
 
     try:
         status = get_status(workflow_id)
-        print("STATUS:", status)
         if status == WorkflowStatus.RUNNING:
             raise WorkflowRunningError("DELETE", workflow_id)
     except ValueError:
