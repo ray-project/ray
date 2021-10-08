@@ -47,6 +47,12 @@ def test_epoch(ray_start_regular_shared):
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
 
+    # Test nested repeat.
+    pipe = ray.data.range(5).repeat(2).repeat(2)
+    results = [p.take() for p in pipe.iter_epochs()]
+    assert results == [[0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
+                       [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
+
 
 def test_cannot_read_twice(ray_start_regular_shared):
     ds = ray.data.range(10)
