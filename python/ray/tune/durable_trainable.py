@@ -196,7 +196,7 @@ def durable(trainable: Union[str, Type[Trainable], Callable]):
         return trainable_cls
 
     class _WrappedDurableTrainable(DurableTrainable, trainable_cls):
-        _name = (trainable_cls.__name__ if hasattr(trainable_cls, "__name__")
-                 else "durable_trainable")
+        _name = overwrite_name or (trainable_cls.__name__ if hasattr(
+            trainable_cls, "__name__") else "durable_trainable")
 
     return _WrappedDurableTrainable
