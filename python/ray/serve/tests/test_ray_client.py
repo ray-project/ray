@@ -126,7 +126,7 @@ def test_quickstart_class(serve_with_client):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-def test_quickstart_task(serve_with_client):
+def test_quickstart_counter(serve_with_client):
     serve.start()
 
     @serve.deployment
@@ -140,10 +140,13 @@ def test_quickstart_task(serve_with_client):
 
     # Deploy our class.
     Counter.deploy()
+    print("deploy finished")
 
     # Query our endpoint in two different ways: from HTTP and from Python.
     assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 1}
+    print("query 1 finished")
     assert ray.get(Counter.get_handle().remote()) == {"count": 2}
+    print("query 2 finished")
 
 
 if __name__ == "__main__":
