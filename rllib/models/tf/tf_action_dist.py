@@ -134,7 +134,7 @@ class MultiCategorical(TFActionDistribution):
         if isinstance(actions, tf.Tensor):
             if isinstance(self.action_space, gym.spaces.Box):
                 actions = tf.reshape(
-                    actions, [-1, np.product(self.action_space.shape)])
+                    actions, [-1, int(np.product(self.action_space.shape))])
             actions = tf.unstack(tf.cast(actions, tf.int32), axis=1)
         logps = tf.stack(
             [cat.logp(act) for cat, act in zip(self.cats, actions)])

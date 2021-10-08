@@ -66,15 +66,17 @@ def convert_eager_inputs(func):
     @functools.wraps(func)
     def _func(*args, **kwargs):
         if tf.executing_eagerly():
-            args = [_convert_to_tf(x) for x in args]
+            eager_args = [_convert_to_tf(x) for x in args]
             # TODO: (sven) find a way to remove key-specific hacks.
-            kwargs = {
+            eager_kwargs = {
                 k: _convert_to_tf(
                     v, dtype=tf.int64 if k == "timestep" else None)
                 for k, v in kwargs.items()
                 if k not in {"info_batch", "episodes"}
             }
-        return func(*args, **kwargs)
+            return func(*eager_args, **eager_kwargs)
+        else:
+            return func(*args, **kwargs)
 
     return _func
 
@@ -181,6 +183,15 @@ def traced_eager_policy(eager_policy_cls):
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__
     TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__
     return TracedEagerPolicy
+
+
+class OptimizerWrapper:
+    def __init__(self, tape):
+        self.tape = tape
+
+    def compute_gradients(self, loss, var_list):
+        return list(
+            zip(self.tape.gradient(loss, var_list), var_list))
 
 
 def build_eager_tf_policy(
@@ -433,6 +444,7 @@ def build_eager_tf_policy(
                         lambda s: tf.convert_to_tensor(s), obs_batch),
                 },
                 _is_training=tf.constant(False))
+            self._lazy_tensor_dict(input_dict)
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
                     tf.convert_to_tensor(prev_action_batch)
@@ -466,7 +478,6 @@ def build_eager_tf_policy(
                                                explore, timestep)
 
         @with_lock
-        @convert_eager_inputs
         @convert_eager_outputs
         def _compute_action_helper(self, input_dict, state_batches, episodes,
                                    explore, timestep):
@@ -482,7 +493,7 @@ def build_eager_tf_policy(
             self._is_training = False
             self._state_in = state_batches or []
             # Calculate RNN sequence lengths.
-            batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
+            batch_size = int(tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0])
             seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches \
                 else None
 
@@ -567,7 +578,7 @@ def build_eager_tf_policy(
                 extra_fetches.update(extra_action_out_fn(self))
 
             # Update our global timestep by the batch size.
-            self.global_timestep += int(batch_size)
+            self.global_timestep += batch_size
 
             return actions, state_out, extra_fetches
 
@@ -747,15 +758,6 @@ def build_eager_tf_policy(
                 variables = self.model.trainable_variables()
 
             if compute_gradients_fn:
-
-                class OptimizerWrapper:
-                    def __init__(self, tape):
-                        self.tape = tape
-
-                    def compute_gradients(self, loss, var_list):
-                        return list(
-                            zip(self.tape.gradient(loss, var_list), var_list))
-
                 grads_and_vars = compute_gradients_fn(self,
                                                       OptimizerWrapper(tape),
                                                       loss)

@@ -34,7 +34,7 @@ def before_init(policy, observation_space, action_space, config):
 
         for k in sorted(theta_dict.keys()):
             shape = policy.param_shapes[k]
-            num_params = np.prod(shape)
+            num_params = int(np.prod(shape))
             new_theta_dict[k] = torch.from_numpy(
                 np.reshape(theta[pos:pos + num_params], shape))
             pos += num_params

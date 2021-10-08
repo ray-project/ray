@@ -249,7 +249,7 @@ class _AgentCollector:
                     shift_win = view_req.shift_to - view_req.shift_from + 1
                     data_size = d0.itemsize * int(np.product(d0.shape[1:]))
                     strides = [
-                        d0.itemsize * np.product(d0.shape[i + 1:])
+                        d0.itemsize * int(np.product(d0.shape[i + 1:]))
                         for i in range(1, len(d0.shape))
                     ]
                     start = self.shift_before - shift_win + 1 + obs_shift + \
@@ -756,8 +756,11 @@ class SimpleListCollector(SampleCollector):
                     "True. Alternatively, set no_done_at_end=True to "
                     "allow this.")
 
-            other_batches = pre_batches.copy()
-            del other_batches[agent_id]
+            if len(pre_batches) > 1:
+                other_batches = pre_batches.copy()
+                del other_batches[agent_id]
+            else:
+                other_batches = {}
             pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
             policy = self.policy_map[pid]
             if any(pre_batch[SampleBatch.DONES][:-1]) or len(
