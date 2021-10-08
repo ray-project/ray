@@ -1602,6 +1602,9 @@ class Dataset(Generic[T]):
         Transformations done on the returned pipeline are evaluated on each
         loop of the pipeline over the base dataset.
 
+        Note that every repeat of the dataset is considered an "epoch" for
+        the purposes of ``DatasetPipeline.iter_epochs()``.
+
         Examples:
             >>> # Infinite pipeline of numbers [0, 5)
             >>> ray.data.range(5).repeat().take()

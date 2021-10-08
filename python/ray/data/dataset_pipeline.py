@@ -304,6 +304,10 @@ class DatasetPipeline(Generic[T]):
         Transformations done on the repeated pipeline are evaluated on each
         loop of the pipeline over the base pipeline.
 
+        Note that every repeat of the pipeline is considered an "epoch" for
+        the purposes of ``iter_epochs()``. If there are multiple repeat calls,
+        the latest repeat takes precedence for the purpose of defining epochs.
+
         Args:
             times: The number of times to loop over this pipeline, or None
                 to repeat indefinitely.
@@ -423,6 +427,25 @@ class DatasetPipeline(Generic[T]):
             ds.show(limit_per_dataset)
 
     def iter_epochs(self) -> Iterator["DatasetPipeline[T]"]:
+        """Split this pipeline up by epoch.
+
+        This allows reading of data per-epoch for repeated Datasets, which is
+        useful for ML training. For example, ``ray.data.range(10).repeat(50)``
+        generates a pipeline with 500 rows total split across 50 epochs. This
+        method allows iterating over the data individually per epoch
+        (repetition) of the original data.
+
+        Examples:
+            >>> epochs = ray.data.range(10).repeat(50).iter_epochs()
+            >>> for i, epoch in enumerate(epochs):
+            ...     print("Epoch", i)
+            ...     for row in epoch.iter_rows():
+            ...         print(row)
+
+        Returns:
+            Iterator over epochs objects, where each epoch is a DatasetPipeline
+            containing data from that epoch only.
+        """
         class SingleEpochIterator:
             def __init__(self, peekable_iter: Iterator[Dataset[T]]):
                 self._iter = peekable_iter
