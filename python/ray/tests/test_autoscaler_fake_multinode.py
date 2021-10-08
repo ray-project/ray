@@ -33,6 +33,7 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
         cluster.start()
         ray.init("auto")
 
+        # Triggers the addition of a GPU node.
         @ray.remote(num_gpus=1)
         def f():
             print("gpu ok")
