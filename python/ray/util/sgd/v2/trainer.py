@@ -403,7 +403,7 @@ class Trainer:
         Args:
             func (Callable): The function that should be executed on each
                 training worker.
-            dataset (Optional[Union[Dataset, DatasetPipeline]]):
+            dataset (Optional[RayDataset]):
                 Distributed Ray Dataset or DatasetPipeline to pass into
                 worker. Sharding will automatically be
                 handled by the Trainer.

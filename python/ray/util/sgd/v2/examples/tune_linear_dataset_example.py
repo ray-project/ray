@@ -7,10 +7,10 @@ from ray.util.sgd.v2 import Trainer
 from train_linear_dataset_example import train_func, get_datasets
 
 
-def tune_linear(num_workers, num_samples):
+def tune_linear(num_workers, num_samples, use_gpu):
     datasets = get_datasets()
 
-    trainer = Trainer("torch", num_workers=num_workers)
+    trainer = Trainer("torch", num_workers=num_workers, use_gpu=use_gpu)
     Trainable = trainer.to_tune_trainable(train_func, dataset=datasets)
     analysis = tune.run(
         Trainable,
@@ -48,11 +48,21 @@ if __name__ == "__main__":
         type=int,
         default=2,
         help="Sets number of samples for training.")
+    parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        default=False,
+        help="Use GPU for training.")
 
     args = parser.parse_args()
 
+    num_gpus = args.num_workers if args.use_gpu else 0
+
     if args.smoke_test:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=args.num_workers + 1, num_gpus=num_gpus)
     else:
         ray.init(address=args.address)
-    tune_linear(num_workers=args.num_workers, num_samples=args.num_samples)
+    tune_linear(
+        num_workers=args.num_workers,
+        use_gpu=args.use_gpu,
+        num_samples=args.num_samples)

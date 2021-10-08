@@ -13,6 +13,26 @@ py_test(
 )
 
 py_test(
+    name = "tensorflow_linear_dataset_example",
+    size = "medium",
+    main = "examples/tensorflow_linear_dataset_example.py.py",
+    srcs = ["examples/tensorflow_linear_dataset_example.py.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test", "--use-gpu"]
+)
+
+py_test(
+    name = "train_linear_dataset_example",
+    size = "medium",
+    main = "examples/train_linear_dataset_example.py.py",
+    srcs = ["examples/train_linear_dataset_example.py.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test", "--use-gpu"]
+)
+
+py_test(
     name = "transformers_example",
     size = "large",
     main = "examples/transformers/transformers_example.py",
@@ -32,6 +52,16 @@ py_test(
     tags = ["team:ml", "exclusive", "pytorch"],
     deps = [":sgd_v2_lib"],
     args = ["--smoke-test"]
+)
+
+py_test(
+    name = "tune_linear_dataset_example",
+    size = "medium",
+    main = "examples/tune_linear_dataset_example.py",
+    srcs = ["examples/tune_linear_dataset_example.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test", "--use-gpu"]
 )
 
 py_test(
