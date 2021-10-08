@@ -254,6 +254,7 @@ class BackendExecutor:
             self.checkpoint_manager = CheckpointManager()
 
         self.worker_group = InactiveWorkerGroup()
+        self.dataset_shards = None
 
         self.checkpoint_manager.on_init()
 
@@ -369,6 +370,32 @@ class BackendExecutor:
             ip_dict[node_ip] += 1
         return rank_mapping
 
+    def _get_dataset_shards(self, dataset_or_dict):
+
+        if dataset_or_dict is None:
+            # Return None for each shard.
+            return [None] * len(self.worker_group)
+
+        def split_dataset(dataset_or_pipeline):
+            actors = [worker.actor for worker in self.worker_group.workers]
+            return dataset_or_pipeline.split(
+                len(self.worker_group), equal=True, locality_hints=actors)
+
+        if isinstance(dataset_or_dict, dict):
+            # Return a smaller dict for each shard.
+            dataset_shards = []
+            for _ in range(len(self.worker_group)):
+                dataset_shards.append({})
+            for key, dataset in dataset_or_dict.items():
+                split_datasets = split_dataset(dataset)
+                assert len(split_datasets) == len(self.worker_group)
+                for i in range(len(split_datasets)):
+                    dataset_shards[i][key] = split_datasets[i]
+            return dataset_shards
+        else:
+            # return a smaller RayDataset for each shard.
+            return split_dataset(dataset_or_dict)
+
     def start_training(
             self,
             train_func: Callable[[], T],
@@ -427,33 +454,8 @@ class BackendExecutor:
                     "You must call `finish_training` before "
                     "calling `start_training` again.")
 
-        def get_dataset_shards(dataset_or_dict):
-
-            if dataset_or_dict is None:
-                # Return None for each shard.
-                return [None] * len(self.worker_group)
-
-            def split_dataset(dataset_or_pipeline):
-                actors = [worker.actor for worker in self.worker_group.workers]
-                return dataset_or_pipeline.split(
-                    len(self.worker_group), equal=True, locality_hints=actors)
-
-            if isinstance(dataset_or_dict, dict):
-                # Return a smaller dict for each shard.
-                dataset_shards = []
-                for _ in range(len(self.worker_group)):
-                    dataset_shards.append({})
-                for key, dataset in dataset_or_dict.items():
-                    split_datasets = split_dataset(dataset)
-                    assert len(split_datasets) == len(self.worker_group)
-                    for i in range(len(split_datasets)):
-                        dataset_shards[i][key] = split_datasets[i]
-                return dataset_shards
-            else:
-                # return a smaller RayDataset for each shard.
-                return split_dataset(dataset_or_dict)
-
-        dataset_shards = get_dataset_shards(dataset)
+        if self.dataset_shards is None:
+            self.dataset_shards = self._get_dataset_shards(dataset)
 
         checkpoint_dict = self.checkpoint_manager._load_checkpoint(checkpoint)
 
@@ -468,7 +470,7 @@ class BackendExecutor:
                     world_rank=index,
                     local_rank=local_rank_map[index],
                     train_func=train_func,
-                    dataset_shard=dataset_shards[index],
+                    dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint_dict))
 
         self.get_with_failure_handling(futures)
@@ -676,7 +678,7 @@ class BackendExecutor:
                            "expected if one of the workers has crashed.")
         self.worker_group.shutdown()
         self.worker_group = InactiveWorkerGroup()
-        self.dataset_shard = None
+        self.dataset_shards = None
 
     @property
     def is_started(self):
