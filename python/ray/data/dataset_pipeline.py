@@ -331,6 +331,7 @@ class DatasetPipeline(Generic[T]):
                 if self._original_iter:
                     try:
                         res = next(self._original_iter)
+                        res._set_epoch(0)
                         self._results.append(res)
                         return lambda: res
                     except StopIteration:
@@ -422,7 +423,11 @@ class DatasetPipeline(Generic[T]):
         Args:
             limit_per_dataset: Rows to print per window/dataset.
         """
+        epoch = None
         for i, ds in enumerate(self.iter_datasets()):
+            if ds._get_epoch() != epoch:
+                epoch = ds._get_epoch()
+                print("------ Epoch {} ------".format(epoch))
             print("=== Window {} ===".format(i))
             ds.show(limit_per_dataset)
 

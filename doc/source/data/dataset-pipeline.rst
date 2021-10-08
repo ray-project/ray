@@ -69,49 +69,6 @@ You can also create a DatasetPipeline from a custom iterator over dataset creato
     splits = ray.data.range(1000, parallelism=200).split(20)
     pipe = DatasetPipeline.from_iterable([lambda s=s: s for s in splits])
 
-Per-Window Transformations
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-While most Dataset operations are per-row (e.g., map, filter), some operations apply to the Dataset as a whole (e.g., sort, shuffle). When applied to a pipeline, holistic transforms like shuffle are applied separately to each window in the pipeline:
-
-.. code-block:: python
-
-    # Example of randomly shuffling each window of a pipeline.
-    ray.data.range(5).repeat(2).random_shuffle_each_window().show_windows()
-    # -> 
-    # === Window 0 ===
-    # 4
-    # 3
-    # 1
-    # 0
-    # 2
-    # === Window 1 ===
-    # 2
-    # 1
-    # 4
-    # 0
-    # 3
-
-You can also apply arbitrary transformations to each window using ``DatasetPipeline.foreach_window()``:
-
-.. code-block:: python
-
-    # Equivalent transformation using .foreach_window() 
-    ray.data.range(5).repeat(2).foreach_window(lambda w: w.random_shuffle()).show_windows()
-    # -> 
-    # === Window 0 ===
-    # 1
-    # 0
-    # 4
-    # 2
-    # 3
-    # === Window 1 ===
-    # 4
-    # 2
-    # 0
-    # 3
-    # 1
-
 Handling Epochs
 ~~~~~~~~~~~~~~~
 
@@ -119,7 +76,7 @@ It's common in ML training to want to divide data ingest into epochs, or repetit
 
 .. code-block:: python
 
-    pipe = ray.data.range(5).window(blocks_per_window=2).repeat(3)
+    pipe = ray.data.range(5).repeat(3)
     for i, epoch in enumerate(pipe.iter_epochs()):
         print("Epoch {}", i)
         for row in epoch.iter_items():
@@ -145,6 +102,53 @@ It's common in ML training to want to divide data ingest into epochs, or repetit
     # 4
 
 Note that while epochs commonly consist of a single window, they can also contain multiple windows if ``.window()`` is used or there are multiple ``.repeat()`` calls.
+
+Per-Window Transformations
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+While most Dataset operations are per-row (e.g., map, filter), some operations apply to the Dataset as a whole (e.g., sort, shuffle). When applied to a pipeline, holistic transforms like shuffle are applied separately to each window in the pipeline:
+
+.. code-block:: python
+
+    # Example of randomly shuffling each window of a pipeline.
+    ray.data.range(5).repeat(2).random_shuffle_each_window().show_windows()
+    # -> 
+    # ----- Epoch 0 ------
+    # === Window 0 ===
+    # 4
+    # 3
+    # 1
+    # 0
+    # 2
+    # ----- Epoch 1 ------
+    # === Window 1 ===
+    # 2
+    # 1
+    # 4
+    # 0
+    # 3
+
+You can also apply arbitrary transformations to each window using ``DatasetPipeline.foreach_window()``:
+
+.. code-block:: python
+
+    # Equivalent transformation using .foreach_window() 
+    ray.data.range(5).repeat(2).foreach_window(lambda w: w.random_shuffle()).show_windows()
+    # -> 
+    # ----- Epoch 0 ------
+    # === Window 0 ===
+    # 1
+    # 0
+    # 4
+    # 2
+    # 3
+    # ----- Epoch 1 ------
+    # === Window 1 ===
+    # 4
+    # 2
+    # 0
+    # 3
+    # 1
 
 Example: Pipelined Batch Inference
 ----------------------------------
@@ -290,6 +294,7 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
         .repeat(2) \
         .show_windows()
     # ->
+    # ------ Epoch 0 ------
     # === Window 0 ===
     # 0
     # 1
@@ -298,6 +303,7 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # 3
     # === Window 2 ===
     # 4
+    # ------ Epoch 1 ------
     # === Window 3 ===
     # 0
     # 1
@@ -307,18 +313,22 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # === Window 5 ===
     # 4
 
-    # Repeat followed by window.
+    # Repeat followed by window. Note that epoch 1 contains some leftover
+    # data from the tail end of epoch 0, since re-windowing can merge windows
+    # across epochs.
     ray.data.range(5) \
         .repeat(2) \
         .rewindow(blocks_per_window=2) \
         .show_windows()
     # ->
+    # ------ Epoch 0 ------
     # === Window 0 ===
     # 0
     # 1
     # === Window 1 ===
     # 2
     # 3
+    # ------ Epoch 1 ------
     # === Window 2 ===
     # 4
     # 0
