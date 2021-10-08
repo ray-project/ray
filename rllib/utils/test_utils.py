@@ -31,7 +31,8 @@ logger = logging.getLogger(__name__)
 
 def framework_iterator(config=None,
                        frameworks=("tf2", "tf", "tfe", "torch"),
-                       session=False):
+                       session=False,
+                       with_eager_tracing=False):
     """An generator that allows for looping through n frameworks for testing.
 
     Provides the correct config entries ("framework") as well
@@ -46,6 +47,8 @@ def framework_iterator(config=None,
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
+        with_eager_tracing: Include `eager_tracing=True` in the returned
+            configs, when framework=[tfe|tf2].
 
     Yields:
         str: If enter_session is False:
@@ -105,7 +108,15 @@ def framework_iterator(config=None,
         elif fw == "tf":
             assert not tf1.executing_eagerly()
 
-        yield fw if session is False else (fw, sess)
+        # Additionally loop through eager_tracing=True + False, if necessary.
+        if fw in ["tf2", "tfe"] and with_eager_tracing:
+            for tracing in [True, False]:
+                config["eager_tracing"] = tracing
+                yield fw if session is False else (fw, sess)
+                config["eager_tracing"] = False
+        # Yield current framework + tf-session (if necessary).
+        else:
+            yield fw if session is False else (fw, sess)
 
         # Exit any context we may have entered.
         if eager_ctx:

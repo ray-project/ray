@@ -5,6 +5,7 @@ import re
 import scipy
 import tracemalloc
 import tree  # pip install dm_tree
+from typing import List
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 
@@ -27,7 +28,7 @@ Suspect = namedtuple("Suspect", [
 ])
 
 
-def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
+def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect]:
     """Diagnoses the given trainer for possible memory leaks.
 
     Isolates single components inside the trainer's local worker, e.g. the env,
@@ -68,7 +69,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
                     env.reset()
                     break
 
-        _test_some_code_for_memory_leaks(
+        test = _test_some_code_for_memory_leaks(
             desc="Looking for leaks in env, running through episodes.",
             init=lambda: env.reset(),
             code=code,
@@ -76,14 +77,16 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             repeats=200,
             max_num_trials=max_num_trials,
         )
+        if test:
+            return test
 
     # Test the policy (single-agent case only so far).
     if "policy" in to_check:
         policy = local_worker.policy_map[DEFAULT_POLICY_ID]
 
-        # Get a fixed obs.
+        # Get a fixed obs (B=10).
         obs = tree.map_structure(
-            lambda s: s[None],
+            lambda s: np.stack([s] * 10, axis=0),
             policy.observation_space.sample())
 
         print("Looking for leaks in Policy")
@@ -94,22 +97,24 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             })
 
         # Call `compute_actions_from_input_dict()` n times.
-        _test_some_code_for_memory_leaks(
+        test = _test_some_code_for_memory_leaks(
             desc=f"Calling `compute_actions_from_input_dict()`.",
             init=None,
             code=code,
             # How many times to repeat the function call?
-            repeats=400,
+            repeats=800,
             # How many times to re-try if we find a suspicious memory
             # allocation?
             max_num_trials=max_num_trials,
         )
+        if test:
+            return test
 
         # Call `learn_on_batch()` n times.
         dummy_batch = policy._get_dummy_batch_from_view_requirements(
             batch_size=16)
 
-        _test_some_code_for_memory_leaks(
+        test = _test_some_code_for_memory_leaks(
             desc=f"Calling `learn_on_batch()`.",
             init=None,
             code=lambda: policy.learn_on_batch(dummy_batch),
@@ -117,6 +122,8 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             repeats=100,
             max_num_trials=max_num_trials,
         )
+        if test:
+            return test
 
     # Test only the model.
     if "model" in to_check:
@@ -130,7 +137,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
         print("Looking for leaks in Model")
 
         # Call `compute_actions_from_input_dict()` n times.
-        _test_some_code_for_memory_leaks(
+        test = _test_some_code_for_memory_leaks(
             desc=f"Calling `[model]()`.",
             init=None,
             code=lambda: policy.model.base_model(obs),#TODO: note every model may have a base_model!
@@ -140,13 +147,15 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             # allocation?
             max_num_trials=max_num_trials,
         )
+        if test:
+            return test
 
     # Test the RolloutWorker.
     if "rollout_worker" in to_check:
         print("Looking for leaks in local RolloutWorker")
 
         # Call `compute_actions_from_input_dict()` n times.
-        _test_some_code_for_memory_leaks(
+        test = _test_some_code_for_memory_leaks(
             desc=f"Calling `sample()`.",
             init=None,
             code=lambda: local_worker.sample(),
@@ -156,6 +165,8 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> None:
             # allocation?
             max_num_trials=max_num_trials,
         )
+        if test:
+            return test
 
 
 def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
@@ -165,7 +176,8 @@ def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
             print(".", end="" if (i + 1) % 100 else f" {i + 1}\n", flush=True)
 
     # Do n trials to make sure a found leak is really one.
-    suspicious = None
+    suspicious = set()
+    suspicious_stats = []
     for trial in range(max_num_trials):
         # Store up to n frames of each call stack.
         tracemalloc.start(10)
@@ -191,17 +203,17 @@ def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
         print("\n")
 
         # Check, which traces have moved up constantly over time.
-        suspicious = set()
-        suspicious_stats = []
+        suspicious.clear()
+        suspicious_stats.clear()
         # Suspicious memory allocation found?
         suspects = _find_memory_leaks_in_table(table)
         for suspect in sorted(suspects, key=lambda s: s.memory_increase, reverse=True):
             pretty_traceback = "\n".join(suspect.traceback.format())
 
             # Reached max trials -> Error.
-            if trial == max_num_trials - 1:
-                raise MemoryError(
-                    f"Memory leak in traceback:\n{pretty_traceback}!", suspect)
+            #if trial == max_num_trials - 1:
+            #    raise MemoryError(
+            #        f"Memory leak in traceback:\n{pretty_traceback}!", suspect)
             # Start another trial (with more repeats), only looking at the
             # suspicious stack-traces this time.
 
@@ -212,7 +224,7 @@ def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
                       " suspects will be investigated as well):")
                 print(pretty_traceback)
                 print(f"Increase total={suspect.memory_increase}B")
-                print(f"Slope={suspect.slope} B/call")
+                print(f"Slope={suspect.slope} B/detection")
                 print(f"Rval={suspect.rvalue}")
                 print("-> added to retry list")
             suspicious.add(suspect.traceback)
@@ -220,16 +232,19 @@ def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
 
         tracemalloc.clear_traces()
 
-        # Nothing suspicious found -> Exit trial loop and return.
-        if len(suspicious) == 0:
-            print("No remaining suspects found -> returning (ok)")
-            return
-        else:
+        # Some suspicious memory allocations found.
+        if len(suspicious) > 0:
             print(f"Suspects found: {len(suspicious)}. Top-ten:")
             for i, s in enumerate(sorted(suspicious_stats, key=lambda s: s.memory_increase, reverse=True)):
                 if i > 10:
                     break
-                print(f"{i}) line={s.traceback[-1]} mem-increase={s.memory_increase}B slope={s.slope}B/call rval={s.rvalue}")
+                print(f"{i}) line={s.traceback[-1]} mem-increase={s.memory_increase}B slope={s.slope}B/detection rval={s.rvalue}")
+        # Nothing suspicious found -> Exit trial loop and return.
+        else:
+            print("No remaining suspects found -> returning")
+            break
+
+    return suspicious_stats
 
 
 def _take_snapshot(table, suspicious=None):

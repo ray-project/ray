@@ -444,6 +444,7 @@ def build_eager_tf_policy(
                         lambda s: tf.convert_to_tensor(s), obs_batch),
                 },
                 _is_training=tf.constant(False))
+            self._lazy_tensor_dict(input_dict)
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
                     tf.convert_to_tensor(prev_action_batch)
@@ -477,7 +478,7 @@ def build_eager_tf_policy(
                                                explore, timestep)
 
         @with_lock
-        @convert_eager_inputs
+        #@convert_eager_inputs
         @convert_eager_outputs
         def _compute_action_helper(self, input_dict, state_batches, episodes,
                                    explore, timestep):
