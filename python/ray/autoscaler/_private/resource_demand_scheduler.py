@@ -829,7 +829,8 @@ def get_bin_pack_residual(node_resources: List[ResourceDict],
     used = []
     for demand in sorted(
             resource_demands,
-            key=lambda d: (len(d.values()), sum(d.values())),
+            key=lambda res: (len(res.values()),
+                sum(res.values()), sorted(res.items())),
             reverse=True):
         found = False
         node = None
