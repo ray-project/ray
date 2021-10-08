@@ -424,15 +424,16 @@ class DatasetPipeline(Generic[T]):
 
     def iter_epochs(self) -> Iterator["DatasetPipeline[T]"]:
         class SingleEpochIterator:
-            def __init__(self, peekable_iter: Iterator[Dataset[T]],
-                         epoch: int):
+            def __init__(self, peekable_iter: Iterator[Dataset[T]]):
                 self._iter = peekable_iter
-                self._epoch = epoch
+                self._epoch = None
 
             def __next__(self) -> Dataset[T]:
-                if self._iter.peek()._get_epoch() > self._epoch:
+                if (self._epoch is not None
+                        and self._iter.peek()._get_epoch() != self._epoch):
                     raise StopIteration
                 ds = next(self._iter)
+                self._epoch = ds._get_epoch()
                 return lambda: ds
 
             def __iter__(self):
@@ -441,13 +442,11 @@ class DatasetPipeline(Generic[T]):
         class EpochDelimitedIterator:
             def __init__(self, pipe):
                 self._iter = more_itertools.peekable(pipe.iter_datasets())
-                self._epoch = 0
 
             def __next__(self) -> "DatasetPipeline[T]":
                 self._iter.peek()  # Raises StopIteration on end of data.
                 epoch_pipe = DatasetPipeline.from_iterable(
-                    SingleEpochIterator(self._iter, self._epoch))
-                self._epoch += 1
+                    SingleEpochIterator(self._iter))
                 return epoch_pipe
 
             def __iter__(self):

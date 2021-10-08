@@ -743,7 +743,8 @@ class Dataset(Generic[T]):
             metadata.extend(bl._metadata)
             blocks.extend(bl._blocks)
 
-        return Dataset(LazyBlockList(calls, metadata, blocks), self._epoch)
+        max_epoch = max(*[ds._get_epoch() for ds in datasets])
+        return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
