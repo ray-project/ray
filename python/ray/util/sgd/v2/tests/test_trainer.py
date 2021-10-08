@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 import horovod.torch as hvd_torch
 import pytest
-import torch
 
 import ray
 import ray.util.sgd.v2 as sgd
@@ -1038,23 +1037,21 @@ def test_dataset_fault_tolerance(ray_start_4_cpus):
     dataset_splits = dataset.split(n=2, equal=True)
     test_config = TestConfig()
 
-
     def train():
         return 1
-
 
     def train_actor_failure():
         import sys
         sys.exit(0)
 
-
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
     with patch.object(ray.util.sgd.v2.trainer, "BackendExecutor",
                       new_backend_executor_cls):
-        with patch.object(new_backend_executor_cls, "_get_dataset_shards",
-                          return_value=dataset_splits
-                          ) as mock_method:
+        with patch.object(
+                new_backend_executor_cls,
+                "_get_dataset_shards",
+                return_value=dataset_splits) as mock_method:
             trainer = Trainer(test_config, num_workers=2)
             trainer.start()
             trainer.run(train, dataset=dataset)
