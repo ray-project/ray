@@ -338,5 +338,5 @@ class WorkflowNotFoundError(Exception):
 class WorkflowRunningError(Exception):
     def __init__(self, operation: str, workflow_id: str):
         self.message = f"{operation} couldn't be completed becasue " \
-                       f"Workflow[id={workflow_id}] is still running"
+                       f"Workflow[id={workflow_id}] is still running."
         super().__init__(self.message)
