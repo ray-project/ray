@@ -117,8 +117,10 @@ if __name__ == "__main__":
 
     import ray
 
+    num_gpus = args.num_workers if args.use_gpu else 0
+
     if args.smoke_test:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=args.num_workers, num_gpus=num_gpus)
     else:
         ray.init(address=args.address)
     train_tensorflow_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)

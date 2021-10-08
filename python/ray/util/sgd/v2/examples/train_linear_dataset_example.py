@@ -9,7 +9,7 @@ import ray
 import ray.util.sgd.v2 as sgd
 from ray.data import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
-from ray.util.sgd.v2 import Trainer, TorchConfig
+from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.callbacks import JsonLoggerCallback, TBXLoggerCallback
 
 
@@ -42,8 +42,11 @@ def get_datasets(a=5, b=10, size=1000,
     return datasets
 
 
-def train(iterable_dataset, model, loss_fn, optimizer):
+def train(iterable_dataset, model, loss_fn, optimizer, device):
     for X, y in iterable_dataset:
+        X = X.to(device)
+        y = y.to(device)
+
         # Compute prediction error
         pred = model(X)
         loss = loss_fn(pred, y)
@@ -54,12 +57,14 @@ def train(iterable_dataset, model, loss_fn, optimizer):
         optimizer.step()
 
 
-def validate(iterable_dataset, model, loss_fn):
+def validate(iterable_dataset, model, loss_fn, device):
     num_batches = 0
     model.eval()
     loss = 0
     with torch.no_grad():
         for X, y in iterable_dataset:
+            X = X.to(device)
+            y = y.to(device)
             num_batches += 1
             pred = model(X)
             loss += loss_fn(pred, y).item()
@@ -77,8 +82,16 @@ def train_func(config):
     train_dataset_pipeline_shard = sgd.get_dataset_shard("train")
     validation_dataset_pipeline_shard = sgd.get_dataset_shard("validation")
 
+    device = torch.device(f"cuda:{sgd.local_rank()}"
+                          if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        torch.cuda.set_device(device)
+
     model = nn.Linear(1, hidden_size)
-    model = DistributedDataParallel(model)
+    model = model.to(device)
+    model = DistributedDataParallel(
+        model,
+        device_ids=[sgd.local_rank()] if torch.cuda.is_available() else None)
 
     loss_fn = nn.MSELoss()
 
@@ -108,18 +121,18 @@ def train_func(config):
             feature_column_dtypes=[torch.float],
             batch_size=batch_size)
 
-        train(train_torch_dataset, model, loss_fn, optimizer)
-        result = validate(validation_torch_dataset, model, loss_fn)
+        train(train_torch_dataset, model, loss_fn, optimizer, device)
+        result = validate(validation_torch_dataset, model, loss_fn, device)
         sgd.report(**result)
         results.append(result)
 
     return results
 
 
-def train_linear(num_workers=2):
+def train_linear(num_workers=2, use_gpu=False):
     datasets = get_datasets()
 
-    trainer = Trainer(TorchConfig(backend="gloo"), num_workers=num_workers)
+    trainer = Trainer("torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
     trainer.start()
     results = trainer.run(
@@ -151,11 +164,18 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Finish quickly for testing.")
+    parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        default=False,
+        help="Use GPU for training.")
 
     args, _ = parser.parse_known_args()
 
+    num_gpus = args.num_workers if args.use_gpu else 0
+
     if args.smoke_test:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=args.num_workers, num_gpus=num_gpus)
     else:
         ray.init(address=args.address)
-    train_linear(num_workers=args.num_workers)
+    train_linear(num_workers=args.num_workers, use_gpu=args.use_gpu)
