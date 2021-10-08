@@ -1033,8 +1033,36 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
     check_dataset_output(num_data, num_epochs, results)
 
 
-def test_dataset_fault_tolerance():
-    pass
+def test_dataset_fault_tolerance(ray_start_4_cpus):
+    dataset = ray.data.range(10).random_shuffle()
+    test_config = TestConfig()
+
+    def check_dataset(old_dataset):
+        new_dataset = sgd.get_dataset_shard()
+        assert new_dataset == old_dataset
+
+    def train():
+        if sgd.load_checkpoint():
+            old_dataset = sgd.load_checkpoint()["data"]
+        else:
+            old_dataset = None
+        if old_dataset:
+            check_dataset(old_dataset)
+        sgd.save_checkpoint(data=sgd.get_dataset_shard())
+
+
+    def train_actor_failure():
+        train()
+        import sys
+        sys.exit(0)
+
+    new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
+
+    with patch.object(ray.util.sgd.v2.trainer, "BackendExecutor",
+                      new_backend_executor_cls):
+        trainer = Trainer(test_config, num_workers=2)
+        trainer.start()
+        trainer.run(train, dataset=dataset)
 
 
 @pytest.mark.parametrize("resource", ["CPU", "GPU", "extra"])
