@@ -332,3 +332,11 @@ class WorkflowNotFoundError(Exception):
         self.message = f"Workflow[id={workflow_id}] was referenced but " \
                         "doesn't exist."
         super().__init__(self.message)
+
+
+@PublicAPI(stability="beta")
+class WorkflowRunningError(Exception):
+    def __init__(self, operation: str, workflow_id: str):
+        self.message = f"{operation} couldn't be completed becasue " \
+                       f"Workflow[id={workflow_id}] is still running"
+        super().__init__(self.message)

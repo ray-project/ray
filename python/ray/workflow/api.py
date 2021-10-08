@@ -10,7 +10,8 @@ from ray.workflow.step_function import WorkflowStepFunction
 
 from ray.workflow import virtual_actor_class
 from ray.workflow import storage as storage_base
-from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized)
+from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized,
+                                 WorkflowRunningError, WorkflowNotFoundError)
 from ray.workflow import serialization
 from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
@@ -349,19 +350,27 @@ def delete(workflow_id: str) -> None:
         running before deleting it.
 
     Args:
-        workflow_id: The workflow to cancel.
+        workflow_id: The workflow to delete.
 
     Examples:
         >>> workflow_step = some_job.step()
         >>> output = workflow_step.run_async(workflow_id="some_job")
         >>> workflow.delete(workflow_id="some_job")
-        >>> assert [("some_job", workflow.CANCELED)] == workflow.list_all()
+        >>> assert [] == workflow.list_all()
 
     Returns:
         None
 
     """
-    # TODO (Alex): We should eventually support deleting a running workflow.
+
+    try:
+        status = get_status(workflow_id)
+        print("STATUS:", status)
+        if status == WorkflowStatus.RUNNING:
+            raise WorkflowRunningError("DELETE", workflow_id)
+    except ValueError:
+        raise WorkflowNotFoundError(workflow_id)
+
     wf_storage = get_workflow_storage(workflow_id)
     wf_storage.delete_workflow()
 

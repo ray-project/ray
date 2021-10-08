@@ -452,8 +452,10 @@ class WorkflowStorage:
         delete_future = self._storage.delete_prefix(prefix)
 
         try:
-            scan, delete = asyncio_run(
-                asyncio.gather(scan_future, delete_future))
+            # TODO (Alex): There's a race condition here if someone tries to
+            # start the workflow between thesea ops.
+            scan = asyncio_run(scan_future)
+            delete = asyncio_run(delete_future)
         except FileNotFoundError:
             # TODO (Alex): Different file systems seem to have different
             # behavior when deleting a prefix that doesn't exist, so we may
