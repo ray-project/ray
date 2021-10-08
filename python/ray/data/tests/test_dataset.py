@@ -24,7 +24,7 @@ from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
-    PARALLELIZE_METADATA_FETCH_THRESHOLD)
+    PARALLELIZE_META_FETCH_THRESHOLD)
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
 import ray.data.tests.util as util
@@ -1304,7 +1304,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
 def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs,
                                           data_path):
     setup_data_path = _unwrap_protocol(data_path)
-    num_dfs = 2 * PARALLELIZE_METADATA_FETCH_THRESHOLD
+    num_dfs = 2 * PARALLELIZE_META_FETCH_THRESHOLD
     for idx in range(num_dfs):
         df = pd.DataFrame({"one": list(range(3 * idx, 3 * (idx + 1)))})
         table = pa.Table.from_pandas(df)
