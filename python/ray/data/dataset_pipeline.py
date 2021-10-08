@@ -1,4 +1,5 @@
 import functools
+import more_itertools
 import time
 from typing import Any, Callable, List, Iterator, Iterable, Generic, Union, \
     Optional, TYPE_CHECKING
@@ -338,6 +339,7 @@ class DatasetPipeline(Generic[T]):
                 # Going through a repeat of the pipeline.
                 if self._i < self._max_i:
                     res = self._results[self._i % len(self._results)]
+                    res._set_epoch(1 + self._i // len(self._results))
                     self._i += 1
                     return lambda: res
                 else:
@@ -419,6 +421,39 @@ class DatasetPipeline(Generic[T]):
         for i, ds in enumerate(self.iter_datasets()):
             print("=== Window {} ===".format(i))
             ds.show(limit_per_dataset)
+
+    def iter_epochs(self) -> Iterator["DatasetPipeline[T]"]:
+        class SingleEpochIterator:
+            def __init__(self, peekable_iter: Iterator[Dataset[T]],
+                         epoch: int):
+                self._iter = peekable_iter
+                self._epoch = epoch
+
+            def __next__(self) -> Dataset[T]:
+                if self._iter.peek()._get_epoch() > self._epoch:
+                    raise StopIteration
+                ds = next(self._iter)
+                return lambda: ds
+
+            def __iter__(self):
+                return self
+
+        class EpochDelimitedIterator:
+            def __init__(self, pipe):
+                self._iter = more_itertools.peekable(pipe.iter_datasets())
+                self._epoch = 0
+
+            def __next__(self) -> "DatasetPipeline[T]":
+                self._iter.peek()  # Raises StopIteration on end of data.
+                epoch_pipe = DatasetPipeline.from_iterable(
+                    SingleEpochIterator(self._iter, self._epoch))
+                self._epoch += 1
+                return epoch_pipe
+
+            def __iter__(self):
+                return self
+
+        return EpochDelimitedIterator(self)
 
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
