@@ -6,20 +6,20 @@ from ray.cluster_utils import AutoscalingCluster
 
 def test_fake_autoscaler_basic_e2e(shutdown_only):
     cluster = AutoscalingCluster(
-        head_resources={"CPU": 4},
+        head_resources={"CPU": 2},
         worker_node_types={
             "cpu_node": {
                 "resources": {
-                    "CPU": 2,
+                    "CPU": 4,
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
                 "node_config": {},
                 "min_workers": 0,
-                "max_workers": 4,
+                "max_workers": 2,
             },
             "gpu_node": {
                 "resources": {
-                    "CPU": 4,
+                    "CPU": 2,
                     "GPU": 1,
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
@@ -38,7 +38,13 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
         def f():
             print("gpu ok")
 
+        # Triggers the addition of a CPU node.
+        @ray.remote(num_cpus=3)
+        def g():
+            print("cpu ok")
+
         ray.get(f.remote())
+        ray.get(g.remote())
         ray.shutdown()
     finally:
         cluster.shutdown()
