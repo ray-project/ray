@@ -225,8 +225,9 @@ class ParsedRuntimeEnv(dict):
     """
 
     known_fields: Set[str] = {
-        "working_dir", "conda", "pip", "uris", "containers", "env_vars",
-        "_ray_release", "_ray_commit", "_inject_current_ray", "plugins"
+        "working_dir", "conda", "pip", "uris", "containers", "excludes",
+        "env_vars", "_ray_release", "_ray_commit", "_inject_current_ray",
+        "plugins"
     }
 
     def __init__(self,
