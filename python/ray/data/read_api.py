@@ -511,6 +511,29 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     parts = unwrap_partitions(df, axis=0)
     return from_pandas(parts)
 
+def from_partitioned(data) -> Dataset[ArrowRow]:
+    assert hasattr(data, "__partitioned__")
+    shape = data.__partitioned__["shape"]
+    # only support partition by row
+    for i in range(1, len(shape)):
+        assert shape[i] == 1
+    partitions = data.__partitioned__["partitions"].values()
+    if isinstance(partitions[0]["data"], ray.ObjectRef):
+        # if the data is already in ray
+        dfs = [part["data"] for part in partitions]
+        return from_pandas(dfs)
+    else:
+        get = data.__partitioned__["get"]
+        @ray.remote
+        def remote_read(data):
+            import pyarrow as pa
+            return pa.table(get(data))
+        calls = []
+        for part in partitions:
+            calls.append(lambda data=part["data"], location=part["location"]:
+                         remote_read.options(resources={"node:{}".format(location): 0.01}).remote(data))
+        block_list = LazyBlockList(calls, [])
+        return Dataset(block_list)
 
 @PublicAPI(stability="beta")
 def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]]) -> Dataset[ArrowRow]:

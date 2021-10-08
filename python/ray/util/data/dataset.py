@@ -3,9 +3,8 @@ from typing import Callable, List, Iterable, Iterator
 
 import pandas as pd
 
-import ray
 from ray.util.annotations import Deprecated
-from ray.util.iter import (ParallelIteratorWorker, _NextValueNotReady, LocalIterator, ParallelIterator,
+from ray.util.iter import (_NextValueNotReady, LocalIterator, ParallelIterator,
                            T, U, _ActorSet, from_items)
 
 
@@ -48,22 +47,6 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
         parts = unwrap_partitions(df)
         modin_iter = from_items(parts, num_shards=num_shards, repeat=False)
         return cls.from_parallel_it(modin_iter, batch_size=0, repeated=False)
-
-    @classmethod
-    def from_partitioned(cls, data):
-        assert hasattr(data, "__partitioned__")
-        shape = data.__partitioned__["shape"]
-        # only support partition by row
-        for i in range(1, len(shape)):
-            assert shape[i] == 1
-        partitions = data.__partitioned__["partitions"].values()
-        get = data.__partitioned__["get"]
-        worker_cls = ray.remote(ParallelIteratorWorker)
-        workers = []
-        for part in partitions:
-            workers.append(worker_cls.options(resources={"node:{}".format(part["location"]): 0.01}) \
-                               .remote(lambda: get(part["data"]), False))
-        return cls.from_actors(workers)
 
     @staticmethod
     def from_parallel_it(para_it: ParallelIterator[pd.DataFrame],
