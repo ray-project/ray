@@ -1787,12 +1787,12 @@ py_test(
     srcs = ["tests/test_nested_observation_spaces.py"]
 )
 
-py_test(
-    name = "tests/test_pettingzoo_env",
-    tags = ["team:ml", "tests_dir", "tests_dir_P"],
-    size = "medium",
-    srcs = ["tests/test_pettingzoo_env.py"]
-)
+# py_test(
+#    name = "tests/test_pettingzoo_env",
+#    tags = ["team:ml", "tests_dir", "tests_dir_P"],
+#    size = "medium",
+#    srcs = ["tests/test_pettingzoo_env.py"]
+# )
 
 py_test(
     name = "tests/test_placement_groups",
@@ -2696,13 +2696,13 @@ py_test(
     args = ["--as-test", "--stop-reward=80.0"]
 )
 
-py_test(
-    name = "examples/pettingzoo_env",
-    main = "examples/pettingzoo_env.py",
-    tags = ["team:ml", "examples", "examples_P"],
-    size = "medium",
-    srcs = ["examples/pettingzoo_env.py"],
-)
+# py_test(
+#    name = "examples/pettingzoo_env",
+#    main = "examples/pettingzoo_env.py",
+#    tags = ["team:ml", "examples", "examples_P"],
+#    size = "medium",
+#    srcs = ["examples/pettingzoo_env.py"],
+# )
 
 py_test(
     name = "examples/preprocessing_disabled_tf",
