@@ -112,6 +112,38 @@ You can also apply arbitrary transformations to each window using ``DatasetPipel
     # 3
     # 1
 
+Handling Epochs
+~~~~~~~~~~~~~~~
+
+It's common in ML training to want to divide data ingest into epochs, or repetitions over the original source dataset. DatasetPipeline provides a convenient ``.iter_epochs()`` method that can be used to split up the pipeline into epoch-delimited pipeline segments. Epochs are defined by the last call to ``.repeat()`` in a pipeline, for example:
+
+.. code-block:: python
+
+    pipe = ray.data.range(5).repeat(3)
+    for i, epoch in enumerate(pipe.iter_epochs()):
+        print("Epoch {}", i)
+        for row in epoch.iter_items():
+            print(row)
+    # ->
+    # Epoch 0
+    # 0
+    # 1
+    # 2
+    # 3
+    # 4
+    # Epoch 1
+    # 0
+    # 1
+    # 2
+    # 3
+    # 4
+    # Epoch 2
+    # 0
+    # 1
+    # 2
+    # 3
+    # 4
+
 Example: Pipelined Batch Inference
 ----------------------------------
 
