@@ -284,7 +284,7 @@ distributed setup for your framework of choice (PyTorch, Tensorflow, or Horovod)
         "val": val_dataset
     })
 
-The Ray SGD is responsible for the orchestration of the training workers and will automatically split the Dataset for you.
+Ray SGD is responsible for the orchestration of the training workers and will automatically split the Dataset for you.
 See :ref:`the SGD User Guide <sgd-dataset-pipeline>` for more details.
 
 Changing Pipeline Structure
