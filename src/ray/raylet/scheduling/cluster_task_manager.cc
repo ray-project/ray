@@ -1193,8 +1193,6 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
-  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: "
-                 << waiting_task_queue_.size();
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their

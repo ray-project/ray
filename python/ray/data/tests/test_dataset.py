@@ -60,7 +60,10 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
         assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
     pg = ray.util.placement_group([{"CPU": 1}])
-    ray.get(run.options(placement_group=pg).remote())
+    ray.get(
+        run.options(
+            placement_group=pg,
+            placement_group_capture_child_tasks=True).remote())
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -845,17 +848,17 @@ def test_schema(ray_start_regular_shared):
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert ds.take(10) == list(range(10))
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     assert ds.take(20) == list(range(20))
-    assert len(ds._blocks._blocks) == 4
+    assert ds._blocks._num_computed() == 4
     assert ds.take(30) == list(range(30))
-    assert len(ds._blocks._blocks) == 8
+    assert ds._blocks._num_computed() == 8
     assert ds.take(50) == list(range(50))
-    assert len(ds._blocks._blocks) == 16
+    assert ds._blocks._num_computed() == 16
     assert ds.take(100) == list(range(100))
-    assert len(ds._blocks._blocks) == 20
+    assert ds._blocks._num_computed() == 20
 
 
 def test_limit(ray_start_regular_shared):
@@ -1093,7 +1096,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
@@ -1132,7 +1135,7 @@ def test_parquet_read(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -1146,11 +1149,11 @@ def test_parquet_read(ray_start_regular_shared, fs, data_path):
     assert repr(ds) == \
         "Dataset(num_blocks=2, num_rows=6, " \
         "schema={one: int64, two: string})", ds
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
                               [6, "g"]]
 
@@ -1181,7 +1184,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -1195,11 +1198,11 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         "Dataset(num_blocks=2, num_rows=6, " \
         "schema={two: string, " \
         "one: dictionary<values=int32, indices=int32, ordered=0>})", ds
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     assert sorted(values) == [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"],
                               [3, "g"]]
 
@@ -1228,7 +1231,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
         str(tmp_path), parallelism=1, filter=(pa.dataset.field("two") == "a"))
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
@@ -1237,7 +1240,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
         str(tmp_path), parallelism=2, filter=(pa.dataset.field("two") == "a"))
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
 
@@ -1265,7 +1268,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         str(tmp_path), parallelism=1, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks
@@ -1274,7 +1277,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         str(tmp_path), parallelism=2, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks, 1 empty block
@@ -1286,7 +1289,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
 
 
@@ -1660,7 +1663,7 @@ def test_lazy_loading_iter_batches_exponential_rampup(
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
     for _, expected in zip(ds.iter_batches(), expected_num_blocks):
-        assert len(ds._blocks._blocks) == expected
+        assert ds._blocks._num_computed() == expected
 
 
 def test_map_batch(ray_start_regular_shared, tmp_path):

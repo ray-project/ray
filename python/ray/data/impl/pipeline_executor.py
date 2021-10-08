@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 
-@ray.remote
+@ray.remote(num_cpus=0, placement_group=None)
 def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
     try:
         prev = set_progress_bars(False)
@@ -87,7 +87,7 @@ class PipelineExecutor:
         return output
 
 
-@ray.remote
+@ray.remote(num_cpus=0, placement_group=None)
 class PipelineSplitExecutorCoordinator:
     def __init__(self, pipeline: "DatasetPipeline[T]", n: int,
                  splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
