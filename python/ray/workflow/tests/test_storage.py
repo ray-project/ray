@@ -6,7 +6,8 @@ from ray import workflow
 from ray.workflow import workflow_storage
 from ray.workflow import storage
 from ray.workflow.workflow_storage import asyncio_run
-from ray.workflow.common import (StepType, WorkflowNotFoundError, WorkflowRunningError)
+from ray.workflow.common import (StepType, WorkflowNotFoundError,
+                                 WorkflowRunningError)
 from ray.workflow.tests import utils
 import subprocess
 import time
