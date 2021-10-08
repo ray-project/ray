@@ -125,16 +125,19 @@ void AgentManager::StartAgent() {
   monitor_thread.detach();
 }
 
-void AgentManager::CreateRuntimeEnv(const JobID &job_id,
-                                    const std::string &serialized_runtime_env,
-                                    CreateRuntimeEnvCallback callback) {
+void AgentManager::CreateRuntimeEnv(
+    const JobID &job_id, const std::string &serialized_runtime_env,
+    const std::string &serialized_allocated_resource_instances,
+    CreateRuntimeEnvCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
         << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
         << serialized_runtime_env;
     delay_executor_(
-        [this, job_id, serialized_runtime_env, callback] {
-          CreateRuntimeEnv(job_id, serialized_runtime_env, callback);
+        [this, job_id, serialized_runtime_env, serialized_allocated_resource_instances,
+         callback] {
+          CreateRuntimeEnv(job_id, serialized_runtime_env,
+                           serialized_allocated_resource_instances, callback);
         },
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
@@ -142,9 +145,12 @@ void AgentManager::CreateRuntimeEnv(const JobID &job_id,
   rpc::CreateRuntimeEnvRequest request;
   request.set_job_id(job_id.Hex());
   request.set_serialized_runtime_env(serialized_runtime_env);
+  request.set_serialized_allocated_resource_instances(
+      serialized_allocated_resource_instances);
   runtime_env_agent_client_->CreateRuntimeEnv(
-      request, [this, job_id, serialized_runtime_env, callback](
-                   Status status, const rpc::CreateRuntimeEnvReply &reply) {
+      request,
+      [this, job_id, serialized_runtime_env, serialized_allocated_resource_instances,
+       callback](const Status &status, const rpc::CreateRuntimeEnvReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true, reply.serialized_runtime_env_context());
@@ -160,8 +166,10 @@ void AgentManager::CreateRuntimeEnv(const JobID &job_id,
               << ", status = " << status
               << ", maybe there are some network problems, will retry it later.";
           delay_executor_(
-              [this, job_id, serialized_runtime_env, callback] {
-                CreateRuntimeEnv(job_id, serialized_runtime_env, callback);
+              [this, job_id, serialized_runtime_env,
+               serialized_allocated_resource_instances, callback] {
+                CreateRuntimeEnv(job_id, serialized_runtime_env,
+                                 serialized_allocated_resource_instances, callback);
               },
               RayConfig::instance().agent_manager_retry_interval_ms());
         }
