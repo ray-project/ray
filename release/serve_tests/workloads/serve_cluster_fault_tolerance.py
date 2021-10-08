@@ -15,9 +15,7 @@ import os
 
 from serve_test_cluster_utils import setup_local_single_node_cluster
 
-from serve_test_utils import (
-    save_test_results
-)
+from serve_test_utils import (save_test_results)
 
 import ray
 from ray import serve
@@ -26,6 +24,7 @@ from ray.serve.utils import logger
 # Deployment configs
 DEFAULT_NUM_REPLICAS = 4
 DEFAULT_MAX_BATCH_SIZE = 16
+
 
 def request_with_retries(endpoint, timeout=3):
     start = time.time()
@@ -52,7 +51,7 @@ def main():
     if smoke_test == "1":
         checkpoint_path = "file://checkpoint.db"
     else:
-        checkpoint_path = "s3://serve-nightly-tests/fault-tolerant-test-checkpoint" # noqa: E501
+        checkpoint_path = "s3://serve-nightly-tests/fault-tolerant-test-checkpoint"  # noqa: E501
 
     _, cluster = setup_local_single_node_cluster(
         1, checkpoint_path=checkpoint_path, namespace=namespace)
@@ -85,7 +84,8 @@ def main():
 
     # Start another ray cluster with same namespace to resume from previous
     # checkpoints with no new deploy() call.
-    setup_local_single_node_cluster(1, checkpoint_path=checkpoint_path, namespace=namespace)
+    setup_local_single_node_cluster(
+        1, checkpoint_path=checkpoint_path, namespace=namespace)
 
     for _ in range(5):
         response = request_with_retries("/echo/", timeout=3)
