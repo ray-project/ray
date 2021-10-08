@@ -66,15 +66,17 @@ def convert_eager_inputs(func):
     @functools.wraps(func)
     def _func(*args, **kwargs):
         if tf.executing_eagerly():
-            args = [_convert_to_tf(x) for x in args]
+            eager_args = [_convert_to_tf(x) for x in args]
             # TODO: (sven) find a way to remove key-specific hacks.
-            kwargs = {
+            eager_kwargs = {
                 k: _convert_to_tf(
                     v, dtype=tf.int64 if k == "timestep" else None)
                 for k, v in kwargs.items()
                 if k not in {"info_batch", "episodes"}
             }
-        return func(*args, **kwargs)
+            return func(*eager_args, **eager_kwargs)
+        else:
+            return func(*args, **kwargs)
 
     return _func
 
@@ -491,7 +493,7 @@ def build_eager_tf_policy(
             self._is_training = False
             self._state_in = state_batches or []
             # Calculate RNN sequence lengths.
-            batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
+            batch_size = int(tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0])
             seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches \
                 else None
 
@@ -576,7 +578,7 @@ def build_eager_tf_policy(
                 extra_fetches.update(extra_action_out_fn(self))
 
             # Update our global timestep by the batch size.
-            self.global_timestep += int(batch_size)
+            self.global_timestep += batch_size
 
             return actions, state_out, extra_fetches
 

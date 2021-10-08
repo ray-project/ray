@@ -37,11 +37,11 @@ class TestMemoryLeaks(unittest.TestCase):
         # Otherwise, `check_memory_leaks` will complain.
         config["create_env_on_driver"] = True
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks="tf2"):#TODO
             _config = config.copy()
             _config["env"] = RandomLargeObsSpaceEnv
             trainer = ppo.appo.APPOTrainer(config=_config)
-            check_memory_leaks(trainer, to_check="policy")#TODO
+            check_memory_leaks(trainer, to_check="policy")
             trainer.stop()
 
     def test_ddppo_memory_leaks(self):
