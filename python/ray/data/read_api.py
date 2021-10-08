@@ -513,9 +513,8 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def from_pandas(
-    dfs: Union["pandas.DataFrame",
-               List["pandas.DataFrame"]]) -> Dataset[ArrowRow]:
+def from_pandas(dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
+                ) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Pandas dataframes.
 
     Args:
@@ -532,10 +531,8 @@ def from_pandas(
 
 
 @DeveloperAPI
-def from_pandas_refs(
-    dfs: Union[ObjectRef["pandas.DataFrame"],
-               List[ObjectRef["pandas.DataFrame"]]]
-) -> Dataset[ArrowRow]:
+def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
+        "pandas.DataFrame"]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
 
@@ -573,9 +570,8 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def from_arrow(
-    tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]]
-) -> Dataset[ArrowRow]:
+def from_arrow(tables: Union["pyarrow.Table", bytes, List[Union[
+        "pyarrow.Table", bytes]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Arrow tables.
 
     Args:
@@ -594,9 +590,8 @@ def from_arrow(
 
 @DeveloperAPI
 def from_arrow_refs(
-    tables: Union[ObjectRef[Union["pyarrow.Table", bytes]],
-                  List[ObjectRef[Union["pyarrow.Table", bytes]]]]
-) -> Dataset[ArrowRow]:
+        tables: Union[ObjectRef[Union["pyarrow.Table", bytes]], List[ObjectRef[
+            Union["pyarrow.Table", bytes]]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
