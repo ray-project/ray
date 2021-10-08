@@ -79,7 +79,7 @@ class RemoteFunction:
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries,
-                 retry_exceptions, runtime_env):
+                 retry_exceptions, runtime_env, placement_group):
         if inspect.iscoroutinefunction(function):
             raise ValueError("'async def' should not be used for remote "
                              "tasks. You can wrap the async function with "
@@ -114,6 +114,7 @@ class RemoteFunction:
         # a remote node where the files aren't available.
         self._runtime_env = ParsedRuntimeEnv(
             runtime_env or {}, is_task_or_actor=True)
+        self._placement_group = placement_group
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
@@ -276,7 +277,12 @@ class RemoteFunction:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
 
-        if placement_group == "default":
+        if self._placement_group != "default":
+            if self._placement_group:
+                placement_group = self._placement_group
+            else:
+                placement_group = PlacementGroup.empty()
+        elif placement_group == "default":
             if placement_group_capture_child_tasks:
                 placement_group = get_current_placement_group()
             else:

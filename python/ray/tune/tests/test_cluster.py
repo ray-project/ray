@@ -190,7 +190,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     running_trials = _get_running_trials(runner)
     assert len(running_trials) == 1
     assert _check_trial_running(running_trials[0])
-    assert not trial.last_result
+    assert not trial.has_reported_at_least_once
     assert trial.status == Trial.RUNNING
     cluster.remove_node(node)
     cluster.add_node(num_cpus=1)
