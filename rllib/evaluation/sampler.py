@@ -753,18 +753,18 @@ def _process_observations(
             hit_horizon = (episode.length >= horizon
                            and not dones[env_id]["__all__"])
             all_agents_done = True
-            atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(
-                base_env)
-            if atari_metrics is not None:
-                for m in atari_metrics:
-                    outputs.append(
-                        m._replace(custom_metrics=episode.custom_metrics))
-            else:
-                outputs.append(
-                    RolloutMetrics(episode.length, episode.total_reward,
-                                   dict(episode.agent_rewards),
-                                   episode.custom_metrics, {},
-                                   episode.hist_data, episode.media))
+            #atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(
+            #    base_env)
+            #if atari_metrics is not None:
+            #    for m in atari_metrics:
+            #        outputs.append(
+            #            m._replace(custom_metrics=episode.custom_metrics))
+            #else:
+            #    outputs.append(
+            #        RolloutMetrics(episode.length, episode.total_reward,
+            #                       dict(episode.agent_rewards),
+            #                       episode.custom_metrics, {},
+            #                       episode.hist_data, episode.media))
             # Check whether we have to create a fake-last observation
             # for some agents (the environment is not required to do so if
             # dones[__all__]=True).
@@ -1142,22 +1142,22 @@ def _process_policy_eval_results(
     return actions_to_send
 
 
-def _fetch_atari_metrics(base_env: BaseEnv) -> List[RolloutMetrics]:
-    """Atari games have multiple logical episodes, one per life.
+#def _fetch_atari_metrics(base_env: BaseEnv) -> List[RolloutMetrics]:
+#    """Atari games have multiple logical episodes, one per life.
 
-    However, for metrics reporting we count full episodes, all lives included.
-    """
-    unwrapped = base_env.get_unwrapped()
-    if not unwrapped:
-        return None
-    atari_out = []
-    for u in unwrapped:
-        monitor = get_wrapper_by_cls(u, MonitorEnv)
-        if not monitor:
-            return None
-        for eps_rew, eps_len in monitor.next_episode_results():
-            atari_out.append(RolloutMetrics(eps_len, eps_rew))
-    return atari_out
+#    However, for metrics reporting we count full episodes, all lives included.
+#    """
+#    unwrapped = base_env.get_unwrapped()
+#    if not unwrapped:
+#        return None
+#    atari_out = []
+#    for u in unwrapped:
+#        monitor = get_wrapper_by_cls(u, MonitorEnv)
+#        if not monitor:
+#            return None
+#        for eps_rew, eps_len in monitor.next_episode_results():
+#            atari_out.append(RolloutMetrics(eps_len, eps_rew))
+#    return atari_out
 
 
 def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:
