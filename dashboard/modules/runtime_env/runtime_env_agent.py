@@ -21,7 +21,6 @@ from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
-from ray._private.runtime_env import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
 
