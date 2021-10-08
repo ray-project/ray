@@ -269,10 +269,14 @@ class TestSyncFunctionality(unittest.TestCase):
         captured = deque(maxlen=1)
         captured.append("")
 
+        def always_true(*args, **kwargs):
+            return True
+
         def capture_popen(command, *args, **kwargs):
             captured.append(command)
 
-        with patch("subprocess.Popen", capture_popen):
+        with patch("subprocess.Popen", capture_popen), patch(
+                "distutils.spawn.find_executable", always_true):
             # S3
             s3_client = get_cloud_sync_client("s3://test-bucket/test-dir")
             s3_client.sync_down("s3://test-bucket/test-dir/remote_source",
