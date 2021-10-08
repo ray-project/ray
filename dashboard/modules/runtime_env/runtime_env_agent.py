@@ -88,6 +88,10 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Use a separate logger for each job.
                 per_job_logger = self.get_or_create_logger(request.job_id)
+                # TODO(chenk008): Add log about allocated_resource to
+                # avoid lint error. That will be moved to cgroup plugin.
+                per_job_logger.debug(f"Worker has resource :"
+                                     f"{allocated_resource}")
                 context = RuntimeEnvContext(
                     env_vars=runtime_env.get("env_vars"))
                 self._conda_manager.setup(
