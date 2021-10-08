@@ -1979,5 +1979,4 @@ def test_resume_backend_state_from_replica_tags(mock_backend_state_manager):
 
 
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
