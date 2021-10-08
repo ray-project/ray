@@ -602,7 +602,6 @@ def init(
         _memory: Optional[int] = None,
         _redis_password: str = ray_constants.REDIS_DEFAULT_PASSWORD,
         _temp_dir: Optional[str] = None,
-        _lru_evict: bool = False,
         _metrics_export_port: Optional[int] = None,
         _system_config: Optional[Dict[str, str]] = None,
         _tracing_startup_hook: Optional[Callable] = None,
@@ -879,7 +878,6 @@ def init(
             start_initial_python_workers_for_first_job=(
                 job_config is None or job_config.runtime_env is None),
             _system_config=_system_config,
-            lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook)
@@ -921,7 +919,6 @@ def init(
             object_ref_seed=None,
             temp_dir=_temp_dir,
             _system_config=_system_config,
-            lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
