@@ -342,7 +342,15 @@ def run(
         num_samples = sys.maxsize
 
     result_buffer_length = None
-    if scheduler and not scheduler.supports_buffered_results:
+
+    # Create scheduler here as we need access to some of its properties
+    if isinstance(scheduler, str):
+        # importing at top level causes a recursive dependency
+        from ray.tune.schedulers import create_scheduler
+        scheduler = create_scheduler(scheduler)
+    scheduler = scheduler or FIFOScheduler()
+
+    if scheduler.supports_buffered_results:
         # Result buffering with a Hyperband scheduler is a bad idea, as
         # hyperband tries to stop trials when processing brackets. With result
         # buffering, we might trigger this multiple times when evaluating
@@ -413,11 +421,6 @@ def run(
     if is_local_mode:
         max_concurrent_trials = 1
 
-    if isinstance(scheduler, str):
-        # importing at top level causes a recursive dependency
-        from ray.tune.schedulers import create_scheduler
-        scheduler = create_scheduler(scheduler)
-
     if not search_alg:
         search_alg = BasicVariantGenerator(
             max_concurrent=max_concurrent_trials or 0)
@@ -465,7 +468,6 @@ def run(
                 "does not contain any more parameter definitions - include "
                 "them in the search algorithm's search space if necessary.")
 
-    scheduler = scheduler or FIFOScheduler()
     if not scheduler.set_search_properties(metric, mode):
         raise ValueError(
             "You passed a `metric` or `mode` argument to `tune.run()`, but "
