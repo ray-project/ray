@@ -471,7 +471,7 @@ def test_stdout_log_stream(ray_start_regular_shared):
         time.sleep(1)
         num_hello = 0
         for msg in log_msgs:
-            if msg == "Hello world":
+            if "Hello world" in msg:
                 num_hello += 1
         assert num_hello == 2
 
