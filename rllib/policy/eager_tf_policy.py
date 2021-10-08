@@ -190,8 +190,7 @@ class OptimizerWrapper:
         self.tape = tape
 
     def compute_gradients(self, loss, var_list):
-        return list(
-            zip(self.tape.gradient(loss, var_list), var_list))
+        return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
 def build_eager_tf_policy(
@@ -493,7 +492,8 @@ def build_eager_tf_policy(
             self._is_training = False
             self._state_in = state_batches or []
             # Calculate RNN sequence lengths.
-            batch_size = int(tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0])
+            batch_size = int(
+                tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0])
             seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches \
                 else None
 
