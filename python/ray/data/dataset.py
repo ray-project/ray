@@ -1,6 +1,6 @@
 import logging
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
-    Dict, Optional, Union, TYPE_CHECKING
+    Dict, Optional, Union, TYPE_CHECKING, Tuple
 from uuid import uuid4
 
 from ray.ray_constants import env_integer
@@ -1343,7 +1343,7 @@ class Dataset(Generic[T]):
     def to_tf(self,
               *,
               label_column: str,
-              output_signature: List["tf.TypeSpec"],
+              output_signature: Tuple["tf.TypeSpec", "tf.TypeSpec"],
               feature_columns: Optional[List[str]] = None,
               prefetch_blocks: int = 0,
               batch_size: int = 1) -> "tf.data.Dataset":
@@ -1370,8 +1370,9 @@ class Dataset(Generic[T]):
         Args:
             label_column (str): The name of the column used as the label
                 (second element of the output tuple).
-            output_signature (List[tf.TypeSpec]): A 2-element list
-                of `tf.TypeSpec` objects corresponding to (features, label).
+            output_signature (Tuple[tf.TypeSpec, tf.TypeSpec]): A 2-element
+                tuple of `tf.TypeSpec` objects corresponding to
+                (features, label).
             feature_columns (Optional[List[str]]): List of columns in datasets
                 to use. If None, all columns will be used.
             prefetch_blocks: The number of blocks to prefetch ahead of the
