@@ -20,11 +20,10 @@ parser.add_argument(
     type=str,
     help="the serialized runtime env context")
 
-
 if __name__ == "__main__":
     args, remaining_args = parser.parse_known_args()
     # NOTE(chenk008): if worker starts in a container, this worker-shim-pid
-    # is required. It is compatible to add this arg for all worker.
+    # is required. It is compatible to add this for all worker.
     remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
     # NOTE(edoakes): args.serialized_runtime_env_context is only None when
     # we're starting the main Ray client proxy server. That case should

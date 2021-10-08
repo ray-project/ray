@@ -55,12 +55,14 @@ class ContainerManager:
 
         container_driver = "podman"
         container_command = [
-            container_driver, "run", "-v", self._ray_tmp_dir + ":" + self._ray_tmp_dir,
+            container_driver, "run", "-v",
+            self._ray_tmp_dir + ":" + self._ray_tmp_dir,
             "--cgroup-manager=cgroupfs", "--network=host", "--pid=host",
             "--ipc=host", "--env-host"
         ]
         container_command.append("--env")
-        container_command.append("RAY_RAYLET_PID=" + os.getenv("RAY_RAYLET_PID"))
+        container_command.append("RAY_RAYLET_PID=" +
+                                 os.getenv("RAY_RAYLET_PID"))
         if container_option.get("run_options"):
             container_command.extend(container_option.get("run_options"))
         # TODO(chenk008): add resource limit
@@ -68,4 +70,5 @@ class ContainerManager:
         container_command.append("python")
         container_command.append(container_option.get("image"))
         context.py_executable = " ".join(container_command)
-        logger.info("start worker in container with prefix: {}".format(context.py_executable))
+        logger.info("start worker in container with prefix: {}".format(
+            context.py_executable))
