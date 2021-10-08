@@ -32,6 +32,8 @@ def make_kv_store(checkpoint_path, namespace):
 
         if parsed_url.scheme == "s3":
             bucket = parsed_url.netloc
+            # We need to strip leading "/" in path as right key to use in
+            # boto3. Ex: s3://bucket/folder/file.zip -> key = "folder/file.zip"
             prefix = parsed_url.path.lstrip("/")
             logger.info(
                 "Using Ray S3 KVStore for controller checkpoint and recovery: "

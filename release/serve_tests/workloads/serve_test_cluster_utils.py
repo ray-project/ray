@@ -13,7 +13,7 @@ NUM_CONNECTIONS = 10
 
 
 def setup_local_single_node_cluster(
-        num_nodes: int, checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
+        num_nodes: int, checkpoint_path: str = DEFAULT_CHECKPOINT_PATH, namespace="serve"):
     """Setup ray cluster locally via ray.init() and Cluster()
 
     Each actor is simulated in local process on single node,
@@ -27,13 +27,14 @@ def setup_local_single_node_cluster(
             num_gpus=0,
             resources={str(i): 2},
         )
-    ray.init(address=cluster.address, dashboard_host="0.0.0.0")
+    ray.init(address=cluster.address, dashboard_host="0.0.0.0", namespace=namespace)
     serve_client = serve.start(
+        detached=True,
         http_options={"location": DeploymentMode.EveryNode},
         _checkpoint_path=checkpoint_path,
     )
 
-    return serve_client
+    return serve_client, cluster
 
 
 def setup_anyscale_cluster(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
