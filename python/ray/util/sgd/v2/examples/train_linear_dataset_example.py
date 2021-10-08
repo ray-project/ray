@@ -30,7 +30,8 @@ def get_datasets(a=5, b=10, size=1000,
     train_dataset, validation_dataset = \
         dataset.random_shuffle().split_at_indices([split_index])
 
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle()
+    train_dataset_pipeline = \
+        train_dataset.repeat().random_shuffle_each_window()
     validation_dataset_pipeline = validation_dataset.repeat()
 
     datasets = {

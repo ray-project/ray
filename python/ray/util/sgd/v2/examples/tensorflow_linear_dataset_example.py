@@ -25,7 +25,7 @@ def get_dataset_pipeline(a=5, b=10, size=1000) -> DatasetPipeline:
 
     dataset = get_dataset(a, b, size)
 
-    dataset_pipeline = dataset.repeat().random_shuffle()
+    dataset_pipeline = dataset.repeat().random_shuffle_each_window()
 
     return dataset_pipeline
 
