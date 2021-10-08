@@ -127,7 +127,6 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
                critical_resource_utilization < best_utilization_score &&
                !require_available) {
       // Pick the best feasible node by critical resource utilization.
-      RAY_LOG(INFO) << "Best is not available and critical utilization is high enough";
       update_best_node = true;
     }
 
