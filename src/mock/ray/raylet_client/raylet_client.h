@@ -35,6 +35,12 @@ class MockWorkerLeaseInterface : public WorkerLeaseInterface {
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
        const int64_t backlog_size),
       (override));
+  MOCK_METHOD(
+      void, RequestWorkerLease,
+      (const rpc::TaskSpec &task_spec,
+       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+       const int64_t backlog_size),
+      (override));
   MOCK_METHOD(ray::Status, ReturnWorker,
               (int worker_port, const WorkerID &worker_id, bool disconnect_worker),
               (override));

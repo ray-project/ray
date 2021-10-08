@@ -2,7 +2,7 @@ import argparse
 import logging
 import os
 
-from ray._private.runtime_env import RuntimeEnvContext
+from ray._private.runtime_env.context import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
 

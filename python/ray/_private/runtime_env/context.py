@@ -4,9 +4,12 @@ import os
 import sys
 from typing import Dict, List, Optional
 
+from ray.util.annotations import DeveloperAPI
+
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class RuntimeEnvContext:
     """A context used to describe the created runtime env."""
 

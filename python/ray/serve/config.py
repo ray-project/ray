@@ -1,7 +1,7 @@
 import inspect
 import pickle
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -24,8 +24,10 @@ class AutoscalingConfig(BaseModel):
     # Private options below
 
     # Metrics scraping options
+
+    # How often to scrape for metrics
     metrics_interval_s: float = 10.0
-    loop_period_s: float = 30.0
+    # Time window to average over for metrics.
     look_back_period_s: float = 30.0
 
     # Internal autoscaling configuration options
@@ -34,6 +36,7 @@ class AutoscalingConfig(BaseModel):
     smoothing_factor: float = 1.0
 
     # TODO(architkulkarni): implement below
+    # loop_period_s = 30 # How frequently to make autoscaling decisions
     # How long to wait before scaling down replicas
     # downscale_delay_s: float = 600.0
     # How long to wait before scaling up replicas
@@ -121,16 +124,23 @@ class BackendConfig(BaseModel):
 
 
 class ReplicaConfig:
-    def __init__(self, backend_def, *init_args, ray_actor_options=None):
+    def __init__(self,
+                 backend_def: Callable,
+                 init_args: Optional[Tuple[Any]] = None,
+                 init_kwargs: Optional[Dict[Any, Any]] = None,
+                 ray_actor_options=None):
         # Validate that backend_def is an import path, function, or class.
         if isinstance(backend_def, str):
             self.func_or_class_name = backend_def
             pass
         elif inspect.isfunction(backend_def):
             self.func_or_class_name = backend_def.__name__
-            if len(init_args) != 0:
+            if init_args:
                 raise ValueError(
                     "init_args not supported for function backend.")
+            if init_kwargs:
+                raise ValueError(
+                    "init_kwargs not supported for function backend.")
         elif inspect.isclass(backend_def):
             self.func_or_class_name = backend_def.__name__
         else:
@@ -139,7 +149,8 @@ class ReplicaConfig:
                 format(type(backend_def)))
 
         self.serialized_backend_def = cloudpickle.dumps(backend_def)
-        self.init_args = init_args
+        self.init_args = init_args if init_args is not None else ()
+        self.init_kwargs = init_kwargs if init_kwargs is not None else {}
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:
@@ -158,12 +169,13 @@ class ReplicaConfig:
             raise TypeError("ray_actor_options must be a dictionary.")
         elif "lifetime" in self.ray_actor_options:
             raise ValueError(
-                "Specifying lifetime in init_args is not allowed.")
+                "Specifying lifetime in ray_actor_options is not allowed.")
         elif "name" in self.ray_actor_options:
-            raise ValueError("Specifying name in init_args is not allowed.")
+            raise ValueError(
+                "Specifying name in ray_actor_options is not allowed.")
         elif "max_restarts" in self.ray_actor_options:
             raise ValueError("Specifying max_restarts in "
-                             "init_args is not allowed.")
+                             "ray_actor_options is not allowed.")
         else:
             # Ray defaults to zero CPUs for placement, we default to one here.
             if "num_cpus" not in self.ray_actor_options:
