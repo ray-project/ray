@@ -103,6 +103,10 @@ class LongPollClient:
                          "Shutting down.")
             return
 
+        if isinstance(updates, ConnectionError):
+            logger.warning("LongPollClient connection failed, shutting down.")
+            return
+
         if isinstance(updates, (ray.exceptions.RayTaskError)):
             # Some error happened in the controller. It could be a bug or some
             # undesired state.
