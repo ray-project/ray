@@ -70,10 +70,7 @@ def train_func(config):
         sampler=DistributedSampler(val_dataset))
 
     model = nn.Linear(1, hidden_size)
-    print(list(model.parameters())[1])
     model = DistributedDataParallel(model)
-    print(list(model.parameters())[1])
-    print(list(model.module.parameters())[1])
 
     loss_fn = nn.MSELoss()
 
@@ -86,9 +83,6 @@ def train_func(config):
         result = validate(validation_loader, model, loss_fn)
         sgd.report(**result)
         results.append(result)
-
-    print(list(model.parameters())[1])
-    print(list(model.module.parameters())[1])
 
     return model.module
 
@@ -105,7 +99,6 @@ def train_linear(num_workers=2):
     trainer.shutdown()
 
     print(results)
-    print(list(results[0].parameters())[1])
     return results
 
 
@@ -137,5 +130,4 @@ if __name__ == "__main__":
     else:
         ray.init(address=args.address)
 
-    for _ in range(2):
-        train_linear(num_workers=args.num_workers)
+    train_linear(num_workers=args.num_workers)
