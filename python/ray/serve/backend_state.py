@@ -1067,7 +1067,7 @@ class BackendState:
                     f"{self._name} failed health check, stopping it. "
                     f"component=serve deployment={self._name} "
                     f"replica={replica.replica_tag}")
-                replica.stop()
+                replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
         slow_start_replicas = []

@@ -1,3 +1,5 @@
+import os
+import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import patch, Mock
@@ -1770,6 +1772,9 @@ def mock_backend_state_manager(
         yield backend_state_manager, timer, goal_manager
         # Clear checkpoint at the end of each test
         kv_store.delete(CHECKPOINT_KEY)
+        if sys.platform != "win32":
+            # This line fails on windows with a PermissionError.
+            os.remove("test_kv_store.db")
 
 
 def test_shutdown(mock_backend_state_manager):
@@ -1887,5 +1892,4 @@ def test_resume_backend_state_from_replica_tags(mock_backend_state_manager):
 
 
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
