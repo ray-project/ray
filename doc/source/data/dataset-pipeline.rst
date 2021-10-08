@@ -119,7 +119,7 @@ It's common in ML training to want to divide data ingest into epochs, or repetit
 
 .. code-block:: python
 
-    pipe = ray.data.range(5).repeat(3)
+    pipe = ray.data.range(5).window(blocks_per_window=2).repeat(3)
     for i, epoch in enumerate(pipe.iter_epochs()):
         print("Epoch {}", i)
         for row in epoch.iter_items():
@@ -144,7 +144,7 @@ It's common in ML training to want to divide data ingest into epochs, or repetit
     # 3
     # 4
 
-Note that while epochs commonly consist of a single window, they can also contain multiple windows if ``.rewindow()`` is used after the repeat call or there are multiple ``.repeat()`` calls.
+Note that while epochs commonly consist of a single window, they can also contain multiple windows if ``.window()`` is used or there are multiple ``.repeat()`` calls.
 
 Example: Pipelined Batch Inference
 ----------------------------------
