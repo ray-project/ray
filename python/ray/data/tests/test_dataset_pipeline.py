@@ -43,7 +43,7 @@ def test_epoch(ray_start_regular_shared):
     assert results == [[0, 4, 8, 12, 16], [0, 4, 8, 12, 16], [0, 4, 8, 12, 16]]
 
     # Test dataset pipeline repeat.
-    pipe = ray.data.range(3).window(blocks_per_window=3).repeat(3)
+    pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
 
