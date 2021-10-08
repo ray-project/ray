@@ -7,7 +7,9 @@ import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.BackendVersion;
 import io.ray.serve.generated.RequestMetadata;
+import java.util.HashMap;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -24,6 +26,7 @@ public class RouterTest {
       String controllerName = backendTag + "_controller";
       String replicaTag = backendTag + "_replica";
       String actorName = replicaTag;
+      String version = "v1";
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
@@ -37,18 +40,23 @@ public class RouterTest {
       Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
       byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
-      ActorHandle<RayServeWrappedReplica> backendHandle =
+      DeploymentInfo deploymentInfo = new DeploymentInfo();
+      deploymentInfo.setBackendConfig(backendConfigBytes);
+      deploymentInfo.setBackendVersion(
+          BackendVersion.newBuilder().setCodeVersion(version).build().toByteArray());
+      deploymentInfo.setReplicaConfig(
+          new ReplicaConfig("io.ray.serve.ReplicaContext", initArgsBytes, new HashMap<>()));
+
+      ActorHandle<RayServeWrappedReplica> replicaHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
                   backendTag,
                   replicaTag,
-                  "io.ray.serve.ReplicaContext",
-                  initArgsBytes,
-                  backendConfigBytes,
+                  deploymentInfo,
                   controllerName)
               .setName(actorName)
               .remote();
-      backendHandle.task(RayServeWrappedReplica::ready).remote();
+      replicaHandle.task(RayServeWrappedReplica::ready).remote();
 
       // Router
       Router router = new Router(controllerHandle, backendTag);

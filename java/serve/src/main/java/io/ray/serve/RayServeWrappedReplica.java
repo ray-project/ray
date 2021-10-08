@@ -7,6 +7,7 @@ import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.BackendVersion;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
@@ -27,6 +28,7 @@ public class RayServeWrappedReplica {
       String backendDef,
       byte[] initArgsbytes,
       byte[] backendConfigBytes,
+      byte[] backendVersionBytes,
       String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
@@ -52,23 +54,28 @@ public class RayServeWrappedReplica {
     Serve.setInternalReplicaContext(backendTag, replicaTag, controllerName, callable);
 
     // Construct worker replica.
-    backend = new RayServeReplica(callable, backendConfig, optional.get());
+    backend =
+        new RayServeReplica(
+            callable,
+            backendConfig,
+            ServeProtoUtil.parseBackendVersion(backendVersionBytes),
+            optional.get());
   }
 
   public RayServeWrappedReplica(
       String backendTag,
       String replicaTag,
-      ReplicaConfig replicaConfig,
-      byte[] backendConfigBytes,
+      DeploymentInfo deploymentInfo,
       String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
     this(
         backendTag,
         replicaTag,
-        replicaConfig.getBackendDef(),
-        replicaConfig.getInitArgs(),
-        backendConfigBytes,
+        deploymentInfo.getReplicaConfig().getBackendDef(),
+        deploymentInfo.getReplicaConfig().getInitArgs(),
+        deploymentInfo.getBackendConfig(),
+        deploymentInfo.getBackendVersion(),
         controllerName);
   }
 
@@ -118,8 +125,21 @@ public class RayServeWrappedReplica {
     return;
   }
 
-  /** Wait until there is no request in processing. It is used for stopping replica gracefully. */
-  public void drainPendingQueries() {
-    backend.drainPendingQueries();
+  /**
+   * Wait until there is no request in processing. It is used for stopping replica gracefully.
+   *
+   * @return true if it is ready for shutdown.
+   */
+  public boolean prepareForShutdown() {
+    return backend.prepareForShutdown();
+  }
+
+  public byte[] reconfigure(Object userConfig) {
+    BackendVersion backendVersion = backend.reconfigure(userConfig);
+    return backendVersion.toByteArray();
+  }
+
+  public byte[] getVersion() {
+    return backend.getVersion().toByteArray();
   }
 }

@@ -1,8 +1,8 @@
 package io.ray.serve;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.protobuf.ByteString;
 import io.ray.api.BaseActorHandle;
-import io.ray.api.Ray;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Histogram;
@@ -10,6 +10,7 @@ import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.BackendVersion;
 import io.ray.serve.generated.RequestWrapper;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
@@ -17,7 +18,6 @@ import io.ray.serve.poll.LongPollClient;
 import io.ray.serve.poll.LongPollNamespace;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
-import io.ray.serve.util.ServeProtoUtil;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -52,13 +52,20 @@ public class RayServeReplica {
 
   private LongPollClient longPollClient;
 
+  private BackendVersion version;
+
+  private boolean isDeleted = false;
+
   public RayServeReplica(
-      Object callable, BackendConfig backendConfig, BaseActorHandle actorHandle) {
+      Object callable,
+      BackendConfig backendConfig,
+      BackendVersion version,
+      BaseActorHandle actorHandle) {
     this.backendTag = Serve.getReplicaContext().getBackendTag();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
     this.backendConfig = backendConfig;
-    this.reconfigure(ServeProtoUtil.parseUserConfig(backendConfig));
+    this.version = version;
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
@@ -236,8 +243,10 @@ public class RayServeReplica {
    * Perform graceful shutdown. Trigger a graceful shutdown protocol that will wait for all the
    * queued tasks to be completed and return to the controller.
    */
-  public void drainPendingQueries() {
+  public synchronized boolean prepareForShutdown() {
     while (true) {
+      // Sleep first because we want to make sure all the routers receive the notification to remove
+      // this replica first.
       try {
         Thread.sleep((long) (backendConfig.getExperimentalGracefulShutdownWaitLoopS() * 1000));
       } catch (InterruptedException e) {
@@ -247,13 +256,27 @@ public class RayServeReplica {
       if (numOngoingRequests.get() == 0) {
         break;
       } else {
-        LOGGER.debug(
+        LOGGER.info(
             "Waiting for an additional {}s to shut down because there are {} ongoing requests.",
             backendConfig.getExperimentalGracefulShutdownWaitLoopS(),
             numOngoingRequests.get());
       }
     }
-    Ray.exitActor();
+
+    // Explicitly call the del method to trigger clean up. We set isDeleted = true after
+    // succssifully calling it so the destructor is called only once.
+    try {
+      if (!isDeleted) {
+        ReflectUtil.getMethod(callable.getClass(), "del").invoke(callable);
+      }
+    } catch (NoSuchMethodException e) {
+      LOGGER.warn("Deployment {} has no del method.", backendTag);
+    } catch (Throwable e) {
+      LOGGER.error("Exception during graceful shutdown of replica.");
+    } finally {
+      isDeleted = true;
+    }
+    return true;
   }
 
   /**
@@ -261,28 +284,34 @@ public class RayServeReplica {
    *
    * @param userConfig new user's configuration
    */
-  private void reconfigure(Object userConfig) {
-    if (userConfig == null) {
-      return;
+  public BackendVersion reconfigure(Object userConfig) {
+    BackendVersion.Builder builder = BackendVersion.newBuilder();
+    builder.setCodeVersion(version.getCodeVersion());
+    if (userConfig != null) {
+      builder.setUserConfig(ByteString.copyFrom((byte[]) userConfig));
     }
+    version = builder.build();
+
     try {
       Method reconfigureMethod =
           ReflectUtil.getMethod(
               callable.getClass(),
               Constants.BACKEND_RECONFIGURE_METHOD,
-              userConfig); // TODO cache reconfigureMethod
+              userConfig != null
+                  ? MessagePackSerializer.decode((byte[]) userConfig, Object[].class)
+                  : new Object[0]); // TODO cache reconfigure method
       reconfigureMethod.invoke(callable, userConfig);
     } catch (NoSuchMethodException e) {
-      throw new RayServeException(
-          LogUtil.format(
-              "user_config specified but backend {} missing {} method",
-              backendTag,
-              Constants.BACKEND_RECONFIGURE_METHOD));
+      LOGGER.warn(
+          "user_config specified but backend {} missing {} method",
+          backendTag,
+          Constants.BACKEND_RECONFIGURE_METHOD);
     } catch (Throwable e) {
       throw new RayServeException(
           LogUtil.format("Backend {} failed to reconfigure user_config {}", backendTag, userConfig),
           e);
     }
+    return version;
   }
 
   /**
@@ -292,6 +321,9 @@ public class RayServeReplica {
    */
   private void updateBackendConfigs(Object newConfig) {
     backendConfig = (BackendConfig) newConfig;
-    reconfigure(backendConfig.getUserConfig());
+  }
+
+  public BackendVersion getVersion() {
+    return version;
   }
 }

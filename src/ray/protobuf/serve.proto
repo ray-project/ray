@@ -122,3 +122,8 @@ message EndpointSet {
 message ActorSet {
   repeated string names = 1;
 }
+
+message BackendVersion {
+  string code_version = 1;
+  bytes user_config = 2;
+}

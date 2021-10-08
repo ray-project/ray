@@ -6,6 +6,7 @@ import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.BackendVersion;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
@@ -37,6 +38,7 @@ public class ProxyActorTest {
       String replicaTag = prefix;
       String endpointName = prefix;
       String route = "/route";
+      String version = "v1";
 
       // Controller
       ActorHandle<DummyServeController> controller =
@@ -48,18 +50,23 @@ public class ProxyActorTest {
       controller.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       // Replica
-      ReplicaConfig replicaConfig =
-          new ReplicaConfig(DummyBackendReplica.class.getName(), null, new HashMap<>());
+      DeploymentInfo deploymentInfo = new DeploymentInfo();
+      deploymentInfo.setBackendConfig(BackendConfig.newBuilder().build().toByteArray());
+      deploymentInfo.setBackendVersion(
+          BackendVersion.newBuilder().setCodeVersion(version).build().toByteArray());
+      deploymentInfo.setReplicaConfig(
+          new ReplicaConfig(DummyBackendReplica.class.getName(), null, new HashMap<>()));
+
       ActorHandle<RayServeWrappedReplica> replica =
           Ray.actor(
                   RayServeWrappedReplica::new,
                   backendTag,
                   replicaTag,
-                  replicaConfig,
-                  BackendConfig.newBuilder().build().toByteArray(),
+                  deploymentInfo,
                   controllerName)
               .setName(replicaTag)
               .remote();
+      replica.task(RayServeWrappedReplica::ready).remote();
 
       // ProxyActor
       ProxyActor proxyActor = new ProxyActor(controllerName, null);

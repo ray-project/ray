@@ -5,7 +5,6 @@ import com.google.common.collect.Sets;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.WaitResult;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
@@ -19,7 +18,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -132,19 +130,6 @@ public class ReplicaSet {
     return replica
         .task(RayServeWrappedReplica::handleRequest, query.getMetadata(), query.getArgs())
         .remote();
-  }
-
-  public synchronized int
-      drainCompletedObjectRefs() { // TODO when using maxConcurrentQueries, change it to private.
-    List<ObjectRef<Object>> refs =
-        inFlightQueries.values().stream()
-            .flatMap(value -> value.stream())
-            .collect(Collectors.toList());
-    WaitResult<Object> waitResult = Ray.wait(refs, refs.size(), 0);
-    inFlightQueries.values().stream()
-        .forEach(replicaInFlightQueries -> replicaInFlightQueries.removeAll(waitResult.getReady()));
-
-    return waitResult.getReady().size();
   }
 
   public Map<ActorHandle<RayServeWrappedReplica>, Set<ObjectRef<Object>>> getInFlightQueries() {
