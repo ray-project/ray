@@ -60,7 +60,10 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
         assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
     pg = ray.util.placement_group([{"CPU": 1}])
-    ray.get(run.options(placement_group=pg).remote())
+    ray.get(
+        run.options(
+            placement_group=pg,
+            placement_group_capture_child_tasks=True).remote())
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
