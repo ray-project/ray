@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"

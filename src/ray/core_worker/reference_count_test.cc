@@ -26,6 +26,8 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 
+namespace ph = boost::placeholders;
+
 namespace ray {
 namespace core {
 
@@ -269,7 +271,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
 
     auto borrower_callback = [=]() {
       auto ref_removed_callback =
-          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1);
+          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, ph::_1);
       rc_.SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                 ref_removed_callback);
     };
