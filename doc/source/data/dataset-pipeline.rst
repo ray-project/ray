@@ -1,3 +1,5 @@
+.. _dataset-pipeline:
+
 Dataset Pipelines
 =================
 
@@ -175,8 +177,11 @@ Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` s
 
 .. image:: dataset-pipeline-3.svg
 
+.. _dataset-pipeline-per-epoch-shuffle:
+
 Example: Per-Epoch Shuffle Pipeline
 -----------------------------------
+.. tip:: If you !
 
 ..
   https://docs.google.com/drawings/d/1vWQ-Zfxy2_Gthq8l3KmNsJ7nOCuYUQS9QMZpj5GHYx0/edit
