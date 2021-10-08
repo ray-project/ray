@@ -178,7 +178,7 @@ class WorkerPoolMock : public WorkerPool {
 
   int GetProcessSize() const { return worker_commands_by_proc_.size(); }
 
-  const std::unordered_map<Process, std::vector<std::string>> &GetProcesses() {
+  const absl::flat_hash_map<Process, std::vector<std::string>> &GetProcesses() {
     return worker_commands_by_proc_;
   }
 
@@ -302,9 +302,9 @@ class WorkerPoolMock : public WorkerPool {
  private:
   Process last_worker_process_;
   // The worker commands by process.
-  std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
+  absl::flat_hash_map<Process, std::vector<std::string>> worker_commands_by_proc_;
   double current_time_ms_ = 0;
-  std::unordered_map<Process, std::vector<std::string>> pushedProcesses_;
+  absl::flat_hash_map<Process, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;

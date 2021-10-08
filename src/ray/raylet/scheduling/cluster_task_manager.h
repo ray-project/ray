@@ -96,7 +96,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       NodeInfoGetter get_node_info,
       std::function<void(const RayTask &)> announce_infeasible_task,
       WorkerPoolInterface &worker_pool,
-      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+      absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
@@ -230,7 +230,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// different node.
   void DispatchScheduledTasksToWorkers(
       WorkerPoolInterface &worker_pool,
-      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
+      absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
 
   /// Helper method when the current node does not have the available resources to run a
   /// task.
@@ -267,7 +267,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// through queues to cancel tasks, etc.
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
-  std::unordered_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
       tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
@@ -277,7 +277,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, in case a dependency gets evicted while the task
   /// is still queued.
-  std::unordered_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
       tasks_to_dispatch_;
 
   /// Tasks waiting for arguments to be transferred locally.
@@ -304,16 +304,16 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// Queue of lease requests that are infeasible.
   /// Tasks go between scheduling <-> infeasible.
-  std::unordered_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
       infeasible_tasks_;
 
   /// Track the cumulative backlog of all workers requesting a lease to this raylet.
-  std::unordered_map<SchedulingClass, int> backlog_tracker_;
+  absl::flat_hash_map<SchedulingClass, int> backlog_tracker_;
 
   /// TODO(Shanly): Remove `worker_pool_` and `leased_workers_` and make them as
   /// parameters of methods if necessary once we remove the legacy scheduler.
   WorkerPoolInterface &worker_pool_;
-  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
   /// Callback to get references to task arguments. These will be pinned while
   /// the task is running.
@@ -324,13 +324,13 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Arguments needed by currently granted lease requests. These should be
   /// pinned before the lease is granted to ensure that the arguments are not
   /// evicted before the task(s) start running.
-  std::unordered_map<TaskID, std::vector<ObjectID>> executing_task_args_;
+  absl::flat_hash_map<TaskID, std::vector<ObjectID>> executing_task_args_;
 
   /// All arguments of running tasks, which are also pinned in the object
   /// store. The value is a pair: (the pointer to the object store that should
   /// be deleted once the object is no longer needed, number of tasks that
   /// depend on the object).
-  std::unordered_map<ObjectID, std::pair<std::unique_ptr<RayObject>, size_t>>
+  absl::flat_hash_map<ObjectID, std::pair<std::unique_ptr<RayObject>, size_t>>
       pinned_task_arguments_;
 
   /// The total number of arguments pinned for running tasks.
@@ -353,7 +353,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
-      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
+      absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
       const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);

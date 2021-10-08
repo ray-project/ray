@@ -83,7 +83,7 @@ namespace raylet {
 
 // A helper function to print the leased workers.
 std::string LeasedWorkersSring(
-    const std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>>
+    const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
         &leased_workers) {
   std::stringstream buffer;
   buffer << "  @leased_workers: (";

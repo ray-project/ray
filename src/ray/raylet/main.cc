@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
-  std::unordered_map<std::string, double> static_resource_conf;
+  absl::flat_hash_map<std::string, double> static_resource_conf;
 
   // IO Service for node manager.
   instrumented_io_context main_service;
