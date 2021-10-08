@@ -297,7 +297,7 @@ def has_client_deprecation_warn(warning: Warning,
     Returns true if expected_replacement is in the message of the passed
     warning, and that the warning mentions deprecation.
     """
-    start = "Starting a connection through `ray.client` is deprecated"
+    start = "Starting a connection through `ray.client` will be deprecated"
     message = str(warning.message)
     if start not in message:
         return False
@@ -351,7 +351,7 @@ def test_client_deprecation_warn():
     # replacement
     with warnings.catch_warnings(record=True) as w, \
             patch.dict(os.environ, {"RAY_NAMESPACE": "aksdj"}):
-        with ray.client("localhost:50055").namespace("nmspc").connect():
+        with ray.client("localhost:50055").connect():
             pass
     assert any(
         has_client_deprecation_warn(

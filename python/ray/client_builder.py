@@ -238,9 +238,9 @@ class ClientBuilder:
         # connect() -> client_deprecation_warn() -> warnings.warn()
         # https://docs.python.org/3/library/warnings.html#available-functions
         warnings.warn(
-            "Starting a connection through `ray.client` is deprecated "
-            "in favor of `ray.init`. See the docs for more details: "
-            f"{CLIENT_DOCS_URL}. You can replace your call to "
+            "Starting a connection through `ray.client` will be deprecated "
+            "in future ray versions in favor of `ray.init`. See the docs for "
+            f"more details: {CLIENT_DOCS_URL}. You can replace your call to "
             "`ray.client().connect()` with the following:\n"
             f"      {replacement_call}\n",
             DeprecationWarning,
