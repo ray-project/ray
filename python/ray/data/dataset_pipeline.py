@@ -446,6 +446,7 @@ class DatasetPipeline(Generic[T]):
             Iterator over epochs objects, where each epoch is a DatasetPipeline
             containing data from that epoch only.
         """
+
         class SingleEpochIterator:
             def __init__(self, peekable_iter: Iterator[Dataset[T]]):
                 self._iter = peekable_iter
