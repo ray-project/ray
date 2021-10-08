@@ -2,6 +2,8 @@
 #
 # RAY_FAKE_CLUSTER=1 ray start --autoscaling-config=example.yaml --head --block
 #
+# Alternatively, you can programmatically create a fake autoscaling cluster
+# using ray.cluster_utils.AutoscalingCluster.
 cluster_name: fake_multinode
 max_workers: 8
 provider:
@@ -22,7 +24,7 @@ available_node_types:
             CPU: 1
             object_store_memory: 1000000000
         node_config: {}
-        min_workers: 2
+        min_workers: 0
         max_workers: 4
     ray.worker.gpu:
         resources:
