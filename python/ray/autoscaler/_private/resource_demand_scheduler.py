@@ -827,7 +827,10 @@ def get_bin_pack_residual(node_resources: List[ResourceDict],
     nodes = copy.deepcopy(node_resources)
     # List of nodes that cannot be used again due to strict spread.
     used = []
-    for demand in resource_demands:
+    for demand in sorted(
+            resource_demands,
+            key=lambda d: (len(d.values()), sum(d.values())),
+            reverse=True):
         found = False
         node = None
         for i in range(len(nodes)):

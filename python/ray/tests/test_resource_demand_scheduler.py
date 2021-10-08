@@ -260,6 +260,14 @@ def test_node_packing_gpu_cpu_bundles():
         },
     }
     nodes = get_nodes_for(TYPES, {}, "cpu", 9999, ([{
+        "CPU": 1
+    }] * 30 + [{
+        "GPU": 1,
+        "CPU": 1
+    }]))
+    assert nodes == {"gpu": 1, "cpu": 1}
+
+    nodes = get_nodes_for(TYPES, {}, "cpu", 9999, ([{
         "GPU": 1,
         "CPU": 1
     }] + [{
@@ -2039,7 +2047,7 @@ class AutoscalingTest(unittest.TestCase):
         }])
         autoscaler.update()
         self.waitForNodes(5)
-        assert self.provider.mock_nodes[4].node_type == "m4.16xlarge"
+        assert self.provider.mock_nodes[4].node_type == "m4.large"
         autoscaler.update()
         sleep(0.1)
         runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
