@@ -91,7 +91,7 @@ class AutoscalingConfigTest(unittest.TestCase):
                 if "local" in config_path:
                     # local tested in testValidateLocal
                     continue
-                if "fake_multinode" in config_path:
+                if "fake_multi_node" in config_path:
                     # not supported with ray up
                     continue
                 with open(config_path) as f:
