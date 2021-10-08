@@ -396,14 +396,14 @@ class Trainer:
     def to_tune_trainable(
             self,
             train_func: Callable[[Dict[str, Any]], T],
-            dataset: Optional[RayDataset] = None,
+            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
     ) -> Type[Trainable]:
         """Creates a Tune ``Trainable`` from the input training function.
 
         Args:
             func (Callable): The function that should be executed on each
                 training worker.
-            dataset (Optional[RayDataset]):
+            dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
                 Distributed Ray Dataset or DatasetPipeline to pass into
                 worker. Sharding will automatically be
                 handled by the Trainer.
