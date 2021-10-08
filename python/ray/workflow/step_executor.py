@@ -173,7 +173,6 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
         # TODO(suquark): in the future we should write to storage directly
         # with plasma store object in memory.
         args_obj = ray.get(inputs.inputs.args)
-
     workflow_id = wf_storage._workflow_id
     storage = wf_storage._storage
     save_tasks = [
