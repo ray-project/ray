@@ -7,19 +7,19 @@ import numpy as np
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource, _resolve_paths_and_filesystem)
 from ray.data.impl.block_list import BlockMetadata
+from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _check_pyarrow_version
 
 logger = logging.getLogger(__name__)
 
-PIECES_PER_META_FETCH = 4
-PARALLELIZE_META_FETCH_THRESHOLD = 4 * PIECES_PER_META_FETCH
+PIECES_PER_META_FETCH = 6
+PARALLELIZE_META_FETCH_THRESHOLD = 24
 
 
 class ParquetDatasource(FileBasedDatasource):
@@ -128,7 +128,8 @@ class ParquetDatasource(FileBasedDatasource):
             inferred_schema = schema
         read_tasks = []
         serialized_pieces = [cloudpickle.dumps(p) for p in pq_ds.pieces]
-        if len(pq_ds.pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
+        if (_is_remote_fs(filesystem)
+                and len(pq_ds.pieces) > PARALLELIZE_META_FETCH_THRESHOLD):
             metadata = _fetch_metadata_remotely(serialized_pieces)
         else:
             metadata = _fetch_metadata(pq_ds.pieces)
@@ -156,15 +157,23 @@ class ParquetDatasource(FileBasedDatasource):
         return "parquet"
 
 
+def _is_remote_fs(filesystem: "pyarrow.fs.FileSystem"):
+    import pyarrow as pa
+
+    return isinstance(filesystem, (pa.fs.S3FileSystem, pa.fs.HadoopFileSystem))
+
+
 def _fetch_metadata_remotely(pieces: List[bytes]):
     remote_fetch_metadata = cached_remote_fn(_fetch_metadata_wrapper)
     metas = []
     parallelism = min(len(pieces) // PIECES_PER_META_FETCH, 100)
+    meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
     for pieces_ in np.array_split(pieces, parallelism):
         if len(pieces_) == 0:
             continue
         metas.append(remote_fetch_metadata.remote(pieces_))
-    return list(itertools.chain.from_iterable(ray.get(metas)))
+    metas = meta_fetch_bar.fetch_until_complete(metas)
+    return list(itertools.chain.from_iterable(metas))
 
 
 def _fetch_metadata_wrapper(pieces: List[bytes]):
