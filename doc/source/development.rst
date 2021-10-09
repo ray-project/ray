@@ -100,9 +100,9 @@ Ray can be built from the repository as follows.
   git clone https://github.com/ray-project/ray.git
 
   # Install Bazel.
-  # (Windows users: please manually place Bazel in your PATH, and point
-    BAZEL_SH to MSYS2's Bash: ``set BAZEL_SH=C:\Program Files\Git\bin\bash.exe``)
   ray/ci/travis/install-bazel.sh
+  # (Windows users: please manually place Bazel in your PATH, and point
+  # BAZEL_SH to MSYS2's Bash: ``set BAZEL_SH=C:\Program Files\Git\bin\bash.exe``)
 
   # Build the dashboard
   # (requires Node.js, see https://nodejs.org/ for more information).
