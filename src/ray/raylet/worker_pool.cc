@@ -521,7 +521,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   auto &state = GetStateForLanguage(worker->GetLanguage());
   if (state.starting_worker_processes.count(worker_startup_token) == 0) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker shim process:"
-                     << shim_process.GetId();
+                     << worker_shim_pid;
     Status status = Status::Invalid("Unknown worker");
     send_reply_callback(status, /*port=*/0);
     return status;
