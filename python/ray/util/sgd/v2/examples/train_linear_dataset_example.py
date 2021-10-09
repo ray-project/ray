@@ -172,10 +172,11 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    num_gpus = args.num_workers if args.use_gpu else 0
-
     if args.smoke_test:
-        ray.init(num_cpus=args.num_workers, num_gpus=num_gpus)
+        # 1 for datasets
+        num_cpus = args.num_workers + 1
+        num_gpus = args.num_workers if args.use_gpu else 0
+        ray.init(num_cpus=num_cpus, num_gpus=num_gpus)
     else:
         ray.init(address=args.address)
     train_linear(num_workers=args.num_workers, use_gpu=args.use_gpu)
