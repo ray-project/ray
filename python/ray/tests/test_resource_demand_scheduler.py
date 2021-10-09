@@ -699,7 +699,7 @@ def test_backlog_queue_impact_on_binpacking_time():
             "CPU": 1
         }])
     # If not for the max launch concurrency the next assert should be:
-    # {'m4.large': 4, 'm4.4xlarge': 2, 'm4.16xlarge': 15, 'p2.8xlarge': 125}.
+    # {'m4.16xlarge': 1, 'p2.8xlarge': 125, 'p2.xlarge': 1}
     assert to_launch == {"m4.16xlarge": 1, "p2.8xlarge": 5, "p2.xlarge": 1}
 
     # Check the time it takes when there are 100 nodes available and the demand
