@@ -47,8 +47,8 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
                         << ", port = " << request.agent_port()
                         << ", pid = " << request.agent_pid();
           reply->set_status(rpc::AGENT_RPC_STATUS_OK);
-		  // Reset the restart count after registration is done.
-		  agent_restart_count_ = 0;
+          // Reset the restart count after registration is done.
+          agent_restart_count_ = 0;
           send_reply_callback(ray::Status::OK(), nullptr, nullptr);
         } else {
           RAY_LOG(ERROR) << "Failed to update agent address, " << status;
