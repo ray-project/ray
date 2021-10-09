@@ -279,19 +279,19 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
   }
 }
 
-int PlasmaStore::AbortObject(const ObjectID &object_id,
-                             const std::shared_ptr<Client> &client) {
+Status PlasmaStore::AbortObject(const ObjectID &object_id,
+                                const std::shared_ptr<Client> &client) {
   auto &object_ids = client->GetObjectIDs();
   auto it = object_ids.find(object_id);
   if (it == object_ids.end()) {
     // If the client requesting the abort is not the creator, do not
     // perform the abort.
-    return 0;
+    return Status::NotFound("Can not find the object when abort");
   }
   // The client requesting the abort is the creator. Free the object.
   RAY_CHECK(object_lifecycle_mgr_.AbortObject(object_id) == PlasmaError::OK);
   client->MarkObjectAsUnused(*it);
-  return 1;
+  return Status::OK();
 }
 
 void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
@@ -413,7 +413,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   } break;
   case fb::MessageType::PlasmaAbortRequest: {
     RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
-    RAY_CHECK(AbortObject(object_id, client) == 1) << "To abort an object, the only "
+    RAY_CHECK(AbortObject(object_id, client).ok()) << "To abort an object, the only "
                                                       "client currently using it "
                                                       "must be the creator.";
     RAY_RETURN_NOT_OK(SendAbortReply(client, object_id));
@@ -432,12 +432,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   } break;
   case fb::MessageType::PlasmaDeleteRequest: {
     std::vector<ObjectID> object_ids;
-    std::vector<PlasmaError> error_codes;
     RAY_RETURN_NOT_OK(ReadDeleteRequest(input, input_size, &object_ids));
-    error_codes.reserve(object_ids.size());
-    for (auto &object_id : object_ids) {
-      error_codes.push_back(object_lifecycle_mgr_.DeleteObject(object_id));
-    }
+    std::vector<PlasmaError> error_codes = DeleteObjects(object_ids);
     RAY_RETURN_NOT_OK(SendDeleteReply(client, object_ids, error_codes));
   } break;
   case fb::MessageType::PlasmaContainsRequest: {
@@ -457,7 +453,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     // This code path should only be used for testing.
     int64_t num_bytes;
     RAY_RETURN_NOT_OK(ReadEvictRequest(input, input_size, &num_bytes));
-    int64_t num_bytes_evicted = object_lifecycle_mgr_.RequireSpace(num_bytes);
+    int64_t num_bytes_evicted = EvictObject(num_bytes);
     RAY_RETURN_NOT_OK(SendEvictReply(client, num_bytes_evicted));
   } break;
   case fb::MessageType::PlasmaConnectRequest: {
@@ -583,5 +579,19 @@ void PlasmaStore::GetObjects(const std::shared_ptr<Client> &client,
 
 bool PlasmaStore::ContainsObject(const ObjectID &object_id) {
   return object_lifecycle_mgr_.IsObjectSealed(object_id);
+}
+
+std::vector<PlasmaError> PlasmaStore::DeleteObjects(
+    const std::vector<ObjectID> &object_ids) {
+  std::vector<PlasmaError> error_codes;
+  error_codes.reserve(object_ids.size());
+  for (auto &object_id : object_ids) {
+    error_codes.push_back(object_lifecycle_mgr_.DeleteObject(object_id));
+  }
+  return error_codes;
+}
+
+int64_t PlasmaStore::EvictObject(int64_t num_bytes) {
+  return object_lifecycle_mgr_.RequireSpace(num_bytes);
 }
 }  // namespace plasma

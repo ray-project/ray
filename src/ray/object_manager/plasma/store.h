@@ -124,13 +124,36 @@ class PlasmaStore {
   void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void DeleteObject(const ObjectID &object_id);
+  /// Abort a created but unsealed object. If the client is not the
+  /// creator, then the abort will fail.
+  ///
+  /// \param object_id Object ID of the object to be aborted.
+  /// \param client The client who created the object. If this does not
+  ///   match the creator of the object, then the abort will fail.
+  /// \return Ok if the abort succeeds.
+  Status AbortObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Seal a vector of objects. The objects are now immutable and can be accessed with
+  /// get.
+  ///
+  /// \param object_ids The vector of Object IDs of the objects to be sealed.
+  void SealObjects(const std::vector<ObjectID> &object_ids)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Delete a specific object by object_id that have been created in the hash table.
+  ///
+  /// \param object_id Object ID of the object to be deleted.
+  /// \return One of the following error codes:
+  ///  - PlasmaError::OK, if the object was delete successfully.
+  ///  - PlasmaError::ObjectNonexistent, if ths object isn't existed.
+  ///  - PlasmaError::ObjectInUse, if the object is in use.
+  std::vector<PlasmaError> DeleteObjects(const std::vector<ObjectID> &object_ids)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   bool ContainsObject(const ObjectID &object_id);
 
-  void SealObject(const ObjectID &object_id);
-
-  void EvictObject(const ObjectID &object_id);
+  int64_t EvictObject(int64_t num_bytes);
 
   template <class F, class... Args>
   auto ExecuteInStoreThread(F &&f, Args &&... args) -> decltype(f(args...)) {
@@ -166,25 +189,6 @@ class PlasmaStore {
                                    bool fallback_allocator, PlasmaObject *result)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Abort a created but unsealed object. If the client is not the
-  /// creator, then the abort will fail.
-  ///
-  /// \param object_id Object ID of the object to be aborted.
-  /// \param client The client who created the object. If this does not
-  ///   match the creator of the object, then the abort will fail.
-  /// \return 1 if the abort succeeds, else 0.
-  int AbortObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  /// Delete a specific object by object_id that have been created in the hash table.
-  ///
-  /// \param object_id Object ID of the object to be deleted.
-  /// \return One of the following error codes:
-  ///  - PlasmaError::OK, if the object was delete successfully.
-  ///  - PlasmaError::ObjectNonexistent, if ths object isn't existed.
-  ///  - PlasmaError::ObjectInUse, if the object is in use.
-  PlasmaError DeleteObject(ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   /// Process a get request from a client. This method assumes that we will
   /// eventually have these objects sealed. If one of the objects has not yet
   /// been sealed, the client that requested the object will be notified when it
@@ -202,13 +206,6 @@ class PlasmaStore {
 
   /// Process queued requests to create an object.
   void ProcessCreateRequests() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  /// Seal a vector of objects. The objects are now immutable and can be accessed with
-  /// get.
-  ///
-  /// \param object_ids The vector of Object IDs of the objects to be sealed.
-  void SealObjects(const std::vector<ObjectID> &object_ids)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Connect a new client to the PlasmaStore.
   ///
