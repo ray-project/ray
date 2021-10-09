@@ -273,6 +273,8 @@ class DatasetPipeline(Generic[T]):
                     # Slice off the left-most chunk and return it.
                     res, self._buffer = self._buffer._divide(blocks_per_window)
                     assert res.num_blocks() <= blocks_per_window, res
+                    if self._buffer.num_blocks() == 0:
+                        self._buffer = None
                     return lambda: res
                 except StopIteration:
                     # Return the left-over data as a single window.

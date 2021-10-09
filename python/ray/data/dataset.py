@@ -44,6 +44,9 @@ BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
 
 logger = logging.getLogger(__name__)
 
+# Whether we have warned of Datasets containing multiple epochs of data.
+_epoch_warned = False
+
 
 @PublicAPI(stability="beta")
 class Dataset(Generic[T]):
@@ -743,7 +746,16 @@ class Dataset(Generic[T]):
             metadata.extend(bl._metadata)
             blocks.extend(bl._blocks)
 
-        max_epoch = max(*[ds._get_epoch() for ds in datasets])
+        epochs = [ds._get_epoch() for ds in datasets]
+        max_epoch = max(*epochs)
+        if len(set(epochs)) > 1:
+            global _epoch_warned
+            if not _epoch_warned:
+                logger.warning(
+                    "Dataset contains data from multiple epochs: {}, "
+                    "using the higher epoch number {}. This warning will not "
+                    "be shown again.".format(set(epochs), max_epoch))
+                _epoch_warned = True
         return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
 
     def sort(self,
