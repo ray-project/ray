@@ -103,7 +103,7 @@ struct CoreWorkerOptions {
         connect_on_start(true),
         runtime_env_hash(0),
         worker_shim_pid(0),
-        startup_token(0) {}
+        startup_token(-1) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;

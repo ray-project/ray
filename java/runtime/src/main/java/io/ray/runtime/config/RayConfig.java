@@ -223,6 +223,10 @@ public class RayConfig {
     return nodeManagerPort;
   }
 
+  public int getStartupToken() {
+    return nodeManagerPort;
+  }
+
   public void setSessionDir(String sessionDir) {
     updateSessionDir(sessionDir);
   }
