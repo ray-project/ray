@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 import ray
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, RangeDatasource, \
@@ -509,12 +509,27 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
     parts = unwrap_partitions(df, axis=0)
-    return from_pandas(parts)
+    return from_pandas_refs(parts)
 
 
 @PublicAPI(stability="beta")
-def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]]) -> Dataset[ArrowRow]:
-    """Create a dataset from a set of Pandas dataframes.
+def from_pandas(dfs: List["pandas.DataFrame"]) -> Dataset[ArrowRow]:
+    """Create a dataset from a list of Pandas dataframes.
+
+    Args:
+        dfs: A list of Pandas dataframes.
+
+    Returns:
+        Dataset holding Arrow records read from the dataframes.
+    """
+    return from_pandas_refs([ray.put(df) for df in dfs])
+
+
+@DeveloperAPI
+def from_pandas_refs(
+        dfs: List[ObjectRef["pandas.DataFrame"]]) -> Dataset[ArrowRow]:
+    """Create a dataset from a list of Ray object references to Pandas
+    dataframes.
 
     Args:
         dfs: A list of Ray object references to pandas dataframes.
@@ -546,8 +561,23 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def from_arrow(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]]
-               ) -> Dataset[ArrowRow]:
+def from_arrow(
+        tables: List[Union["pyarrow.Table", bytes]]) -> Dataset[ArrowRow]:
+    """Create a dataset from a list of Arrow tables.
+
+    Args:
+        tables: A list of Ray object references to Arrow tables,
+                or its streaming format in bytes.
+
+    Returns:
+        Dataset holding Arrow records from the tables.
+    """
+    return from_arrow_refs([ray.put(t) for t in tables])
+
+
+@DeveloperAPI
+def from_arrow_refs(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]]
+                    ) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:

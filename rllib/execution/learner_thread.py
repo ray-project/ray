@@ -3,10 +3,11 @@ from six.moves import queue
 import threading
 from typing import Dict, Optional
 
-from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
+    LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 from ray.util.iter import _NextValueNotReady
@@ -56,7 +57,7 @@ class LearnerThread(threading.Thread):
         self.load_wait_timer = TimerStat()
         self.daemon = True
         self.weights_updated = False
-        self.stats = {}
+        self.learner_info = {}
         self.stopped = False
         self.num_steps = 0
 
@@ -75,12 +76,24 @@ class LearnerThread(threading.Thread):
                 return _NextValueNotReady()
 
         with self.grad_timer:
-            fetches = self.local_worker.learn_on_batch(batch)
+            # Use LearnerInfoBuilder as a unified way to build the final
+            # results dict from `learn_on_loaded_batch` call(s).
+            # This makes sure results dicts always have the same structure
+            # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
+            # tf vs torch).
+            learner_info_builder = LearnerInfoBuilder(num_devices=1)
+            multi_agent_results = self.local_worker.learn_on_batch(batch)
+            for pid, results in multi_agent_results.items():
+                learner_info_builder.add_learn_on_batch_results(results, pid)
+            self.learner_info = learner_info_builder.finalize()
+            learner_stats = {
+                pid: info[LEARNER_STATS_KEY]
+                for pid, info in self.learner_info.items()
+            }
             self.weights_updated = True
-            self.stats = get_learner_stats(fetches)
 
         self.num_steps += 1
-        self.outqueue.put((batch.count, self.stats))
+        self.outqueue.put((batch.count, learner_stats))
         self.learner_queue_size.push(self.inqueue.qsize())
 
     def add_learner_metrics(self, result: Dict) -> Dict:
@@ -91,7 +104,7 @@ class LearnerThread(threading.Thread):
 
         result["info"].update({
             "learner_queue": self.learner_queue_size.stats(),
-            "learner": copy.deepcopy(self.stats),
+            LEARNER_INFO: copy.deepcopy(self.learner_info),
             "timing_breakdown": {
                 "learner_grad_time_ms": timer_to_ms(self.grad_timer),
                 "learner_load_time_ms": timer_to_ms(self.load_timer),

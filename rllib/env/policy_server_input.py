@@ -89,10 +89,18 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         # and sends data and metrics into the queues.
         handler = _make_handler(self.rollout_worker, self.samples_queue,
                                 self.metrics_queue)
-        HTTPServer.__init__(self, (address, port), handler)
+        try:
+            import time
+            time.sleep(1)
+            HTTPServer.__init__(self, (address, port), handler)
+        except OSError:
+            print(f"Creating a PolicyServer on {address}:{port} failed!")
+            import time
+            time.sleep(1)
+            raise
 
-        logger.info("Starting connector server at {}:{}".format(
-            self.server_name, self.server_port))
+        logger.info("Starting connector server at "
+                    f"{self.server_name}:{self.server_port}")
 
         # Start the serving thread, listening on socket and handling commands.
         serving_thread = threading.Thread(

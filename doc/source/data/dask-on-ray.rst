@@ -6,16 +6,16 @@ Dask on Ray
 `Dask <https://dask.org/>`__ is a Python parallel computing library geared towards scaling analytics and
 scientific computing workloads. It provides `big data collections
 <https://docs.dask.org/en/latest/user-interfaces.html>`__ that mimic the APIs of
-the familiar `NumPy <https://numpy.org/>`__ and `Pandas <https://pandas.pydata.org/>`__ libraries, 
+the familiar `NumPy <https://numpy.org/>`__ and `Pandas <https://pandas.pydata.org/>`__ libraries,
 allowing those abstractions to represent
-larger-than-memory data and/or allowing operations on that data to be run on a multi-machine cluster, 
+larger-than-memory data and/or allowing operations on that data to be run on a multi-machine cluster,
 while also providing automatic data parallelism, smart scheduling,
 and optimized operations. Operations on these collections create a task graph, which is
 executed by a scheduler.
 
 Ray provides a scheduler for Dask (`dask_on_ray`) which allows you to build data
 analyses using Dask's collections and execute
-the underlying tasks on a Ray cluster. 
+the underlying tasks on a Ray cluster.
 
 `dask_on_ray` uses Dask's scheduler API, which allows you to
 specify any callable as the scheduler that you would like Dask to use to execute your
@@ -30,8 +30,12 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
      * - Ray Version
        - Dask Version
+     * - ``1.7.0``
+       - ``2021.9.1``
+     * - ``1.6.0``
+       - ``2021.8.1``
      * - ``1.5.0``
-       - ``2021.7.0`` 
+       - ``2021.7.0``
      * - ``1.4.1``
        - ``2021.6.1``
      * - ``1.4.0``
@@ -82,7 +86,7 @@ In this case, there are two recommended setup.
   # Head node. Set `num_cpus=0` to avoid tasks are being scheduled on a head node.
   RAY_SCHEDULER_SPREAD_THRESHOLD=0.0 ray start --head --num-cpus=0
 
-  # Worker node. 
+  # Worker node.
   RAY_SCHEDULER_SPREAD_THRESHOLD=0.0 ray start --address=[head-node-address]
 
 Out-of-Core Data Processing
@@ -101,10 +105,10 @@ Persist
 
 .. _dask-on-ray-persist:
 
-Dask-on-Ray patches `dask.persist() 
-<https://docs.dask.org/en/latest/api.html#dask.persist>`__  in order to match `Dask 
+Dask-on-Ray patches `dask.persist()
+<https://docs.dask.org/en/latest/api.html#dask.persist>`__  in order to match `Dask
 Distributed's persist semantics
-<https://distributed.dask.org/en/latest/manage-computation.html#client-persist>`; namely, calling `dask.persist()` with a Dask-on-Ray 
+<https://distributed.dask.org/en/latest/manage-computation.html#client-persist>`; namely, calling `dask.persist()` with a Dask-on-Ray
 scheduler will submit the tasks to the Ray cluster and return Ray futures inlined in the
 Dask collection. This is nice if you wish to compute some base collection (such as
 a Dask array), followed by multiple different downstream computations (such as

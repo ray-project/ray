@@ -290,23 +290,29 @@ class CoreWorkerProcess {
 
   void InitializeSystemConfig();
 
+  /// Check that if the global worker should be created on construction.
+  bool ShouldCreateGlobalWorkerOnConstruction() const;
+
   /// Get the `CoreWorker` instance by worker ID.
   ///
   /// \param[in] workerId The worker ID.
   /// \return The `CoreWorker` instance.
   std::shared_ptr<CoreWorker> GetWorker(const WorkerID &worker_id) const
-      LOCKS_EXCLUDED(worker_map_mutex_);
+      LOCKS_EXCLUDED(mutex_);
 
   /// Create a new `CoreWorker` instance.
   ///
   /// \return The newly created `CoreWorker` instance.
-  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(worker_map_mutex_);
+  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(mutex_);
 
   /// Remove an existing `CoreWorker` instance.
   ///
   /// \param[in] The existing `CoreWorker` instance.
   /// \return Void.
-  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
+  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(mutex_);
+
+  /// Get the `GlobalWorker` instance, if the number of workers is 1.
+  std::shared_ptr<CoreWorker> GetGlobalWorker() LOCKS_EXCLUDED(mutex_);
 
   /// The various options.
   const CoreWorkerOptions options_;
@@ -316,17 +322,16 @@ class CoreWorkerProcess {
   static thread_local std::weak_ptr<CoreWorker> current_core_worker_;
 
   /// The only core worker instance, if the number of workers is 1.
-  std::shared_ptr<CoreWorker> global_worker_;
+  std::shared_ptr<CoreWorker> global_worker_ GUARDED_BY(mutex_);
 
   /// The worker ID of the global worker, if the number of workers is 1.
   const WorkerID global_worker_id_;
 
   /// Map from worker ID to worker.
-  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_
-      GUARDED_BY(worker_map_mutex_);
+  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_ GUARDED_BY(mutex_);
 
-  /// To protect accessing the `workers_` map.
-  mutable absl::Mutex worker_map_mutex_;
+  /// To protect access to workers_ and global_worker_
+  mutable absl::Mutex mutex_;
 
   std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
       std::make_pair<std::string, int>("", 0);
@@ -453,22 +458,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
-
-  /// Put an object into plasma. It's a version of Put that directly put the
-  /// object into plasma and also pin the object.
-  ///
-  /// \param[in] The ray object.
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  void PutObjectIntoPlasma(const RayObject &object, const ObjectID &object_id);
-
-  /// Promote an object to plasma. If the
-  /// object already exists locally, it will be put into the plasma store. If
-  /// it doesn't yet exist, it will be spilled to plasma once available.
-  ///
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  void PromoteObjectToPlasma(const ObjectID &object_id);
 
   /// Get the RPC address of this worker.
   ///
@@ -1058,6 +1047,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
 
+  /// Retrieve the current statistics about tasks being received and executing.
+  /// \return an unordered_map mapping function name to list of (num_received,
+  /// num_executing, num_executed). It is a std map instead of absl due to its
+  /// interface with language bindings.
+  std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
+
  private:
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -1433,6 +1428,38 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   friend class CoreWorkerTest;
 
   std::unique_ptr<rpc::JobConfig> job_config_;
+
+  /// Simple container for per function task counters. The counters will be
+  /// keyed by the function name in task spec.
+  struct TaskCounter {
+    /// A task can only be one of the following state. Received state in particular
+    /// covers from the point of RPC call to beginning execution.
+    enum TaskStatusType { kPending, kRunning, kFinished };
+
+    /// This mutex should be used by caller to ensure consistency when transitioning
+    /// a task's state.
+    mutable absl::Mutex tasks_counter_mutex_;
+    absl::flat_hash_map<std::string, int> pending_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> running_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+    absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
+        GUARDED_BY(tasks_counter_mutex_);
+
+    void Add(TaskStatusType type, const std::string &func_name, int value) {
+      tasks_counter_mutex_.AssertHeld();
+      if (type == kPending) {
+        pending_tasks_counter_map_[func_name] += value;
+      } else if (type == kRunning) {
+        running_tasks_counter_map_[func_name] += value;
+      } else if (type == kFinished) {
+        finished_tasks_counter_map_[func_name] += value;
+      } else {
+        RAY_CHECK(false) << "This line should not be reached.";
+      }
+    }
+  };
+  TaskCounter task_counter_;
 };
 
 }  // namespace core

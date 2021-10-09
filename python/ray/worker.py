@@ -1928,6 +1928,7 @@ def make_decorator(num_returns=None,
                    max_restarts=None,
                    max_task_retries=None,
                    runtime_env=None,
+                   placement_group="default",
                    worker=None,
                    retry_exceptions=None):
     def decorator(function_or_class):
@@ -1959,7 +1960,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env)
+                runtime_env, placement_group)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -2097,15 +2098,6 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        override_environment_variables (Dict[str, str]): (Deprecated in Ray
-            1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
-            field of :ref:`runtime-environments` instead.) This specifies
-            environment variables to override for the actor or task.  The
-            overrides are propagated to all child actors and tasks.  This
-            is a dictionary mapping variable names to their values.  Existing
-            variables can be overridden, new ones can be created, and an
-            existing variable can be unset by setting it to an empty string.
-            Note: can only be set via `.options()`.
     """
     worker = global_worker
 
@@ -2117,7 +2109,8 @@ def remote(*args, **kwargs):
     valid_kwargs = [
         "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
         "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions"
+        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions",
+        "placement_group"
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2150,6 +2143,7 @@ def remote(*args, **kwargs):
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
     runtime_env = kwargs.get("runtime_env")
+    placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
 
     return make_decorator(
@@ -2165,5 +2159,6 @@ def remote(*args, **kwargs):
         max_task_retries=max_task_retries,
         max_retries=max_retries,
         runtime_env=runtime_env,
+        placement_group=placement_group,
         worker=worker,
         retry_exceptions=retry_exceptions)

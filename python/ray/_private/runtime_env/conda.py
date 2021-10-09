@@ -12,9 +12,9 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import ray
-from ray._private.runtime_env import RuntimeEnvContext
 from ray._private.runtime_env.conda_utils import (get_conda_activate_commands,
                                                   get_or_create_conda_env)
+from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url, try_to_create_directory)
 
@@ -81,7 +81,7 @@ def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
         else:
             return None
     if runtime_env.get("pip"):
-        requirements_txt = runtime_env["pip"]
+        requirements_txt = "\n".join(runtime_env["pip"]) + "\n"
         pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
         pip_hash_str = f"pip-generated-{pip_hash}"
 

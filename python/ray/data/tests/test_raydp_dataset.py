@@ -16,6 +16,10 @@ def spark_on_ray_small(request):
     return spark
 
 
+@pytest.mark.skip(
+    reason=(
+        "raydp.spark.spark_dataframe_to_ray_dataset needs to be updated to "
+        "use ray.data.from_arrow_refs."))
 def test_raydp_roundtrip(spark_on_ray_small):
     spark = spark_on_ray_small
     spark_df = spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")],

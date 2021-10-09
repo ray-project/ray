@@ -414,7 +414,6 @@ cc_library(
         ],
     ) + [
         "src/ray/raylet/scheduling/cluster_resource_data.cc",
-        "src/ray/raylet/scheduling/fixed_point.cc",
         "src/ray/raylet/scheduling/scheduling_ids.cc",
     ],
     hdrs = glob(
@@ -553,6 +552,7 @@ cc_library(
         ":pubsub_lib",
         ":raylet_client_lib",
         ":worker_rpc",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 
@@ -1178,6 +1178,22 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_placement_group_manager_mock_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_mock_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )

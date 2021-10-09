@@ -42,19 +42,17 @@ if __name__ == "__main__":
     # Register env
     register_env("pistonball",
                  lambda config: PettingZooEnv(env_creator(config)))
-    env = PettingZooEnv(env_creator(config))
-    observation_space = env.observation_space
-    action_space = env.action_space
-    del env
 
     # Configuration for multiagent setup with policy sharing:
     config["multiagent"] = {
-        # Setup a single, shared policy for all agents.
-        "policies": {
-            "av": (None, observation_space, action_space, {})
-        },
-        # Map all agents to that policy.
-        "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av",
+        # Setup a single, shared policy for all agents: "av".
+        # Use a simple set of strings (PolicyID) here. RLlib will
+        # automatically determine the policy class (Trainer's default class),
+        # observation- and action spaces (inferred from the env), and
+        # config overrides ({} in this case).
+        "policies": {"av"},
+        # Map all agents to the "av" PolicyID.
+        "policy_mapping_fn": lambda agent_id, episode, worker, **kwargs: "av",
     }
 
     # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
