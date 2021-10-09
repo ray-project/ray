@@ -638,6 +638,9 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 .. code-block:: python
 
     def train_func(config):
+        # Create your model here.
+        model = NeuralNetwork()
+
         batch_size = config["worker_batch_size"]
 
         train_data_shard = ray.sgd.get_dataset_shard()["train"]
@@ -650,7 +653,6 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
             for X, y in train_dataset:
                 model.train()
                 output = model(X)
-                ...
 
             for X, y in val_dataset:
                 model.eval()
