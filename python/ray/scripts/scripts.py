@@ -436,12 +436,6 @@ def debug(address):
     type=json.loads,
     help="Override system configuration defaults.")
 @click.option(
-    "--lru-evict",
-    is_flag=True,
-    hidden=True,
-    default=False,
-    help="Specify whether LRU evict will be used for this cluster.")
-@click.option(
     "--enable-object-reconstruction",
     is_flag=True,
     default=False,
