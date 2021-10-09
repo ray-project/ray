@@ -117,7 +117,12 @@ class PlasmaStore {
                   const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                   bool is_from_worker, RequestFinishCallback all_objects_callback);
 
-  void ReleaseObject(const ObjectID &object_id);
+  /// Record the fact that a particular client is no longer using an object.
+  ///
+  /// \param object_id The object ID of the object that is being released.
+  /// \param client The client making this request.
+  void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void DeleteObject(const ObjectID &object_id);
 
@@ -203,13 +208,6 @@ class PlasmaStore {
   ///
   /// \param object_ids The vector of Object IDs of the objects to be sealed.
   void SealObjects(const std::vector<ObjectID> &object_ids)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  /// Record the fact that a particular client is no longer using an object.
-  ///
-  /// \param object_id The object ID of the object that is being released.
-  /// \param client The client making this request.
-  void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Connect a new client to the PlasmaStore.

@@ -141,11 +141,6 @@ Status SendReleaseRequest(const std::shared_ptr<StoreConn> &store_conn,
 
 Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id);
 
-Status SendReleaseReply(const std::shared_ptr<Client> &client, ObjectID object_id,
-                        PlasmaError error);
-
-Status ReadReleaseReply(uint8_t *data, size_t size, ObjectID *object_id);
-
 /* Plasma Delete objects message functions. */
 
 Status SendDeleteRequest(const std::shared_ptr<StoreConn> &store_conn,

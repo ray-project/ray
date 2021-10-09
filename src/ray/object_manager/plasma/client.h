@@ -46,7 +46,7 @@ struct ObjectBuffer {
   int device_num;
 };
 
-class PlasmaClientInterface {
+class PlasmaClientInterface : public std::enable_shared_from_this<PlasmaClientInterface> {
  public:
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.

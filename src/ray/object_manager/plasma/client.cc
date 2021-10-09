@@ -56,14 +56,14 @@ class PlasmaBuffer : public SharedMemoryBuffer {
  public:
   ~PlasmaBuffer();
 
-  PlasmaBuffer(std::shared_ptr<Impl> client, const ObjectID &object_id,
+  PlasmaBuffer(std::shared_ptr<PlasmaClientInterface> client, const ObjectID &object_id,
                const std::shared_ptr<Buffer> &buffer)
       : SharedMemoryBuffer(buffer, 0, buffer->Size()),
         client_(client),
         object_id_(object_id) {}
 
  private:
-  std::shared_ptr<Impl> client_;
+  std::shared_ptr<PlasmaClientInterface> client_;
   ObjectID object_id_;
 };
 
@@ -72,12 +72,12 @@ class PlasmaBuffer : public SharedMemoryBuffer {
 /// be called in the associated Seal call.
 class RAY_NO_EXPORT PlasmaMutableBuffer : public SharedMemoryBuffer {
  public:
-  PlasmaMutableBuffer(std::shared_ptr<Impl> client, uint8_t *mutable_data,
-                      int64_t data_size)
+  PlasmaMutableBuffer(std::shared_ptr<PlasmaClientInterface> client,
+                      uint8_t *mutable_data, int64_t data_size)
       : SharedMemoryBuffer(mutable_data, data_size), client_(client) {}
 
  private:
-  std::shared_ptr<Impl> client_;
+  std::shared_ptr<PlasmaClientInterface> client_;
 };
 
 // ----------------------------------------------------------------------
@@ -100,7 +100,8 @@ struct ObjectInUseEntry {
 class Impl : public std::enable_shared_from_this<Impl> {
  public:
   Impl(  /// The connection to the store service.
-      std::shared_ptr<StoreConn> store_conn);
+      std::shared_ptr<StoreConn> store_conn,
+      std::shared_ptr<PlasmaClientInterface> client);
   ~Impl();
 
   Status SetClientOptions(const std::string &client_name, int64_t output_memory_quota);
@@ -113,9 +114,10 @@ class Impl : public std::enable_shared_from_this<Impl> {
                                         std::vector<PlasmaObject> &object_data)>
                  get_from_store);
 
-  Status Release(const ObjectID &object_id);
+  Status Release(const ObjectID &object_id, const std::function<Status()> not_in_use);
 
-  Status Contains(const ObjectID &object_id, bool *has_object);
+  Status Contains(const ObjectID &object_id, bool *has_object,
+                  const std::function<Status()> contains_in_store);
 
   Status Abort(const ObjectID &object_id);
 
@@ -189,13 +191,14 @@ class Impl : public std::enable_shared_from_this<Impl> {
   std::recursive_mutex client_mutex_;
   /// The connection to the store service.
   std::shared_ptr<StoreConn> store_conn_;
+  std::weak_ptr<PlasmaClientInterface> client_;
 };
 
 PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
 
 Impl::Impl(  /// The connection to the store service.
-    std::shared_ptr<StoreConn> store_conn)
-    : store_capacity_(0), store_conn_(store_conn) {}
+    std::shared_ptr<StoreConn> store_conn, std::shared_ptr<PlasmaClientInterface> client)
+    : store_capacity_(0), store_conn_(store_conn), client_(client) {}
 
 Impl::~Impl() {}
 
@@ -268,7 +271,7 @@ Status Impl::HandleCreateReply(const ObjectID &object_id, const uint8_t *metadat
     // The metadata should come right after the data.
     RAY_CHECK(object.metadata_offset == object.data_offset + object.data_size);
     *data = std::make_shared<PlasmaMutableBuffer>(
-        shared_from_this(),
+        client_.lock(),
         GetStoreFdAndMmap(object.store_fd, object.mmap_size) + object.data_offset,
         object.data_size);
     // If plasma_create is being called from a transfer, then we will not copy the
@@ -416,7 +419,7 @@ Status Impl::Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
 
   const auto wrap_buffer = [=](const ObjectID &object_id,
                                const std::shared_ptr<Buffer> &buffer) {
-    return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
+    return std::make_shared<PlasmaBuffer>(client_.lock(), object_id, buffer);
   };
   const size_t num_objects = object_ids.size();
   *out = std::vector<ObjectBuffer>(num_objects);
@@ -434,7 +437,8 @@ Status Impl::MarkObjectUnused(const ObjectID &object_id) {
   return Status::OK();
 }
 
-Status Impl::Release(const ObjectID &object_id) {
+Status Impl::Release(const ObjectID &object_id,
+                     const std::function<Status()> not_in_use) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   // If the client is already disconnected, ignore release requests.
@@ -450,7 +454,7 @@ Status Impl::Release(const ObjectID &object_id) {
   if (object_entry->second->count == 0) {
     // Tell the store that the client no longer needs the object.
     RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
-    RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id));
+    RAY_RETURN_NOT_OK(not_in_use());
     auto iter = deletion_cache_.find(object_id);
     if (iter != deletion_cache_.end()) {
       deletion_cache_.erase(object_id);
@@ -461,23 +465,15 @@ Status Impl::Release(const ObjectID &object_id) {
 }
 
 // This method is used to query whether the plasma store contains an object.
-Status Impl::Contains(const ObjectID &object_id, bool *has_object) {
+Status Impl::Contains(const ObjectID &object_id, bool *has_object,
+                      const std::function<Status()> contains_in_store) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   // Check if we already have a reference to the object.
   if (objects_in_use_.count(object_id) > 0) {
     *has_object = 1;
   } else {
-    // If we don't already have a reference to the object, check with the store
-    // to see if we have the object.
-    RAY_RETURN_NOT_OK(SendContainsRequest(store_conn_, object_id));
-    std::vector<uint8_t> buffer;
-    RAY_RETURN_NOT_OK(
-        PlasmaReceive(store_conn_, MessageType::PlasmaContainsReply, &buffer));
-    ObjectID object_id2;
-    RAY_DCHECK(buffer.size() > 0);
-    RAY_RETURN_NOT_OK(
-        ReadContainsReply(buffer.data(), buffer.size(), &object_id2, has_object));
+    RAY_RETURN_NOT_OK(contains_in_store());
   }
   return Status::OK();
 }
@@ -509,7 +505,7 @@ Status Impl::Seal(const ObjectID &object_id) {
   // that are currently being used by this client. The corresponding increment
   // happened in plasma_create and was used to ensure that the object was not
   // released before the call to PlasmaClient::Seal.
-  return Release(object_id);
+  return client_.lock()->Release(object_id);
 }
 
 Status Impl::Abort(const ObjectID &object_id) {
@@ -608,7 +604,8 @@ std::string Impl::DebugString() {
 // ----------------------------------------------------------------------
 // PlasmaClient
 
-RemotePlasmaClient::RemotePlasmaClient() : impl_(std::make_shared<Impl>(store_conn_)) {}
+RemotePlasmaClient::RemotePlasmaClient()
+    : impl_(std::make_shared<Impl>(store_conn_, shared_from_this())) {}
 
 RemotePlasmaClient::~RemotePlasmaClient() {}
 
@@ -699,11 +696,24 @@ Status RemotePlasmaClient::Get(const std::vector<ObjectID> &object_ids,
 }
 
 Status RemotePlasmaClient::Release(const ObjectID &object_id) {
-  return impl_->Release(object_id);
+  return impl_->Release(object_id,
+                        [&]() { return SendReleaseRequest(store_conn_, object_id); });
 }
 
 Status RemotePlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
-  return impl_->Contains(object_id, has_object);
+  return impl_->Contains(object_id, has_object, [&]() {
+    // If we don't already have a reference to the object, check with the store
+    // to see if we have the object.
+    RAY_RETURN_NOT_OK(SendContainsRequest(store_conn_, object_id));
+    std::vector<uint8_t> buffer;
+    RAY_RETURN_NOT_OK(
+        PlasmaReceive(store_conn_, MessageType::PlasmaContainsReply, &buffer));
+    ObjectID object_id2;
+    RAY_DCHECK(buffer.size() > 0);
+    RAY_RETURN_NOT_OK(
+        ReadContainsReply(buffer.data(), buffer.size(), &object_id2, has_object));
+    return Status::OK();
+  });
 }
 
 Status RemotePlasmaClient::Abort(const ObjectID &object_id) {
@@ -766,7 +776,7 @@ Status RemotePlasmaClient::HandleCreateReply(const ObjectID &object_id,
 
 PlasmaClient::PlasmaClient()
     : plasma_store_(plasma::plasma_store_runner->GetPlasmaStore()),
-      impl_(std::make_shared<Impl>(nullptr)) {}
+      impl_(std::make_shared<Impl>(nullptr, shared_from_this())) {}
 
 PlasmaClient::~PlasmaClient() {}
 
@@ -850,10 +860,22 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeou
       });
 }
 
-Status PlasmaClient::Release(const ObjectID &object_id) { return Status::OK(); }
+Status PlasmaClient::Release(const ObjectID &object_id) {
+  return impl_->Release(object_id, [&]() {
+    return plasma_store_.ExecuteInStoreThread([&]() {
+      plasma_store_.ReleaseObject(object_id, nullptr);
+      return Status::OK();
+    });
+  });
+}
 
 Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
-  return Status::OK();
+  return impl_->Contains(object_id, has_object, [&]() {
+    return plasma_store_.ExecuteInStoreThread([&]() {
+      *has_object = plasma_store_.ContainsObject(object_id);
+      return Status::OK();
+    });
+  });
 }
 
 Status PlasmaClient::Abort(const ObjectID &object_id) { return Status::OK(); }

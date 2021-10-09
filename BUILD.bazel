@@ -375,7 +375,6 @@ cc_library(
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
-        #":plasma_client",
         ":ray_common",
     ],
 )

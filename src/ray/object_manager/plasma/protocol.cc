@@ -358,22 +358,6 @@ Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id) {
   return Status::OK();
 }
 
-Status SendReleaseReply(const std::shared_ptr<Client> &client, ObjectID object_id,
-                        PlasmaError error) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      fb::CreatePlasmaReleaseReply(fbb, fbb.CreateString(object_id.Binary()), error);
-  return PlasmaSend(client, MessageType::PlasmaReleaseReply, &fbb, message);
-}
-
-Status ReadReleaseReply(uint8_t *data, size_t size, ObjectID *object_id) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaReleaseReply>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  *object_id = ObjectID::FromBinary(message->object_id()->str());
-  return PlasmaErrorStatus(message->error());
-}
-
 // Delete objects messages.
 
 Status SendDeleteRequest(const std::shared_ptr<StoreConn> &store_conn,

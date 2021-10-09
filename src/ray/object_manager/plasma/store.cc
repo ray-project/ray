@@ -442,7 +442,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   } break;
   case fb::MessageType::PlasmaContainsRequest: {
     RAY_RETURN_NOT_OK(ReadContainsRequest(input, input_size, &object_id));
-    if (object_lifecycle_mgr_.IsObjectSealed(object_id)) {
+    if (ContainsObject(object_id)) {
       RAY_RETURN_NOT_OK(SendContainsReply(client, object_id, 1));
     } else {
       RAY_RETURN_NOT_OK(SendContainsReply(client, object_id, 0));
@@ -581,4 +581,7 @@ void PlasmaStore::GetObjects(const std::shared_ptr<Client> &client,
                                 all_objects_callback);
 }
 
+bool PlasmaStore::ContainsObject(const ObjectID &object_id) {
+  return object_lifecycle_mgr_.IsObjectSealed(object_id);
+}
 }  // namespace plasma

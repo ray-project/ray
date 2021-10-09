@@ -47,7 +47,6 @@ enum MessageType:long {
   PlasmaGetReply,
   // Release an object.
   PlasmaReleaseRequest,
-  PlasmaReleaseReply,
   // Delete an object.
   PlasmaDeleteRequest,
   PlasmaDeleteReply,
@@ -229,13 +228,6 @@ table PlasmaGetReply {
 table PlasmaReleaseRequest {
   // ID of the object to be released.
   object_id: string;
-}
-
-table PlasmaReleaseReply {
-  // ID of the object that was released.
-  object_id: string;
-  // Error code.
-  error: PlasmaError;
 }
 
 table PlasmaDeleteRequest {
