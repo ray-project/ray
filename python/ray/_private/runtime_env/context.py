@@ -47,7 +47,7 @@ class RuntimeEnvContext:
             exec_command = " ".join([f'"{self.py_executable}"'] +
                                     passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
-            os.execvp(file="cmd", args=["/c", command_str])
+            os.system(command_str)
         else:
             raise FileNotFoundError("Cannot find neither 'bash' nor 'cmd'")
         logger.info(f"Exec'ing worker with command: {command_str}")
