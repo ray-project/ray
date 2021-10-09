@@ -326,7 +326,7 @@ Process WorkerPool::StartWorkerProcess(
                                     std::to_string(runtime_env_hash));
 
       if (serialized_runtime_env_context != "{}" &&
-          serialized_runtime_env_context != "") {
+          !serialized_runtime_env_context.empty()) {
         worker_command_args.push_back("--serialized-runtime-env-context=" +
                                       serialized_runtime_env_context);
       }

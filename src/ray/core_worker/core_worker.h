@@ -1053,7 +1053,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
  private:
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-      const std::string &name, const TaskID &current_task_id, const uint64_t task_index,
+      const std::string &name, const TaskID &current_task_id, uint64_t task_index,
       const TaskID &caller_id, const rpc::Address &address, const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,

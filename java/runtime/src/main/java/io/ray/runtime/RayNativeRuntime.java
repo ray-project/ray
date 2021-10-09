@@ -107,6 +107,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
                 .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
                 .addAllCodeSearchPath(rayConfig.codeSearchPath);
+        RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
         if (!rayConfig.workerEnv.isEmpty()) {
           // TODO(SongGuyang): Suppport complete runtime env interface for users.
           // Set worker env to the serialized runtime env json.
@@ -114,10 +115,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           Map<String, Map<String, String>> runtimeEnv = new HashMap<>();
           runtimeEnv.put("env_vars", rayConfig.workerEnv);
           String gsonString = gson.toJson(runtimeEnv);
-          RuntimeEnv.Builder runtimeEnvBuilder =
-              RuntimeEnv.newBuilder().setSerializedRuntimeEnv(gsonString);
-          jobConfigBuilder.setRuntimeEnv(runtimeEnvBuilder.build());
+          runtimeEnvBuilder.setSerializedRuntimeEnv(gsonString);
+        } else {
+          runtimeEnvBuilder.setSerializedRuntimeEnv("{}");
         }
+        jobConfigBuilder.setRuntimeEnv(runtimeEnvBuilder.build());
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
       }
 

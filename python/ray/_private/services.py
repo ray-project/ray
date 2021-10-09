@@ -21,6 +21,7 @@ from typing import Optional
 import ray
 import ray.ray_constants as ray_constants
 import redis
+from ray.core.generated.common_pb2 import Language
 
 # Import psutil and colorama after ray so the packaged version is used.
 import colorama
@@ -1927,9 +1928,14 @@ def start_ray_client_server(
                                      ray_constants.SETUP_WORKER_FILENAME)
 
     command = [
-        sys.executable, setup_worker_path, "-m", "ray.util.client.server",
-        f"--redis-address={redis_address}", f"--port={ray_client_server_port}",
-        f"--mode={server_type}"
+        sys.executable,
+        setup_worker_path,
+        "-m",
+        "ray.util.client.server",
+        f"--redis-address={redis_address}",
+        f"--port={ray_client_server_port}",
+        f"--mode={server_type}",
+        f"--language={Language.Name(Language.PYTHON)}",
     ]
     if redis_password:
         command.append(f"--redis-password={redis_password}")
