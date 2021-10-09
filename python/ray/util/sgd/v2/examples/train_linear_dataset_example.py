@@ -69,7 +69,7 @@ def validate(iterable_dataset, model, loss_fn, device):
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
-    result = {"model": model.state_dict(), "loss": loss}
+    result = {"loss": loss}
     return result
 
 
