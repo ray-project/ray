@@ -207,6 +207,8 @@ class RayLog {
   static void AddFatalLogCallbacks(
       const std::vector<FatalLogCallback> &expose_log_callbacks);
 
+  static void EnableAlwaysFlush(bool enable) { always_flush_ = enable; }
+
   template <typename T>
   RayLog &operator<<(const T &t) {
     if (IsEnabled()) {
@@ -268,6 +270,8 @@ class RayLog {
   static long log_rotation_file_num_;
   // Ray default logger name.
   static std::string logger_name_;
+
+  inline static bool always_flush_ = true;
 
  protected:
   short_string::allocator_type::arena_type arena_;

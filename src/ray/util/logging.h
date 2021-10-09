@@ -261,6 +261,9 @@ class RayLog : public RayLogBase {
   static void AddFatalLogCallbacks(
       const std::vector<FatalLogCallback> &expose_log_callbacks);
 
+  static void EnableAlwaysFlush(bool enable) { always_flush_ = enable; }
+  static bool IsAlwaysFlush() { return always_flush_; }
+
  private:
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
   FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
@@ -295,6 +298,8 @@ class RayLog : public RayLogBase {
   static long log_rotation_file_num_;
   // Ray default logger name.
   static std::string logger_name_;
+
+  inline static bool always_flush_ = true;
 
  protected:
   virtual std::ostream &Stream();

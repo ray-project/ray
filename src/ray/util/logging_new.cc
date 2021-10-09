@@ -265,6 +265,9 @@ void RayLog::ShutDownRayLog() {
   // NOTE(lingxuan.zlx) All loggers will be closed in shutdown but we don't need drop
   // console logger out because of some console logging might be used after shutdown ray
   // log. spdlog::shutdown();
+
+  auto logger = spdlog::get(RayLog::GetLoggerName());
+  logger->flush();
 }
 
 void WriteFailureMessage(const char *data) {
@@ -355,7 +358,7 @@ RayLog::~RayLog() {
   // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
   logger->log(static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}",
               str_.data());
-  logger->flush();
+  if (always_flush_) logger->flush();
 
   // if (expose_osstream_ != nullptr) {
   //   for (const auto &callback : fatal_log_callbacks_) {

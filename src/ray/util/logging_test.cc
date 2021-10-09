@@ -215,22 +215,14 @@ TEST(PrintLogTest, LogTestWithInit) {
 TEST(LogPerfTest, NewLogTest) {
   ray_test::RayLog::StartRayLog("aa", ray_test::RayLogLevelNew::DEBUG,
                                 ray::GetUserTempDir() + ray::GetDirSep());
-  RAY_LOG_NEW(INFO) << "This is the"
-                    << " INFO_NEW"
-                    << " message";
-
-  ray::RayLog::StartRayLog("bb", ray::RayLogLevel::DEBUG,
-                           ray::GetUserTempDir() + ray::GetDirSep());
-  RAY_LOG(INFO) << "This is the"
-                << " INFO_NEW"
-                << " message";
-
+  ray_test::RayLog::EnableAlwaysFlush(false);
   const int rounds = 100000;
+
   {
-    ScopedTimer timer("old debug log");
+    ScopedTimer timer("new info log");
     for (int i = 0; i < rounds; ++i) {
-      RAY_LOG(DEBUG) << "This is the "
-                     << "RAY_DEBUG message";
+      RAY_LOG_NEW(INFO) << "This is the "
+                        << "RAY_INFO message";
     }
   }
 
@@ -242,6 +234,10 @@ TEST(LogPerfTest, NewLogTest) {
     }
   }
 
+  ray::RayLog::StartRayLog("bb", ray::RayLogLevel::DEBUG,
+                           ray::GetUserTempDir() + ray::GetDirSep());
+  RayLog::EnableAlwaysFlush(false);
+
   {
     ScopedTimer timer("old info log");
     for (int i = 0; i < rounds; ++i) {
@@ -251,19 +247,22 @@ TEST(LogPerfTest, NewLogTest) {
   }
 
   {
-    ScopedTimer timer("new info log");
+    ScopedTimer timer("old debug log");
     for (int i = 0; i < rounds; ++i) {
-      RAY_LOG_NEW(INFO) << "This is the "
-                        << "RAY_INFO message";
+      RAY_LOG(DEBUG) << "This is the "
+                     << "RAY_DEBUG message";
     }
   }
+
+  RayLog::ShutDownRayLog();
+  ray_test::RayLog::ShutDownRayLog();
 }
 
 // This test will output large amount of logs to stderr, should be disabled in travis.
 TEST(LogPerfTest, PerfTest) {
   RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR,
                       ray::GetUserTempDir() + ray::GetDirSep());
-  int rounds = 100000;
+  int rounds = 1;
 
   int64_t start_time = current_time_ms();
   for (int i = 0; i < rounds; ++i) {
