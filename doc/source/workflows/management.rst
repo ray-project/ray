@@ -44,9 +44,6 @@ Single workflow management APIs
     # Cancel a workflow.
     workflow.cancel(workflow_id="workflow_id")
 
-    # Delete the workflow.
-    workflow.delete(workflow_id="workflow_id")
-
 Bulk workflow management APIs
 -----------------------------
 

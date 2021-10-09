@@ -7,7 +7,6 @@ from ray.workflow.api import (
     get_status,
     resume,
     cancel,
-    delete,
     list_all,
     resume_all,
 )
@@ -16,8 +15,8 @@ from ray.workflow.common import WorkflowStatus
 
 __all__ = [
     "step", "virtual_actor", "resume", "get_output", "get_actor",
-    "WorkflowExecutionError", "resume_all", "cancel", "delete", "get_status",
-    "list_all", "init"
+    "WorkflowExecutionError", "resume_all", "cancel", "get_status", "list_all",
+    "init"
 ]
 
 globals().update(WorkflowStatus.__members__)

@@ -13,8 +13,7 @@ from ray import cloudpickle
 from ray._private import signature
 from ray.workflow import storage
 from ray.workflow.common import (Workflow, StepID, WorkflowMetaData,
-                                 WorkflowStatus, WorkflowRef, StepType,
-                                 WorkflowNotFoundError)
+                                 WorkflowStatus, WorkflowRef, StepType)
 from ray.workflow import workflow_context
 from ray.workflow import serialization
 from ray.workflow import serialization_context
@@ -443,27 +442,6 @@ class WorkflowStorage:
         """
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
-
-    def delete_workflow(self):
-        prefix = self._storage.make_key(self._workflow_id)
-
-        scan = []
-        scan_future = self._storage.scan_prefix(prefix)
-        delete_future = self._storage.delete_prefix(prefix)
-
-        try:
-            # TODO (Alex): There's a race condition here if someone tries to
-            # start the workflow between thesea ops.
-            scan = asyncio_run(scan_future)
-            asyncio_run(delete_future)
-        except FileNotFoundError:
-            # TODO (Alex): Different file systems seem to have different
-            # behavior when deleting a prefix that doesn't exist, so we may
-            # need to catch a broader class of exceptions.
-            pass
-
-        if not scan:
-            raise WorkflowNotFoundError(self._workflow_id)
 
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> str:
