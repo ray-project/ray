@@ -335,9 +335,10 @@ def build_eager_tf_policy(
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
 
+            # The list of local (tf) optimizers (one per loss term).
             self._optimizers: List[LocalOptimizer] = optimizers
-            # Backward compatibility and for some code shared with tf-eager
-            # Policy.
+            # Backward compatibility: A user's policy may only support a single
+            # loss term and optimizer (no lists).
             self._optimizer: LocalOptimizer = \
                 optimizers[0] if optimizers else None
 
@@ -749,7 +750,7 @@ def build_eager_tf_policy(
             else:
                 variables = self.model.trainable_variables()
 
-            # Calculate the gradients using a tf GradientTape.
+            # Calculate the loss(es) inside a tf GradientTape.
             with tf.GradientTape(persistent=compute_gradients_fn is not None) \
                     as tape:
                 losses = loss_fn(self, self.model, self.dist_class, samples)
