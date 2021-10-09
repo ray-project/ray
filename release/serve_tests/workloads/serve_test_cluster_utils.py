@@ -24,7 +24,7 @@ def setup_local_single_node_cluster(
     cluster = Cluster()
     for i in range(num_nodes):
         cluster.add_node(
-            redis_port=6379 if i == 0 else None,
+            redis_port=6380 if i == 0 else None,
             num_cpus=NUM_CPU_PER_NODE,
             num_gpus=0,
             resources={str(i): 2},
