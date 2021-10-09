@@ -757,14 +757,20 @@ def build_eager_tf_policy(
 
             # User provided a compute_gradients_fn.
             if compute_gradients_fn:
-                dummy_optimizer = OptimizerWrapper(tape)
+                # Wrap our tape inside a wrapper, such that the resulting
+                # object looks like a "classic" tf.optimizer. This way, custom
+                # compute_gradients_fn will work on both tf static graph
+                # and tf-eager.
+                optimizer = OptimizerWrapper(tape)
+                # More than one loss terms/optimizers.
                 if self.config["_tf_policy_handles_more_than_one_loss"]:
                     losses = force_list(losses)
                     grads_and_vars = compute_gradients_fn(
-                        self, [dummy_optimizer] * len(losses), losses)
+                        self, [optimizer] * len(losses), losses)
+                # Only one loss and one optimizer.
                 else:
                     grads_and_vars = [
-                        compute_gradients_fn(self, dummy_optimizer, losses)
+                        compute_gradients_fn(self, optimizer, losses)
                     ]
             # Default: Compute gradients using the above tape.
             else:
@@ -779,11 +785,11 @@ def build_eager_tf_policy(
                         if g is not None:
                             logger.info(f"Optimizing variable {v.name}")
 
-            # `grads_and_vars` is a list (len=num optimizers/losses) of
-            # lists of (grad, var) tuples.
+            # `grads_and_vars` is returned a list (len=num optimizers/losses)
+            # of lists of (grad, var) tuples.
             if self.config["_tf_policy_handles_more_than_one_loss"]:
                 grads = [[g for g, _ in g_and_v] for g_and_v in grads_and_vars]
-            # `grads_and_vars` is a list of (grad, var) tuples.
+            # `grads_and_vars` is returned as a list of (grad, var) tuples.
             else:
                 grads_and_vars = grads_and_vars[0]
                 grads = [g for g, _ in grads_and_vars]
