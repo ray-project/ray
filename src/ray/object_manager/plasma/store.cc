@@ -297,11 +297,10 @@ int PlasmaStore::AbortObject(const ObjectID &object_id,
 void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
   if (!error) {
     // Accept a new local client and dispatch it to the node manager.
-    // NOLINTBEGIN : handler must be boost::AcceptHandler type.
     auto new_connection = Client::Create(
+	// NOLINTNEXTLINE : handler must be of boost::AcceptHandler type.
         boost::bind(&PlasmaStore::ProcessMessage, this, ph::_1, ph::_2, ph::_3),
         std::move(socket_));
-    // NOLINTEND
   }
   // We're ready to accept another client.
   DoAccept();
