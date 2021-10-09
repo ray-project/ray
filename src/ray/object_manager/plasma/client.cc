@@ -132,8 +132,6 @@ class Impl : public std::enable_shared_from_this<Impl> {
 
   Status Disconnect();
 
-  std::string DebugString();
-
   bool IsInUse(const ObjectID &object_id);
 
   /// Helper method to read and process the reply of a create request.
@@ -569,22 +567,6 @@ Status Impl::Disconnect() {
   return Status::OK();
 }
 
-std::string Impl::DebugString() {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  if (!SendGetDebugStringRequest(store_conn_).ok()) {
-    return "error sending request";
-  }
-  std::vector<uint8_t> buffer;
-  if (!PlasmaReceive(store_conn_, MessageType::PlasmaGetDebugStringReply, &buffer).ok()) {
-    return "error receiving reply";
-  }
-  std::string debug_string;
-  if (!ReadGetDebugStringReply(buffer.data(), buffer.size(), &debug_string).ok()) {
-    return "error parsing reply";
-  }
-  return debug_string;
-}
-
 // ----------------------------------------------------------------------
 // PlasmaClient
 
@@ -756,7 +738,20 @@ Status RemotePlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) 
 
 Status RemotePlasmaClient::Disconnect() { return impl_->Disconnect(); }
 
-std::string RemotePlasmaClient::DebugString() { return impl_->DebugString(); }
+std::string RemotePlasmaClient::DebugString() {
+  if (!SendGetDebugStringRequest(store_conn_).ok()) {
+    return "error sending request";
+  }
+  std::vector<uint8_t> buffer;
+  if (!PlasmaReceive(store_conn_, MessageType::PlasmaGetDebugStringReply, &buffer).ok()) {
+    return "error receiving reply";
+  }
+  std::string debug_string;
+  if (!ReadGetDebugStringReply(buffer.data(), buffer.size(), &debug_string).ok()) {
+    return "error parsing reply";
+  }
+  return debug_string;
+}
 
 bool RemotePlasmaClient::IsInUse(const ObjectID &object_id) {
   return impl_->IsInUse(object_id);
@@ -932,6 +927,9 @@ Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
   });
 }
 
-std::string PlasmaClient::DebugString() { return std::string(""); }
+std::string PlasmaClient::DebugString() {
+  return plasma_store_.ExecuteInStoreThread(
+      [&]() { return plasma_store_.DebugString(); });
+}
 
 }  // namespace plasma

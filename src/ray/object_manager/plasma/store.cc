@@ -465,8 +465,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     return Status::Disconnected("The Plasma Store client is disconnected.");
     break;
   case fb::MessageType::PlasmaGetDebugStringRequest: {
-    RAY_RETURN_NOT_OK(SendGetDebugStringReply(
-        client, object_lifecycle_mgr_.EvictionPolicyDebugString()));
+    RAY_RETURN_NOT_OK(SendGetDebugStringReply(client, DebugString()));
   } break;
   default:
     // This code should be unreachable.
@@ -593,5 +592,9 @@ std::vector<PlasmaError> PlasmaStore::DeleteObjects(
 
 int64_t PlasmaStore::EvictObject(int64_t num_bytes) {
   return object_lifecycle_mgr_.RequireSpace(num_bytes);
+}
+
+std::string PlasmaStore::DebugString() {
+  return object_lifecycle_mgr_.EvictionPolicyDebugString();
 }
 }  // namespace plasma

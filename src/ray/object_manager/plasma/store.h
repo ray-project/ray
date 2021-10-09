@@ -155,6 +155,8 @@ class PlasmaStore {
 
   int64_t EvictObject(int64_t num_bytes);
 
+  std::string DebugString();
+
   template <class F, class... Args>
   auto ExecuteInStoreThread(F &&f, Args &&... args) -> decltype(f(args...)) {
     using return_type = decltype(f(args...));
