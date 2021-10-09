@@ -683,7 +683,7 @@ All operations after this conversion will be executed in a pipelined fashion.
 See :ref:`dataset-pipeline` for more semantics on pipelining.
 
 Example: Per-Epoch Shuffle Pipeline
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++++++++++++++++++++++++++++++++++++
 A common use case is to have a training pipeline that shuffles the dataset after every epoch/repetition.
 
 This is very simple to do with Ray Datasets + Ray SGD.

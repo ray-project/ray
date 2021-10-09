@@ -15,8 +15,8 @@ py_test(
 py_test(
     name = "tensorflow_linear_dataset_example",
     size = "medium",
-    main = "examples/tensorflow_linear_dataset_example.py.py",
-    srcs = ["examples/tensorflow_linear_dataset_example.py.py"],
+    main = "examples/tensorflow_linear_dataset_example.py",
+    srcs = ["examples/tensorflow_linear_dataset_example.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":sgd_v2_lib"],
     args = ["--smoke-test", "--use-gpu"]
@@ -25,8 +25,8 @@ py_test(
 py_test(
     name = "train_linear_dataset_example",
     size = "medium",
-    main = "examples/train_linear_dataset_example.py.py",
-    srcs = ["examples/train_linear_dataset_example.py.py"],
+    main = "examples/train_linear_dataset_example.py",
+    srcs = ["examples/train_linear_dataset_example.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":sgd_v2_lib"],
     args = ["--smoke-test", "--use-gpu"]
