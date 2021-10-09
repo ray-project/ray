@@ -49,7 +49,9 @@
 #pragma once
 
 #include <gtest/gtest_prod.h>
+#include <array>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <functional>
 #include <iostream>
@@ -58,6 +60,7 @@
 #include <string>
 #include <vector>
 #include "fixed_string.h"
+#include "short_alloc.h"
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
@@ -100,7 +103,7 @@ enum class RayLogLevelNew {
 #define STR(x) #x
 #define TOSTRING(x) STR(x)
 
-#define RAY_LOG_INTERNAL_NEW1(level)                               \
+#define RAY_LOG_INTERNAL_NEW(level)                                \
   [] {                                                             \
     constexpr auto path = ray::make_fixed_string(__FILE__);        \
     constexpr size_t pos = path.rfind('/');                        \
@@ -109,18 +112,12 @@ enum class RayLogLevelNew {
     return ::ray_test::RayLog(prefix.data(), level);               \
   }()
 
-#define RAY_LOG_INTERNAL_NEW(level) ::ray_test::RayLog(__FILE__, __LINE__, level)
-
 #define RAY_LOG_ENABLED_NEW(level) \
   ray_test::RayLog::IsLevelEnabled(ray_test::RayLogLevelNew::level)
 
 #define RAY_LOG_NEW(level)                                               \
   if (ray_test::RayLog::IsLevelEnabled(ray_test::RayLogLevelNew::level)) \
   RAY_LOG_INTERNAL_NEW(ray_test::RayLogLevelNew::level)
-
-#define RAY_LOG_NEW1(level)                                              \
-  if (ray_test::RayLog::IsLevelEnabled(ray_test::RayLogLevelNew::level)) \
-  RAY_LOG_INTERNAL_NEW1(ray_test::RayLogLevelNew::level)
 
 #define RAY_IGNORE_EXPR_NEW(expr) ((void)(expr))
 
@@ -145,53 +142,23 @@ enum class RayLogLevelNew {
 
 #endif  // NDEBUG
 
+using short_string =
+    std::basic_string<char, std::char_traits<char>, short_alloc<char, 1024>>;
+
 // To make the logging lib plugable with other logging libs and make
 // the implementation unawared by the user, RayLog is only a declaration
 // which hide the implementation into logging.cc file.
 // In logging.cc, we can choose different log libs using different macros.
-
-// This is also a null log which does not output anything.
-class RayLogBase {
- public:
-  virtual ~RayLogBase(){};
-
-  // By default, this class is a null log because it return false here.
-  virtual bool IsEnabled() const { return false; };
-
-  // This function to judge whether current log is fatal or not.
-  virtual bool IsFatal() const { return false; };
-
-  template <typename T>
-  RayLogBase &operator<<(const T &t) {
-    if (IsEnabled()) {
-      Stream() << t;
-    }
-    if (IsFatal()) {
-      ExposeStream() << t;
-    }
-    return *this;
-  }
-
- protected:
-  virtual std::ostream &Stream() { return std::cerr; };
-  virtual std::ostream &ExposeStream() { return std::cerr; };
-};
 
 /// Callback function which will be triggered to expose fatal log.
 /// The first argument: a string representing log type or label.
 /// The second argument: log content.
 using FatalLogCallback = std::function<void(const std::string &, const std::string &)>;
 
-class RayLog : public RayLogBase {
+class RayLog {
  public:
   RayLog(const char *file_name, int line_number, RayLogLevelNew severity);
-  RayLog(const char *prefix, RayLogLevelNew severity)
-      : logging_provider_(nullptr),
-        is_enabled_(severity >= severity_threshold_),
-        severity_(severity),
-        is_fatal_(severity == RayLogLevelNew::FATAL) {
-    std::cout << prefix << '\n';
-  }
+  RayLog(const char *prefix, RayLogLevelNew severity);
 
   virtual ~RayLog();
 
@@ -240,20 +207,47 @@ class RayLog : public RayLogBase {
   static void AddFatalLogCallbacks(
       const std::vector<FatalLogCallback> &expose_log_callbacks);
 
+  template <typename T>
+  RayLog &operator<<(const T &t) {
+    if (IsEnabled()) {
+      if constexpr (std::is_integral_v<T>) {
+        ToChars(t);
+      } else if constexpr (std::is_enum_v<T>) {
+        ToChars((int)t);
+      } else if constexpr (std::is_same_v<int64_t, T> || std::is_same_v<uint64_t, T>) {
+        ToChars(t);
+      } else if constexpr (std::is_floating_point_v<T>) {
+        str_.append(std::to_string(t));
+      } else {
+        str_.append(t);
+      }
+    }
+    // if (IsFatal()) {
+    //   ExposeStream() << t;
+    // }
+    return *this;
+  }
+
  private:
+  template <typename T>
+  void ToChars(const T &t) {
+    std::array<char, 20> str;
+    if (auto [ptr, ec] = std::to_chars(str.data(), str.data() + str.size(), t);
+        ec == std::errc()) {
+      str_.append(str.data(), ptr - str.data());
+    }
+  }
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
   FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
-  // Hide the implementation of log provider by void *.
-  // Otherwise, lib user may define the same macro to use the correct header file.
-  void *logging_provider_;
+
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
   /// log level.
   RayLogLevelNew severity_;
   /// Whether current log is fatal or not.
   bool is_fatal_ = false;
-  /// String stream of exposed log content.
-  std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
+  // /// String stream of exposed log content.
+  // std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
   /// Callback functions which will be triggered to expose fatal log.
   static std::vector<FatalLogCallback> fatal_log_callbacks_;
   static RayLogLevelNew severity_threshold_;
@@ -276,8 +270,9 @@ class RayLog : public RayLogBase {
   static std::string logger_name_;
 
  protected:
-  virtual std::ostream &Stream();
-  virtual std::ostream &ExposeStream();
+  short_string::allocator_type::arena_type arena_;
+  short_string str_;
+  int loglevel_;
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
@@ -286,7 +281,7 @@ class Voidify {
   Voidify() {}
   // This has to be an operator with a precedence lower than << but
   // higher than ?:
-  void operator&(RayLogBase &) {}
+  void operator&(RayLog &) {}
 };
 
 }  // namespace ray_test

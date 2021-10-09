@@ -102,48 +102,6 @@ class DefaultStdErrLogger final {
   std::shared_ptr<spdlog::logger> default_stderr_logger_;
 };
 
-class SpdLogMessage final {
- public:
-  explicit SpdLogMessage(const char *file, int line, int loglevel,
-                         std::shared_ptr<std::ostringstream> expose_osstream)
-      : loglevel_(loglevel), expose_osstream_(expose_osstream) {
-    stream() << ConstBasename(file) << ":" << line << ": ";
-  }
-
-  inline void Flush() {
-    auto logger = spdlog::get(RayLog::GetLoggerName());
-    if (!logger) {
-      logger = DefaultStdErrLogger::Instance().GetDefaultLogger();
-    }
-
-    if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
-      stream() << "\n*** StackTrace Information ***\n" << ray_test::GetCallTrace();
-    }
-    if (expose_osstream_) {
-      *expose_osstream_ << "\n*** StackTrace Information ***\n"
-                        << ray_test::GetCallTrace();
-    }
-    // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
-    logger->log(static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}",
-                str_.str());
-    logger->flush();
-  }
-
-  ~SpdLogMessage() { Flush(); }
-  inline std::ostream &stream() { return str_; }
-
- private:
-  SpdLogMessage(const SpdLogMessage &) = delete;
-  SpdLogMessage &operator=(const SpdLogMessage &) = delete;
-
- private:
-  std::ostringstream str_;
-  int loglevel_;
-  std::shared_ptr<std::ostringstream> expose_osstream_;
-};
-
-typedef ray_test::SpdLogMessage LoggingProvider;
-
 // Spdlog's severity map.
 static int GetMappedSeverity(RayLogLevelNew severity) {
   switch (severity) {
@@ -360,43 +318,50 @@ void RayLog::AddFatalLogCallbacks(
 }
 
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevelNew severity)
-    : logging_provider_(nullptr),
-      is_enabled_(severity >= severity_threshold_),
+    : is_enabled_(severity >= severity_threshold_),
       severity_(severity),
-      is_fatal_(severity == RayLogLevelNew::FATAL) {
-  if (is_fatal_) {
-    expose_osstream_ = std::make_shared<std::ostringstream>();
-    *expose_osstream_ << file_name << ":" << line_number << ":";
-  }
-  if (is_enabled_) {
-    logging_provider_ = new LoggingProvider(
-        file_name, line_number, GetMappedSeverity(severity), expose_osstream_);
-  }
-}
+      is_fatal_(severity == RayLogLevelNew::FATAL),
+      str_(arena_),
+      loglevel_(GetMappedSeverity(severity)) {}
 
-std::ostream &RayLog::Stream() {
-  auto logging_provider = reinterpret_cast<LoggingProvider *>(logging_provider_);
-  // Before calling this function, user should check IsEnabled.
-  // When IsEnabled == false, logging_provider_ will be empty.
-  return logging_provider->stream();
+RayLog::RayLog(const char *prefix, RayLogLevelNew severity)
+    : is_enabled_(severity >= severity_threshold_),
+      severity_(severity),
+      is_fatal_(severity == RayLogLevelNew::FATAL),
+      str_(arena_),
+      loglevel_(GetMappedSeverity(severity)) {
+  if (is_enabled_) {
+    str_.append(prefix);
+  }
 }
 
 bool RayLog::IsEnabled() const { return is_enabled_; }
 
 bool RayLog::IsFatal() const { return is_fatal_; }
 
-std::ostream &RayLog::ExposeStream() { return *expose_osstream_; }
-
 RayLog::~RayLog() {
-  if (logging_provider_ != nullptr) {
-    delete reinterpret_cast<LoggingProvider *>(logging_provider_);
-    logging_provider_ = nullptr;
+  auto logger = spdlog::get(RayLog::GetLoggerName());
+  if (!logger) {
+    logger = DefaultStdErrLogger::Instance().GetDefaultLogger();
   }
-  if (expose_osstream_ != nullptr) {
-    for (const auto &callback : fatal_log_callbacks_) {
-      callback(EL_RAY_FATAL_CHECK_FAILED, expose_osstream_->str());
-    }
+
+  if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
+    str_.append("\n*** StackTrace Information ***\n").append(ray_test::GetCallTrace());
   }
+  // if (expose_osstream_) {
+  //   *expose_osstream_ << "\n*** StackTrace Information ***\n"
+  //                     << ray_test::GetCallTrace();
+  // }
+  // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
+  logger->log(static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}",
+              str_.data());
+  logger->flush();
+
+  // if (expose_osstream_ != nullptr) {
+  //   for (const auto &callback : fatal_log_callbacks_) {
+  //     callback(EL_RAY_FATAL_CHECK_FAILED, expose_osstream_->str());
+  //   }
+  // }
   if (severity_ == RayLogLevelNew::FATAL) {
     std::_Exit(EXIT_FAILURE);
   }

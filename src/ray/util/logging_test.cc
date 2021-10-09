@@ -23,8 +23,24 @@
 #include "gtest/gtest.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/fixed_string.h"
+#include "ray/util/logging_new.h"
 
 using namespace testing;
+
+class ScopedTimer {
+ public:
+  ScopedTimer(const char *name)
+      : m_name(name), m_beg(std::chrono::high_resolution_clock::now()) {}
+  ~ScopedTimer() {
+    auto end = std::chrono::high_resolution_clock::now();
+    auto dur = std::chrono::duration_cast<std::chrono::nanoseconds>(end - m_beg);
+    std::cout << m_name << " : " << dur.count() << " ns\n";
+  }
+
+ private:
+  const char *m_name;
+  std::chrono::time_point<std::chrono::high_resolution_clock> m_beg;
+};
 
 namespace ray {
 
@@ -196,6 +212,53 @@ TEST(PrintLogTest, LogTestWithInit) {
   RayLog::ShutDownRayLog();
 }
 
+TEST(LogPerfTest, NewLogTest) {
+  ray_test::RayLog::StartRayLog("aa", ray_test::RayLogLevelNew::DEBUG,
+                                ray::GetUserTempDir() + ray::GetDirSep());
+  RAY_LOG_NEW(INFO) << "This is the"
+                    << " INFO_NEW"
+                    << " message";
+
+  ray::RayLog::StartRayLog("bb", ray::RayLogLevel::DEBUG,
+                           ray::GetUserTempDir() + ray::GetDirSep());
+  RAY_LOG(INFO) << "This is the"
+                << " INFO_NEW"
+                << " message";
+
+  const int rounds = 100000;
+  {
+    ScopedTimer timer("old debug log");
+    for (int i = 0; i < rounds; ++i) {
+      RAY_LOG(DEBUG) << "This is the "
+                     << "RAY_DEBUG message";
+    }
+  }
+
+  {
+    ScopedTimer timer("new debug log");
+    for (int i = 0; i < rounds; ++i) {
+      RAY_LOG_NEW(DEBUG) << "This is the "
+                         << "RAY_DEBUG message";
+    }
+  }
+
+  {
+    ScopedTimer timer("old info log");
+    for (int i = 0; i < rounds; ++i) {
+      RAY_LOG(INFO) << "This is the "
+                    << "RAY_INFO message";
+    }
+  }
+
+  {
+    ScopedTimer timer("new info log");
+    for (int i = 0; i < rounds; ++i) {
+      RAY_LOG_NEW(INFO) << "This is the "
+                        << "RAY_INFO message";
+    }
+  }
+}
+
 // This test will output large amount of logs to stderr, should be disabled in travis.
 TEST(LogPerfTest, PerfTest) {
   RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR,
@@ -258,13 +321,6 @@ TEST(PrintLogTest, CallstackTraceTest) {
 }
 #endif
 
-constexpr auto push_back() {
-  fixed_string<5> s;
-  s.push_back('h');
-  s.push_back('e');
-  return s;
-}
-
 TEST(LogTest, FixedStringTest) {
   constexpr auto s = make_fixed_string("hello");
   static_assert(s.size() == 5);
@@ -275,9 +331,17 @@ TEST(LogTest, FixedStringTest) {
   fixed_string<5> str;
   std::cout << str.size() << '\n';
 
-  constexpr auto s2 = push_back();
-  static_assert(s2.size() == 2);
-  std::cout << s2.size() << '\n';
+  constexpr auto s3 = s.substr<3>();
+  std::cout << s3.size() << " " << s3.data() << " " << s.data() << '\n';
+  static_assert(s3 == "lo");
+
+  constexpr auto s4 = make_fixed_string("/tmp/log/main.cpp");
+  constexpr auto pos = s4.rfind('/');
+  constexpr auto s5 = s4.substr<pos + 1>();
+
+  static_assert(s5 == "main.cpp");
+  constexpr auto s6 = s5 + ":" + ":";
+  static_assert(s6 == "main.cpp::");
 }
 /// Catch abort signal handler for testing RAY_CHECK.
 /// We'd better to run the following test case manually since process
