@@ -64,9 +64,10 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
   /// Request agent to create a runtime env.
   /// \param[in] runtime_env The runtime env.
-  virtual void CreateRuntimeEnv(const JobID &job_id,
-                                const std::string &serialized_runtime_env,
-                                CreateRuntimeEnvCallback callback);
+  virtual void CreateRuntimeEnv(
+      const JobID &job_id, const std::string &serialized_runtime_env,
+      const std::string &serialized_allocated_resource_instances,
+      CreateRuntimeEnvCallback callback);
 
   /// Request agent to delete a list of URIs.
   /// \param[in] URIs The list of URIs to delete.
@@ -80,6 +81,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   Options options_;
   pid_t agent_pid_ = 0;
   int agent_port_ = 0;
+  /// The number of times the agent is restarted.
+  std::atomic<uint32_t> agent_restart_count_ = 0;
   std::string agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;

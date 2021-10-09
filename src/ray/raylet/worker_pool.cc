@@ -176,7 +176,6 @@ Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     PopWorkerStatus *status, const std::vector<std::string> &dynamic_options,
     const int runtime_env_hash, const std::string &serialized_runtime_env,
-    std::unordered_map<std::string, std::string> override_environment_variables,
     const std::string &serialized_runtime_env_context,
     const std::string &allocated_instances_serialized_json) {
   rpc::JobConfig *job_config = nullptr;
@@ -313,12 +312,11 @@ Process WorkerPool::StartWorkerProcess(
     // need to add a new CLI parameter for both Python and Java workers.
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
   }
+
+  // TODO(edoakes): this is only used by Java. Once Java moves to runtime_env we
+  // should remove worker_env.
   if (job_config) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
-  }
-
-  for (const auto &pair : override_environment_variables) {
-    env[pair.first] = pair.second;
   }
 
   if (language == Language::PYTHON) {
@@ -939,7 +937,8 @@ void WorkerPool::TryKillingIdleWorkers() {
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                            const PopWorkerCallback &callback,
                            const std::string &allocated_instances_serialized_json) {
-  RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId();
+  RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " task name "
+                 << task_spec.FunctionDescriptor()->ToString();
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
@@ -954,8 +953,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     Process proc = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status,
         dynamic_options, task_spec.GetRuntimeEnvHash(), serialized_runtime_env,
-        task_spec.OverrideEnvironmentVariables(), serialized_runtime_env_context,
-        allocated_instances_serialized_json);
+        serialized_runtime_env_context, allocated_instances_serialized_json);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
@@ -1010,7 +1008,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                     << "Create runtime env failed for task " << task_spec.TaskId()
                     << " and couldn't create the dedicated worker.";
               }
-            });
+            },
+            allocated_instances_serialized_json);
       } else {
         start_worker_process_fn(task_spec, state, dynamic_options, true, "", "",
                                 callback);
@@ -1067,7 +1066,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                     << "Create runtime env failed for task " << task_spec.TaskId()
                     << " and couldn't create the worker.";
               }
-            });
+            },
+            allocated_instances_serialized_json);
       } else {
         start_worker_process_fn(task_spec, state, {}, false, "", "", callback);
       }
@@ -1084,7 +1084,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec, int64_t bac
                                  int64_t num_available_cpus) {
   // Code path of task that needs a dedicated worker.
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.OverrideEnvironmentVariables().size() > 0 || task_spec.HasRuntimeEnv()) {
+      task_spec.HasRuntimeEnv()) {
     return;  // Not handled.
     // TODO(architkulkarni): We'd eventually like to prestart workers with the same
     // runtime env to improve initial startup performance.
@@ -1343,10 +1343,11 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
 
 void WorkerPool::CreateRuntimeEnv(
     const std::string &serialized_runtime_env, const JobID &job_id,
-    const std::function<void(bool, const std::string &)> &callback) {
+    const std::function<void(bool, const std::string &)> &callback,
+    const std::string &serialized_allocated_resource_instances) {
   // create runtime env.
   agent_manager_->CreateRuntimeEnv(
-      job_id, serialized_runtime_env,
+      job_id, serialized_runtime_env, serialized_allocated_resource_instances,
       [job_id, serialized_runtime_env, callback](
           bool successful, const std::string &serialized_runtime_env_context) {
         if (successful) {

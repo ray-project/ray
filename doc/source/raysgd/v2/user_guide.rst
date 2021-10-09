@@ -90,6 +90,7 @@ training.
     If you are using GPUs, you need to make sure to the CUDA devices are properly setup inside your training function.
 
     This involves 3 steps:
+
     1. Use the local rank to set the default CUDA device for the worker.
     2. Move the model to the default CUDA device (or a specific CUDA device).
     3. Specify ``device_ids`` when wrapping in ``DistributedDataParallel``.
@@ -343,7 +344,8 @@ You can plug all of these into RaySGD with the following interface:
 .. code-block:: python
 
     from ray import sgd
-    from ray.sgd import SGDCallback, Trainer
+    from ray.sgd Trainer
+    from ray.sgd.callbacks import SGDCallback
     from typing import List, Dict
 
     class PrintingCallback(SGDCallback):
@@ -397,7 +399,7 @@ A simple example for creating a callback that will print out results:
 
 .. code-block:: python
 
-    from ray.sgd import SGDCallback
+    from ray.sgd.callbacks import SGDCallback
 
     class PrintingCallback(SGDCallback):
         def handle_result(self, results: List[Dict], **info):
@@ -637,7 +639,7 @@ Underneath the hood, RaySGD will automatically shard the given dataset.
         return model
 
     trainer = Trainer(num_workers=8, backend="torch")
-    dataset = ray.data.read_csv("...").filter().pipeline(length=50)
+    dataset = ray.data.read_csv("...").filter().window(blocks_per_window=50)
 
     result = trainer.run(
         train_func,
@@ -740,7 +742,7 @@ A couple caveats:
 
     # Declare the specification for training.
     trainer = Trainer(backend="torch", num_workers=12, use_gpu=True)
-    dataset = ray.dataset.pipeline()
+    dataset = ray.dataset.window()
 
     # Convert this to a trainable.
     trainable = trainer.to_tune_trainable(training_func, dataset=dataset)

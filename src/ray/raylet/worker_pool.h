@@ -397,7 +397,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
-      std::unordered_map<std::string, std::string> override_environment_variables = {},
       const std::string &serialized_runtime_env_context = "{}",
       const std::string &allocated_instances_serialized_json = "{}");
 
@@ -589,8 +588,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
 
-  void CreateRuntimeEnv(const std::string &serialized_runtime_env, const JobID &job_id,
-                        const std::function<void(bool, const std::string &)> &callback);
+  /// Create runtime env asynchronously by runtime env agent.
+  void CreateRuntimeEnv(
+      const std::string &serialized_runtime_env, const JobID &job_id,
+      const std::function<void(bool, const std::string &)> &callback,
+      const std::string &serialized_allocated_resource_instances = "{}");
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

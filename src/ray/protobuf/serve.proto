@@ -32,19 +32,17 @@ message AutoscalingConfig {
   uint32 max_replicas = 2;
   // Target number of in flight requests per replicas. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly will the replicas
-  // being scaled up. Must be a non-negative inter.
+  // being scaled up. Must be a non-negative integer.
   uint32 target_num_ongoing_requests_per_replica = 3;
 
   // The frequency of how long does each replica sending metrics to autoscaler.
   double metrics_interval_s = 4;
-  // The interval (in seconds) of autoscaler evaluating metrics and performing scaling
-  // decision.
-  double loop_period_s = 5;
+
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
-  double look_back_period_s = 6;
+  double look_back_period_s = 5;
 
   // The multiplicative "gain" factor to limit scaling decisions.
-  double smoothing_factor = 7;
+  double smoothing_factor = 6;
 }
 
 // Configuration options for a backend, to be set by the user.
@@ -63,11 +61,11 @@ message BackendConfig {
 
   // Duration that backend workers will wait until there is no more work to be done before
   // shutting down. Defaults to 2s.
-  double experimental_graceful_shutdown_wait_loop_s = 4;
+  double graceful_shutdown_wait_loop_s = 4;
 
   // Controller waits for this duration to forcefully kill the replica for shutdown.
   // Defaults to 20s.
-  double experimental_graceful_shutdown_timeout_s = 5;
+  double graceful_shutdown_timeout_s = 5;
 
   // Is the construction of backend is cross language?
   bool is_cross_language = 6;
