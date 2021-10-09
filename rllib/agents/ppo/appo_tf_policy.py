@@ -304,7 +304,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy._value_targets, [-1]),
-            tf.reshape(values_batched, [-1])),
+            tf.reshape(values_batched, [-1]))
     }
 
     if policy.config["vtrace"]:

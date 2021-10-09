@@ -12,15 +12,16 @@ from unittest import mock, skipIf
 import yaml
 
 import ray
-from ray._private.runtime_env import RuntimeEnvDict, parse_pip_and_conda
 from ray._private.runtime_env.conda import (
     inject_dependencies,
     _inject_ray_to_conda_site,
     _resolve_install_from_source_ray_dependencies,
     _current_py_version,
 )
-from ray._private.test_utils import (run_string_as_driver,
-                                     run_string_as_driver_nonblocking)
+
+from ray._private.runtime_env.conda_utils import get_conda_env_list
+from ray._private.test_utils import (
+    run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 
 if not os.environ.get("CI"):
@@ -188,6 +189,39 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
         ray.init(runtime_env=runtime_env)
         assert ray.get(get_requests_version.remote()) == package_version
         ray.shutdown()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment")
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
+def test_job_eager_install(shutdown_only):
+    # Test enable eager install
+    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": True}
+    env_count = len(get_conda_env_list())
+    ray.init(runtime_env=runtime_env)
+    wait_for_condition(
+        lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
+    ray.shutdown()
+    # Test disable eager install
+    runtime_env = {
+        "conda": {
+            "dependencies": ["toolz"]
+        },
+        "eager_install": False
+    }
+    ray.init(runtime_env=runtime_env)
+    with pytest.raises(RuntimeError):
+        wait_for_condition(
+            lambda: len(get_conda_env_list()) == env_count + 2, timeout=60)
+    ray.shutdown()
+    # Test unavailable type
+    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
+    with pytest.raises(AssertionError):
+        ray.init(runtime_env=runtime_env)
+    ray.shutdown()
 
 
 def test_get_conda_env_dir(tmp_path):
@@ -447,25 +481,6 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
         # Ensure pip-install-test is not installed on the test machine
         import pip_install_test  # noqa
     assert ray.get(f.remote())
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
-@pytest.mark.parametrize("use_working_dir", [True, False])
-def test_conda_input_filepath(use_working_dir, tmp_path):
-    conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
-    d = tmp_path / "pip_requirements"
-    d.mkdir()
-    p = d / "environment.yml"
-
-    p.write_text(yaml.dump(conda_dict))
-
-    if use_working_dir:
-        runtime_env_json = {"working_dir": str(d), "conda": str(p)}
-    else:
-        runtime_env_json = {"conda": str(p)}
-    runtime_env_dict = RuntimeEnvDict(parse_pip_and_conda(runtime_env_json))
-    output_conda_dict = runtime_env_dict.get_parsed_dict().get("conda")
-    assert output_conda_dict == conda_dict
 
 
 @skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -942,7 +957,7 @@ def test_runtime_env_inheritance_regression(shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.")
-def test_runtime_env_logging_to_dirver(ray_start_regular_shared, log_pubsub):
+def test_runtime_env_logging_to_driver(ray_start_regular_shared, log_pubsub):
     @ray.remote(runtime_env={"pip": [f"requests=={REQUEST_VERSIONS[0]}"]})
     def func():
         pass

@@ -234,8 +234,10 @@ RAY_CONFIG(uint64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
-/// Duration to wait between retries for creating placement group in gcs server.
-RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
+/// Exponential backoff params for gcs to retry creating a placement group
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_min_interval_ms, 200)
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_max_interval_ms, 5000)
+RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5);
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
@@ -309,6 +311,9 @@ RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 
 /// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
+
+/// Max restart count for the dashboard agent.
+RAY_CONFIG(uint32_t, agent_max_restart_count, 5)
 
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.
@@ -471,7 +476,7 @@ RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
 RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 
 /// Whether to use log reporter in event framework
-RAY_CONFIG(bool, event_log_reporter_enabled, false)
+RAY_CONFIG(bool, event_log_reporter_enabled, true)
 
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, actor_register_async, true)
@@ -480,7 +485,7 @@ RAY_CONFIG(bool, actor_register_async, true)
 RAY_CONFIG(std::string, event_level, "warning")
 
 /// Whether to avoid scheduling cpu requests on gpu nodes
-RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
+RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, false)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)

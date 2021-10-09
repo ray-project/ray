@@ -61,11 +61,11 @@ message BackendConfig {
 
   // Duration that backend workers will wait until there is no more work to be done before
   // shutting down. Defaults to 2s.
-  double experimental_graceful_shutdown_wait_loop_s = 4;
+  double graceful_shutdown_wait_loop_s = 4;
 
   // Controller waits for this duration to forcefully kill the replica for shutdown.
   // Defaults to 20s.
-  double experimental_graceful_shutdown_timeout_s = 5;
+  double graceful_shutdown_timeout_s = 5;
 
   // Is the construction of backend is cross language?
   bool is_cross_language = 6;

@@ -1929,6 +1929,7 @@ def make_decorator(num_returns=None,
                    max_restarts=None,
                    max_task_retries=None,
                    runtime_env=None,
+                   placement_group="default",
                    worker=None,
                    retry_exceptions=None):
     def decorator(function_or_class):
@@ -1960,7 +1961,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env)
+                runtime_env, placement_group)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -2109,7 +2110,8 @@ def remote(*args, **kwargs):
     valid_kwargs = [
         "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
         "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions"
+        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions",
+        "placement_group"
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2142,6 +2144,7 @@ def remote(*args, **kwargs):
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
     runtime_env = kwargs.get("runtime_env")
+    placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
 
     return make_decorator(
@@ -2157,5 +2160,6 @@ def remote(*args, **kwargs):
         max_task_retries=max_task_retries,
         max_retries=max_retries,
         runtime_env=runtime_env,
+        placement_group=placement_group,
         worker=worker,
         retry_exceptions=retry_exceptions)

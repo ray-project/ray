@@ -25,7 +25,7 @@ def _export_bundle_reservation_check_method_if_needed():
     if bundle_reservation_check:
         return
 
-    @ray.remote(num_cpus=0, max_calls=0)
+    @ray.remote(num_cpus=0)
     def bundle_reservation_check_func(placement_group):
         return placement_group
 

@@ -18,7 +18,7 @@ class Model:
         return x
 
 
-ds = ds.pipeline(parallelism=10) \
+ds = ds.window(blocks_per_window=10) \
     .map(preprocess) \
     .map(Model, compute="actors", num_gpus=1)
 
