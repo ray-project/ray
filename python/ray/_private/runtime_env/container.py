@@ -50,7 +50,7 @@ class ContainerManager:
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
         container_option = runtime_env.get("container")
-        if not container_option and not container_option.get("image"):
+        if not container_option or not container_option.get("image"):
             return
 
         container_driver = "podman"
