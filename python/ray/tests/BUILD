@@ -48,6 +48,7 @@ py_test_module_list(
   files = [
     "test_client.py",
     "test_client_builder.py",
+    "test_client_compat.py",
     "test_client_init.py",
     "test_client_multi.py",
     "test_client_proxy.py",
@@ -74,16 +75,15 @@ py_test_module_list(
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
     "test_object_assign_owner.py",
-    "test_output.py",
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_3.py",
-    "test_placement_group_mini_integration.py",
     "test_ray_init.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_env_env_vars.py",
+    "test_runtime_env_plugin.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",
@@ -162,10 +162,12 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_output.py",
     "test_failure_2.py",
     "test_failure_4.py",
     "test_object_spilling.py",
     "test_plasma_unlimited.py",
+    "test_placement_group_mini_integration.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -295,6 +297,14 @@ py_test(
     name = "test_pydantic_serialization",
     size = "small",
     srcs = SRCS + ["test_pydantic_serialization.py", "pydantic_module.py"],
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_runtime_env_validation",
+    size = "small",
+    srcs = SRCS + ["test_runtime_env_validation.py"],
     tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )

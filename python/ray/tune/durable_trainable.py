@@ -171,14 +171,16 @@ def durable(trainable: Union[str, Type[Trainable], Callable]):
         A durable trainable class wrapped around your trainable.
 
     """
+    overwrite_name = None
     if isinstance(trainable, str):
         trainable_cls = get_trainable_cls(trainable)
+        overwrite_name = f"Durable{trainable}"
     else:
         trainable_cls = trainable
 
     if not inspect.isclass(trainable_cls):
         # Function API
-        return wrap_function(trainable_cls, durable=True)
+        return wrap_function(trainable_cls, durable=True, name=overwrite_name)
 
     if not issubclass(trainable_cls, Trainable):
         raise ValueError(
@@ -187,8 +189,14 @@ def durable(trainable: Union[str, Type[Trainable], Callable]):
             f"it does. Got: {type(trainable_cls)}")
 
     # else: Class API
+
+    # Class is already durable
+
+    if issubclass(trainable_cls, DurableTrainable):
+        return trainable_cls
+
     class _WrappedDurableTrainable(DurableTrainable, trainable_cls):
-        _name = trainable_cls.__name__ if hasattr(trainable_cls, "__name__") \
-            else "durable_trainable"
+        _name = overwrite_name or (trainable_cls.__name__ if hasattr(
+            trainable_cls, "__name__") else "durable_trainable")
 
     return _WrappedDurableTrainable

@@ -275,14 +275,14 @@ class AsyncSampler(threading.Thread, SamplerInput):
             rollout_fragment_length: int,
             count_steps_by: str = "env_steps",
             callbacks: "DefaultCallbacks",
-            horizon: int = None,
+            horizon: Optional[int] = None,
             multiple_episodes_in_batch: bool = False,
             normalize_actions: bool = True,
             clip_actions: bool = False,
             blackhole_outputs: bool = False,
             soft_horizon: bool = False,
             no_done_at_end: bool = False,
-            observation_fn: "ObservationFunction" = None,
+            observation_fn: Optional["ObservationFunction"] = None,
             sample_collector_class: Optional[Type[SampleCollector]] = None,
             render: bool = False,
             # Obsolete.
@@ -308,7 +308,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 Refers to the unit of `rollout_fragment_length`.
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
-            horizon (Optional[int]): Hard-reset the Env
+            horizon: Hard-reset the Env after this many timesteps.
             multiple_episodes_in_batch (bool): Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
@@ -452,7 +452,7 @@ def _env_runner(
         worker: "RolloutWorker",
         base_env: BaseEnv,
         extra_batch_callback: Callable[[SampleBatchType], None],
-        horizon: int,
+        horizon: Optional[int],
         normalize_actions: bool,
         clip_actions: bool,
         multiple_episodes_in_batch: bool,
@@ -470,7 +470,7 @@ def _env_runner(
         worker (RolloutWorker): Reference to the current rollout worker.
         base_env (BaseEnv): Env implementing BaseEnv.
         extra_batch_callback (fn): function to send extra batch data to.
-        horizon (int): Horizon of the episode.
+        horizon: Horizon of the episode.
         multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.

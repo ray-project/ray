@@ -82,6 +82,8 @@ CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
         "shuffle_data_loader",
+        "pipelined_training_50_gb",
+        "pipelined_ingestion_1500_gb_15_windows",
     ],
 }
 
@@ -97,6 +99,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
+        "pg_autoscaling_regression_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),

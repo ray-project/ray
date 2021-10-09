@@ -10,6 +10,7 @@ from typing import Optional
 from tempfile import mkstemp
 
 import pytest
+import pydantic
 import requests
 
 import ray
@@ -20,16 +21,10 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
 from ray.serve.config import HTTPOptions
+from ray.serve.api import _get_global_client
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray._private.services import new_port
 import ray._private.gcs_utils as gcs_utils
-
-
-@pytest.fixture
-def ray_shutdown():
-    yield
-    serve.shutdown()
-    ray.shutdown()
 
 
 @pytest.fixture
@@ -100,7 +95,7 @@ def test_detached_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
-    head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
+    head_node = cluster.add_node(num_cpus=6)
 
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address, namespace="serve")
@@ -385,6 +380,44 @@ def test_http_head_only(ray_cluster):
         for r in ray.state.state._available_resources_per_node().values()
     }
     assert cpu_per_nodes == {4, 4}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+@pytest.mark.skipif(
+    not hasattr(socket, "SO_REUSEPORT"),
+    reason=("Port sharing only works on newer verion of Linux. "
+            "This test can only be ran when port sharing is supported."))
+def test_fixed_number_proxies(ray_cluster):
+    cluster = ray_cluster
+    head_node = cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+
+    ray.init(head_node.address)
+    node_ids = ray.state.node_ids()
+    assert len(node_ids) == 3
+
+    with pytest.raises(
+            pydantic.ValidationError,
+            match="you must specify the `fixed_number_replicas` parameter."):
+        serve.start(http_options={
+            "location": "FixedNumber",
+        })
+
+    serve.start(http_options={
+        "port": new_port(),
+        "location": "FixedNumber",
+        "fixed_number_replicas": 2
+    })
+
+    # Only the controller and two http proxy should be started.
+    controller_handle = _get_global_client()._controller
+    node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
+    assert len(node_to_http_actors) == 2
+
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
 
 
 def test_serve_shutdown(ray_shutdown):

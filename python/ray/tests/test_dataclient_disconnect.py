@@ -50,9 +50,22 @@ def test_dataclient_disconnect_before_request():
         # different remote calls.
         ray.worker.data_client.request_queue.put(Mock())
 
-        # The next remote call should error since the data channel has shut
-        # down, which should also disconnect the client.
+        # The following two assertions are relatively brittle. Consider a more
+        # robust mechanism if they fail with code changes or become flaky.
+
+        # The next remote call should error since the data channel will shut
+        # down because of the invalid input above. Two cases can happen:
+        # (1) Data channel shuts down after `f.remote()` finishes.
+        #     error is raised to `ray.get()`. The next background operation
+        #     will disconnect Ray client.
+        # (2) Data channel shuts down before `f.remote()` is called.
+        #     `f.remote()` will raise the error and disconnect the client.
         with pytest.raises(ConnectionError):
+            ray.get(f.remote())
+
+        with pytest.raises(
+                ConnectionError,
+                match="Ray client has already been disconnected"):
             ray.get(f.remote())
 
         # Client should be disconnected
