@@ -265,6 +265,13 @@ distributed setup for your framework of choice (PyTorch, Tensorflow, or Horovod)
 
 .. code-block:: python
 
+    def train_func():
+        # This is a dummy train function just iterating over the dataset shard.
+        # You should replace this with your training logic.
+        shard = ray.sgd.get_dataset_shard()
+        for row in shard.iter_rows():
+            print(row)
+
     # Create a pipeline that loops over its source dataset indefinitely.
     pipe: DatasetPipeline = ray.data \
         .read_datasource(...) \
@@ -273,16 +280,12 @@ distributed setup for your framework of choice (PyTorch, Tensorflow, or Horovod)
 
 
     # Pass in the pipeline to the Trainer.
-    # The Trainer will create 8 workers, start the torch backend on all workers, and
-    # automatically split the DatasetPipeline for you.
+    # The Trainer will automatically split the DatasetPipeline for you.
     trainer = Trainer(num_workers=8, backend="torch")
     result = trainer.run(
         train_func,
         config={"worker_batch_size": 64, "num_epochs": 2},
-        dataset={
-        "train": train_dataset,
-        "val": val_dataset
-    })
+        dataset=pipe)
 
 Ray SGD is responsible for the orchestration of the training workers and will automatically split the Dataset for you.
 See :ref:`the SGD User Guide <sgd-dataset-pipeline>` for more details.

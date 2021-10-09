@@ -638,6 +638,9 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 .. code-block:: python
 
     def train_func(config):
+        # Create your model here.
+        model = NeuralNetwork()
+
         batch_size = config["worker_batch_size"]
 
         train_data_shard = ray.sgd.get_dataset_shard()["train"]
@@ -650,7 +653,6 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
             for X, y in train_dataset:
                 model.train()
                 output = model(X)
-                ...
 
             for X, y in val_dataset:
                 model.eval()
@@ -690,6 +692,13 @@ This is very simple to do with Ray Datasets + Ray SGD.
 
 .. code-block:: python
 
+    def train_func():
+        # This is a dummy train function just iterating over the dataset.
+        # You should replace this with your training logic.
+        shard = ray.sgd.get_dataset_shard()
+        for row in shard.iter_rows():
+            print(row)
+
     # Create a pipeline that loops over its source dataset indefinitely.
     pipe: DatasetPipeline = ray.data \
         .read_datasource(...) \
@@ -703,10 +712,7 @@ This is very simple to do with Ray Datasets + Ray SGD.
     result = trainer.run(
         train_func,
         config={"worker_batch_size": 64, "num_epochs": 2},
-        dataset={
-        "train": train_dataset,
-        "val": val_dataset
-    })
+        dataset=pipe)
 
 See :ref:`dataset-pipeline-per-epoch-shuffle` for more info.
 
