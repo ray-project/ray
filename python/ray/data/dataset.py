@@ -753,7 +753,8 @@ class Dataset(Generic[T]):
             if not _epoch_warned:
                 logger.warning(
                     "Dataset contains data from multiple epochs: {}, "
-                    "using the higher epoch number {}. This warning will not "
+                    "likely due to a `rewindow()` call. The higher epoch "
+                    "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch))
                 _epoch_warned = True
         return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
