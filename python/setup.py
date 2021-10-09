@@ -27,7 +27,7 @@ SUPPORTED_BAZEL = (4, 2, 1)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
-SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") is not None
+SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
