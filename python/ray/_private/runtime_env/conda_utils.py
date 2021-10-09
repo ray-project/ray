@@ -126,6 +126,21 @@ def get_or_create_conda_env(conda_env_path: str,
     return env_name
 
 
+def get_conda_env_list() -> list:
+    """
+    Get conda env list.
+    """
+    conda_path = get_conda_bin_executable("conda")
+    try:
+        exec_cmd([conda_path, "--help"], throw_on_error=False)
+    except EnvironmentError:
+        raise ValueError(f"Could not find Conda executable at {conda_path}.")
+    _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
+    envs = json.loads(stdout)["envs"]
+    print(f"Conda env len {len(envs)}")
+    return envs
+
+
 class ShellCommandException(Exception):
     pass
 

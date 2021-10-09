@@ -54,6 +54,14 @@ class JobConfig:
         from ray._private.runtime_env.validation import ParsedRuntimeEnv
         self._parsed_runtime_env = ParsedRuntimeEnv(runtime_env or {})
         self.runtime_env = runtime_env or dict()
+        eager_install = False
+        if runtime_env and "eager_install" in runtime_env:
+            eager_install = runtime_env["eager_install"]
+        self.runtime_env_eager_install = eager_install
+        assert isinstance(self.runtime_env_eager_install, bool), \
+            f"The type of eager_install is incorrect: " \
+            f"{type(self.runtime_env_eager_install)}" \
+            f", the bool type is needed."
         self._cached_pb = None
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
@@ -78,6 +86,8 @@ class JobConfig:
             self._cached_pb.runtime_env.serialized_runtime_env = serialized_env
             for k, v in self.metadata.items():
                 self._cached_pb.metadata[k] = v
+            self._cached_pb.runtime_env.runtime_env_eager_install = \
+                self.runtime_env_eager_install
         return self._cached_pb
 
     def get_runtime_env_uris(self):
