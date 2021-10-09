@@ -34,7 +34,7 @@ public class RayServeReplica {
 
   private String replicaTag;
 
-  private BackendConfig backendConfig;
+  private BackendConfig config;
 
   private AtomicInteger numOngoingRequests = new AtomicInteger();
 
@@ -64,7 +64,7 @@ public class RayServeReplica {
     this.backendTag = Serve.getReplicaContext().getBackendTag();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
-    this.backendConfig = backendConfig;
+    this.config = backendConfig;
     this.version = version;
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
@@ -248,7 +248,7 @@ public class RayServeReplica {
       // Sleep first because we want to make sure all the routers receive the notification to remove
       // this replica first.
       try {
-        Thread.sleep((long) (backendConfig.getExperimentalGracefulShutdownWaitLoopS() * 1000));
+        Thread.sleep((long) (config.getGracefulShutdownWaitLoopS() * 1000));
       } catch (InterruptedException e) {
         LOGGER.error(
             "Replica {} was interrupted in sheep when draining pending queries", replicaTag);
@@ -258,7 +258,7 @@ public class RayServeReplica {
       } else {
         LOGGER.info(
             "Waiting for an additional {}s to shut down because there are {} ongoing requests.",
-            backendConfig.getExperimentalGracefulShutdownWaitLoopS(),
+            config.getGracefulShutdownWaitLoopS(),
             numOngoingRequests.get());
       }
     }
@@ -320,7 +320,7 @@ public class RayServeReplica {
    * @param newConfig the new configuration of backend
    */
   private void updateBackendConfigs(Object newConfig) {
-    backendConfig = (BackendConfig) newConfig;
+    config = (BackendConfig) newConfig;
   }
 
   public BackendVersion getVersion() {

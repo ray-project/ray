@@ -82,6 +82,8 @@ CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
         "shuffle_data_loader",
+        "pipelined_training_50_gb",
+        "pipelined_ingestion_1500_gb_15_windows",
     ],
 }
 
@@ -97,6 +99,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
+        "pg_autoscaling_regression_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -231,10 +234,15 @@ DEFAULT_STEP_TEMPLATE = {
     "plugins": [{
         "docker#v3.8.0": {
             "image": "rayproject/ray",
-            "propagate-environment": True
+            "propagate-environment": True,
+            "volumes": [
+                "/tmp/ray_release_test_artifacts:"
+                "/tmp/ray_release_test_artifacts"
+            ],
         }
     }],
-    "commands": []
+    "commands": [],
+    "artifact_paths": ["/tmp/ray_release_test_artifacts/**/*"],
 }
 
 
@@ -406,10 +414,12 @@ def build_pipeline(steps):
             cmd = str(f"RAY_REPO=\"{RAY_REPO}\" "
                       f"RAY_BRANCH=\"{RAY_BRANCH}\" "
                       f"RAY_VERSION=\"{RAY_VERSION}\" "
+                      f"RELEASE_RESULTS_DIR=/tmp/artifacts "
                       f"python release/e2e.py "
                       f"--category {RAY_BRANCH} "
                       f"--test-config {test_file} "
-                      f"--test-name {test_name}")
+                      f"--test-name {test_name} "
+                      f"--keep-results-dir")
 
             if test_name.smoke_test:
                 logging.info("This test will run as a smoke test.")
@@ -430,8 +440,9 @@ def build_pipeline(steps):
             step_conf["commands"] = [
                 "pip install -q -r release/requirements.txt",
                 "pip install -U boto3 botocore",
-                f"git clone -b {RAY_TEST_BRANCH} {RAY_TEST_REPO} ~/ray",
-                cmd,
+                f"git clone -b {RAY_TEST_BRANCH} {RAY_TEST_REPO} ~/ray", cmd,
+                "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
+                "|| true"
             ]
 
             step_conf["label"] = f"{test_name} ({RAY_BRANCH}) - " \

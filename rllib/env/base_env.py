@@ -1,5 +1,6 @@
 from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING
 
+import ray
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -121,10 +122,14 @@ class BaseEnv:
                 env = _VectorEnvToBaseEnv(env)
             else:
                 if remote_envs:
+                    # Determine, whether the already existing sub-env (could
+                    # be a ray.actor) is multi-agent or not.
+                    multiagent = ray.get(env._is_multi_agent.remote()) if \
+                        hasattr(env, "_is_multi_agent") else False
                     env = RemoteVectorEnv(
                         make_env,
                         num_envs,
-                        multiagent=False,
+                        multiagent=multiagent,
                         remote_env_batch_wait_ms=remote_env_batch_wait_ms,
                         existing_envs=[env],
                     )
@@ -502,7 +507,6 @@ class _MultiAgentEnvState:
                     del self.last_infos[ag]
 
         self.last_dones["__all__"] = False
-        self.last_infos = {}
         return observations, rewards, dones, infos
 
     def observe(self, obs: MultiAgentDict, rewards: MultiAgentDict,

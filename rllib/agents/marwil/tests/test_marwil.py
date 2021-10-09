@@ -9,7 +9,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.offline import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -57,7 +57,11 @@ class TestMARWIL(unittest.TestCase):
             trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
             learnt = False
             for i in range(num_iterations):
-                eval_results = trainer.train().get("evaluation")
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+
+                eval_results = results.get("evaluation")
                 if eval_results:
                     print("iter={} R={} ".format(
                         i, eval_results["episode_reward_mean"]))

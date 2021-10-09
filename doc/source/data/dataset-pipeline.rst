@@ -6,12 +6,12 @@ Overview
 
 Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <package-ref.html#datasetpipeline-api>`__.
 
-A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
+A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets, each of which represents a *window* over the original data. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset window on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
 
 Creating a DatasetPipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A DatasetPipeline can be constructed in two ways: either by pipelining the execution of an existing Dataset (via ``Dataset.pipeline``), or generating repeats of an existing Dataset (via ``Dataset.repeat``). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started with this synthetic data example:
+A DatasetPipeline can be constructed in two ways: either by pipelining the execution of an existing Dataset (via ``Dataset.window``), or generating repeats of an existing Dataset (via ``Dataset.repeat``). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started with this synthetic data example:
 
 .. code-block:: python
 
@@ -30,16 +30,16 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     base = ray.data.range(1000000)
     print(base)
     # -> Dataset(num_blocks=200, num_rows=1000000, schema=<class 'int'>)
-    pipe = base.pipeline(parallelism=10)
+    pipe = base.window(blocks_per_window=10)
     print(pipe)
-    # -> DatasetPipeline(length=20, num_stages=1)
+    # -> DatasetPipeline(num_windows=20, num_stages=1)
 
     # Applying transforms to pipelines adds more pipeline stages.
     pipe = pipe.map(func1)
     pipe = pipe.map(func2)
     pipe = pipe.map(func3)
     print(pipe)
-    # -> DatasetPipeline(length=20, num_stages=4)
+    # -> DatasetPipeline(num_windows=20, num_stages=4)
 
     # Output can be pulled from the pipeline concurrently with its execution.
     num_rows = 0
@@ -53,8 +53,7 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     print("Total num rows", num_rows)
     # -> Total num rows 1000000
 
-
-You can also create a DatasetPipeline from a custom iterator over dataset creators using ``DatasetPipeline.from_iterable``. For example, this is how you would implement ``Dataset.repeat`` and ``Dataset.pipeline`` using ``from_iterable``:
+You can also create a DatasetPipeline from a custom iterator over dataset creators using ``DatasetPipeline.from_iterable``. For example, this is how you would implement ``Dataset.repeat`` and ``Dataset.window`` using ``from_iterable``:
 
 .. code-block:: python
 
@@ -66,10 +65,52 @@ You can also create a DatasetPipeline from a custom iterator over dataset creato
     pipe = DatasetPipeline.from_iterable(
         [lambda: source, lambda: source, lambda: source, lambda: source])
 
-    # Equivalent to ray.data.range(1000).pipeline(parallelism=10)
+    # Equivalent to ray.data.range(1000).window(blocks_per_window=10)
     splits = ray.data.range(1000, parallelism=200).split(20)
     pipe = DatasetPipeline.from_iterable([lambda s=s: s for s in splits])
 
+Per-Window Transformations
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+While most Dataset operations are per-row (e.g., map, filter), some operations apply to the Dataset as a whole (e.g., sort, shuffle). When applied to a pipeline, holistic transforms like shuffle are applied separately to each window in the pipeline:
+
+.. code-block:: python
+
+    # Example of randomly shuffling each window of a pipeline.
+    ray.data.range(5).repeat(2).random_shuffle_each_window().show_windows()
+    # -> 
+    # === Window 0 ===
+    # 4
+    # 3
+    # 1
+    # 0
+    # 2
+    # === Window 1 ===
+    # 2
+    # 1
+    # 4
+    # 0
+    # 3
+
+You can also apply arbitrary transformations to each window using ``DatasetPipeline.foreach_window()``:
+
+.. code-block:: python
+
+    # Equivalent transformation using .foreach_window() 
+    ray.data.range(5).repeat(2).foreach_window(lambda w: w.random_shuffle()).show_windows()
+    # -> 
+    # === Window 0 ===
+    # 1
+    # 0
+    # 4
+    # 2
+    # 3
+    # === Window 1 ===
+    # 4
+    # 2
+    # 0
+    # 3
+    # 1
 
 Example: Pipelined Batch Inference
 ----------------------------------
@@ -109,28 +150,28 @@ Ignoring the output, the above script has three separate stages: loading, prepro
 Enabling Pipelining
 ~~~~~~~~~~~~~~~~~~~
 
-We can optimize this by *pipelining* the execution of the dataset with the ``.pipeline()`` call, which returns a DatasetPIpeline instead of a Dataset object. The pipeline supports similar transformations to the original Dataset:
+We can optimize this by *pipelining* the execution of the dataset with the ``.window()`` call, which returns a DatasetPipeline instead of a Dataset object. The pipeline supports similar transformations to the original Dataset:
 
 .. code-block:: python
 
     # Convert the Dataset into a DatasetPipeline.
     pipe: DatasetPipeline = ray.data \
         .read_binary_files("s3://bucket/image-dir") \
-        .pipeline(parallelism=2)
+        .window(blocks_per_window=2)
 
     # The remainder of the steps do not change.
     pipe = pipe.map(preprocess)
     pipe = pipe.map_batches(BatchInferModel, compute="actors", batch_size=256, num_gpus=1)
     pipe.write_json("/tmp/results")
 
-Here we specified ``parallelism=2``, which means that the Dataset is split into smaller sub-Datasets of two blocks each. Each transformation or *stage* of the pipeline is operating over these two-block Datasets in parallel. This means batch inference processing can start as soon as two blocks are read and preprocessed, greatly reducing the GPU idle time:
+Here we specified ``blocks_per_window=2``, which means that the Dataset is split into smaller sub-Datasets of two blocks each. Each transformation or *stage* of the pipeline is operating over these two-block Datasets in parallel. This means batch inference processing can start as soon as two blocks are read and preprocessed, greatly reducing the GPU idle time:
 
 .. image:: dataset-pipeline-2.svg
 
 Tuning Parallelism
 ~~~~~~~~~~~~~~~~~~
 
-Tune the throughput vs latency of your pipeline with the ``parallelism`` setting. As a rule of thumb, higher parallelism settings perform better, however ``parallelism == num_blocks`` effectively disables pipelining, since the DatasetPipeline will only contain a single Dataset. The other extreme is setting ``parallelism=1``, which minimizes the latency to initial output but only allows one concurrent transformation task per stage:
+Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` setting. As a rule of thumb, higher parallelism settings perform better, however ``blocks_per_window == num_blocks`` effectively disables pipelining, since the DatasetPipeline will only contain a single Dataset. The other extreme is setting ``blocks_per_window=1``, which minimizes the latency to initial output but only allows one concurrent transformation task per stage:
 
 .. image:: dataset-pipeline-3.svg
 
@@ -155,7 +196,7 @@ Transformations made prior to the Dataset prior to the call to ``.repeat()`` are
     pipe: DatasetPipeline = ray.data \
         .read_datasource(...) \
         .repeat() \
-        .random_shuffle()
+        .random_shuffle_each_window()
 
     @ray.remote(num_gpus=1)
     def train_func(pipe: DatasetPipeline):
@@ -184,7 +225,7 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
     pipe: DatasetPipeline = ray.data \
         .read_parquet("s3://bucket/dir") \
         .repeat() \
-        .random_shuffle()
+        .random_shuffle_each_window()
 
     @ray.remote(num_gpus=1)
     class TrainingWorker:
@@ -201,3 +242,55 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
 **Pipeline**:
 
 .. image:: dataset-repeat-2.svg
+
+Changing Pipeline Structure
+---------------------------
+
+Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``. The latter may produce windows that span multiple copies of the same original data:
+
+.. code-block:: python
+
+    # Window followed by repeat.
+    ray.data.range(5) \
+        .window(blocks_per_window=2) \
+        .repeat(2) \
+        .show_windows()
+    # ->
+    # === Window 0 ===
+    # 0
+    # 1
+    # === Window 1 ===
+    # 2
+    # 3
+    # === Window 2 ===
+    # 4
+    # === Window 3 ===
+    # 0
+    # 1
+    # === Window 4 ===
+    # 2
+    # 3
+    # === Window 5 ===
+    # 4
+
+    # Repeat followed by window.
+    ray.data.range(5) \
+        .repeat(2) \
+        .rewindow(blocks_per_window=2) \
+        .show_windows()
+    # ->
+    # === Window 0 ===
+    # 0
+    # 1
+    # === Window 1 ===
+    # 2
+    # 3
+    # === Window 2 ===
+    # 4
+    # 0
+    # === Window 3 ===
+    # 1
+    # 2
+    # === Window 4 ===
+    # 3
+    # 4

@@ -23,6 +23,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include "ray/util/logging.h"
 #include "ray/util/macros.h"
 
 #ifdef _WIN32
@@ -165,7 +166,7 @@ class InitShutdownRAII {
   /// \param shutdown_func The shutdown function.
   /// \param args The arguments for the init function.
   template <class InitFunc, class... Args>
-  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&... args)
+  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&...args)
       : shutdown_(shutdown_func) {
     init_func(args...);
   }
@@ -237,3 +238,116 @@ inline void SetThreadName(const std::string &thread_name) {
   pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
 #endif
 }
+
+inline std::string GetThreadName() {
+#if defined(__linux__)
+  char name[128];
+  auto rc = pthread_getname_np(pthread_self(), name, sizeof(name));
+  if (rc != 0) {
+    return "ERROR";
+  } else {
+    return name;
+  }
+#else
+  return "UNKNOWN";
+#endif
+}
+
+namespace ray {
+template <typename T>
+class ThreadPrivate {
+ public:
+  template <typename... Ts>
+  explicit ThreadPrivate(Ts &&...ts) : t_(std::forward<Ts>(ts)...) {}
+
+  T &operator*() {
+    ThreadCheck();
+    return t_;
+  }
+
+  T *operator->() {
+    ThreadCheck();
+    return &t_;
+  }
+
+  const T &operator*() const {
+    ThreadCheck();
+    return t_;
+  }
+
+  const T *operator->() const {
+    ThreadCheck();
+    return &t_;
+  }
+
+ private:
+  void ThreadCheck() const {
+    // ThreadCheck is not a thread safe function and at the same time, multiple
+    // threads might be accessing id_ at the same time.
+    // Here we only introduce mutex to protect write instead of read for the
+    // following reasons:
+    //    - read and write at the same time for `id_` is fine since this is a
+    //      trivial object. And since we are using this to detect errors,
+    //      it doesn't matter which value it is.
+    //    - read and write of `thread_name_` is not good. But it will only be
+    //      read when we crash the program.
+    //
+    if (id_ == std::thread::id()) {
+      // Protect thread_name_
+      std::lock_guard<std::mutex> _(mutex_);
+      thread_name_ = GetThreadName();
+      RAY_LOG(DEBUG) << "First accessed in thread " << thread_name_;
+      id_ = std::this_thread::get_id();
+    }
+
+    RAY_CHECK(id_ == std::this_thread::get_id())
+        << "A variable private to thread " << thread_name_ << " was accessed in thread "
+        << GetThreadName();
+  }
+
+  T t_;
+  mutable std::string thread_name_;
+  mutable std::thread::id id_;
+  mutable std::mutex mutex_;
+};
+
+class ExponentialBackOff {
+ public:
+  ExponentialBackOff() = default;
+  ExponentialBackOff(const ExponentialBackOff &) = default;
+  ExponentialBackOff(ExponentialBackOff &&) = default;
+  ExponentialBackOff &operator=(const ExponentialBackOff &) = default;
+  ExponentialBackOff &operator=(ExponentialBackOff &&) = default;
+
+  /// Construct an exponential back off counter.
+  ///
+  /// \param[in] initial_value The start value for this counter
+  /// \param[in] multiplier The multiplier for this counter.
+  /// \param[in] max_value The maximum value for this counter. By default it's
+  ///    infinite double.
+  ExponentialBackOff(uint64_t initial_value, double multiplier,
+                     uint64_t max_value = std::numeric_limits<uint64_t>::max())
+      : curr_value_(initial_value),
+        initial_value_(initial_value),
+        max_value_(max_value),
+        multiplier_(multiplier) {
+    RAY_CHECK(multiplier > 0.0) << "Multiplier must be greater than 0";
+  }
+
+  uint64_t Next() {
+    auto ret = curr_value_;
+    curr_value_ = curr_value_ * multiplier_;
+    curr_value_ = std::min(curr_value_, max_value_);
+    return ret;
+  }
+
+  void Reset() { curr_value_ = initial_value_; }
+
+ private:
+  uint64_t curr_value_;
+  uint64_t initial_value_;
+  uint64_t max_value_;
+  double multiplier_;
+};
+
+}  // namespace ray

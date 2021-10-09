@@ -6,9 +6,11 @@ import logging
 import queue
 import threading
 import _thread
+from unittest.mock import patch
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
+from ray.tests.client_test_utils import run_wrapped_actor_creation
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.client.ray_client_helpers import ray_start_client_server
@@ -24,11 +26,11 @@ def test_client_context_manager(ray_start_regular_shared, connect_to_client):
     with connect_to_client_or_not(connect_to_client):
         if connect_to_client:
             # Client mode is on.
-            assert client_mode_should_convert()
+            assert client_mode_should_convert(auto_init=True)
             # We're connected to Ray client.
             assert ray.util.client.ray.is_connected()
         else:
-            assert not client_mode_should_convert()
+            assert not client_mode_should_convert(auto_init=True)
             assert not ray.util.client.ray.is_connected()
 
 
@@ -70,20 +72,20 @@ def test_client_thread_safe(call_ray_stop_only):
 def test_client_mode_hook_thread_safe(ray_start_regular_shared):
     with ray_start_client_server():
         with enable_client_mode():
-            assert client_mode_should_convert()
+            assert client_mode_should_convert(auto_init=True)
             lock = threading.Lock()
             lock.acquire()
             q = queue.Queue()
 
             def disable():
                 with disable_client_hook():
-                    q.put(client_mode_should_convert())
+                    q.put(client_mode_should_convert(auto_init=True))
                     lock.acquire()
-                q.put(client_mode_should_convert())
+                q.put(client_mode_should_convert(auto_init=True))
 
             t = threading.Thread(target=disable)
             t.start()
-            assert client_mode_should_convert()
+            assert client_mode_should_convert(auto_init=True)
             lock.release()
             t.join()
             assert q.get(
@@ -135,14 +137,23 @@ def test_get_list(ray_start_regular_shared):
         assert ray.get([]) == []
         assert ray.get([f.remote()]) == ["OK"]
 
+        get_count = 0
+        get_stub = ray.worker.server.GetObject
+
+        # ray.get() uses unary-unary RPC. Mock the server handler to count
+        # the number of requests received.
+        def get(req, metadata=None):
+            nonlocal get_count
+            get_count += 1
+            return get_stub(req, metadata=metadata)
+
+        ray.worker.server.GetObject = get
+
         refs = [f.remote() for _ in range(100)]
-        with ray.worker.data_client.lock:
-            req_id_before = ray.worker.data_client._req_id
         assert ray.get(refs) == ["OK" for _ in range(100)]
+
         # Only 1 RPC should be sent.
-        with ray.worker.data_client.lock:
-            assert ray.worker.data_client._req_id == req_id_before + 1, \
-                ray.worker.data_client._req_id
+        assert get_count == 1
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -331,15 +342,26 @@ def test_basic_actor(ray_start_regular_shared):
 
             def say_hello(self, whom):
                 self.count += 1
-                return ("Hello " + whom, self.count)
+                return "Hello " + whom, self.count
+
+            @ray.method(num_returns=2)
+            def say_hi(self, whom):
+                self.count += 1
+                return "Hi " + whom, self.count
 
         actor = HelloActor.remote()
         s, count = ray.get(actor.say_hello.remote("you"))
         assert s == "Hello you"
         assert count == 1
-        s, count = ray.get(actor.say_hello.remote("world"))
+
+        ref = actor.say_hello.remote("world")
+        s, count = ray.get(ref)
         assert s == "Hello world"
         assert count == 2
+
+        r1, r2 = actor.say_hi.remote("ray")
+        assert ray.get(r1) == "Hi ray"
+        assert ray.get(r2) == 3
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -454,8 +476,25 @@ def test_stdout_log_stream(ray_start_regular_shared):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_serializing_exceptions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
-        with pytest.raises(ValueError):
+        with pytest.raises(
+                ValueError, match="Failed to look up actor with name 'abc'"):
             ray.get_actor("abc")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_invalid_task(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+
+        @ray.remote(runtime_env="invalid value")
+        def f():
+            return 1
+
+        # No exception on making the remote call.
+        ref = f.remote()
+
+        # Exception during scheduling will be raised on ray.get()
+        with pytest.raises(Exception):
+            ray.get(ref)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -500,6 +539,10 @@ def test_basic_named_actor(ray_start_regular_shared):
             def get(self):
                 return self.x
 
+            @ray.method(num_returns=2)
+            def half(self):
+                return self.x / 2, self.x / 2
+
         # Create the actor
         actor = Accumulator.options(name="test_acc").remote()
 
@@ -523,6 +566,10 @@ def test_basic_named_actor(ray_start_regular_shared):
             detatched_actor.inc.remote()
 
         assert ray.get(detatched_actor.get.remote()) == 6
+
+        h1, h2 = ray.get(detatched_actor.half.remote())
+        assert h1 == 3
+        assert h2 == 3
 
 
 def test_error_serialization(ray_start_regular_shared):
@@ -603,6 +650,7 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@patch.dict(os.environ, {"RAY_ENABLE_AUTO_CONNECT": "0"})
 def test_client_gpu_ids(call_ray_stop_only):
     import ray
     ray.init(num_cpus=2)
@@ -657,7 +705,42 @@ def test_object_ref_cleanup():
     # See https://github.com/ray-project/ray/issues/17968 for details
     with ray_start_client_server():
         result = run_string_as_driver(object_ref_cleanup_script)
-        assert result == ""
+        assert "Error in sys.excepthook:" not in result
+        assert "AttributeError: 'NoneType' object has no " not in result
+        assert "Exception ignored in" not in result
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25552 --port 0"],
+    indirect=True)
+def test_wrapped_actor_creation(call_ray_start):
+    """
+    When the client schedules an actor, the server will load a separate
+    copy of the actor class if it's defined in a separate file. This
+    means that modifications to the client's copy of the actor class
+    aren't propagated to the server. Currently, tracing logic modifies
+    the signatures of actor methods to pass around metadata when ray.remote
+    is applied to an actor class. However, if a user does something like:
+
+    class SomeActor:
+        def __init__(self):
+            pass
+
+    def decorate_actor():
+        RemoteActor = ray.remote(SomeActor)
+        ...
+
+    Then the SomeActor class will have its signatures modified on the client
+    side, but not on the server side, since ray.remote was applied inside of
+    the function instead of directly on the actor. Note if it were directly
+    applied to the actor then the signature would be modified when the server
+    imports the class.
+    """
+    import ray
+    ray.init("ray://localhost:25552")
+    run_wrapped_actor_creation()
 
 
 if __name__ == "__main__":

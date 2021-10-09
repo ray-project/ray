@@ -159,7 +159,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
             torch.clamp(logp_ratio, 1 - policy.config["clip_param"],
                         1 + policy.config["clip_param"]))
 
-        mean_kl = reduce_mean_valid(action_kl)
+        mean_kl_loss = reduce_mean_valid(action_kl)
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
@@ -188,7 +188,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
             torch.clamp(logp_ratio, 1 - policy.config["clip_param"],
                         1 + policy.config["clip_param"]))
 
-        mean_kl = reduce_mean_valid(action_kl)
+        mean_kl_loss = reduce_mean_valid(action_kl)
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
@@ -208,15 +208,17 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
 
     # Optional additional KL Loss
     if policy.config["use_kl_loss"]:
-        total_loss += policy.kl_coeff * mean_kl
+        total_loss += policy.kl_coeff * mean_kl_loss
 
-    policy._total_loss = total_loss
-    policy._mean_policy_loss = mean_policy_loss
-    policy._mean_kl = mean_kl
-    policy._mean_vf_loss = mean_vf_loss
-    policy._mean_entropy = mean_entropy
-    policy._value_targets = value_targets
-    policy._vf_explained_var = explained_variance(
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["total_loss"] = total_loss
+    model.tower_stats["mean_policy_loss"] = mean_policy_loss
+    model.tower_stats["mean_kl_loss"] = mean_kl_loss
+    model.tower_stats["mean_vf_loss"] = mean_vf_loss
+    model.tower_stats["mean_entropy"] = mean_entropy
+    model.tower_stats["value_targets"] = value_targets
+    model.tower_stats["vf_explained_var"] = explained_variance(
         torch.reshape(value_targets, [-1]),
         torch.reshape(
             values_time_major[:-1]
@@ -238,22 +240,28 @@ def stats(policy: Policy, train_batch: SampleBatch):
     """
     stats_dict = {
         "cur_lr": policy.cur_lr,
-        "policy_loss": policy._mean_policy_loss,
-        "entropy": policy._mean_entropy,
+        "total_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("total_loss"))),
+        "policy_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_policy_loss"))),
+        "entropy": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_entropy"))),
         "var_gnorm": global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy._mean_vf_loss,
-        "vf_explained_var": policy._vf_explained_var,
+        "vf_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_vf_loss"))),
+        "vf_explained_var": torch.mean(
+            torch.stack(policy.get_tower_stats("vf_explained_var"))),
     }
 
     if policy.config["vtrace"]:
         is_stat_mean = torch.mean(policy._is_ratio, [0, 1])
         is_stat_var = torch.var(policy._is_ratio, [0, 1])
-        stats_dict.update({"mean_IS": is_stat_mean})
-        stats_dict.update({"var_IS": is_stat_var})
+        stats_dict["mean_IS"] = is_stat_mean
+        stats_dict["var_IS"] = is_stat_var
 
     if policy.config["use_kl_loss"]:
-        stats_dict.update({"kl": policy._mean_kl})
-        stats_dict.update({"KL_Coeff": policy.kl_coeff})
+        stats_dict["kl"] = policy.get_tower_stats("mean_kl_loss")
+        stats_dict["KL_Coeff"] = policy.kl_coeff
 
     return stats_dict
 

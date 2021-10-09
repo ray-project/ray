@@ -5,22 +5,24 @@ It supports both traced and non-traced eager execution modes."""
 import functools
 import logging
 import threading
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple
 
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import LocalOptimizer, TensorType
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -64,15 +66,17 @@ def convert_eager_inputs(func):
     @functools.wraps(func)
     def _func(*args, **kwargs):
         if tf.executing_eagerly():
-            args = [_convert_to_tf(x) for x in args]
+            eager_args = [_convert_to_tf(x) for x in args]
             # TODO: (sven) find a way to remove key-specific hacks.
-            kwargs = {
+            eager_kwargs = {
                 k: _convert_to_tf(
                     v, dtype=tf.int64 if k == "timestep" else None)
                 for k, v in kwargs.items()
                 if k not in {"info_batch", "episodes"}
             }
-        return func(*args, **kwargs)
+            return func(*eager_args, **eager_kwargs)
+        else:
+            return func(*args, **kwargs)
 
     return _func
 
@@ -179,6 +183,14 @@ def traced_eager_policy(eager_policy_cls):
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__
     TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__
     return TracedEagerPolicy
+
+
+class OptimizerWrapper:
+    def __init__(self, tape):
+        self.tape = tape
+
+    def compute_gradients(self, loss, var_list):
+        return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
 def build_eager_tf_policy(
@@ -324,7 +336,8 @@ def build_eager_tf_policy(
                     optimizers)
             # TODO: (sven) Allow tf policy to have more than 1 optimizer.
             #  Just like torch Policy does.
-            self._optimizer = optimizers[0] if optimizers else None
+            self._optimizer: LocalOptimizer = \
+                optimizers[0] if optimizers else None
 
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True,
@@ -420,16 +433,17 @@ def build_eager_tf_policy(
                             **kwargs):
 
             self._is_training = False
-            self._is_recurrent = \
-                state_batches is not None and state_batches != []
 
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            input_dict = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
-                "is_training": tf.constant(False),
-            }
+            input_dict = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: tree.map_structure(
+                        lambda s: tf.convert_to_tensor(s), obs_batch),
+                },
+                _is_training=tf.constant(False))
+            self._lazy_tensor_dict(input_dict)
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
                     tf.convert_to_tensor(prev_action_batch)
@@ -463,7 +477,6 @@ def build_eager_tf_policy(
                                                explore, timestep)
 
         @with_lock
-        @convert_eager_inputs
         @convert_eager_outputs
         def _compute_action_helper(self, input_dict, state_batches, episodes,
                                    explore, timestep):
@@ -474,10 +487,13 @@ def build_eager_tf_policy(
                 self.global_timestep
             if isinstance(timestep, tf.Tensor):
                 timestep = int(timestep.numpy())
+            self._is_recurrent = state_batches is not None and \
+                state_batches != []
             self._is_training = False
             self._state_in = state_batches or []
             # Calculate RNN sequence lengths.
-            batch_size = input_dict[SampleBatch.CUR_OBS].shape[0]
+            batch_size = int(
+                tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0])
             seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches \
                 else None
 
@@ -524,7 +540,7 @@ def build_eager_tf_policy(
                                 dist_inputs, self.dist_class, state_out = \
                                     action_distribution_fn(
                                         self, self.model,
-                                        input_dict[SampleBatch.CUR_OBS],
+                                        input_dict[SampleBatch.OBS],
                                         explore=explore,
                                         timestep=timestep,
                                         is_training=False)
@@ -562,7 +578,7 @@ def build_eager_tf_policy(
                 extra_fetches.update(extra_action_out_fn(self))
 
             # Update our global timestep by the batch size.
-            self.global_timestep += int(batch_size)
+            self.global_timestep += batch_size
 
             return actions, state_out, extra_fetches
 
@@ -742,15 +758,6 @@ def build_eager_tf_policy(
                 variables = self.model.trainable_variables()
 
             if compute_gradients_fn:
-
-                class OptimizerWrapper:
-                    def __init__(self, tape):
-                        self.tape = tape
-
-                    def compute_gradients(self, loss, var_list):
-                        return list(
-                            zip(self.tape.gradient(loss, var_list), var_list))
-
                 grads_and_vars = compute_gradients_fn(self,
                                                       OptimizerWrapper(tape),
                                                       loss)

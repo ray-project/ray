@@ -44,7 +44,8 @@ do
     echo "========================================================="
     printf "\n\n\n"
 
-    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray=="${RAY_VERSION}" ray—cpp=="${RAY_VERSION}"
+    # shellcheck disable=SC2102
+    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray[cpp]=="${RAY_VERSION}"
 
     failed=false
     cpp_failed=false
@@ -55,7 +56,7 @@ do
     else
         failed=true
     fi
-    if sh sanity_check_cpp.sh; then
+    if bash sanity_check_cpp.sh; then
         echo "PYTHON ${PYTHON_VERSION} succeed sanity check C++."
     else
         cpp_failed=true

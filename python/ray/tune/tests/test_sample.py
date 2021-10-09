@@ -570,8 +570,7 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        searcher = TuneBOHB(
-            space=config, metric="a", mode="max", max_concurrent=1000)
+        searcher = TuneBOHB(space=config, metric="a", mode="max")
 
         def config_generator():
             for i in range(1000):
@@ -999,7 +998,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch, param
+        from ray.tune.suggest.optuna import OptunaSearch
         import optuna
         from optuna.samplers import RandomSampler
 
@@ -1025,11 +1024,6 @@ class SearchSpaceTest(unittest.TestCase):
                 "z": optuna.distributions.LogUniformDistribution(1e-4, 1e-2)
             }
         }
-        legacy_optuna_config = [
-            param.suggest_categorical("a", [2, 3, 4]),
-            param.suggest_int("b/x", 0, 5, 2),
-            param.suggest_loguniform("b/z", 1e-4, 1e-2)
-        ]
 
         def optuna_define_by_run(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
@@ -1058,47 +1052,38 @@ class SearchSpaceTest(unittest.TestCase):
 
         sampler3 = RandomSampler(seed=1234)
         searcher3 = OptunaSearch(
-            space=legacy_optuna_config,
+            space=optuna_define_by_run,
             sampler=sampler3,
             metric="a",
             mode="max")
 
         sampler4 = RandomSampler(seed=1234)
         searcher4 = OptunaSearch(
-            space=optuna_define_by_run,
+            space=optuna_define_by_run_with_constants,
             sampler=sampler4,
             metric="a",
             mode="max")
 
+        config_constant = searcher4.suggest("0")
+        self.assertIn("constant", config_constant)
+        config_constant.pop("constant")
+
         sampler5 = RandomSampler(seed=1234)
         searcher5 = OptunaSearch(
-            space=optuna_define_by_run_with_constants,
+            space=optuna_define_by_run_invalid,
             sampler=sampler5,
             metric="a",
             mode="max")
 
-        config_constant = searcher5.suggest("0")
-        self.assertIn("constant", config_constant)
-        config_constant.pop("constant")
-
-        sampler6 = RandomSampler(seed=1234)
-        searcher6 = OptunaSearch(
-            space=optuna_define_by_run_invalid,
-            sampler=sampler6,
-            metric="a",
-            mode="max")
-
         with self.assertRaises(TypeError):
-            searcher6.suggest("0")
+            searcher5.suggest("0")
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
         config3 = searcher3.suggest("0")
-        config4 = searcher4.suggest("0")
 
         self.assertEqual(config1, config2)
         self.assertEqual(config1, config3)
-        self.assertEqual(config1, config4)
         self.assertEqual(config1, config_constant)
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))

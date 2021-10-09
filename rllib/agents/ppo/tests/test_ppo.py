@@ -14,11 +14,12 @@ from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
+    LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import fc
-from ray.rllib.utils.test_utils import check, framework_iterator, \
-    check_compute_single_action
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    check_train_results, framework_iterator
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = SampleBatch({
@@ -59,7 +60,8 @@ class MyCallbacks(DefaultCallbacks):
         assert lr == optim_lr, "LR scheduling error!"
 
     def on_train_result(self, *, trainer, result: dict, **kwargs):
-        stats = result["info"]["learner"][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
+        stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
+            LEARNER_STATS_KEY]
         # Learning rate should go to 0 after 1 iter.
         check(stats["cur_lr"], 5e-5 if trainer.iteration == 1 else 0.0)
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
@@ -90,7 +92,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
         # Use default-native keras models whenever possible.
-        config["model"]["_use_default_native_models"] = True
+        # config["model"]["_use_default_native_models"] = True
 
         # Setup lr- and entropy schedules for testing.
         config["lr_schedule"] = [[0, config["lr"]], [128, 0.0]]
@@ -124,7 +126,9 @@ class TestPPO(unittest.TestCase):
                     check(lr, config["lr"])
 
                     for i in range(num_iterations):
-                        print(trainer.train())
+                        results = trainer.train()
+                        check_train_results(results)
+                        print(results)
 
                     check_compute_single_action(
                         trainer,
@@ -300,7 +304,7 @@ class TestPPO(unittest.TestCase):
                 policy_sess = policy.get_session()
                 k, e, pl, v, tl = policy_sess.run(
                     [
-                        policy._mean_kl,
+                        policy._mean_kl_loss,
                         policy._mean_entropy,
                         policy._mean_policy_loss,
                         policy._mean_vf_loss,
@@ -313,8 +317,21 @@ class TestPPO(unittest.TestCase):
                 check(pl, np.mean(-pg_loss))
                 check(v, np.mean(vf_loss), decimals=4)
                 check(tl, overall_loss, decimals=4)
+            elif fw == "torch":
+                check(policy.model.tower_stats["mean_kl_loss"], kl)
+                check(policy.model.tower_stats["mean_entropy"], entropy)
+                check(policy.model.tower_stats["mean_policy_loss"],
+                      np.mean(-pg_loss))
+                check(
+                    policy.model.tower_stats["mean_vf_loss"],
+                    np.mean(vf_loss),
+                    decimals=4)
+                check(
+                    policy.model.tower_stats["total_loss"],
+                    overall_loss,
+                    decimals=4)
             else:
-                check(policy._mean_kl, kl)
+                check(policy._mean_kl_loss, kl)
                 check(policy._mean_entropy, entropy)
                 check(policy._mean_policy_loss, np.mean(-pg_loss))
                 check(policy._mean_vf_loss, np.mean(vf_loss), decimals=4)
