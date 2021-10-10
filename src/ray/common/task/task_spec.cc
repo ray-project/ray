@@ -160,6 +160,20 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
+std::vector<ObjectID> TaskSpecification::ReturnIds() const {
+  // Add new owned objects for the return values of the task.
+  size_t num_returns = NumReturns();
+  if (IsActorTask()) {
+    num_returns--;
+  }
+  std::vector<ObjectID> return_ids;
+  for (size_t i = 0; i < num_returns; i++) {
+    const auto return_id = ReturnId(i);
+    return_ids.push_back(return_id);
+  }
+  return return_ids;
+}
+
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
@@ -342,6 +356,7 @@ std::string TaskSpecification::DebugString() const {
   std::ostringstream stream;
   stream << "Type=" << TaskType_Name(message_->type())
          << ", Language=" << Language_Name(message_->language());
+  stream << ", priority=" << GetPriority();
 
   if (required_resources_ != nullptr) {
     stream << ", Resources: {";

@@ -304,3 +304,9 @@ cdef extern from "ray/gcs/gcs_client.h" nogil:
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         const c_string &SerializeAsString()
+
+cdef extern from "ray/common/task/task_priority.h" nogil:
+    cdef cppclass CPriority "ray::Priority":
+        CPriority()
+        CPriority(const c_vector[int] &score)
+        c_vector[int] score

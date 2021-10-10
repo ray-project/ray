@@ -223,6 +223,7 @@ message TaskSpec {
   string concurrency_group_name = 24;
   // Whether application-level errors (exceptions) should be retried.
   bool retry_exceptions = 25;
+  repeated int32 priority = 26;
 }
 
 message Bundle {

@@ -18,10 +18,11 @@
 
 namespace ray {
 
-RayTask::RayTask(const rpc::Task &message, int64_t backlog_size)
+RayTask::RayTask(const rpc::Task &message, int64_t backlog_size, bool has_locality)
     : task_spec_(message.task_spec()),
       task_execution_spec_(message.task_execution_spec()),
-      backlog_size_(backlog_size) {
+      backlog_size_(backlog_size),
+      has_locality_(has_locality) {
   ComputeDependencies();
 }
 

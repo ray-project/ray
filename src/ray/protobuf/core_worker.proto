@@ -292,6 +292,8 @@ message RestoreSpilledObjectsRequest {
   // Object ids to restore. The order of object ids
   // must be the same as spilled_objects_url.
   repeated bytes object_ids_to_restore = 2;
+  // NOTE(memory): There is only ever one object in object_ids_to_restore.
+  repeated int32 priority = 3;
 }
 
 message RestoreSpilledObjectsReply {

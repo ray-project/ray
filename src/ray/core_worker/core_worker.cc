@@ -1226,6 +1226,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
 Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
                                   const size_t data_size, const ObjectID &object_id,
                                   const rpc::Address &owner_address,
+                                  const Priority &priority,
                                   std::shared_ptr<Buffer> *data, bool created_by_worker) {
   if (options_.is_local_mode) {
     return Status::NotImplemented(
@@ -2148,6 +2149,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
       task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {
       RAY_RETURN_NOT_OK(CreateExisting(metadata, data_size, object_id, owner_address,
+                                       Priority(),
                                        &data_buffer,
                                        /*created_by_worker=*/true));
       object_already_exists = !data_buffer;

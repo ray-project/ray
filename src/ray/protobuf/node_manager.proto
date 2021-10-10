@@ -26,6 +26,7 @@ message RequestWorkerLeaseRequest {
   TaskSpec resource_spec = 1;
   // Worker's backlog size for this spec's shape.
   int64 backlog_size = 2;
+  bool has_locality = 3;
 }
 
 message RequestWorkerLeaseReply {

@@ -375,6 +375,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":plasma_client",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 
@@ -764,6 +765,7 @@ cc_library(
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
         "@boost//:fiber",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -1208,6 +1210,18 @@ cc_test(
         "ray_common",
         "raylet_lib",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "task_priority_test",
+    size = "small",
+    srcs = ["src/ray/common/task/task_priority_test.cc"],
+    copts = COPTS,
+    deps = [
+        "ray_common",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 

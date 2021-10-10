@@ -25,6 +25,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task_common.h"
+#include "ray/common/task/task_priority.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
@@ -111,6 +112,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   size_t NumArgs() const;
 
   size_t NumReturns() const;
+
+  std::vector<ObjectID> ReturnIds() const;
 
   bool ArgByRef(size_t arg_index) const;
 
@@ -238,6 +241,24 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   // Whether or not we should capture parent's placement group implicitly.
   bool PlacementGroupCaptureChildTasks() const;
+
+  Priority GetPriority() const {
+    std::vector<int> p(message_->priority().data(), message_->priority().data() + message_->priority().size());
+    return Priority(p);
+  }
+
+  TaskKey GetTaskKey() const {
+    std::vector<int> p(message_->priority().data(), message_->priority().data() + message_->priority().size());
+    return std::make_pair<Priority, TaskID>(std::move(p), TaskId());
+  }
+
+  void SetPriority(const Priority &priority) {
+    auto p = message_->mutable_priority();
+    p->Clear();
+    for (auto &s : priority.score) {
+      p->Add(s);
+    }
+  }
 
   // Concurrency groups of the actor.
   std::vector<ConcurrencyGroup> ConcurrencyGroups() const;

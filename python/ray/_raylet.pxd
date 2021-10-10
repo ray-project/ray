@@ -17,6 +17,7 @@ from ray.includes.common cimport (
     CBuffer,
     CRayObject,
     CAddress,
+    CPriority,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -119,6 +120,7 @@ cdef class CoreWorker:
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
+                            const CPriority &priority,
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
