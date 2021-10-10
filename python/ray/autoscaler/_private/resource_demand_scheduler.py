@@ -764,11 +764,11 @@ def _utilization_score(node_resources: ResourceDict,
             return None
 
     fittable = []
-    resource_types = {}
+    resource_types = set()
     for r in resources:
         for k, v in r.items():
             if v > 0:
-                resource_types[k] = True
+                resource_types.add(k)
         if _fits(remaining, r):
             fittable.append(r)
             _inplace_subtract(remaining, r)
