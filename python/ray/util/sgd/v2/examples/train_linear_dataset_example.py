@@ -43,6 +43,7 @@ def get_datasets(a=5, b=10, size=1000,
 
 
 def train(iterable_dataset, model, loss_fn, optimizer, device):
+    model.train()
     for X, y in iterable_dataset:
         X = X.to(device)
         y = y.to(device)
