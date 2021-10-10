@@ -1,12 +1,16 @@
 from types import FunctionType
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Callable, Optional
 
-from ray.serve.pipeline.node import CallableNodeFactory, INPUT, PipelineNode
+from ray.serve.pipeline.node import INPUT, PipelineNode
 from ray.serve.pipeline.common import StepConfig
 
 
-def validate_step_args(*args, **kwargs):
-    """Checks that all args are PipelineNodes."""
+def _validate_step_args(*args, **kwargs):
+    """Validate arguments passed into a step.
+
+    Currently, these must only consist of other steps (including INPUT), and
+    kwargs are not supported.
+    """
     if len(kwargs):
         raise NotImplementedError("No kwargs support yet!")
 
@@ -40,43 +44,37 @@ class PipelineStep:
         raise NotImplementedError(".options() not supported yet.")
 
 
-class FunctionPipelineStep(PipelineStep):
-    def __init__(self, func: Callable, config: StepConfig):
+class CallablePipelineStep(PipelineStep):
+    """A step that is ready to be used in a pipeline.
+
+    Wraps either a function or a class and its constructor args & kwargs.
+
+    This should be used by calling it with a number of other pipeline steps
+    as its arguments (or the INPUT step).
+    """
+
+    def __init__(self, callable_factory: Callable[[], Callable],
+                 config: StepConfig):
         super().__init__(config)
-        assert isinstance(func, FunctionType)
-        self._func = func
+        assert callable(callable_factory)
+        self._callable_factory = callable_factory
 
     def options(self, *args, **kwargs):
         raise NotImplementedError("No options yet!")
 
     def __call__(self, *args, **kwargs):
-        validate_step_args(*args, **kwargs)
+        _validate_step_args(*args, **kwargs)
         return PipelineNode(
-            CallableNodeFactory(lambda: self._func, self._config),
-            incoming_edges=args)
-
-
-class InstantiatedClassPipelineStep(PipelineStep):
-    def __init__(self, _class: Callable, class_args: Tuple[Any],
-                 class_kwargs: Dict[Any, Any], config: StepConfig):
-        super().__init__(config)
-        self._class = _class
-        self._class_args = class_args
-        self._class_kwargs = class_kwargs
-
-    def options(self, *args, **kwargs):
-        raise NotImplementedError("No options yet!")
-
-    def __call__(self, *args, **kwargs):
-        validate_step_args(*args, **kwargs)
-        return PipelineNode(
-            CallableNodeFactory(
-                lambda: self._class(*self._class_args, **self._class_kwargs),
-                self._config),
-            incoming_edges=args)
+            self._callable_factory, self._config, incoming_edges=args)
 
 
 class UninstantiatedClassPipelineStep(PipelineStep):
+    """Represents a class step whose constructor has not been initialized.
+
+    This must be called with constructor args & kwargs to return an
+    InstantiatedClassPipelineStep before it can actually be used.
+    """
+
     def __init__(self, _class: Callable, config: StepConfig):
         super().__init__(config)
         self._class = _class
@@ -85,14 +83,14 @@ class UninstantiatedClassPipelineStep(PipelineStep):
         raise NotImplementedError("No options yet!")
 
     def __call__(self, *args, **kwargs):
-        return InstantiatedClassPipelineStep(self._class, args, kwargs,
-                                             self._config)
+        return CallablePipelineStep(lambda: self._class(*args, **kwargs),
+                                    self._config)
 
 
 def step(_func_or_class: Optional[Callable] = None,
          num_replicas: int = 1,
          inline: bool = True) -> Callable[[Callable], PipelineStep]:
-    """Define a pipeline step.
+    """Decorator used to define a pipeline step.
 
     Args:
         num_replicas (int): The number of Ray actors to start that
@@ -114,7 +112,7 @@ def step(_func_or_class: Optional[Callable] = None,
 
     def decorator(_func_or_class):
         if isinstance(_func_or_class, FunctionType):
-            return FunctionPipelineStep(_func_or_class, config)
+            return CallablePipelineStep(lambda: _func_or_class, config)
         else:
             return UninstantiatedClassPipelineStep(_func_or_class, config)
 

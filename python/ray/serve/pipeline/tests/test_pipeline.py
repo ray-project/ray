@@ -1,15 +1,20 @@
 import tempfile
 
+import pytest
+
 from ray.serve import pipeline
+from ray.serve.pipeline.test_utils import enable_inline_only
 
 
-def test_basic_sequential():
-    @pipeline.step
+@pytest.mark.parametrize("inline", [True, False])
+@enable_inline_only
+def test_basic_sequential(inline, shared_ray_instance):
+    @pipeline.step(inline=inline)
     def step1(input_arg: str):
         assert isinstance(input_arg, str)
         return input_arg + "|step1"
 
-    @pipeline.step
+    @pipeline.step(inline=inline)
     def step2(input_arg: str):
         assert isinstance(input_arg, str)
         return input_arg + "|step2"
@@ -18,20 +23,22 @@ def test_basic_sequential():
     assert sequential.call("HELLO") == "HELLO|step1|step2"
 
 
-def test_basic_parallel():
-    @pipeline.step
+@pytest.mark.parametrize("inline", [True, False])
+@enable_inline_only
+def test_basic_parallel(inline, shared_ray_instance):
+    @pipeline.step(inline=inline)
     def step1(input_arg: str):
         return input_arg
 
-    @pipeline.step
+    @pipeline.step(inline=inline)
     def step2_1(input_arg: str):
         return f"step2_1_{input_arg}"
 
-    @pipeline.step
+    @pipeline.step(inline=inline)
     def step2_2(input_arg: str):
         return f"step2_2_{input_arg}"
 
-    @pipeline.step
+    @pipeline.step(inline=inline)
     def step3(step2_1_output: str, step2_2_output: str):
         return f"{step2_1_output}|{step2_2_output}"
 
@@ -40,16 +47,18 @@ def test_basic_parallel():
     assert parallel.call("HELLO") == "step2_1_HELLO|step2_2_HELLO"
 
 
-def test_multiple_inputs():
-    @pipeline.step
+@pytest.mark.parametrize("inline", [True, False])
+@enable_inline_only
+def test_multiple_inputs(inline, shared_ray_instance):
+    @pipeline.step(inline=inline)
     def step1(input_arg: str):
         return f"step1_{input_arg}"
 
-    @pipeline.step
+    @pipeline.step(inline=inline)
     def step2(input_arg: str):
         return f"step2_{input_arg}"
 
-    @pipeline.step
+    @pipeline.step(inline=inline)
     def step3(step1_output: str, step2_output: str):
         return f"{step1_output}|{step2_output}"
 
@@ -58,8 +67,10 @@ def test_multiple_inputs():
     assert multiple_inputs.call("HELLO") == "step1_HELLO|step2_HELLO"
 
 
-def test_basic_class():
-    @pipeline.step
+@pytest.mark.parametrize("inline", [True, False])
+@enable_inline_only
+def test_basic_class(inline, shared_ray_instance):
+    @pipeline.step(inline=inline)
     class GreeterStep:
         def __init__(self, greeting: str):
             self._greeting = greeting
@@ -71,12 +82,15 @@ def test_basic_class():
     assert greeter.call("Theodore") == "Top of the morning Theodore!"
 
 
-def test_class_constructor_not_called_until_deployed():
+@pytest.mark.parametrize("inline", [True, False])
+@enable_inline_only
+def test_class_constructor_not_called_until_deployed(inline,
+                                                     shared_ray_instance):
     """Constructor should only be called once, on .deploy()."""
 
     with tempfile.NamedTemporaryFile("w") as tmp:
 
-        @pipeline.step
+        @pipeline.step(inline=inline)
         class FileWriter:
             def __init__(self, tmpfile: str, msg: str):
                 with open(tmpfile, "w") as f:
@@ -105,8 +119,10 @@ def test_class_constructor_not_called_until_deployed():
         assert constructor_called_once()
 
 
-def test_mix_classes_and_functions():
-    @pipeline.step
+@pytest.mark.parametrize("inline", [True, False])
+@enable_inline_only
+def test_mix_classes_and_functions(inline, shared_ray_instance):
+    @pipeline.step(inline=inline)
     class GreeterStep1:
         def __init__(self, greeting: str):
             self._greeting = greeting
@@ -114,11 +130,11 @@ def test_mix_classes_and_functions():
         def __call__(self, name: str):
             return f"{self._greeting} {name}!"
 
-    @pipeline.step
+    @pipeline.step(inline=inline)
     def greeter_step_2(name: str):
         return f"How's it hanging, {name}?"
 
-    @pipeline.step
+    @pipeline.step(inline=inline)
     def combiner(greeting1: str, greeting2: str):
         return f"{greeting1}|{greeting2}"
 
@@ -129,6 +145,5 @@ def test_mix_classes_and_functions():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
