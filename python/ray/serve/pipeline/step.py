@@ -1,20 +1,8 @@
 from types import FunctionType
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from pydantic import BaseModel, PositiveInt, validator
-
-from ray.serve.pipeline.node import PipelineNode, INPUT
-
-
-class StepConfig(BaseModel):
-    num_replicas: Optional[PositiveInt] = None
-
-    class Config:
-        validate_assignment = True
-
-    @validator("num_replicas")
-    def set_num_replicas(cls, num_replicas: Optional[PositiveInt]):
-        return num_replicas if num_replicas is not None else 1
+from ray.serve.pipeline.node import CallableNodeFactory, INPUT, PipelineNode
+from ray.serve.pipeline.common import StepConfig
 
 
 def validate_step_args(*args, **kwargs):
@@ -63,7 +51,9 @@ class FunctionPipelineStep(PipelineStep):
 
     def __call__(self, *args, **kwargs):
         validate_step_args(*args, **kwargs)
-        return PipelineNode(lambda: self._func, incoming_edges=args)
+        return PipelineNode(
+            CallableNodeFactory(lambda: self._func, self._config),
+            incoming_edges=args)
 
 
 class InstantiatedClassPipelineStep(PipelineStep):
@@ -80,7 +70,9 @@ class InstantiatedClassPipelineStep(PipelineStep):
     def __call__(self, *args, **kwargs):
         validate_step_args(*args, **kwargs)
         return PipelineNode(
-            lambda: self._class(*self._class_args, **self._class_kwargs),
+            CallableNodeFactory(
+                lambda: self._class(*self._class_args, **self._class_kwargs),
+                self._config),
             incoming_edges=args)
 
 
@@ -98,13 +90,15 @@ class UninstantiatedClassPipelineStep(PipelineStep):
 
 
 def step(_func_or_class: Optional[Callable] = None,
-         num_replicas: Optional[int] = None
-         ) -> Callable[[Callable], PipelineStep]:
+         num_replicas: int = 1,
+         inline: bool = True) -> Callable[[Callable], PipelineStep]:
     """Define a pipeline step.
 
     Args:
         num_replicas (int): The number of Ray actors to start that
             will run this step. Defaults to 1.
+        inline (bool): If true, this step will be run inline in the driver
+            process as a normal function call.
 
     Example:
 
@@ -116,7 +110,7 @@ def step(_func_or_class: Optional[Callable] = None,
         PipelineStep
     """
 
-    config = StepConfig(num_replicas=num_replicas)
+    config = StepConfig(num_replicas=num_replicas, inline=inline)
 
     def decorator(_func_or_class):
         if isinstance(_func_or_class, FunctionType):

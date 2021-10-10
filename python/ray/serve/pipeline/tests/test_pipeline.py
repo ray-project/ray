@@ -78,9 +78,10 @@ def test_class_constructor_not_called_until_deployed():
 
         @pipeline.step
         class FileWriter:
-            def __init__(self, msg: str):
-                tmp.write(msg)
-                tmp.flush()
+            def __init__(self, tmpfile: str, msg: str):
+                with open(tmpfile, "w") as f:
+                    f.write(msg)
+                    f.flush()
 
             def __call__(self, arg: str):
                 return arg
@@ -91,7 +92,7 @@ def test_class_constructor_not_called_until_deployed():
             with open(tmp.name, "r") as f:
                 return f.read() == msg
 
-        file_writer = FileWriter(msg)
+        file_writer = FileWriter(tmp.name, msg)
         assert not constructor_called_once()
 
         not_deployed = file_writer(pipeline.INPUT)
