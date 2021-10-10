@@ -16,7 +16,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/system/error_code.hpp>
 #include <string>
