@@ -754,6 +754,7 @@ def build_eager_tf_policy(
             with tf.GradientTape(persistent=compute_gradients_fn is not None) \
                     as tape:
                 losses = loss_fn(self, self.model, self.dist_class, samples)
+            losses = force_list(losses)
 
             # User provided a compute_gradients_fn.
             if compute_gradients_fn:
@@ -764,13 +765,12 @@ def build_eager_tf_policy(
                 optimizer = OptimizerWrapper(tape)
                 # More than one loss terms/optimizers.
                 if self.config["_tf_policy_handles_more_than_one_loss"]:
-                    losses = force_list(losses)
                     grads_and_vars = compute_gradients_fn(
                         self, [optimizer] * len(losses), losses)
                 # Only one loss and one optimizer.
                 else:
                     grads_and_vars = [
-                        compute_gradients_fn(self, optimizer, losses)
+                        compute_gradients_fn(self, optimizer, losses[0])
                     ]
             # Default: Compute gradients using the above tape.
             else:
