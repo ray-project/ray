@@ -38,7 +38,7 @@ import pyarrow
 
 import ray
 from ray.data.dataset_pipeline import DatasetPipeline
-from ray.data.datasource.datasource import RandomIntRowDatasource, RangeDatasource
+from ray.data.datasource.datasource import RandomIntRowDatasource
 
 #######################################################################
 # Build shuffle ingestion pipeline
@@ -154,7 +154,7 @@ if not args.large_scale_test:
     # Let's run the e2e pipeline
     start = time.time()
     ray.get([worker.train.remote() for worker in training_workers])
-    print(f"total ingestion time: {time.time() - start}")
+    print(f"total ingestion time: {int(time.time() - start)}s")
 
     # -> Write Progress: 100%|████████████████████| 201/201 [00:00<00:00, 228.67it/s]
     # -> Stage 0:   0%|          | 0/5 [00:00<?, ?it/s]
@@ -168,7 +168,7 @@ if not args.large_scale_test:
     # -> Stage 0: 100%|██████████| 5/5 [00:46<00:00, 10.34s/it]
     # -> ...
     # -> (TrainingWorker pid=1651387) Training... worker: 3, epoch: 4
-    # -> total ingestion time: 61.0583393573761
+    # -> total ingestion time: 61s
 
 #################################################################################
 # Scale the shuffle ingestion pipeline
@@ -217,7 +217,8 @@ if args.large_scale_test:
     NUM_TRAINING_WORKERS = 16
     NUM_EPOCHS = 5
     NUM_COLUMNS = 10
-    SIZE_500GiB = 500 * 1024 * 1024 * 1024
+    GiB = 1024 * 1024 * 1024
+    SIZE_500GiB = 500 * GiB
     TOTAL_NUM_NODES = 70 + 16 + 1
 
     # use the AWS cluster we just set up.
@@ -244,7 +245,9 @@ if args.large_scale_test:
 
     # Let's run the large scale test.
     ray.get([worker.train.remote() for worker in training_workers])
-    print(f"total ingestion time: {time.time() - start}")
+    print(f"total ingestion time: {int(time.time() - start)}s")
+    throughput = SIZE_500GiB * NUM_EPOCHS / (time.time() - start) / GiB
+    print("throughput: {0:0.2f}GiB/s".format(throughput))
 
 #################################################################################
 #
@@ -254,9 +257,9 @@ if args.large_scale_test:
 #
 #     $ ray submit ./big_data_ingestion.yaml ./big_data_ingestion.py --large-scale-test
 #     # -> Connecting to existing Ray cluster at address: 172.31.47.38:6379
-# .   # -> waiting for nodes to start up: 1/87
-# .   # -> ...
-# .   # -> waiting for nodes to start up: 87/87
+#     # -> waiting for nodes to start up: 1/87
+#     # -> ...
+#     # -> waiting for nodes to start up: 87/87
 #     # -> Stage 0:   0%|          | 0/5 [00:00<?, ?it/s]
 #     # -> Stage 0:  20%|██        | 1/5 [00:00<00:02,  1.77it/s]
 #     # -> Stage 0:  40%|████      | 2/5 [00:38<00:35, 11.67s/it]
@@ -269,4 +272,5 @@ if args.large_scale_test:
 #     # -> Stage 0: 100%|██████████| 5/5 [05:02<00:00, 67.01s/it]
 #     # -> ...
 #     # -> (TrainingWorker pid=5074, ip=172.31.40.190) Training... worker: 0, epoch: 4
-#     # -> total ingestion time: 612.6052961349487
+#     # -> total ingestion time: 291s
+#     # -> throughput: 8.56GiB/s
