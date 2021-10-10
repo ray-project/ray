@@ -1,10 +1,10 @@
 """Networking overhead (200 trials on 200 nodes)
 
-In this run, we will start 200 trials and run them on 200 different nodes.
+In this run, we will start 100 trials and run them on 100 different nodes.
 This test will thus measure the overhead that comes with network communication
 and specifically log synchronization.
 
-Cluster: cluster_200x2.yaml
+Cluster: cluster_100x2.yaml
 
 Test owner: krfricke
 
@@ -12,16 +12,17 @@ Acceptance criteria: Should run faster than 500 seconds.
 
 Theoretical minimum time: 300 seconds
 """
+import argparse
 import ray
 from ray import tune
 
-from _trainable import timed_tune_run
+from ray.tune.utils.release_test_util import timed_tune_run
 
 
-def main():
+def main(smoke_test: bool = False):
     ray.init(address="auto")
 
-    num_samples = 200
+    num_samples = 100 if not smoke_test else 20
     results_per_second = 0.01
     trial_length_s = 300
 
@@ -38,4 +39,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="Finish quickly for training.")
+    args = parser.parse_args()
+
+    main(args.smoke_test)

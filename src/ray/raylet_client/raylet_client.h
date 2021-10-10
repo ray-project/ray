@@ -25,6 +25,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/util/process.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -65,6 +66,10 @@ class WorkerLeaseInterface {
   /// \return ray::Status
   virtual void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size = -1) = 0;
+  virtual void RequestWorkerLease(
+      const rpc::TaskSpec &task_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1) = 0;
 
@@ -116,7 +121,7 @@ class ResourceReserveInterface {
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
   virtual void CancelResourceReserve(
-      BundleSpecification &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
   virtual void ReleaseUnusedBundles(
@@ -166,6 +171,9 @@ class RayletClientInterface : public PinObjectsInterface,
   /// \param callback Callback that will be called after raylet replied the system config.
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
+
+  virtual void GetGcsServerAddress(
+      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
 };
 
 namespace raylet {
@@ -210,6 +218,7 @@ class RayletClient : public RayletClientInterface {
   /// \param worker_type The type of the worker. If it is a certain worker type, an
   /// additional message will be sent to register as one.
   /// \param job_id The job ID of the driver or worker.
+  /// \param runtime_env_hash The hash of the runtime env of the worker.
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
   /// \param status This will be populated with the result of connection attempt.
@@ -221,12 +230,14 @@ class RayletClient : public RayletClientInterface {
   /// \param serialized_job_config If this is a driver connection, the job config
   /// provided by driver will be passed to Raylet. If this is a worker connection,
   /// this will be populated with the current job config.
+  /// \param worker_shim_pid The PID of the process for setup worker runtime env.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
-               rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
+               rpc::WorkerType worker_type, const JobID &job_id,
+               const int &runtime_env_hash, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::string *serialized_job_config);
+               int *port, std::string *serialized_job_config, pid_t worker_shim_pid);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -341,14 +352,6 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
-  /// Sets a resource with the specified capacity and client id
-  /// \param resource_name Name of the resource to be set
-  /// \param capacity Capacity of the resource
-  /// \param node_id NodeID where the resource is to be set
-  /// \return ray::Status
-  ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::NodeID &node_id);
-
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.
   /// \param callback Callback that will be called after raylet completes the
@@ -360,6 +363,13 @@ class RayletClient : public RayletClientInterface {
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size) override {
+    RequestWorkerLease(resource_spec.GetMessage(), callback, backlog_size);
+  }
+
+  void RequestWorkerLease(
+      const rpc::TaskSpec &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size) override;
 
@@ -390,7 +400,7 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements CancelResourceReserveInterface.
   void CancelResourceReserve(
-      BundleSpecification &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 
@@ -405,6 +415,9 @@ class RayletClient : public RayletClientInterface {
 
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
+
+  void GetGcsServerAddress(
+      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) override;
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
@@ -424,6 +437,8 @@ class RayletClient : public RayletClientInterface {
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
+  int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
+
  private:
   /// gRPC client to the raylet. Right now, this is only used for a couple
   /// request types.
@@ -437,6 +452,12 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
+
+  /// The number of object ID pin RPCs currently in flight.
+  std::atomic<int64_t> pins_in_flight_{0};
+
+ protected:
+  RayletClient() {}
 };
 
 }  // namespace raylet

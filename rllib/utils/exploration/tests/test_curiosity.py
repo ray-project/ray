@@ -153,7 +153,7 @@ class TestCuriosity(unittest.TestCase):
         config["lr"] = 0.001
 
         num_iterations = 10
-        for fw in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             # W/ Curiosity. Expect to learn something.
             config["exploration_config"] = {
                 "type": "Curiosity",
@@ -244,7 +244,7 @@ class TestCuriosity(unittest.TestCase):
             # env = env_maker(config["env_config"])
             # s = env.reset()
             # for _ in range(10000):
-            #     s, r, d, _ = env.step(trainer.compute_action(s))
+            #     s, r, d, _ = env.step(trainer.compute_single_action(s))
             #     if d:
             #         s = env.reset()
             #     env.render()

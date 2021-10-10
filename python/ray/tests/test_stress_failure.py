@@ -6,7 +6,7 @@ import time
 import ray
 from ray.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
-from ray.test_utils import get_error_message
+from ray._private.test_utils import get_error_message
 
 
 @pytest.fixture(params=[1, 4])

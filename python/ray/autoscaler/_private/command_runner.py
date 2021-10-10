@@ -779,7 +779,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "differ from those on the running container.")
         return re_init_required
 
-    def run_init(self, *, as_head, file_mounts, sync_run_yet):
+    def run_init(self, *, as_head: bool, file_mounts: Dict[str, str],
+                 sync_run_yet: bool):
         BOOTSTRAP_MOUNTS = [
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]
@@ -820,6 +821,12 @@ class DockerCommandRunner(CommandRunnerInterface):
                     run_env="host")
 
         if (not container_running) or requires_re_init:
+            if not sync_run_yet:
+                # Do not start the actual image as we need to run file_sync
+                # first to ensure that all folders are created with the
+                # correct ownership. Docker will create the folders with
+                # `root` as the owner.
+                return True
             # Get home directory
             image_env = self.ssh_command_runner.run(
                 f"{self.docker_cmd} " + "inspect -f '{{json .Config.Env}}' " +

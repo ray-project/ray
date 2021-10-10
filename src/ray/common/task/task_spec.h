@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include <cstddef>
@@ -20,31 +34,22 @@ namespace ray {
 typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
+/// ConcurrencyGroup is a group of actor methods that shares
+/// a executing thread pool.
+struct ConcurrencyGroup {
+  // Name of this group.
+  std::string name;
+  // Max concurrency of this group.
+  uint32_t max_concurrency;
+  // Function descriptors of the actor methods in this group.
+  std::vector<ray::FunctionDescriptor> function_descriptors;
+};
+
 static inline rpc::ObjectReference GetReferenceForActorDummyObject(
     const ObjectID &object_id) {
   rpc::ObjectReference ref;
   ref.set_object_id(object_id.Binary());
   return ref;
-};
-
-/// Information about the environment for a task (actor and non-actor).
-class RuntimeEnv {
- public:
-  RuntimeEnv() {}
-  RuntimeEnv(std::string conda_env_name) : conda_env_name(conda_env_name) {}
-  std::string conda_env_name;
-
-  /// Perform a simple dict update.
-  ///
-  /// \param runtime_env the runtime env to merge into the current runtime env.
-  void Update(RuntimeEnv runtime_env);
-
-  // Get the corresponding protobuf message.
-  rpc::RuntimeEnv GetMessage() const;
-
-  static RuntimeEnv FromProto(rpc::RuntimeEnv message);
-
-  bool IsEmpty() const;
 };
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
@@ -95,7 +100,13 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
-  ray::RuntimeEnv RuntimeEnv() const;
+  [[nodiscard]] rpc::RuntimeEnv RuntimeEnv() const;
+
+  std::string SerializedRuntimeEnv() const;
+
+  bool HasRuntimeEnv() const;
+
+  int GetRuntimeEnvHash() const;
 
   size_t NumArgs() const;
 
@@ -105,7 +116,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ArgId(size_t arg_index) const;
 
-  rpc::ObjectReference ArgRef(size_t arg_index) const;
+  const rpc::ObjectReference &ArgRef(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
 
@@ -117,8 +128,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   size_t ArgMetadataSize(size_t arg_index) const;
 
-  /// Return the ObjectIDs that were inlined in this task argument.
-  const std::vector<ObjectID> ArgInlinedIds(size_t arg_index) const;
+  /// Return the ObjectRefs that were inlined in this task argument.
+  const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;
 
   /// Return the scheduling class of the task. The scheduler makes a best effort
   /// attempt to fairly dispatch tasks of different classes, preventing
@@ -161,8 +172,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string GetDebuggerBreakpoint() const;
 
-  std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
-
   bool IsDriverTask() const;
 
   Language GetLanguage() const;
@@ -192,6 +201,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ActorID ActorId() const;
 
   TaskID CallerId() const;
+
+  const std::string GetSerializedActorHandle() const;
 
   const rpc::Address &CallerAddress() const;
 
@@ -228,6 +239,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Whether or not we should capture parent's placement group implicitly.
   bool PlacementGroupCaptureChildTasks() const;
 
+  // Concurrency groups of the actor.
+  std::vector<ConcurrencyGroup> ConcurrencyGroups() const;
+
+  std::string ConcurrencyGroupName() const;
+
  private:
   void ComputeResources();
 
@@ -249,6 +265,48 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);
+};
+
+/// \class WorkerCacheKey
+///
+/// Class used to cache workers, keyed by runtime_env.
+class WorkerCacheKey {
+ public:
+  /// Create a cache key with the given environment variable overrides and serialized
+  /// runtime_env.
+  ///
+  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
+  /// worker. \param required_resources The required resouce.
+  WorkerCacheKey(const std::string serialized_runtime_env,
+                 const std::unordered_map<std::string, double> required_resources);
+
+  bool operator==(const WorkerCacheKey &k) const;
+
+  /// Check if this worker's environment is empty (the default).
+  ///
+  /// \return true if there are no environment variables set and the runtime env is the
+  /// empty string (protobuf default) or a JSON-serialized empty dict.
+  bool EnvIsEmpty() const;
+
+  /// Get the hash for this worker's environment.
+  ///
+  /// \return The hash of the serialized runtime_env.
+  std::size_t Hash() const;
+
+  /// Get the int-valued hash for this worker's environment, useful for portability in
+  /// flatbuffers.
+  ///
+  /// \return The hash truncated to an int.
+  int IntHash() const;
+
+ private:
+  /// The JSON-serialized runtime env for this worker.
+  const std::string serialized_runtime_env;
+  /// The required resources for this worker.
+  const std::unordered_map<std::string, double> required_resources;
+  /// The cached hash of the worker's environment.  This is set to 0
+  /// for unspecified or empty environments.
+  mutable std::size_t hash_ = 0;
 };
 
 }  // namespace ray

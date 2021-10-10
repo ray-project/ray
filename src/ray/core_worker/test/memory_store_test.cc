@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/synchronization/mutex.h"
-
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
+#include "absl/synchronization/mutex.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 
 namespace ray {
+namespace core {
 
 TEST(TestMemoryStore, TestReportUnhandledErrors) {
   std::vector<std::shared_ptr<RayObject>> results;
@@ -28,26 +28,29 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 
   std::shared_ptr<CoreWorkerMemoryStore> provider =
       std::make_shared<CoreWorkerMemoryStore>(
-          nullptr, nullptr, nullptr, nullptr,
-          [&](const RayObject &obj) { unhandled_count++; });
+          nullptr, nullptr, nullptr, [&](const RayObject &obj) { unhandled_count++; });
   RayObject obj1(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   RayObject obj2(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   auto id1 = ObjectID::FromRandom();
   auto id2 = ObjectID::FromRandom();
 
-  // Check delete without get.
+  // Check basic put and get.
+  ASSERT_TRUE(provider->GetIfExists(id1) == nullptr);
   RAY_CHECK(provider->Put(obj1, id1));
   RAY_CHECK(provider->Put(obj2, id2));
+  ASSERT_TRUE(provider->GetIfExists(id1) != nullptr);
   ASSERT_EQ(unhandled_count, 0);
+
+  // Check delete without get.
   provider->Delete({id1, id2});
-  ASSERT_EQ(unhandled_count, 2);
+  ASSERT_EQ(unhandled_count, 1);
   unhandled_count = 0;
 
   // Check delete after get.
   RAY_CHECK(provider->Put(obj1, id1));
   RAY_CHECK(provider->Put(obj1, id2));
   RAY_UNUSED(provider->Get({id1}, 1, 100, context, false, &results));
-  provider->GetOrPromoteToPlasma(id2);
+  RAY_UNUSED(provider->Get({id2}, 1, 100, context, false, &results));
   provider->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
 
@@ -63,8 +66,7 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 TEST(TestMemoryStore, TestMemoryStoreStats) {
   /// Simple validation for test memory store stats.
   std::shared_ptr<CoreWorkerMemoryStore> provider =
-      std::make_shared<CoreWorkerMemoryStore>(nullptr, nullptr, nullptr, nullptr,
-                                              nullptr);
+      std::make_shared<CoreWorkerMemoryStore>(nullptr, nullptr, nullptr, nullptr);
 
   // Iterate through the memory store and compare the values that are obtained by
   // GetMemoryStoreStatisticalData.
@@ -122,6 +124,7 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
   ASSERT_EQ(item.used_object_store_memory, expected_item3.used_object_store_memory);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

@@ -18,22 +18,22 @@ import redis
 import requests
 
 from ray import ray_constants
-from ray.test_utils import (format_web_url, wait_for_condition,
-                            wait_until_server_available, run_string_as_driver,
-                            wait_until_succeeded_without_exception)
+from ray._private.test_utils import (
+    format_web_url, wait_for_condition, wait_until_server_available,
+    run_string_as_driver, wait_until_succeeded_without_exception)
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
-from ray.new_dashboard import dashboard
-import ray.new_dashboard.consts as dashboard_consts
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.modules
+from ray.dashboard import dashboard
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.modules
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
 def cleanup_test_files():
-    module_path = ray.new_dashboard.modules.__path__[0]
+    module_path = ray.dashboard.modules.__path__[0]
     filename = os.path.join(module_path, "test_for_bad_import.py")
     logger.info("Remove test file: %s", filename)
     try:
@@ -43,7 +43,7 @@ def cleanup_test_files():
 
 
 def prepare_test_files():
-    module_path = ray.new_dashboard.modules.__path__[0]
+    module_path = ray.dashboard.modules.__path__[0]
     filename = os.path.join(module_path, "test_for_bad_import.py")
     logger.info("Prepare test file: %s", filename)
     with open(filename, "w") as f:
@@ -92,7 +92,7 @@ def test_basic(ray_start_with_dashboard):
         for p in processes:
             try:
                 for c in p.cmdline():
-                    if "new_dashboard/agent.py" in c:
+                    if "dashboard/agent.py" in c:
                         return p
             except Exception:
                 pass
@@ -107,7 +107,7 @@ def test_basic(ray_start_with_dashboard):
         agent_proc.kill()
         agent_proc.wait()
         # The agent will be restarted for imports failure.
-        for x in range(50):
+        for _ in range(300):
             agent_proc = _search_agent(raylet_proc.children())
             if agent_proc:
                 agent_pids.add(agent_proc.pid)
@@ -173,52 +173,6 @@ def test_dashboard_address(ray_start_with_dashboard):
     assert webui_ip in [
         "127.0.0.1", ray_start_with_dashboard["node_ip_address"]
     ]
-
-
-def test_nodes_update(enable_test_module, ray_start_with_dashboard):
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
-            is True)
-    webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = format_web_url(webui_url)
-
-    timeout_seconds = 10
-    start_time = time.time()
-    while True:
-        time.sleep(1)
-        try:
-            response = requests.get(webui_url + "/test/dump")
-            response.raise_for_status()
-            try:
-                dump_info = response.json()
-            except Exception as ex:
-                logger.info("failed response: %s", response.text)
-                raise ex
-            assert dump_info["result"] is True
-            dump_data = dump_info["data"]
-            assert len(dump_data["nodes"]) == 1
-            assert len(dump_data["agents"]) == 1
-            assert len(dump_data["nodeIdToIp"]) == 1
-            assert len(dump_data["nodeIdToHostname"]) == 1
-            assert dump_data["nodes"].keys() == dump_data[
-                "nodeIdToHostname"].keys()
-
-            response = requests.get(webui_url + "/test/notified_agents")
-            response.raise_for_status()
-            try:
-                notified_agents = response.json()
-            except Exception as ex:
-                logger.info("failed response: %s", response.text)
-                raise ex
-            assert notified_agents["result"] is True
-            notified_agents = notified_agents["data"]
-            assert len(notified_agents) == 1
-            assert notified_agents == dump_data["agents"]
-            break
-        except (AssertionError, requests.exceptions.ConnectionError) as e:
-            logger.info("Retry because of %s", e)
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                raise Exception("Timed out while testing.")
 
 
 def test_http_get(enable_test_module, ray_start_with_dashboard):
@@ -366,6 +320,22 @@ def test_async_loop_forever():
     loop.run_forever()
     assert counter[0] > 2
 
+    counter2 = [0]
+    task = None
+
+    @dashboard_utils.async_loop_forever(interval_seconds=0.1, cancellable=True)
+    async def bar():
+        nonlocal task
+        counter2[0] += 1
+        if counter2[0] > 2:
+            task.cancel()
+
+    loop = asyncio.new_event_loop()
+    task = loop.create_task(bar())
+    with pytest.raises(asyncio.CancelledError):
+        loop.run_until_complete(task)
+    assert counter2[0] == 3
+
 
 def test_dashboard_module_decorator(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(
@@ -378,7 +348,7 @@ def test_dashboard_module_decorator(enable_test_module):
 
     test_code = """
 import os
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 
 os.environ.pop("RAY_DASHBOARD_MODULE_TEST")
 head_cls_list = dashboard_utils.get_all_modules(
@@ -482,7 +452,6 @@ def test_get_cluster_status(ray_start_with_dashboard):
         print(response.json())
         assert response.json()["result"]
         assert "autoscalingStatus" in response.json()["data"]
-        assert response.json()["data"]["autoscalingStatus"] is None
         assert "autoscalingError" in response.json()["data"]
         assert response.json()["data"]["autoscalingError"] is None
         assert "clusterStatus" in response.json()["data"]
@@ -669,6 +638,26 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
+
+
+def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+
+    all_processes = ray.worker._global_node.all_processes
+    dashboard_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
+    dashboard_proc = psutil.Process(dashboard_info.process.pid)
+    gcs_server_info = all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]
+    gcs_server_proc = psutil.Process(gcs_server_info.process.pid)
+
+    assert dashboard_proc.status() in [
+        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING, psutil.STATUS_DISK_SLEEP
+    ]
+
+    gcs_server_proc.kill()
+    gcs_server_proc.wait()
+    # The dashboard exits by os._exit(-1)
+    assert dashboard_proc.wait(10) == 255
 
 
 if __name__ == "__main__":

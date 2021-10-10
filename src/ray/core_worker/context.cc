@@ -15,6 +15,7 @@
 #include "ray/core_worker/context.h"
 
 namespace ray {
+namespace core {
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
@@ -107,7 +108,7 @@ struct WorkerThreadContext {
   PlacementGroupID current_placement_group_id_;
 
   /// Whether or not child tasks are captured in the parent's placement group implicitly.
-  bool placement_group_capture_child_tasks_ = true;
+  bool placement_group_capture_child_tasks_ = false;
 };
 
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
@@ -120,7 +121,7 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
       current_job_id_(job_id),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
-      placement_group_capture_child_tasks_(true),
+      placement_group_capture_child_tasks_(false),
       main_thread_id_(boost::this_thread::get_id()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
@@ -166,13 +167,8 @@ bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
   }
 }
 
-const ray::RuntimeEnv &WorkerContext::GetCurrentRuntimeEnv() const {
-  return runtime_env_;
-}
-
-const std::unordered_map<std::string, std::string>
-    &WorkerContext::GetCurrentOverrideEnvironmentVariables() const {
-  return override_environment_variables_;
+const std::string &WorkerContext::GetCurrentSerializedRuntimeEnv() const {
+  return runtime_env_.serialized_runtime_env();
 }
 
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
@@ -184,8 +180,10 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
+    // TODO(architkulkarni): Once workers are cached by runtime env, we should
+    // only set runtime_env_ once and then RAY_CHECK that we
+    // never see a new one.
     runtime_env_ = task_spec.RuntimeEnv();
-    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
@@ -196,7 +194,6 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
     runtime_env_ = task_spec.RuntimeEnv();
-    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {
@@ -251,4 +248,5 @@ WorkerThreadContext &WorkerContext::GetThreadContext() {
   return *thread_context_;
 }
 
+}  // namespace core
 }  // namespace ray

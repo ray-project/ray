@@ -24,9 +24,8 @@ import ray
 from xgboost_ray import RayParams
 from xgboost_ray.main import _train as unmocked_train
 
-from _train import train_ray
-from ft_small_non_elastic import FailureState, FailureInjection, \
-    TrackingCallback
+from ray.util.xgboost.release_test_util import train_ray, \
+    FailureState, FailureInjection, TrackingCallback
 
 if __name__ == "__main__":
     ray.init(address="auto")

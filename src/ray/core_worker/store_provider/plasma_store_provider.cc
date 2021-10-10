@@ -20,6 +20,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+namespace core {
 
 void BufferTracker::Record(const ObjectID &object_id, TrackedBuffer *buffer,
                            const std::string &call_site) {
@@ -77,11 +78,6 @@ CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
   RAY_IGNORE_EXPR(store_client_.Disconnect());
 }
 
-Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
-                                                       int64_t limit_bytes) {
-  return store_client_.SetClientOptions(name, limit_bytes);
-}
-
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id,
                                           const rpc::Address &owner_address,
@@ -90,7 +86,7 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(object.GetMetadata(),
                            object.HasData() ? object.GetData()->Size() : 0, object_id,
-                           owner_address, &data));
+                           owner_address, &data, /*created_by_worker=*/true));
   // data could be a nullptr if the ObjectID already existed, but this does
   // not throw an error.
   if (data != nullptr) {
@@ -111,22 +107,16 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              const rpc::Address &owner_address,
-                                             std::shared_ptr<Buffer> *data) {
-  uint64_t retry_with_request_id = 0;
-  Status status = store_client_.Create(
-      object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
-      metadata ? metadata->Size() : 0, &retry_with_request_id, data,
-      /*device_num=*/0);
-
-  while (retry_with_request_id > 0) {
-    // TODO(sang): Use exponential backoff instead.
-    std::this_thread::sleep_for(std::chrono::milliseconds(object_store_full_delay_ms_));
-    RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
-                   << retry_with_request_id;
-    status = store_client_.RetryCreate(object_id, retry_with_request_id,
-                                       metadata ? metadata->Data() : nullptr,
-                                       &retry_with_request_id, data);
+                                             std::shared_ptr<Buffer> *data,
+                                             bool created_by_worker) {
+  auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  if (!created_by_worker) {
+    source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
   }
+  Status status = store_client_.CreateAndSpillIfNeeded(
+      object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
+      metadata ? metadata->Size() : 0, data, source,
+      /*device_num=*/0);
 
   if (status.IsObjectStoreFull()) {
     RAY_LOG(ERROR) << "Failed to put object " << object_id
@@ -192,8 +182,8 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = plasma_results[i].metadata;
       }
-      const auto result_object =
-          std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
+      const auto result_object = std::make_shared<RayObject>(
+          data, metadata, std::vector<rpc::ObjectReference>());
       (*results)[object_id] = result_object;
       remaining.erase(object_id);
       if (result_object->IsException()) {
@@ -229,8 +219,8 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = plasma_results[i].metadata;
       }
-      const auto result_object =
-          std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
+      const auto result_object = std::make_shared<RayObject>(
+          data, metadata, std::vector<rpc::ObjectReference>());
       (*results)[object_id] = result_object;
     }
   }
@@ -275,18 +265,19 @@ Status CoreWorkerPlasmaStoreProvider::Get(
                                    ctx.GetCurrentTaskID(), results, got_exception));
   }
 
-  // If all objects were fetched already, return.
+  // If all objects were fetched already, return. Note that we always need to
+  // call UnblockIfNeeded() to cancel the get request.
   if (remaining.empty() || *got_exception) {
-    return Status::OK();
+    return UnblockIfNeeded(raylet_client_, ctx);
   }
 
   // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
   // and Get from the local object store in batches. This loop will run indefinitely
   // until the objects are all fetched if timeout is -1.
-  int unsuccessful_attempts = 0;
   bool should_break = false;
   bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;
+  auto fetch_start_time_ms = current_time_ms();
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
     for (const auto &id : remaining) {
@@ -308,7 +299,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     // This is a separate IPC from the FetchAndGet in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
-          RayConfig::instance().release_resources_during_plasma_fetch()));
+          /*release_resources_during_plasma_fetch=*/false));
     }
     RAY_RETURN_NOT_OK(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
@@ -317,8 +308,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     should_break = timed_out || *got_exception;
 
     if ((previous_size - remaining.size()) < batch_ids.size()) {
-      unsuccessful_attempts++;
-      WarnIfAttemptedTooManyTimes(unsuccessful_attempts, remaining);
+      WarnIfFetchHanging(fetch_start_time_ms, remaining);
     }
     if (check_signals_) {
       Status status = check_signals_();
@@ -327,6 +317,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_client_, ctx));
         return status;
       }
+    }
+    if (RayConfig::instance().yield_plasma_lock_workaround() && !should_break &&
+        remaining.size() > 0) {
+      // Yield the plasma lock to other threads. This is a temporary workaround since we
+      // are holding the lock for a long time, so it can easily starve inbound RPC
+      // requests to Release() buffers which only require holding the lock for brief
+      // periods. See https://github.com/ray-project/ray/pull/16402 for more context.
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
 
@@ -364,7 +362,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     // This is a separate IPC from the Wait in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
-          RayConfig::instance().release_resources_during_plasma_fetch()));
+          /*release_resources_during_plasma_fetch=*/false));
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
     RAY_RETURN_NOT_OK(
@@ -403,10 +401,10 @@ CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
   return buffer_tracker_->UsedObjects();
 }
 
-void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
-    int num_attempts, const absl::flat_hash_set<ObjectID> &remaining) {
-  if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
-      0) {
+void CoreWorkerPlasmaStoreProvider::WarnIfFetchHanging(
+    int64_t fetch_start_time_ms, const absl::flat_hash_set<ObjectID> &remaining) {
+  int64_t duration_ms = current_time_ms() - fetch_start_time_ms;
+  if (duration_ms > RayConfig::instance().fetch_warn_timeout_milliseconds()) {
     std::ostringstream oss;
     size_t printed = 0;
     for (auto &id : remaining) {
@@ -424,23 +422,23 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
       oss << ", etc";
     }
     RAY_LOG(WARNING)
-        << "Attempted " << num_attempts << " times to reconstruct objects, but "
-        << "some objects are still unavailable. If this message continues to print,"
-        << " it may indicate that object's creating task is hanging, or something "
-           "wrong"
-        << " happened in raylet backend. " << remaining.size()
-        << " object(s) pending: " << oss.str() << ".";
+        << "Objects " << oss.str() << " are still not local after "
+        << (duration_ms / 1000) << "s. "
+        << "If this message continues to print, ray.get() is likely hung. Please file an "
+           "issue at https://github.com/ray-project/ray/issues/.";
   }
 }
 
 Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   ObjectID object_id = ObjectID::FromRandom();
   std::shared_ptr<Buffer> data;
-  RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, rpc::Address(), &data));
+  RAY_RETURN_NOT_OK(
+      Create(nullptr, 8, object_id, rpc::Address(), &data, /*created_by_worker=*/true));
   RAY_RETURN_NOT_OK(Seal(object_id));
   RAY_RETURN_NOT_OK(Release(object_id));
   RAY_RETURN_NOT_OK(Delete({object_id}, true));
   return Status::OK();
 }
 
+}  // namespace core
 }  // namespace ray

@@ -129,6 +129,9 @@ class GcsRpcClient {
   /// Report job error to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, ReportJobError, job_info_grpc_client_, )
 
+  /// Get next job id from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetNextJobID, job_info_grpc_client_, )
+
   /// Register actor via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActor,
                              actor_info_grpc_client_, )
@@ -141,6 +144,10 @@ class GcsRpcClient {
 
   /// Get actor data from GCS Service by name.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetNamedActorInfo,
+                             actor_info_grpc_client_, )
+
+  /// Get all named actor names from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, ListNamedActors,
                              actor_info_grpc_client_, )
 
   /// Get all actor data from GCS Service.
@@ -190,6 +197,10 @@ class GcsRpcClient {
 
   /// Report heartbeat of a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, ReportHeartbeat,
+                             heartbeat_info_grpc_client_, )
+
+  /// Check GCS is alive.
+  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, CheckAlive,
                              heartbeat_info_grpc_client_, )
 
   /// Get object's locations from GCS Service.

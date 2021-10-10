@@ -8,7 +8,7 @@ from fastapi import FastAPI
 import ray
 from ray.exceptions import GetTimeoutError
 from ray import serve
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ def test_np_in_composed_model(serve_instance):
     assert result.json() == 100.0
 
 
-def test_backend_worker_memory_growth(serve_instance):
+def test_replica_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
     @serve.deployment(name="model")
     def gc_unreachable_objects(*args):

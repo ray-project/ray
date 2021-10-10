@@ -18,6 +18,7 @@ def test_api_functions():
         "put",
         "kill",
         "cancel",
+        "get_actor",
         "get_gpu_ids",
         "shutdown",
         "method",
@@ -27,11 +28,10 @@ def test_api_functions():
         "available_resources",
         "java_function",
         "java_actor_class",
+        "client",
     ]
 
     OTHER_ALLOWED_FUNCTIONS = [
-        # TODO(ilr) either move this to PYTHON_API or remove.
-        "get_actor",
         # In the RuntimeContext API
         "get_runtime_context",
     ]

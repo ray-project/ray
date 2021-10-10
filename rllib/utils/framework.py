@@ -4,16 +4,10 @@ import os
 import sys
 from typing import Any, Optional
 
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.typing import TensorStructType, TensorShape, TensorType
+from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.utils.typing import TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
-
-# Represents a generic tensor type.
-TensorType = TensorType
-
-# Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
-TensorStructType = TensorStructType
 
 
 def try_import_jax(error=False):
@@ -35,9 +29,11 @@ def try_import_jax(error=False):
     try:
         import jax
         import flax
-    except ImportError as e:
+    except ImportError:
         if error:
-            raise e
+            raise ImportError("Could not import JAX! RLlib requires you to "
+                              "install at least one deep-learning framework: "
+                              "`pip install [torch|tensorflow|jax]`.")
         return None, None
 
     return jax, flax
@@ -79,9 +75,12 @@ def try_import_tf(error=False):
     else:
         try:
             import tensorflow as tf_module
-        except ImportError as e:
+        except ImportError:
             if error:
-                raise e
+                raise ImportError(
+                    "Could not import TensorFlow! RLlib requires you to "
+                    "install at least one deep-learning framework: "
+                    "`pip install [torch|tensorflow|jax]`.")
             return None, None, None
 
     # Try "reducing" tf to tf.compat.v1.
@@ -180,9 +179,12 @@ def try_import_torch(error=False):
         import torch
         import torch.nn as nn
         return torch, nn
-    except ImportError as e:
+    except ImportError:
         if error:
-            raise e
+            raise ImportError(
+                "Could not import PyTorch! RLlib requires you to "
+                "install at least one deep-learning framework: "
+                "`pip install [torch|tensorflow|jax]`.")
         return _torch_stubs()
 
 
@@ -191,36 +193,36 @@ def _torch_stubs():
     return None, nn
 
 
-def get_variable(value,
+def get_variable(value: Any,
                  framework: str = "tf",
                  trainable: bool = False,
                  tf_name: str = "unnamed-variable",
                  torch_tensor: bool = False,
                  device: Optional[str] = None,
                  shape: Optional[TensorShape] = None,
-                 dtype: Optional[Any] = None):
+                 dtype: Optional[TensorType] = None) -> Any:
     """
     Args:
-        value (any): The initial value to use. In the non-tf case, this will
+        value: The initial value to use. In the non-tf case, this will
             be returned as is. In the tf case, this could be a tf-Initializer
             object.
-        framework (str): One of "tf", "torch", or None.
-        trainable (bool): Whether the generated variable should be
+        framework: One of "tf", "torch", or None.
+        trainable: Whether the generated variable should be
             trainable (tf)/require_grad (torch) or not (default: False).
-        tf_name (str): For framework="tf": An optional name for the
+        tf_name: For framework="tf": An optional name for the
             tf.Variable.
-        torch_tensor (bool): For framework="torch": Whether to actually create
+        torch_tensor: For framework="torch": Whether to actually create
             a torch.tensor, or just a python value (default).
-        device (Optional[torch.Device]): An optional torch device to use for
+        device: An optional torch device to use for
             the created torch tensor.
-        shape (Optional[TensorShape]): An optional shape to use iff `value`
+        shape: An optional shape to use iff `value`
             does not have any (e.g. if it's an initializer w/o explicit value).
-        dtype (Optional[TensorType]): An optional dtype to use iff `value` does
+        dtype: An optional dtype to use iff `value` does
             not have any (e.g. if it's an initializer w/o explicit value).
             This should always be a numpy dtype (e.g. np.float32, np.int64).
 
     Returns:
-        any: A framework-specific variable (tf.Variable, torch.tensor, or
+        A framework-specific variable (tf.Variable, torch.tensor, or
             python primitive).
     """
     if framework in ["tf2", "tf", "tfe"]:
@@ -255,7 +257,10 @@ def get_variable(value,
     return value
 
 
-# Deprecated: Use rllib.models.utils::get_activation_fn instead.
+@Deprecated(
+    old="rllib/models/utils.py::get_activation_fn",
+    new="rllib/utils/framework.py::get_activation_fn",
+    error=False)
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
@@ -271,10 +276,6 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     Raises:
         ValueError: If name is an unknown activation function.
     """
-    deprecation_warning(
-        "rllib/utils/framework.py::get_activation_fn",
-        "rllib/models/utils.py::get_activation_fn",
-        error=False)
     if framework == "torch":
         if name in ["linear", None]:
             return None

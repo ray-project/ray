@@ -1,3 +1,5 @@
+import json
+import os
 import random
 import string
 import time
@@ -8,26 +10,51 @@ import ray
 from ray import serve
 from ray.cluster_utils import Cluster
 
-num_redis_shards = 1
-redis_max_memory = 10**8
-object_store_memory = 10**8
-num_nodes = 4
-cpus_per_node = 10
+# Global variables / constants appear only right after imports.
+# Ray serve deployment setup constants
+NUM_REPLICAS = 7
+MAX_BATCH_SIZE = 16
+
+# Cluster setup constants
+NUM_REDIS_SHARDS = 1
+REDIS_MAX_MEMORY = 10**8
+OBJECT_STORE_MEMORY = 10**8
+NUM_NODES = 4
+
+# RandomTest setup constants
+CPUS_PER_NODE = 10
+
+
+def update_progress(result):
+    """
+    Write test result json to /tmp/, which will be read from
+    anyscale product runs in each releaser test
+    """
+    result["last_update"] = time.time()
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/release_test_output.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
+
+
 cluster = Cluster()
-for i in range(num_nodes):
+for i in range(NUM_NODES):
     cluster.add_node(
         redis_port=6379 if i == 0 else None,
-        num_redis_shards=num_redis_shards if i == 0 else None,
+        num_redis_shards=NUM_REDIS_SHARDS if i == 0 else None,
         num_cpus=16,
         num_gpus=0,
         resources={str(i): 2},
-        object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory,
+        object_store_memory=OBJECT_STORE_MEMORY,
+        redis_max_memory=REDIS_MAX_MEMORY,
         dashboard_host="0.0.0.0",
     )
 
 ray.init(
-    address=cluster.address, dashboard_host="0.0.0.0", log_to_driver=False)
+    namespace="serve_failure_test",
+    address=cluster.address,
+    dashboard_host="0.0.0.0",
+    log_to_driver=False)
 serve.start(detached=True)
 
 
@@ -68,7 +95,7 @@ class RandomTest:
     def create_deployment(self):
         if len(self.deployments) == self.max_deployments:
             deployment_to_delete = self.deployments.pop()
-            serve.delete_deployment(deployment_to_delete)
+            serve.get_deployment(deployment_to_delete).delete()
 
         new_name = "".join(
             [random.choice(string.ascii_letters) for _ in range(10)])
@@ -107,10 +134,16 @@ class RandomTest:
                   "  - Total elapsed time: {}.".format(
                       iteration, new_time - previous_time, new_time,
                       new_time - start_time))
+            update_progress({
+                "iteration": iteration,
+                "iteration_time": new_time - previous_time,
+                "absolute_time": new_time,
+                "elapsed_time": new_time - start_time,
+            })
             previous_time = new_time
             iteration += 1
 
 
 random_killer = RandomKiller.remote()
 random_killer.run.remote()
-RandomTest(max_deployments=num_nodes * cpus_per_node).run()
+RandomTest(max_deployments=NUM_NODES * CPUS_PER_NODE).run()

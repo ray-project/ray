@@ -8,7 +8,7 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
-from ray.test_utils import (
+from ray._private.test_utils import (
     RayTestTimeoutException,
     get_other_nodes,
     wait_for_condition,
@@ -35,6 +35,9 @@ def ray_start_workers_separate_multinode(request):
 
 def test_worker_failed(ray_start_workers_separate_multinode):
     num_nodes, num_initial_workers = (ray_start_workers_separate_multinode)
+
+    if num_nodes == 4 and sys.platform == "win32":
+        pytest.skip("Failing on Windows.")
 
     @ray.remote
     def get_pids():
@@ -157,27 +160,26 @@ def test_raylet_failed(ray_start_cluster):
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_RAYLET)
 
 
-def test_get_address_info_after_raylet_died(ray_start_cluster_head):
+def test_get_node_info_after_raylet_died(ray_start_cluster_head):
     cluster = ray_start_cluster_head
 
-    def get_address_info():
-        return ray._private.services.get_address_info_from_redis(
+    def get_node_info():
+        return ray._private.services.get_node_to_connect_for_driver(
             cluster.redis_address,
             cluster.head_node.node_ip_address,
-            num_retries=1,
             redis_password=cluster.redis_password)
 
-    assert get_address_info()[
-        "raylet_socket_name"] == cluster.head_node.raylet_socket_name
+    assert get_node_info(
+    ).raylet_socket_name == cluster.head_node.raylet_socket_name
 
     cluster.head_node.kill_raylet()
     wait_for_condition(
         lambda: not cluster.global_state.node_table()[0]["Alive"], timeout=30)
     with pytest.raises(RuntimeError):
-        get_address_info()
+        get_node_info()
 
     node2 = cluster.add_node()
-    assert get_address_info()["raylet_socket_name"] == node2.raylet_socket_name
+    assert get_node_info().raylet_socket_name == node2.raylet_socket_name
 
 
 if __name__ == "__main__":

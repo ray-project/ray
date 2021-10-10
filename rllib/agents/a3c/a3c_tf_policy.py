@@ -1,4 +1,6 @@
 """Note: Keep in sync with changes to VTraceTFPolicy."""
+from typing import Optional, Dict
+import gym
 
 import ray
 from ray.rllib.policy.torch_policy import ValueNetworkMixin
@@ -7,23 +9,28 @@ from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
+    PolicyID, LocalOptimizer, ModelGradients
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.evaluation import MultiAgentEpisode
 
 tf1, tf, tfv = try_import_tf()
 
 
-def postprocess_advantages(policy,
-                           sample_batch,
-                           other_agent_batches=None,
-                           episode=None):
-
-    # Stub serving backward compatibility.
-    deprecation_warning(
-        old="rllib.agents.a3c.a3c_tf_policy.postprocess_advantages",
-        new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-        error=False)
+@Deprecated(
+    old="rllib.agents.a3c.a3c_tf_policy.postprocess_advantages",
+    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
+    error=False)
+def postprocess_advantages(
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
+        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
 
     return compute_gae_for_sample_batch(policy, sample_batch,
                                         other_agent_batches, episode)
@@ -31,15 +38,15 @@ def postprocess_advantages(policy,
 
 class A3CLoss:
     def __init__(self,
-                 action_dist,
-                 actions,
-                 advantages,
-                 v_target,
-                 vf,
-                 valid_mask,
-                 vf_loss_coeff=0.5,
-                 entropy_coeff=0.01,
-                 use_critic=True):
+                 action_dist: ActionDistribution,
+                 actions: TensorType,
+                 advantages: TensorType,
+                 v_target: TensorType,
+                 vf: TensorType,
+                 valid_mask: TensorType,
+                 vf_loss_coeff: float = 0.5,
+                 entropy_coeff: float = 0.01,
+                 use_critic: bool = True):
         log_prob = action_dist.logp(actions)
 
         # The "policy gradients" loss
@@ -62,12 +69,14 @@ class A3CLoss:
                            self.entropy * entropy_coeff)
 
 
-def actor_critic_loss(policy, model, dist_class, train_batch):
+def actor_critic_loss(policy: Policy, model: ModelV2,
+                      dist_class: ActionDistribution,
+                      train_batch: SampleBatch) -> TensorType:
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
     if policy.is_recurrent():
-        max_seq_len = tf.reduce_max(train_batch["seq_lens"])
-        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
+        mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(train_batch[SampleBatch.REWARDS])
@@ -81,11 +90,11 @@ def actor_critic_loss(policy, model, dist_class, train_batch):
     return policy.loss.total_loss
 
 
-def add_value_function_fetch(policy):
+def add_value_function_fetch(policy: Policy) -> Dict[str, TensorType]:
     return {SampleBatch.VF_PREDS: policy.model.value_function()}
 
 
-def stats(policy, train_batch):
+def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     return {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
@@ -96,16 +105,18 @@ def stats(policy, train_batch):
     }
 
 
-def grad_stats(policy, train_batch, grads):
+def grad_stats(policy: Policy, train_batch: SampleBatch,
+               grads: ModelGradients) -> Dict[str, TensorType]:
     return {
         "grad_gnorm": tf.linalg.global_norm(grads),
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function()),
+            policy.model.value_function())
     }
 
 
-def clip_gradients(policy, optimizer, loss):
+def clip_gradients(policy: Policy, optimizer: LocalOptimizer,
+                   loss: TensorType) -> ModelGradients:
     grads_and_vars = optimizer.compute_gradients(
         loss, policy.model.trainable_variables())
     grads = [g for (g, v) in grads_and_vars]
@@ -114,7 +125,9 @@ def clip_gradients(policy, optimizer, loss):
     return clipped_grads
 
 
-def setup_mixins(policy, obs_space, action_space, config):
+def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 config: TrainerConfigDict) -> None:
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
@@ -125,7 +138,7 @@ A3CTFPolicy = build_tf_policy(
     loss_fn=actor_critic_loss,
     stats_fn=stats,
     grad_stats_fn=grad_stats,
-    gradients_fn=clip_gradients,
+    compute_gradients_fn=clip_gradients,
     postprocess_fn=compute_gae_for_sample_batch,
     extra_action_out_fn=add_value_function_fetch,
     before_loss_init=setup_mixins,

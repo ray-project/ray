@@ -10,14 +10,27 @@ import torch
 import torch.distributed as dist
 
 import ray
-from ray.tune import PlacementGroupFactory, Trainable
-from ray.tune.utils.util import merge_dicts
 from ray.util import log_once
+from ray.util.annotations import PublicAPI
 from ray.util.sgd.torch.worker_group import LocalWorkerGroup, \
     RemoteWorkerGroup, DeactivatedWorkerGroup
 from ray.util.sgd.utils import NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP, NCCL_TIMEOUT_S
 from ray.util.sgd.data import Dataset
+
+try:
+    from ray.tune import Trainable
+    from ray.tune import PlacementGroupFactory
+    from ray.tune.utils.util import merge_dicts
+    TUNE_INSTALLED = True
+except ImportError:
+    TUNE_INSTALLED = False
+    Trainable = PlacementGroupFactory = object
+
+    def noop():
+        return
+
+    merge_dicts = noop
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +48,7 @@ def _remind_gpu_usage(use_gpu):
                     "enable GPU usage. ")
 
 
+@PublicAPI(stability="beta")
 class TorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
@@ -110,10 +124,15 @@ class TorchTrainer:
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders. Only applicable
             if num_workers > 1.
-        use_fp16 (bool): Enables mixed precision training via apex if apex
-            is installed. This is automatically done after the model and
-            optimizers are constructed and will work for multi-model training.
-            Please see https://github.com/NVIDIA/apex for more details.
+        use_fp16 (bool|string): Enables mixed precision training.
+            If set to True, will first try to use native mixed
+            precision training backend, and if it's unavailable, the Apex
+            backed, if installed. Apex backend must be installed separately
+            and can be forced over the native backend by setting `use_fp16`
+            to "apex". Torch documentation recommends the usage of the native
+            backend. Mixed precision training is automatically done after
+            the model and optimizers are constructed and will work for
+            multi-model training. Defaults to False.
         scheduler_step_freq: "batch", "epoch", "manual", or None. This will
             determine when ``scheduler.step`` is called. If "batch",
             ``step`` will be called after every optimizer step. If "epoch",
@@ -162,6 +181,10 @@ class TorchTrainer:
             data_loader_args=None,
             apex_args=None,
     ):
+        if num_workers <= 0:
+            raise ValueError("The number of workers must be greater than 0. "
+                             f"Received num_workers={num_workers}")
+
         if (model_creator or data_creator or optimizer_creator
                 or scheduler_creator or loss_creator):
             raise DeprecationWarning(
@@ -173,6 +196,10 @@ class TorchTrainer:
                 "model_creator, ...) and pass in CustomOperator into "
                 "TorchTrainer.")
 
+        if use_local and ray.util.client.ray.is_connected():
+            raise ValueError("use_local setting is not supported with Ray "
+                             "Client.")
+
         if use_local and log_once("use_local"):
             logger.warning("use_local is set to True. This could lead to "
                            "issues with Cuda devices. If you are seeing this "
@@ -180,7 +207,8 @@ class TorchTrainer:
                            "information, see "
                            "https://github.com/ray-project/ray/issues/9202.")
 
-        if num_workers > 1 and not dist.is_available():
+        if num_workers > 1 and not dist.is_available() and not \
+                ray.util.client.ray.is_connected():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
                  "To run without distributed PyTorch, set 'num_workers=1'. "
@@ -402,8 +430,9 @@ class TorchTrainer:
                 in case of shared cluster usage. Defaults to 3.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
-            dataset (Dataset): Optional dataset to train with. If specified,
-                the dataloader passed in via data_creator will be ignored.
+            dataset (sgd.Dataset): Optional dataset to train with. If
+                specified, the dataloader passed in via data_creator will be
+                ignored.
 
         Returns:
             (dict | list) A dictionary of metrics for training.
@@ -522,10 +551,17 @@ class TorchTrainer:
         self.worker_group.apply_all_operators(
             lambda op: [sched.step(metric) for sched in op._schedulers])
 
-    def get_model(self):
-        """Returns the learned model(s)."""
+    def get_model(self, to_cpu=False):
+        """Returns the learned model(s).
+
+        Arguments:
+            to_cpu (bool): Forces returned model to be on CPU. This is
+                useful if workers are trained on GPU, but the TorchTrainer
+                lives on a CPU-only machine.
+
+        """
         unwrapped = []
-        models = self.worker_group.get_model()
+        models = self.worker_group.get_model(to_cpu)
         for model in models:
             unwrapped += [model.module if hasattr(model, "module") else model]
         if len(unwrapped) == 1:
@@ -628,6 +664,9 @@ class TorchTrainer:
                 training epoch for each tune iteration.
 
         """
+        if not TUNE_INSTALLED:
+            raise RuntimeError("Please install `ray[tune]` to use the Tune "
+                               "integration.")
         if override_tune_step is not None:
             callback_args = inspect.signature(override_tune_step)
             if not len(callback_args.parameters) == 2:

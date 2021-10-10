@@ -6,7 +6,7 @@ import json
 import traceback
 
 cdef class ProfileEvent:
-    """Cython wrapper class of C++ `ray::worker::ProfileEvent`."""
+    """Cython wrapper class of C++ `ray::core::worker::ProfileEvent`."""
     cdef:
         unique_ptr[CProfileEvent] inner
         object extra_data

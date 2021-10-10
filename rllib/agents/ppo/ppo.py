@@ -18,11 +18,13 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields, SelectExperiences
-from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
+from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
+    LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -116,11 +118,38 @@ def validate_config(config: TrainerConfigDict) -> None:
     # SGD minibatch size must be smaller than train_batch_size (b/c
     # we subsample a batch of `sgd_minibatch_size` from the train-batch for
     # each `sgd_num_iter`).
-    if config["sgd_minibatch_size"] > config["train_batch_size"]:
+    # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
+    # to -1 to auto-calculate the actual batch size later).
+    if config["train_batch_size"] > 0 and \
+            config["sgd_minibatch_size"] > config["train_batch_size"]:
         raise ValueError("`sgd_minibatch_size` ({}) must be <= "
                          "`train_batch_size` ({}).".format(
                              config["sgd_minibatch_size"],
                              config["train_batch_size"]))
+
+    # Check for mismatches between `train_batch_size` and
+    # `rollout_fragment_length` and auto-adjust `rollout_fragment_length`
+    # if necessary.
+    # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
+    # to -1 to auto-calculate the actual batch size later).
+    num_workers = config["num_workers"] or 1
+    calculated_min_rollout_size = \
+        num_workers * config["num_envs_per_worker"] * \
+        config["rollout_fragment_length"]
+    if config["train_batch_size"] > 0 and \
+            config["train_batch_size"] % calculated_min_rollout_size != 0:
+        new_rollout_fragment_length = config["train_batch_size"] // (
+            num_workers * config["num_envs_per_worker"])
+        logger.warning(
+            "`train_batch_size` ({}) cannot be achieved with your other "
+            "settings (num_workers={} num_envs_per_worker={} "
+            "rollout_fragment_length={})! Auto-adjusting "
+            "`rollout_fragment_length` to {}.".format(
+                config["train_batch_size"], config["num_workers"],
+                config["num_envs_per_worker"],
+                config["rollout_fragment_length"],
+                new_rollout_fragment_length))
+        config["rollout_fragment_length"] = new_rollout_fragment_length
 
     # Episodes may only be truncated (and passed into PPO's
     # `postprocessing_fn`), iff generalized advantage estimation is used
@@ -193,12 +222,12 @@ def warn_about_bad_reward_scales(config, result):
         return result  # Punt on handling multiagent case.
 
     # Warn about excessively high VF loss.
-    learner_stats = result["info"]["learner"]
-    if DEFAULT_POLICY_ID in learner_stats:
+    learner_info = result["info"][LEARNER_INFO]
+    if DEFAULT_POLICY_ID in learner_info:
         scaled_vf_loss = config["vf_loss_coeff"] * \
-            learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["vf_loss"]
+            learner_info[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["vf_loss"]
 
-        policy_loss = learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+        policy_loss = learner_info[DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
             "policy_loss"]
         if config.get("model", {}).get("vf_share_layers") and \
                 scaled_vf_loss > 100:
@@ -263,7 +292,7 @@ def execution_plan(workers: WorkerSet,
                 sgd_minibatch_size=config["sgd_minibatch_size"]))
     else:
         train_op = rollouts.for_each(
-            TrainTFMultiGPU(
+            MultiGPUTrainOneStep(
                 workers=workers,
                 sgd_minibatch_size=config["sgd_minibatch_size"],
                 num_sgd_iter=config["num_sgd_iter"],

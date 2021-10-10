@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import pickle
-import psutil
 import random
 import unittest
 import sys
@@ -12,6 +11,10 @@ from ray import tune
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
+from ray._private.test_utils import object_memory_usage
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 MB = 1024**2
 
@@ -29,14 +32,7 @@ class MockParam(object):
 
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
-        ray.init(
-            num_cpus=1,
-            object_store_memory=100 * MB,
-            _system_config={
-                # This test uses ray.state.objects(), which only works with the
-                # GCS-based object directory
-                "ownership_based_object_directory_enabled": False,
-            })
+        ray.init(num_cpus=1, object_store_memory=100 * MB)
 
     def tearDown(self):
         ray.shutdown()
@@ -68,7 +64,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
         class CustomExecutor(RayTrialExecutor):
             def save(self, *args, **kwargs):
                 checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
-                assert len(ray.state.objects()) <= 12
+                assert object_memory_usage() <= (12 * 80e6)
                 return checkpoint
 
         param_a = MockParam([1, -1])
@@ -97,13 +93,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
 
 class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
     def setUp(self):
-        ray.init(
-            num_cpus=2,
-            _system_config={
-                # This test uses ray.state.objects(), which only works with the
-                # GCS-based object directory
-                "ownership_based_object_directory_enabled": False,
-            })
+        ray.init(num_cpus=2)
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
     def tearDown(self):
@@ -144,7 +134,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                 if self.verbose:
                     print("Iteration", self.iter_)
                     print("=" * 10)
-                    print("Number of objects: ", len(ray.state.objects()))
+                    print("Object memory use: ", object_memory_usage())
                     print("Virtual Mem:", self.get_virt_mem() >> 30, "gb")
                     print("File Descriptors:", len(all_files))
                 assert len(all_files) < 20
@@ -182,6 +172,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         ray.init(num_cpus=2)
 
         def MockTrainingFuncSync(config, checkpoint_dir=None):
@@ -201,8 +192,13 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                                                    "checkpoint")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, iter), fp)
+                # Different sleep times so that asynch test runs do not
+                # randomly succeed. If well performing trials finish later,
+                # then bad performing trials will already have continued
+                # to train, which is exactly what we want to test when
+                # comparing sync vs. async.
+                time.sleep(a / 20)
                 # Score gets better every iteration.
-                time.sleep(1)
                 tune.report(mean_accuracy=iter + a, a=a)
 
         self.MockTrainingFuncSync = MockTrainingFuncSync
@@ -210,7 +206,10 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def synchSetup(self, synch, param=[10, 20, 30]):
+    def synchSetup(self, synch, param=None):
+        if param is None:
+            param = [10, 20, 30]
+
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
             metric="mean_accuracy",

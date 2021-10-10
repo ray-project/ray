@@ -8,8 +8,9 @@ import pytest
 import requests
 
 import ray
-from ray.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
+from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
 
 
@@ -128,6 +129,77 @@ def test_deploy_no_version(serve_instance, use_handle):
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
+def test_deploy_prev_version(serve_instance, use_handle):
+    name = "test"
+
+    @serve.deployment(name=name)
+    def v1(*args):
+        return f"1|{os.getpid()}"
+
+    def call():
+        if use_handle:
+            ret = ray.get(v1.get_handle().remote())
+        else:
+            ret = requests.get(f"http://localhost:8000/{name}").text
+
+        return ret.split("|")[0], ret.split("|")[1]
+
+    # Deploy with prev_version specified, where there is no existing deployment
+    with pytest.raises(ValueError):
+        v1.options(version="1", prev_version="0").deploy()
+
+    v1.deploy()
+    val1, pid1 = call()
+    assert val1 == "1"
+
+    @serve.deployment(name=name)
+    def v2(*args):
+        return f"2|{os.getpid()}"
+
+    # Deploying without specifying prev_version should still be possible.
+    v2.deploy()
+    val2, pid2 = call()
+    assert val2 == "2"
+    assert pid2 != pid1
+
+    v2.options(version="1").deploy()
+    val3, pid3 = call()
+    assert val3 == "2"
+    assert pid3 != pid2
+
+    @serve.deployment(name=name)
+    def v3(*args):
+        return f"3|{os.getpid()}"
+
+    # If prev_version does not match with the existing version, it should fail.
+    with pytest.raises(ValueError):
+        v3.options(version="2", prev_version="0").deploy()
+
+    # If prev_version matches with the existing version, it should succeed.
+    v3.options(version="2", prev_version="1").deploy()
+    val4, pid4 = call()
+    assert val4 == "3"
+    assert pid4 != pid3
+
+    # Specifying the version should stop updates from happening.
+    v3.options(version="2").deploy()
+    val5, pid5 = call()
+    assert val5 == "3"
+    assert pid5 == pid4
+
+    v2.options(version="3", prev_version="2").deploy()
+    val6, pid6 = call()
+    assert val6 == "2"
+    assert pid6 != pid5
+
+    # Deploying without specifying prev_version should still be possible.
+    v1.deploy()
+    val7, pid7 = call()
+    assert val7 == "1"
+    assert pid7 != pid6
+
+
+@pytest.mark.parametrize("use_handle", [True, False])
 def test_config_change(serve_instance, use_handle):
     @serve.deployment(version="1")
     class D:
@@ -177,6 +249,34 @@ def test_config_change(serve_instance, use_handle):
     val5, pid5 = call()
     assert pid5 != pid4
     assert val5 == "4"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_reconfigure_with_exception(serve_instance):
+    @serve.deployment
+    class A:
+        def __init__(self):
+            self.config = "yoo"
+
+        def reconfigure(self, config):
+            if config == "hi":
+                raise Exception("oops")
+
+            self.config = config
+
+        def __call__(self, *args):
+            return self.config
+
+    A.options(user_config="not_hi").deploy()
+    config = ray.get(A.get_handle().remote())
+    assert config == "not_hi"
+
+    with pytest.raises(RuntimeError):
+        A.options(user_config="hi").deploy()
+
+    # Ensure we should be able to rollback to "hi" config
+    config = ray.get(A.get_handle().remote())
+    assert config == "not_hi"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -234,7 +334,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.
-    V2 = V1.options(backend_def=V2, version="2")
+    V2 = V1.options(func_or_class=V2, version="2")
     goal_ref = V2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
 
@@ -244,7 +344,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     start = time.time()
     new_version_ref = None
     while time.time() - start < 30:
-        ready, not_ready = ray.wait([call.remote(block=False)], timeout=0.5)
+        ready, not_ready = ray.wait([call.remote(block=False)], timeout=5)
         if len(ready) == 1:
             # If the request doesn't block, it must have been the old version.
             val, pid = ray.get(ready[0])
@@ -321,7 +421,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
         start = time.time()
         while time.time() - start < 30:
             refs = [call.remote(block=False) for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=0.5)
+            ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
@@ -353,7 +453,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
-    V2 = V1.options(backend_def=V2, version="2")
+    V2 = V1.options(func_or_class=V2, version="2")
     goal_ref = V2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
     responses3, blocking3 = make_nonblocking_calls(
@@ -369,6 +469,90 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
+    assert client._wait_for_goal(goal_ref)
+    make_nonblocking_calls({"2": 2})
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize("use_handle", [True, False])
+def test_reconfigure_multiple_replicas(serve_instance, use_handle):
+    # Tests that updating the user_config with multiple replicas performs a
+    # rolling update.
+    client = serve_instance
+
+    name = "test"
+
+    @ray.remote(num_cpus=0)
+    def call():
+        if use_handle:
+            handle = serve.get_deployment(name).get_handle()
+            ret = ray.get(handle.handler.remote())
+        else:
+            ret = requests.get(f"http://localhost:8000/{name}").text
+
+        return ret.split("|")[0], ret.split("|")[1]
+
+    signal_name = f"signal-{get_random_letters()}"
+    signal = SignalActor.options(name=signal_name).remote()
+
+    @serve.deployment(name=name, version="1", num_replicas=2)
+    class V1:
+        def __init__(self):
+            self.config = None
+
+        async def reconfigure(self, config):
+            # Don't block when the replica is first created.
+            if self.config is not None:
+                signal = ray.get_actor(signal_name)
+                ray.get(signal.wait.remote())
+            self.config = config
+
+        async def handler(self):
+            return f"{self.config}|{os.getpid()}"
+
+        async def __call__(self, request):
+            return await self.handler()
+
+    def make_nonblocking_calls(expected, expect_blocking=False):
+        # Returns dict[val, set(pid)].
+        blocking = []
+        responses = defaultdict(set)
+        start = time.time()
+        while time.time() - start < 30:
+            refs = [call.remote() for _ in range(10)]
+            ready, not_ready = ray.wait(refs, timeout=5)
+            for ref in ready:
+                val, pid = ray.get(ref)
+                responses[val].add(pid)
+            for ref in not_ready:
+                blocking.extend(not_ready)
+
+            if (all(
+                    len(responses[val]) == num
+                    for val, num in expected.items())
+                    and (expect_blocking is False or len(blocking) > 0)):
+                break
+        else:
+            assert False, f"Timed out, responses: {responses}."
+
+        return responses, blocking
+
+    V1.options(user_config="1").deploy()
+    responses1, _ = make_nonblocking_calls({"1": 2})
+    pids1 = responses1["1"]
+
+    # Reconfigure should block one replica until the signal is sent. Check that
+    # some requests are now blocking.
+    goal_ref = V1.options(user_config="2").deploy(_blocking=False)
+    responses2, blocking2 = make_nonblocking_calls(
+        {
+            "1": 1
+        }, expect_blocking=True)
+    assert list(responses2["1"])[0] in pids1
+
+    # Signal reconfigure to finish. Now the goal should complete and both
+    # replicas should have the updated config.
+    ray.get(signal.send.remote())
     assert client._wait_for_goal(goal_ref)
     make_nonblocking_calls({"2": 2})
 
@@ -399,7 +583,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
         start = time.time()
         while time.time() - start < 30:
             refs = [call.remote() for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=0.5)
+            ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
@@ -452,7 +636,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
         start = time.time()
         while time.time() - start < 30:
             refs = [call.remote() for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=0.5)
+            ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
@@ -481,30 +665,20 @@ def test_redeploy_scale_up(serve_instance, use_handle):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_handle_validation(serve_instance):
+    @serve.deployment
     class A:
         def b(self, *args):
             return "hello"
 
-    serve_instance.deploy("f", A)
-    handle = serve.get_handle("f")
+    A.deploy()
+    handle = A.get_handle()
 
     # Legacy code path
     assert ray.get(handle.options(method_name="b").remote()) == "hello"
     # New code path
     assert ray.get(handle.b.remote()) == "hello"
-    with pytest.raises(AttributeError):
-        handle.c.remote()
-
-    # Test missing_ok case
-    missing_handle = serve.get_handle("g", missing_ok=True)
-    with pytest.raises(AttributeError):
-        missing_handle.b.remote()
-    serve_instance.deploy("g", A)
-    # Old code path still work
-    assert ray.get(missing_handle.options(method_name="b").remote()) == "hello"
-    # Because the missing_ok flag, handle.b.remote won't work.
-    with pytest.raises(AttributeError):
-        missing_handle.b.remote()
+    with pytest.raises(RayServeException):
+        ray.get(handle.c.remote())
 
 
 def test_init_args(serve_instance):
@@ -558,6 +732,58 @@ def test_init_args(serve_instance):
 
     D.options(version="2").deploy(10, 11, 12)
     check(10, 11, 12)
+
+
+def test_init_kwargs(serve_instance):
+    with pytest.raises(TypeError):
+
+        @serve.deployment(init_kwargs=[1, 2, 3])
+        class BadInitArgs:
+            pass
+
+    @serve.deployment(init_kwargs={"a": 1, "b": 2})
+    class D:
+        def __init__(self, **kwargs):
+            self._kwargs = kwargs
+
+        def get_kwargs(self, *args):
+            return self._kwargs
+
+    D.deploy()
+    handle = D.get_handle()
+
+    def check(kwargs):
+        assert ray.get(handle.get_kwargs.remote()) == kwargs
+
+    # Basic sanity check.
+    check({"a": 1, "b": 2})
+
+    # Check passing args to `.deploy()`.
+    D.deploy(a=3, b=4)
+    check({"a": 3, "b": 4})
+
+    # Passing args to `.deploy()` shouldn't override those passed in decorator.
+    D.deploy()
+    check({"a": 1, "b": 2})
+
+    # Check setting with `.options()`.
+    new_D = D.options(init_kwargs={"c": 8, "d": 10})
+    new_D.deploy()
+    check({"c": 8, "d": 10})
+
+    # Should not have changed old deployment object.
+    D.deploy()
+    check({"a": 1, "b": 2})
+
+    # Check that args are only updated on version change.
+    D.options(version="1").deploy()
+    check({"a": 1, "b": 2})
+
+    D.options(version="1").deploy(c=10, d=11)
+    check({"a": 1, "b": 2})
+
+    D.options(version="2").deploy(c=10, d=11)
+    check({"c": 10, "d": 11})
 
 
 def test_input_validation():
@@ -650,6 +876,37 @@ def test_input_validation():
 
     with pytest.raises(ValueError):
         Base.options(max_concurrent_queries=-1)
+
+
+def test_deployment_properties():
+    class DClass():
+        pass
+
+    D = serve.deployment(
+        name="name",
+        init_args=("hello", 123),
+        version="version",
+        num_replicas=2,
+        user_config="hi",
+        max_concurrent_queries=100,
+        route_prefix="/hello",
+        ray_actor_options={"num_cpus": 2})(DClass)
+
+    assert D.name == "name"
+    assert D.init_args == ("hello", 123)
+    assert D.version == "version"
+    assert D.num_replicas == 2
+    assert D.user_config == "hi"
+    assert D.max_concurrent_queries == 100
+    assert D.route_prefix == "/hello"
+    assert D.ray_actor_options == {"num_cpus": 2}
+
+    D = serve.deployment(
+        version=None,
+        route_prefix=None,
+    )(DClass)
+    assert D.version is None
+    assert D.route_prefix is None
 
 
 class TestGetDeployment:

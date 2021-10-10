@@ -1,6 +1,9 @@
 """This example demonstrates the usage of Optuna with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
+
+For an example of using an Optuna define-by-run function, see
+:doc:`/tune/examples/optuna_define_by_run_example`.
 """
 import time
 
@@ -27,15 +30,7 @@ def easy_objective(config):
         time.sleep(0.1)
 
 
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
-    args, _ = parser.parse_known_args()
-    ray.init(configure_logging=False)
-
+def run_optuna_tune(smoke_test=False):
     algo = OptunaSearch()
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
@@ -45,7 +40,7 @@ if __name__ == "__main__":
         mode="min",
         search_alg=algo,
         scheduler=scheduler,
-        num_samples=10 if args.smoke_test else 100,
+        num_samples=10 if smoke_test else 100,
         config={
             "steps": 100,
             "width": tune.uniform(0, 20),
@@ -55,3 +50,25 @@ if __name__ == "__main__":
         })
 
     print("Best hyperparameters found were: ", analysis.best_config)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+    if args.server_address is not None:
+        ray.init(f"ray://{args.server_address}")
+    else:
+        ray.init(configure_logging=False)
+
+    run_optuna_tune(smoke_test=args.smoke_test)

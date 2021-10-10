@@ -24,7 +24,7 @@ namespace ray {
 namespace rpc {
 
 #define RAY_AGENT_MANAGER_RPC_HANDLERS \
-  RPC_SERVICE_HANDLER(AgentManagerService, RegisterAgent)
+  RPC_SERVICE_HANDLER(AgentManagerService, RegisterAgent, -1)
 
 /// Implementations of the `AgentManagerGrpcService`, check interface in
 /// `src/ray/protobuf/agent_manager.proto`.

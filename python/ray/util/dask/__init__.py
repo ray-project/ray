@@ -4,6 +4,7 @@ from .callbacks import (
     RayDaskCallback,
     local_ray_callbacks,
     unpack_ray_callbacks,
+    ProgressBarCallback,
 )
 from .optimizations import dataframe_optimize
 
@@ -50,4 +51,5 @@ __all__ = [
     "unpack_ray_callbacks",
     # Optimizations
     "dataframe_optimize",
+    "ProgressBarCallback",
 ]

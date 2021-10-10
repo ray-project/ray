@@ -8,11 +8,12 @@ from ray.rllib.agents.maml.maml_torch_policy import MAMLTorchPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
+    STEPS_TRAINED_COUNTER, _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.util.iter import from_actors
 
 logger = logging.getLogger(__name__)
@@ -98,9 +99,10 @@ class MetaUpdate:
         # Metric Updating
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_SAMPLED_COUNTER] += samples.count
+        fetches = None
         for i in range(self.maml_optimizer_steps):
             fetches = self.workers.local_worker().learn_on_batch(samples)
-        fetches = get_learner_stats(fetches)
+        learner_stats = get_learner_stats(fetches)
 
         # Sync workers with meta policy
         self.workers.sync_weights()
@@ -110,11 +112,12 @@ class MetaUpdate:
 
         # Update KLS
         def update(pi, pi_id):
-            assert "inner_kl" not in fetches, (
-                "inner_kl should be nested under policy id key", fetches)
-            if pi_id in fetches:
-                assert "inner_kl" in fetches[pi_id], (fetches, pi_id)
-                pi.update_kls(fetches[pi_id]["inner_kl"])
+            assert "inner_kl" not in learner_stats, (
+                "inner_kl should be nested under policy id key", learner_stats)
+            if pi_id in learner_stats:
+                assert "inner_kl" in learner_stats[pi_id], (learner_stats,
+                                                            pi_id)
+                pi.update_kls(learner_stats[pi_id]["inner_kl"])
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 

@@ -28,6 +28,11 @@ use it plug and play for your existing models, assuming their parameters are con
 
         $ pip install "ray[tune]" torch torchvision pytorch-lightning
 
+.. tip::
+
+    If you want distributed PyTorch Lightning Training on Ray in addition to hyperparameter tuning with Tune,
+    check out the `Ray Lightning Library <https://github.com/ray-project/ray_lightning>`_
+
 .. contents::
     :local:
     :backlinks: none
@@ -50,7 +55,9 @@ First, we run some imports:
 And then there is the Lightning model adapted from the blog post.
 Note that we left out the test set validation and made the model parameters
 configurable through a ``config`` dict that is passed on initialization.
-Also, we specify a ``data_dir`` where the MNIST data will be stored.
+Also, we specify a ``data_dir`` where the MNIST data will be stored. Note that
+we use a ``FileLock`` for downloading data so that the dataset is only downloaded
+once per node.
 Lastly, we added a new metric, the validation accuracy, to the logs.
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
@@ -129,27 +136,6 @@ TensorBoard, one time for Tune's logs, and another time for PyTorch Lightning's 
    :start-after: __tune_train_begin__
    :end-before: __tune_train_end__
 
-Sharing the data
-~~~~~~~~~~~~~~~~
-
-All our trials are using the MNIST data. To avoid that each training instance downloads
-their own MNIST dataset, we download it once and share the ``data_dir`` between runs.
-
-.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
-   :language: python
-   :start-after: __tune_asha_begin__
-   :end-before: __tune_asha_end__
-   :lines: 2-3
-   :dedent: 4
-
-We also delete this data after training to avoid filling up our disk or memory space.
-
-.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
-   :language: python
-   :start-after: __tune_asha_begin__
-   :end-before: __tune_asha_end__
-   :lines: 36
-   :dedent: 4
 
 Configuring the search space
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -164,7 +150,7 @@ we are able to also sample small values.
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 5-10
+   :lines: 2-7
    :dedent: 4
 
 Selecting a scheduler
@@ -179,7 +165,7 @@ configurations.
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 12-17
+   :lines: 9-14
    :dedent: 4
 
 
@@ -194,7 +180,7 @@ output tables only include information we would like to see.
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 19-21
+   :lines: 16-18
    :dedent: 4
 
 Passing constants to the train function
@@ -208,7 +194,7 @@ specification, we can use ``functools.partial`` to wrap around the training func
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 24-28
+   :lines: 21-25
    :dedent: 8
 
 Training with GPUs
@@ -225,7 +211,7 @@ we would like to use:
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 29
+   :lines: 26
    :dedent: 4
 
 You can also specify :doc:`fractional GPUs for Tune </using-ray-with-gpus>`, allowing multiple trials to share GPUs
@@ -235,7 +221,7 @@ Please note that if using fractional GPUs, it is the user's responsibility to
 make sure multiple trials can share GPUs and there is enough memory to do so.
 Ray does not automatically handle this for you.
 
-If you want to use multiple GPUs per trial, you should check out the `Ray Lightning Plugins Library <https://github.com/ray-project/ray_lightning_accelerators>`_.
+If you want to use multiple GPUs per trial, you should check out the `Ray Lightning Library <https://github.com/ray-project/ray_lightning>`_.
 This library makes it easy to run multiple concurrent trials with Ray Tune, with each trial also running
 in a distributed fashion using Ray.
 

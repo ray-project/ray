@@ -11,6 +11,7 @@ from pytorch_lightning.trainer.optimizers import TrainerOptimizersMixin
 import pytorch_lightning as ptl
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 from pytorch_lightning.utilities.memory import recursive_detach
+from ray.util.annotations import Deprecated
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.constants import NUM_STEPS, SCHEDULER_STEP_BATCH, \
     SCHEDULER_STEP_EPOCH
@@ -25,6 +26,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+@Deprecated
 class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                         TrainerOptimizersMixin):
     """A subclass of TrainingOperator created from a PTL ``LightningModule``.
@@ -45,7 +47,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 ...)
     """
 
-    def _configure_amp(self, amp, models, optimizers, apex_args=None):
+    def _configure_apex_amp(self, amp, models, optimizers, apex_args=None):
         assert len(models) == 1
         model = models[0]
         assert isinstance(model, ptl.LightningModule)
@@ -364,7 +366,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         untouched_loss = loss.detach().clone()
 
         with self.timers.record("grad"):
-            if self.use_fp16:
+            if self.use_fp16_apex:
                 with self._amp.scale_loss(loss, optimizer) as scaled_loss:
                     model.backward(scaled_loss, optimizer, optimizer_idx=0)
             else:

@@ -1,5 +1,6 @@
 # coding: utf-8
 import glob
+import json
 import logging
 import os
 import sys
@@ -13,17 +14,17 @@ import pickle
 import pytest
 
 import ray
-from ray.new_dashboard import k8s_utils
+from ray.dashboard import k8s_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
 import ray._private.utils
+import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
-import ray.test_utils
-from ray import resource_spec
+import ray._private.resource_spec as resource_spec
 import setproctitle
 
-from ray.test_utils import (check_call_ray, wait_for_condition,
-                            wait_for_num_actors)
+from ray._private.test_utils import (check_call_ray, wait_for_condition,
+                                     wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +36,6 @@ def test_global_state_api(shutdown_only):
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
     assert ray.cluster_resources()["CustomResource"] == 1
-
-    # A driver/worker creates a temporary object during startup. Although the
-    # temporary object is freed immediately, in a rare case, we can still find
-    # the object ref in GCS because Raylet removes the object ref from GCS
-    # asynchronously.
-    # Because we can't control when workers create the temporary objects, so
-    # We can't assert that `ray.state.objects()` returns an empty dict. Here
-    # we just make sure `ray.state.objects()` succeeds.
-    assert len(ray.state.objects()) >= 0
 
     job_id = ray._private.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
@@ -704,9 +696,9 @@ def test_k8s_cpu():
         file.flush()
     with mock.patch("ray._private.utils.os.environ",
                     {"KUBERNETES_SERVICE_HOST"}),\
-            mock.patch("ray.new_dashboard.k8s_utils.CPU_USAGE_PATH",
+            mock.patch("ray.dashboard.k8s_utils.CPU_USAGE_PATH",
                        cpu_file.name),\
-            mock.patch("ray.new_dashboard.k8s_utils.PROC_STAT_PATH",
+            mock.patch("ray.dashboard.k8s_utils.PROC_STAT_PATH",
                        proc_stat_file.name),\
             mock.patch("ray._private.utils.get_k8s_cpus.__defaults__",
                        (shares_file.name,)):
@@ -733,175 +725,21 @@ def test_k8s_cpu():
         assert 50 < k8s_utils.cpu_percent() < 60
 
 
-def test_override_environment_variables_task(ray_start_regular):
-    @ray.remote
-    def get_env(key):
-        return os.environ.get(key)
-
-    assert (ray.get(
-        get_env.options(override_environment_variables={
-            "a": "b",
-        }).remote("a")) == "b")
-
-
-def test_override_environment_variables_actor(ray_start_regular):
-    @ray.remote
-    class EnvGetter:
-        def get(self, key):
-            return os.environ.get(key)
-
-    a = EnvGetter.options(override_environment_variables={
-        "a": "b",
-        "c": "d",
-    }).remote()
-    assert (ray.get(a.get.remote("a")) == "b")
-    assert (ray.get(a.get.remote("c")) == "d")
-
-
-def test_override_environment_variables_nested_task(ray_start_regular):
-    @ray.remote
-    def get_env(key):
-        return os.environ.get(key)
-
-    @ray.remote
-    def get_env_wrapper(key):
-        return ray.get(get_env.remote(key))
-
-    assert (ray.get(
-        get_env_wrapper.options(override_environment_variables={
-            "a": "b",
-        }).remote("a")) == "b")
-
-
-def test_override_environment_variables_multitenancy(shutdown_only):
-    ray.init(
-        job_config=ray.job_config.JobConfig(worker_env={
-            "foo1": "bar1",
-            "foo2": "bar2",
-        }))
-
-    @ray.remote
-    def get_env(key):
-        return os.environ.get(key)
-
-    assert ray.get(get_env.remote("foo1")) == "bar1"
-    assert ray.get(get_env.remote("foo2")) == "bar2"
-    assert ray.get(
-        get_env.options(override_environment_variables={
-            "foo1": "baz1",
-        }).remote("foo1")) == "baz1"
-    assert ray.get(
-        get_env.options(override_environment_variables={
-            "foo1": "baz1",
-        }).remote("foo2")) == "bar2"
-
-
-def test_override_environment_variables_complex(shutdown_only):
-    ray.init(
-        job_config=ray.job_config.JobConfig(worker_env={
-            "a": "job_a",
-            "b": "job_b",
-            "z": "job_z",
-        }))
-
-    @ray.remote
-    def get_env(key):
-        return os.environ.get(key)
-
-    @ray.remote
-    class NestedEnvGetter:
-        def get(self, key):
-            return os.environ.get(key)
-
-        def get_task(self, key):
-            return ray.get(get_env.remote(key))
-
-    @ray.remote
-    class EnvGetter:
-        def get(self, key):
-            return os.environ.get(key)
-
-        def get_task(self, key):
-            return ray.get(get_env.remote(key))
-
-        def nested_get(self, key):
-            aa = NestedEnvGetter.options(override_environment_variables={
-                "c": "e",
-                "d": "dd",
-            }).remote()
-            return ray.get(aa.get.remote(key))
-
-    a = EnvGetter.options(override_environment_variables={
-        "a": "b",
-        "c": "d",
-    }).remote()
-    assert (ray.get(a.get.remote("a")) == "b")
-    assert (ray.get(a.get_task.remote("a")) == "b")
-    assert (ray.get(a.nested_get.remote("a")) == "b")
-    assert (ray.get(a.nested_get.remote("c")) == "e")
-    assert (ray.get(a.nested_get.remote("d")) == "dd")
-    assert (ray.get(
-        get_env.options(override_environment_variables={
-            "a": "b",
-        }).remote("a")) == "b")
-
-    assert (ray.get(a.get.remote("z")) == "job_z")
-    assert (ray.get(a.get_task.remote("z")) == "job_z")
-    assert (ray.get(a.nested_get.remote("z")) == "job_z")
-    assert (ray.get(
-        get_env.options(override_environment_variables={
-            "a": "b",
-        }).remote("z")) == "job_z")
-
-
-def test_override_environment_variables_reuse(shutdown_only):
-    """Test that previously set env vars don't pollute newer calls."""
-    ray.init()
-
-    env_var_name = "TEST123"
-    val1 = "VAL1"
-    val2 = "VAL2"
-    assert os.environ.get(env_var_name) is None
-
-    @ray.remote
-    def f():
-        return os.environ.get(env_var_name)
-
-    @ray.remote
-    def g():
-        return os.environ.get(env_var_name)
-
-    assert ray.get(f.remote()) is None
-    assert ray.get(
-        f.options(override_environment_variables={
-            env_var_name: val1
-        }).remote()) == val1
-    assert ray.get(f.remote()) is None
-    assert ray.get(g.remote()) is None
-    assert ray.get(
-        f.options(override_environment_variables={
-            env_var_name: val2
-        }).remote()) == val2
-    assert ray.get(g.remote()) is None
-    assert ray.get(f.remote()) is None
-
-
 def test_sync_job_config(shutdown_only):
     num_java_workers_per_process = 8
-    worker_env = {
-        "key": "value",
-    }
+    runtime_env = {"env_vars": {"key": "value"}}
 
     ray.init(
         job_config=ray.job_config.JobConfig(
             num_java_workers_per_process=num_java_workers_per_process,
-            worker_env=worker_env))
+            runtime_env=runtime_env))
 
     # Check that the job config is synchronized at the driver side.
     job_config = ray.worker.global_worker.core_worker.get_job_config()
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
-    assert (job_config.worker_env == worker_env)
+    job_runtime_env = json.loads(job_config.runtime_env.serialized_runtime_env)
+    assert job_runtime_env["env_vars"] == runtime_env["env_vars"]
 
     @ray.remote
     def get_job_config():
@@ -909,11 +747,12 @@ def test_sync_job_config(shutdown_only):
         return job_config.SerializeToString()
 
     # Check that the job config is synchronized at the worker side.
-    job_config = ray.gcs_utils.JobConfig()
+    job_config = gcs_utils.JobConfig()
     job_config.ParseFromString(ray.get(get_job_config.remote()))
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
-    assert (job_config.worker_env == worker_env)
+    job_runtime_env = json.loads(job_config.runtime_env.serialized_runtime_env)
+    assert job_runtime_env["env_vars"] == runtime_env["env_vars"]
 
 
 def test_duplicated_arg(ray_start_cluster):

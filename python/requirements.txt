@@ -6,11 +6,9 @@
 #
 # setup.py install_requires
 aiohttp==3.7
-aioredis
+aioredis < 2
 click >= 7.0
 cloudpickle
-colorama
-colorful
 filelock
 gpustat
 grpcio >= 1.28.1
@@ -21,41 +19,42 @@ opencensus
 prometheus_client >= 0.7.1
 protobuf >= 3.8.0
 py-spy >= 0.2.0
+pydantic >= 1.8
 pyyaml
 redis >= 3.5.0
 requests
 
 ## setup.py extras
-atari_py
 dm_tree
 flask
-gym[atari]
+gym==0.19
 lz4
+scikit-image
 opencv-python-headless==4.3.0.36
-pandas==1.0.5
+pandas>=1.0.5; python_version < '3.7'
+pandas>=1.2.0; python_version >= '3.7'
 scipy==1.4.1
 tabulate
-tensorboardX
+tensorboardX >= 1.9
 uvicorn
-pydantic>=1.8
 dataclasses; python_version < '3.7'
 starlette
 
 # Requirements for running tests
+pyarrow==4.0.1
 blist; platform_system != "Windows"
 azure-common
 azure-mgmt-resource
 msrestazure
 boto3
-cython==0.29.0
+cython >= 0.29.15
 dataclasses; python_version < '3.7'
-dask[complete]
 feather-format
+google-api-python-client
 gym
 gym-minigrid
 kubernetes
 lxml
-modin
 moto
 mypy
 networkx
@@ -63,18 +62,21 @@ numba
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
 openpyxl
-opentelemetry-api==1.0.0rc1
-opentelemetry-sdk==1.0.0rc1
+opentelemetry-api==1.1.0
+opentelemetry-sdk==1.1.0
+opentelemetry-exporter-otlp==1.1.0
 pexpect
 Pillow; platform_system != "Windows"
 pygments
+pyspark
 pytest==5.4.3
 pytest-asyncio
 pytest-rerunfailures
 pytest-sugar
+pytest-lazy-fixture
 pytest-timeout
 scikit-learn==0.22.2
-tensorflow
+tensorflow==2.5.1
 testfixtures
 werkzeug
 xlrd
@@ -84,5 +86,3 @@ smart_open[s3]
 tqdm
 async-exit-stack
 async-generator
-# pyarrow v4.0.0 doesn't work in macOS
-pyarrow==3.0.0

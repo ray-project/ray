@@ -60,6 +60,8 @@ Next, let's start Prometheus.
 
 Now, you can access Ray metrics from the default Prometheus url, `http://localhost:9090`.
 
+.. _multi-node-metrics:
+
 Getting Started (Multi-nodes)
 -----------------------------
 Let's now walk through how to import metrics from a Ray cluster.

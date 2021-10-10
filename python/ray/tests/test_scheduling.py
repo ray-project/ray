@@ -2,6 +2,7 @@
 import collections
 import logging
 import platform
+import subprocess
 import sys
 import time
 import unittest
@@ -10,11 +11,13 @@ import numpy as np
 import pytest
 
 import ray
+from ray.internal.internal_api import memory_summary
 import ray.util.accelerators
 import ray.cluster_utils
-import ray.test_utils
 
-from ray.test_utils import (wait_for_condition, new_scheduler_enabled)
+from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
+                                     Semaphore, object_memory_usage,
+                                     SignalActor)
 
 logger = logging.getLogger(__name__)
 
@@ -60,35 +63,41 @@ def test_load_balancing(ray_start_cluster):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Times out on Windows")
 def test_hybrid_policy(ray_start_cluster):
-    @ray.remote(num_cpus=1)
-    def get_node():
-        # Sleep to avoid lease reuse.
-        time.sleep(3)
-        return ray.worker.global_worker.current_node_id
 
     cluster = ray_start_cluster
     num_nodes = 2
     num_cpus = 10
     for _ in range(num_nodes):
-        cluster.add_node(num_cpus=num_cpus)
+        cluster.add_node(num_cpus=num_cpus, memory=num_cpus)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    # Warm the worker pool in order to isolate the test to only test the
-    # scheduling policy.
-    node_resources = [
-        resource for resource in ray.cluster_resources() if "node:" in resource
-    ]
-    for node_ip in node_resources:
-        print("Warming worker pool on ", node_ip)
-        ray.get([get_node.remote() for _ in range(num_cpus)])
+    # `block_task` ensures that scheduled tasks do not return until all are
+    # running.
+    block_task = Semaphore.remote(0)
+    # `block_driver` ensures that the driver does not allow tasks to continue
+    # until all are running.
+    block_driver = Semaphore.remote(0)
+
+    # Add the memory resource because the cpu will be released in the ray.get
+    @ray.remote(num_cpus=1, memory=1)
+    def get_node():
+        ray.get(block_driver.release.remote())
+        ray.get(block_task.acquire.remote())
+        return ray.worker.global_worker.current_node_id
 
     # Below the hybrid threshold we pack on the local node first.
-    nodes = ray.get([get_node.remote() for _ in range(5)])
+    refs = [get_node.remote() for _ in range(5)]
+    ray.get([block_driver.acquire.remote() for _ in refs])
+    ray.get([block_task.release.remote() for _ in refs])
+    nodes = ray.get(refs)
     assert len(set(nodes)) == 1
 
     # We pack the second node to the hybrid threshold.
-    nodes = ray.get([get_node.remote() for _ in range(10)])
+    refs = [get_node.remote() for _ in range(10)]
+    ray.get([block_driver.acquire.remote() for _ in refs])
+    ray.get([block_task.release.remote() for _ in refs])
+    nodes = ray.get(refs)
     counter = collections.Counter(nodes)
     for node_id in counter:
         print(f"{node_id}: {counter[node_id]}")
@@ -97,7 +106,10 @@ def test_hybrid_policy(ray_start_cluster):
     # Once all nodes are past the hybrid threshold we round robin.
     # TODO (Alex): Ideally we could schedule less than 20 nodes here, but the
     # policy is imperfect if a resource report interrupts the process.
-    nodes = ray.get([get_node.remote() for _ in range(20)])
+    refs = [get_node.remote() for _ in range(20)]
+    ray.get([block_driver.acquire.remote() for _ in refs])
+    ray.get([block_task.release.remote() for _ in refs])
+    nodes = ray.get(refs)
     counter = collections.Counter(nodes)
     for node_id in counter:
         print(f"{node_id}: {counter[node_id]}")
@@ -108,10 +120,8 @@ def test_legacy_spillback_distribution(ray_start_cluster):
     cluster = ray_start_cluster
     # Create a head node and wait until it is up.
     cluster.add_node(
-        num_cpus=0,
-        _system_config={
-            "scheduler_loadbalance_spillback": True,
-            "scheduler_hybrid_scheduling": False
+        num_cpus=0, _system_config={
+            "scheduler_spread_threshold": 0,
         })
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
@@ -346,7 +356,6 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
-            "ownership_based_object_directory_enabled": True,
         })
     # Use a custom resource for pinning tasks to a node.
     cluster.add_node(num_cpus=1, resources={"pin_worker1": 1})
@@ -417,15 +426,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_lease_request_leak(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _system_config={
-            # This test uses ray.state.objects(), which only works with the
-            # GCS-based object directory
-            "ownership_based_object_directory_enabled": False,
-            "object_timeout_milliseconds": 200
-        })
-    assert len(ray.state.objects()) == 0
+    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
 
     @ray.remote
     def f(x):
@@ -442,9 +443,179 @@ def test_lease_request_leak(shutdown_only):
         del obj_ref
     ray.get(tasks)
 
-    time.sleep(
-        1)  # Sleep for an amount longer than the reconstruction timeout.
-    assert len(ray.state.objects()) == 0, ray.state.objects()
+    wait_for_condition(lambda: object_memory_usage() == 0)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_many_args(ray_start_cluster):
+    cluster = ray_start_cluster
+    object_size = int(1e6)
+    cluster.add_node(
+        num_cpus=1,
+        _system_config={
+            # Lower this to prevent excessive delays in pull retries.
+            "object_manager_pull_timeout_ms": 100,
+            "debug_dump_period_milliseconds": 1000,
+        },
+        object_store_memory=int(1e8))
+    for _ in range(3):
+        cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f(i, *args):
+        print(i)
+        return
+
+    @ray.remote
+    def put():
+        return np.zeros(object_size, dtype=np.uint8)
+
+    xs = [put.remote() for _ in range(200)]
+    ray.wait(xs, num_returns=len(xs), fetch_local=False)
+    num_tasks_submitted_before, num_leases_requested_before = (
+        ray.worker.global_worker.core_worker.get_task_submission_stats())
+    tasks = []
+    for i in range(100):
+        args = [np.random.choice(xs) for _ in range(10)]
+        tasks.append(f.remote(i, *args))
+    ray.get(tasks, timeout=30)
+
+    num_tasks_submitted, num_leases_requested = (
+        ray.worker.global_worker.core_worker.get_task_submission_stats())
+    num_tasks_submitted -= num_tasks_submitted_before
+    num_leases_requested -= num_leases_requested_before
+    print("submitted:", num_tasks_submitted, "leases requested:",
+          num_leases_requested)
+    assert num_tasks_submitted == 100
+    assert num_leases_requested <= 10 * num_tasks_submitted
+
+
+def test_pull_manager_at_capacity_reports(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, object_store_memory=int(1e8))
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
+
+    object_size = int(1e7)
+    refs = []
+    for _ in range(20):
+        refs.append(ray.put(np.zeros(object_size, dtype=np.uint8)))
+
+    def fetches_queued():
+        return "fetches queued" in memory_summary(stats_only=True)
+
+    assert not fetches_queued()
+
+    @ray.remote
+    def f(s, ref):
+        ray.get(s.wait.remote())
+
+    signal = SignalActor.remote()
+    xs = [f.remote(signal, ref) for ref in refs]
+    wait_for_condition(fetches_queued)
+
+    signal.send.remote()
+    ray.get(xs)
+    wait_for_condition(lambda: not fetches_queued())
+
+
+def build_cluster(num_cpu_nodes, num_gpu_nodes):
+    cluster = ray.cluster_utils.Cluster()
+    gpu_ids = [
+        cluster.add_node(num_cpus=2, num_gpus=1).unique_id
+        for _ in range(num_gpu_nodes)
+    ]
+    cpu_ids = [
+        cluster.add_node(num_cpus=1).unique_id for _ in range(num_cpu_nodes)
+    ]
+    cluster.wait_for_nodes()
+    return cluster, cpu_ids, gpu_ids
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_gpu(monkeypatch):
+    monkeypatch.setenv("RAY_scheduler_avoid_gpu_nodes", "1")
+    n = 5
+
+    cluster, cpu_node_ids, gpu_node_ids = build_cluster(n, n)
+    try:
+        ray.init(address=cluster.address)
+
+        @ray.remote(num_cpus=1)
+        class Actor1:
+            def __init__(self):
+                pass
+
+            def get_location(self):
+                return ray.worker.global_worker.node.unique_id
+
+        @ray.remote
+        def task_cpu(num_cpus=0.5):
+            time.sleep(10)
+            return ray.worker.global_worker.node.unique_id
+
+        @ray.remote(num_returns=2, num_gpus=0.5)
+        def launcher():
+            a = Actor1.remote()
+            task_results = [task_cpu.remote() for _ in range(n)]
+            actor_results = [a.get_location.remote() for _ in range(n)]
+            return ray.get(task_results + actor_results
+                           ), ray.worker.global_worker.node.unique_id
+
+        r = launcher.remote()
+
+        ids, launcher_id = ray.get(r)
+
+        assert launcher_id in gpu_node_ids, \
+            "expected launcher task to be scheduled on GPU nodes"
+
+        for node_id in ids:
+            assert node_id in cpu_node_ids, \
+                "expected non-GPU tasks/actors to be scheduled on" \
+                "non-GPU nodes."
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 0,
+        "num_nodes": 1,
+    }], indirect=True)
+def test_head_node_without_cpu(ray_start_cluster):
+    @ray.remote(num_cpus=1)
+    def f():
+        return 1
+
+    f.remote()
+
+    check_count = 0
+    demand_1cpu = " {'CPU': 1.0}:"
+    while True:
+        status = subprocess.check_output(["ray", "status"]).decode()
+        if demand_1cpu in status:
+            break
+        check_count += 1
+        assert check_count < 5, f"Incorrect demand. Last status {status}"
+        time.sleep(1)
+
+    @ray.remote(num_cpus=2)
+    def g():
+        return 2
+
+    g.remote()
+
+    check_count = 0
+    demand_2cpu = " {'CPU': 2.0}:"
+    while True:
+        status = subprocess.check_output(["ray", "status"]).decode()
+        if demand_1cpu in status and demand_2cpu in status:
+            break
+        check_count += 1
+        assert check_count < 5, f"Incorrect demand. Last status {status}"
+        time.sleep(1)
 
 
 if __name__ == "__main__":

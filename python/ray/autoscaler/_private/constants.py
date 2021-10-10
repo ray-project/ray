@@ -1,4 +1,5 @@
 import os
+import sys
 
 from ray.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL, DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
@@ -8,12 +9,16 @@ from ray.ray_constants import (  # noqa F401
 
 def env_integer(key, default):
     if key in os.environ:
-        return int(os.environ[key])
+        val = os.environ[key]
+        if val == "inf":
+            return sys.maxsize
+        else:
+            return int(val)
     return default
 
 
 # Whether event logging to driver is enabled. Set to 0 to disable.
-AUTOSCALER_EVENTS = env_integer("AUTOSCALER_EVENTS", 1)
+AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
 
 # Whether to avoid launching GPU nodes for CPU only tasks.
 AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
@@ -56,6 +61,9 @@ AUTOSCALER_MAX_FAILURES_DISPLAYED = 20
 # to run.
 AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE = 1000
 
+# Port that autoscaler prometheus metrics will be exported to
+AUTOSCALER_METRIC_PORT = env_integer("AUTOSCALER_METRIC_PORT", 44217)
+
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
 # Max number of retries to create an EC2 node (retry different subnet)
@@ -86,8 +94,8 @@ RAY_PROCESSES = [
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
     ["reporter.py", False],
-    ["new_dashboard/dashboard.py", False],
-    ["new_dashboard/agent.py", False],
+    ["dashboard/dashboard.py", False],
+    ["dashboard/agent.py", False],
     ["ray_process_reaper.py", False],
 ]
 

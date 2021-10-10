@@ -18,7 +18,7 @@ import ray
 from ray import tune
 from ray.tune.cluster_info import is_ray_cluster
 
-from _trainable import timed_tune_run
+from ray.tune.utils.release_test_util import timed_tune_run
 
 
 def main():

@@ -21,13 +21,19 @@ RAY_API_GROUP = "cluster.ray.io"
 RAY_API_VERSION = "v1"
 RAYCLUSTER_PLURAL = "rayclusters"
 
+STATUS_AUTOSCALING_EXCEPTION = "AutoscalingExceptionRecovery"
+STATUS_ERROR = "Error"
+STATUS_RUNNING = "Running"
+STATUS_UPDATING = "Running"
+AUTOSCALER_RETRIES_FIELD = "autoscalerRetries"
+
 MAX_STATUS_RETRIES = 3
 DELAY_BEFORE_STATUS_RETRY = .5
 
-OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
+OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE", "")
 # Operator is namespaced if the above environment variable is set,
 # cluster-scoped otherwise:
-NAMESPACED_OPERATOR = OPERATOR_NAMESPACE is not None
+NAMESPACED_OPERATOR = OPERATOR_NAMESPACE != ""
 
 RAY_CONFIG_DIR = os.environ.get("RAY_CONFIG_DIR") or \
     os.path.expanduser("~/ray_cluster_configs")
@@ -252,15 +258,22 @@ def set_status(cluster_name: str, cluster_namespace: str, status: str) -> None:
     _set_status(cluster_name, cluster_namespace, status)
 
 
-def _set_status(cluster_name: str, cluster_namespace: str,
-                status: str) -> None:
+def _set_status(cluster_name: str, cluster_namespace: str, phase: str) -> None:
     cluster_cr = custom_objects_api()\
-        .get_namespaced_custom_object(namespace=cluster_namespace,
-                                      group=RAY_API_GROUP,
-                                      version=RAY_API_VERSION,
-                                      plural=RAYCLUSTER_PLURAL,
-                                      name=cluster_name)
-    cluster_cr["status"] = {"phase": status}
+        .get_namespaced_custom_object(
+            namespace=cluster_namespace,
+            group=RAY_API_GROUP,
+            version=RAY_API_VERSION,
+            plural=RAYCLUSTER_PLURAL,
+            name=cluster_name)
+    status = cluster_cr.get("status", {})
+    autoscaler_retries = status.get(AUTOSCALER_RETRIES_FIELD, 0)
+    if phase == STATUS_AUTOSCALING_EXCEPTION:
+        autoscaler_retries += 1
+    cluster_cr["status"] = {
+        "phase": phase,
+        AUTOSCALER_RETRIES_FIELD: autoscaler_retries
+    }
     custom_objects_api()\
         .patch_namespaced_custom_object_status(namespace=cluster_namespace,
                                                group=RAY_API_GROUP,
@@ -295,13 +308,13 @@ def infer_head_port(cluster_config: Dict[str, Any]) -> str:
     return str(ray_constants.DEFAULT_PORT)
 
 
-def check_redis_password_not_specified(cluster_config, cluster_identifier):
+def check_redis_password_not_specified(cluster_config, name, namespace):
     """Detect if Redis password is specified in the head Ray start commands.
     The operator does not currently support setting a custom Redis password.
     """
     head_start_commands = cluster_config.get("head_start_ray_commands", [])
     if any("redis-password" in cmd for cmd in head_start_commands):
-        prefix = ",".join(cluster_identifier) + ":"
+        prefix = ",".join([name, namespace]) + ":"
         raise ValueError(f"{prefix}The Ray Kubernetes Operator does not"
                          " support setting a custom Redis password in Ray"
                          " start commands.")

@@ -1,0 +1,34 @@
+-r requirements_dl.txt
+
+# Environment adapters.
+# ---------------------
+# Atari
+atari_py==0.2.9
+gym[atari]==0.18.3
+# Kaggle envs.
+kaggle_environments==1.7.11
+# Unity3D testing
+mlagents_envs==0.27.0
+# For tests on PettingZoo's multi-agent envs.
+pettingzoo==1.11.1
+pymunk==6.0.0
+supersuit==2.6.6
+# For testing in MuJoCo-like envs (in PyBullet).
+pybullet==3.1.7
+# For tests on RecSim and Kaggle envs.
+recsim==0.2.4
+
+# Other.
+# ------
+# For MAML on PyTorch.
+higher==0.2.1
+# For auto-generating an env-rendering Window.
+pyglet==1.5.15
+# For JSON reader/writer.
+smart_open==5.0.0
+# Ray Serve example
+starlette==0.14.2
+# ONNX
+onnx==1.9.0
+onnxruntime==1.8.0
+tf2onnx==1.8.5

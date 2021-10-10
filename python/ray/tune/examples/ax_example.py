@@ -49,13 +49,25 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
+    if args.server_address:
+        import ray
+        ray.init(f"ray://{args.server_address}")
+
     algo = AxSearch(
-        max_concurrent=4,
         parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
+    # Limit to 4 concurrent trials
+    algo = tune.suggest.ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
     analysis = tune.run(
         easy_objective,

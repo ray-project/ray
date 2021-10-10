@@ -169,8 +169,12 @@ class LoggerSuite(unittest.TestCase):
                     "D": 123
                 }
             },
-            "d": np.int64(1),
-            "e": np.bool8(True)
+            "int32": np.int32(1),
+            "int64": np.int64(2),
+            "bool8": np.bool8(True),
+            "float32": np.float32(3),
+            "float64": np.float64(4),
+            "bad": np.float128(4),
         }
         t = Trial(
             evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
@@ -182,9 +186,11 @@ class LoggerSuite(unittest.TestCase):
 
         logger.on_trial_complete(3, [], t)
 
-        self._validate_tbx_result()
+        self._validate_tbx_result(
+            params=(b"float32", b"float64", b"int32", b"int64", b"bool8"),
+            excluded_params=(b"bad", ))
 
-    def _validate_tbx_result(self):
+    def _validate_tbx_result(self, params=None, excluded_params=None):
         try:
             from tensorflow.python.summary.summary_iterator \
                 import summary_iterator
@@ -194,10 +200,21 @@ class LoggerSuite(unittest.TestCase):
 
         events_file = list(glob.glob(f"{self.test_dir}/events*"))[0]
         results = []
+        excluded_params = excluded_params or []
         for event in summary_iterator(events_file):
             for v in event.summary.value:
                 if v.tag == "ray/tune/episode_reward_mean":
                     results.append(v.simple_value)
+                elif v.tag == "_hparams_/experiment" and params:
+                    for key in params:
+                        self.assertIn(key, v.metadata.plugin_data.content)
+                    for key in excluded_params:
+                        self.assertNotIn(key, v.metadata.plugin_data.content)
+                elif v.tag == "_hparams_/session_start_info" and params:
+                    for key in params:
+                        self.assertIn(key, v.metadata.plugin_data.content)
+                    for key in excluded_params:
+                        self.assertNotIn(key, v.metadata.plugin_data.content)
 
         self.assertEqual(len(results), 3)
         self.assertSequenceEqual([int(res) for res in results], [4, 5, 6])
@@ -252,4 +269,4 @@ class LoggerSuite(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

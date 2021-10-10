@@ -5,7 +5,7 @@
   "dependencies": {
     "@material-ui/core": "4.11.0",
     "@material-ui/icons": "^4.9.1",
-    "@material-ui/lab": "^4.0.0-alpha.56",
+    "@material-ui/lab": "4.0.0-alpha.56",
     "@material-ui/pickers": "^3.2.10",
     "@reduxjs/toolkit": "^1.3.1",
     "@types/classnames": "^2.2.10",
@@ -36,9 +36,9 @@
     "use-debounce": "^3.4.3"
   },
   "devDependencies": {
-    "eslint-plugin-import": "^2.20.1",
-    "eslint-plugin-prefer-arrow": "^1.1.7",
-    "prettier": "^2.0.2"
+    "eslint-plugin-import": "2.20.1",
+    "eslint-plugin-prefer-arrow": "1.1.7",
+    "prettier": "2.3.0"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -47,8 +47,8 @@
     "eject": "react-scripts eject",
     "lint": "npm run eslint && npm run prettier",
     "lint-fix": "npm run prettier -- --write && npm run eslint -- --fix",
-    "prettier": "./node_modules/.bin/prettier -c src/",
-    "eslint": "./node_modules/.bin/eslint \"src/**\""
+    "prettier": "prettier -c src",
+    "eslint": "eslint \"src/**\""
   },
   "eslintConfig": {
     "ignorePatterns": [

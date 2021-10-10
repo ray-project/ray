@@ -1,3 +1,4 @@
+import os
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,10 @@ _configure_system()
 # Delete configuration function.
 del _configure_system
 
+# Replaced with the current commit when building the wheels.
+__commit__ = "{{RAY_COMMIT_SHA}}"
+__version__ = "2.0.0.dev0"
+
 import ray._raylet  # noqa: E402
 
 from ray._raylet import (  # noqa: E402
@@ -83,8 +88,8 @@ from ray.state import (  # noqa: E402
 )
 from ray.worker import (  # noqa: E402,F401
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
-    UTIL_WORKER_MODE, SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids,
-    init, is_initialized, put, kill, remote, shutdown, wait,
+    SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids, init,
+    is_initialized, put, kill, remote, shutdown, wait,
 )
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
@@ -93,11 +98,12 @@ import ray.actor  # noqa: E402,F401
 from ray.actor import method  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
+from ray import data  # noqa: E402,F401
 from ray import util  # noqa: E402
-
-# Replaced with the current commit when building the wheels.
-__commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "2.0.0.dev0"
+from ray import _private  # noqa: E402,F401
+from ray import workflow  # noqa: E402,F401
+# We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
+from ray.client_builder import client, ClientBuilder  # noqa: E402
 
 __all__ = [
     "__version__",
@@ -106,7 +112,10 @@ __all__ = [
     "actor",
     "available_resources",
     "cancel",
+    "client",
+    "ClientBuilder",
     "cluster_resources",
+    "data"
     "get",
     "get_actor",
     "get_gpu_ids",
@@ -146,5 +155,26 @@ __all__ += [
     "PlacementGroupID",
 ]
 
+
 # Remove modules from top-level ray
+def _ray_user_setup_function():
+    import os
+    user_setup_fn = os.environ.get("RAY_USER_SETUP_FUNCTION")
+    if user_setup_fn is not None:
+        try:
+            module_name, fn_name = user_setup_fn.rsplit(".", 1)
+            m = __import__(module_name, globals(), locals(), [fn_name])
+            getattr(m, fn_name)()
+        except Exception as e:
+            # We still need to allow ray to be imported, even there is
+            # something in the setup function.
+            logger.warning(
+                f"Failed to run user setup function: {user_setup_fn}. "
+                f"Error message {e}")
+
+
+_ray_user_setup_function()
+
+del os
 del logging
+del _ray_user_setup_function

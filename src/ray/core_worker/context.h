@@ -20,6 +20,7 @@
 #include "ray/core_worker/common.h"
 
 namespace ray {
+namespace core {
 
 struct WorkerThreadContext;
 
@@ -39,10 +40,7 @@ class WorkerContext {
 
   bool ShouldCaptureChildTasksInPlacementGroup() const;
 
-  const ray::RuntimeEnv &GetCurrentRuntimeEnv() const;
-
-  const std::unordered_map<std::string, std::string>
-      &GetCurrentOverrideEnvironmentVariables() const;
+  const std::string &GetCurrentSerializedRuntimeEnv() const;
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
@@ -98,9 +96,7 @@ class WorkerContext {
   // Whether or not we should implicitly capture parent's placement group.
   bool placement_group_capture_child_tasks_;
   // The runtime env for the current actor or task.
-  ray::RuntimeEnv runtime_env_;
-  // The environment variable overrides for the current actor or task.
-  std::unordered_map<std::string, std::string> override_environment_variables_;
+  rpc::RuntimeEnv runtime_env_;
   /// The id of the (main) thread that constructed this worker context.
   boost::thread::id main_thread_id_;
 
@@ -111,4 +107,5 @@ class WorkerContext {
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
 };
 
+}  // namespace core
 }  // namespace ray

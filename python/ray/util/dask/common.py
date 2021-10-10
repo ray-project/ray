@@ -4,11 +4,10 @@ from operator import getitem
 import uuid
 
 import ray
-from ray.util.client.common import ClientObjectRef
 
 from dask.base import quote
 from dask.core import get as get_sync
-from dask.compatibility import apply
+from dask.utils import apply
 
 try:
     from dataclasses import is_dataclass, fields as dataclass_fields
@@ -47,7 +46,7 @@ def unpack_object_refs(*args):
     object_refs_token = uuid.uuid4().hex
 
     def _unpack(expr):
-        if isinstance(expr, (ray.ObjectRef, ClientObjectRef)):
+        if isinstance(expr, ray.ObjectRef):
             token = expr.hex()
             repack_dsk[token] = (getitem, object_refs_token, len(object_refs))
             object_refs.append(expr)

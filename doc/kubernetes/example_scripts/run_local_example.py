@@ -54,5 +54,5 @@ def main():
 
 
 if __name__ == "__main__":
-    ray.util.connect(f"127.0.0.1:{LOCAL_PORT}")
+    ray.init(f"ray://127.0.0.1:{LOCAL_PORT}")
     main()

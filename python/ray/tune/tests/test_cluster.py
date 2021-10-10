@@ -13,7 +13,7 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.cluster_utils import Cluster
-from ray.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tune import register_trainable
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
@@ -32,6 +32,7 @@ from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer,
 os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
 # Block for results even when placement groups are pending
 os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "9999"
 
 
 def _check_trial_running(trial):
@@ -42,7 +43,7 @@ def _check_trial_running(trial):
 
 
 def _get_running_trials(runner):
-    return [t for t in runner.get_trials() if t.status == Trial.RUNNING]
+    return [t for t in runner.get_live_trials() if t.status == Trial.RUNNING]
 
 
 def _start_new_cluster():
@@ -189,7 +190,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     running_trials = _get_running_trials(runner)
     assert len(running_trials) == 1
     assert _check_trial_running(running_trials[0])
-    assert not trial.last_result
+    assert not trial.has_reported_at_least_once
     assert trial.status == Trial.RUNNING
     cluster.remove_node(node)
     cluster.add_node(num_cpus=1)

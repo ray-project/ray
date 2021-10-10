@@ -16,6 +16,7 @@ Summary
 -------
 
 .. list-table::
+   :widths: 5 5 2 10
    :header-rows: 1
 
    * - SearchAlgorithm
@@ -30,6 +31,14 @@ Summary
      - Bayesian/Bandit Optimization
      - [`Ax <https://ax.dev/>`__]
      - :doc:`/tune/examples/ax_example`
+   * - :ref:`BlendSearch <BlendSearch>`
+     - Blended Search
+     - [`Bs <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
+     - :doc:`/tune/examples/blendsearch_example`
+   * - :ref:`CFO <CFO>`
+     - Cost-Frugal hyperparameter Optimization
+     - [`Cfo <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
+     - :doc:`/tune/examples/cfo_example`
    * - :ref:`DragonflySearch <Dragonfly>`
      - Scalable Bayesian Optimization
      - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
@@ -129,8 +138,6 @@ identifier.
     search_alg2.restore_from_dir(
       os.path.join("~/my_results", "my-experiment-1"))
 
-.. note:: This is currently not implemented for: AxSearch, TuneBOHB, SigOptSearch, and DragonflySearch.
-
 .. _tune-basicvariant:
 
 Random search and grid search (tune.suggest.basic_variant.BasicVariantGenerator)
@@ -169,7 +176,7 @@ Bayesian Optimization (tune.suggest.bayesopt.BayesOptSearch)
 BOHB (tune.suggest.bohb.TuneBOHB)
 ---------------------------------
 
-BOHB (Bayesian Optimization HyperBand) is an algorithm that both terminates bad trials and also uses Bayesian Optimization to improve the hyperparameter search. It is backed by the `HpBandSter library <https://github.com/automl/HpBandSter>`_.
+BOHB (Bayesian Optimization HyperBand) is an algorithm that both terminates bad trials and also uses Bayesian Optimization to improve the hyperparameter search. It is available from the `HpBandSter library <https://github.com/automl/HpBandSter>`_.
 
 Importantly, BOHB is intended to be paired with a specific scheduler class: :ref:`HyperBandForBOHB <tune-scheduler-bohb>`.
 
@@ -182,6 +189,42 @@ This algorithm requires using the `ConfigSpace search space specification <https
 See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
 .. autoclass:: ray.tune.suggest.bohb.TuneBOHB
+
+.. _BlendSearch:
+
+BlendSearch (tune.suggest.flaml.BlendSearch)
+--------------------------------------------
+
+BlendSearch is an economical hyperparameter optimization algorithm that combines combines local search with global search. It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
+It allows the users to specify a low-cost initial point as input if such point exists.
+
+In order to use this search algorithm, you will need to install ``flaml``:
+
+.. code-block:: bash
+
+    $ pip install 'flaml[blendsearch]'
+
+See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and documentation in FLAML `BlendSearch documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
+
+.. autoclass:: ray.tune.suggest.flaml.BlendSearch
+
+.. _CFO:
+
+CFO (tune.suggest.flaml.CFO)
+----------------------------
+
+CFO (Cost-Frugal hyperparameter Optimization) is a hyperparameter search algorithm based on randomized local search. It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
+It allows the users to specify a low-cost initial point as input if such point exists.
+
+In order to use this search algorithm, you will need to install ``flaml``:
+
+.. code-block:: bash
+
+    $ pip install flaml
+
+See the `CFO paper <https://arxiv.org/pdf/2005.01571.pdf>`_ and documentation in FLAML `CFO documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
+
+.. autoclass:: ray.tune.suggest.flaml.CFO
 
 .. _Dragonfly:
 
@@ -293,6 +336,9 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
     :members:
     :private-members:
     :show-inheritance:
+
+
+If contributing, make sure to add test cases and an entry in the function described below.
 
 .. _shim:
 

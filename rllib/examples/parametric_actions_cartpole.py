@@ -28,12 +28,36 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--torch", action="store_true")
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=200)
-parser.add_argument("--stop-reward", type=float, default=150.0)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument(
+    "--run",
+    type=str,
+    default="PPO",
+    help="The RLlib-registered algorithm to use.")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=200,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=150.0,
+    help="Reward at which we stop training.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -42,7 +66,7 @@ if __name__ == "__main__":
     register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
     ModelCatalog.register_custom_model(
         "pa_model", TorchParametricActionsModel
-        if args.torch else ParametricActionsModel)
+        if args.framework == "torch" else ParametricActionsModel)
 
     if args.run == "DQN":
         cfg = {
@@ -65,7 +89,7 @@ if __name__ == "__main__":
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "num_workers": 0,
-            "framework": "torch" if args.torch else "tf",
+            "framework": args.framework,
         },
         **cfg)
 

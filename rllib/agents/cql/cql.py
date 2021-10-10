@@ -1,25 +1,30 @@
 """CQL (derived from SAC).
 """
+import logging
 import numpy as np
-from typing import Optional, Type, List
+from typing import Optional, Type
 
-from ray.actor import ActorHandle
+from ray.rllib.agents.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
-from ray.rllib.agents.dqn.dqn import calculate_rr_weights
 from ray.rllib.agents.sac.sac import SACTrainer, \
     DEFAULT_CONFIG as SAC_CONFIG
-from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay
-from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainTFMultiGPU, TrainOneStep, \
+from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
     UpdateTargetNetwork
 from ray.rllib.offline.shuffled_input import ShuffledInput
-from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
+
+tf1, tf, tfv = try_import_tf()
+tfp = try_import_tfp()
+logger = logging.getLogger(__name__)
+replay_buffer = None
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -27,21 +32,22 @@ CQL_DEFAULT_CONFIG = merge_dicts(
     SAC_CONFIG, {
         # You should override this to point to an offline dataset.
         "input": "sampler",
-        # Offline RL does not need IS estimators.
+        # Switch off off-policy evaluation.
         "input_evaluation": [],
         # Number of iterations with Behavior Cloning Pretraining.
         "bc_iters": 20000,
-        # CQL Loss Temperature.
+        # CQL loss temperature.
         "temperature": 1.0,
-        # Num Actions to sample for CQL Loss.
+        # Number of actions to sample for CQL loss.
         "num_actions": 10,
-        # Whether to use the Lagrangian for Alpha Prime (in CQL Loss).
+        # Whether to use the Lagrangian for Alpha Prime (in CQL loss).
         "lagrangian": False,
-        # Lagrangian Threshold.
+        # Lagrangian threshold.
         "lagrangian_thresh": 5.0,
-        # Min Q Weight multiplier.
+        # Min Q weight multiplier.
         "min_q_weight": 5.0,
-        # Replay Buffer should be size of offline dataset.
+        # Replay buffer should be larger or equal the size of the offline
+        # dataset.
         "buffer_size": int(1e6),
     })
 # __sphinx_doc_end__
@@ -51,22 +57,21 @@ CQL_DEFAULT_CONFIG = merge_dicts(
 def validate_config(config: TrainerConfigDict):
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
-    if config["framework"] == "tf":
-        raise ValueError("Tensorflow CQL not implemented yet!")
 
+    # CQL-torch performs the optimizer steps inside the loss function.
+    # Using the multi-GPU optimizer will therefore not work (see multi-GPU
+    # check above) and we must use the simple optimizer for now.
+    if config["simple_optimizer"] is not True and \
+            config["framework"] == "torch":
+        config["simple_optimizer"] = True
 
-replay_buffer = None
-
-
-class NoOpReplayBuffer:
-    def __init__(self,
-                 *,
-                 local_buffer: LocalReplayBuffer = None,
-                 actors: List[ActorHandle] = None):
-        return
-
-    def __call__(self, batch):
-        return batch
+    if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        logger.warning(
+            "You need `tensorflow_probability` in order to run CQL! "
+            "Install it via `pip install tensorflow_probability`. Your "
+            f"tf.__version__={tf.__version__ if tf else None}."
+            "Trying to import tfp results in the following error:")
+        try_import_tfp(error=True)
 
 
 def execution_plan(workers, config):
@@ -93,14 +98,6 @@ def execution_plan(workers, config):
     global replay_buffer
     replay_buffer = local_replay_buffer
 
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-    # NoReplayBuffer ensures that no online data is added
-    # The Dataset is added to the Replay Buffer in after_init()
-    # method below the execution plan.
-    store_op = rollouts.for_each(
-        NoOpReplayBuffer(local_buffer=local_replay_buffer))
-
     def update_prio(item):
         samples, info_dict = item
         if config.get("prioritized_replay"):
@@ -126,7 +123,7 @@ def execution_plan(workers, config):
     if config["simple_optimizer"]:
         train_step_op = TrainOneStep(workers)
     else:
-        train_step_op = TrainTFMultiGPU(
+        train_step_op = MultiGPUTrainOneStep(
             workers=workers,
             sgd_minibatch_size=config["train_batch_size"],
             num_sgd_iter=1,
@@ -142,16 +139,8 @@ def execution_plan(workers, config):
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
-    # Alternate deterministically between (1) and (2).
-    train_op = Concurrently(
-        [store_op, replay_op],
-        mode="round_robin",
-        # Only return the output
-        # of (2) since training metrics are not available until (2) runs.
-        output_indexes=[1],
-        round_robin_weights=calculate_rr_weights(config))
-
-    return StandardMetricsReporting(train_op, workers, config)
+    return StandardMetricsReporting(
+        replay_op, workers, config, by_steps_trained=True)
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
@@ -165,7 +154,8 @@ def after_init(trainer):
     reader = trainer.workers.local_worker().input_reader
 
     # For d4rl, add the D4RLReaders' dataset to the buffer.
-    if "d4rl" in trainer.config["input"]:
+    if isinstance(trainer.config["input"], str) and \
+            "d4rl" in trainer.config["input"]:
         dataset = reader.dataset
         replay_buffer.add_batch(dataset)
     # For a list of files, add each file's entire content to the buffer.
@@ -185,9 +175,8 @@ def after_init(trainer):
                     np.concatenate([obs[1:], np.zeros_like(obs[0:1])])
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
-        print(
-            f"Loaded {num_batches} batches ({total_timesteps} ts) into "
-            f"replay buffer, which has capacity {replay_buffer.buffer_size}.")
+        print(f"Loaded {num_batches} batches ({total_timesteps} ts) into the "
+              f"replay buffer, which has capacity {replay_buffer.capacity}.")
     else:
         raise ValueError(
             "Unknown offline input! config['input'] must either be list of "
@@ -199,7 +188,7 @@ CQLTrainer = SACTrainer.with_updates(
     name="CQL",
     default_config=CQL_DEFAULT_CONFIG,
     validate_config=validate_config,
-    default_policy=CQLTorchPolicy,
+    default_policy=CQLTFPolicy,
     get_policy_class=get_policy_class,
     after_init=after_init,
     execution_plan=execution_plan,

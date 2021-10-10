@@ -33,9 +33,9 @@ def plot_model_weights(means, covs, ax):
 if __name__ == "__main__":
     TS_CONFIG["env"] = WheelBanditEnv
 
-    # Actual training_iterations will be 20 * timesteps_per_iteration
+    # Actual training_iterations will be 10 * timesteps_per_iteration
     # (100 by default) = 2,000
-    training_iterations = 20
+    training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)
 
@@ -49,19 +49,19 @@ if __name__ == "__main__":
 
     print("The trials took", time.time() - start_time, "seconds\n")
 
-    # Analyze cumulative regrets of the trials
+    # Analyze cumulative regrets of the trials.
     frame = pd.DataFrame()
     for key, df in analysis.trial_dataframes.items():
         frame = frame.append(df, ignore_index=True)
 
-    x = frame.groupby("num_steps_trained")[
-        "learner/cumulative_regret"].aggregate(["mean", "max", "min", "std"])
+    x = frame.groupby("agent_timesteps_total")[
+        "episode_reward_mean"].aggregate(["mean", "max", "min", "std"])
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
 
     ax1.plot(x["mean"])
 
-    ax1.set_title("Cumulative Regret")
+    ax1.set_title("Episode reward mean")
     ax1.set_xlabel("Training steps")
 
     # Restore trainer from checkpoint

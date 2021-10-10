@@ -3,6 +3,7 @@
 
 import ray
 from ray.tune import run_experiments
+from ray.tune.utils.release_test_util import ProgressCallback
 
 num_redis_shards = 5
 redis_max_memory = 10**8
@@ -20,19 +21,21 @@ ray.init(address="auto")
 
 # Run the workload.
 
-run_experiments({
-    "ppo": {
-        "run": "PPO",
-        "env": "CartPole-v0",
-        "num_samples": 10000,
-        "config": {
-            "framework": "torch",
-            "num_workers": 7,
-            "num_gpus": 0,
-            "num_sgd_iter": 1,
-        },
-        "stop": {
-            "timesteps_total": 1,
-        },
-    }
-})
+run_experiments(
+    {
+        "ppo": {
+            "run": "PPO",
+            "env": "CartPole-v0",
+            "num_samples": 10000,
+            "config": {
+                "framework": "torch",
+                "num_workers": 7,
+                "num_gpus": 0,
+                "num_sgd_iter": 1,
+            },
+            "stop": {
+                "timesteps_total": 1,
+            },
+        }
+    },
+    callbacks=[ProgressCallback()])

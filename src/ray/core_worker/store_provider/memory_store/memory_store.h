@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include <gtest/gtest_prod.h>
@@ -12,6 +26,7 @@
 #include "ray/core_worker/reference_count.h"
 
 namespace ray {
+namespace core {
 
 struct MemoryStoreStats {
   int32_t num_in_plasma = 0;
@@ -29,12 +44,10 @@ class CoreWorkerMemoryStore {
  public:
   /// Create a memory store.
   ///
-  /// \param[in] store_in_plasma If not null, this is used to spill to plasma.
   /// \param[in] counter If not null, this enables ref counting for local objects,
   ///            and the `remove_after_get` flag for Get() will be ignored.
   /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
   CoreWorkerMemoryStore(
-      std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
       std::function<Status()> check_signals = nullptr,
@@ -74,6 +87,12 @@ class CoreWorkerMemoryStore {
               int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
+  /// Get an object if it exists.
+  ///
+  /// \param[in] object_id The object id to get.
+  /// \return Pointer to the object if it exists, otherwise nullptr.
+  std::shared_ptr<RayObject> GetIfExists(const ObjectID &object_id);
+
   /// Asynchronously get an object from the object store. The object will not be removed
   /// from storage after GetAsync (TODO(ekl): integrate this with object GC).
   ///
@@ -82,14 +101,6 @@ class CoreWorkerMemoryStore {
   ///            object value once available.
   void GetAsync(const ObjectID &object_id,
                 std::function<void(std::shared_ptr<RayObject>)> callback);
-
-  /// Get a single object if available. If the object is not local yet, or if the object
-  /// is local but is ErrorType::OBJECT_IN_PLASMA, then nullptr will be returned, and
-  /// the store will ensure the object is promoted to plasma once available.
-  ///
-  /// \param[in] object_id The object id to get.
-  /// \return pointer to the local object, or nullptr if promoted to plasma.
-  std::shared_ptr<RayObject> GetOrPromoteToPlasma(const ObjectID &object_id);
 
   /// Delete a list of objects from the object store.
   /// NOTE(swang): Objects that contain IsInPlasmaError will not be
@@ -166,9 +177,6 @@ class CoreWorkerMemoryStore {
   /// properly.
   void EraseObjectAndUpdateStats(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Optional callback for putting objects into the plasma store.
-  std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
-
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.
   std::shared_ptr<ReferenceCounter> ref_counter_ = nullptr;
@@ -178,9 +186,6 @@ class CoreWorkerMemoryStore {
 
   /// Protects the data structures below.
   mutable absl::Mutex mu_;
-
-  /// Set of objects that should be promoted to plasma once available.
-  absl::flat_hash_set<ObjectID> promoted_to_plasma_ GUARDED_BY(mu_);
 
   /// Map from object ID to `RayObject`.
   /// NOTE: This map should be modified by EmplaceObjectAndUpdateStats and
@@ -214,4 +219,5 @@ class CoreWorkerMemoryStore {
   int64_t used_object_store_memory_ GUARDED_BY(mu_) = 0;
 };
 
+}  // namespace core
 }  // namespace ray

@@ -19,22 +19,23 @@ import pytest
 import yaml
 
 import ray
-from test_k8s_operator_examples import get_operator_config_path
-from test_k8s_operator_examples import retry_until_true
-from test_k8s_operator_examples import wait_for_pods
-from test_k8s_operator_examples import IMAGE
-from test_k8s_operator_examples import PULL_POLICY
-from test_k8s_operator_examples import NAMESPACE
+from test_k8s_operator_basic import client_connect_to_k8s
+from test_k8s_operator_basic import get_crd_path
+from test_k8s_operator_basic import get_component_config_path
+from test_k8s_operator_basic import retry_until_true
+from test_k8s_operator_basic import wait_for_pods
+from test_k8s_operator_basic import IMAGE
+from test_k8s_operator_basic import PULL_POLICY
+from test_k8s_operator_basic import NAMESPACE
 
 
-def submit_scaling_job(client_port, num_tasks):
+def submit_scaling_job(num_tasks):
     @ray.remote(num_cpus=1)
     def f(i):
         time.sleep(60)
         return i
 
     print(">>>Submitting tasks with Ray client.")
-    ray.util.connect(f"127.0.0.1:{client_port}")
     futures = [f.remote(i) for i in range(num_tasks)]
 
     print(">>>Verifying scale-up.")
@@ -65,12 +66,10 @@ class KubernetesScaleTest(unittest.TestCase):
                 tempfile.NamedTemporaryFile("w+") as example_cluster_file2, \
                 tempfile.NamedTemporaryFile("w+") as operator_file:
 
-            example_cluster_config_path = get_operator_config_path(
+            example_cluster_config_path = get_component_config_path(
                 "example_cluster.yaml")
-            operator_config_path = get_operator_config_path(
+            operator_config_path = get_component_config_path(
                 "operator_cluster_scoped.yaml")
-
-            crd_path = get_operator_config_path("cluster_crd.yaml")
 
             operator_config = list(
                 yaml.safe_load_all(open(operator_config_path).read()))
@@ -116,19 +115,19 @@ class KubernetesScaleTest(unittest.TestCase):
             for file in files:
                 file.flush()
 
+            # Must create CRD before operator.
+            print("\n>>>Creating RayCluster CRD.")
+            cmd = f"kubectl apply -f {get_crd_path()}"
+            subprocess.check_call(cmd, shell=True)
+            # Takes a bit of time for CRD to register.
+            time.sleep(10)
+
             print(">>>Creating operator.")
             cmd = f"kubectl apply -f {operator_file.name}"
             subprocess.check_call(cmd, shell=True)
 
-            # Test creating operator before CRD.
             print(">>>Waiting for Ray operator to enter running state.")
             wait_for_operator()
-
-            print(">>>Creating RayCluster CRD.")
-            cmd = f"kubectl apply -f {crd_path}"
-            subprocess.check_call(cmd, shell=True)
-            # Takes a bit of time for CRD to register.
-            time.sleep(10)
 
             # Start a 30-pod cluster.
             print(">>>Starting a cluster.")
@@ -161,34 +160,14 @@ class KubernetesScaleTest(unittest.TestCase):
             print(">>>Verifying scale-down.")
             wait_for_pods(1)
 
-            # Test scale up and scale down after task submission.
-            command = f"kubectl -n {NAMESPACE}"\
-                " port-forward service/example-cluster-ray-head 10002:10002"
-            command = command.split()
-            print(">>>Port-forwarding head service.")
-            self.proc = subprocess.Popen(command)
-            try:
-                # Wait a bit for the port-forwarding connection to be
-                # established.
-                time.sleep(10)
-                # Check that job submission works
-                submit_scaling_job(client_port="10002", num_tasks=15)
-                # Clean up
-                self.proc.kill()
-            except Exception:
-                # Clean up on failure
-                self.proc.kill()
-                raise
+            with client_connect_to_k8s(port="10002"):
+                # Test scale up and scale down after task submission.
+                submit_scaling_job(num_tasks=15)
 
             print(">>>Sleeping for a minute while workers time-out.")
             time.sleep(60)
             print(">>>Verifying scale-down.")
             wait_for_pods(1)
-
-    def __del__(self):
-        # To be safer, kill again:
-        # (does not raise an error if the process has already been killed)
-        self.proc.kill()
 
 
 if __name__ == "__main__":

@@ -140,6 +140,11 @@ class StoreClient {
                                     const std::string &index_key,
                                     const StatusCallback &callback) = 0;
 
+  /// Get next job id by `INCR` "JobCounter" key synchronously.
+  ///
+  /// \return Next job id in integer representation.
+  virtual int GetNextJobID() = 0;
+
  protected:
   StoreClient() = default;
 };

@@ -1,15 +1,13 @@
-import json
 import os
 import random
 import platform
 import subprocess
 import sys
-from collections import defaultdict
 
 import numpy as np
 import pytest
 import ray
-from ray.test_utils import wait_for_condition, run_string_as_driver
+from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
 
 
@@ -271,14 +269,15 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/12912
-def do_test_release_resource(object_spilling_config, expect_released):
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_release_resource(object_spilling_config, shutdown_only):
     object_spilling_config, temp_folder = object_spilling_config
     address = ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
-            "release_resources_during_plasma_fetch": expect_released,
             "automatic_object_spilling_enabled": True,
             "object_spilling_config": object_spilling_config,
         })
@@ -301,22 +300,12 @@ def do_test_release_resource(object_spilling_config, expect_released):
     done = f.remote([plasma_obj])  # noqa
     canary = sneaky_task_tries_to_steal_released_resources.remote()
     ready, _ = ray.wait([canary], timeout=2)
-    if expect_released:
-        assert ready
-    else:
-        assert not ready
+    assert not ready
     assert_no_thrashing(address["redis_address"])
 
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_no_release_during_plasma_fetch(object_spilling_config, shutdown_only):
-    do_test_release_resource(object_spilling_config, expect_released=False)
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
-@pytest.mark.timeout(30)
 def test_spill_objects_on_object_transfer(object_spilling_config,
                                           ray_start_cluster):
     object_spilling_config, _ = object_spilling_config
@@ -426,74 +415,6 @@ os.kill(os.getpid(), sig)
             run_string_as_driver(
                 driver.format(temp_dir=str(temp_folder), signum=2)))
     wait_for_condition(lambda: is_dir_empty(temp_folder, append_path=""))
-
-
-@pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on "
-    "Windows.")
-def test_multiple_directories(tmp_path, shutdown_only):
-    num_dirs = 3
-    temp_dirs = []
-    for i in range(num_dirs):
-        temp_folder = tmp_path / f"spill_{i}"
-        temp_folder.mkdir()
-        temp_dirs.append(temp_folder)
-
-    # Limit our object store to 75 MiB of memory.
-    min_spilling_size = 0
-    object_spilling_config = json.dumps({
-        "type": "filesystem",
-        "params": {
-            "directory_path": [str(directory) for directory in temp_dirs]
-        }
-    })
-    address = ray.init(
-        object_store_memory=75 * 1024 * 1024,
-        _system_config={
-            "max_io_workers": 5,
-            "object_store_full_delay_ms": 100,
-            "object_spilling_config": object_spilling_config,
-            "min_spilling_size": min_spilling_size,
-        })
-
-    arr = np.ones(74 * 1024 * 1024, dtype=np.uint8)  # 74MB.
-    object_refs = []
-    # Now the storage is full.
-    object_refs.append(ray.put(arr))
-
-    num_object_spilled = 20
-    for _ in range(num_object_spilled):
-        object_refs.append(ray.put(arr))
-
-    num_files = defaultdict(int)
-    for temp_dir in temp_dirs:
-        temp_folder = temp_dir / ray.ray_constants.DEFAULT_OBJECT_PREFIX
-        for path in temp_folder.iterdir():
-            num_files[str(temp_folder)] += 1
-
-    for ref in object_refs:
-        assert np.array_equal(ray.get(ref), arr)
-
-    print("Check distribution...")
-    min_count = 5
-    is_distributed = [n_files >= min_count for n_files in num_files.values()]
-    assert all(is_distributed)
-
-    print("Check deletion...")
-    # Empty object refs.
-    object_refs = []
-    # Add a new object so that the last entry is evicted.
-    ref = ray.put(arr)
-    for temp_dir in temp_dirs:
-        temp_folder = temp_dir
-        wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["redis_address"])
-
-    # Now kill ray and see all directories are deleted.
-    print("Check directories are deleted...")
-    ray.shutdown()
-    for temp_dir in temp_dirs:
-        wait_for_condition(lambda: is_dir_empty(temp_dir, append_path=""))
 
 
 if __name__ == "__main__":

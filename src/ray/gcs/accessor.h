@@ -14,12 +14,15 @@
 
 #pragma once
 
+#include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
+#include "ray/rpc/client_call.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 
@@ -41,20 +44,31 @@ class ActorInfoAccessor {
   virtual Status AsyncGet(const ActorID &actor_id,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
-  /// Get all actor specification from GCS asynchronously.
+  /// Get all actor specification from the GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) = 0;
 
-  /// Get actor specification for a named actor from GCS asynchronously.
+  /// Get actor specification for a named actor from the GCS asynchronously.
   ///
   /// \param name The name of the detached actor to look up in the GCS.
+  /// \param ray_namespace The namespace to filter to.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetByName(
-      const std::string &name,
+      const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
+
+  /// List all named actors from the GCS asynchronously.
+  ///
+  /// \param all_namespaces Whether or not to include actors from all Ray namespaces.
+  /// \param ray_namespace The namespace to filter to if all_namespaces is false.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncListNamedActors(
+      bool all_namespaces, const std::string &ray_namespace,
+      const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) = 0;
 
   /// Register actor to GCS asynchronously.
   ///
@@ -84,8 +98,9 @@ class ActorInfoAccessor {
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
   /// \return Status
-  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
-                                  const StatusCallback &callback) = 0;
+  virtual Status AsyncCreateActor(
+      const TaskSpecification &task_spec,
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) = 0;
 
   /// Subscribe to any register or update operations of actors.
   ///
@@ -182,6 +197,12 @@ class JobInfoAccessor {
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
+
+  /// Increment and get next job id. This is not idempotent.
+  ///
+  /// \param done Callback that will be called when request successfully.
+  /// \return Status
+  virtual Status AsyncGetNextJobID(const ItemCallback<JobID> &callback) = 0;
 
  protected:
   JobInfoAccessor() = default;
@@ -441,8 +462,8 @@ class NodeInfoAccessor {
   /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
   /// \return The item returned by GCS. If the item to read doesn't exist or the node is
   /// dead, this optional object is empty.
-  virtual boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
-                                                bool filter_dead_nodes = true) const = 0;
+  virtual absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
+                                               bool filter_dead_nodes = true) const = 0;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
@@ -741,7 +762,7 @@ class PlacementGroupInfoAccessor {
   /// \param placement_group_name The name of a placement group to obtain from GCS.
   /// \return Status.
   virtual Status AsyncGetByName(
-      const std::string &placement_group_name,
+      const std::string &placement_group_name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
 
   /// Get all placement group info from GCS asynchronously.

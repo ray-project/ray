@@ -501,7 +501,6 @@ class StreamingWorker {
     options.raylet_ip_address = "127.0.0.1";
     options.task_execution_callback = std::bind(&StreamingWorker::ExecuteTask, this, _1,
                                                 _2, _3, _4, _5, _6, _7, _8, _9);
-    options.ref_counting_enabled = true;
     options.num_workers = 1;
     options.metrics_agent_port = -1;
     CoreWorkerProcess::Initialize(options);
@@ -518,7 +517,7 @@ class StreamingWorker {
                      const RayFunction &ray_function,
                      const std::unordered_map<std::string, double> &required_resources,
                      const std::vector<std::shared_ptr<RayObject>> &args,
-                     const std::vector<ObjectID> &arg_reference_ids,
+                     const std::vector<rpc::ObjectReference> &arg_refs,
                      const std::vector<ObjectID> &return_ids,
                      const std::string &debugger_breakpoint,
                      std::vector<std::shared_ptr<RayObject>> *results) {
@@ -542,8 +541,9 @@ class StreamingWorker {
       STREAMING_LOG(INFO) << "Test name: " << typed_descriptor->ClassName();
       test_suite_->ExecuteTest(typed_descriptor->ClassName());
     } else if (func_name == "check_current_test_status") {
-      results->push_back(std::make_shared<RayObject>(test_suite_->CheckCurTestStatus(),
-                                                     nullptr, std::vector<ObjectID>()));
+      results->push_back(
+          std::make_shared<RayObject>(test_suite_->CheckCurTestStatus(), nullptr,
+                                      std::vector<rpc::ObjectReference>()));
     } else if (func_name == "reader_sync_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";
@@ -553,8 +553,8 @@ class StreamingWorker {
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
       auto result_buffer = reader_client_->OnReaderMessageSync(local_buffer);
-      results->push_back(
-          std::make_shared<RayObject>(result_buffer, nullptr, std::vector<ObjectID>()));
+      results->push_back(std::make_shared<RayObject>(
+          result_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else if (func_name == "reader_async_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";
@@ -573,8 +573,8 @@ class StreamingWorker {
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
       auto result_buffer = writer_client_->OnWriterMessageSync(local_buffer);
-      results->push_back(
-          std::make_shared<RayObject>(result_buffer, nullptr, std::vector<ObjectID>()));
+      results->push_back(std::make_shared<RayObject>(
+          result_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else if (func_name == "writer_async_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";
@@ -639,10 +639,11 @@ class StreamingWorker {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc == 5);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
   auto node_manager_port = std::stoi(std::string(argv[3]));
+  // auto runtime_env_hash = std::string(argv[4]); // Unused in this test
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::streaming::StreamingWorker worker(store_socket, raylet_socket, node_manager_port,

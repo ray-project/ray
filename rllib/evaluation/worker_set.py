@@ -1,20 +1,23 @@
 import gym
 import logging
+import importlib.util
 from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
-    _validate_multiagent_config
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput, D4RLReader
-from ray.rllib.env.env_context import EnvContext
-from ray.rllib.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
+from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.typing import EnvType, PolicyID, TrainerConfigDict
+from ray.tune.registry import registry_contains_input, registry_get_input
 
 tf1, tf, tfv = try_import_tf()
 
@@ -74,9 +77,13 @@ class WorkerSet:
             self._remote_workers = []
             self.add_workers(num_workers)
 
-            # If num_workers > 0, get the action_spaces and observation_spaces
-            # to not be forced to create an Env on the local worker.
-            if self._remote_workers:
+            # If num_workers > 0 and we don't have an env on the local worker,
+            # get the observation- and action spaces for each policy from
+            # the first remote worker (which does have an env).
+            if self._remote_workers and \
+                    not trainer_config.get("create_env_on_driver") and \
+                    (not trainer_config.get("observation_space") or
+                     not trainer_config.get("action_space")):
                 remote_spaces = ray.get(self.remote_workers(
                 )[0].foreach_policy.remote(
                     lambda p, pid: (pid, p.observation_space, p.action_space)))
@@ -84,6 +91,18 @@ class WorkerSet:
                     e[0]: (getattr(e[1], "original_space", e[1]), e[2])
                     for e in remote_spaces
                 }
+                # Try to add the actual env's obs/action spaces.
+                try:
+                    env_spaces = ray.get(self.remote_workers(
+                    )[0].foreach_env.remote(
+                        lambda env: (env.observation_space, env.action_space))
+                                         )[0]
+                    spaces["__env__"] = env_spaces
+                except Exception:
+                    pass
+
+                logger.info("Inferred observation/action spaces from remote "
+                            f"worker (local worker has no env): {spaces}")
             else:
                 spaces = None
 
@@ -107,15 +126,15 @@ class WorkerSet:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
-    def sync_weights(self) -> None:
-        """Syncs weights of remote workers with the local worker."""
+    def sync_weights(self, policies: Optional[List[PolicyID]] = None) -> None:
+        """Syncs weights from the local worker to all remote workers."""
         if self.remote_workers():
-            weights = ray.put(self.local_worker().get_weights())
+            weights = ray.put(self.local_worker().get_weights(policies))
             for e in self.remote_workers():
                 e.set_weights.remote(weights)
 
     def add_workers(self, num_workers: int) -> None:
-        """Creates and add a number of remote workers to this worker set.
+        """Creates and adds a number of remote workers to this worker set.
 
         Args:
             num_workers (int): The number of remote Workers to add to this
@@ -135,7 +154,8 @@ class WorkerSet:
                 policy_cls=self._policy_class,
                 worker_index=i + 1,
                 num_workers=num_workers,
-                config=self._remote_config) for i in range(num_workers)
+                config=self._remote_config,
+            ) for i in range(num_workers)
         ])
 
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
@@ -189,13 +209,15 @@ class WorkerSet:
             List[any]: The list of return values of func over all workers'
                 policies.
         """
-        local_results = self.local_worker().foreach_policy(func)
-        remote_results = []
+        results = self.local_worker().foreach_policy(func)
+        ray_gets = []
         for worker in self.remote_workers():
-            res = ray.get(
+            ray_gets.append(
                 worker.apply.remote(lambda w: w.foreach_policy(func)))
-            remote_results.extend(res)
-        return local_results + remote_results
+        remote_results = ray.get(ray_gets)
+        for r in remote_results:
+            results.extend(r)
+        return results
 
     @DeveloperAPI
     def trainable_policies(self) -> List[PolicyID]:
@@ -215,14 +237,60 @@ class WorkerSet:
             List[any]: The list of n return values of all
                 `func([trainable policy], [ID])`-calls.
         """
-        local_results = self.local_worker().foreach_trainable_policy(func)
-        remote_results = []
+        results = self.local_worker().foreach_trainable_policy(func)
+        ray_gets = []
         for worker in self.remote_workers():
-            res = ray.get(
+            ray_gets.append(
                 worker.apply.remote(
                     lambda w: w.foreach_trainable_policy(func)))
-            remote_results.extend(res)
-        return local_results + remote_results
+        remote_results = ray.get(ray_gets)
+        for r in remote_results:
+            results.extend(r)
+        return results
+
+    @DeveloperAPI
+    def foreach_env(self, func: Callable[[BaseEnv], List[T]]) -> List[List[T]]:
+        """Apply `func` to all workers' (unwrapped) environments.
+
+        `func` takes a single unwrapped env as arg.
+
+        Args:
+            func (Callable[[BaseEnv], T]): A function - taking a BaseEnv
+                object as arg and returning a list of return values over envs
+                of the worker.
+
+        Returns:
+            List[List[T]]: The list (workers) of lists (environments) of
+                results.
+        """
+        local_results = [self.local_worker().foreach_env(func)]
+        ray_gets = []
+        for worker in self.remote_workers():
+            ray_gets.append(worker.foreach_env.remote(func))
+        return local_results + ray.get(ray_gets)
+
+    @DeveloperAPI
+    def foreach_env_with_context(
+            self,
+            func: Callable[[BaseEnv, EnvContext], List[T]]) -> List[List[T]]:
+        """Apply `func` to all workers' (unwrapped) environments.
+
+        `func` takes a single unwrapped env and the env_context as args.
+
+        Args:
+            func (Callable[[BaseEnv], T]): A function - taking a BaseEnv
+                object as arg and returning a list of return values over envs
+                of the worker.
+
+        Returns:
+            List[List[T]]: The list (workers) of lists (environments) of
+                results.
+        """
+        local_results = [self.local_worker().foreach_env_with_context(func)]
+        ray_gets = []
+        for worker in self.remote_workers():
+            ray_gets.append(worker.foreach_env_with_context.remote(func))
+        return local_results + ray.get(ray_gets)
 
     @staticmethod
     def _from_existing(local_worker: RolloutWorker,
@@ -255,6 +323,19 @@ class WorkerSet:
             return tf1.Session(
                 config=tf1.ConfigProto(**config["tf_session_args"]))
 
+        def valid_module(class_path):
+            if isinstance(class_path, str) and "." in class_path:
+                module_path, class_name = class_path.rsplit(".", 1)
+                try:
+                    spec = importlib.util.find_spec(module_path)
+                    if spec is not None:
+                        return True
+                except (ModuleNotFoundError, ValueError):
+                    print(
+                        f"module {module_path} not found while trying to get "
+                        f"input {class_path}")
+            return False
+
         if isinstance(config["input"], FunctionType):
             input_creator = config["input"]
         elif config["input"] == "sampler":
@@ -263,9 +344,15 @@ class WorkerSet:
             input_creator = (
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
                                             config["shuffle_buffer_size"]))
+        elif isinstance(config["input"], str) and \
+                registry_contains_input(config["input"]):
+            input_creator = registry_get_input(config["input"])
         elif "d4rl" in config["input"]:
-            env_name = config["input"].split(".")[1]
+            env_name = config["input"].split(".")[-1]
             input_creator = (lambda ioctx: D4RLReader(env_name, ioctx))
+        elif valid_module(config["input"]):
+            input_creator = (lambda ioctx: ShuffledInput(from_config(
+                config["input"], ioctx=ioctx)))
         else:
             input_creator = (
                 lambda ioctx: ShuffledInput(JsonReader(config["input"], ioctx),
@@ -293,20 +380,21 @@ class WorkerSet:
         else:
             input_evaluation = config["input_evaluation"]
 
-        # Fill in the default policy_cls if 'None' is specified in multiagent.
-        if config["multiagent"]["policies"]:
-            tmp = config["multiagent"]["policies"]
-            _validate_multiagent_config(tmp, allow_none_graph=True)
-            # TODO: (sven) Allow for setting observation and action spaces to
-            #  None as well, in which case, spaces are taken from env.
-            #  It's tedious to have to provide these in a multi-agent config.
-            for k, v in tmp.items():
-                if v[0] is None:
-                    tmp[k] = (policy_cls, v[1], v[2], v[3])
-            policy_spec = tmp
-        # Otherwise, policy spec is simply the policy class itself.
+        # Assert everything is correct in "multiagent" config dict (if given).
+        ma_policies = config["multiagent"]["policies"]
+        if ma_policies:
+            for pid, policy_spec in ma_policies.copy().items():
+                assert isinstance(policy_spec, (PolicySpec, list, tuple))
+                # Class is None -> Use `policy_cls`.
+                if policy_spec.policy_class is None:
+                    ma_policies[pid] = ma_policies[pid]._replace(
+                        policy_class=policy_cls)
+            policies = ma_policies
+
+        # Create a policy_spec (MultiAgentPolicyConfigDict),
+        # even if no "multiagent" setup given by user.
         else:
-            policy_spec = policy_cls
+            policies = policy_cls
 
         if worker_index == 0:
             extra_python_environs = config.get(
@@ -318,7 +406,7 @@ class WorkerSet:
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,
-            policy_spec=policy_spec,
+            policy_spec=policies,
             policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
             policies_to_train=config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator
@@ -334,9 +422,9 @@ class WorkerSet:
             observation_fn=config["multiagent"]["observation_fn"],
             observation_filter=config["observation_filter"],
             clip_rewards=config["clip_rewards"],
+            normalize_actions=config["normalize_actions"],
             clip_actions=config["clip_actions"],
             env_config=config["env_config"],
-            model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
             num_workers=num_workers,

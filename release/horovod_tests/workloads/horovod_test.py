@@ -1,4 +1,3 @@
-import argparse
 import torch
 import torch.nn as nn
 import os
@@ -15,11 +14,7 @@ from ray.tune.integration.horovod import (DistributedTrainableCreator,
                                           distributed_checkpoint_dir)
 from ray.util.sgd.torch.resnet import ResNet18
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--gpu", action="store_true")
-parser.add_argument(
-    "--smoke-test", action="store_true", help=("Finish quickly for testing."))
-args = parser.parse_args()
+from ray.tune.utils.release_test_util import ProgressCallback
 
 CIFAR10_STATS = {
     "mean": (0.4914, 0.4822, 0.4465),
@@ -92,6 +87,15 @@ def train(config, checkpoint_dir=None):
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help=("Finish quickly for testing."))
+    args = parser.parse_args()
+
     if args.smoke_test:
         ray.init()
     else:
@@ -99,10 +103,11 @@ if __name__ == "__main__":
 
     horovod_trainable = DistributedTrainableCreator(
         train,
-        use_gpu=True,
+        use_gpu=False if args.smoke_test else True,
         num_hosts=1 if args.smoke_test else 2,
         num_slots=2 if args.smoke_test else 2,
-        replicate_pem=False)
+        replicate_pem=False,
+        timeout_s=300)
 
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
@@ -132,11 +137,14 @@ if __name__ == "__main__":
         keep_checkpoints_num=1,
         scheduler=pbt,
         config={
-            "lr": tune.grid_search([0.1 * i for i in range(1, 10)]),
+            "lr": 0.1 if args.smoke_test else
+            tune.grid_search([0.1 * i for i in range(1, 10)]),
             "batch_size": 64,
             "data": ray.put(dataset)
         },
         num_samples=1,
-        fail_fast=True)
-    # callbacks=[FailureInjectorCallback()])
+        stop={"training_iteration": 1} if args.smoke_test else None,
+        callbacks=[ProgressCallback()],  # FailureInjectorCallback()
+        fail_fast=True,
+    )
     print("Best hyperparameters found were: ", analysis.best_config)

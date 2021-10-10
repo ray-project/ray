@@ -5,6 +5,7 @@
         <packages>
             <package name = "io.ray.runtime.*" />
             <package name = "io.ray.test.*" />
+            <package name = "io.ray.serve.*" />
         </packages>
     </test>
     <listeners>

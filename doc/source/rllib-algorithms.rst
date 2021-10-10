@@ -1,3 +1,7 @@
+.. important:: The ML team at `Anyscale Inc. <https://anyscale.io>`__, the company behind Ray, is looking for interns and full-time **reinforcement learning engineers** to help advance and maintain RLlib.
+ If you have a background in ML/RL and are interested in making RLlib **the** industry-leading open-source RL library, `apply here today <https://jobs.lever.co/anyscale/186d9b8d-3fee-4e07-bb8e-49e85cf33d6b>`__.
+ We'd be thrilled to welcome you on the team!
+
 RLlib Algorithms
 ================
 
@@ -14,7 +18,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
 `ARS`_              tf + torch **Yes**                 **Yes**            No                                                                        No
 `BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       torch
-`CQL`_              torch      No                      **Yes**            No          `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
+`CQL`_              tf + torch No                      **Yes**            No                                                                        tf + torch
 `ES`_               tf + torch **Yes**                 **Yes**            No                                                                        No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**                                                                   torch
 `APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**                                                                   torch
@@ -560,10 +564,14 @@ RecSim environment wrapper: `Google RecSim <https://github.com/ray-project/ray/b
 
 Conservative Q-Learning (CQL)
 -----------------------------------
-|pytorch|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/2006.04779>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/cql/cql.py>`__
 
-In offline RL, the algorithm has no access to an environment, but can only sample from a fixed dataset of pre-collected state-action-reward tuples. In particular, CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values outside the dataset distribution via conservative critic estimates. It does so by adding a simple Q regularizer loss to the standard Bellman update loss. This ensures that the critic does not output overly-optimistic Q-values and can be added on top of any off-policy Q-learning algorithm (here, we provide this for SAC).
+In offline RL, the algorithm has no access to an environment, but can only sample from a fixed dataset of pre-collected state-action-reward tuples.
+In particular, CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values outside the dataset distribution via
+conservative critic estimates. It does so by adding a simple Q regularizer loss to the standard Bellman update loss.
+This ensures that the critic does not output overly-optimistic Q-values. This conservative
+correction term can be added on top of any off-policy Q-learning algorithm (here, we provide this for SAC).
 
 RLlib's CQL is evaluated against the Behavior Cloning (BC) benchmark at 500K gradient steps over the dataset. The only difference between the BC- and CQL configs is the ``bc_iters`` parameter in CQL, indicating how many gradient steps we perform over the BC loss. CQL is evaluated on the `D4RL <https://github.com/rail-berkeley/d4rl>`__ benchmark, which has pre-collected offline datasets for many types of environments.
 
@@ -781,7 +789,7 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 ---------------------------------------------------------------
 |tensorflow|
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized/shared critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized/shared critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/jkterry1/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 

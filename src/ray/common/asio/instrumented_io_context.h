@@ -29,6 +29,7 @@ struct HandlerStats {
 
   // Execution stats.
   int64_t cum_execution_time = 0;
+  int64_t running_count = 0;
 };
 
 /// Count and queueing statistics over all asio handlers.
@@ -63,12 +64,13 @@ struct GuardedGlobalStats {
 
 /// An opaque stats handle, used to manually instrument event loop handlers that don't
 /// hook into a .post() call.
+// TODO Pull out the tracker from ASIO
 struct StatsHandle {
   std::string handler_name;
   int64_t start_time;
   std::shared_ptr<GuardedHandlerStats> handler_stats;
   std::shared_ptr<GuardedGlobalStats> global_stats;
-  bool execution_recorded = false;
+  std::atomic<bool> execution_recorded;
 
   StatsHandle(std::string handler_name_, int64_t start_time_,
               std::shared_ptr<GuardedHandlerStats> handler_stats_,
@@ -76,7 +78,10 @@ struct StatsHandle {
       : handler_name(std::move(handler_name_)),
         start_time(start_time_),
         handler_stats(std::move(handler_stats_)),
-        global_stats(std::move(global_stats_)) {}
+        global_stats(std::move(global_stats_)),
+        execution_recorded(false) {}
+
+  void ZeroAccumulatedQueuingDelay() { start_time = absl::GetCurrentTimeNanos(); }
 
   ~StatsHandle() {
     if (!execution_recorded) {
@@ -103,6 +108,23 @@ class instrumented_io_context : public boost::asio::io_context {
   void post(std::function<void()> handler, const std::string name = "UNKNOWN")
       LOCKS_EXCLUDED(mutex_);
 
+  /// A proxy post function where the operation start is manually recorded. For example,
+  /// this is useful for tracking the number of active outbound RPC calls.
+  ///
+  /// \param handler The handler to be posted to the event loop.
+  /// \param handle The stats handle returned by RecordStart() previously.
+  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// A proxy post function that collects count, queueing, and execution statistics for
+  /// the given handler.
+  ///
+  /// \param handler The handler to be posted to the event loop.
+  /// \param name A human-readable name for the handler, to be used for viewing stats
+  /// for the provided handler. Defaults to UNKNOWN.
+  void dispatch(std::function<void()> handler, const std::string name = "UNKNOWN")
+      LOCKS_EXCLUDED(mutex_);
+
   /// Sets the queueing start time, increments the current and cumulative counts and
   /// returns an opaque handle for these stats. This is used in conjunction with
   /// RecordExecution() to manually instrument an event loop handler that doesn't call
@@ -112,11 +134,11 @@ class instrumented_io_context : public boost::asio::io_context {
   /// call.
   ///
   /// \param name A human-readable name to which collected stats will be associated.
-  /// \param pad_start_ns How much to pad the observed queueing start time, in
-  ///  nanoseconds.
+  /// \param expected_queueing_delay_ns How much to pad the observed queueing start time,
+  ///  in nanoseconds.
   /// \return An opaque stats handle, to be given to RecordExecution().
   std::shared_ptr<StatsHandle> RecordStart(const std::string &name,
-                                           int64_t pad_start_ns = 0);
+                                           int64_t expected_queueing_delay_ns = 0);
 
   /// Records stats about the provided function's execution. This is used in conjunction
   /// with RecordStart() to manually instrument an event loop handler that doesn't call

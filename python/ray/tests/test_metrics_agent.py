@@ -3,16 +3,26 @@ import pathlib
 import platform
 from pprint import pformat
 import sys
+import os
 import time
 from unittest.mock import MagicMock
 
 import pytest
 
 import ray
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Counter, Histogram, Gauge
-from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
+from ray._private.test_utils import (wait_for_condition, SignalActor,
+                                     fetch_prometheus)
+
+os.environ["RAY_event_stats"] = "1"
+
+try:
+    import prometheus_client
+except ImportError:
+    prometheus_client = None
 
 # This list of metrics should be kept in sync with src/ray/stats/metric_defs.h
 # NOTE: Commented out metrics are not available in this test.
@@ -46,6 +56,24 @@ _METRICS = [
     "ray_pending_actors",
     "ray_pending_placement_groups",
     "ray_outbound_heartbeat_size_kb_sum",
+    "ray_operation_count",
+    "ray_operation_run_time_ms",
+    "ray_operation_queue_time_ms",
+    "ray_operation_active_count",
+]
+
+# This list of metrics should be kept in sync with
+# ray/python/ray/autoscaler/_private/prom_metrics.py
+_AUTOSCALER_METRICS = [
+    "autoscaler_config_validation_exceptions",
+    "autoscaler_node_launch_exceptions", "autoscaler_pending_nodes",
+    "autoscaler_reset_exceptions", "autoscaler_running_workers",
+    "autoscaler_started_nodes", "autoscaler_stopped_nodes",
+    "autoscaler_update_loop_exceptions", "autoscaler_worker_create_node_time",
+    "autoscaler_worker_update_time", "autoscaler_updating_nodes",
+    "autoscaler_successful_updates", "autoscaler_failed_updates",
+    "autoscaler_failed_create_nodes", "autoscaler_recovering_nodes",
+    "autoscaler_successful_recoveries", "autoscaler_failed_recoveries"
 ]
 
 
@@ -94,8 +122,9 @@ def _setup_cluster_for_test(ray_start_cluster):
         metrics_export_port = node_info["MetricsExportPort"]
         addr = node_info["NodeManagerAddress"]
         prom_addresses.append(f"{addr}:{metrics_export_port}")
-
-    yield prom_addresses
+    autoscaler_export_addr = "{}:{}".format(cluster.head_node.node_ip_address,
+                                            AUTOSCALER_METRIC_PORT)
+    yield prom_addresses, autoscaler_export_addr
 
     ray.get(worker_should_exit.send.remote())
     ray.get(obj_refs)
@@ -104,10 +133,12 @@ def _setup_cluster_for_test(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 20
 
-    prom_addresses = _setup_cluster_for_test
+    prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
 
     def test_cases():
         components_dict, metric_names, metric_samples = fetch_prometheus(
@@ -165,6 +196,16 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         assert hist_count == 1
         assert hist_sum == 1.5
 
+        # Autoscaler metrics
+        _, autoscaler_metric_names, _ = fetch_prometheus(
+            [autoscaler_export_addr])
+        for metric in _AUTOSCALER_METRICS:
+            # Metric name should appear with some suffix (_count, _total,
+            # etc...) in the list of all names
+            assert any(name.startswith(metric) for name in
+                       autoscaler_metric_names), \
+                    f"{metric} not in {autoscaler_metric_names}"
+
     def wrap_test_case_for_retry():
         try:
             test_cases()
@@ -197,10 +238,14 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         redis_address, ray.ray_constants.REDIS_DEFAULT_PASSWORD, "/tmp/ray")
 
     def get_metrics_export_address_from_node(nodes):
-        return [
+        node_export_addrs = [
             "{}:{}".format(node.node_ip_address, node.metrics_export_port)
             for node in nodes
         ]
+        # monitor should be run on head node for `ray_start_cluster` fixture
+        autoscaler_export_addr = "{}:{}".format(
+            cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT)
+        return node_export_addrs + [autoscaler_export_addr]
 
     loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
     assert (set(get_metrics_export_address_from_node(nodes)) == set(

@@ -217,12 +217,6 @@ Debugging APIs
 
 .. autofunction:: ray.util.inspect_serializability
 
-Experimental APIs
------------------
-
-.. automodule:: ray.experimental
-   :members:
-
 .. _ray-cli:
 
 The Ray Command Line API

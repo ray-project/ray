@@ -7,20 +7,22 @@ from ray._private.client_mode_hook import enable_client_mode
 
 
 @contextmanager
-def ray_start_client_server(metadata=None, ray_connect_handler=None):
+def ray_start_client_server(metadata=None, ray_connect_handler=None, **kwargs):
     with ray_start_client_server_pair(
-            metadata=metadata,
-            ray_connect_handler=ray_connect_handler) as pair:
+            metadata=metadata, ray_connect_handler=ray_connect_handler,
+            **kwargs) as pair:
         client, server = pair
         yield client
 
 
 @contextmanager
-def ray_start_client_server_pair(metadata=None, ray_connect_handler=None):
+def ray_start_client_server_pair(metadata=None,
+                                 ray_connect_handler=None,
+                                 **kwargs):
     ray._inside_client_test = True
     server = ray_client_server.serve(
         "localhost:50051", ray_connect_handler=ray_connect_handler)
-    ray.connect("localhost:50051", metadata=metadata)
+    ray.connect("localhost:50051", metadata=metadata, **kwargs)
     try:
         yield ray, server
     finally:
@@ -33,7 +35,7 @@ def ray_start_client_server_pair(metadata=None, ray_connect_handler=None):
 def ray_start_cluster_client_server_pair(address):
     ray._inside_client_test = True
 
-    def ray_connect_handler(job_config=None):
+    def ray_connect_handler(job_config=None, **ray_init_kwargs):
         real_ray.init(address=address)
 
     server = ray_client_server.serve(
@@ -74,7 +76,7 @@ def connect_to_client_or_not(connect_to_client: bool):
     """
 
     if connect_to_client:
-        with ray_start_client_server(), enable_client_mode():
+        with ray_start_client_server(namespace=""), enable_client_mode():
             yield
     else:
         yield

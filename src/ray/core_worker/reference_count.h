@@ -14,14 +14,14 @@
 
 #pragma once
 
-#include <boost/bind.hpp>
-
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/lease_policy.h"
+#include "ray/pubsub/publisher.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -29,6 +29,7 @@
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
+namespace core {
 
 // Interface for mocking.
 class ReferenceCounterInterface {
@@ -49,11 +50,6 @@ class ReferenceCounterInterface {
   virtual ~ReferenceCounterInterface() {}
 };
 
-// Callback for location subscriptions.
-using LocationSubscriptionCallback =
-    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, const std::string &,
-                       const NodeID &, int64_t)>;
-
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
 class ReferenceCounter : public ReferenceCounterInterface,
@@ -66,13 +62,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
       std::function<void(const ObjectID &, std::vector<ObjectID> *)>;
 
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
-                   bool distributed_ref_counting_enabled = true,
+                   pubsub::PublisherInterface *object_info_publisher,
+                   pubsub::SubscriberInterface *object_info_subscriber,
                    bool lineage_pinning_enabled = false,
                    rpc::ClientFactoryFn client_factory = nullptr)
       : rpc_address_(rpc_address),
-        distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
         lineage_pinning_enabled_(lineage_pinning_enabled),
-        borrower_pool_(client_factory) {}
+        borrower_pool_(client_factory),
+        object_info_publisher_(object_info_publisher),
+        object_info_subscriber_(object_info_subscriber) {}
 
   ~ReferenceCounter() {}
 
@@ -83,6 +81,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Return true if the worker owns any object.
   bool OwnObjects() const;
+
+  /// Return true if the object is owned by us.
+  bool OwnedByUs(const ObjectID &object_id) const;
 
   /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created. The object ID will not have
@@ -276,14 +277,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// RefCount() for the object ID goes to 0.
   ///
   /// \param[in] object_id The object that we were borrowing.
-  /// \param[in] reply A reply sent to the owner when we are no longer
-  /// borrowing the object ID. This reply also includes any new borrowers and
-  /// any object IDs that were nested inside the object that we or others are
-  /// now borrowing.
-  /// \param[in] send_reply_callback The callback to send the reply.
-  void HandleRefRemoved(const ObjectID &object_id, rpc::WaitForRefRemovedReply *reply,
-                        rpc::SendReplyCallback send_reply_callback)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void HandleRefRemoved(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
@@ -301,6 +295,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// IDs that were passed by reference in the task spec or that were
   /// serialized in inlined arguments.
   ///
+  /// NOTE(swang): Task arguments should be pinned with a fake local reference
+  /// during task execution. This method removes the fake references so that
+  /// the reference deletion is atomic with removing the ref count information.
+  ///
   /// See GetAndClearLocalBorrowersInternal for the spec of the returned table
   /// and how this mutates the local reference count.
   ///
@@ -311,8 +309,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// arguments.
   /// \param[out] proto The protobuf table to populate with the borrowed
   /// references.
-  void GetAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
-                                 ReferenceTableProto *proto) LOCKS_EXCLUDED(mutex_);
+  void PopAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
+                                 ReferenceTableProto *proto,
+                                 std::vector<ObjectID> *deleted) LOCKS_EXCLUDED(mutex_);
 
   /// Mark that this ObjectID contains another ObjectID(s). This should be
   /// called in two cases:
@@ -405,17 +404,22 @@ class ReferenceCounter : public ReferenceCounterInterface,
   absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
-  /// Subscribe to object location changes that are more recent than the given version.
-  /// The provided callback will be invoked when new locations become available.
+  /// Publish the snapshot of the object location for the given object id.
+  /// Publish the empty locations if object is already evicted or not owned by this
+  /// worker.
   ///
   /// \param[in] object_id The object whose locations we want.
-  /// \param[in] last_location_version The version of the last location update the
-  /// caller received. Only more recent location updates will be returned.
-  /// \param[in] callback The callback to invoke with the location update.
-  /// \return The status of the location get.
-  Status SubscribeObjectLocations(const ObjectID &object_id,
-                                  int64_t last_location_version,
-                                  const LocationSubscriptionCallback &callback)
+  void PublishObjectLocationSnapshot(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+
+  /// Fill up the object information.
+  ///
+  /// \param[in] object_id The object id
+  /// \param[out] The object information that will be filled by a given object id.
+  /// \return OK status if object information is filled. Non OK status otherwise.
+  /// It can return non-OK status, for example, if the object for the object id
+  /// doesn't exist.
+  Status FillObjectInformation(const ObjectID &object_id,
+                               rpc::WorkerObjectLocationsPubMessage *object_info)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get an object's size. This will return 0 if the object is out of scope.
@@ -455,6 +459,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
                           const absl::flat_hash_set<NodeID> &locations,
                           uint64_t object_size);
 
+  /// Add borrower address in owner's worker. This function will add borrower address
+  /// to the `object_id_refs_`, then call WaitForRefRemoved() to monitor borrowed
+  /// object in borrower's worker.
+  ///
+  /// \param[in] object_id The ID of Object whose been borrowed.
+  /// \param[in] borrower_address The address of borrower.
+  void AddBorrowerAddress(const ObjectID &object_id, const rpc::Address &borrower_address)
+      LOCKS_EXCLUDED(mutex_);
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -481,8 +494,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
     /// - Pending submitted tasks that depend on the object.
-    /// - ObjectIDs that we own, that contain this ObjectID, and that are still
-    ///   in scope.
+    /// - ObjectIDs containing this ObjectID that we own and that are still in
+    /// scope.
     size_t RefCount() const {
       return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
     }
@@ -495,7 +508,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - We gave the reference to at least one other process.
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
-      bool was_contained_in_borrowed_id = contained_in_borrowed_id.has_value();
+      bool is_nested = contained_in_borrowed_ids.size();
       bool has_borrowers = borrowers.size() > 0;
       bool was_stored_in_objects = stored_in_objects.size() > 0;
 
@@ -504,7 +517,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
         has_lineage_references = lineage_ref_count > 0;
       }
 
-      return !(in_scope || was_contained_in_borrowed_id || has_borrowers ||
+      return !(in_scope || is_nested || has_nested_refs_to_report || has_borrowers ||
                was_stored_in_objects || has_lineage_references);
     }
 
@@ -542,10 +555,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
-    /// A logical counter for object location updates, used for object location
-    /// subscriptions. Subscribers use -1 to indicate that they want us to
-    /// immediately send them the current location data.
-    int64_t location_version = 0;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.
@@ -562,30 +571,23 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///  2. A task that we submitted returned an ID(s).
     /// ObjectIDs are erased from this field when their Reference is deleted.
     absl::flat_hash_set<ObjectID> contained_in_owned;
-    /// An Object ID that we (or one of our children) borrowed that contains
-    /// this object ID, which is also borrowed. This is used in cases where an
-    /// ObjectID is nested. We need to notify the owner of the outer ID of any
-    /// borrowers of this object, so we keep this field around until
-    /// GetAndClearLocalBorrowersInternal is called on the outer ID. This field
-    /// is updated in 2 cases:
-    ///  1. We deserialize an ID that we do not own and that was stored in
-    ///     another object that we do not own.
-    ///  2. Case (1) occurred for a task that we submitted and we also do not
-    ///     own the inner or outer object. Then, we need to notify our caller
-    ///     that the task we submitted is a borrower for the inner ID.
-    /// This field is reset to null once GetAndClearLocalBorrowersInternal is
-    /// called on contained_in_borrowed_id. For each borrower, this field is
-    /// set at most once during the reference's lifetime. If the object ID is
-    /// later found to be nested in a second object, we do not need to remember
-    /// the second ID because we will already have notified the owner of the
-    /// first outer object about our reference.
-    absl::optional<ObjectID> contained_in_borrowed_id;
+    /// Object IDs that we borrowed and that contain this object ID.
+    /// ObjectIDs are added to this field when we get the value of an ObjectRef
+    /// (either by deserializing the object or receiving the GetObjectStatus
+    /// reply for inlined objects) and it contains another ObjectRef.
+    absl::flat_hash_set<ObjectID> contained_in_borrowed_ids;
+    /// Reverse pointer for contained_in_owned and contained_in_borrowed_ids.
     /// The object IDs contained in this object. These could be objects that we
     /// own or are borrowing. This field is updated in 2 cases:
     ///  1. We call ray.put() on this ID and store the contained IDs.
     ///  2. We call ray.get() on an ID whose contents we do not know and we
     ///     discover that it contains these IDs.
     absl::flat_hash_set<ObjectID> contains;
+    /// ObjectRefs nested in this object that are or were in use. These objects
+    /// are not owned by us, and we need to report that we are borrowing them
+    /// to their owner. Nesting is transitive, so this flag is set as long as
+    /// any child object is in scope.
+    bool has_nested_refs_to_report = false;
     /// A list of processes that are we gave a reference to that are still
     /// borrowing the ID. This field is updated in 2 cases:
     ///  1. If we are a borrower of the ID, then we add a process to this list
@@ -619,9 +621,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
-    /// Location subscription callbacks registered by async location get requests.
-    /// These will be invoked whenever locations or object_size are changed.
-    std::vector<LocationSubscriptionCallback> location_subscription_callbacks;
     /// Callback that will be called when this ObjectID no longer has
     /// references.
     std::function<void(const ObjectID &)> on_delete;
@@ -631,6 +630,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+
+  void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   bool GetOwnerInternal(const ObjectID &object_id,
                         rpc::Address *owner_address = nullptr) const
@@ -753,23 +755,27 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Pushes location updates to subscribers of a particular reference, invoking all
-  /// callbacks registered for the reference by GetLocationsAsync calls. This method
-  /// also increments the reference's location version counter.
+  /// Publish object locations to all subscribers.
   ///
   /// \param[in] it The reference iterator for the object.
   void PushToLocationSubscribers(ReferenceTable::iterator it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Fill up the object information for the given iterator.
+  void FillObjectInformationInternal(ReferenceTable::iterator it,
+                                     rpc::WorkerObjectLocationsPubMessage *object_info)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Clean up borrowers and references when the reference is removed from borrowers.
+  /// It should be used as a WaitForRefRemoved callback.
+  void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
+                                    const ObjectID &object_id,
+                                    const rpc::WorkerAddress &borrower_addr);
+
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
   /// object's owner.
   rpc::WorkerAddress rpc_address_;
-
-  /// Feature flag for distributed ref counting. If this is false, then we will
-  /// keep the distributed ref count, but only the local ref count will be used
-  /// to decide when objects can be evicted.
-  const bool distributed_ref_counting_enabled_;
 
   /// Feature flag for lineage pinning. If this is false, then we will keep the
   /// lineage ref count, but this will not be used to decide when the object's
@@ -804,6 +810,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Optional shutdown hook to call when all references have gone
   /// out of scope.
   std::function<void()> shutdown_hook_ GUARDED_BY(mutex_) = nullptr;
+
+  /// Object status publisher. It is used to publish the ref removed message for the
+  /// reference counting protocol. It is not guarded by a lock because the class itself is
+  /// thread-safe.
+  pubsub::PublisherInterface *object_info_publisher_;
+
+  /// Object status subscriber. It is used to subscribe the ref removed information from
+  /// other workers.
+  pubsub::SubscriberInterface *object_info_subscriber_;
 };
 
+}  // namespace core
 }  // namespace ray

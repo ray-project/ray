@@ -17,7 +17,12 @@ key="$1"
 case $key in
     --gpu)
     GPU="-gpu"
-    BASE_IMAGE="nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04"
+    BASE_IMAGE="nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04"
+    ;;
+    --base-image)
+    # Override for the base image.
+    shift
+    BASE_IMAGE=$1
     ;;
     --no-cache-build)
     NO_CACHE="--no-cache"
@@ -47,7 +52,7 @@ case $key in
     PYTHON_VERSION=$1
     ;;
     *)
-    echo "Usage: build-docker.sh [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --wheel-to-use ] [ --python-version ]"
+    echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --wheel-to-use ] [ --python-version ]"
     exit 1
 esac
 shift

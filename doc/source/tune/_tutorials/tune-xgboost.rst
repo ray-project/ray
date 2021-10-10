@@ -117,7 +117,7 @@ from ``1.0``. Even in this simple example, most runs result
 in a good accuracy of over ``0.90``.
 
 Maybe you have noticed the ``config`` parameter we pass to the XGBoost algorithm. This
-is a ``dict`` in which you can specify parameters for the XGBoost algorithm. In this
+is a :class:`dict` in which you can specify parameters for the XGBoost algorithm. In this
 simple example, the only parameters we passed are the ``objective`` and ``eval_metric`` parameters.
 The value ``binary:logistic`` tells XGBoost that we aim to train a logistic regression model for
 a binary classification task. You can find an overview over all valid objectives
@@ -440,6 +440,11 @@ The output of our run could look like this:
 
 As you can see, most trials have been stopped only after a few iterations. Only the
 two most promising trials were run for the full 10 iterations.
+
+You can also ensure that all available resources are being used as the scheduler
+terminates trials, freeing them up. This can be done through the
+``ResourceChangingScheduler``. An example of this can be found here:
+:doc:`/tune/examples/xgboost_dynamic_resources_example`.
 
 Using fractional GPUs
 ---------------------

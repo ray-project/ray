@@ -83,8 +83,6 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Whether to use a distribution of epsilons across workers for exploration.
-    "per_worker_exploration": False,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
@@ -95,6 +93,8 @@ DEFAULT_CONFIG = with_common_config({
         "lstm_cell_size": 64,
         "max_seq_len": 999999,
     },
+    # Only torch supported so far.
+    "framework": "torch",
 })
 # __sphinx_doc_end__
 # yapf: enable

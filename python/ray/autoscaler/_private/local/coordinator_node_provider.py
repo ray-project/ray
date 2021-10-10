@@ -46,8 +46,11 @@ class CoordinatorSenderNodeProvider(NodeProvider):
                              " --ips <list_of_node_ips> --port <PORT>?")
             raise
         except ImportError:
-            logger.exception("Couldn't import `requests` library. "
-                             "Be sure to install it on the client side.")
+            logger.exception(
+                "Not all Ray Autoscaler dependencies were found. "
+                "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+                "only be usable via `pip install 'ray[default]'`. Please "
+                "update your install command.")
             raise
 
         response = r.json()

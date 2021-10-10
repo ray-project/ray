@@ -3,14 +3,59 @@ from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import unittest
 
+import ray
+import ray.rllib.agents.ppo as ppo
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.preprocessors import DictFlatteningPreprocessor, \
     get_preprocessor, NoPreprocessor, TupleFlatteningPreprocessor, \
     OneHotPreprocessor, AtariRamPreprocessor, GenericPixelPreprocessor
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    check_train_results, framework_iterator
 
 
 class TestPreprocessors(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_preprocessing_disabled(self):
+        config = ppo.DEFAULT_CONFIG.copy()
+
+        config["env"] = "ray.rllib.examples.env.random_env.RandomEnv"
+        config["env_config"] = {
+            "config": {
+                "observation_space": Dict({
+                    "a": Discrete(5),
+                    "b": Dict({
+                        "ba": Discrete(4),
+                        "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32)
+                    }),
+                    "c": Tuple((MultiDiscrete([2, 3]), Discrete(1))),
+                    "d": Box(-1.0, 1.0, (1, ), dtype=np.int32),
+                }),
+            },
+        }
+        # Set this to True to enforce no preprocessors being used.
+        # Complex observations now arrive directly in the model as
+        # structures of batches, e.g. {"a": tensor, "b": [tensor, tensor]}
+        # for obs-space=Dict(a=..., b=Tuple(..., ...)).
+        config["_disable_preprocessor_api"] = True
+
+        num_iterations = 1
+        # Only supported for tf so far.
+        for _ in framework_iterator(config):
+            trainer = ppo.PPOTrainer(config=config)
+            for i in range(num_iterations):
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+            check_compute_single_action(trainer)
+            trainer.stop()
+
     def test_gym_preprocessors(self):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
         self.assertEqual(type(p1), NoPreprocessor)

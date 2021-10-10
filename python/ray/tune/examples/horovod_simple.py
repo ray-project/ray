@@ -1,5 +1,7 @@
 import torch
 import numpy as np
+
+import ray
 from ray import tune
 from ray.tune.integration.horovod import DistributedTrainableCreator
 import time
@@ -46,7 +48,8 @@ def train(config):
     import horovod.torch as hvd
     hvd.init()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = Net(args.mode).to(device)
+    mode = config["mode"]
+    net = Net(mode).to(device)
     optimizer = torch.optim.SGD(
         net.parameters(),
         lr=config["lr"],
@@ -62,10 +65,11 @@ def train(config):
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
     start = time.time()
+    x_max = config["x_max"]
     for step in range(1, num_steps + 1):
-        features = torch.Tensor(
-            np.random.rand(1) * 2 * args.x_max - args.x_max).to(device)
-        if args.mode == "square":
+        features = torch.Tensor(np.random.rand(1) * 2 * x_max -
+                                x_max).to(device)
+        if mode == "square":
             labels = sq(features)
         else:
             labels = qu(features)
@@ -79,6 +83,32 @@ def train(config):
         tune.report(loss=loss.item())
     total = time.time() - start
     print(f"Took {total:0.3f} s. Avg: {total / num_steps:0.3f} s.")
+
+
+def tune_horovod(hosts_per_trial,
+                 slots_per_host,
+                 num_samples,
+                 use_gpu,
+                 mode="square",
+                 x_max=1.):
+    horovod_trainable = DistributedTrainableCreator(
+        train,
+        use_gpu=use_gpu,
+        num_hosts=hosts_per_trial,
+        num_slots=slots_per_host,
+        replicate_pem=False)
+    analysis = tune.run(
+        horovod_trainable,
+        metric="loss",
+        mode="min",
+        config={
+            "lr": tune.uniform(0.1, 1),
+            "mode": mode,
+            "x_max": x_max
+        },
+        num_samples=num_samples,
+        fail_fast=True)
+    print("Best hyperparameters found were: ", analysis.best_config)
 
 
 if __name__ == "__main__":
@@ -96,25 +126,27 @@ if __name__ == "__main__":
         help=("Finish quickly for testing."))
     parser.add_argument("--hosts-per-trial", type=int, default=1)
     parser.add_argument("--slots-per-host", type=int, default=2)
-    args = parser.parse_args()
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+    args, _ = parser.parse_known_args()
+
     if args.smoke_test:
-        import ray
         ray.init(num_cpus=2)
+    elif args.server_address:
+        ray.init(f"ray://{args.server_address}")
 
     # import ray
     # ray.init(address="auto")  # assumes ray is started with ray up
 
-    horovod_trainable = DistributedTrainableCreator(
-        train,
-        use_gpu=args.gpu,
-        num_hosts=args.hosts_per_trial,
-        num_slots=args.slots_per_host,
-        replicate_pem=False)
-    analysis = tune.run(
-        horovod_trainable,
-        metric="loss",
-        mode="min",
-        config={"lr": tune.uniform(0.1, 1)},
+    tune_horovod(
+        hosts_per_trial=args.hosts_per_trial,
+        slots_per_host=args.slots_per_host,
         num_samples=2 if args.smoke_test else 10,
-        fail_fast=True)
-    print("Best hyperparameters found were: ", analysis.best_config)
+        use_gpu=args.gpu,
+        mode=args.mode,
+        x_max=args.x_max)

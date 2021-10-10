@@ -17,6 +17,7 @@
 #include "ray/util/util.h"
 
 namespace ray {
+namespace core {
 
 bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
@@ -31,10 +32,9 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   if (!owned_by_us) {
-    RAY_LOG(INFO) << "Reconstruction for borrowed objects (" << object_id
-                  << ") is not supported";
-    reconstruction_failure_callback_(object_id, /*pin_object=*/false);
-    return true;
+    RAY_LOG(DEBUG) << "Reconstruction for borrowed objects (" << object_id
+                   << ") is not supported";
+    return false;
   }
 
   bool already_pending_recovery = true;
@@ -48,7 +48,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   if (!already_pending_recovery) {
-    RAY_LOG(INFO) << "Starting recovery for object " << object_id;
+    RAY_LOG(DEBUG) << "Starting recovery for object " << object_id;
     in_memory_store_->GetAsync(
         object_id, [this, object_id](std::shared_ptr<RayObject> obj) {
           absl::MutexLock lock(&mu_);
@@ -69,8 +69,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
 
 void ObjectRecoveryManager::PinOrReconstructObject(
     const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
-  RAY_LOG(INFO) << "Lost object " << object_id << " has " << locations.size()
-                << " locations";
+  RAY_LOG(DEBUG) << "Lost object " << object_id << " has " << locations.size()
+                 << " locations";
   if (!locations.empty()) {
     auto locations_copy = locations;
     const auto location = locations_copy.back();
@@ -80,7 +80,9 @@ void ObjectRecoveryManager::PinOrReconstructObject(
     // There are no more copies to pin, try to reconstruct the object.
     ReconstructObject(object_id);
   } else {
-    reconstruction_failure_callback_(object_id, /*pin_object=*/true);
+    // All copies lost, and lineage reconstruction is disabled.
+    recovery_failure_callback_(object_id, rpc::ErrorType::OBJECT_LOST,
+                               /*pin_object=*/true);
   }
 }
 
@@ -142,13 +144,16 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
         RAY_LOG(INFO) << "Failed to reconstruct object " << dep << ": "
                       << status.message();
         // We do not pin the dependency because we may not be the owner.
-        reconstruction_failure_callback_(dep, /*pin_object=*/false);
+        recovery_failure_callback_(dep, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                                   /*pin_object=*/false);
       }
     }
   } else {
     RAY_LOG(INFO) << "Failed to reconstruct object " << object_id;
-    reconstruction_failure_callback_(object_id, /*pin_object=*/true);
+    recovery_failure_callback_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                               /*pin_object=*/true);
   }
 }
 
+}  // namespace core
 }  // namespace ray

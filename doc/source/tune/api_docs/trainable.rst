@@ -348,6 +348,8 @@ Utilities
 
 .. autofunction:: ray.tune.utils.validate_save_restore
 
+.. autofunction:: ray.tune.utils.force_on_current_node
+
 
 .. _tune-ddp-doc:
 
