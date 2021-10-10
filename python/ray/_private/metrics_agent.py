@@ -242,7 +242,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
             except Exception as e:
                 logger.warning("Writing a service discovery file, {},"
                                "failed."
-                               .format(self.writer.get_target_file_name()))
+                               .format(self.get_target_file_name()))
                 logger.warning(traceback.format_exc())
                 logger.warning(f"Error message: {e}")
             time.sleep(self.default_service_discovery_flush_period)
