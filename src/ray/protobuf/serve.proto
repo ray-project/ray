@@ -13,6 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
+option cc_enable_arenas = true;
 
 package ray.serve;
 
@@ -21,6 +22,28 @@ option java_package = "io.ray.serve.generated";
 option java_outer_classname = "ServeProtos";
 
 option java_multiple_files = true;
+
+// Configuration options for Serve's replica autoscaler.
+message AutoscalingConfig {
+  // Minimal number of replicas, must be a non-negative integer.
+  uint32 min_replicas = 1;
+  // Maximal number of replicas, must be a non-negative integer and greater or equals
+  // to min_replicas.
+  uint32 max_replicas = 2;
+  // Target number of in flight requests per replicas. This is the primary configuration
+  // knob for replica autoscaler. Lower the number, the more rapidly will the replicas
+  // being scaled up. Must be a non-negative integer.
+  uint32 target_num_ongoing_requests_per_replica = 3;
+
+  // The frequency of how long does each replica sending metrics to autoscaler.
+  double metrics_interval_s = 4;
+
+  // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
+  double look_back_period_s = 5;
+
+  // The multiplicative "gain" factor to limit scaling decisions.
+  double smoothing_factor = 6;
+}
 
 // Configuration options for a backend, to be set by the user.
 message BackendConfig {
@@ -38,21 +61,36 @@ message BackendConfig {
 
   // Duration that backend workers will wait until there is no more work to be done before
   // shutting down. Defaults to 2s.
-  double experimental_graceful_shutdown_wait_loop_s = 4;
+  double graceful_shutdown_wait_loop_s = 4;
 
   // Controller waits for this duration to forcefully kill the replica for shutdown.
   // Defaults to 20s.
-  double experimental_graceful_shutdown_timeout_s = 5;
+  double graceful_shutdown_timeout_s = 5;
 
   // Is the construction of backend is cross language?
   bool is_cross_language = 6;
 
   // The backend's programming language.
   BackendLanguage backend_language = 7;
+
+  // The backend's autoscaling configuration.
+  AutoscalingConfig autoscaling_config = 8;
 }
 
 // Backend language.
 enum BackendLanguage {
   PYTHON = 0;
   JAVA = 1;
+}
+
+message RequestMetadata {
+  string request_id = 1;
+
+  string endpoint = 2;
+
+  string call_method = 3;
+}
+
+message RequestWrapper {
+  bytes body = 1;
 }

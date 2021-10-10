@@ -35,14 +35,22 @@ DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
-    : name_(std::move(name)), port_(port), is_closed_(true), num_threads_(num_threads) {
+GrpcServer::GrpcServer(std::string name, const uint32_t port,
+                       bool listen_to_localhost_only, int num_threads,
+                       int64_t keepalive_time_ms)
+    : name_(std::move(name)),
+      port_(port),
+      listen_to_localhost_only_(listen_to_localhost_only),
+      is_closed_(true),
+      num_threads_(num_threads),
+      keepalive_time_ms_(keepalive_time_ms) {
   cqs_.resize(num_threads_);
 }
 
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
-  std::string server_address("0.0.0.0:" + std::to_string(port_));
+  std::string server_address((listen_to_localhost_only_ ? "127.0.0.1:" : "0.0.0.0:") +
+                             std::to_string(port_));
   grpc::ServerBuilder builder;
   // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and
@@ -52,8 +60,7 @@ void GrpcServer::Run() {
                              RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
                              RayConfig::instance().max_grpc_message_size());
-  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS,
-                             RayConfig::instance().grpc_keepalive_time_ms());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, keepalive_time_ms_);
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
@@ -127,6 +134,9 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
   while (cqs_[index]->Next(&tag, &ok)) {
     auto *server_call = static_cast<ServerCall *>(tag);
     bool delete_call = false;
+    // A new call is needed after the server sends a reply, no matter the reply is
+    // successful or failed.
+    bool need_new_call = false;
     if (ok) {
       switch (server_call->GetState()) {
       case ServerCallState::PENDING:
@@ -140,6 +150,8 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
         server_call->OnReplySent();
         // The rpc call has finished and can be deleted now.
         delete_call = true;
+        // A new call should be suplied.
+        need_new_call = true;
         break;
       default:
         RAY_LOG(FATAL) << "Shouldn't reach here.";
@@ -147,16 +159,21 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       }
     } else {
       // `ok == false` will occur in two situations:
-      // First, the server has been shut down, the server call's status is PENDING
-      // Second, server has sent reply to client and failed, the server call's status is
-      // SENDING_REPLY
+
+      // First, server has sent reply to client and failed, the server call's status is
+      // SENDING_REPLY.
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
         server_call->OnReplyFailed();
+        // A new call should be suplied.
+        need_new_call = true;
       }
+
+      // Second, the server has been shut down, the server call's status is PENDING.
+      // And don't need to do anything other than deleting this call.
       delete_call = true;
     }
     if (delete_call) {
-      if (ok && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
+      if (need_new_call && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
         // Create a new `ServerCall` to accept the next incoming request.
         server_call->GetServerCallFactory().CreateCall();
       }

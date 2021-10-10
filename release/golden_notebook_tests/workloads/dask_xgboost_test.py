@@ -1,62 +1,30 @@
-import argparse
-import json
+import ray
 import os
 import time
+import json
+from util import import_and_execute_test_script, wait_for_cluster_client
 
-import dask
-import dask.dataframe as dd
-import ray
-from ray.util.dask import ray_dask_get
-from xgboost_ray import RayDMatrix, RayParams, train
-
-FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
-           "00280/HIGGS.csv.gz"
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--smoke-test", action="store_true", help="Finish quickly for testing.")
-args = parser.parse_args()
+NOTEBOOK_PATH_RELATIVE_TO_RAY_REPO = (
+    "doc/examples/dask_xgboost/dask_xgboost.py")
 
 
 def main():
-    ray.client("anyscale://").connect()
-
-    print("Loading HIGGS data.")
-
-    dask.config.set(scheduler=ray_dask_get)
-    colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
-    data = dd.read_csv(FILE_URL, names=colnames)
-    if args.smoke_test:
-        data = data.head(n=1000)
-
-    print("Loaded HIGGS data.")
-
-    # partition on a column
-    df_train = data[(data["feature-01"] < 0.4)]
-    df_train = df_train.persist()
-    df_validation = data[(data["feature-01"] >= 0.4)
-                         & (data["feature-01"] < 0.8)]
-    df_validation = df_validation.persist()
-
-    dtrain = RayDMatrix(df_train, label="label", columns=colnames)
-    dvalidation = RayDMatrix(df_validation, label="label")
-
-    evallist = [(dvalidation, "eval")]
-    evals_result = {}
-    config = {"tree_method": "hist", "eval_metric": ["logloss", "error"]}
-    train(
-        params=config,
-        dtrain=dtrain,
-        evals_result=evals_result,
-        ray_params=RayParams(
-            max_actor_restarts=1, num_actors=4, cpus_per_actor=2),
-        num_boost_round=100,
-        evals=evallist)
+    import_and_execute_test_script(NOTEBOOK_PATH_RELATIVE_TO_RAY_REPO)
 
 
 if __name__ == "__main__":
     start = time.time()
+
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "dask_xgboost_test")
+    if addr is not None and addr.startswith("anyscale://"):
+        ray.init(address=addr, job_name=job_name)
+    else:
+        ray.init(address="auto")
+
+    wait_for_cluster_client(4, 600)
     main()
+
     taken = time.time() - start
     result = {
         "time_taken": taken,

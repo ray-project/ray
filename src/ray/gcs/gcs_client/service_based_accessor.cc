@@ -252,7 +252,8 @@ Status ServiceBasedActorInfoAccessor::AsyncKillActor(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
-    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+    const ray::TaskSpecification &task_spec,
+    const rpc::ClientCallback<rpc::CreateActorReply> &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
   rpc::CreateActorRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
@@ -262,7 +263,7 @@ Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
                 : Status(StatusCode(reply.status().code()), reply.status().message());
-        callback(status);
+        callback(status, reply);
       });
   return Status::OK();
 }
@@ -539,17 +540,17 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   });
 }
 
-boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
+absl::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
     const NodeID &node_id, bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
     if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
-      return boost::none;
+      return absl::nullopt;
     }
     return entry->second;
   }
-  return boost::none;
+  return absl::nullopt;
 }
 
 const std::unordered_map<NodeID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
@@ -730,7 +731,7 @@ Status ServiceBasedNodeResourceInfoAccessor::AsyncUpdateResources(
         });
   };
 
-  sequencer_.Post(node_id, operation);
+  sequencer_.Post(node_id, std::move(operation));
   return Status::OK();
 }
 

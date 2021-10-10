@@ -8,15 +8,17 @@ import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Histogram;
 import io.ray.runtime.metric.MetricConfig;
 import io.ray.runtime.metric.Metrics;
+import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.RequestWrapper;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
 import io.ray.serve.poll.LongPollClient;
 import io.ray.serve.poll.LongPollNamespace;
-import io.ray.serve.util.BackendConfigUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
+import io.ray.serve.util.ServeProtoUtil;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -59,7 +61,7 @@ public class RayServeReplica {
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
     this.config = backendConfig;
-    this.reconfigure(BackendConfigUtil.getUserConfig(backendConfig));
+    this.reconfigure(ServeProtoUtil.parseUserConfig(backendConfig));
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
@@ -152,8 +154,9 @@ public class RayServeReplica {
           replicaTag,
           requestItem.getMetadata().getRequestId());
 
-      methodToCall = getRunnerMethod(requestItem);
-      Object result = methodToCall.invoke(callable, requestItem.getArgs());
+      Object[] args = parseRequestItem(requestItem);
+      methodToCall = getRunnerMethod(requestItem.getMetadata().getCallMethod(), args);
+      Object result = methodToCall.invoke(callable, args);
       reportMetrics(() -> requestCounter.inc(1.0));
       return result;
     } catch (Throwable e) {
@@ -169,12 +172,29 @@ public class RayServeReplica {
     }
   }
 
-  private Method getRunnerMethod(Query query) {
-    String methodName = query.getMetadata().getCallMethod();
+  private Object[] parseRequestItem(Query requestItem) {
+    if (requestItem.getArgs() == null) {
+      return new Object[0];
+    }
+
+    // From Java Proxy or Handle.
+    if (requestItem.getArgs() instanceof Object[]) {
+      return (Object[]) requestItem.getArgs();
+    }
+
+    // From other language Proxy or Handle.
+    RequestWrapper requestWrapper = (RequestWrapper) requestItem.getArgs();
+    if (requestWrapper.getBody() == null || requestWrapper.getBody().isEmpty()) {
+      return new Object[0];
+    }
+
+    return MessagePackSerializer.decode(requestWrapper.getBody().toByteArray(), Object[].class);
+  }
+
+  private Method getRunnerMethod(String methodName, Object[] args) {
 
     try {
-      return ReflectUtil.getMethod(
-          callable.getClass(), methodName, query.getArgs() == null ? null : query.getArgs());
+      return ReflectUtil.getMethod(callable.getClass(), methodName, args);
     } catch (NoSuchMethodException e) {
       throw new RayServeException(
           LogUtil.format(
@@ -192,7 +212,7 @@ public class RayServeReplica {
   public void drainPendingQueries() {
     while (true) {
       try {
-        Thread.sleep((long) (config.getExperimentalGracefulShutdownWaitLoopS() * 1000));
+        Thread.sleep((long) (config.getGracefulShutdownWaitLoopS() * 1000));
       } catch (InterruptedException e) {
         LOGGER.error(
             "Replica {} was interrupted in sheep when draining pending queries", replicaTag);
@@ -202,7 +222,7 @@ public class RayServeReplica {
       } else {
         LOGGER.debug(
             "Waiting for an additional {}s to shut down because there are {} ongoing requests.",
-            config.getExperimentalGracefulShutdownWaitLoopS(),
+            config.getGracefulShutdownWaitLoopS(),
             numOngoingRequests.get());
       }
     }

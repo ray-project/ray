@@ -1,7 +1,7 @@
 import concurrent.futures
 from functools import partial
 import logging
-from typing import Callable, Iterable, List, Optional, Type
+from typing import Callable, Iterable, List, Optional, Type, Union
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.env.env_context import EnvContext
@@ -63,9 +63,10 @@ def build_trainer(
         after_init: Optional[Callable[[Trainer], None]] = None,
         before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
         mixins: Optional[List[type]] = None,
-        execution_plan: Optional[Callable[[
-            WorkerSet, TrainerConfigDict
-        ], Iterable[ResultDict]]] = default_execution_plan,
+        execution_plan: Optional[Union[Callable[
+            [WorkerSet, TrainerConfigDict], Iterable[ResultDict]], Callable[[
+                Trainer, WorkerSet, TrainerConfigDict
+            ], Iterable[ResultDict]]]] = default_execution_plan,
         allow_unknown_configs: bool = False,
         allow_unknown_subkeys: Optional[List[str]] = None,
         override_all_subkeys_if_type_changes: Optional[List[str]] = None,
@@ -174,7 +175,19 @@ def build_trainer(
                 config=config,
                 num_workers=self.config["num_workers"])
             self.execution_plan = execution_plan
-            self.train_exec_impl = execution_plan(self.workers, config)
+            try:
+                self.train_exec_impl = execution_plan(self, self.workers,
+                                                      config)
+            except TypeError as e:
+                # Keyword error: Try old way w/o kwargs.
+                if "() takes 2 positional arguments but 3" in e.args[0]:
+                    self.train_exec_impl = execution_plan(self.workers, config)
+                    logger.warning(
+                        "`execution_plan` functions should accept "
+                        "`trainer`, `workers`, and `config` as args!")
+                # Other error -> re-raise.
+                else:
+                    raise e
 
             if after_init:
                 after_init(self)
@@ -188,30 +201,48 @@ def build_trainer(
                 self.config["evaluation_interval"] and \
                 (self._iteration + 1) % self.config["evaluation_interval"] == 0
 
-            # No evaluation necessary.
+            # No evaluation necessary, just run the next training iteration.
             if not evaluate_this_iter:
-                res = next(self.train_exec_impl)
+                step_results = next(self.train_exec_impl)
             # We have to evaluate in this training iteration.
             else:
                 # No parallelism.
                 if not self.config["evaluation_parallel_to_training"]:
-                    res = next(self.train_exec_impl)
+                    step_results = next(self.train_exec_impl)
 
                 # Kick off evaluation-loop (and parallel train() call,
                 # if requested).
                 # Parallel eval + training.
                 if self.config["evaluation_parallel_to_training"]:
                     with concurrent.futures.ThreadPoolExecutor() as executor:
-                        eval_future = executor.submit(self.evaluate)
-                        res = next(self.train_exec_impl)
-                        evaluation_metrics = eval_future.result()
+                        train_future = executor.submit(
+                            lambda: next(self.train_exec_impl))
+                        if self.config["evaluation_num_episodes"] == "auto":
+
+                            # Run at least one `evaluate()` (num_episodes_done
+                            # must be > 0), even if the training is very fast.
+                            def episodes_left_fn(num_episodes_done):
+                                if num_episodes_done > 0 and \
+                                        train_future.done():
+                                    return 0
+                                else:
+                                    return self.config[
+                                        "evaluation_num_workers"]
+
+                            evaluation_metrics = self.evaluate(
+                                episodes_left_fn=episodes_left_fn)
+                        else:
+                            evaluation_metrics = self.evaluate()
+                        # Collect the training results from the future.
+                        step_results = train_future.result()
                 # Sequential: train (already done above), then eval.
                 else:
                     evaluation_metrics = self.evaluate()
 
+                # Add evaluation results to train results.
                 assert isinstance(evaluation_metrics, dict), \
-                    "_evaluate() needs to return a dict."
-                res.update(evaluation_metrics)
+                    "Trainer.evaluate() needs to return a dict."
+                step_results.update(evaluation_metrics)
 
             # Check `env_task_fn` for possible update of the env's task.
             if self.config["env_task_fn"] is not None:
@@ -221,7 +252,7 @@ def build_trainer(
                         "[train_results, env, env_ctx] as args!")
 
                 def fn(env, env_context, task_fn):
-                    new_task = task_fn(res, env, env_context)
+                    new_task = task_fn(step_results, env, env_context)
                     cur_task = env.get_task()
                     if cur_task != new_task:
                         env.set_task(new_task)
@@ -229,7 +260,7 @@ def build_trainer(
                 fn = partial(fn, task_fn=self.config["env_task_fn"])
                 self.workers.foreach_env_with_context(fn)
 
-            return res
+            return step_results
 
         @staticmethod
         @override(Trainer)

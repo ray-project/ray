@@ -1,7 +1,6 @@
 package io.ray.api;
 
 import io.ray.api.id.PlacementGroupId;
-import io.ray.api.id.UniqueId;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementStrategy;
@@ -239,30 +238,6 @@ public final class Ray extends RayCall {
           "Ray has not been started yet. You can start Ray with 'Ray.init()'");
     }
     return runtime;
-  }
-
-  /**
-   * Update the resource for the specified client. Set the resource for the specific node.
-   *
-   * @deprecated Consider using placement groups instead
-   *     (docs.ray.io/en/master/placement-group.html). You can also specify resources at Ray start
-   *     time with the 'resources' field in the cluster autoscaler.
-   */
-  @Deprecated
-  public static void setResource(UniqueId nodeId, String resourceName, double capacity) {
-    internal().setResource(resourceName, capacity, nodeId);
-  }
-
-  /**
-   * Set the resource for local node.
-   *
-   * @deprecated Consider using placement groups instead
-   *     (docs.ray.io/en/master/placement-group.html). You can also specify resources at Ray start
-   *     time with the 'resources' field in the cluster autoscaler.
-   */
-  @Deprecated
-  public static void setResource(String resourceName, double capacity) {
-    internal().setResource(resourceName, capacity, UniqueId.NIL);
   }
 
   /** Get the runtime context. */

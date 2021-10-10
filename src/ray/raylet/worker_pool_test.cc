@@ -89,9 +89,9 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
     callback(Status::OK(), reply);
   };
 
-  void DeleteRuntimeEnv(const rpc::DeleteRuntimeEnvRequest &request,
-                        const rpc::ClientCallback<rpc::DeleteRuntimeEnvReply> &callback) {
-    rpc::DeleteRuntimeEnvReply reply;
+  void DeleteURIs(const rpc::DeleteURIsRequest &request,
+                  const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) {
+    rpc::DeleteURIsReply reply;
     reply.set_status(rpc::AGENT_RPC_STATUS_OK);
     callback(Status::OK(), reply);
   };
@@ -103,9 +103,10 @@ class WorkerPoolMock : public WorkerPool {
                           const WorkerCommandMap &worker_commands,
                           absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
                               &mock_worker_rpc_clients)
-      : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
-                   MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, 0, [this]() { return current_time_ms_; }),
+      : WorkerPool(
+            io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
+            MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands, []() {}, 0,
+            [this]() { return current_time_ms_; }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -231,10 +232,6 @@ class WorkerPoolMock : public WorkerPool {
     }
     if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
       PushRestoreWorker(worker);
-      return;
-    }
-    if (worker->GetWorkerType() == rpc::WorkerType::UTIL_WORKER) {
-      PushUtilWorker(worker);
       return;
     }
     PushWorker(worker);
@@ -462,7 +459,7 @@ static inline TaskSpecification ExampleTaskSpec(
   } else {
     message.set_type(TaskType::NORMAL_TASK);
   }
-  message.set_serialized_runtime_env(serialized_runtime_env);
+  message.mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
   return TaskSpecification(std::move(message));
 }
 
@@ -532,19 +529,19 @@ TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
 TEST_F(WorkerPoolTest, TestPrestartingWorkers) {
   const auto task_spec = ExampleTaskSpec();
   // Prestarts 2 workers.
-  worker_pool_->PrestartWorkers(task_spec, 2);
+  worker_pool_->PrestartWorkers(task_spec, 2, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 2);
   // Prestarts 1 more worker.
-  worker_pool_->PrestartWorkers(task_spec, 3);
+  worker_pool_->PrestartWorkers(task_spec, 3, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
   // No more needed.
-  worker_pool_->PrestartWorkers(task_spec, 1);
+  worker_pool_->PrestartWorkers(task_spec, 1, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
   // Capped by soft limit of 5.
-  worker_pool_->PrestartWorkers(task_spec, 20);
+  worker_pool_->PrestartWorkers(task_spec, 20, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 5);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 5);
 }
@@ -1261,8 +1258,7 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
       /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_2");
 
-  const WorkerCacheKey env1 = {
-      /*override_environment_variables=*/{}, "mock_runtime_env_1", {}};
+  const WorkerCacheKey env1 = {"mock_runtime_env_1", {}};
   const int runtime_env_hash_1 = env1.IntHash();
 
   // Push worker with runtime env 1.

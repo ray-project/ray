@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/scheduling/cluster_resource_data.h"
+
 #include "ray/common/bundle_spec.h"
 #include "ray/common/task/scheduling_resources.h"
 
@@ -463,7 +464,8 @@ std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) co
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << "\t" << it->first << ":(" << VectorToString(it->second.total) << ":"
+    buffer << "\t" << string_to_int_map.Get(it->first) << ":("
+           << VectorToString(it->second.total) << ":"
            << VectorToString(it->second.available) << ")\n";
   }
   buffer << "}" << std::endl;
@@ -535,7 +537,7 @@ bool TaskResourceInstances::IsEmpty() const {
   return true;
 }
 
-std::string TaskResourceInstances::DebugString() const {
+std::string TaskResourceInstances::DebugString(const StringIdMap &string_id_map) const {
   std::stringstream buffer;
   buffer << std::endl << "  Allocation: {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -546,7 +548,7 @@ std::string TaskResourceInstances::DebugString() const {
   buffer << "  [";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << it->first << ":" << VectorToString(it->second) << ", ";
+    buffer << string_id_map.Get(it->first) << ":" << VectorToString(it->second) << ", ";
   }
 
   buffer << "]" << std::endl;

@@ -716,31 +716,34 @@ void ClusterTaskManager::FillResourceUsage(
       TaskSpecification::GetSchedulingClass(one_cpu_resource_set));
   {
     num_reported++;
-    int count = 0;
+    int ready_count = 0;
     auto it = tasks_to_schedule_.find(one_cpu_scheduling_cls);
     if (it != tasks_to_schedule_.end()) {
-      count += it->second.size();
+      ready_count += it->second.size();
     }
     it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
     if (it != tasks_to_dispatch_.end()) {
-      count += it->second.size();
+      ready_count += it->second.size();
     }
-
-    if (count > 0) {
+    int infeasible_count = 0;
+    it = infeasible_tasks_.find(one_cpu_scheduling_cls);
+    if (it != infeasible_tasks_.end()) {
+      infeasible_count += it->second.size();
+    }
+    const int total_count = ready_count + infeasible_count;
+    if (total_count > 0) {
       auto by_shape_entry = resource_load_by_shape->Add();
 
-      for (const auto &resource : one_cpu_resource_set.GetResourceMap()) {
+      for (const auto &[label, quantity] : one_cpu_resource_set.GetResourceMap()) {
         // Add to `resource_loads`.
-        const auto &label = resource.first;
-        const auto &quantity = resource.second;
-        (*resource_loads)[label] += quantity * count;
+        (*resource_loads)[label] += quantity * total_count;
 
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
       }
 
-      int num_ready = by_shape_entry->num_ready_requests_queued();
-      by_shape_entry->set_num_ready_requests_queued(num_ready + count);
+      by_shape_entry->set_num_ready_requests_queued(ready_count);
+      by_shape_entry->set_num_infeasible_requests_queued(infeasible_count);
 
       auto backlog_it = backlog_tracker_.find(one_cpu_scheduling_cls);
       if (backlog_it != backlog_tracker_.end()) {
@@ -1090,6 +1093,10 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_port(node_info_opt->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    reply->set_rejected(true);
+  }
+
   auto send_reply_callback = work->callback;
   send_reply_callback();
 }
@@ -1192,8 +1199,6 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
-  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: "
-                 << waiting_task_queue_.size();
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
@@ -1252,6 +1257,12 @@ void ClusterTaskManager::SpillWaitingTasks() {
       break;
     }
   }
+}
+
+bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
+  const auto &spec = task.GetTaskSpecification();
+  return cluster_resource_scheduler_->IsLocallySchedulable(
+      spec.GetRequiredResources().GetResourceMap());
 }
 
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {

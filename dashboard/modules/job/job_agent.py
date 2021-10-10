@@ -13,10 +13,10 @@ from typing import Union
 
 import attr
 from attr.validators import instance_of
-import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.utils import create_task
-from ray.new_dashboard.modules.job import job_consts
-from ray.new_dashboard.modules.job.job_description import JobDescription
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.utils import create_task
+from ray.dashboard.modules.job import job_consts
+from ray.dashboard.modules.job.job_description import JobDescription
 from ray.core.generated import job_agent_pb2
 from ray.core.generated import job_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
@@ -202,7 +202,9 @@ ray.shutdown()
 
         # Per job config
         job_config_items = {
-            "worker_env": self._job_info.env,
+            "runtime_env": {
+                "env_vars": self._job_info.env
+            },
             "code_search_path": [job_package_dir],
         }
 

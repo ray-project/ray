@@ -96,6 +96,9 @@ class GcsPubSub {
 
   std::string DebugString() const;
 
+ protected:
+  GcsPubSub() : GcsPubSub(nullptr) {}
+
  private:
   /// Represents a caller's command to subscribe or unsubscribe to a given
   /// channel.

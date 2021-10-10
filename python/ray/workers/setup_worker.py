@@ -3,7 +3,7 @@ import json
 import logging
 import os
 
-from ray._private.utils import import_attr
+from ray._private.runtime_env.context import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
 
@@ -12,15 +12,14 @@ parser = argparse.ArgumentParser(
         "Set up the environment for a Ray worker and launch the worker."))
 
 parser.add_argument(
-    "--worker-setup-hook",
-    type=str,
-    help="the module path to a Python function to run to set up the "
-    "environment for a worker and launch the worker.")
-
-parser.add_argument(
     "--serialized-runtime-env",
     type=str,
     help="the serialized parsed runtime env dict")
+
+parser.add_argument(
+    "--serialized-runtime-env-context",
+    type=str,
+    help="the serialized runtime env context")
 
 parser.add_argument(
     "--allocated-instances-serialized-json",
@@ -75,10 +74,6 @@ def start_worker_in_container(container_option, args, remaining_args):
     if container_option.get("worker_path"):
         remaining_args[1] = container_option.get("worker_path")
     entrypoint_args.extend(remaining_args)
-    # setup_runtime_env will install conda,pip according to
-    # serialized-runtime-env, so add this argument
-    entrypoint_args.append("--serialized-runtime-env")
-    entrypoint_args.append(args.serialized_runtime_env or "{}")
     # now we will start a container, add argument worker-shim-pid
     entrypoint_args.append("--worker-shim-pid={}".format(os.getpid()))
 
@@ -117,7 +112,10 @@ if __name__ == "__main__":
     if container_option and container_option.get("image"):
         start_worker_in_container(container_option, args, remaining_args)
     else:
-        remaining_args.append("--serialized-runtime-env")
-        remaining_args.append(args.serialized_runtime_env or "{}")
-        setup = import_attr(args.worker_setup_hook)
-        setup(remaining_args)
+        # NOTE(edoakes): args.serialized_runtime_env_context is only None when
+        # we're starting the main Ray client proxy server. That case should
+        # probably not even go through this codepath.
+        runtime_env_context = RuntimeEnvContext.deserialize(
+            args.serialized_runtime_env_context or "{}")
+
+        runtime_env_context.exec_worker(remaining_args)
