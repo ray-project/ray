@@ -6,7 +6,6 @@ import os
 
 from pickle import PicklingError
 
-from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -20,8 +19,10 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
-def _raise_on_durable(is_durable_trainable, sync_to_driver, upload_dir):
-    if is_durable_trainable:
+def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
+    trainable_cls = get_trainable_cls(trainable_name)
+    from ray.tune.durable_trainable import DurableTrainable
+    if issubclass(trainable_cls, DurableTrainable):
         if sync_to_driver is not False:
             raise ValueError(
                 "EXPERIMENTAL: DurableTrainable will automatically sync "
@@ -176,8 +177,7 @@ class Experiment:
             else:
                 self._stopper = TimeoutStopper(time_budget_s)
 
-        _raise_on_durable(self.is_durable_trainable, sync_to_driver,
-                          upload_dir)
+        _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
 
         stdout_file, stderr_file = _validate_log_to_file(log_to_file)
 
@@ -301,11 +301,6 @@ class Experiment:
     def run_identifier(self):
         """Returns a string representing the trainable identifier."""
         return self._run_identifier
-
-    @property
-    def is_durable_trainable(self):
-        trainable_cls = get_trainable_cls(self._run_identifier)
-        return issubclass(trainable_cls, DurableTrainable)
 
     @property
     def public_spec(self) -> Dict[str, Any]:
