@@ -31,10 +31,8 @@ DEFAULT_CONFIG = with_common_config({
     "input_evaluation": ["is", "wis"],
 
     # === Postprocessing/accum., discounted return calculation ===
-    # If true, use the Generalized Advantage Estimator (GAE)
-    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf in
-    # case an input line ends with a non-terminal timestep.
-    "use_gae": True,
+    # Whether to use a critic for value estimates.
+    "use_critic": True,
     # Whether to calculate cumulative rewards. Must be True.
     "postprocess_inputs": True,
 
@@ -132,8 +130,6 @@ def validate_config(config: TrainerConfigDict) -> None:
     """Checks and updates the config based on settings."""
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
-    if config["use_gae"] and not config["use_critic"]:
-        raise ValueError("GAE can not be used without a critic")
 
     if config["postprocess_inputs"] is False and config["beta"] > 0.0:
         raise ValueError("`postprocess_inputs` must be True for MARWIL (to "
