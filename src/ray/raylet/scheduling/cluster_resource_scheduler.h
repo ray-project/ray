@@ -405,7 +405,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void FillResourceUsage(rpc::ResourcesData &resources_data) override;
 
   /// \return The total resource capacity of the node.
-  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals() const override;
+  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
+      const std::unordered_map<std::string, double> &resource_map_filter) const override;
 
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.

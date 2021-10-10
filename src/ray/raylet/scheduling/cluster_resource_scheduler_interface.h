@@ -78,8 +78,10 @@ class ClusterResourceSchedulerInterface {
   /// resource totals on a node when a custom resource is created or deleted
   /// (e.g. during the placement group lifecycle).
   ///
-  /// \param Output parameter. Fills out all fields.
-  virtual ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals() const = 0;
+  /// \param resource_map_filter When returning the resource map, the returned result will
+  /// only contain the keys in the filter.
+  virtual ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
+      const std::unordered_map<std::string, double> &resource_map_filter) const = 0;
 
   /// Return local resources in human-readable string form.
   virtual std::string GetLocalResourceViewString() const = 0;
