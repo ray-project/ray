@@ -25,7 +25,8 @@ from ray.rllib.models.torch.torch_action_dist import \
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import LearningRateSchedule, EntropyCoeffSchedule
+from ray.rllib.policy.torch_policy import LearningRateSchedule,\
+    EntropyCoeffSchedule
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance,\
     global_norm, sequence_mask
@@ -286,7 +287,8 @@ def setup_early_mixins(policy: Policy, obs_space: gym.spaces.Space,
         config (TrainerConfigDict): The Policy's config.
     """
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"], config["entropy_coeff_schedule"])
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
@@ -320,6 +322,7 @@ AsyncPPOTorchPolicy = build_policy_class(
     before_loss_init=setup_late_mixins,
     make_model=make_appo_model,
     mixins=[
-        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin, TargetNetworkMixin, ValueNetworkMixin
+        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
+        TargetNetworkMixin, ValueNetworkMixin
     ],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])
