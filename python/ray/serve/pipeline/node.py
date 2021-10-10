@@ -1,33 +1,48 @@
-from typing import Any, Callable, Dict, Set, Tuple
+from abc import ABC
+from typing import Any, Callable, Optional, Tuple
 
-from ray.serve.pipeline import INPUT
+
+class CallableNode(ABC):
+    def call(self, user_args: Tuple[Any]) -> Any:
+        pass
+
+    async def call_async(self, user_args: Tuple[Any]) -> Any:
+        pass
+
+
+class InlineCallableNode(CallableNode):
+    def __init__(self, _callable: Callable,
+                 incoming_nodes: Tuple["CallableNode"]):
+        self._callable = _callable
+        self._incoming_nodes = incoming_nodes
+
+    def call(self, input_arg: Tuple[Any]) -> Any:
+        if len(self._incoming_nodes):
+            args = tuple(node.call(input_arg) for node in self._incoming_nodes)
+        else:
+            # Handle the INPUT case.
+            args = (input_arg, )
+
+        return self._callable(*args)
+
+    async def call_async(self):
+        pass
+
 
 class PipelineNode:
-    def __init__(self, *args: Tuple[Any], **kwargs: Dict[Any, Any]):
-        if len(kwargs):
-            raise NotImplementedError("No kwargs yet!")
+    def __init__(self,
+                 callable_factory: Callable[[], Callable],
+                 incoming_edges: Optional[Tuple["PipelineNode"]] = None):
+        self._callable_factory = callable_factory
+        self._incoming_edges: Tuple["PipelineNode"] = incoming_edges or tuple()
 
-        # TODO: do we need to copy.copy args?
-        self._args: Tuple[Any] = args
-        self._incoming_edges: Set[PipelineNode] = set()
-        self._outgoing_edges: Set[PipelineNode] = set()
-        self._is_input_node: bool = False
-
-        # Check arguments for incoming edges.
-        for arg in args:
-            if isinstance(arg, PipelineStep):
-                raise TypeError("PipelineSteps cannot be passed in directly, "
-                        "you need to call them with an input first. For "
-                        "example: instead of `my_step_2(my_step_1)`, try "
-                        "`my_step_2(my_step_1(pipeline.INPUT))`.")
-
-            elif isinstance(arg, PipelineNode):
-                self._incoming_edges.add(arg)
-                arg.add_outgoing_edge(self)
-
-            elif arg is INPUT:
-                self._is_input_node = True
+    def deploy(self):
+        incoming_nodes = tuple(node.deploy() for node in self._incoming_edges)
+        return InlineCallableNode(self._callable_factory(), incoming_nodes)
 
 
-    def add_outgoing_edge(self, other: PipelineNode):
-        self._outgoing_edges.add(other)
+def noop(input_arg: Tuple[Any]) -> Any:
+    return input_arg
+
+
+INPUT = PipelineNode(lambda: noop)

@@ -1,8 +1,2 @@
-from enum import Enum
-
-from ray.serve.pipeline.step import step
-
-class InputFlag(Enum):
-    INPUT_FLAG = 1
-
-INPUT = InputFlag.INPUT_FLAG
+from ray.serve.pipeline.node import INPUT  # noqa:F401
+from ray.serve.pipeline.step import step  # noqa:F401
