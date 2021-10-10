@@ -16,6 +16,7 @@
 
 #include <vector>
 
+#include "absl/functional/bind_front.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -269,7 +270,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
 
     auto borrower_callback = [=]() {
       auto ref_removed_callback =
-          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1);
+          absl::bind_front(&ReferenceCounter::HandleRefRemoved, &rc_);
       rc_.SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                 ref_removed_callback);
     };
