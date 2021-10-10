@@ -67,11 +67,14 @@ class WorkerLeaseInterface {
   virtual void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) = 0;
+      const int64_t backlog_size = -1,
+      bool has_locality = false) = 0;
+
   virtual void RequestWorkerLease(
       const rpc::TaskSpec &task_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) = 0;
+      const int64_t backlog_size = -1,
+      bool has_locality = false) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -141,7 +144,8 @@ class DependencyWaiterInterface {
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
   virtual ray::Status WaitForDirectActorCallArgs(
-      const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
+      const std::vector<rpc::ObjectReference> &references,
+      const Priority &priority, int64_t tag) = 0;
 
   virtual ~DependencyWaiterInterface(){};
 };
@@ -326,7 +330,8 @@ class RayletClient : public RayletClientInterface {
   /// \param tag Value that will be sent to the core worker via gRPC on completion.
   /// \return ray::Status.
   ray::Status WaitForDirectActorCallArgs(
-      const std::vector<rpc::ObjectReference> &references, int64_t tag) override;
+      const std::vector<rpc::ObjectReference> &references,
+      const Priority &priority, int64_t tag) override;
 
   /// Push an error to the relevant driver.
   ///
@@ -364,14 +369,17 @@ class RayletClient : public RayletClientInterface {
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size) override {
-    RequestWorkerLease(resource_spec.GetMessage(), callback, backlog_size);
+      const int64_t backlog_size,
+      bool has_locality) override {
+    RequestWorkerLease(resource_spec.GetMessage(), callback, backlog_size, has_locality);
   }
 
   void RequestWorkerLease(
-      const rpc::TaskSpec &resource_spec,
+      const rpc::TaskSpec &task_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size) override;
+      const int64_t backlog_size,
+      bool has_locality) override;
+
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,

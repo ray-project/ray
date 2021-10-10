@@ -580,7 +580,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       it = result.first;
     }
 
-    it->second->Add(request.sequence_number(), request.client_processed_up_to(),
+    it->second->Add(request.sequence_number(), task_spec.GetPriority(), request.client_processed_up_to(),
                     std::move(accept_callback), std::move(reject_callback),
                     std::move(send_reply_callback), task_spec.ConcurrencyGroupName(),
                     task_spec.FunctionDescriptor(), nullptr, task_spec.TaskId(),
@@ -588,7 +588,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     normal_scheduling_queue_->Add(
-        request.sequence_number(), request.client_processed_up_to(),
+        request.sequence_number(), task_spec.GetPriority(), request.client_processed_up_to(),
         std::move(accept_callback), std::move(reject_callback),
         std::move(send_reply_callback), "", task_spec.FunctionDescriptor(),
         std::move(steal_callback), task_spec.TaskId(), dependencies);

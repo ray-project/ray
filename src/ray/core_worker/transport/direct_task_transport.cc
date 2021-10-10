@@ -66,6 +66,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         cancelled_tasks_.erase(task_spec.TaskId());
         keep_executing = false;
       }
+
       if (keep_executing) {
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
@@ -74,8 +75,14 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
                                             : ActorID::Nil(),
             task_spec.GetRuntimeEnvHash());
+        const auto priority = get_task_priority_(task_spec);
+        auto inserted = tasks_.emplace(task_spec.TaskId(), TaskEntry(task_spec, scheduling_key, priority));
+        RAY_CHECK(inserted.second);
+        const auto task_key = inserted.first->second.task_key;
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-        scheduling_key_entry.task_queue.push_back(task_spec);
+        RAY_CHECK(scheduling_key_entry.task_priority_queue.emplace(task_key).second) << task_spec.TaskId();
+        RAY_LOG(DEBUG) << "Placed task " << task_key.second << " " << task_key.first
+                       << " queue size is now " << scheduling_key_entry.task_priority_queue.size();
         scheduling_key_entry.resource_spec = task_spec;
 
         if (!scheduling_key_entry.AllPipelinesToWorkersFull(
@@ -304,8 +311,12 @@ void CoreWorkerDirectTaskSubmitter::StealTasksOrReturnWorker(
           // Add the task to the queue
           RAY_LOG(DEBUG) << "Adding stolen task " << stolen_task_spec.TaskId()
                          << " back to the queue (of current size="
-                         << scheduling_key_entry.task_queue.size() << ")!";
-          scheduling_key_entry.task_queue.push_front(stolen_task_spec);
+                         << scheduling_key_entry.task_priority_queue.size() << ")!";
+          const auto priority = get_task_priority_(stolen_task_spec);
+          auto inserted = tasks_.emplace(stolen_task_id, TaskEntry(stolen_task_spec, scheduling_key, priority));
+          RAY_CHECK(inserted.second);
+          const auto &task_key = inserted.first->second.task_key;
+          RAY_CHECK(scheduling_key_entry.task_priority_queue.emplace(task_key).second) << stolen_task_spec.TaskId();
         }
         // call OnWorkerIdle to ship the task to the thief
         OnWorkerIdle(thief_addr, scheduling_key, /*error=*/!status.ok(),
@@ -322,7 +333,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   }
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  auto &current_queue = scheduling_key_entry.task_queue;
+  auto &current_queue = scheduling_key_entry.task_priority_queue;
   // Return the worker if there was an error executing the previous task,
   // the lease is expired; Steal or return the worker if there are no more applicable
   // queued tasks and the worker is not stealing.
@@ -339,7 +350,11 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
     while (!current_queue.empty() &&
            !lease_entry.PipelineToWorkerFull(max_tasks_in_flight_per_worker_)) {
-      auto task_spec = current_queue.front();
+      const auto task_key_it = current_queue.begin();
+      const auto &task_id = task_key_it->second;
+      const auto task_it = tasks_.find(task_id);
+      RAY_CHECK(task_it != tasks_.end()) << task_id;
+      const auto &task_spec = task_it->second.task_spec;
       // Increment the number of tasks in flight to the worker
       lease_entry.tasks_in_flight++;
 
@@ -350,8 +365,9 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       scheduling_key_entry.total_tasks_in_flight++;
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
-      PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
-      current_queue.pop_front();
+      PushNormalTask(addr, client, scheduling_key, task_spec, task_key_it->first, assigned_resources);
+      current_queue.erase(task_key_it);
+      tasks_.erase(task_it);
     }
     // If stealing is not an option, we can cancel the request for new worker leases
     if (max_tasks_in_flight_per_worker_ == 1) {
@@ -364,8 +380,8 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
     const SchedulingKey &scheduling_key) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  auto &task_queue = scheduling_key_entry.task_queue;
-  if (!task_queue.empty() || scheduling_key_entry.StealableTasks()) {
+  auto &task_priority_queue = scheduling_key_entry.task_priority_queue;
+  if (!task_priority_queue.empty() || scheduling_key_entry.StealableTasks()) {
     // There are still pending tasks, or there are tasks that can be stolen by a new
     // worker, so let the worker lease request succeed.
     return;
@@ -444,13 +460,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-  auto &task_queue = scheduling_key_entry.task_queue;
+  auto &task_priority_queue = scheduling_key_entry.task_priority_queue;
   // Check if the task queue is empty. If that is the case, it only makes sense to
   // consider requesting a new worker if work stealing is enabled, and there is at least a
   // worker with stealable tasks. If work stealing is not enabled, or there is no tasks
   // that we can steal from existing workers, we don't need a new worker because we don't
   // have any tasks to execute on that worker.
-  if (task_queue.empty()) {
+  if (task_priority_queue.empty()) {
     // If any worker has more than one task in flight, then that task can be stolen.
     bool stealable_tasks = scheduling_key_entry.StealableTasks();
     if (!stealable_tasks) {
@@ -466,22 +482,28 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
   num_leases_requested_++;
-  auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
-  resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
-  TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
+  const auto &head = task_priority_queue.begin();
+  const auto &task_id = head->second;
+  auto task_it = tasks_.find(task_id);
+  RAY_CHECK(task_it != tasks_.end());
+  // Set task priority so raylet can use this to sort task queues.
+  TaskSpecification resource_spec(task_it->second.task_spec);
+  resource_spec.SetPriority(head->first);
+  resource_spec.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
 
   rpc::Address best_node_address;
+  bool has_locality = false;
   if (raylet_address == nullptr) {
     // If no raylet address is given, find the best worker for our next lease request.
-    best_node_address = lease_policy_->GetBestNodeForTask(resource_spec);
+    best_node_address = lease_policy_->GetBestNodeForTask(resource_spec, &has_locality);
     raylet_address = &best_node_address;
   }
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
-  TaskID task_id = resource_spec.TaskId();
   // Subtract 1 so we don't double count the task we are requesting for.
-  int64_t queue_size = task_queue.size() - 1;
+  int64_t queue_size = task_priority_queue.size() - 1;
 
+  RAY_LOG(DEBUG) << "Requesting worker lease " << task_id << " with priority " << head->first << ", requires object store memory:" << resource_spec.GetRequiredResources().GetResource("object_store_memory");
   lease_client->RequestWorkerLease(
       resource_spec,
       [this, scheduling_key](const Status &status,
@@ -501,12 +523,18 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // tasks in the queue. This makes an implicit assumption that runtime_env
             // failures are not transient -- we may consider adding some retries
             // in the future.
-            auto &task_queue = scheduling_key_entry.task_queue;
-            while (!task_queue.empty()) {
-              auto &task_spec = task_queue.front();
+            auto &task_priority_queue = scheduling_key_entry.task_priority_queue;
+            while (!task_priority_queue.empty()) {
+              const auto task_key_it = task_priority_queue.begin();
+              const auto &task_id = task_key_it->second;
+              const auto task_it = tasks_.find(task_id);
+              RAY_CHECK(task_it != tasks_.end());
+              const auto &task_spec = task_it->second.task_spec;
               RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
-                  task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
-              task_queue.pop_front();
+                  task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
+                  nullptr));
+              task_priority_queue.erase(task_key_it);
+              tasks_.erase(task_it);
             }
             if (scheduling_key_entry.CanDelete()) {
               scheduling_key_entries_.erase(scheduling_key);
@@ -551,13 +579,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           RAY_LOG(FATAL) << status.ToString();
         }
       },
-      queue_size);
+      queue_size,
+      has_locality);
   pending_lease_request = std::make_pair(lease_client, task_id);
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
     const rpc::WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
     const SchedulingKey &scheduling_key, const TaskSpecification &task_spec,
+    const Priority &priority,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   auto task_id = task_spec.TaskId();
   auto request = std::make_unique<rpc::PushTaskRequest>();
@@ -568,13 +598,21 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  auto msg_priority = request->mutable_task_spec()->mutable_priority();
+  msg_priority->Clear();
+  for (auto &s : priority.score) {
+    msg_priority->Add(s);
+  }
+
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
+  RAY_LOG(DEBUG) << "Pushing task " << task_id << " with priority " << priority;
   client.PushNormalTask(
       std::move(request),
       [this, task_spec, task_id, is_actor, is_actor_creation, scheduling_key, addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
         {
+          RAY_LOG(DEBUG) << "PushTaskReply for task " << task_id;
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
 
@@ -615,6 +653,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                          /*error=*/!status.ok(), assigned_resources);
           }
         }
+
         if (!status.ok()) {
           // TODO: It'd be nice to differentiate here between process vs node
           // failure (e.g., by contacting the raylet). If it was a process
@@ -636,91 +675,57 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                  bool force_kill, bool recursive) {
-  RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
-                << " force_kill: " << force_kill << " recursive: " << recursive;
-  const SchedulingKey scheduling_key(
-      task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
-      task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
-      task_spec.GetRuntimeEnvHash());
-  std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
-  {
-    absl::MutexLock lock(&mu_);
-    if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
-        !task_finisher_->MarkTaskCanceled(task_spec.TaskId())) {
-      return Status::OK();
-    }
+  //RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
+  //              << " force_kill: " << force_kill << " recursive: " << recursive;
+  //std::shared_ptr<rpc::CoreWorkerClientInterface> worker_client = nullptr;
+  //{
+  //  absl::MutexLock lock(&mu_);
+  //  if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
+  //      !task_finisher_->MarkTaskCanceled(task_spec.TaskId())) {
+  //    return Status::OK();
+  //  }
 
-    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-    auto &scheduled_tasks = scheduling_key_entry.task_queue;
-    // This cancels tasks that have completed dependencies and are awaiting
-    // a worker lease.
-    if (!scheduled_tasks.empty()) {
-      for (auto spec = scheduled_tasks.begin(); spec != scheduled_tasks.end(); spec++) {
-        if (spec->TaskId() == task_spec.TaskId()) {
-          scheduled_tasks.erase(spec);
+  //  // This will get removed either when the RPC call to cancel is returned
+  //  // or when all dependencies are resolved.
+  //  RAY_CHECK(cancelled_tasks_.emplace(task_spec.TaskId()).second);
 
-          if (scheduled_tasks.empty()) {
-            CancelWorkerLeaseIfNeeded(scheduling_key);
-          }
-          RAY_UNUSED(task_finisher_->PendingTaskFailed(
-              task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
-          return Status::OK();
-        }
-      }
-    }
+  //  bool success = CancelTaskInternal(task_spec, &worker_client);
+  //  if (success) {
+  //    RAY_LOG(DEBUG) << "Cancelled task removed from queue, failing " << task_spec.TaskId();
+  //    RAY_CHECK(cancelled_tasks_.erase(task_spec.TaskId()));
+  //    RAY_UNUSED(task_finisher_->PendingTaskFailed(
+  //        task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
+  //  }
+  //}
 
-    // This will get removed either when the RPC call to cancel is returned
-    // or when all dependencies are resolved.
-    RAY_CHECK(cancelled_tasks_.emplace(task_spec.TaskId()).second);
-    auto rpc_client = executing_tasks_.find(task_spec.TaskId());
+  //if (worker_client) {
+  //  RAY_LOG(DEBUG) << "Sending RPC to cancel task " << task_spec.TaskId();
+  //  auto request = rpc::CancelTaskRequest();
+  //  request.set_intended_task_id(task_spec.TaskId().Binary());
+  //  request.set_force_kill(force_kill);
+  //  request.set_recursive(recursive);
+  //  worker_client->CancelTask(
+  //      request, [this, task_spec, force_kill, recursive](
+  //                   const Status &status, const rpc::CancelTaskReply &reply) {
+  //        absl::MutexLock lock(&mu_);
+  //        cancelled_tasks_.erase(task_spec.TaskId());
 
-    if (rpc_client == executing_tasks_.end()) {
-      // This case is reached for tasks that have unresolved dependencies.
-      // No executing tasks, so cancelling is a noop.
-      if (scheduling_key_entry.CanDelete()) {
-        // We can safely remove the entry keyed by scheduling_key from the
-        // scheduling_key_entries_ hashmap.
-        scheduling_key_entries_.erase(scheduling_key);
-      }
-      return Status::OK();
-    }
-    // Looks for an RPC handle for the worker executing the task.
-    auto maybe_client = client_cache_->GetByID(rpc_client->second.worker_id);
-    if (!maybe_client.has_value()) {
-      // If we don't have a connection to that worker, we can't cancel it.
-      // This case is reached for tasks that have unresolved dependencies.
-      return Status::OK();
-    }
-    client = maybe_client.value();
-  }
-
-  RAY_CHECK(client != nullptr);
-
-  auto request = rpc::CancelTaskRequest();
-  request.set_intended_task_id(task_spec.TaskId().Binary());
-  request.set_force_kill(force_kill);
-  request.set_recursive(recursive);
-  client->CancelTask(
-      request, [this, task_spec, scheduling_key, force_kill, recursive](
-                   const Status &status, const rpc::CancelTaskReply &reply) {
-        absl::MutexLock lock(&mu_);
-        cancelled_tasks_.erase(task_spec.TaskId());
-
-        if (status.ok() && !reply.attempt_succeeded()) {
-          if (cancel_retry_timer_.has_value()) {
-            if (cancel_retry_timer_->expiry().time_since_epoch() <=
-                std::chrono::high_resolution_clock::now().time_since_epoch()) {
-              cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
-                  RayConfig::instance().cancellation_retry_ms()));
-            }
-            cancel_retry_timer_->async_wait(
-                boost::bind(&CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec,
-                            force_kill, recursive));
-          }
-        }
-        // Retry is not attempted if !status.ok() because force-kill may kill the worker
-        // before the reply is sent.
-      });
+  //        if (status.ok() && !reply.attempt_succeeded()) {
+  //          if (cancel_retry_timer_.has_value()) {
+  //            if (cancel_retry_timer_->expiry().time_since_epoch() <=
+  //                std::chrono::high_resolution_clock::now().time_since_epoch()) {
+  //              cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
+  //                  RayConfig::instance().cancellation_retry_ms()));
+  //            }
+  //            cancel_retry_timer_->async_wait(
+  //                boost::bind(&CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec,
+  //                            force_kill, recursive));
+  //          }
+  //        }
+  //        // Retry is not attempted if !status.ok() because force-kill may kill the worker
+  //        // before the reply is sent.
+  //      });
+  //}
   return Status::OK();
 }
 
@@ -739,6 +744,28 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
   request.set_remote_object_id(object_id.Binary());
   client->RemoteCancelTask(request, nullptr);
   return Status::OK();
+}
+
+void CoreWorkerDirectTaskSubmitter::UpdateTaskPriorities(const absl::flat_hash_map<TaskID, Priority> &priorities) {
+  absl::MutexLock lock(&mu_);
+  for (const auto &pair : priorities) {
+    const auto &task_id = pair.first;
+    const auto &priority = pair.second;
+    auto task_it = tasks_.find(task_id);
+    if (task_it == tasks_.end()) {
+      continue;
+    }
+    const auto &task_key = task_it->second.task_key;
+    if (priority < task_key.first) {
+      auto it = scheduling_key_entries_.find(task_it->second.key);
+      RAY_CHECK(it != scheduling_key_entries_.end());
+      RAY_CHECK(it->second.task_priority_queue.erase(task_key)) << task_id;
+
+      task_it->second.task_key = std::make_pair(priority, task_id);
+      RAY_CHECK(it->second.task_priority_queue.emplace(task_it->second.task_key).second);
+      RAY_LOG(DEBUG) << "Updated task " << task_id << " priority to " << priority;
+    }
+  }
 }
 
 }  // namespace core

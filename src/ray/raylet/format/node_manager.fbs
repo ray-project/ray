@@ -229,6 +229,7 @@ table WaitForDirectActorCallArgsRequest {
   object_ids: [string];
   // The RPC addresses of the workers that own the objects in object_ids.
   owner_addresses: [Address];
+  priority: [int];
   // Id used to uniquely identify this request. This is sent back to the core
   // worker to notify the wait has completed.
   tag: int;

@@ -395,6 +395,7 @@ class DependencyWaiter {
  public:
   /// Calls `callback` once the specified objects become available.
   virtual void Wait(const std::vector<rpc::ObjectReference> &dependencies,
+                    const Priority &priority,
                     std::function<void()> on_dependencies_available) = 0;
 
   virtual ~DependencyWaiter(){};
@@ -406,10 +407,11 @@ class DependencyWaiterImpl : public DependencyWaiter {
       : dependency_client_(dependency_client) {}
 
   void Wait(const std::vector<rpc::ObjectReference> &dependencies,
+            const Priority &priority,
             std::function<void()> on_dependencies_available) override {
     auto tag = next_request_id_++;
     requests_[tag] = on_dependencies_available;
-    RAY_CHECK_OK(dependency_client_.WaitForDirectActorCallArgs(dependencies, tag));
+    RAY_CHECK_OK(dependency_client_.WaitForDirectActorCallArgs(dependencies, priority, tag));
   }
 
   /// Fulfills the callback stored by Wait().
@@ -464,7 +466,7 @@ class BoundedExecutor {
 /// interface for actor tasks as well as normal ones.
 class SchedulingQueue {
  public:
-  virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
+  virtual void Add(int64_t seq_no, const Priority &priority, int64_t client_processed_up_to,
                    std::function<void(rpc::SendReplyCallback)> accept_request,
                    std::function<void(rpc::SendReplyCallback)> reject_request,
                    rpc::SendReplyCallback send_reply_callback,
@@ -520,7 +522,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   }
 
   /// Add a new actor task's callbacks to the worker queue.
-  void Add(int64_t seq_no, int64_t client_processed_up_to,
+  void Add(int64_t seq_no, const Priority &priority, int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
            std::function<void(rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,
@@ -546,7 +548,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
         concurrency_group_name, function_descriptor);
 
     if (dependencies.size() > 0) {
-      waiter_.Wait(dependencies, [seq_no, this]() {
+      waiter_.Wait(dependencies, priority, [seq_no, this]() {
         RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
         auto it = pending_actor_tasks_.find(seq_no);
         if (it != pending_actor_tasks_.end()) {
@@ -686,7 +688,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
   /// Add a new task's callbacks to the worker queue.
   void Add(
-      int64_t seq_no, int64_t client_processed_up_to,
+      int64_t seq_no, const Priority &priority, int64_t client_processed_up_to,
       std::function<void(rpc::SendReplyCallback)> accept_request,
       std::function<void(rpc::SendReplyCallback)> reject_request,
       rpc::SendReplyCallback send_reply_callback,
