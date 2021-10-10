@@ -252,7 +252,7 @@ def appo_surrogate_loss(
 
     # The summed weighted loss.
     total_loss = mean_policy_loss - \
-        mean_entropy * policy.config["entropy_coeff"]
+        mean_entropy * policy.entropy_coeff
     # Optional KL loss.
     if policy.config["use_kl_loss"]:
         total_loss += policy.kl_coeff * mean_kl_loss
@@ -398,6 +398,8 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
         config (TrainerConfigDict): The Policy's config.
     """
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
 
@@ -430,7 +432,7 @@ AsyncPPOTFPolicy = build_tf_policy(
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
     mixins=[
-        LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
-        ValueNetworkMixin
+        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
+        TargetNetworkMixin, ValueNetworkMixin
     ],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])
