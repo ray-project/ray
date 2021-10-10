@@ -159,11 +159,11 @@ class ResourceSet {
   /// regular units and does not need to be multiplied by kResourceConversionFactor.
   ///
   /// \return map of resource in string to size in double.
-  const absl::flat_hash_map<std::string, double> GetResourceMap() const;
+  absl::flat_hash_map<std::string, double> GetResourceMap() const;
 
   /// Return the resources in unordered map. This is used for some languate frontend that
   /// requires unordered map instead of flat hash map.
-  const std::unordered_map<std::string, double> GetResourceUnorderedMap() const;
+  std::unordered_map<std::string, double> GetResourceUnorderedMap() const;
 
   /// \brief Return a map of the resource and size in FixedPoint. Note,
   /// size is in kResourceConversionFactor of a unit.

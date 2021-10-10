@@ -117,11 +117,12 @@ bool ClusterTaskManager::SchedulePendingTasks() {
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
-      tasks_to_schedule_.erase(shapes_it);
+      tasks_to_schedule_.erase(shapes_it++);
     } else if (work_queue.empty()) {
-      tasks_to_schedule_.erase(shapes_it);
+      tasks_to_schedule_.erase(shapes_it++);
+    } else {
+      shapes_it++;
     }
-    shapes_it++;
   }
   return did_schedule;
 }
@@ -379,11 +380,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     }
     if (is_infeasible) {
       infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
-      tasks_to_dispatch_.erase(shapes_it);
+      tasks_to_dispatch_.erase(shapes_it++);
     } else if (dispatch_queue.empty()) {
-      tasks_to_dispatch_.erase(shapes_it);
+      tasks_to_dispatch_.erase(shapes_it++);
+    } else {
+      shapes_it++;
     }
-    shapes_it++;
   }
 }
 
@@ -976,14 +978,14 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     if (is_infeasible) {
       RAY_LOG(DEBUG) << "No feasible node found for task "
                      << task.GetTaskSpecification().TaskId();
+      shapes_it++;
     } else {
       RAY_LOG(DEBUG) << "Infeasible task of task id "
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
       tasks_to_schedule_[shapes_it->first] = shapes_it->second;
-      infeasible_tasks_.erase(shapes_it);
+      infeasible_tasks_.erase(shapes_it++);
     }
-    shapes_it++;
   }
 }
 

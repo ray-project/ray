@@ -225,19 +225,18 @@ const std::string ResourceSet::ToString() const {
   }
 }
 
-const std::unordered_map<std::string, double> ResourceSet::GetResourceUnorderedMap()
-    const {
+std::unordered_map<std::string, double> ResourceSet::GetResourceUnorderedMap() const {
   std::unordered_map<std::string, double> result;
-  for (const auto &resource_pair : resource_capacity_) {
-    result[resource_pair.first] = resource_pair.second.Double();
+  for (const auto &[name, quantity] : resource_capacity_) {
+    result[name] = quantity.Double();
   }
   return result;
 };
 
-const absl::flat_hash_map<std::string, double> ResourceSet::GetResourceMap() const {
+absl::flat_hash_map<std::string, double> ResourceSet::GetResourceMap() const {
   absl::flat_hash_map<std::string, double> result;
-  for (const auto &resource_pair : resource_capacity_) {
-    result[resource_pair.first] = resource_pair.second.Double();
+  for (const auto &[name, quantity] : resource_capacity_) {
+    result[name] = quantity.Double();
   }
   return result;
 };
