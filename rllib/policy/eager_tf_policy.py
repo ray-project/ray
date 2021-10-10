@@ -22,7 +22,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import LocalOptimizer, TensorType
+from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, TensorType
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -155,29 +155,50 @@ def traced_eager_policy(eager_policy_cls):
                 info_batch, episodes, explore, timestep, **kwargs)
 
         @override(eager_policy_cls)
-        @convert_eager_inputs
         @convert_eager_outputs
-        def _compute_gradients_eager(self, samples):
+        def _compute_gradients_eager(self, samples: SampleBatch) -> \
+                ModelGradients:
+            """Traced version of EagerTFPolicy's `_compute_gradients_eager`.
 
+            Note that `samples` is already zero-padded and has the is_training
+            flag set. We convert this sample batch into tensors here and do the
+            actual computation.
+
+            Args:
+                samples: The SampleBatch to compute gradients for.
+
+            Returns:
+                The computed model gradients.
+            """
+            # Have we traced the `_compute_gradients_eager` function yet?
             if self._traced_compute_gradients is None:
-                self._traced_compute_gradients = tf.function(
-                    super(TracedEagerPolicy, self).compute_gradients,
-                    autograph=False,
-                    experimental_relax_shapes=True)
+                self._traced_compute_gradients = convert_eager_inputs(
+                    tf.function(
+                        super()._compute_gradients_eager,
+                        autograph=False,
+                        experimental_relax_shapes=True))
 
+            # Call the only-once compiled traced function with the SampleBatch
+            # (will be converted to tensors beforehand).
             return self._traced_compute_gradients(samples)
 
         @override(Policy)
-        @convert_eager_inputs
         @convert_eager_outputs
-        def apply_gradients(self, grads):
+        def apply_gradients(self, grads: ModelGradients) -> None:
+            """Traced version of EagerTFPolicy's `apply_gradients` method.
 
+            Args:
+                grads: The ModelGradients to apply using our optimizer(s).
+            """
+            # Have we traced the `apply_gradients` function yet?
             if self._traced_apply_gradients is None:
                 self._traced_apply_gradients = tf.function(
-                    super(TracedEagerPolicy, self).apply_gradients,
+                    super().apply_gradients,
                     autograph=False,
                     experimental_relax_shapes=True)
 
+            # Call the only-once compiled traced function with the grads
+            # (will be converted to tensors beforehand).
             return self._traced_apply_gradients(grads)
 
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__
@@ -388,7 +409,7 @@ def build_eager_tf_policy(
                 )
 
             self._is_training = True
-            postprocessed_batch["is_training"] = True
+            postprocessed_batch.is_training = True
             stats = self._learn_on_batch_eager(postprocessed_batch)
             stats.update({"custom_metrics": learn_stats})
             return stats
@@ -412,7 +433,7 @@ def build_eager_tf_policy(
             )
 
             self._is_training = True
-            samples["is_training"] = True
+            samples.is_training = True
             return self._compute_gradients_eager(samples)
 
         @convert_eager_inputs
