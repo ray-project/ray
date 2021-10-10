@@ -3,6 +3,7 @@ import pytest
 from ray.serve import pipeline
 from ray.serve.pipeline.step import PipelineStep
 
+
 def test_decorator_no_args():
     @pipeline.step
     def f():
@@ -17,6 +18,7 @@ def test_decorator_no_args():
 
     assert isinstance(A, PipelineStep)
     assert A.num_replicas == 1
+
 
 def test_decorator_with_arg():
     @pipeline.step(num_replicas=2)
@@ -33,6 +35,7 @@ def test_decorator_with_arg():
     assert isinstance(A, PipelineStep)
     assert A.num_replicas == 5
 
+
 def test_pass_step_without_calling():
     @pipeline.step
     def step1():
@@ -46,6 +49,7 @@ def test_pass_step_without_calling():
     with pytest.raises(TypeError):
         step2(step1)
 
+
 def test_input_step_multiple_args_rejected():
     @pipeline.step
     def step1():
@@ -58,3 +62,8 @@ def test_input_step_multiple_args_rejected():
     step1(pipeline.INPUT)
     with pytest.raises(ValueError):
         step1(pipeline.INPUT, step2(pipeline.INPUT))
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -1,8 +1,7 @@
 import tempfile
 
-import pytest
-
 from ray.serve import pipeline
+
 
 def test_basic_sequential():
     @pipeline.step
@@ -17,6 +16,7 @@ def test_basic_sequential():
 
     sequential = step2(step1(pipeline.INPUT)).deploy()
     assert sequential.call("HELLO") == "HELLO|step1|step2"
+
 
 def test_basic_parallel():
     @pipeline.step
@@ -39,6 +39,7 @@ def test_basic_parallel():
     parallel = step3(step2_1(step1_output), step2_2(step1_output)).deploy()
     assert parallel.call("HELLO") == "step2_1_HELLO|step2_2_HELLO"
 
+
 def test_multiple_inputs():
     @pipeline.step
     def step1(input_arg: str):
@@ -52,8 +53,10 @@ def test_multiple_inputs():
     def step3(step1_output: str, step2_output: str):
         return f"{step1_output}|{step2_output}"
 
-    multiple_inputs = step3(step1(pipeline.INPUT), step2(pipeline.INPUT)).deploy()
+    multiple_inputs = step3(step1(pipeline.INPUT),
+                            step2(pipeline.INPUT)).deploy()
     assert multiple_inputs.call("HELLO") == "step1_HELLO|step2_HELLO"
+
 
 def test_basic_class():
     @pipeline.step
@@ -67,10 +70,12 @@ def test_basic_class():
     greeter = GreeterStep("Top of the morning")(pipeline.INPUT).deploy()
     assert greeter.call("Theodore") == "Top of the morning Theodore!"
 
+
 def test_class_constructor_not_called_until_deployed():
     """Constructor should only be called once, on .deploy()."""
 
     with tempfile.NamedTemporaryFile("w") as tmp:
+
         @pipeline.step
         class FileWriter:
             def __init__(self, msg: str):
@@ -81,6 +86,7 @@ def test_class_constructor_not_called_until_deployed():
                 return arg
 
         msg = "hello"
+
         def constructor_called_once():
             with open(tmp.name, "r") as f:
                 return f.read() == msg
@@ -96,6 +102,7 @@ def test_class_constructor_not_called_until_deployed():
 
         [deployed.call("hello") for _ in range(100)]
         assert constructor_called_once()
+
 
 def test_mix_classes_and_functions():
     @pipeline.step
@@ -114,5 +121,13 @@ def test_mix_classes_and_functions():
     def combiner(greeting1: str, greeting2: str):
         return f"{greeting1}|{greeting2}"
 
-    greeter = combiner(GreeterStep1("Howdy")(pipeline.INPUT), greeter_step_2(pipeline.INPUT)).deploy()
+    greeter = combiner(
+        GreeterStep1("Howdy")(pipeline.INPUT),
+        greeter_step_2(pipeline.INPUT)).deploy()
     assert greeter.call("Teddy") == "Howdy Teddy!|How's it hanging, Teddy?"
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))
