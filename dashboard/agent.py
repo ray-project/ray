@@ -337,8 +337,8 @@ if __name__ == "__main__":
         # https://github.com/ray-project/ray/issues/14026.
         if sys.platform == "win32":
             logger.warning(
-                "The dashboard is currently disabled on windows."
-                "See https://github.com/ray-project/ray/issues/14026"
+                "The dashboard is currently disabled on windows. "
+                "See https://github.com/ray-project/ray/issues/14026 "
                 "for more details")
             while True:
                 time.sleep(999)

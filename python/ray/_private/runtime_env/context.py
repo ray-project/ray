@@ -6,6 +6,7 @@ import shutil
 from typing import Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
+from ray.core.generated.common_pb2 import Language
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +36,24 @@ class RuntimeEnvContext:
     def deserialize(json_string):
         return RuntimeEnvContext(**json.loads(json_string))
 
-    def exec_worker(self, passthrough_args: List[str]):
+    def exec_worker(self, passthrough_args: List[str], language: Language):
         os.environ.update(self.env_vars)
-
+        if language == Language.PYTHON:
+            executable = f"exec {self.py_executable}"
+        else:
+            executable = "exec"
+            
         if shutil.which("bash") is not None:
-            exec_command = " ".join([f"exec {self.py_executable}"] +
+            exec_command = " ".join([f"exec {executable}"] +
                                     passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
             os.execvp(file="bash", args=["bash", "-c", command_str])
         elif shutil.which("cmd") is not None:
-            exec_command = " ".join([f'"{self.py_executable}"'] +
+            exec_command = " ".join([f'"{executable}"'] +
                                     passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
             os.system(command_str)
         else:
             raise FileNotFoundError("Cannot find neither 'bash' nor 'cmd'")
+
         logger.info(f"Exec'ing worker with command: {command_str}")

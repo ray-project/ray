@@ -92,7 +92,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
         # Use default-native keras models whenever possible.
-        config["model"]["_use_default_native_models"] = True
+        # config["model"]["_use_default_native_models"] = True
 
         # Setup lr- and entropy schedules for testing.
         config["lr_schedule"] = [[0, config["lr"]], [128, 0.0]]

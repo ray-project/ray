@@ -287,30 +287,6 @@ class MockLeasePolicy : public LeasePolicyInterface {
   int num_lease_policy_consults = 0;
 };
 
-TEST(TestMemoryStore, TestPromoteToPlasma) {
-  size_t num_plasma_puts = 0;
-  auto mem = std::make_shared<CoreWorkerMemoryStore>(
-      [&](const RayObject &obj, const ObjectID &obj_id) { num_plasma_puts += 1; });
-  ObjectID obj1 = ObjectID::FromRandom();
-  ObjectID obj2 = ObjectID::FromRandom();
-  auto data = GenerateRandomObject();
-  ASSERT_TRUE(mem->Put(*data, obj1));
-
-  // Test getting an already existing object.
-  ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj1) != nullptr);
-  ASSERT_TRUE(num_plasma_puts == 0);
-
-  // Testing getting an object that doesn't exist yet causes promotion.
-  ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj2) == nullptr);
-  ASSERT_TRUE(num_plasma_puts == 0);
-  ASSERT_FALSE(mem->Put(*data, obj2));
-  ASSERT_TRUE(num_plasma_puts == 1);
-
-  // The next time you get it, it's already there so no need to promote.
-  ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj2) != nullptr);
-  ASSERT_TRUE(num_plasma_puts == 1);
-}
-
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
