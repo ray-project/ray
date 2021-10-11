@@ -69,7 +69,7 @@ class WorkflowStepFunction:
                 max_retries: int = 3,
                 catch_exceptions: bool = False,
                 name: str = None,
-                metadata: Dict = None,
+                metadata: Dict[str, Any] = None,
                 **ray_options) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
 

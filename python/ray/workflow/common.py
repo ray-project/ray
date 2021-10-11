@@ -129,7 +129,7 @@ class WorkflowData:
     # name of the step
     name: str
     # meta data to store
-    metadata: Dict
+    metadata: Dict[str, Any]
 
     def to_metadata(self) -> Dict[str, Any]:
         f = self.func_body
@@ -141,7 +141,7 @@ class WorkflowData:
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
-            "metadata": self.metadata
+            "user_metadata": self.metadata
         }
         return metadata
 
