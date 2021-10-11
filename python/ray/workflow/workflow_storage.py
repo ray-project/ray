@@ -411,7 +411,7 @@ class WorkflowStorage:
             metadata: user metadata of the current workflow.
 
         Raises:
-            DataSaveError: if we fail to save the pre-run metadata.
+            DataSaveError: if we fail to save the user metadata.
         """
 
         asyncio_run(self._put(self._key_workflow_user_metadata(), metadata, True))
