@@ -296,28 +296,13 @@ cc_library(
     name = "plasma_client",
     srcs = [
         "src/ray/object_manager/plasma/client.cc",
-        "src/ray/object_manager/plasma/connection.cc",
-        "src/ray/object_manager/plasma/plasma.cc",
-        "src/ray/object_manager/plasma/protocol.cc",
         "src/ray/object_manager/plasma/shared_memory.cc",
-    ] + select({
-        "@bazel_tools//src/conditions:windows": [
-        ],
-        "//conditions:default": [
-            "src/ray/object_manager/plasma/fling.cc",
-        ],
-    }),
+    ],
     hdrs = [
         "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/shared_memory.h",
-    ] + select({
-        "@bazel_tools//src/conditions:windows": [
-        ],
-        "//conditions:default": [
-            "src/ray/object_manager/plasma/fling.h",
-        ],
-    }),
+    ],
     copts = PLASMA_COPTS,
     defines = select({
         "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
@@ -349,7 +334,16 @@ cc_library(
         "src/ray/object_manager/plasma/store.cc",
         "src/ray/object_manager/plasma/store_runner.cc",
         "src/ray/object_manager/plasma/malloc.cc",
-    ],
+        "src/ray/object_manager/plasma/plasma.cc",
+        "src/ray/object_manager/plasma/protocol.cc",
+        "src/ray/object_manager/plasma/connection.cc",
+    ] + select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "src/ray/object_manager/plasma/fling.cc",
+        ],
+    }),
     hdrs = [
         "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/allocator.h",
@@ -370,7 +364,13 @@ cc_library(
         "src/ray/object_manager/plasma/plasma_generated.h",
         "src/ray/object_manager/plasma/connection.h",
         "src/ray/object_manager/plasma/protocol.h",
-    ],
+    ] + select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "src/ray/object_manager/plasma/fling.h",
+        ],
+    }),
     copts = PLASMA_COPTS,
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
@@ -678,6 +678,7 @@ cc_library(
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
+        ":plasma_store_server_lib",
         ":plasma_client",
         ":pubsub_lib",
         ":ray_common",

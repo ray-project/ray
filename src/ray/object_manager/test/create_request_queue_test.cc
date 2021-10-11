@@ -422,19 +422,19 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
   auto client = std::make_shared<MockClient>();
 
   // Queue is empty, request can be fulfilled.
-  auto result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
+  auto result = queue_.TryRequestImmediately(ObjectID::Nil(), request, 1234);
   ASSERT_EQ(result.first.data_size, 1234);
   ASSERT_EQ(result.second, PlasmaError::OK);
 
   // Request would block.
   auto req_id = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
-  result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
-  result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
+  result = queue_.TryRequestImmediately(ObjectID::Nil(), request, 1234);
+  result = queue_.TryRequestImmediately(ObjectID::Nil(), request, 1234);
   ASSERT_EQ(result.first.data_size, 1234);
   ASSERT_TRUE(queue_.ProcessRequests().ok());
 
   // Queue is empty again, request can be fulfilled.
-  result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
+  result = queue_.TryRequestImmediately(ObjectID::Nil(), request, 1234);
   ASSERT_EQ(result.first.data_size, 1234);
   ASSERT_EQ(result.second, PlasmaError::OK);
 
@@ -443,7 +443,7 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
   auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     return PlasmaError::OutOfMemory;
   };
-  result = queue_.TryRequestImmediately(ObjectID::Nil(), client, oom_request, 1234);
+  result = queue_.TryRequestImmediately(ObjectID::Nil(), oom_request, 1234);
   ASSERT_EQ(result.first.data_size, 0);
   ASSERT_EQ(result.second, PlasmaError::OutOfMemory);
 
