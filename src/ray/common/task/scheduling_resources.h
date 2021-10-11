@@ -324,7 +324,8 @@ class ResourceIdSet {
   /// \brief Construct a ResourceIdSet from a mapping from resource names to ResourceIds.
   ///
   /// \param resource_set A mapping from resource name to IDs.
-  explicit ResourceIdSet(const absl::flat_hash_map<std::string, ResourceIds> &available_resources);
+  explicit ResourceIdSet(
+      const absl::flat_hash_map<std::string, ResourceIds> &available_resources);
 
   /// \brief See if a requested collection of resources is contained.
   ///
