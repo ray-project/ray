@@ -764,7 +764,11 @@ def _utilization_score(node_resources: ResourceDict,
             return None
 
     fittable = []
+    resource_types = set()
     for r in resources:
+        for k, v in r.items():
+            if v > 0:
+                resource_types.add(k)
         if _fits(remaining, r):
             fittable.append(r)
             _inplace_subtract(remaining, r)
@@ -772,12 +776,15 @@ def _utilization_score(node_resources: ResourceDict,
         return None
 
     util_by_resources = []
+    num_matching_resource_types = 0
     for k, v in node_resources.items():
         # Don't divide by zero.
         if v < 1:
             # Could test v == 0 on the nose, but v < 1 feels safer.
             # (Note that node resources are integers.)
             continue
+        if k in resource_types:
+            num_matching_resource_types += 1
         util = (v - remaining[k]) / v
         util_by_resources.append(v * (util**3))
 
@@ -785,9 +792,11 @@ def _utilization_score(node_resources: ResourceDict,
     if not util_by_resources:
         return None
 
-    # Prioritize using all resources first, then prioritize overall balance
+    # Prioritize matching multiple resource types first, then prioritize
+    # using all resources, then prioritize overall balance
     # of multiple resources.
-    return (min(util_by_resources), np.mean(util_by_resources))
+    return (num_matching_resource_types, min(util_by_resources),
+            np.mean(util_by_resources))
 
 
 def get_bin_pack_residual(node_resources: List[ResourceDict],
@@ -818,7 +827,16 @@ def get_bin_pack_residual(node_resources: List[ResourceDict],
     nodes = copy.deepcopy(node_resources)
     # List of nodes that cannot be used again due to strict spread.
     used = []
-    for demand in resource_demands:
+    # We order the resource demands in the following way:
+    # More complex demands first.
+    # Break ties: heavier demands first.
+    # Break ties: lexicographically (to ensure stable ordering).
+    for demand in sorted(
+            resource_demands,
+            key=lambda demand: (len(demand.values()),
+                                sum(demand.values()),
+                                sorted(demand.items())),
+            reverse=True):
         found = False
         node = None
         for i in range(len(nodes)):

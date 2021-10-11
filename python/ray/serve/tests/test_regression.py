@@ -71,7 +71,7 @@ def test_np_in_composed_model(serve_instance):
     assert result.json() == 100.0
 
 
-def test_backend_worker_memory_growth(serve_instance):
+def test_replica_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
     @serve.deployment(name="model")
     def gc_unreachable_objects(*args):

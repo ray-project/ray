@@ -8,17 +8,18 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 import uuid
 
 import ray
 import ray.cloudpickle as pickle
 from ray.tune.resources import Resources
 from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, SHOULD_CHECKPOINT, TIME_THIS_ITER_S,
-    TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER,
-    EPISODES_TOTAL, TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO,
-    STDOUT_FILE, STDERR_FILE)
+    DEBUG_METRICS, DEFAULT_RESULTS_DIR, HOSTNAME, NODE_IP, PID,
+    SHOULD_CHECKPOINT, TIME_THIS_ITER_S, TIME_TOTAL_S, TIMESTEPS_THIS_ITER,
+    DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL,
+    TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_ID, TRIAL_INFO, STDOUT_FILE,
+    STDERR_FILE)
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
@@ -153,6 +154,40 @@ class Trainable:
     def get_current_ip(self):
         self._local_ip = ray.util.get_node_ip_address()
         return self._local_ip
+
+    def get_auto_filled_metrics(self,
+                                now: Optional[datetime] = None,
+                                time_this_iter: Optional[float] = None,
+                                debug_metrics_only: bool = False) -> dict:
+        """Return a dict with metrics auto-filled by the trainable.
+
+        If ``debug_metrics_only`` is True, only metrics that don't
+        require at least one iteration will be returned
+        (``ray.tune.result.DEBUG_METRICS``).
+        """
+        if now is None:
+            now = datetime.today()
+        autofilled = {
+            TRIAL_ID: self.trial_id,
+            "experiment_id": self._experiment_id,
+            "date": now.strftime("%Y-%m-%d_%H-%M-%S"),
+            "timestamp": int(time.mktime(now.timetuple())),
+            TIME_THIS_ITER_S: time_this_iter,
+            TIME_TOTAL_S: self._time_total,
+            PID: os.getpid(),
+            HOSTNAME: platform.node(),
+            NODE_IP: self._local_ip,
+            "config": self.config,
+            "time_since_restore": self._time_since_restore,
+            "timesteps_since_restore": self._timesteps_since_restore,
+            "iterations_since_restore": self._iterations_since_restore
+        }
+        if debug_metrics_only:
+            autofilled = {
+                k: v
+                for k, v in autofilled.items() if k in DEBUG_METRICS
+            }
+        return autofilled
 
     def is_actor(self):
         try:
@@ -289,19 +324,7 @@ class Trainable:
             result.setdefault("neg_mean_loss", -result["mean_loss"])
 
         now = datetime.today()
-        result.update(
-            experiment_id=self._experiment_id,
-            date=now.strftime("%Y-%m-%d_%H-%M-%S"),
-            timestamp=int(time.mktime(now.timetuple())),
-            time_this_iter_s=time_this_iter,
-            time_total_s=self._time_total,
-            pid=os.getpid(),
-            hostname=platform.node(),
-            node_ip=self._local_ip,
-            config=self.config,
-            time_since_restore=self._time_since_restore,
-            timesteps_since_restore=self._timesteps_since_restore,
-            iterations_since_restore=self._iterations_since_restore)
+        result.update(self.get_auto_filled_metrics(now, time_this_iter))
 
         monitor_data = self._monitor.get_data()
         if monitor_data:

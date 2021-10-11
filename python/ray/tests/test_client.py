@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
+from ray.tests.client_test_utils import run_wrapped_actor_creation
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.client.ray_client_helpers import ray_start_client_server
@@ -468,7 +469,7 @@ def test_stdout_log_stream(ray_start_regular_shared):
         time.sleep(1)
         print_on_stderr_and_stdout.remote("Hello world")
         time.sleep(1)
-        assert len(log_msgs) == 2
+        assert len(log_msgs) == 2, log_msgs
         assert all((msg.find("Hello world") for msg in log_msgs))
 
 
@@ -704,7 +705,42 @@ def test_object_ref_cleanup():
     # See https://github.com/ray-project/ray/issues/17968 for details
     with ray_start_client_server():
         result = run_string_as_driver(object_ref_cleanup_script)
-        assert result == ""
+        assert "Error in sys.excepthook:" not in result
+        assert "AttributeError: 'NoneType' object has no " not in result
+        assert "Exception ignored in" not in result
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25552 --port 0"],
+    indirect=True)
+def test_wrapped_actor_creation(call_ray_start):
+    """
+    When the client schedules an actor, the server will load a separate
+    copy of the actor class if it's defined in a separate file. This
+    means that modifications to the client's copy of the actor class
+    aren't propagated to the server. Currently, tracing logic modifies
+    the signatures of actor methods to pass around metadata when ray.remote
+    is applied to an actor class. However, if a user does something like:
+
+    class SomeActor:
+        def __init__(self):
+            pass
+
+    def decorate_actor():
+        RemoteActor = ray.remote(SomeActor)
+        ...
+
+    Then the SomeActor class will have its signatures modified on the client
+    side, but not on the server side, since ray.remote was applied inside of
+    the function instead of directly on the actor. Note if it were directly
+    applied to the actor then the signature would be modified when the server
+    imports the class.
+    """
+    import ray
+    ray.init("ray://localhost:25552")
+    run_wrapped_actor_creation()
 
 
 if __name__ == "__main__":
