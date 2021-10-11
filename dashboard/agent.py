@@ -145,7 +145,7 @@ class DashboardAgent(object):
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
-        if LooseVersion(aiohttp.__version__) < LooseVersion('4.0.0'):
+        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
             self.http_session = aiohttp.ClientSession(
                 loop=asyncio.get_event_loop())
         else:
