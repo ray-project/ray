@@ -244,12 +244,12 @@ def create_dataset(files, num_workers=4, epochs=50, num_windows=1):
             i * num_rows // num_windows // num_workers
             for i in range(1, num_workers)
         ]
-        pipe = pipe.random_shuffle(_spread_resource_prefix="node:")
+        pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
         pipe_shards = pipe.split_at_indices(split_indices)
     else:
         ds = ray.data.read_parquet(files, _spread_resource_prefix="node:")
         pipe = ds.repeat(epochs)
-        pipe = pipe.random_shuffle(_spread_resource_prefix="node:")
+        pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
         pipe_shards = pipe.split(num_workers, equal=True)
     return pipe_shards
 

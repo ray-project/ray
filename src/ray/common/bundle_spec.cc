@@ -102,7 +102,6 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
     os << original_resource_name << kGroupKeyword << group_id.Hex();
   }
   std::string result = os.str();
-  RAY_LOG(INFO) << result;
   RAY_DCHECK(GetOriginalResourceName(result) == original_resource_name)
       << "Generated: " << GetOriginalResourceName(result)
       << " Original: " << original_resource_name;
