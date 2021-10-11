@@ -306,6 +306,9 @@ def has_client_deprecation_warn(warning: Warning,
     return True
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="pip not supported in Windows runtime envs.")
 def test_client_deprecation_warn():
     """
     Tests that calling ray.client directly raises a deprecation warning with
