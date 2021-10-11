@@ -90,7 +90,9 @@ def test_e2e_basic_scale_up_down(serve_instance):
             "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 2,
-            "look_back_period_s": 0.2
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 0,
+            "upscale_delay_s": 0
         },
         max_concurrent_queries=1000,
         version="v1")

@@ -988,8 +988,10 @@ def deployment(
     if max_concurrent_queries is not None:
         config.max_concurrent_queries = max_concurrent_queries
 
+    print("_autoscaling_config: ", _autoscaling_config)
     if _autoscaling_config is not None:
         config.autoscaling_config = _autoscaling_config
+        print("config.autoscaling_config", config.autoscaling_config)
 
     def decorator(_func_or_class):
         return Deployment(

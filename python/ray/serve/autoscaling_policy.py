@@ -2,6 +2,8 @@ from abc import ABCMeta, abstractmethod
 import math
 
 from ray.serve.config import AutoscalingConfig
+from ray.serve.constants import CONTROL_LOOP_PERIOD_S
+
 from typing import List
 
 
@@ -61,12 +63,12 @@ class AutoscalingPolicy:
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, config):
+    def __init__(self, config: AutoscalingConfig):
         """Initialize the policy using the specified config dictionary."""
         self.config = config
 
     @abstractmethod
-    def scale(self, router_queue_lens, curr_replicas):
+    def get_decision_num_replicas(self, router_queue_lens, curr_replicas):
         """Make a decision to scale backends.
 
         Arguments:
@@ -79,3 +81,93 @@ class AutoscalingPolicy:
             int The new number of replicas to scale this backend to.
         """
         return curr_replicas
+
+
+class BasicAutoscalingPolicy(AutoscalingPolicy):
+    """The default autoscaling policy based on basic thresholds for scaling.
+    There is a minimum threshold for the average queue length in the cluster
+    to scale up and a maximum threshold to scale down. Each period, a 'scale
+    up' or 'scale down' decision is made. This decision must be made for a
+    specified number of periods in a row before the number of replicas is
+    actually scaled. See config options for more details.
+    """
+
+    def __init__(self, config: AutoscalingConfig):
+        self.config = config
+        # TODO(architkulkarni): Make configurable via AutoscalingConfig
+        self.loop_period_s = CONTROL_LOOP_PERIOD_S
+        self.scale_up_consecutive_periods = int(
+            config.upscale_delay_s / self.loop_period_s)
+        self.scale_down_consecutive_periods = int(
+            config.downscale_delay_s / self.loop_period_s)
+        print("delays", config.upscale_delay_s, config.downscale_delay_s)
+        print("scale up, scale down", self.scale_up_consecutive_periods,
+              self.scale_down_consecutive_periods)
+        # Keeps track of previous decisions. Each time the load is above
+        # 'scale_up_threshold', the counter is incremented and each time it is
+        # below 'scale_down_threshold', the counter is decremented. When the
+        # load is between the thresholds or a scaling decision is made, the
+        # counter is reset to 0.
+        # TODO(architkulkarni): It may be too noisy to reset the counter each
+        # time the direction changes, especially if we calculate frequently
+        # (like every 0.1s).  A potentially less noisy option is to not reset
+        # the counter, and instead only increment/decrement until we reach
+        # scale_up_periods or scale_down_periods.
+        self.decision_counter = 0
+
+    def get_decision_num_replicas(self,
+                                  current_num_ongoing_requests: List[float],
+                                  curr_num_replicas) -> int:
+
+        if len(current_num_ongoing_requests) == 0:
+            return curr_num_replicas
+
+        decision_num_replicas = curr_num_replicas
+
+        desired_num_replicas = calculate_desired_num_replicas(
+            self.config, current_num_ongoing_requests)
+        print(f"ongoing reqs: {current_num_ongoing_requests}")
+        print(f"desired_num_replicas: {desired_num_replicas}")
+
+        print("decision counter: ", self.decision_counter)
+        # Scale up.
+        if desired_num_replicas > curr_num_replicas:
+            # If the previous decision was to scale down (the counter was
+            # negative), we reset it and then increment it (set to 1).
+            # Otherwise, just increment.
+            if self.decision_counter < 0:
+                self.decision_counter = 0
+            self.decision_counter += 1
+
+            # Only actually scale the replicas if we've made this decision for
+            # 'scale_up_consecutive_periods' in a row.
+            if self.decision_counter >= self.scale_up_consecutive_periods:
+                self.decision_counter = 0
+                decision_num_replicas = desired_num_replicas
+                print("SCALE UP")
+
+        # Scale down.
+        elif desired_num_replicas < curr_num_replicas:
+            # If the previous decision was to scale up (the counter was
+            # positive), reset it to zero before decrementing.
+            if self.decision_counter > 0:
+                self.decision_counter = 0
+            self.decision_counter -= 1
+
+            # Only actually scale the replicas if we've made this decision for
+            # 'scale_down_consecutive_periods' in a row.
+            if self.decision_counter < -self.scale_down_consecutive_periods:
+                # TODO(architkulkarni): curr_replicas will now slowly adjust
+                # until it gets to decision_num_replicas, but we will be making
+                # future decision_counter calculations on this moving
+                # curr_replicas value.  Is this okay?
+                self.decision_counter = 0
+                decision_num_replicas = desired_num_replicas
+                print("SCALE_DOWN")
+
+        # Do nothing.
+        else:
+            self.decision_counter = 0
+            print("DO NOTHING")
+        print("decision num replicas in policy.py: ", decision_num_replicas)
+        return decision_num_replicas
