@@ -1297,7 +1297,7 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
       }
     }
   }
-  return total_normal_task_resources;
+  return ResourceSet(total_normal_task_resources);
 }
 
 }  // namespace raylet
