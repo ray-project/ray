@@ -3,24 +3,26 @@ from functools import wraps
 
 import pytest
 
+from ray.serve.pipeline import ExecutionMode
 
-def test_inline_only():
-    return os.environ.get("INLINE_ONLY") not in [None, "0"]
+LOCAL_EXECUTION_ONLY = os.environ.get("LOCAL_EXECUTION_ONLY") not in [
+    None, "0"
+]
 
 
-def enable_inline_only(f):
-    """Convenience decorator to enable inline-only unit testing.
+def enable_local_execution_mode_only(f):
+    """Convenience decorator to enable local execution-only testing.
 
-    This should be used to wrap pytest functions that take an "inline"
-    parameter as their *first* argument. If inline-only testing is enabled,
-    the inline=False case will be skipped.
+    This should be used to wrap pytest functions that take an "execution_mode"
+    parameter as their *first* argument. If local-only testing is enabled,
+    other cases will be skipped.
     """
 
     @wraps(f)
-    def wrapper(inline: bool, *args, **kwargs):
-        if not inline and test_inline_only():
-            pytest.skip("inline-only testing enabled")
+    def wrapper(execution_mode: ExecutionMode, *args, **kwargs):
+        if execution_mode != ExecutionMode.LOCAL and LOCAL_EXECUTION_ONLY:
+            pytest.skip("local execution-only testing enabled")
         else:
-            return f(inline, *args, **kwargs)
+            return f(execution_mode, *args, **kwargs)
 
     return wrapper

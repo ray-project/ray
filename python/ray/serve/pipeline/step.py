@@ -1,8 +1,8 @@
 from types import FunctionType
 from typing import Callable, Optional
 
-from ray.serve.pipeline.node import INPUT, PipelineNode
-from ray.serve.pipeline.common import StepConfig
+from ray.serve.pipeline.node import ExecutorPipelineNode, INPUT, PipelineNode
+from ray.serve.pipeline.common import ExecutionMode, StepConfig
 
 
 def _validate_step_args(*args, **kwargs):
@@ -64,7 +64,7 @@ class CallablePipelineStep(PipelineStep):
 
     def __call__(self, *args, **kwargs):
         _validate_step_args(*args, **kwargs)
-        return PipelineNode(
+        return ExecutorPipelineNode(
             self._callable_factory, self._config, incoming_edges=args)
 
 
@@ -88,15 +88,20 @@ class UninstantiatedClassPipelineStep(PipelineStep):
 
 
 def step(_func_or_class: Optional[Callable] = None,
-         num_replicas: int = 1,
-         inline: bool = True) -> Callable[[Callable], PipelineStep]:
+         execution_mode: ExecutionMode = ExecutionMode.LOCAL,
+         num_replicas: int = 1) -> Callable[[Callable], PipelineStep]:
     """Decorator used to define a pipeline step.
 
     Args:
+        execution_mode(ExecutionMode): The execution mode for this step.
+            Supported modes:
+                - ExecutionMode.LOCAL (default): executes this step inline in
+                  the calling process.
+                - ExecutionMode.TASKS: executes this step in Ray tasks.
+                - ExecutionMode.ACTORS: executes this step in Ray actors.
         num_replicas (int): The number of Ray actors to start that
-            will run this step. Defaults to 1.
-        inline (bool): If true, this step will be run inline in the driver
-            process as a normal function call.
+            will run this step (efaults to 1). Only valid when using
+            ExecutionMode.ACTORS.
 
     Example:
 
@@ -108,7 +113,8 @@ def step(_func_or_class: Optional[Callable] = None,
         PipelineStep
     """
 
-    config = StepConfig(num_replicas=num_replicas, inline=inline)
+    config = StepConfig(
+        execution_mode=execution_mode, num_replicas=num_replicas)
 
     def decorator(_func_or_class):
         if isinstance(_func_or_class, FunctionType):
