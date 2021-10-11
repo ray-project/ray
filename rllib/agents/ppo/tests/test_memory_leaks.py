@@ -10,7 +10,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 class TestMemoryLeaks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -41,7 +41,7 @@ class TestMemoryLeaks(unittest.TestCase):
             _config = config.copy()
             _config["env"] = RandomLargeObsSpaceEnv
             trainer = ppo.appo.APPOTrainer(config=_config)
-            leaks = check_memory_leaks(trainer, to_check="rollout_worker")
+            leaks = check_memory_leaks(trainer, to_check="policy")
             if leaks:
                 for l in leaks:
                     print(l)

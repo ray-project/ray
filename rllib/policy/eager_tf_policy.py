@@ -477,6 +477,7 @@ def build_eager_tf_policy(
                 input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
             ]
 
+            #timestep = tf.convert_to_tensor(timestep, tf.float32) if timestep is not None else None
             return self._compute_action_helper(input_dict, state_batches, None,
                                                explore, timestep)
 
@@ -487,10 +488,7 @@ def build_eager_tf_policy(
 
             explore = explore if explore is not None else \
                 self.config["explore"]
-            timestep = timestep if timestep is not None else \
-                self.global_timestep
-            if isinstance(timestep, tf.Tensor):
-                timestep = int(timestep.numpy())
+            timestep = timestep if timestep is not None else self.global_timestep
             self._is_recurrent = state_batches is not None and \
                 state_batches != []
             self._is_training = False

@@ -7,7 +7,7 @@ import tracemalloc
 import tree  # pip install dm_tree
 from typing import List
 
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
 
 # A suspicious memory-allocating stack-trace that we should re-test
@@ -102,7 +102,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
             init=None,
             code=code,
             # How many times to repeat the function call?
-            repeats=800,
+            repeats=400,
             # How many times to re-try if we find a suspicious memory
             # allocation?
             max_num_trials=max_num_trials,
@@ -140,7 +140,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
         test = _test_some_code_for_memory_leaks(
             desc=f"Calling `[model]()`.",
             init=None,
-            code=lambda: policy.model.base_model(obs),#TODO: note every model may have a base_model!
+            code=lambda: policy.model({SampleBatch.OBS: obs}),
             # How many times to repeat the function call?
             repeats=400,
             # How many times to re-try if we find a suspicious memory
@@ -209,13 +209,6 @@ def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
         suspects = _find_memory_leaks_in_table(table)
         for suspect in sorted(suspects, key=lambda s: s.memory_increase, reverse=True):
             pretty_traceback = "\n".join(suspect.traceback.format())
-
-            # Reached max trials -> Error.
-            #if trial == max_num_trials - 1:
-            #    raise MemoryError(
-            #        f"Memory leak in traceback:\n{pretty_traceback}!", suspect)
-            # Start another trial (with more repeats), only looking at the
-            # suspicious stack-traces this time.
 
             # Only print out the biggest offender:
             if len(suspicious) == 0:
@@ -289,12 +282,12 @@ def _find_memory_leaks_in_table(table):
                 y=np.array(hist))
 
             # - If weak positive slope and some confidence and
-            #   increase > 100 bytes -> error.
+            #   increase > n bytes -> error.
             # - If stronger positive slope -> error.
             # deltas = np.array([0.0 if i == 0 else h - hist[i - 1] for i, h in
             #          enumerate(hist)])
-            if memory_increase > 20 and (line.slope > 0.03 or (
-                    line.slope > 0.0 and line.rvalue > 0.2)):
+            if memory_increase > 100 and (line.slope > 10.0 or (
+                    line.slope > 2.0 and line.rvalue > 0.5)):
                 suspects.append(Suspect(
                     traceback=traceback,
                     memory_increase=memory_increase,

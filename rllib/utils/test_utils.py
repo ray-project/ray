@@ -94,7 +94,7 @@ def framework_iterator(config=None,
             sess.__enter__()
             tf1.set_random_seed(42)
 
-        print("framework={}".format(fw))
+        print(f"framework={fw}")
 
         config["framework"] = fw
 
@@ -111,6 +111,7 @@ def framework_iterator(config=None,
         # Additionally loop through eager_tracing=True + False, if necessary.
         if fw in ["tf2", "tfe"] and with_eager_tracing:
             for tracing in [True, False]:
+                print(f"-> eager_tracing={tracing}")
                 config["eager_tracing"] = tracing
                 yield fw if session is False else (fw, sess)
                 config["eager_tracing"] = False
@@ -152,7 +153,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         y_keys = set(x.keys())
         for key, value in x.items():
             assert key in y, \
-                "ERROR: y does not have x's key='{}'! y={}".format(key, y)
+                f"ERROR: y does not have x's key='{key}'! y={y}"
             check(
                 value,
                 y[key],
@@ -183,17 +184,17 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     elif isinstance(x, (np.bool_, bool)):
         if false is True:
             assert bool(x) is not bool(y), \
-                "ERROR: x ({}) is y ({})!".format(x, y)
+                f"ERROR: x ({x}) is y ({y})!"
         else:
             assert bool(x) is bool(y), \
-                "ERROR: x ({}) is not y ({})!".format(x, y)
+                f"ERROR: x ({x}) is not y ({y})!"
     # Nones or primitives.
     elif x is None or y is None or isinstance(x, (str, int)):
         if false is True:
-            assert x != y, "ERROR: x ({}) is the same as y ({})!".format(x, y)
+            assert x != y, f"ERROR: x ({x}) is the same as y ({y})!"
         else:
             assert x == y, \
-                "ERROR: x ({}) is not the same as y ({})!".format(x, y)
+                f"ERROR: x ({x}) is not the same as y ({y})!"
     # String/byte comparisons.
     elif hasattr(x, "dtype") and \
             (x.dtype == np.object or str(x.dtype).startswith("<U")):
@@ -201,7 +202,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             np.testing.assert_array_equal(x, y)
             if false is True:
                 assert False, \
-                    "ERROR: x ({}) is the same as y ({})!".format(x, y)
+                    f"ERROR: x ({x}) is the same as y ({y})!"
         except AssertionError as e:
             if false is False:
                 raise e
@@ -253,7 +254,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 # If false is set -> raise error (not expected to be equal).
                 if false is True:
                     assert False, \
-                        "ERROR: x ({}) is the same as y ({})!".format(x, y)
+                        f"ERROR: x ({x}) is the same as y ({y})!"
 
         # Using atol/rtol.
         else:
@@ -270,7 +271,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             else:
                 if false is True:
                     assert False, \
-                        "ERROR: x ({}) is the same as y ({})!".format(x, y)
+                        f"ERROR: x ({x}) is the same as y ({y})!"
 
 
 def check_compute_single_action(trainer,
