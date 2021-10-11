@@ -144,10 +144,11 @@ class DashboardAgent(object):
             sys.exit(-1)
 
         # Create a http session for all modules.
-        if LooseVersion(aiohttp.__version__) < LooseVersion('4.0.0'):  # aiohttp<4.0.0 uses loop variable
+        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
+        if LooseVersion(aiohttp.__version__) < LooseVersion('4.0.0'):
             self.http_session = aiohttp.ClientSession(
                 loop=asyncio.get_event_loop())
-        else:  # aiohttp>=4.0.0 doesn't use it anymore
+        else:
             self.http_session = aiohttp.ClientSession()
 
         # Start a grpc asyncio server.
