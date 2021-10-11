@@ -304,7 +304,8 @@ class ParsedRuntimeEnv(dict):
                 "them as plugins, they must be nested in the `plugins` field.")
 
         # NOTE(architkulkarni): This allows worker caching code in C++ to check
-        # if a runtime env is empty without deserializing it.
+        # if a runtime env is empty without deserializing it.  This is a catch-
+        # all; for validated inputs we won't set the key if the value is None.
         if all(val is None for val in self.values()):
             self.clear()
 
