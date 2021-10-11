@@ -7,22 +7,26 @@ import os
 import signal
 import sys
 import time
+import warnings
 
 import ray
 from ray.util.annotations import PublicAPI
+from ray.util.queue import Queue, Empty
 
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.logger import Logger
-from ray.tune.progress_reporter import detect_reporter, ProgressReporter
+from ray.tune.progress_reporter import (detect_reporter, ProgressReporter,
+                                        JupyterNotebookReporter)
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
     SearchGenerator
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
+from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
 from ray.tune.trainable import Trainable
@@ -104,14 +108,6 @@ def run(
         max_concurrent_trials: Optional[int] = None,
         # Deprecated args
         loggers: Optional[Sequence[Type[Logger]]] = None,
-        ray_auto_init: Optional = None,
-        run_errored_only: Optional = None,
-        global_checkpoint_period: Optional = None,
-        with_server: Optional = None,
-        upload_dir: Optional = None,
-        sync_to_cloud: Optional = None,
-        sync_to_driver: Optional = None,
-        sync_on_checkpoint: Optional = None,
         _remote: bool = None,
 ) -> ExperimentAnalysis:
     """Executes training.
@@ -298,6 +294,13 @@ def run(
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
 
+    # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
+    # remote_run_kwargs must be defined before any other
+    # code is ran to ensure that at this point,
+    # `locals()` is equal to args and kwargs
+    remote_run_kwargs = locals().copy()
+    remote_run_kwargs.pop("_remote")
+
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
@@ -313,71 +316,59 @@ def run(
         # Make sure tune.run is called on the sever node.
         remote_run = force_on_current_node(remote_run)
 
-        return ray.get(
-            remote_run.remote(
-                run_or_experiment,
-                name,
-                metric,
-                mode,
-                stop,
-                time_budget_s,
-                config,
-                resources_per_trial,
-                num_samples,
-                local_dir,
-                search_alg,
-                scheduler,
-                keep_checkpoints_num,
-                checkpoint_score_attr,
-                checkpoint_freq,
-                checkpoint_at_end,
-                verbose,
-                progress_reporter,
-                log_to_file,
-                trial_name_creator,
-                trial_dirname_creator,
-                sync_config,
-                export_formats,
-                max_failures,
-                fail_fast,
-                restore,
-                server_port,
-                resume,
-                queue_trials,
-                reuse_actors,
-                trial_executor,
-                raise_on_failed_trial,
-                callbacks,
-                # Deprecated args
-                loggers,
-                ray_auto_init,
-                run_errored_only,
-                global_checkpoint_period,
-                with_server,
-                upload_dir,
-                sync_to_cloud,
-                sync_to_driver,
-                sync_on_checkpoint,
-                _remote=False))
+        # JupyterNotebooks don't work with remote tune runs out of the box
+        # (e.g. via Ray client) as they don't have access to the main
+        # process stdout. So we introduce a queue here that accepts
+        # callables, which will then be executed on the driver side.
+        if isinstance(progress_reporter, JupyterNotebookReporter):
+            execute_queue = Queue(actor_options={
+                "num_cpus": 0,
+                **force_on_current_node(None)
+            })
+            progress_reporter.set_output_queue(execute_queue)
+
+            def get_next_queue_item():
+                try:
+                    return execute_queue.get(block=False)
+                except Empty:
+                    return None
+
+        else:
+            # If we don't need a queue, use this dummy get fn instead of
+            # scheduling an unneeded actor
+            def get_next_queue_item():
+                return None
+
+        def _handle_execute_queue():
+            execute_item = get_next_queue_item()
+            while execute_item:
+                if isinstance(execute_item, Callable):
+                    execute_item()
+
+                execute_item = get_next_queue_item()
+
+        remote_future = remote_run.remote(_remote=False, **remote_run_kwargs)
+
+        # ray.wait(...)[1] returns futures that are not ready, yet
+        while ray.wait([remote_future], timeout=0.2)[1]:
+            # Check if we have items to execute
+            _handle_execute_queue()
+
+        # Handle queue one last time
+        _handle_execute_queue()
+
+        return ray.get(remote_future)
+
+    del remote_run_kwargs
 
     all_start = time.time()
-    if global_checkpoint_period:
-        raise ValueError("global_checkpoint_period is deprecated. Set env var "
-                         "'TUNE_GLOBAL_CHECKPOINT_S' instead.")
-    if ray_auto_init:
-        raise ValueError("ray_auto_init is deprecated. "
-                         "Set env var 'TUNE_DISABLE_AUTO_INIT=1' instead or "
-                         "call 'ray.init' before calling 'tune.run'.")
-    if with_server:
-        raise ValueError(
-            "with_server is deprecated. It is now enabled by default "
-            "if 'server_port' is not None.")
-    if sync_on_checkpoint or sync_to_cloud or sync_to_driver or upload_dir:
-        raise ValueError(
-            "sync_on_checkpoint / sync_to_cloud / sync_to_driver / "
-            "upload_dir must now be set via `tune.run("
-            "sync_config=SyncConfig(...)`. See `ray.tune.SyncConfig` for "
-            "more details.")
+
+    if loggers:
+        # Raise DeprecationWarning in 1.9, remove in 1.10/1.11
+        warnings.warn(
+            "The `loggers` argument is deprecated. Please pass the respective "
+            "`LoggerCallback` classes to the `callbacks` argument instead. "
+            "See https://docs.ray.io/en/latest/tune/api_docs/logging.html")
 
     if mode and mode not in ["min", "max"]:
         raise ValueError(
@@ -488,7 +479,9 @@ def run(
     if isinstance(search_alg, Searcher):
         search_alg = SearchGenerator(search_alg)
 
-    if config and not search_alg.set_search_properties(metric, mode, config):
+    if config and not set_search_properties_backwards_compatible(
+            search_alg.set_search_properties, metric, mode, config, **
+            experiments[0].public_spec):
         if has_unresolved_values(config):
             raise ValueError(
                 "You passed a `config` parameter to `tune.run()` with "
@@ -581,6 +574,7 @@ def run(
         signal.signal(signal.SIGINT, sigint_handler)
 
     tune_start = time.time()
+    progress_reporter.set_start_time(tune_start)
     while not runner.is_finished() and not state[signal.SIGINT]:
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):

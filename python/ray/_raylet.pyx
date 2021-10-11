@@ -7,18 +7,18 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
-import copy
 import gc
 import inspect
-import threading
-import traceback
-import time
 import logging
+import msgpack
 import os
 import pickle
-import sys
-import _thread
 import setproctitle
+import sys
+import threading
+import time
+import traceback
+import _thread
 
 from libc.stdint cimport (
     int32_t,
@@ -72,7 +72,6 @@ from ray.includes.common cimport (
     WORKER_TYPE_DRIVER,
     WORKER_TYPE_SPILL_WORKER,
     WORKER_TYPE_RESTORE_WORKER,
-    WORKER_TYPE_UTIL_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
@@ -101,14 +100,6 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
-import ray._private.gcs_utils as gcs_utils
-import ray._private.util_worker_handlers as util_worker_handlers
-from ray import external_storage
-from ray._private.async_compat import (
-    sync_to_async, get_new_event_loop)
-import ray._private.memory_monitor as memory_monitor
-import ray.ray_constants as ray_constants
-import ray._private.profiling as profiling
 from ray.exceptions import (
     RayActorError,
     RayError,
@@ -119,11 +110,15 @@ from ray.exceptions import (
     TaskCancelledError,
     AsyncioActorExit,
 )
+from ray import external_storage
+import ray.ray_constants as ray_constants
+from ray._private.async_compat import sync_to_async, get_new_event_loop
+from ray._private.client_mode_hook import disable_client_hook
+import ray._private.gcs_utils as gcs_utils
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
+import ray._private.memory_monitor as memory_monitor
+import ray._private.profiling as profiling
 from ray._private.utils import decode
-from ray._private.client_mode_hook import (
-    disable_client_hook,
-)
-import msgpack
 
 cimport cpython
 
@@ -186,8 +181,10 @@ cdef RayObjectsToDataMetadataPairs(
 cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs):
     result = []
     for i in range(object_refs.size()):
-        result.append(ObjectRef(object_refs[i].object_id(),
-                                object_refs[i].call_site()))
+        result.append(ObjectRef(
+            object_refs[i].object_id(),
+            object_refs[i].owner_address().SerializeAsString(),
+            object_refs[i].call_site()))
     return result
 
 
@@ -452,13 +449,13 @@ cdef execute_task(
         actor_id = core_worker.get_actor_id()
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
-        # Record the actor name via :actor_name: magic token in the log file.
-        # This is used for the prefix in driver logs `(actor_repr pid=123)...`
-        if (hasattr(actor_class, "__ray_actor_class__") and
-                "__repr__" in actor_class.__ray_actor_class__.__dict__):
-            print("{}{}".format(
-                ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
-        else:
+        if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+            # Record the actor class via :actor_name: magic token in the log.
+            #
+            # (Phase 1): this covers code run before __init__ finishes.
+            # We need to handle this separately because `__repr__` may not be
+            # runnable until after `__init__` (e.g., if it accesses fields
+            # defined in the constructor).
             print("{}{}".format(
                 ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
 
@@ -599,6 +596,17 @@ cdef execute_task(
                     raise e
                 if c_return_ids.size() == 1:
                     outputs = (outputs,)
+            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+                # Record actor repr via :actor_name: magic token in the log.
+                #
+                # (Phase 2): after `__init__` finishes, we override the
+                # log prefix with the full repr of the actor. The log monitor
+                # will pick up the updated token.
+                if (hasattr(actor_class, "__ray_actor_class__") and
+                        "__repr__" in
+                        actor_class.__ray_actor_class__.__dict__):
+                    print("{}{}".format(
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
             # Check for a cancellation that was called when the function
             # was exiting and was raised after the except block.
             if not check_signals().ok():
@@ -748,14 +756,6 @@ cdef void gc_collect() nogil:
             logger.debug(
                 "gc.collect() freed {} refs in {} seconds".format(
                     num_freed, end - start))
-
-
-cdef void run_on_util_worker_handler(
-        c_string req,
-        c_vector[c_string] args) nogil:
-    with gil:
-        util_worker_handlers.dispatch(
-            req.decode(), [arg.decode() for arg in args])
 
 
 cdef c_vector[c_string] spill_objects_handler(
@@ -973,9 +973,6 @@ cdef class CoreWorker:
         elif worker_type == ray.RESTORE_WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_RESTORE_WORKER
-        elif worker_type == ray.UTIL_WORKER_MODE:
-            self.is_driver = False
-            options.worker_type = WORKER_TYPE_UTIL_WORKER
         else:
             raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON
@@ -1000,7 +997,6 @@ cdef class CoreWorker:
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
-        options.run_on_util_worker_handler = run_on_util_worker_handler
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
@@ -1354,8 +1350,8 @@ cdef class CoreWorker:
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
-                    runtime_env_dict,
-                    override_environment_variables
+                    c_string serialized_runtime_env,
+                    runtime_env_uris,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1363,15 +1359,10 @@ cdef class CoreWorker:
             c_vector[unique_ptr[CTaskArg]] args_vector
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
-            c_string c_serialized_runtime_env
-            unordered_map[c_string, c_string] \
-                c_override_environment_variables = \
-                override_environment_variables
+            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             c_vector[CObjectReference] return_refs
 
         with self.profile_event(b"submit_task"):
-            c_serialized_runtime_env = \
-                self.prepare_runtime_env(runtime_env_dict)
             prepare_resources(resources, &c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
@@ -1384,8 +1375,8 @@ cdef class CoreWorker:
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
                     b"",
-                    c_serialized_runtime_env,
-                    c_override_environment_variables),
+                    serialized_runtime_env,
+                    c_runtime_env_uris),
                 max_retries, retry_exceptions,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1411,8 +1402,8 @@ cdef class CoreWorker:
                      int64_t placement_group_bundle_index,
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
-                     runtime_env_dict,
-                     override_environment_variables
+                     c_string serialized_runtime_env,
+                     runtime_env_uris,
                      ):
         cdef:
             CRayFunction ray_function
@@ -1423,14 +1414,9 @@ cdef class CoreWorker:
             CActorID c_actor_id
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
-            c_string c_serialized_runtime_env
-            unordered_map[c_string, c_string] \
-                c_override_environment_variables = \
-                override_environment_variables
+            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
 
         with self.profile_event(b"submit_task"):
-            c_serialized_runtime_env = \
-                self.prepare_runtime_env(runtime_env_dict)
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
@@ -1450,8 +1436,8 @@ cdef class CoreWorker:
                             c_placement_group_id,
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
-                        c_serialized_runtime_env,
-                        c_override_environment_variables),
+                        serialized_runtime_env,
+                        c_runtime_env_uris),
                     extension_data,
                     &c_actor_id))
 
@@ -1726,12 +1712,11 @@ cdef class CoreWorker:
         return CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
                 c_object_id).SerializeAsString()
 
-    def serialize_and_promote_object_ref(self, ObjectRef object_ref):
+    def serialize_object_ref(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
             c_string serialized_object_status
-        CCoreWorkerProcess.GetCoreWorker().PromoteObjectToPlasma(c_object_id)
         CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
         return (object_ref,
@@ -1853,7 +1838,8 @@ cdef class CoreWorker:
 
     def destroy_event_loop_if_exists(self):
         if self.async_event_loop is not None:
-            self.async_event_loop.stop()
+            self.async_event_loop.call_soon_threadsafe(
+                self.async_event_loop.stop)
         if self.async_thread is not None:
             self.async_thread.join()
 
@@ -1861,19 +1847,20 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
-    def get_current_runtime_env_dict(self):
+    def get_current_runtime_env(self) -> ParsedRuntimeEnv:
         # This should never change, so we can safely cache it to avoid ser/de
-        if self.current_runtime_env_dict is None:
+        if self.current_runtime_env is None:
             if self.is_driver:
-                self.current_runtime_env_dict = \
-                    json.loads(self.get_job_config().serialized_runtime_env)
+                job_config = self.get_job_config()
+                serialized_env = job_config.runtime_env.serialized_runtime_env
             else:
-                self.current_runtime_env_dict = json.loads(
-                    CCoreWorkerProcess.GetCoreWorker()
-                    .GetWorkerContext()
-                    .GetCurrentSerializedRuntimeEnv()
-                )
-        return self.current_runtime_env_dict
+                serialized_env = CCoreWorkerProcess.GetCoreWorker() \
+                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv()
+
+            self.current_runtime_env = ParsedRuntimeEnv.deserialize(
+                    serialized_env)
+
+        return self.current_runtime_env
 
     def is_exiting(self):
         return CCoreWorkerProcess.GetCoreWorker().IsExiting()
@@ -1901,6 +1888,26 @@ cdef class CoreWorker:
 
         return ref_counts
 
+    def get_actor_call_stats(self):
+        cdef:
+            unordered_map[c_string, c_vector[uint64_t]] c_tasks_count
+
+        c_tasks_count = (
+            CCoreWorkerProcess.GetCoreWorker().GetActorCallStats())
+        it = c_tasks_count.begin()
+
+        tasks_count = dict()
+        while it != c_tasks_count.end():
+            func_name = <unicode>dereference(it).first
+            counters = dereference(it).second
+            tasks_count[func_name] = {
+                "pending": counters[0],
+                "running": counters[1],
+                "finished": counters[2],
+            }
+            postincrement(it)
+        return tasks_count
+
     def set_get_async_callback(self, ObjectRef object_ref, callback):
         cpython.Py_INCREF(callback)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
@@ -1915,12 +1922,6 @@ cdef class CoreWorker:
             job_id.native(), error_type.encode("ascii"),
             error_message.encode("ascii"), timestamp))
 
-    def set_resource(self, basestring resource_name,
-                     double capacity, NodeID client_id):
-        CCoreWorkerProcess.GetCoreWorker().SetResource(
-            resource_name.encode("ascii"), capacity,
-            CNodeID.FromBinary(client_id.binary()))
-
     def get_job_config(self):
         cdef CJobConfig c_job_config
         # We can cache the deserialized job config object here because
@@ -1930,45 +1931,6 @@ cdef class CoreWorker:
             self.job_config = gcs_utils.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
-
-    def prepare_runtime_env(self, runtime_env_dict: dict) -> str:
-        """Merge the given new runtime env with the current runtime env.
-
-        If running in a driver, the current runtime env comes from the
-        JobConfig.  Otherwise, we are running in a worker for an actor or
-        task, and the current runtime env comes from the current TaskSpec.
-
-        The child's runtime env dict is merged with the parents via a simple
-        dict update, except for runtime_env["env_vars"], which is merged
-        with runtime_env["env_vars"] of the parent rather than overwriting it.
-        This is so that env vars set in the parent propagate to child actors
-        and tasks even if a new env var is set in the child.
-
-        Args:
-            runtime_env_dict (dict): A runtime env for a child actor or task.
-        Returns:
-            The resulting merged JSON-serialized runtime env.
-        """
-
-        result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
-
-        result_env_vars = copy.deepcopy(result_dict.get("env_vars") or {})
-        child_env_vars = runtime_env_dict.get("env_vars") or {}
-        result_env_vars.update(child_env_vars)
-
-        result_dict.update(runtime_env_dict)
-        result_dict["env_vars"] = result_env_vars
-
-        # NOTE(architkulkarni): This allows worker caching code in C++ to
-        # check if a runtime env is empty without deserializing it.
-        if result_dict["env_vars"] == {}:
-            result_dict["env_vars"] = None
-        if all(val is None for val in result_dict.values()):
-            result_dict = {}
-
-        # TODO(architkulkarni): We should just use RuntimeEnvDict here
-        # so all the serialization and validation is done in one place
-        return json.dumps(result_dict, sort_keys=True)
 
     def get_task_submission_stats(self):
         cdef:

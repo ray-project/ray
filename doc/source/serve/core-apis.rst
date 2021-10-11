@@ -35,7 +35,14 @@ Deployments can be exposed in two ways: over HTTP or in Python via the :ref:`ser
 By default, HTTP requests will be forwarded to the ``__call__`` method of the class (or the function) and a ``Starlette Request`` object will be the sole argument.
 You can also define a deployment that wraps a FastAPI app for more flexible handling of HTTP requests. See :ref:`serve-fastapi-http` for details.
 
-We can also list all available deployments and dynamically get a reference to them:
+To serve multiple deployments defined by the same class, use the ``name`` option:
+
+.. code-block:: python
+
+  MyFirstDeployment.options(name="hello_service").deploy("Hello!")
+  MyFirstDeployment.options(name="hi_service").deploy("Hi!)
+
+You can also list all available deployments and dynamically get references to them:
 
 .. code-block:: python
 
@@ -238,27 +245,31 @@ Ray Serve supports serving deployments with different (possibly conflicting)
 Python dependencies.  For example, you can simultaneously serve one deployment
 that uses legacy Tensorflow 1 and another that uses Tensorflow 2.
 
-Currently this is supported on Mac OS and Linux using `conda <https://docs.conda.io/en/latest/>`_
-via Ray's built-in ``runtime_env`` option for actors.
-As with all other actor options, pass these in via ``ray_actor_options`` in
-your deployment.
-You must have a conda environment set up for each set of
-dependencies you want to isolate.  If using a multi-node cluster, the
-desired conda environment must be present on all nodes. Also, the Python patch version
-(e.g. 3.8.10) must be identical on all nodes (this is a requirement for any Ray cluster).
-See :ref:`runtime-environments` for details.
+This is supported on Mac OS and Linux using Ray's :ref:`runtime-environments` feature.
+As with all other Ray actor options, pass the runtime environment in via ``ray_actor_options`` in
+your deployment.  Be sure to first run ``pip install "ray[default]"`` to ensure the
+Runtime Environments feature is installed.
 
-Here's an example script.  For it to work, first create a conda
-environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,
-and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  The Ray and
-Python versions must be the same in both environments.
+Example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
+
+.. note::
+  When using a Ray library (for example, Ray Serve) in a runtime environment, it must
+  explicitly be included in the dependencies, as in the above example.  This is not
+  required when just using Ray Core.
+
+.. tip::
+  Avoid dynamically installing packages that install from source: these can be slow and
+  use up all resources while installing, leading to problems with the Ray cluster.  Consider
+  precompiling such packages in a private repository or Docker image.
 
 The dependencies required in the deployment may be different than
 the dependencies installed in the driver program (the one running Serve API
 calls). In this case, you should use a delayed import within the class to avoid
-importing unavailable packages in the driver.
+importing unavailable packages in the driver.  This applies even when not
+using runtime environments.
+
 Example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py

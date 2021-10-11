@@ -1,9 +1,7 @@
-:orphan:
-
 .. _sgd-arch:
 
-Architecture
-============
+RaySGD Architecture
+===================
 
 A diagram of the RaySGD architecture is provided below.
 

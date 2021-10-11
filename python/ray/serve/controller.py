@@ -8,8 +8,8 @@ from typing import Dict, List, Optional, Tuple, Any
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
+from ray.serve.autoscaling_policy import calculate_desired_num_replicas
 from ray.serve.backend_state import ReplicaState, BackendStateManager
-from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
     BackendTag,
@@ -23,9 +23,11 @@ from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.replica import create_replica_wrapper
+from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
+from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -63,11 +65,14 @@ class ServeController:
     async def __init__(self,
                        controller_name: str,
                        http_config: HTTPOptions,
+                       checkpoint_path: str,
                        detached: bool = False):
         # Used to read/write checkpoints.
-        controller_namespace = ray.get_runtime_context().namespace
-        self.kv_store = RayInternalKVStore(
-            namespace=f"{controller_name}-{controller_namespace}")
+        self.controller_namespace = ray.get_runtime_context().namespace
+        self.controller_name = controller_name
+        self.kv_store = make_kv_store(
+            checkpoint_path,
+            namespace=f"{self.controller_name}-{self.controller_namespace}")
 
         # Dictionary of backend_tag -> proxy_name -> most recent queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))
@@ -81,11 +86,28 @@ class ServeController:
         self.goal_manager = AsyncGoalManager()
         self.http_state = HTTPState(controller_name, detached, http_config)
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
+        # Fetch all running actors in current cluster as source of current
+        # replica state for controller failure recovery
+        all_current_actor_names = ray.util.list_named_actors()
         self.backend_state_manager = BackendStateManager(
             controller_name, detached, self.kv_store, self.long_poll_host,
-            self.goal_manager)
+            self.goal_manager, all_current_actor_names)
+
+        # TODO(simon): move autoscaling related stuff into a manager.
+        self.autoscaling_metrics_store = InMemoryMetricsStore()
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+    def record_autoscaling_metrics(self, data: Dict[str, float],
+                                   send_timestamp: float):
+        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
+
+    def _dump_autoscaling_metrics_for_testing(self):
+        return self.autoscaling_metrics_store.data
+
+    def _dump_replica_states_for_testing(self, deployment_name):
+        return self.backend_state_manager._backend_states[
+            deployment_name]._replicas
 
     async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
         return await self.goal_manager.wait_for_goal(goal_id)
@@ -112,8 +134,55 @@ class ServeController:
         """Returns a dictionary of node ID to http_proxy actor handles."""
         return self.http_state.get_http_proxy_handles()
 
+    def autoscale(self) -> None:
+        """Update autoscaling deployments with calculated num_replicas."""
+        for deployment_name, (backend_info,
+                              route_prefix) in self.list_deployments().items():
+            backend_config = backend_info.backend_config
+            autoscaling_config = backend_config.autoscaling_config
+
+            if autoscaling_config is None:
+                continue
+
+            replicas = self.backend_state_manager._backend_states[
+                deployment_name]._replicas
+            running_replicas = replicas.get([ReplicaState.RUNNING])
+
+            current_num_ongoing_requests = []
+            for replica in running_replicas:
+                replica_tag = replica.replica_tag
+                num_ongoing_requests = (
+                    self.autoscaling_metrics_store.window_average(
+                        replica_tag,
+                        time.time() - autoscaling_config.look_back_period_s))
+                if num_ongoing_requests is not None:
+                    current_num_ongoing_requests.append(num_ongoing_requests)
+
+            if len(current_num_ongoing_requests) == 0:
+                continue
+
+            new_backend_config = backend_config.copy()
+            new_backend_config.num_replicas = calculate_desired_num_replicas(
+                autoscaling_config, current_num_ongoing_requests)
+
+            replica_config = backend_info.replica_config
+            deployer_job_id = backend_info.deployer_job_id
+            backend_config_proto_bytes = new_backend_config.to_proto_bytes()
+            goal_id, updating = self.deploy(
+                deployment_name,
+                backend_config_proto_bytes,
+                replica_config,
+                version=backend_info.version,
+                prev_version=backend_info.version,
+                route_prefix=route_prefix,
+                deployer_job_id=deployer_job_id)
+
     async def run_control_loop(self) -> None:
         while True:
+            try:
+                self.autoscale()
+            except Exception:
+                logger.exception("Exception while autoscaling deployments.")
             async with self.write_lock:
                 try:
                     self.http_state.update()
@@ -161,8 +230,10 @@ class ServeController:
                         continue
                     actor_id = actor_handle._ray_actor_id.hex()
                     replica_tag = replica.replica_tag
-                    replica_version = ("None" if replica.version.unversioned
-                                       else replica.version.code_version)
+                    replica_version = ("None"
+                                       if (replica.version is None
+                                           or replica.version.unversioned) else
+                                       replica.version.code_version)
                     entry["actors"][actor_id] = {
                         "replica_tag": replica_tag,
                         "version": replica_version
@@ -199,54 +270,56 @@ class ServeController:
 
             return goal_ids
 
-    async def deploy(self,
-                     name: str,
-                     backend_config: BackendConfig,
-                     replica_config: ReplicaConfig,
-                     python_methods: List[str],
-                     version: Optional[str],
-                     prev_version: Optional[str],
-                     route_prefix: Optional[str],
-                     deployer_job_id: "Optional[ray._raylet.JobID]" = None
-                     ) -> Tuple[Optional[GoalId], bool]:
+    def deploy(self,
+               name: str,
+               backend_config_proto_bytes: bytes,
+               replica_config: ReplicaConfig,
+               version: Optional[str],
+               prev_version: Optional[str],
+               route_prefix: Optional[str],
+               deployer_job_id: "Optional[ray._raylet.JobID]" = None
+               ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
-        async with self.write_lock:
-            if prev_version is not None:
-                existing_backend_info = self.backend_state_manager.get_backend(
-                    name)
-                if (existing_backend_info is None
-                        or not existing_backend_info.version):
-                    raise ValueError(
-                        f"prev_version '{prev_version}' is specified but "
-                        "there is no existing deployment.")
-                if existing_backend_info.version != prev_version:
-                    raise ValueError(
-                        f"prev_version '{prev_version}' "
-                        "does not match with the existing "
-                        f"version '{existing_backend_info.version}'.")
-            backend_info = BackendInfo(
-                actor_def=ray.remote(
-                    create_backend_replica(
-                        name, replica_config.serialized_backend_def)),
-                version=version,
-                backend_config=backend_config,
-                replica_config=replica_config,
-                deployer_job_id=deployer_job_id,
-                start_time_ms=int(time.time() * 1000))
+        backend_config = BackendConfig.from_proto_bytes(
+            backend_config_proto_bytes)
 
-            goal_id, updating = self.backend_state_manager.deploy_backend(
-                name, backend_info)
-            endpoint_info = EndpointInfo(
-                route=route_prefix, python_methods=python_methods)
-            self.endpoint_state.update_endpoint(name, endpoint_info)
-            return goal_id, updating
+        if prev_version is not None:
+            existing_backend_info = self.backend_state_manager.get_backend(
+                name)
+            if (existing_backend_info is None
+                    or not existing_backend_info.version):
+                raise ValueError(
+                    f"prev_version '{prev_version}' is specified but "
+                    "there is no existing deployment.")
+            if existing_backend_info.version != prev_version:
+                raise ValueError(f"prev_version '{prev_version}' "
+                                 "does not match with the existing "
+                                 f"version '{existing_backend_info.version}'.")
+        backend_info = BackendInfo(
+            actor_def=ray.remote(
+                create_replica_wrapper(name,
+                                       replica_config.serialized_backend_def)),
+            version=version,
+            backend_config=backend_config,
+            replica_config=replica_config,
+            deployer_job_id=deployer_job_id,
+            start_time_ms=int(time.time() * 1000))
+        # TODO(architkulkarni): When a deployment is redeployed, even if
+        # the only change was num_replicas, the start_time_ms is refreshed.
+        # This is probably not the desired behavior for an autoscaling
+        # deployment, which redeploys very often to change num_replicas.
+
+        goal_id, updating = self.backend_state_manager.deploy_backend(
+            name, backend_info)
+        endpoint_info = EndpointInfo(route=route_prefix)
+        self.endpoint_state.update_endpoint(name, endpoint_info)
+        return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
-        return self.backend_state_manager.delete_backend(
-            name, force_kill=False)
+        return self.backend_state_manager.delete_backend(name)
 
     def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
         """Get the current information about a deployment.

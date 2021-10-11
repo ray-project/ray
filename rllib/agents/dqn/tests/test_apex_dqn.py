@@ -4,8 +4,10 @@ import unittest
 import ray
 import ray.rllib.agents.dqn.apex as apex
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
+    LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 
 class TestApexDQN(unittest.TestCase):
@@ -26,7 +28,9 @@ class TestApexDQN(unittest.TestCase):
         config["optimizer"]["num_replay_buffer_shards"] = 1
         for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
-            trainer.train()
+            results = trainer.train()
+            check_train_results(results)
+            print(results)
             trainer.stop()
 
     def test_apex_dqn_compilation_and_per_worker_epsilon_values(self):
@@ -53,7 +57,9 @@ class TestApexDQN(unittest.TestCase):
             check_compute_single_action(trainer)
 
             for i in range(2):
-                print(trainer.train())
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
 
             # Test again per-worker epsilon distribution
             # (should not have changed).
@@ -97,7 +103,8 @@ class TestApexDQN(unittest.TestCase):
             """
             for _ in range(n):
                 results = trainer.train()
-            return results["info"]["learner"][DEFAULT_POLICY_ID]["cur_lr"]
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
+                LEARNER_STATS_KEY]["cur_lr"]
 
         # Check eager execution frameworks here, since it's easier to control
         # exact timesteps with these frameworks.
@@ -107,17 +114,17 @@ class TestApexDQN(unittest.TestCase):
             lr = _step_n_times(trainer, 5)  # 50 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.1 here.
             self.assertLessEqual(lr, 0.15)
-            self.assertGreaterEqual(lr, 0.05)
+            self.assertGreaterEqual(lr, 0.04)
 
             lr = _step_n_times(trainer, 5)  # 100 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.01 here.
             self.assertLessEqual(lr, 0.02)
-            self.assertGreaterEqual(lr, 0.005)
+            self.assertGreaterEqual(lr, 0.004)
 
             lr = _step_n_times(trainer, 5)  # 150 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.001 here.
             self.assertLessEqual(lr, 0.002)
-            self.assertGreaterEqual(lr, 0.0005)
+            self.assertGreaterEqual(lr, 0.0004)
 
             trainer.stop()
 

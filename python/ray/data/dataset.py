@@ -51,8 +51,7 @@ class Dataset(Generic[T]):
 
     Datasets are implemented as a list of ``ObjectRef[Block]``. The block
     also determines the unit of parallelism. The default block type is the
-    ``pyarrow.Table``. Tensor objects are held in ``np.ndarray`` blocks,
-    and other Arrow-incompatible objects are held in ``list`` blocks.
+    ``pyarrow.Table``. Arrow-incompatible objects are held in ``list`` blocks.
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors just like any other object. Datasets support
@@ -169,7 +168,7 @@ class Dataset(Generic[T]):
                 tasks, or "actors" to use an autoscaling Ray actor pool.
             batch_format: Specify "native" to use the native block format,
                 "pandas" to select ``pandas.DataFrame`` as the batch format,
-                or "pyarrow" to select ``pyarrow.Table/Tensor``.
+                or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -205,19 +204,15 @@ class Dataset(Generic[T]):
                         "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
-                if (isinstance(applied, list) or isinstance(applied, pa.Table)
-                        or isinstance(applied, np.ndarray)):
+                if isinstance(applied, list) or isinstance(applied, pa.Table):
                     applied = applied
                 elif isinstance(applied, pd.core.frame.DataFrame):
                     applied = pa.Table.from_pandas(applied)
-                elif isinstance(applied, pa.Tensor):
-                    applied = applied.to_numpy()
                 else:
                     raise ValueError("The map batches UDF returned a type "
                                      f"{type(applied)}, which is not allowed. "
                                      "The return type must be either list, "
-                                     "pandas.DataFrame, np.ndarray, "
-                                     "pyarrow.Tensor, or pyarrow.Table")
+                                     "pandas.DataFrame, or pyarrow.Table")
                 builder.add_block(applied)
 
             return builder.build()
@@ -323,10 +318,13 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
-    def random_shuffle(self,
-                       *,
-                       seed: Optional[int] = None,
-                       num_blocks: Optional[int] = None) -> "Dataset[T]":
+    def random_shuffle(
+            self,
+            *,
+            seed: Optional[int] = None,
+            num_blocks: Optional[int] = None,
+            _move: Optional[bool] = False,
+            _spread_resource_prefix: Optional[str] = None) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
         This is a blocking operation similar to repartition().
@@ -349,13 +347,25 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
+        curr_num_blocks = self.num_blocks()
+        # Handle empty dataset.
+        if curr_num_blocks == 0:
+            return self
 
+        if num_blocks is None:
+            num_blocks = curr_num_blocks
         new_blocks = simple_shuffle(
-            self._blocks,
-            num_blocks or self.num_blocks(),
+            self._move_blocks() if _move else self._blocks,
+            num_blocks,
             random_shuffle=True,
-            random_seed=seed)
+            random_seed=seed,
+            _spread_resource_prefix=_spread_resource_prefix)
         return Dataset(new_blocks)
+
+    def _move_blocks(self):
+        blocks = self._blocks.copy()
+        self._blocks.clear()
+        return blocks
 
     def split(self,
               n: int,
@@ -392,24 +402,150 @@ class Dataset(Generic[T]):
         if n <= 0:
             raise ValueError(f"The number of splits {n} is not positive.")
 
-        if n > self.num_blocks() and equal:
-            raise NotImplementedError(
-                f"The number of splits {n} > the number of dataset blocks "
-                f"{self.num_blocks()}, yet an equal split was requested.")
-
         if locality_hints and len(locality_hints) != n:
             raise ValueError(
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}.")
 
-        # TODO(ekl) we could do better than truncation here. This could be a
-        # problem if block sizes are very skewed.
-        def equalize(splits: List[Dataset[T]]) -> List[Dataset[T]]:
+        def _partition_splits(splits: List[Dataset[T]], part_size: int,
+                              counts_cache: Dict[str, int]):
+            """Partition splits into two sets: splits that are smaller than the
+            target size and splits that are larger than the target size.
+            """
+            splits = sorted(splits, key=lambda s: counts_cache[s._get_uuid()])
+            idx = next(i for i, split in enumerate(splits)
+                       if counts_cache[split._get_uuid()] >= part_size)
+            return splits[:idx], splits[idx:]
+
+        def _equalize_larger_splits(splits: List[Dataset[T]], target_size: int,
+                                    counts_cache: Dict[str, int],
+                                    num_splits_required: int):
+            """Split each split into one or more subsplits that are each the
+            target size, with at most one leftover split that's smaller
+            than the target size.
+
+            This assume that the given splits are sorted in ascending order.
+            """
+            new_splits = []
+            leftovers = []
+            for split in splits:
+                size = counts_cache[split._get_uuid()]
+                if size == target_size:
+                    new_splits.append(split)
+                    continue
+                split_indices = list(range(target_size, size, target_size))
+                split_splits = split.split_at_indices(split_indices)
+                last_split_size = split_splits[-1].count()
+                if last_split_size < target_size:
+                    # Last split is smaller than the target size, save it for
+                    # our unioning of small splits.
+                    leftover = split_splits.pop()
+                    leftovers.append(leftover)
+                    counts_cache[leftover._get_uuid()] = leftover.count()
+                if len(new_splits) + len(split_splits) >= num_splits_required:
+                    # Short-circuit if the new splits will make us reach the
+                    # desired number of splits.
+                    new_splits.extend(
+                        split_splits[:num_splits_required - len(new_splits)])
+                    break
+                new_splits.extend(split_splits)
+            return new_splits, leftovers
+
+        def _equalize_smaller_splits(
+                splits: List[Dataset[T]], target_size: int,
+                counts_cache: Dict[str, int], num_splits_required: int):
+            """Union small splits up to the target split size.
+
+            This assume that the given splits are sorted in ascending order.
+            """
+            new_splits = []
+            union_buffer = []
+            union_buffer_size = 0
+            low = 0
+            high = len(splits) - 1
+            while low <= high:
+                # Union small splits up to the target split size.
+                low_split = splits[low]
+                low_count = counts_cache[low_split._get_uuid()]
+                high_split = splits[high]
+                high_count = counts_cache[high_split._get_uuid()]
+                if union_buffer_size + high_count <= target_size:
+                    # Try to add the larger split to the union buffer first.
+                    union_buffer.append(high_split)
+                    union_buffer_size += high_count
+                    high -= 1
+                elif union_buffer_size + low_count <= target_size:
+                    union_buffer.append(low_split)
+                    union_buffer_size += low_count
+                    low += 1
+                else:
+                    # Neither the larger nor smaller split fit in the union
+                    # buffer, so we split the smaller split into a subsplit
+                    # that will fit into the union buffer and a leftover
+                    # subsplit that we add back into the candidate split list.
+                    diff = target_size - union_buffer_size
+                    diff_split, new_low_split = low_split.split_at_indices(
+                        [diff])
+                    union_buffer.append(diff_split)
+                    union_buffer_size += diff
+                    # We overwrite the old low split and don't advance the low
+                    # pointer since (1) the old low split can be discarded,
+                    # (2) the leftover subsplit is guaranteed to be smaller
+                    # than the old low split, and (3) the low split should be
+                    # the smallest split in the candidate split list, which is
+                    # this subsplit.
+                    splits[low] = new_low_split
+                    counts_cache[new_low_split._get_uuid()] = low_count - diff
+                if union_buffer_size == target_size:
+                    # Once the union buffer is full, we union together the
+                    # splits.
+                    assert len(union_buffer) > 1, union_buffer
+                    first_ds = union_buffer[0]
+                    new_split = first_ds.union(*union_buffer[1:])
+                    new_splits.append(new_split)
+                    # Clear the union buffer.
+                    union_buffer = []
+                    union_buffer_size = 0
+                    if len(new_splits) == num_splits_required:
+                        # Short-circuit if we've reached the desired number of
+                        # splits.
+                        break
+            return new_splits
+
+        def equalize(splits: List[Dataset[T]],
+                     num_splits: int) -> List[Dataset[T]]:
             if not equal:
                 return splits
-            lower_bound = min([s.count() for s in splits])
-            assert lower_bound > 0, splits
-            return [s.limit(lower_bound) for s in splits]
+            counts = {s._get_uuid(): s.count() for s in splits}
+            total_rows = sum(counts.values())
+            # Number of rows for each split.
+            target_size = total_rows // num_splits
+
+            # Partition splits.
+            smaller_splits, larger_splits = _partition_splits(
+                splits, target_size, counts)
+            if len(smaller_splits) == 0 and num_splits < len(splits):
+                # All splits are already equal.
+                return splits
+
+            # Split larger splits.
+            new_splits, leftovers = _equalize_larger_splits(
+                larger_splits, target_size, counts, num_splits)
+            # Short-circuit if we've already reached the desired number of
+            # splits.
+            if len(new_splits) == num_splits:
+                return new_splits
+            # Add leftovers to small splits and re-sort.
+            smaller_splits += leftovers
+            smaller_splits = sorted(
+                smaller_splits, key=lambda s: counts[s._get_uuid()])
+
+            # Union smaller splits.
+            new_splits_small = _equalize_smaller_splits(
+                smaller_splits, target_size, counts,
+                num_splits - len(new_splits))
+            new_splits.extend(new_splits_small)
+            return new_splits
 
         block_refs = list(self._blocks)
         metadata_mapping = {
@@ -423,7 +559,8 @@ class Dataset(Generic[T]):
                     BlockList(
                         list(blocks), [metadata_mapping[b] for b in blocks]))
                 for blocks in np.array_split(block_refs, n)
-            ])
+                if not equal or len(blocks) > 0
+            ], n)
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -522,7 +659,7 @@ class Dataset(Generic[T]):
                     [metadata_mapping[b]
                      for b in allocation_per_actor[actor]]))
             for actor in locality_hints
-        ])
+        ], n)
 
     def split_at_indices(self, indices: List[int]) -> List["Dataset[T]"]:
         """Split the dataset at the given indices (like np.split).
@@ -570,6 +707,9 @@ class Dataset(Generic[T]):
     def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
 
+        The order of the blocks in the datasets is preserved, as is the
+        relative ordering between the datasets passed in the argument list.
+
         Args:
             other: List of datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
@@ -579,35 +719,21 @@ class Dataset(Generic[T]):
             A new dataset holding the union of their data.
         """
 
-        blocks: List[ObjectRef[Block]] = []
+        calls: List[Callable[[], ObjectRef[Block]]] = []
         metadata: List[BlockMetadata] = []
-        pending_blocks: List[Callable[[], ObjectRef[Block]]] = []
-        pending_metadata: List[BlockMetadata] = []
+        blocks: List[ObjectRef[Block]] = []
 
         datasets = [self] + list(other)
         for ds in datasets:
             bl = ds._blocks
             if isinstance(bl, LazyBlockList):
-                for block, meta in zip(bl._blocks, bl._metadata):
-                    blocks.append(block)
-                    metadata.append(meta)
-                lim = len(bl._blocks)
-                for call, meta in zip(bl._calls[lim:], bl._metadata[lim:]):
-                    pending_blocks.append(call)
-                    pending_metadata.append(meta)
+                calls.extend(bl._calls)
             else:
-                assert isinstance(bl, BlockList), bl
-                blocks.extend(list(bl._blocks))
-                metadata.extend(bl.get_metadata())
+                calls.extend([None] * len(bl))
+            metadata.extend(bl._metadata)
+            blocks.extend(bl._blocks)
 
-        result = LazyBlockList([], [])
-        result._calls = ([None] * len(blocks)) + pending_blocks
-        result._blocks = blocks
-        result._metadata = metadata + pending_metadata
-
-        assert len(result._calls) == len(result._metadata), result
-        assert len(result._blocks) <= len(result._calls), result
-        return Dataset(result)
+        return Dataset(LazyBlockList(calls, metadata, blocks))
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
@@ -643,7 +769,61 @@ class Dataset(Generic[T]):
         Returns:
             A new, sorted dataset.
         """
+        # Handle empty dataset.
+        if self.num_blocks() == 0:
+            return self
         return Dataset(sort_impl(self._blocks, key, descending))
+
+    def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
+        """Zip this dataset with the elements of another.
+
+        The datasets must have identical num rows, block types, and block sizes
+        (e.g., one was produced from a ``.map()`` of another). For Arrow
+        blocks, the schema will be concatenated, and any duplicate column
+        names disambiguated with _1, _2, etc. suffixes.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            other: The dataset to zip with on the right hand side.
+
+        Examples:
+            >>> ds = ray.data.range(5)
+            >>> ds.zip(ds).take()
+            [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
+
+        Returns:
+            A Dataset with (k, v) pairs (or concatenated Arrow schema) where k
+            comes from the first dataset and v comes from the second.
+        """
+
+        blocks1 = self.get_internal_block_refs()
+        blocks2 = other.get_internal_block_refs()
+
+        if len(blocks1) != len(blocks2):
+            # TODO(ekl) consider supporting if num_rows are equal.
+            raise ValueError(
+                "Cannot zip dataset of different num blocks: {} vs {}".format(
+                    len(blocks1), len(blocks2)))
+
+        def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
+            b1 = BlockAccessor.for_block(block1)
+            result = b1.zip(block2)
+            br = BlockAccessor.for_block(result)
+            return result, br.get_metadata(input_files=[])
+
+        do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
+
+        blocks = []
+        metadata = []
+        for b1, b2 in zip(blocks1, blocks2):
+            res, meta = do_zip_fn.remote(b1, b2)
+            blocks.append(res)
+            metadata.append(meta)
+
+        # TODO(ekl) it might be nice to have a progress bar here.
+        metadata = ray.get(metadata)
+        return Dataset(BlockList(blocks, metadata))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -700,6 +880,9 @@ class Dataset(Generic[T]):
         Returns:
             The number of records in the dataset.
         """
+        # Handle empty dataset.
+        if self.num_blocks() == 0:
+            return 0
 
         # For parquet, we can return the count directly from metadata.
         meta_count = self._meta_count()
@@ -788,6 +971,7 @@ class Dataset(Generic[T]):
                       path: str,
                       *,
                       filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                      try_create_dir: bool = True,
                       **arrow_parquet_args) -> None:
         """Write the dataset to parquet.
 
@@ -806,6 +990,8 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where Parquet
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
             arrow_parquet_args: Options to pass to
                 pyarrow.parquet.write_table(), which is used to write out each
                 block to a file.
@@ -815,12 +1001,14 @@ class Dataset(Generic[T]):
             path=path,
             dataset_uuid=self._uuid,
             filesystem=filesystem,
+            try_create_dir=try_create_dir,
             **arrow_parquet_args)
 
     def write_json(self,
                    path: str,
                    *,
                    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                   try_create_dir: bool = True,
                    **pandas_json_args) -> None:
         """Write the dataset to json.
 
@@ -839,6 +1027,8 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where json
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
             pandas_json_args: These args will be passed to
                 pandas.DataFrame.to_json(), which we use under the hood to
                 write out each Datasets block. These
@@ -849,12 +1039,14 @@ class Dataset(Generic[T]):
             path=path,
             dataset_uuid=self._uuid,
             filesystem=filesystem,
+            try_create_dir=try_create_dir,
             **pandas_json_args)
 
     def write_csv(self,
                   path: str,
                   *,
                   filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                  try_create_dir: bool = True,
                   **arrow_csv_args) -> None:
         """Write the dataset to csv.
 
@@ -873,6 +1065,8 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where csv
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
             arrow_csv_args: Other CSV write options to pass to pyarrow.
         """
         self.write_datasource(
@@ -880,17 +1074,20 @@ class Dataset(Generic[T]):
             path=path,
             dataset_uuid=self._uuid,
             filesystem=filesystem,
+            try_create_dir=try_create_dir,
             **arrow_csv_args)
 
-    def write_numpy(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
-        """Write the dataset to npy files.
+    def write_numpy(self,
+                    path: str,
+                    *,
+                    column: str = "value",
+                    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                    try_create_dir: bool = True) -> None:
+        """Write a tensor column of the dataset to npy files.
 
-        This is only supported for datasets of Tensor records.
-        To control the number of files, use ``.repartition()``.
+        This is only supported for datasets convertible to Arrow records that
+        contain a TensorArray column. To control the number of files, use
+        ``.repartition()``.
 
         The format of the output files will be {self._uuid}_{block_idx}.npy,
         where ``uuid`` is an unique id for the dataset.
@@ -903,13 +1100,19 @@ class Dataset(Generic[T]):
         Args:
             path: The path to the destination root directory, where npy
                 files will be written to.
+            column: The name of the table column that contains the tensor to
+                be written. This defaults to "value".
             filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
         """
         self.write_datasource(
             NumpyDatasource(),
             path=path,
             dataset_uuid=self._uuid,
-            filesystem=filesystem)
+            column=column,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir)
 
     def write_datasource(self, datasource: Datasource[T],
                          **write_args) -> None:
@@ -981,7 +1184,7 @@ class Dataset(Generic[T]):
             batch_format: The format in which to return each batch.
                 Specify "native" to use the current block format, "pandas" to
                 select ``pandas.DataFrame`` or "pyarrow" to select
-                ``pyarrow.Table/Tensor``. Default is "native".
+                ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
@@ -1249,14 +1452,15 @@ class Dataset(Generic[T]):
         """Convert this dataset into a Modin dataframe.
 
         This works by first converting this dataset into a distributed set of
-        Pandas dataframes (using ``.to_pandas()``). Please see caveats there.
-        Then the individual dataframes are used to create the modin DataFrame
-        using
+        Pandas dataframes (using ``.to_pandas_refs()``). Please see caveats
+        there. Then the individual dataframes are used to create the modin
+        DataFrame using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+        underlying data, consider using ``.to_arrow()`` or
+        ``.get_internal_block_refs()``.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1266,7 +1470,7 @@ class Dataset(Generic[T]):
 
         from modin.distributed.dataframe.pandas.partitions import (
             from_partitions)
-        pd_objs = self.to_pandas()
+        pd_objs = self.to_pandas_refs()
         return from_partitions(pd_objs, axis=0)
 
     def to_spark(self,
@@ -1282,17 +1486,45 @@ class Dataset(Generic[T]):
         core_worker = ray.worker.global_worker.core_worker
         locations = [
             core_worker.get_owner_address(block)
-            for block in self.get_blocks()
+            for block in self.get_internal_block_refs()
         ]
         return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, self.schema(), self.get_blocks(), locations)
+            spark, self.schema(), self.get_internal_block_refs(), locations)
 
-    def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
+    def to_pandas(self, limit: int = 1000) -> "pandas.DataFrame":
+        """Convert this dataset into a single Pandas DataFrame.
+
+        This is only supported for datasets convertible to Arrow records. This
+        limits the number of records returned to the provided limit.
+
+        Time complexity: O(limit)
+
+        Args:
+            limit: The maximum number of records to return.
+
+        Returns:
+            A Pandas DataFrame created from this dataset, containing a limited
+            number of records.
+        """
+
+        if self.count() > limit:
+            logger.warning(f"Only returning the first {limit} records from "
+                           "to_pandas()")
+        limited_ds = self.limit(limit)
+        blocks = limited_ds.get_internal_block_refs()
+        output = DelegatingArrowBlockBuilder()
+        for block in ray.get(blocks):
+            output.add_block(block)
+        return output.build().to_pandas()
+
+    @DeveloperAPI
+    def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+        underlying data, consider using ``.to_arrow()`` or
+        ``.get_internal_block_refs()``.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1303,23 +1535,48 @@ class Dataset(Generic[T]):
         block_to_df = cached_remote_fn(_block_to_df)
         return [block_to_df.remote(block) for block in self._blocks]
 
-    def to_numpy(self) -> List[ObjectRef[np.ndarray]]:
+    def to_numpy(self, *,
+                 column: Optional[str] = None) -> List[ObjectRef[np.ndarray]]:
         """Convert this dataset into a distributed set of NumPy ndarrays.
 
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+        underlying data, consider using ``.to_arrow()`` or
+        ``.get_internal_block_refs()``.
 
         Time complexity: O(dataset size / parallelism)
+
+        Args:
+            column: The name of the column to convert to numpy, or None to
+                specify the entire row. Required for Arrow tables.
 
         Returns:
             A list of remote NumPy ndarrays created from this dataset.
         """
 
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
-        return [block_to_ndarray.remote(block) for block in self._blocks]
+        return [
+            block_to_ndarray.remote(block, column=column)
+            for block in self._blocks
+        ]
 
-    def to_arrow(self) -> List[ObjectRef["pyarrow.Table"]]:
+    def to_arrow(self) -> List["pyarrow.Table"]:
+        """Convert this dataset into a list of Arrow tables.
+
+        This is only supported for datasets convertible to Arrow records.
+        This function is zero-copy if the existing data is already in Arrow
+        format. Otherwise, the data will be converted to Arrow format.
+
+        Time complexity: O(1) unless conversion is required.
+
+        Returns:
+            A list of Arrow tables created from this dataset.
+        """
+
+        return ray.get(self.to_arrow_refs())
+
+    @DeveloperAPI
+    def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1389,28 +1646,32 @@ class Dataset(Generic[T]):
             def __iter__(self):
                 return Iterator(self._ds)
 
-        return DatasetPipeline(Iterable(self), length=times)
+        return DatasetPipeline(Iterable(self), length=times or float("inf"))
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        """Pipeline the dataset execution by splitting its blocks into groups.
+        raise DeprecationWarning("Use .window(blocks_per_window=n) instead of "
+                                 ".pipeline(parallelism=n)")
 
-        Transformations prior to the call to ``pipeline()`` are evaluated in
+    def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
+        """Convert this into a DatasetPipeline by windowing over data blocks.
+
+        Transformations prior to the call to ``window()`` are evaluated in
         bulk on the entire dataset. Transformations done on the returned
-        pipeline are evaluated incrementally per group of blocks as data is
+        pipeline are evaluated incrementally per window of blocks as data is
         read from the output of the pipeline.
 
-        Pipelining execution allows for output to be read sooner without
+        Windowing execution allows for output to be read sooner without
         waiting for all transformations to fully execute, and can also improve
         efficiency if transforms use different resources (e.g., GPUs).
 
-        Without pipelining::
+        Without windowing::
 
             [preprocessing......]
                                   [inference.......]
                                                      [write........]
             Time ----------------------------------------------------------->
 
-        With pipelining::
+        With windowing::
 
             [prep1] [prep2] [prep3]
                     [infer1] [infer2] [infer3]
@@ -1420,20 +1681,20 @@ class Dataset(Generic[T]):
         Examples:
             >>> # Create an inference pipeline.
             >>> ds = ray.data.read_binary_files(dir)
-            >>> pipe = ds.pipeline(parallelism=10).map(infer)
-            DatasetPipeline(num_stages=2, length=40)
+            >>> pipe = ds.window(blocks_per_window=10).map(infer)
+            DatasetPipeline(num_windows=40, num_stages=2)
 
             >>> # The higher the stage parallelism, the shorter the pipeline.
-            >>> pipe = ds.pipeline(parallelism=20).map(infer)
-            DatasetPipeline(num_stages=2, length=20)
+            >>> pipe = ds.window(blocks_per_window=20).map(infer)
+            DatasetPipeline(num_windows=20, num_stages=2)
 
             >>> # Outputs can be incrementally read from the pipeline.
             >>> for item in pipe.iter_rows():
             ...    print(item)
 
         Args:
-            parallelism: The parallelism (number of blocks) per stage.
-                Increasing parallelism increases pipeline throughput, but also
+            blocks_per_window: The window size (parallelism) in blocks.
+                Increasing window size increases pipeline throughput, but also
                 increases the latency to initial output, since it decreases the
                 length of the pipeline. Setting this to infinity effectively
                 disables pipelining.
@@ -1457,7 +1718,7 @@ class Dataset(Generic[T]):
 
         class Iterable:
             def __init__(self, blocks):
-                self._splits = blocks.split(split_size=parallelism)
+                self._splits = blocks.split(split_size=blocks_per_window)
 
             def __iter__(self):
                 return Iterator(self._splits)
@@ -1466,7 +1727,7 @@ class Dataset(Generic[T]):
         return DatasetPipeline(it, length=len(it._splits))
 
     @DeveloperAPI
-    def get_blocks(self) -> List[ObjectRef[Block]]:
+    def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
 
         This function can be used for zero-copy access to the data.
@@ -1520,13 +1781,14 @@ class Dataset(Generic[T]):
             right = None
         return left, right
 
+    def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
+        left, right = self._blocks.divide(block_idx)
+        return Dataset(left), Dataset(right)
+
     def __repr__(self) -> str:
         schema = self.schema()
         if schema is None:
             schema_str = "Unknown schema"
-        elif isinstance(schema, dict):
-            schema_str = "<Tensor: shape={}, dtype={}>".format(
-                schema["shape"], schema["dtype"])
         elif isinstance(schema, type):
             schema_str = str(schema)
         else:
@@ -1538,8 +1800,6 @@ class Dataset(Generic[T]):
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
-        if count is None:
-            count = "?"
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
             len(self._blocks), count, schema_str)
 
@@ -1579,9 +1839,9 @@ def _block_to_df(block: Block):
     return block.to_pandas()
 
 
-def _block_to_ndarray(block: Block):
+def _block_to_ndarray(block: Block, column: Optional[str]):
     block = BlockAccessor.for_block(block)
-    return block.to_numpy()
+    return block.to_numpy(column)
 
 
 def _block_to_arrow(block: Block):

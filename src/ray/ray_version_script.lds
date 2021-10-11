@@ -27,8 +27,11 @@ VERSION_1.0 {
         # Others
         *ray*metrics*;
         *opencensus*;
+        *ray*rpc*;
+        *ray*gcs*;
         *ray*stats*;
         *ray*CoreWorker*;
+        *ray*PeriodicalRunner*;
         *PyInit*;
         *init_raylet*;
         *Java*;
@@ -36,5 +39,6 @@ VERSION_1.0 {
         *ray*streaming*;
         *aligned_free*;
         *aligned_malloc*;
+        *grpc*;
     local: *;
 };

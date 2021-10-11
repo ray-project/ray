@@ -1,7 +1,8 @@
 ipython
 # In TF >v2, GPU support is included in the base package.
-tensorflow==2.4.3
+tensorflow==2.5.0
+tensorflow-probability==0.13.0
 -f https://download.pytorch.org/whl/torch_stable.html
-torch==1.8.1+cu111
+torch==1.9.0+cu111
 -f https://download.pytorch.org/whl/torch_stable.html
-torchvision==0.9.1+cu111
+torchvision==0.10.0+cu111

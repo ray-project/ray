@@ -122,10 +122,6 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
-  virtual void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
-  virtual void PopUtilWorker(
-      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
-
   virtual ~IOWorkerPoolInterface(){};
 };
 
@@ -307,9 +303,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// and pop them out.
   void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
-  void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker);
-  void PopUtilWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
-
   /// See interface.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
@@ -404,7 +397,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
-      std::unordered_map<std::string, std::string> override_environment_variables = {},
       const std::string &serialized_runtime_env_context = "{}",
       const std::string &allocated_instances_serialized_json = "{}");
 
@@ -569,7 +561,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Return true if the given worker type is IO worker type. Currently, there are 2 IO
-  /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
+  /// worker types (SPILL_WORKER and RESTORE_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
@@ -595,6 +587,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
+
+  /// Create runtime env asynchronously by runtime env agent.
+  void CreateRuntimeEnv(
+      const std::string &serialized_runtime_env, const JobID &job_id,
+      const std::function<void(bool, const std::string &)> &callback,
+      const std::string &serialized_allocated_resource_instances = "{}");
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

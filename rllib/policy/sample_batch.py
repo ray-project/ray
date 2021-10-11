@@ -183,7 +183,7 @@ class SampleBatch(dict):
             >>> print(SampleBatch.concat_samples([b1, b2]))
             {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
         """
-        if isinstance(samples[0], MultiAgentBatch):
+        if any(isinstance(s, MultiAgentBatch) for s in samples):
             return MultiAgentBatch.concat_samples(samples)
         concatd_seq_lens = []
         concat_samples = []
@@ -364,6 +364,9 @@ class SampleBatch(dict):
             for i, p in enumerate(path):
                 if i == len(path) - 1:
                     curr[p] = value[permutation]
+                # Translate into list (tuples are immutable).
+                if isinstance(curr[p], tuple):
+                    curr[p] = list(curr[p])
                 curr = curr[p]
 
         tree.map_structure_with_path(_permutate_in_place, self)
@@ -688,9 +691,6 @@ class SampleBatch(dict):
         if isinstance(key, slice):
             return self._slice(key)
 
-        if not hasattr(self, key) and key in self:
-            self.accessed_keys.add(key)
-
         # Backward compatibility for when "input-dicts" were used.
         if key == "is_training":
             if log_once("SampleBatch['is_training']"):
@@ -699,6 +699,9 @@ class SampleBatch(dict):
                     new="SampleBatch.is_training",
                     error=False)
             return self.is_training
+
+        if not hasattr(self, key) and key in self:
+            self.accessed_keys.add(key)
 
         value = dict.__getitem__(self, key)
         if self.get_interceptor is not None:
@@ -719,6 +722,16 @@ class SampleBatch(dict):
         # `added_keys` and first item is already set).
         if not hasattr(self, "added_keys"):
             dict.__setitem__(self, key, item)
+            return
+
+        # Backward compatibility for when "input-dicts" were used.
+        if key == "is_training":
+            if log_once("SampleBatch['is_training']"):
+                deprecation_warning(
+                    old="SampleBatch['is_training']",
+                    new="SampleBatch.is_training",
+                    error=False)
+            self.is_training = item
             return
 
         if key not in self:
@@ -832,6 +845,11 @@ class SampleBatch(dict):
         """
         start = slice_.start or 0
         stop = slice_.stop or len(self)
+        # If stop goes beyond the length of this batch -> Make it go till the
+        # end only (including last item).
+        # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
+        if stop > len(self):
+            stop = len(self)
         assert start >= 0 and stop >= 0 and slice_.step in [1, None]
 
         if self.get(SampleBatch.SEQ_LENS) is not None and \
@@ -843,6 +861,9 @@ class SampleBatch(dict):
                     for _ in range(l):
                         self._slice_map.append((i, sum_))
                     sum_ += l
+                # In case `stop` points to the very end (lengths of this
+                # batch), return the last sequence (the -1 here makes sure we
+                # never go beyond it; would result in an index error below).
                 self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
 
             start_seq_len, start = self._slice_map[start]
@@ -1150,7 +1171,12 @@ class MultiAgentBatch:
         policy_batches = collections.defaultdict(list)
         env_steps = 0
         for s in samples:
+            # Some batches in `samples` are not MultiAgentBatch.
             if not isinstance(s, MultiAgentBatch):
+                # If empty SampleBatch: ok (just ignore).
+                if isinstance(s, SampleBatch) and len(s) <= 0:
+                    continue
+                # Otherwise: Error.
                 raise ValueError(
                     "`MultiAgentBatch.concat_samples()` can only concat "
                     "MultiAgentBatch types, not {}!".format(type(s).__name__))

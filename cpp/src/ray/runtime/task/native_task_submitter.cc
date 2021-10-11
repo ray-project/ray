@@ -30,6 +30,16 @@ RayFunction BuildRayFunction(InvocationSpec &invocation) {
   return RayFunction(ray::Language::CPP, function_descriptor);
 }
 
+template <typename T>
+static BundleID GetBundleID(const T &options) {
+  BundleID bundle_id = std::make_pair(PlacementGroupID::Nil(), -1);
+  if (!options.group.Empty()) {
+    PlacementGroupID id = PlacementGroupID::FromBinary(options.group.GetID());
+    bundle_id = std::make_pair(id, options.bundle_index);
+  }
+  return bundle_id;
+};
+
 ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
                                      const CallOptions &call_options) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
@@ -41,9 +51,10 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
     return_refs = core_worker.SubmitActorTask(
         invocation.actor_id, BuildRayFunction(invocation), invocation.args, options);
   } else {
-    return_refs = core_worker.SubmitTask(
-        BuildRayFunction(invocation), invocation.args, options, 1, false,
-        std::make_pair(PlacementGroupID::Nil(), -1), true, "");
+    BundleID bundle_id = GetBundleID(call_options);
+    return_refs =
+        core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args, options, 1,
+                               false, std::move(bundle_id), true, "");
   }
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs) {
@@ -66,6 +77,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
     name = GetFullName(create_options.global, create_options.name);
   }
   std::string ray_namespace = "";
+  BundleID bundle_id = GetBundleID(create_options);
   ray::core::ActorCreationOptions actor_options{create_options.max_restarts,
                                                 /*max_task_retries=*/0,
                                                 create_options.max_concurrency,
@@ -75,7 +87,8 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
                                                 /*is_detached=*/false,
                                                 name,
                                                 ray_namespace,
-                                                /*is_asyncio=*/false};
+                                                /*is_asyncio=*/false,
+                                                std::move(bundle_id)};
   ActorID actor_id;
   auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,
                                         actor_options, "", &actor_id);
@@ -109,7 +122,7 @@ ActorID NativeTaskSubmitter::GetActor(bool global, const std::string &actor_name
 }
 
 ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
-    const ray::internal::PlacementGroupCreationOptions &create_options) {
+    const ray::PlacementGroupCreationOptions &create_options) {
   auto full_name = GetFullName(create_options.global, create_options.name);
   auto options = ray::core::PlacementGroupCreationOptions(
       std::move(full_name), (ray::core::PlacementStrategy)create_options.strategy,

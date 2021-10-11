@@ -317,12 +317,24 @@
     prepare: python wait_cluster.py 32 1000
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
 
-- name: many_nodes_actor_test
+# TODO (yic): Add this back when we make it stable
+# - name: many_nodes_actor_test
+#   cluster:
+#     app_config: many_nodes_tests/app_config.yaml
+#     compute_template: many_nodes_tests/compute_config.yaml
+
+#   run:
+#     timeout: 7200
+#     prepare: python wait_cluster.py 500 5400
+#     script: python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000
+#     # TODO: enable failure test later
+#     #&& python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --fail --no-report && python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --no-report
+
+- name: pg_autoscaling_regression_test
   cluster:
-    app_config: many_nodes_tests/app_config.yaml
-    compute_template: many_nodes_tests/compute_config.yaml
+    app_config: placement_group_tests/app_config.yaml
+    compute_template: placement_group_tests/compute.yaml
 
   run:
-    timeout: 7200
-    prepare: python wait_cluster.py 500 5400
-    script: python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 && python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --fail --no-report && python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --no-report
+    timeout: 1200
+    script: python placement_group_tests/pg_run.py

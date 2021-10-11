@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
-from urllib.parse import urlparse
+import urllib.parse
 
 if TYPE_CHECKING:
     import pyarrow
@@ -115,12 +115,14 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                  path: str,
                  dataset_uuid: str,
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                 try_create_dir: bool = True,
                  _block_udf: Optional[Callable[[Block], Block]] = None,
                  **write_args) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
-        filesystem.create_dir(path, recursive=True)
+        if try_create_dir:
+            filesystem.create_dir(path, recursive=True)
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
         _write_block_to_file = self._write_block
@@ -133,7 +135,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             if _block_udf is not None:
                 block = _block_udf(block)
             with fs.open_output_stream(write_path) as f:
-                _write_block_to_file(f, BlockAccessor.for_block(block))
+                _write_block_to_file(f, BlockAccessor.for_block(block),
+                                     **write_args)
 
         write_block = cached_remote_fn(write_block)
 
@@ -187,9 +190,9 @@ def _resolve_paths_and_filesystem(
             filesystems inferred from the provided paths to ensure
             compatibility.
     """
+    import pyarrow as pa
     from pyarrow.fs import FileSystem, PyFileSystem, FSSpecHandler, \
         _resolve_filesystem_and_path
-    import fsspec
 
     if isinstance(paths, str):
         paths = [paths]
@@ -201,23 +204,39 @@ def _resolve_paths_and_filesystem(
         raise ValueError("Must provide at least one path.")
 
     if filesystem and not isinstance(filesystem, FileSystem):
+        err_msg = f"The filesystem passed must either conform to " \
+                  f"pyarrow.fs.FileSystem, or " \
+                  f"fsspec.spec.AbstractFileSystem. The provided " \
+                  f"filesystem was: {filesystem}"
+        try:
+            import fsspec
+        except ModuleNotFoundError:
+            # If filesystem is not a pyarrow filesystem and fsspec isn't
+            # installed, then filesystem is neither a pyarrow filesystem nor
+            # an fsspec filesystem, so we raise a TypeError.
+            raise TypeError(err_msg)
         if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
-            raise TypeError(f"The filesystem passed must either conform to "
-                            f"pyarrow.fs.FileSystem, or "
-                            f"fsspec.spec.AbstractFileSystem. The provided "
-                            f"filesystem was: {filesystem}")
+            raise TypeError(err_msg)
+
         filesystem = PyFileSystem(FSSpecHandler(filesystem))
 
     resolved_paths = []
     for path in paths:
-        if filesystem is not None:
-            # If we provide a filesystem, _resolve_filesystem_and_path will not
-            # slice off the protocol from the provided URI/path when resolved.
-            path = _unwrap_protocol(path)
-        resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-            path, filesystem)
+        try:
+            resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
+                path, filesystem)
+        except pa.lib.ArrowInvalid as e:
+            if "Cannot parse URI" in str(e):
+                resolved_filesystem, resolved_path = (
+                    _resolve_filesystem_and_path(
+                        _encode_url(path), filesystem))
+                resolved_path = _decode_url(resolved_path)
+            else:
+                raise
         if filesystem is None:
             filesystem = resolved_filesystem
+        else:
+            resolved_path = _unwrap_protocol(resolved_path)
         resolved_path = filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
 
@@ -241,6 +260,7 @@ def _expand_paths(paths: Union[str, List[str]],
             reading these files.
     """
     from pyarrow.fs import FileType
+
     expanded_paths = []
     file_infos = []
     for path in paths:
@@ -257,9 +277,10 @@ def _expand_paths(paths: Union[str, List[str]],
     return expanded_paths, file_infos
 
 
-def _expand_directory(path: str,
-                      filesystem: "pyarrow.fs.FileSystem",
-                      exclude_prefixes: List[str] = [".", "_"]) -> List[str]:
+def _expand_directory(
+        path: str,
+        filesystem: "pyarrow.fs.FileSystem",
+        exclude_prefixes: Optional[List[str]] = None) -> List[str]:
     """
     Expand the provided directory path to a list of file paths.
 
@@ -274,6 +295,9 @@ def _expand_directory(path: str,
     Returns:
         A list of file paths contained in the provided directory.
     """
+    if exclude_prefixes is None:
+        exclude_prefixes = [".", "_"]
+
     from pyarrow.fs import FileSelector
     selector = FileSelector(path, recursive=True)
     files = filesystem.get_file_info(selector)
@@ -286,18 +310,30 @@ def _expand_directory(path: str,
         if not file_path.startswith(base_path):
             continue
         relative = file_path[len(base_path):]
-        if any(relative.startswith(prefix) for prefix in [".", "_"]):
+        if any(relative.startswith(prefix) for prefix in exclude_prefixes):
             continue
         filtered_paths.append((file_path, file_))
     # We sort the paths to guarantee a stable order.
     return zip(*sorted(filtered_paths, key=lambda x: x[0]))
 
 
+def _is_url(path) -> bool:
+    return urllib.parse.urlparse(path).scheme != ""
+
+
+def _encode_url(path):
+    return urllib.parse.quote(path, safe="/:")
+
+
+def _decode_url(path):
+    return urllib.parse.unquote(path)
+
+
 def _unwrap_protocol(path):
     """
     Slice off any protocol prefixes on path.
     """
-    parsed = urlparse(path)
+    parsed = urllib.parse.urlparse(path)
     return parsed.netloc + parsed.path
 
 

@@ -81,6 +81,13 @@ build_wheel_windows() {
       unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
       install_ray
       cd "${WORKSPACE_DIR}"/python
+      # Set the commit SHA in __init__.py.
+      if [ -n "$TRAVIS_COMMIT" ]; then
+        sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
+      else
+        echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
+        exit 1
+      fi
       # build ray wheel
       python setup.py --quiet bdist_wheel
       # build ray-cpp wheel

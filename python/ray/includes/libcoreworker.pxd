@@ -2,7 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 
-from libc.stdint cimport int64_t
+from libc.stdint cimport int64_t, uint64_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.pair cimport pair as c_pair
@@ -120,7 +120,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus RemovePlacementGroup(
             const CPlacementGroupID &placement_group_id)
         CRayStatus WaitPlacementGroupReady(
-            const CPlacementGroupID &placement_group_id, int timeout_ms)
+            const CPlacementGroupID &placement_group_id, int timeout_seconds)
         c_vector[CObjectReference] SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -177,7 +177,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_vector[CObjectReference] GetObjectRefs(
                 const c_vector[CObjectID] &object_ids) const
 
-        void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
                               CAddress *owner_address,
                               c_string *object_status)
@@ -253,6 +252,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int64_t GetNumTasksSubmitted() const
 
         int64_t GetNumLeasesRequested() const
+
+        unordered_map[c_string, c_vector[uint64_t]] GetActorCallStats() const
 
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type

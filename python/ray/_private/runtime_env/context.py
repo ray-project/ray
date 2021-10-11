@@ -4,9 +4,13 @@ import os
 import sys
 from typing import Dict, List, Optional
 
+from ray.util.annotations import DeveloperAPI
+from ray.core.generated.common_pb2 import Language
+
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class RuntimeEnvContext:
     """A context used to describe the created runtime env."""
 
@@ -18,6 +22,10 @@ class RuntimeEnvContext:
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable
+        # TODO(edoakes): this should not be in the context but just passed to
+        # the per-resource manager constructor. However, it's currently used in
+        # the legacy Ray client codepath to pass the resources dir to the shim
+        # process. We should remove it once Ray client uses the agent.
         self.resources_dir: str = resources_dir
 
     def serialize(self) -> str:
@@ -27,10 +35,13 @@ class RuntimeEnvContext:
     def deserialize(json_string):
         return RuntimeEnvContext(**json.loads(json_string))
 
-    def exec_worker(self, passthrough_args: List[str]):
+    def exec_worker(self, passthrough_args: List[str], language: Language):
         os.environ.update(self.env_vars)
-        exec_command = " ".join([f"exec {self.py_executable}"] +
-                                passthrough_args)
+        if language == Language.PYTHON:
+            executable = f"exec {self.py_executable}"
+        else:
+            executable = "exec"
+        exec_command = " ".join([executable] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
         logger.info(f"Exec'ing worker with command: {command_str}")
         os.execvp("bash", ["bash", "-c", command_str])

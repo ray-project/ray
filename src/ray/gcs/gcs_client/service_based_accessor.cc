@@ -252,7 +252,8 @@ Status ServiceBasedActorInfoAccessor::AsyncKillActor(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
-    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+    const ray::TaskSpecification &task_spec,
+    const rpc::ClientCallback<rpc::CreateActorReply> &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
   rpc::CreateActorRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
@@ -262,7 +263,7 @@ Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
                 : Status(StatusCode(reply.status().code()), reply.status().message());
-        callback(status);
+        callback(status, reply);
       });
   return Status::OK();
 }
@@ -730,7 +731,7 @@ Status ServiceBasedNodeResourceInfoAccessor::AsyncUpdateResources(
         });
   };
 
-  sequencer_.Post(node_id, operation);
+  sequencer_.Post(node_id, std::move(operation));
   return Status::OK();
 }
 

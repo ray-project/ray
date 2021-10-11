@@ -12,12 +12,13 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import ray
-from ray._private.runtime_env import RuntimeEnvContext
 from ray._private.runtime_env.conda_utils import (get_conda_activate_commands,
                                                   get_or_create_conda_env)
-from ray._private.utils import try_to_create_directory
+from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
-                                get_release_wheel_url)
+                                get_release_wheel_url, try_to_create_directory)
+
+default_logger = logging.getLogger(__name__)
 
 
 def _resolve_current_ray_path():
@@ -37,11 +38,9 @@ def _resolve_install_from_source_ray_dependencies():
     return ray_install_requires
 
 
-def _inject_ray_to_conda_site(conda_path,
-                              logger: Optional[logging.Logger] = None):
+def _inject_ray_to_conda_site(
+        conda_path, logger: Optional[logging.Logger] = default_logger):
     """Write the current Ray site package directory to a new site"""
-    if logger is None:
-        logger = logging.getLogger(__name__)
     python_binary = os.path.join(conda_path, "bin/python")
     site_packages_path = subprocess.check_output(
         [python_binary, "-c",
@@ -66,58 +65,6 @@ def _current_py_version():
     return ".".join(map(str, sys.version_info[:3]))  # like 3.6.10
 
 
-def setup_conda_or_pip(runtime_env: dict,
-                       context: RuntimeEnvContext,
-                       logger: Optional[logging.Logger] = None):
-    if logger is None:
-        logger = logging.getLogger(__name__)
-
-    if not runtime_env.get("conda") and not runtime_env.get("pip"):
-        return
-
-    logger.debug(f"Setting up conda or pip for runtime_env: {runtime_env}")
-    conda_dict = get_conda_dict(runtime_env, context.resources_dir)
-    if isinstance(runtime_env.get("conda"), str):
-        conda_env_name = runtime_env["conda"]
-    else:
-        assert conda_dict is not None
-        ray_pip = current_ray_pip_specifier(logger)
-        if ray_pip:
-            extra_pip_dependencies = [ray_pip, "ray[default]"]
-        elif runtime_env.get("_inject_current_ray"):
-            extra_pip_dependencies = (
-                _resolve_install_from_source_ray_dependencies())
-        else:
-            extra_pip_dependencies = []
-        conda_dict = inject_dependencies(conda_dict, _current_py_version(),
-                                         extra_pip_dependencies)
-        logger.info(f"Setting up conda environment with {runtime_env}")
-        # It is not safe for multiple processes to install conda envs
-        # concurrently, even if the envs are different, so use a global
-        # lock for all conda installs.
-        # See https://github.com/ray-project/ray/issues/17086
-        file_lock_name = "ray-conda-install.lock"
-        with FileLock(os.path.join(context.resources_dir, file_lock_name)):
-            conda_dir = os.path.join(context.resources_dir, "conda")
-            try_to_create_directory(conda_dir)
-            conda_yaml_path = os.path.join(conda_dir, "environment.yml")
-            with open(conda_yaml_path, "w") as file:
-                # Sort keys because we hash based on the file contents,
-                # and we don't want the hash to depend on the order
-                # of the dependencies.
-                yaml.dump(conda_dict, file, sort_keys=True)
-            conda_env_name = get_or_create_conda_env(
-                conda_yaml_path, conda_dir, logger=logger)
-
-        if runtime_env.get("_inject_current_ray"):
-            conda_path = os.path.join(conda_dir, conda_env_name)
-            _inject_ray_to_conda_site(conda_path, logger)
-
-    context.py_executable = "python"
-    context.command_prefix += get_conda_activate_commands(conda_env_name)
-    logger.info(f"Finished setting up runtime environment at {conda_env_name}")
-
-
 def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
     """ Construct a conda dependencies dict from a runtime env.
 
@@ -134,7 +81,7 @@ def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
         else:
             return None
     if runtime_env.get("pip"):
-        requirements_txt = runtime_env["pip"]
+        requirements_txt = "\n".join(runtime_env["pip"]) + "\n"
         pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
         pip_hash_str = f"pip-generated-{pip_hash}"
 
@@ -157,7 +104,7 @@ def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
 
 
 def current_ray_pip_specifier(
-        logger: Optional[logging.Logger] = None) -> Optional[str]:
+        logger: Optional[logging.Logger] = default_logger) -> Optional[str]:
     """The pip requirement specifier for the running version of Ray.
 
     Returns:
@@ -169,8 +116,6 @@ def current_ray_pip_specifier(
         Returns "https://s3-us-west-2.amazonaws.com/ray-wheels/[..].whl"
             if running a stable release, a nightly or a specific commit
     """
-    if logger is None:
-        logger = logging.getLogger(__name__)
     if os.environ.get("RAY_CI_POST_WHEEL_TESTS"):
         # Running in Buildkite CI after the wheel has been built.
         # Wheels are at in the ray/.whl directory, but use relative path to
@@ -242,3 +187,58 @@ def inject_dependencies(
         deps.append({"pip": pip_dependencies})
 
     return conda_dict
+
+
+class CondaManager:
+    def __init__(self, resources_dir: str):
+        self._resources_dir = resources_dir
+
+    def setup(self,
+              runtime_env: dict,
+              context: RuntimeEnvContext,
+              logger: Optional[logging.Logger] = default_logger):
+        if not runtime_env.get("conda") and not runtime_env.get("pip"):
+            return
+
+        logger.debug(f"Setting up conda or pip for runtime_env: {runtime_env}")
+        conda_dict = get_conda_dict(runtime_env, self._resources_dir)
+        if isinstance(runtime_env.get("conda"), str):
+            conda_env_name = runtime_env["conda"]
+        else:
+            assert conda_dict is not None
+            ray_pip = current_ray_pip_specifier(logger=logger)
+            if ray_pip:
+                extra_pip_dependencies = [ray_pip, "ray[default]"]
+            elif runtime_env.get("_inject_current_ray"):
+                extra_pip_dependencies = (
+                    _resolve_install_from_source_ray_dependencies())
+            else:
+                extra_pip_dependencies = []
+            conda_dict = inject_dependencies(conda_dict, _current_py_version(),
+                                             extra_pip_dependencies)
+            logger.info(f"Setting up conda environment with {runtime_env}")
+            # It is not safe for multiple processes to install conda envs
+            # concurrently, even if the envs are different, so use a global
+            # lock for all conda installs.
+            # See https://github.com/ray-project/ray/issues/17086
+            file_lock_name = "ray-conda-install.lock"
+            with FileLock(os.path.join(self._resources_dir, file_lock_name)):
+                conda_dir = os.path.join(self._resources_dir, "conda")
+                try_to_create_directory(conda_dir)
+                conda_yaml_path = os.path.join(conda_dir, "environment.yml")
+                with open(conda_yaml_path, "w") as file:
+                    # Sort keys because we hash based on the file contents,
+                    # and we don't want the hash to depend on the order
+                    # of the dependencies.
+                    yaml.dump(conda_dict, file, sort_keys=True)
+                conda_env_name = get_or_create_conda_env(
+                    conda_yaml_path, conda_dir, logger=logger)
+
+            if runtime_env.get("_inject_current_ray"):
+                conda_path = os.path.join(conda_dir, conda_env_name)
+                _inject_ray_to_conda_site(conda_path, logger=logger)
+
+        context.py_executable = "python"
+        context.command_prefix += get_conda_activate_commands(conda_env_name)
+        logger.info(
+            f"Finished setting up runtime environment at {conda_env_name}")

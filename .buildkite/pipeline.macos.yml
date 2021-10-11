@@ -64,8 +64,8 @@ steps:
   commands:
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac --
-      //:all python/ray/serve/... python/ray/new_dashboard/... -rllib/... -core_worker_test
+    - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac,-post_wheel_build --
+      //:all python/ray/serve/... python/ray/dashboard/... -rllib/... -core_worker_test
     - *epilogue_commands
 
 - label: ":mac: :apple: Worker"

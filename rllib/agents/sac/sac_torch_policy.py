@@ -5,6 +5,7 @@ PyTorch policy class used for SAC.
 import gym
 from gym.spaces import Box, Discrete
 import logging
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
@@ -314,26 +315,21 @@ def actor_critic_loss(
         # the Q-net(s)' variables.
         actor_loss = torch.mean(alpha.detach() * log_pis_t - q_t_det_policy)
 
-    # Save for stats function.
-    policy.q_t = q_t
-    policy.policy_t = policy_t
-    policy.log_pis_t = log_pis_t
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["q_t"] = q_t
+    model.tower_stats["policy_t"] = policy_t
+    model.tower_stats["log_pis_t"] = log_pis_t
+    model.tower_stats["actor_loss"] = actor_loss
+    model.tower_stats["critic_loss"] = critic_loss
+    model.tower_stats["alpha_loss"] = alpha_loss
 
-    # Store td-error in model, such that for multi-GPU, we do not override
-    # them during the parallel loss phase. TD-error tensor in final stats
-    # can then be concatenated and retrieved for each individual batch item.
-    model.td_error = td_error
-
-    policy.actor_loss = actor_loss
-    policy.critic_loss = critic_loss
-    policy.alpha_loss = alpha_loss
-    policy.log_alpha_value = model.log_alpha
-    policy.alpha_value = alpha
-    policy.target_entropy = model.target_entropy
+    # TD-error tensor in final stats
+    # will be concatenated and retrieved for each individual batch item.
+    model.tower_stats["td_error"] = td_error
 
     # Return all loss terms corresponding to our optimizers.
-    return tuple([policy.actor_loss] + policy.critic_loss +
-                 [policy.alpha_loss])
+    return tuple([actor_loss] + critic_loss + [alpha_loss])
 
 
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
@@ -346,17 +342,23 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     Returns:
         Dict[str, TensorType]: The stats dict.
     """
+    q_t = torch.stack(policy.get_tower_stats("q_t"))
+
     return {
-        "actor_loss": torch.mean(policy.actor_loss),
-        "critic_loss": torch.mean(torch.stack(policy.critic_loss)),
-        "alpha_loss": torch.mean(policy.alpha_loss),
-        "alpha_value": torch.mean(policy.alpha_value),
-        "log_alpha_value": torch.mean(policy.log_alpha_value),
-        "target_entropy": policy.target_entropy,
-        "policy_t": torch.mean(policy.policy_t),
-        "mean_q": torch.mean(policy.q_t),
-        "max_q": torch.max(policy.q_t),
-        "min_q": torch.min(policy.q_t),
+        "actor_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("actor_loss"))),
+        "critic_loss": torch.mean(
+            torch.stack(tree.flatten(policy.get_tower_stats("critic_loss")))),
+        "alpha_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("alpha_loss"))),
+        "alpha_value": torch.exp(policy.model.log_alpha),
+        "log_alpha_value": policy.model.log_alpha,
+        "target_entropy": policy.model.target_entropy,
+        "policy_t": torch.mean(
+            torch.stack(policy.get_tower_stats("policy_t"))),
+        "mean_q": torch.mean(q_t),
+        "max_q": torch.max(q_t),
+        "min_q": torch.min(q_t),
     }
 
 
@@ -430,9 +432,9 @@ class ComputeTDErrorMixin:
             # (one TD-error value per item in batch to update PR weights).
             actor_critic_loss(self, self.model, None, input_dict)
 
-            # `self.td_error` is set within actor_critic_loss call. Return
-            # its updated value here.
-            return self.td_error
+            # `self.model.td_error` is set within actor_critic_loss call.
+            # Return its updated value here.
+            return self.model.tower_stats["td_error"]
 
         # Assign the method to policy (self) for later usage.
         self.compute_td_error = compute_td_error

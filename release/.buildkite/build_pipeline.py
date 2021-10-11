@@ -61,7 +61,9 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_1tb_1000_partition",
         "non_streaming_shuffle_1tb_1000_partition",
         "shuffle_1tb_5000_partitions",
-        "non_streaming_shuffle_1tb_5000_partitions",
+        # TODO(sang): It doesn't even work without spilling
+        # as it hits the scalability limit.
+        # "non_streaming_shuffle_1tb_5000_partitions",
         "decision_tree_autoscaling",
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),
@@ -80,6 +82,8 @@ CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
         "shuffle_data_loader",
+        "pipelined_training_50_gb",
+        "pipelined_ingestion_1500_gb_15_windows",
     ],
 }
 
@@ -95,6 +99,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
+        "pg_autoscaling_regression_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -148,6 +153,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
+        "serve_micro_benchmark",
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
         "rte_many_tasks_actors",
@@ -228,10 +234,15 @@ DEFAULT_STEP_TEMPLATE = {
     "plugins": [{
         "docker#v3.8.0": {
             "image": "rayproject/ray",
-            "propagate-environment": True
+            "propagate-environment": True,
+            "volumes": [
+                "/tmp/ray_release_test_artifacts:"
+                "/tmp/ray_release_test_artifacts"
+            ],
         }
     }],
-    "commands": []
+    "commands": [],
+    "artifact_paths": ["/tmp/ray_release_test_artifacts/**/*"],
 }
 
 
@@ -403,10 +414,12 @@ def build_pipeline(steps):
             cmd = str(f"RAY_REPO=\"{RAY_REPO}\" "
                       f"RAY_BRANCH=\"{RAY_BRANCH}\" "
                       f"RAY_VERSION=\"{RAY_VERSION}\" "
+                      f"RELEASE_RESULTS_DIR=/tmp/artifacts "
                       f"python release/e2e.py "
                       f"--category {RAY_BRANCH} "
                       f"--test-config {test_file} "
-                      f"--test-name {test_name}")
+                      f"--test-name {test_name} "
+                      f"--keep-results-dir")
 
             if test_name.smoke_test:
                 logging.info("This test will run as a smoke test.")
@@ -427,8 +440,9 @@ def build_pipeline(steps):
             step_conf["commands"] = [
                 "pip install -q -r release/requirements.txt",
                 "pip install -U boto3 botocore",
-                f"git clone -b {RAY_TEST_BRANCH} {RAY_TEST_REPO} ~/ray",
-                cmd,
+                f"git clone -b {RAY_TEST_BRANCH} {RAY_TEST_REPO} ~/ray", cmd,
+                "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
+                "|| true"
             ]
 
             step_conf["label"] = f"{test_name} ({RAY_BRANCH}) - " \

@@ -1,36 +1,23 @@
 import os
 
 import pytest
-
-import torch
-import tensorflow as tf
-
 import ray
+import ray.util.sgd.v2 as sgd
 from ray import tune, cloudpickle
 from ray.tune import TuneError
-
-import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2 import Trainer
-from ray.util.sgd.v2.constants import TUNE_CHECKPOINT_FILE_NAME
 from ray.util.sgd.v2.backends.backend import Backend, BackendConfig
+from ray.util.sgd.v2.constants import TUNE_CHECKPOINT_FILE_NAME
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
-from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
-    fashion_mnist_train_func
+from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func \
+    as fashion_mnist_train_func
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
 @pytest.fixture
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_4_cpus_4_gpus():
-    address_info = ray.init(num_cpus=2, num_gpus=2)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -83,13 +70,6 @@ def test_tune_torch_fashion_mnist(ray_start_8_cpus):
     torch_fashion_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
 
-@pytest.mark.skipif(
-    torch.cuda.device_count() < 2,
-    reason="Only run if multiple GPUs are available.")
-def test_tune_fashion_mnist_gpu(ray_start_4_cpus_4_gpus):
-    torch_fashion_mnist(num_workers=2, use_gpu=True, num_samples=1)
-
-
 def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
     epochs = 2
     trainer = Trainer("tensorflow", num_workers=num_workers, use_gpu=use_gpu)
@@ -111,13 +91,6 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
 
 def test_tune_tensorflow_mnist(ray_start_8_cpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=False, num_samples=2)
-
-
-@pytest.mark.skipif(
-    len(tf.config.list_physical_devices("GPU")) < 2,
-    reason="Only run if multiple GPUs are available.")
-def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_4_gpus):
-    tune_tensorflow_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
 
 def test_tune_error(ray_start_2_cpus):

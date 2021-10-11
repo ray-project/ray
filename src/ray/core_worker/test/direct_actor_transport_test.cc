@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// clang-format off
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -21,6 +22,9 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "mock/ray/core_worker/actor_creator.h"
+#include "mock/ray/core_worker/task_manager.h"
+// clang-format on
 
 // clang-format off
 #include "mock/ray/core_worker/task_manager.h"
@@ -92,20 +96,23 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 class DirectActorSubmitterTest : public ::testing::Test {
  public:
   DirectActorSubmitterTest()
-      : worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
-        store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
-        submitter_(
+      : client_pool_(
             std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
               num_clients_connected_++;
               return worker_client_;
-            }),
-            store_, task_finisher_, [this](const ActorID &actor_id, int64_t num_queued) {
-              last_queue_warning_ = num_queued;
-            }) {}
+            })),
+        worker_client_(std::make_shared<MockWorkerClient>()),
+        store_(std::make_shared<CoreWorkerMemoryStore>()),
+        task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
+        submitter_(*client_pool_, *store_, *task_finisher_, actor_creator_,
+                   [this](const ActorID &actor_id, int64_t num_queued) {
+                     last_queue_warning_ = num_queued;
+                   }) {}
 
   int num_clients_connected_ = 0;
   int64_t last_queue_warning_ = 0;
+  MockActorCreatorInterface actor_creator_;
+  std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskFinisherInterface> task_finisher_;

@@ -1,8 +1,6 @@
 import math
 import time
-from abc import ABC
 from collections import defaultdict, OrderedDict
-from collections.abc import Iterable
 from enum import Enum
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -12,24 +10,23 @@ from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
-                              ReplicaTag)
+                              ReplicaTag, ReplicaName)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-                                 MAX_NUM_DELETED_DEPLOYMENTS)
-from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.constants import (
+    CONTROLLER_STARTUP_GRACE_PERIOD_S, SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
+    MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT, MAX_NUM_DELETED_DEPLOYMENTS)
+from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
-
-CHECKPOINT_KEY = "serve-backend-state-checkpoint"
-SLOW_STARTUP_WARNING_S = 30
-SLOW_STARTUP_WARNING_PERIOD_S = 30
+from ray.serve.version import BackendVersion, VersionedReplica
+from ray.util.placement_group import PlacementGroup
 
 
 class ReplicaState(Enum):
-    SHOULD_START = 1
-    STARTING_OR_UPDATING = 2
-    RUNNING = 3
-    SHOULD_STOP = 4
+    STARTING = 1
+    UPDATING = 2
+    RECOVERING = 3
+    RUNNING = 4
     STOPPING = 5
 
 
@@ -47,6 +44,10 @@ class GoalStatus(Enum):
     SUCCESSFULLY_DELETED = 4
     FAILED = 5
 
+
+CHECKPOINT_KEY = "serve-backend-state-checkpoint"
+SLOW_STARTUP_WARNING_S = 30
+SLOW_STARTUP_WARNING_PERIOD_S = 30
 
 ALL_REPLICA_STATES = list(ReplicaState)
 USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
@@ -67,11 +68,15 @@ class ActorReplicaWrapper:
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
+        self._controller_namespace = ray.serve.api._get_controller_namespace(
+            detached)
+
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
 
         self._ready_obj_ref = None
-        self._drain_obj_ref = None
+        self._graceful_shutdown_ref = None
+        self._graceful_shutdown_timeout_s = None
         self._actor_resources = None
         self._health_check_ref = None
 
@@ -83,67 +88,125 @@ class ActorReplicaWrapper:
     def __get_state__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
         del clean_dict["_ready_obj_ref"]
-        del clean_dict["_drain_obj_ref"]
+        del clean_dict["_graceful_shutdown_ref"]
         return clean_dict
 
     def __set_state__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._ready_obj_ref = None
-        self._drain_obj_ref = None
+        self._graceful_shutdown_ref = None
 
     @property
-    def actor_handle(self) -> ActorHandle:
-        return ray.get_actor(self._actor_name)
+    def replica_tag(self) -> str:
+        return self._replica_tag
 
-    def start_or_update(self, backend_info: BackendInfo):
-        self._actor_resources = backend_info.replica_config.resource_dict
+    @property
+    def backend_tag(self) -> str:
+        return self._backend_tag
 
-        # Feature flagging because of placement groups doesn't handle
-        # newly added nodes.
-        # https://github.com/ray-project/ray/issues/15801
-        if USE_PLACEMENT_GROUP:
+    @property
+    def actor_handle(self) -> Optional[ActorHandle]:
+        if not self._actor_handle:
+            try:
+                self._actor_handle = ray.get_actor(
+                    self._actor_name, namespace=self._controller_namespace)
+            except ValueError:
+                self._actor_handle = None
+
+        return self._actor_handle
+
+    def create_placement_group(self, placement_group_name: str,
+                               actor_resources: dict) -> PlacementGroup:
+        # Only need one placement group per actor
+        if self._placement_group:
+            return self._placement_group
+
+        logger.debug("Creating placement group '{}' for deployment '{}'".
+                     format(placement_group_name, self.backend_tag) +
+                     f" component=serve deployment={self.backend_tag}")
+
+        self._placement_group = ray.util.placement_group(
+            [actor_resources],
+            lifetime="detached" if self._detached else None,
+            name=placement_group_name)
+
+        return self._placement_group
+
+    def get_placement_group(self,
+                            placement_group_name) -> Optional[PlacementGroup]:
+        if not self._placement_group:
             try:
                 self._placement_group = ray.util.get_placement_group(
-                    self._placement_group_name)
+                    placement_group_name)
             except ValueError:
                 self._placement_group = None
 
-            if self._placement_group is None:
-                logger.debug(
-                    "Creating placement group '{}' for deployment '{}'".format(
-                        self._placement_group_name, self._backend_tag) +
-                    f" component=serve deployment={self._backend_tag}")
-                self._placement_group = ray.util.placement_group(
-                    [self._actor_resources],
-                    lifetime="detached" if self._detached else None,
-                    name=self._placement_group_name)
+        return self._placement_group
 
-        try:
-            self._actor_handle = ray.get_actor(self._actor_name)
-        except ValueError:
-            self._actor_handle = None
+    def start(self, backend_info: BackendInfo, version: BackendVersion):
+        """
+        Start a new actor for current BackendReplica instance.
+        """
+        self._actor_resources = backend_info.replica_config.resource_dict
+        self._graceful_shutdown_timeout_s = (
+            backend_info.backend_config.graceful_shutdown_timeout_s)
+        if USE_PLACEMENT_GROUP:
+            self._placement_group = self.create_placement_group(
+                self._placement_group_name, self._actor_resources)
 
-        if self._actor_handle is None:
-            logger.debug("Starting replica '{}' for deployment '{}'.".format(
-                self._replica_tag, self._backend_tag) +
-                         f" component=serve deployment={self._backend_tag} "
-                         f"replica={self._replica_tag}")
+        logger.debug(f"Starting replica {self.replica_tag} for deployment "
+                     f"{self.backend_tag} component=serve deployment="
+                     f"{self.backend_tag} replica={self.replica_tag}")
 
-            self._actor_handle = backend_info.actor_def.options(
-                name=self._actor_name,
-                lifetime="detached" if self._detached else None,
-                placement_group=self._placement_group,
-                placement_group_capture_child_tasks=False,
-                **backend_info.replica_config.ray_actor_options).remote(
-                    self._backend_tag, self._replica_tag,
-                    backend_info.replica_config.init_args,
-                    backend_info.backend_config, self._controller_name,
-                    self._detached)
+        self._actor_handle = backend_info.actor_def.options(
+            name=self._actor_name,
+            namespace=self._controller_namespace,
+            lifetime="detached" if self._detached else None,
+            placement_group=self._placement_group,
+            placement_group_capture_child_tasks=False,
+            **backend_info.replica_config.ray_actor_options).remote(
+                self.backend_tag, self.replica_tag,
+                backend_info.replica_config.init_args,
+                backend_info.replica_config.init_kwargs,
+                backend_info.backend_config.to_proto_bytes(), version,
+                self._controller_name, self._detached)
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
 
-    def check_ready(self) -> ReplicaStartupStatus:
+    def update_user_config(self, user_config: Any):
+        """
+        Update user config of existing actor behind current
+        BackendReplica instance.
+        """
+        logger.debug(f"Updating replica {self.replica_tag} for deployment "
+                     f"{self.backend_tag} component=serve deployment="
+                     f"{self.backend_tag} replica={self.replica_tag} "
+                     f"with user_config {user_config}")
+
+        self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+            user_config)
+
+    def recover(self):
+        """
+        Recover states in BackendReplica instance by fetching running actor
+        status
+        """
+        logger.debug(f"Recovering replica {self.replica_tag} for deployment "
+                     f"{self.backend_tag} component=serve deployment="
+                     f"{self.backend_tag} replica={self.replica_tag}")
+
+        self._actor_handle = self.actor_handle
+        if USE_PLACEMENT_GROUP:
+            self._placement_group = self.get_placement_group(
+                self._placement_group_name)
+
+        # Running actor handle already has all info needed, thus successful
+        # starting simply means retrieving replica version hash from actor
+        self._ready_obj_ref = self._actor_handle.get_version.remote()
+
+    def check_ready(
+            self) -> Tuple[ReplicaStartupStatus, Optional[BackendVersion]]:
         """
         Check if current replica has started by making ray API calls on
         relevant actor / object ref.
@@ -156,19 +219,25 @@ class ActorReplicaWrapper:
                     - replica __init__() failed.
                 SUCCEEDED:
                     - replica __init__() and reconfigure() succeeded.
+            version (BackendVersion):
+                None:
+                    - replica reconfigure() haven't returned OR
+                    - replica __init__() failed.
+                version:
+                    - replica __init__() and reconfigure() succeeded.
         """
         ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if len(ready) == 0:
-            return ReplicaStartupStatus.PENDING
+            return ReplicaStartupStatus.PENDING, None
         elif len(ready) > 0:
             try:
-                ray.get(ready)
+                version = ray.get(ready)[0]
             except Exception:
-                return ReplicaStartupStatus.FAILED
+                return ReplicaStartupStatus.FAILED, None
 
-        return ReplicaStartupStatus.SUCCEEDED
+        return ReplicaStartupStatus.SUCCEEDED, version
 
     @property
     def actor_resources(self) -> Dict[str, float]:
@@ -178,19 +247,24 @@ class ActorReplicaWrapper:
     def available_resources(self) -> Dict[str, float]:
         return ray.available_resources()
 
-    def graceful_stop(self) -> None:
-        """Request the actor to exit gracefully."""
+    def graceful_stop(self) -> Duration:
+        """Request the actor to exit gracefully.
+
+        Returns the timeout after which to kill the actor.
+        """
         try:
             handle = ray.get_actor(self._actor_name)
-            self._drain_obj_ref = handle.drain_pending_queries.remote()
+            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
             pass
+
+        return self._graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:
         """Check if the actor has exited."""
         try:
             handle = ray.get_actor(self._actor_name)
-            ready, _ = ray.wait([self._drain_obj_ref], timeout=0)
+            ready, _ = ray.wait([self._graceful_shutdown_ref], timeout=0)
             stopped = len(ready) == 1
             if stopped:
                 ray.kill(handle, no_restart=True)
@@ -224,66 +298,10 @@ class ActorReplicaWrapper:
             return
 
         try:
-            ray.util.remove_placement_group(
-                ray.util.get_placement_group(self._placement_group_name))
+            if self._placement_group is not None:
+                ray.util.remove_placement_group(self._placement_group)
         except ValueError:
             pass
-
-
-class BackendVersion:
-    def __init__(self,
-                 code_version: Optional[str],
-                 user_config: Optional[Any] = None):
-        if code_version is not None and not isinstance(code_version, str):
-            raise TypeError(
-                f"code_version must be str, got {type(code_version)}.")
-        if code_version is None:
-            self.unversioned = True
-            self.code_version = get_random_letters()
-        else:
-            self.unversioned = False
-            self.code_version = code_version
-        self.user_config_hash = self._hash_user_config(user_config)
-        self._hash = hash((self.code_version, self.user_config_hash))
-
-    def _hash_user_config(self, user_config: Any) -> int:
-        """Hash the user config.
-
-        We want users to be able to pass lists and dictionaries for
-        convenience, but these are not hashable types because they're mutable.
-
-        This supports lists and dictionaries by recursively converting them
-        into immutable tuples and then hashing them.
-        """
-        try:
-            return hash(user_config)
-        except TypeError:
-            pass
-
-        if isinstance(user_config, dict):
-            keys = tuple(sorted(user_config))
-            val_hashes = tuple(
-                self._hash_user_config(user_config[k]) for k in keys)
-            return hash((hash(keys), hash(val_hashes)))
-        elif isinstance(user_config, Iterable):
-            return hash(
-                tuple(self._hash_user_config(item) for item in user_config))
-        else:
-            raise TypeError(
-                "user_config must contain only lists, dicts, or hashable "
-                f"types. Got {type(user_config)}.")
-
-    def __hash__(self) -> int:
-        return self._hash
-
-    def __eq__(self, other: Any) -> bool:
-        return self._hash == other._hash
-
-
-class VersionedReplica(ABC):
-    @property
-    def version(self) -> BackendVersion:
-        pass
 
 
 class BackendReplica(VersionedReplica):
@@ -296,8 +314,8 @@ class BackendReplica(VersionedReplica):
                  replica_tag: ReplicaTag, backend_tag: BackendTag,
                  version: BackendVersion):
         self._actor = ActorReplicaWrapper(
-            format_actor_name(replica_tag, controller_name), detached,
-            controller_name, replica_tag, backend_tag)
+            format_actor_name(replica_tag), detached, controller_name,
+            replica_tag, backend_tag)
         self._controller_name = controller_name
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
@@ -305,27 +323,19 @@ class BackendReplica(VersionedReplica):
         self._start_time = None
         self._prev_slow_startup_warning_time = None
 
-        self._state = ReplicaState.SHOULD_START
-
     def __get_state__(self) -> Dict[Any, Any]:
         return self.__dict__.copy()
 
     def __set_state__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
-        self._recover_from_checkpoint()
-
-    def _recover_from_checkpoint(self) -> None:
-        if self._state == ReplicaState.STARTING_OR_UPDATING:
-            # We do not need to pass in the class here because the actor
-            # creation has already been started if this class was checkpointed
-            # in the STARTING_OR_UPDATING state.
-            self.start_or_update()
-        elif self._state == ReplicaState.STOPPING:
-            self.stop()
 
     @property
     def replica_tag(self) -> ReplicaTag:
         return self._replica_tag
+
+    @property
+    def backend_tag(self) -> BackendTag:
+        return self._backend_tag
 
     @property
     def version(self):
@@ -333,29 +343,35 @@ class BackendReplica(VersionedReplica):
 
     @property
     def actor_handle(self) -> ActorHandle:
-        assert self._state is not ReplicaState.SHOULD_START, (
-            f"State must not be {ReplicaState.SHOULD_START}")
         return self._actor.actor_handle
 
-    def start_or_update(self, backend_info: BackendInfo,
-                        version: BackendVersion) -> None:
-        """Transition from SHOULD_START -> STARTING_OR_UPDATING.
-
-        Should handle the case where it's already STARTING_OR_UPDATING.
+    def start(self, backend_info: BackendInfo, version: BackendVersion):
         """
-        assert self._state in {
-            ReplicaState.SHOULD_START,
-            ReplicaState.STARTING_OR_UPDATING,
-            ReplicaState.RUNNING,
-        }, (f"State must be {ReplicaState.SHOULD_START}, "
-            f"{ReplicaState.STARTING_OR_UPDATING}, or"
-            f"{ReplicaState.RUNNING}, *not* {self._state}.")
-
-        self._actor.start_or_update(backend_info)
+        Start a new actor for current BackendReplica instance.
+        """
+        self._actor.start(backend_info, version)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
-        self._state = ReplicaState.STARTING_OR_UPDATING
         self._version = version
+
+    def update_user_config(self, user_config: Any):
+        """
+        Update user config of existing actor behind current
+        BackendReplica instance.
+        """
+        self._actor.update_user_config(user_config)
+        self._version = BackendVersion(
+            self._version.code_version, user_config=user_config)
+
+    def recover(self):
+        """
+        Recover states in BackendReplica instance by fetching running actor
+        status
+        """
+        self._actor.recover()
+        self._start_time = time.time()
+        # Replica version is fetched from recovered replica dynamically in
+        # check_started() below
 
     def check_started(self) -> ReplicaStartupStatus:
         """Check if the replica has started. If so, transition to RUNNING.
@@ -366,71 +382,45 @@ class BackendReplica(VersionedReplica):
             status (ReplicaStartupStatus): Most recent state of replica by
                 querying actor obj ref
         """
-        if self._state == ReplicaState.RUNNING:
-            return ReplicaStartupStatus.SUCCEEDED
+        status, version = self._actor.check_ready()
 
-        assert self._state == ReplicaState.STARTING_OR_UPDATING, (
-            f"State must be {ReplicaState.STARTING_OR_UPDATING}, "
-            f"*not* {self._state}.")
-
-        status = self._actor.check_ready()
-        if status == ReplicaStartupStatus.SUCCEEDED:
-            self._state = ReplicaState.RUNNING
-        elif status == ReplicaStartupStatus.PENDING:
+        if status == ReplicaStartupStatus.PENDING:
             if time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
                 status = ReplicaStartupStatus.PENDING_SLOW_START
-        elif status == ReplicaStartupStatus.FAILED:
-            self._state = ReplicaState.SHOULD_STOP
+        elif status == ReplicaStartupStatus.SUCCEEDED:
+            # Re-assign BackendVersion if start / update / recover succeeded
+            # by reading re-computed version in RayServeReplica
+            if version is not None:
+                self._version = version
 
         return status
 
-    def set_should_stop(self, graceful_shutdown_timeout_s: Duration) -> None:
-        """Mark the replica to be stopped in the future.
-
-        Should handle the case where the replica has already been marked to
-        stop.
-        """
-        self._state = ReplicaState.SHOULD_STOP
-        self._graceful_shutdown_timeout_s = graceful_shutdown_timeout_s
-
-    def stop(self) -> None:
+    def stop(self, graceful: bool = True) -> None:
         """Stop the replica.
 
         Should handle the case where the replica is already stopped.
         """
-        # We need to handle transitions from:
-        #  SHOULD_START -> SHOULD_STOP -> STOPPING
-        # This means that the replica_handle may not have been created.
-        assert self._state in {
-            ReplicaState.SHOULD_STOP, ReplicaState.STOPPING
-        }, (f"State must be {ReplicaState.SHOULD_STOP} or "
-            f"{ReplicaState.STOPPING}, *not* {self._state}")
-
-        self._actor.graceful_stop()
-        self._state = ReplicaState.STOPPING
-        self._shutdown_deadline = time.time(
-        ) + self._graceful_shutdown_timeout_s
+        timeout_s = self._actor.graceful_stop()
+        if not graceful:
+            timeout_s = 0
+        self._shutdown_deadline = time.time() + timeout_s
 
     def check_stopped(self) -> bool:
         """Check if the replica has finished stopping."""
-        assert self._state == ReplicaState.STOPPING, (
-            f"State must be {ReplicaState.STOPPING}, *not* {self._state}")
-
         if self._actor.check_stopped():
             # Clean up any associated resources (e.g., placement group).
             self._actor.cleanup()
             return True
 
-        timeout_passed = time.time() >= self._shutdown_deadline
-
+        timeout_passed = time.time() > self._shutdown_deadline
         if timeout_passed:
             # Graceful period passed, kill it forcefully.
             # This will be called repeatedly until the replica shuts down.
             logger.debug(
-                f"Replica {self._replica_tag} did not shutdown after "
-                f"{self._graceful_shutdown_timeout_s}s, force-killing. "
-                f"component=serve deployment={self._backend_tag} "
-                f"replica={self._replica_tag}")
+                f"Replica {self.replica_tag} did not shut down after grace "
+                "period, force-killing it. "
+                f"component=serve deployment={self.backend_tag} "
+                f"replica={self.replica_tag}")
 
             self._actor.force_stop()
         return False
@@ -589,13 +579,14 @@ class BackendState:
 
     def __init__(self, name: str, controller_name: str, detached: bool,
                  long_poll_host: LongPollHost, goal_manager: AsyncGoalManager,
-                 checkpoint_fn: Callable):
+                 _save_checkpoint_func: Callable):
+
         self._name = name
         self._controller_name: str = controller_name
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._goal_manager: AsyncGoalManager = goal_manager
-        self._checkpoint_fn = checkpoint_fn
+        self._save_checkpoint_func = _save_checkpoint_func
 
         # Each time we set a new backend goal, we're trying to save new
         # BackendInfo and bring current deployment to meet new status.
@@ -606,24 +597,79 @@ class BackendState:
         self._target_replicas: int = -1
         self._curr_goal: Optional[GoalId] = None
         self._target_version: BackendVersion = None
-        self._prev_startup_warning: float = -1
+        self._prev_startup_warning: float = time.time()
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
 
-    def get_checkpoint_data(self):
-        return (self._target_info, self._rollback_info, self._target_replicas,
-                self._curr_goal, self._target_version,
+    def get_target_state_checkpoint_data(self):
+        """
+        Return deployment's target state submitted by user's deployment call.
+        Should be persisted and outlive current ray cluster.
+        """
+        return (self._target_info, self._target_replicas, self._target_version)
+
+    def get_current_state_checkpoint_data(self):
+        """
+        Return deployment's current state specific to the ray cluster it's
+        running in. Might be lost or re-constructed upon ray cluster failure.
+        """
+        return (self._rollback_info, self._curr_goal,
                 self._prev_startup_warning,
                 self._replica_constructor_retry_counter, self._replicas)
 
-    def recover_from_checkpoint_data(self, data):
-        (self._target_info, self._rollback_info, self._target_replicas,
-         self._curr_goal, self._target_version, self._prev_startup_warning,
-         self._replica_constructor_retry_counter, self._replicas) = data
+    def get_checkpoint_data(self):
+        return (self.get_target_state_checkpoint_data(),
+                self.get_current_state_checkpoint_data())
+
+    def recover_target_state_from_checkpoint(self, target_state_checkpoint):
+        logger.info("Recovering target state for deployment "
+                    f"{self._name} from checkpoint..")
+        (self._target_info, self._target_replicas,
+         self._target_version) = target_state_checkpoint
+
+    def recover_current_state_from_checkpoint(self, current_state_checkpoint):
+        logger.info("Recovering current state for deployment "
+                    f"{self._name} from checkpoint..")
+        (self._rollback_info, self._curr_goal, self._prev_startup_warning,
+         self._replica_constructor_retry_counter,
+         self._replicas) = current_state_checkpoint
+
         if self._curr_goal is not None:
             self._goal_manager.create_goal(self._curr_goal)
 
         self._notify_backend_configs_changed()
+        self._notify_replica_handles_changed()
+
+    def recover_current_state_from_replica_actor_names(
+            self, replica_actor_names: List[str]):
+        assert (
+            self._target_info is not None and self._target_replicas != -1
+            and self._target_version is not None), (
+                "Target state should be recovered successfully first before "
+                "recovering current state from replica actor names.")
+
+        logger.info("Recovering current state for deployment "
+                    f"{self._name} from {len(replica_actor_names)} actors in "
+                    "current ray cluster..")
+        # All current states use default value, only attach running replicas.
+        for replica_actor_name in replica_actor_names:
+            replica_name: ReplicaName = ReplicaName.from_str(
+                replica_actor_name)
+            new_backend_replica = BackendReplica(
+                self._controller_name, self._detached,
+                replica_name.replica_tag, replica_name.deployment_tag, None)
+            new_backend_replica.recover()
+            self._replicas.add(ReplicaState.RECOVERING, new_backend_replica)
+            logger.debug(
+                "Adding RECOVERING to replica_tag: "
+                f"{new_backend_replica.replica_tag}, backend_tag: {self._name}"
+            )
+
+        self._notify_backend_configs_changed()
+        # Blocking grace period to avoid controller thrashing when cover
+        # from replica actor names
+        time.sleep(CONTROLLER_STARTUP_GRACE_PERIOD_S)
+        # This halts all traffic in cluster.
         self._notify_replica_handles_changed()
 
     @property
@@ -649,7 +695,7 @@ class BackendState:
     def _notify_backend_configs_changed(self) -> None:
         self._long_poll_host.notify_changed(
             (LongPollNamespace.BACKEND_CONFIGS, self._name),
-            self._target_info.backend_config,
+            self._target_info.backend_config.to_proto_bytes(),
         )
 
     def _set_backend_goal(self, backend_info: Optional[BackendInfo]) -> None:
@@ -685,9 +731,9 @@ class BackendState:
                backend_info: BackendInfo) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
-        If the backend already exists with the same version, this is a no-op
-        and returns the GoalId corresponding to the existing update if there
-        is one.
+        If the backend already exists with the same version and BackendConfig,
+        this is a no-op and returns the GoalId corresponding to the existing
+        update if there is one.
 
         Returns:
             GoalId, bool: The GoalId for the client to wait for and whether or
@@ -716,20 +762,17 @@ class BackendState:
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
-        self._checkpoint_fn()
+        self._save_checkpoint_func()
         self._notify_backend_configs_changed()
 
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
         return new_goal_id, True
 
-    def delete(self, force_kill: bool = False) -> Optional[GoalId]:
+    def delete(self) -> Optional[GoalId]:
         new_goal_id, existing_goal_id = self._set_backend_goal(None)
-        if force_kill:
-            self._target_info.backend_config.\
-                experimental_graceful_shutdown_timeout_s = 0
 
-        self._checkpoint_fn()
+        self._save_checkpoint_func()
         self._notify_backend_configs_changed()
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
@@ -746,18 +789,18 @@ class BackendState:
         if self._target_replicas == 0:
             return 0
 
-        # We include SHOULD_START and STARTING_OR_UPDATING replicas here
+        # We include STARTING and UPDATING replicas here
         # because if there are replicas still pending startup, we may as well
         # terminate them and start new version replicas instead.
         old_running_replicas = self._replicas.count(
             exclude_version=self._target_version,
             states=[
-                ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
+                ReplicaState.STARTING, ReplicaState.UPDATING,
                 ReplicaState.RUNNING
             ])
         old_stopping_replicas = self._replicas.count(
             exclude_version=self._target_version,
-            states=[ReplicaState.SHOULD_STOP, ReplicaState.STOPPING])
+            states=[ReplicaState.STOPPING])
         new_running_replicas = self._replicas.count(
             version=self._target_version, states=[ReplicaState.RUNNING])
 
@@ -782,15 +825,9 @@ class BackendState:
 
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_version,
-            states=[
-                ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
-                ReplicaState.RUNNING
-            ],
+            states=[ReplicaState.STARTING, ReplicaState.RUNNING],
             max_replicas=max_to_stop)
 
-        graceful_shutdown_timeout_s = (
-            self._target_info.backend_config.
-            experimental_graceful_shutdown_timeout_s)
         code_version_changes = 0
         user_config_changes = 0
         for replica in replicas_to_update:
@@ -800,16 +837,18 @@ class BackendState:
             if (replica.version.code_version !=
                     self._target_version.code_version):
                 code_version_changes += 1
-                replica.set_should_stop(graceful_shutdown_timeout_s)
-                self._replicas.add(ReplicaState.SHOULD_STOP, replica)
+                replica.stop()
+                self._replicas.add(ReplicaState.STOPPING, replica)
             # If only the user_config is a mismatch, we update it dynamically
             # without restarting the replica.
             elif (replica.version.user_config_hash !=
                   self._target_version.user_config_hash):
                 user_config_changes += 1
-                replica.start_or_update(self._target_info,
-                                        self._target_version)
-                self._replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
+                replica.update_user_config(self._target_version.user_config)
+                self._replicas.add(ReplicaState.UPDATING, replica)
+                logger.debug(
+                    "Adding UPDATING to replica_tag: "
+                    f"{replica.replica_tag}, backend_tag: {self._name}")
             else:
                 assert False, "Update must be code version or user config."
 
@@ -827,37 +866,27 @@ class BackendState:
         return len(replicas_to_update)
 
     def _scale_backend_replicas(self) -> bool:
-        """Scale the given backend to the number of replicas.
+        """Scale the given backend to the number of replicas."""
 
-        NOTE: this does not actually start or stop the replicas, but instead
-        adds them to ReplicaState.SHOULD_START or ReplicaState.SHOULD_STOP.
-        The caller is responsible for then first writing a checkpoint and then
-        actually starting/stopping the intended replicas. This avoids
-        inconsistencies with starting/stopping a replica and then crashing
-        before writing a checkpoint.
-        """
         assert self._target_replicas >= 0, ("Number of replicas must be"
                                             " greater than or equal to 0.")
-
-        graceful_shutdown_timeout_s = (
-            self._target_info.backend_config.
-            experimental_graceful_shutdown_timeout_s)
 
         self._stop_wrong_version_replicas()
 
         current_replicas = self._replicas.count(states=[
-            ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
-            ReplicaState.RUNNING
+            ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING
         ])
+        recovering_replicas = self._replicas.count(
+            states=[ReplicaState.RECOVERING])
 
-        delta_replicas = self._target_replicas - current_replicas
+        delta_replicas = (
+            self._target_replicas - current_replicas - recovering_replicas)
         if delta_replicas == 0:
             return False
 
         elif delta_replicas > 0:
             # Don't ever exceed self._target_replicas.
             stopping_replicas = self._replicas.count(states=[
-                ReplicaState.SHOULD_STOP,
                 ReplicaState.STOPPING,
             ])
             to_add = max(delta_replicas - stopping_replicas, 0)
@@ -866,15 +895,17 @@ class BackendState:
                             f"'{self._name}'. component=serve "
                             f"deployment={self._name}")
             for _ in range(to_add):
-                replica_tag = "{}#{}".format(self._name, get_random_letters())
-                self._replicas.add(
-                    ReplicaState.SHOULD_START,
-                    BackendReplica(self._controller_name, self._detached,
-                                   replica_tag, self._name,
-                                   self._target_version))
-                logger.debug(
-                    f"Adding SHOULD_START to replica_tag: {replica_tag}, "
-                    f"backend_tag: {self._name}")
+                replica_name = ReplicaName(self._name, get_random_letters())
+                new_backend_replica = BackendReplica(
+                    self._controller_name, self._detached,
+                    replica_name.replica_tag, replica_name.deployment_tag,
+                    self._target_version)
+                new_backend_replica.start(self._target_info,
+                                          self._target_version)
+
+                self._replicas.add(ReplicaState.STARTING, new_backend_replica)
+                logger.debug("Adding STARTING to replica_tag: "
+                             f"{replica_name}, backend_tag: {self._name}")
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
@@ -883,16 +914,16 @@ class BackendState:
                         f"deployment={self._name}")
             replicas_to_stop = self._replicas.pop(
                 states=[
-                    ReplicaState.SHOULD_START,
-                    ReplicaState.STARTING_OR_UPDATING, ReplicaState.RUNNING
+                    ReplicaState.STARTING, ReplicaState.UPDATING,
+                    ReplicaState.RECOVERING, ReplicaState.RUNNING
                 ],
                 max_replicas=to_remove)
 
             for replica in replicas_to_stop:
-                logger.debug(f"Adding SHOULD_STOP to replica_tag: {replica}, "
+                logger.debug(f"Adding STOPPING to replica_tag: {replica}, "
                              f"backend_tag: {self._name}")
-                replica.set_should_stop(graceful_shutdown_timeout_s)
-                self._replicas.add(ReplicaState.SHOULD_STOP, replica)
+                replica.stop()
+                self._replicas.add(ReplicaState.STOPPING, replica)
 
         return True
 
@@ -938,9 +969,9 @@ class BackendState:
 
         # If we have pending ops, the current goal is *not* ready.
         if (self._replicas.count(states=[
-                ReplicaState.SHOULD_START,
-                ReplicaState.STARTING_OR_UPDATING,
-                ReplicaState.SHOULD_STOP,
+                ReplicaState.STARTING,
+                ReplicaState.UPDATING,
+                ReplicaState.RECOVERING,
                 ReplicaState.STOPPING,
         ]) == 0):
             # Check for deleting.
@@ -953,7 +984,58 @@ class BackendState:
 
         return GoalStatus.PENDING
 
+    def _check_startup_replicas(self,
+                                original_state: ReplicaState,
+                                stop_on_slow=False
+                                ) -> Tuple[List[BackendReplica], bool]:
+        """
+        Common helper function for startup actions tracking and status
+        transition: STARTING, UPDATING and RECOVERING.
+
+        Args:
+            stop_on_slow: If we consider a replica failed upon observing it's
+                slow to reach running state.
+        """
+        slow_replicas = []
+        transitioned = False
+        for replica in self._replicas.pop(states=[original_state]):
+            start_status = replica.check_started()
+            if start_status == ReplicaStartupStatus.SUCCEEDED:
+                # This replica should be now be added to handle's replica
+                # set.
+                self._replicas.add(ReplicaState.RUNNING, replica)
+                transitioned = True
+            elif start_status == ReplicaStartupStatus.FAILED:
+                # Replica reconfigure (deploy / upgrade) failed
+                if self._replica_constructor_retry_counter >= 0:
+                    # Increase startup failure counter if we're tracking it
+                    self._replica_constructor_retry_counter += 1
+
+                replica.stop(graceful=False)
+                self._replicas.add(ReplicaState.STOPPING, replica)
+                transitioned = True
+            elif start_status == ReplicaStartupStatus.PENDING:
+                # Not done yet, remain at same state
+                self._replicas.add(original_state, replica)
+            else:
+                # Slow start, remain at same state but also add to
+                # slow start replicas.
+                if not stop_on_slow:
+                    self._replicas.add(original_state, replica)
+                else:
+                    replica.stop(graceful=False)
+                    self._replicas.add(ReplicaState.STOPPING, replica)
+                    transitioned = True
+                slow_replicas.append(replica)
+
+        return slow_replicas, transitioned
+
     def _check_and_update_replicas(self) -> bool:
+        """
+        Check current state of all BackendReplica being tracked, and compare
+        with state container from previous update() cycle to see if any state
+        transition happened.
+        """
         transitioned = False
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
@@ -964,45 +1046,20 @@ class BackendState:
                     f"{self._name} failed health check, stopping it. "
                     f"component=serve deployment={self._name} "
                     f"replica={replica.replica_tag}")
-                replica.set_should_stop(0)
-                self._replicas.add(ReplicaState.SHOULD_STOP, replica)
-
-        for replica in self._replicas.pop(states=[ReplicaState.SHOULD_START]):
-            replica.start_or_update(self._target_info, self._target_version)
-            self._replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
-
-        for replica in self._replicas.pop(states=[ReplicaState.SHOULD_STOP]):
-            # This replica should be taken off handle's replica set.
-            transitioned = True
-            replica.stop()
-            self._replicas.add(ReplicaState.STOPPING, replica)
+                replica.stop(graceful=False)
+                self._replicas.add(ReplicaState.STOPPING, replica)
 
         slow_start_replicas = []
-        for replica in self._replicas.pop(
-                states=[ReplicaState.STARTING_OR_UPDATING]):
-            start_status = replica.check_started()
-            if start_status == ReplicaStartupStatus.SUCCEEDED:
-                # This replica should be now be added to handle's replica
-                # set.
-                self._replicas.add(ReplicaState.RUNNING, replica)
-                transitioned = True
-            elif start_status == ReplicaStartupStatus.FAILED:
-                # Replica reconfigure (deploy / upgrade) failed
-                if self._replica_constructor_retry_counter >= 0:  # noqa: E501 line too long
-                    # Increase startup failure counter if we're tracking it
-                    self._replica_constructor_retry_counter += 1
+        slow_start, start_transitioned = self._check_startup_replicas(
+            ReplicaState.STARTING)
+        slow_update, update_transitioned = self._check_startup_replicas(
+            ReplicaState.UPDATING)
+        slow_recover, recover_transitioned = self._check_startup_replicas(
+            ReplicaState.RECOVERING, stop_on_slow=True)
 
-                replica.set_should_stop(0)
-                self._replicas.add(ReplicaState.SHOULD_STOP, replica)
-                transitioned = True
-            elif start_status == ReplicaStartupStatus.PENDING:
-                # Not done yet, remain at same state
-                self._replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
-            else:
-                # Slow start, remain at same state but also add to
-                # slow start replicas.
-                self._replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
-                slow_start_replicas.append(replica)
+        slow_start_replicas = slow_start + slow_update + slow_recover
+        transitioned = (start_transitioned or update_transitioned
+                        or recover_transitioned)
 
         if (len(slow_start_replicas)
                 and time.time() - self._prev_startup_warning >
@@ -1013,14 +1070,16 @@ class BackendState:
                 f"Deployment '{self._name}' has "
                 f"{len(slow_start_replicas)} replicas that have taken "
                 f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
-                "may be caused by waiting for the cluster to auto-scale "
-                "or because the constructor is slow. Resources required "
+                "may be caused by waiting for the cluster to auto-scale, "
+                "waiting for a runtime environment to install, or a slow "
+                "constructor. Resources required "
                 f"for each replica: {required}, resources available: "
                 f"{available}. component=serve deployment={self._name}")
 
             self._prev_startup_warning = time.time()
 
         for replica in self._replicas.pop(states=[ReplicaState.STOPPING]):
+            transitioned = True
             stopped = replica.check_stopped()
             if not stopped:
                 self._replicas.add(ReplicaState.STOPPING, replica)
@@ -1037,7 +1096,6 @@ class BackendState:
         transitioned = self._check_and_update_replicas()
         if transitioned:
             self._notify_replica_handles_changed()
-            self._checkpoint_fn()
 
         status = self._check_curr_goal_status()
         if status == GoalStatus.SUCCEEDED:
@@ -1061,7 +1119,7 @@ class BackendState:
                     self._curr_goal,
                     RuntimeError(
                         f"Deployment '{self._name}' failed, rolling back to "
-                        "version {rollback_info.version} asynchronously."))
+                        f"version {rollback_info.version} asynchronously."))
 
                 self._curr_goal = None
                 self._rollback_info = None
@@ -1080,8 +1138,9 @@ class BackendStateManager:
     """
 
     def __init__(self, controller_name: str, detached: bool,
-                 kv_store: RayInternalKVStore, long_poll_host: LongPollHost,
-                 goal_manager: AsyncGoalManager):
+                 kv_store: KVStoreBase, long_poll_host: LongPollHost,
+                 goal_manager: AsyncGoalManager,
+                 all_current_actor_names: List[str]):
 
         self._controller_name = controller_name
         self._detached = detached
@@ -1090,20 +1149,76 @@ class BackendStateManager:
         self._goal_manager = goal_manager
         self._create_backend_state: Callable = lambda name: BackendState(
             name, controller_name, detached,
-            long_poll_host, goal_manager, self._checkpoint)
+            long_poll_host, goal_manager, self._save_checkpoint_func)
         self._backend_states: Dict[BackendTag, BackendState] = dict()
         self._deleted_backend_metadata: Dict[BackendTag,
                                              BackendInfo] = OrderedDict()
 
+        self._recover_from_checkpoint(all_current_actor_names)
+
+    def _map_actor_names_to_deployment(self, all_current_actor_names: List[str]
+                                       ) -> Dict[BackendTag, List[str]]:
+        """
+        Given a list of all actor names queried from current ray cluster,
+        map them to corresponding deployments.
+
+        Example:
+            Args:
+                [A#zxc123, B#xcv234, A#qwe234]
+            Returns:
+                {
+                    A: [A#zxc123, A#qwe234]
+                    B: [B#xcv234]
+                }
+        """
+        all_replica_names = [
+            actor_name for actor_name in all_current_actor_names
+            if (SERVE_CONTROLLER_NAME not in actor_name
+                and SERVE_PROXY_NAME not in actor_name)
+        ]
+        deployment_to_current_replicas = defaultdict(list)
+        if len(all_replica_names) > 0:
+            # Each replica tag is formatted as "backend_tag#random_letter"
+            for replica_name in all_replica_names:
+                replica_tag = ReplicaName.from_str(replica_name)
+                deployment_to_current_replicas[
+                    replica_tag.deployment_tag].append(replica_name)
+
+        return deployment_to_current_replicas
+
+    def _recover_from_checkpoint(self,
+                                 all_current_actor_names: List[str]) -> None:
+        """
+        Recover from checkpoint upon controller failure with all actor names
+        found in current cluster.
+
+        Each deployment resumes target state from checkpoint if available.
+
+        For current state it will prioritize reconstructing from current
+        actor names found that matches deployment tag if applicable.
+        """
+        deployment_to_current_replicas = self._map_actor_names_to_deployment(
+            all_current_actor_names)
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (backend_state_info,
              self._deleted_backend_metadata) = cloudpickle.loads(checkpoint)
 
-            for backend_tag, checkpoint_data in backend_state_info.items():
-                backend_state = self._create_backend_state(backend_tag)
-                backend_state.recover_from_checkpoint_data(checkpoint_data)
-                self._backend_states[backend_tag] = backend_state
+            for deployment_tag, checkpoint_data in backend_state_info.items():
+                backend_state: BackendState = self._create_backend_state(
+                    deployment_tag)
+                (target_state_checkpoint,
+                 current_state_checkpoint) = checkpoint_data
+
+                backend_state.recover_target_state_from_checkpoint(
+                    target_state_checkpoint)
+                if len(deployment_to_current_replicas[deployment_tag]) > 0:
+                    backend_state.recover_current_state_from_replica_actor_names(  # noqa: E501
+                        deployment_to_current_replicas[deployment_tag])
+                else:
+                    backend_state.recover_current_state_from_checkpoint(
+                        current_state_checkpoint)
+                self._backend_states[deployment_tag] = backend_state
 
     def shutdown(self) -> List[GoalId]:
         """
@@ -1119,7 +1234,7 @@ class BackendStateManager:
 
         shutdown_goals = []
         for backend_state in self._backend_states.values():
-            goal = backend_state.delete(force_kill=True)
+            goal = backend_state.delete()
             if goal is not None:
                 shutdown_goals.append(goal)
 
@@ -1132,7 +1247,7 @@ class BackendStateManager:
         # from being created once shutdown signal is sent.
         return shutdown_goals
 
-    def _checkpoint(self) -> None:
+    def _save_checkpoint_func(self) -> None:
         backend_state_info = {
             backend_tag: backend_state.get_checkpoint_data()
             for backend_tag, backend_state in self._backend_states.items()
@@ -1185,9 +1300,9 @@ class BackendStateManager:
                        ) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
-        If the backend already exists with the same version, this is a no-op
-        and returns the GoalId corresponding to the existing update if there
-        is one.
+        If the backend already exists with the same version and BackendConfig,
+        this is a no-op and returns the GoalId corresponding to the existing
+        update if there is one.
 
         Returns:
             GoalId, bool: The GoalId for the client to wait for and whether or
@@ -1202,15 +1317,14 @@ class BackendStateManager:
 
         return self._backend_states[backend_tag].deploy(backend_info)
 
-    def delete_backend(self, backend_tag: BackendTag,
-                       force_kill: bool = False) -> Optional[GoalId]:
+    def delete_backend(self, backend_tag: BackendTag) -> Optional[GoalId]:
         # This method must be idempotent. We should validate that the
         # specified backend exists on the client.
         if backend_tag not in self._backend_states:
             return None
 
         backend_state = self._backend_states[backend_tag]
-        return backend_state.delete(force_kill=force_kill)
+        return backend_state.delete()
 
     def update(self) -> bool:
         """Updates the state of all backends to match their goal state."""

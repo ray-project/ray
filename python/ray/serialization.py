@@ -6,10 +6,11 @@ import ray.cloudpickle as pickle
 from ray import ray_constants
 import ray._private.utils
 from ray._private.gcs_utils import ErrorType
-from ray.exceptions import (RayError, PlasmaObjectNotAvailable, RayTaskError,
-                            RayActorError, TaskCancelledError,
-                            WorkerCrashedError, ObjectLostError,
-                            RaySystemError, RuntimeEnvSetupError)
+from ray.exceptions import (
+    RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
+    TaskCancelledError, WorkerCrashedError, ObjectLostError,
+    ReferenceCountingAssertionError, OwnerDiedError,
+    ObjectReconstructionFailedError, RaySystemError, RuntimeEnvSetupError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -37,7 +38,7 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
     # the core worker to resolve the value. This is to make sure
     # that the ref count for the ObjectRef is greater than 0 by the
     # time the core worker resolves the value of the object.
-    obj_ref = ray.ObjectRef(binary, call_site)
+    obj_ref = ray.ObjectRef(binary, owner_address, call_site)
 
     # TODO(edoakes): we should be able to just capture a reference
     # to 'self' here instead, but this function is itself pickled
@@ -90,7 +91,7 @@ class SerializationContext:
             worker = ray.worker.global_worker
             worker.check_connected()
             obj, owner_address, object_status = (
-                worker.core_worker.serialize_and_promote_object_ref(obj))
+                worker.core_worker.serialize_object_ref(obj))
             return _object_ref_deserializer, \
                 (obj.binary(), obj.call_site(), owner_address, object_status)
 
@@ -222,15 +223,27 @@ class SerializationContext:
                 return RayActorError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
-            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
+            elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(object_ref.hex(),
+                                       object_ref.owner_address(),
                                        object_ref.call_site())
+            elif error_type == ErrorType.Value("OBJECT_DELETED"):
+                return ReferenceCountingAssertionError(
+                    object_ref.hex(), object_ref.owner_address(),
+                    object_ref.call_site())
+            elif error_type == ErrorType.Value("OWNER_DIED"):
+                return OwnerDiedError(object_ref.hex(),
+                                      object_ref.owner_address(),
+                                      object_ref.call_site())
+            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
+                return ObjectReconstructionFailedError(
+                    object_ref.hex(), object_ref.owner_address(),
+                    object_ref.call_site())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 return RuntimeEnvSetupError()
             else:
-                assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \
-                    "Tried to get object that has been promoted to plasma."
-                assert False, "Unrecognized error type " + str(error_type)
+                return RaySystemError("Unrecognized error type " +
+                                      str(error_type))
         elif data:
             raise ValueError("non-null object should always have metadata")
         else:

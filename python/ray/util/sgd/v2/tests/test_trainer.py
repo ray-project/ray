@@ -5,25 +5,24 @@ from unittest.mock import patch
 
 import horovod.torch as hvd_torch
 import pytest
+
 import ray
 import ray.util.sgd.v2 as sgd
-import tensorflow as tf
-import torch
 from ray._private.test_utils import wait_for_condition
 from ray.util.sgd.v2 import Trainer, TorchConfig, TensorflowConfig, \
     HorovodConfig
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
     BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
+    horovod_torch_train_func, HorovodTrainClass
+from ray.util.sgd.v2.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
-from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
-    fashion_mnist_train_func
-from ray.util.sgd.v2.examples.train_linear import train_func as \
+from ray.util.sgd.v2.examples.train_fashion_mnist_example import train_func \
+    as fashion_mnist_train_func
+from ray.util.sgd.v2.examples.train_linear_example import train_func as \
     linear_train_func
-
-from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
-    horovod_torch_train_func
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
@@ -87,7 +86,8 @@ def gen_execute_single_async_special(special_f):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i].execute.remote(f, *args, **kwargs)
+        return self.workers[i].actor._BaseWorkerMixin__execute.remote(
+            f, *args, **kwargs)
 
     return execute_single_async_special
 
@@ -124,7 +124,7 @@ class KillCallback(SGDCallback):
         print(results)
         assert all(r["loss"] == 1 for r in results)
         if self.counter == self.fail_on:
-            ray.kill(self.worker_group.workers[0])
+            ray.kill(self.worker_group.workers[0].actor)
             time.sleep(3)
         self.counter += 1
 
@@ -496,31 +496,6 @@ def test_tensorflow_mnist(ray_start_2_cpus):
     assert accuracy[-1] > accuracy[0]
 
 
-@pytest.mark.skipif(
-    len(tf.config.list_physical_devices("GPU")) < 2,
-    reason="Only run if multiple GPUs are available.")
-def test_tensorflow_mnist_gpu(ray_start_2_cpus_2_gpus):
-    num_workers = 2
-    epochs = 3
-
-    trainer = Trainer("tensorflow", num_workers=num_workers, use_gpu=True)
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(tensorflow_mnist_train_func, config)
-    trainer.shutdown()
-
-    assert len(results) == num_workers
-    result = results[0]
-
-    loss = result["loss"]
-    assert len(loss) == epochs
-    assert loss[-1] < loss[0]
-
-    accuracy = result["accuracy"]
-    assert len(accuracy) == epochs
-    assert accuracy[-1] > accuracy[0]
-
-
 def test_torch_linear(ray_start_2_cpus):
     num_workers = 2
     epochs = 3
@@ -543,26 +518,6 @@ def test_torch_fashion_mnist(ray_start_2_cpus):
     epochs = 3
 
     trainer = Trainer("torch", num_workers=num_workers)
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(fashion_mnist_train_func, config)
-    trainer.shutdown()
-
-    assert len(results) == num_workers
-
-    for result in results:
-        assert len(result) == epochs
-        assert result[-1] < result[0]
-
-
-@pytest.mark.skipif(
-    torch.cuda.device_count() < 2,
-    reason="Only run if multiple GPUs are available.")
-def test_torch_fashion_mnist_gpu(ray_start_2_cpus_2_gpus):
-    num_workers = 2
-    epochs = 3
-
-    trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
     trainer.start()
     results = trainer.run(fashion_mnist_train_func, config)
@@ -608,26 +563,23 @@ def test_horovod_torch_mnist(ray_start_2_cpus):
         assert worker_result[num_epochs - 1] < worker_result[0]
 
 
-@pytest.mark.skipif(
-    torch.cuda.device_count() < 2,
-    reason="Only run if multiple GPUs are available.")
-def test_horovod_torch_mnist_gpu(ray_start_2_cpus_2_gpus):
+def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
     num_workers = 2
     num_epochs = 2
-    trainer = Trainer("horovod", num_workers, use_gpu=True)
-    trainer.start()
-    results = trainer.run(
-        horovod_torch_train_func,
-        config={
+    trainer = Trainer("horovod", num_workers)
+    workers = trainer.to_worker_group(
+        HorovodTrainClass, config={
             "num_epochs": num_epochs,
             "lr": 1e-3
         })
+    results = []
+    for epoch in range(num_epochs):
+        results.append(ray.get([w.train.remote(epoch=epoch) for w in workers]))
     trainer.shutdown()
 
-    assert len(results) == num_workers
-    for worker_result in results:
-        assert len(worker_result) == num_epochs
-        assert worker_result[num_epochs - 1] < worker_result[0]
+    assert len(results) == num_epochs
+    for i in range(num_workers):
+        assert results[num_epochs - 1][i] < results[0][i]
 
 
 def test_init_failure(ray_start_2_cpus):
@@ -729,6 +681,27 @@ def test_worker_failure_2(ray_start_2_cpus):
         trainer.start()
         results = trainer.run(train)
         assert results == [1, 1]
+
+
+def test_worker_failure_local_rank(ray_start_2_cpus):
+    test_config = TestConfig()
+
+    def train():
+        return sgd.local_rank()
+
+    def train_actor_failure():
+        import sys
+        sys.exit(0)
+        return sgd.local_rank()
+
+    new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
+
+    with patch.object(ray.util.sgd.v2.trainer, "BackendExecutor",
+                      new_backend_executor_cls):
+        trainer = Trainer(test_config, num_workers=2)
+        trainer.start()
+        results = trainer.run(train)
+        assert set(results) == {0, 1}
 
 
 def test_worker_start_failure(ray_start_2_cpus):
@@ -944,7 +917,6 @@ def test_resources(ray_start_4_cpus_4_gpus_4_extra, resource, num_requested):
 
 
 def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
-
     # GPUs should not be requested if `use_gpu` is False.
     with pytest.raises(ValueError):
         Trainer(
@@ -963,6 +935,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
 
     def get_resources():
         return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
 
     # 0 GPUs will be requested and should not raise an error.
     trainer = Trainer(TestConfig(), num_workers=2, use_gpu=False)
@@ -999,6 +973,33 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     result = trainer.run(get_resources)
     assert result == ["0,1,2,3", "0,1,2,3"]
     trainer.shutdown()
+
+
+def test_to_worker_group(ray_start_2_cpus):
+    config = TestConfig()
+    trainer = Trainer(config, num_workers=2)
+
+    class Incrementer:
+        def __init__(self, starting=0):
+            self.count = starting
+
+        def increment(self):
+            self.count += 1
+
+        def get_count(self):
+            return self.count
+
+    workers = trainer.to_worker_group(Incrementer, starting=2)
+    assert ray.get([w.get_count.remote() for w in workers]) == [2, 2]
+
+    ray.get([w.increment.remote() for w in workers])
+    assert ray.get([w.get_count.remote() for w in workers]) == [3, 3]
+
+    ray.get(workers[0].increment.remote())
+    assert ray.get([w.get_count.remote() for w in workers]) == [4, 3]
+
+    ray.get(workers[1].increment.remote())
+    assert ray.get([w.get_count.remote() for w in workers]) == [4, 4]
 
 
 if __name__ == "__main__":

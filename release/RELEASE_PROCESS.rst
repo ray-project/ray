@@ -172,6 +172,9 @@ Release tests are added and maintained by the respective teams.
    As another example, if you just want to kick off all nightly RLLib tests,
    select the respective test suite and specify ``rllib`` in the test file filter.
 
+6. **Kubernetes tests must be run manually.** Refer to ``kubernetes_manual_tests/README.md``.
+   Feel free to ping code owner(s) of OSS Kubernetes support to run these.
+
 Identify and Resolve Release Blockers
 -------------------------------------
 If a release blocking issue arises in the course of testing, you should
@@ -263,6 +266,11 @@ to proceed with the final stages of the release!
      pip install twine
      twine upload --repository-url https://test.pypi.org/legacy/ *.whl
 
+   Note that this will upload wheels to two separate repositories:
+   `ray <https://test.pypi.org/project/ray/>`__ and
+   `ray_cpp <https://test.pypi.org/project/ray_cpp/>`__.
+   You'll need access to both repositories in order to complete this step.
+
    Test that you can install the wheels with pip from the PyPI test repository:
 
    .. code-block:: bash
@@ -295,6 +303,11 @@ to proceed with the final stages of the release!
      # Will ask for your real PyPI credentials and require that you're a maintainer
      # on real PyPI. If you are not, ask @robertnishihara to add you.
      twine upload --repository-url https://upload.pypi.org/legacy/ *.whl
+
+   Note that this will upload wheels to two separate repositories:
+   `ray <https://pypi.org/project/ray/>`__ and
+   `ray_cpp <https://pypi.org/project/ray_cpp/>`__.
+   You'll need access to both repositories in order to complete this step.
 
    Now, try installing from the real PyPI mirror. Verify that the correct version is
    installed and that you can run some simple scripts.

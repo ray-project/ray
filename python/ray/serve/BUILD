@@ -49,7 +49,23 @@ py_test(
 )
 
 py_test(
+    name = "test_http_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_advanced",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_autoscaling_metrics",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -90,7 +106,7 @@ py_test(
 
 py_test(
     name = "test_ray_client",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serverless"],
     deps = [":serve_lib"],
@@ -218,7 +234,7 @@ py_test(
     name = "test_runtime_env",
     size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "post_wheel_build", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -227,6 +243,14 @@ py_test(
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_autoscaling_policy",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -240,6 +264,14 @@ py_test(
                "**/conftest.py"]),
    tags = ["exclusive", "team:serve"],
    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_controller_recovery",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
 )
 
 # Make sure the example showing in doc is tested
@@ -304,5 +336,13 @@ py_test(
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"]
+)
+
+py_test(
+    name = "conda_env",
+    size = "medium",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive", "post_wheel_build", "team:serve"],
     deps = [":serve_lib"]
 )
