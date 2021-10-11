@@ -1304,7 +1304,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
 def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs,
                                           data_path):
     setup_data_path = _unwrap_protocol(data_path)
-    num_dfs = 2 * PARALLELIZE_META_FETCH_THRESHOLD
+    num_dfs = PARALLELIZE_META_FETCH_THRESHOLD + 1
     for idx in range(num_dfs):
         df = pd.DataFrame({"one": list(range(3 * idx, 3 * (idx + 1)))})
         table = pa.Table.from_pandas(df)
