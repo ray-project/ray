@@ -154,11 +154,12 @@ def parse_and_validate_excludes(excludes: List[str],
     """
     assert excludes is not None
 
-    if isinstance(excludes, list):
-        if len(excludes) == 0:
-            return None
-        elif all(isinstance(path, str) for path in excludes):
-            return excludes
+    if isinstance(excludes, list) and len(excludes) == 0:
+        return None
+
+    if (isinstance(excludes, list)
+            and all(isinstance(path, str) for path in excludes)):
+        return excludes
     else:
         raise TypeError("runtime_env['excludes'] must be of type "
                         f"List[str], got {type(excludes)}")

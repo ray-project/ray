@@ -95,6 +95,9 @@ class TestValidateExcludes:
         with pytest.raises(TypeError):
             parse_and_validate_excludes("string")
 
+        with pytest.raises(TypeError):
+            parse_and_validate_excludes(["string", 1])
+
     def test_validate_excludes_empty_list(self):
         assert ParsedRuntimeEnv({"excludes": []}) == {}
 
