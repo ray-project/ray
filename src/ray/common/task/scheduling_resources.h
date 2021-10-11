@@ -50,10 +50,10 @@ class ResourceSet {
   ResourceSet();
 
   /// \brief Constructs ResourceSet from the specified resource map.
-  ResourceSet(const absl::flat_hash_map<std::string, FixedPoint> &resource_map);
+  explicit ResourceSet(const absl::flat_hash_map<std::string, FixedPoint> &resource_map);
 
   /// \brief Constructs ResourceSet from the specified resource map.
-  ResourceSet(const absl::flat_hash_map<std::string, double> &resource_map);
+  explicit ResourceSet(const absl::flat_hash_map<std::string, double> &resource_map);
 
   /// \brief Constructs ResourceSet from two equal-length vectors with label and capacity
   /// specification.
@@ -324,7 +324,7 @@ class ResourceIdSet {
   /// \brief Construct a ResourceIdSet from a mapping from resource names to ResourceIds.
   ///
   /// \param resource_set A mapping from resource name to IDs.
-  ResourceIdSet(const absl::flat_hash_map<std::string, ResourceIds> &available_resources);
+  explicit ResourceIdSet(const absl::flat_hash_map<std::string, ResourceIds> &available_resources);
 
   /// \brief See if a requested collection of resources is contained.
   ///
