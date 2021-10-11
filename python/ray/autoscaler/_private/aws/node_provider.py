@@ -2,7 +2,6 @@ import copy
 import threading
 from collections import defaultdict, OrderedDict
 import logging
-import random
 import time
 from typing import Any, Dict, List
 
@@ -97,8 +96,6 @@ class AWSNodeProvider(NodeProvider):
             region=provider_config["region"],
             max_retries=0,
             aws_credentials=aws_credentials)
-
-        self.spot_subnet_idx = random.randint(0, 100)
 
         # Tags that we believe to actually be on EC2.
         self.tag_cache = {}
@@ -377,9 +374,7 @@ class AWSNodeProvider(NodeProvider):
             "TagSpecifications": tag_specs
         })
 
-        is_spot = conf.get("InstanceMarketOptions",
-                           {}).get("MarketType") == "spot"
-        # Try to always launch in the first subnet.
+        # Try to always launch in the first listed subnet.
         subnet_idx = 0
         cli_logger_tags = {}
         for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
@@ -391,11 +386,6 @@ class AWSNodeProvider(NodeProvider):
                     conf.pop("SecurityGroupIds", None)
                     cli_logger_tags["network_interfaces"] = str(net_ifs)
                 else:
-                    if is_spot:
-                        # We want to round-robin spot instances to reduce
-                        # the likelihood of many being evicted at once.
-                        subnet_idx = self.spot_subnet_idx
-                        self.spot_subnet_idx += 1
                     subnet_id = subnet_ids[subnet_idx % len(subnet_ids)]
                     conf["SubnetId"] = subnet_id
                     cli_logger_tags["subnet_id"] = subnet_id
@@ -437,9 +427,9 @@ class AWSNodeProvider(NodeProvider):
                     cli_logger.warning(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
-                # Launch failure may be due to instance type availability!
-                if not is_spot:
-                    subnet_idx += 1
+                # Launch failure may be due to instance type availability in
+                # the given AZ
+                subnet_idx += 1
         return created_nodes_dict
 
     def terminate_node(self, node_id):
