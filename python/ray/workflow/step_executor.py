@@ -330,11 +330,13 @@ def _workflow_step_executor(step_type: StepType, func: Callable,
     args, kwargs = _resolve_step_inputs(baked_inputs)
     store = workflow_storage.get_workflow_storage()
     try:
-        store.save_step_prerun_metadata(step_id)
+        step_prerun_metadata = {"start_time": time.time()}
+        store.save_step_prerun_metadata(step_id, step_prerun_metadata)
         persisted_output, volatile_output = _wrap_run(
             func, step_type, step_id, catch_exceptions, max_retries, *args,
             **kwargs)
-        store.save_step_postrun_metadata(step_id)
+        step_postrun_metadata = {"end_time": time.time()}
+        store.save_step_postrun_metadata(step_id, step_postrun_metadata)
     except Exception as e:
         commit_step(store, step_id, None, e)
         raise e

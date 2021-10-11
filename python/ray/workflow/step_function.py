@@ -31,7 +31,7 @@ class WorkflowStepFunction:
         self._ray_options = ray_options or {}
         self._func_signature = signature.extract_signature(func)
         self._name = name or ""
-        self._metadata = metadata or {}
+        self._user_metadata = metadata or {}
 
         # Override signature and docstring
         @functools.wraps(func)
@@ -52,7 +52,7 @@ class WorkflowStepFunction:
                 catch_exceptions=self._catch_exceptions,
                 ray_options=self._ray_options,
                 name=self._name,
-                metadata=self._metadata
+                user_metadata=self._user_metadata
             )
             return Workflow(workflow_data, prepare_inputs)
 
