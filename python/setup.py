@@ -185,7 +185,7 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "default": [
-            "aiohttp",
+            "aiohttp >= 3.7",
             "aiohttp_cors",
             "aioredis < 2",
             "colorful",
