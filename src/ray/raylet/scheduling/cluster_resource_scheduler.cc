@@ -1129,7 +1129,7 @@ ClusterResourceScheduler::GetResourceTotals(
   for (size_t i = 0; i < local_resources.predefined_resources.size(); i++) {
     std::string resource_name = ResourceEnumToString(static_cast<PredefinedResources>(i));
     double resource_total = local_resources.predefined_resources[i].total.Double();
-    if (!resource_map_filter.count(resource_name)) {
+    if (resource_map_filter.count(resource_name) == 0u) {
       continue;
     }
 
@@ -1143,7 +1143,7 @@ ClusterResourceScheduler::GetResourceTotals(
   for (auto entry : local_resources.custom_resources) {
     std::string resource_name = string_to_int_map_.Get(entry.first);
     double resource_total = entry.second.total.Double();
-    if (!resource_map_filter.count(resource_name)) {
+    if (resource_map_filter.count(resource_name) == 0u) {
       continue;
     }
 
