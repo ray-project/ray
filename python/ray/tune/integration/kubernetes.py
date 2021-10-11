@@ -1,5 +1,5 @@
 import os
-from typing import Any, Optional, Tuple, List
+from typing import Any, Optional, Tuple
 import subprocess
 
 from ray import services, logger
@@ -141,10 +141,7 @@ class KubernetesSyncClient(SyncClient):
             self._command_runners[node_id] = command_runner
         return self._command_runners[node_id]
 
-    def sync_up(self,
-                source: str,
-                target: Tuple[str, str],
-                exclude: Optional[List] = None) -> bool:
+    def sync_up(self, source: str, target: Tuple[str, str]) -> bool:
         """Here target is a tuple (target_node, target_dir)"""
         target_node, target_dir = target
 
@@ -156,10 +153,7 @@ class KubernetesSyncClient(SyncClient):
         command_runner.run_rsync_up(source, target_dir)
         return True
 
-    def sync_down(self,
-                  source: Tuple[str, str],
-                  target: str,
-                  exclude: Optional[List] = None) -> bool:
+    def sync_down(self, source: Tuple[str, str], target: str) -> bool:
         """Here source is a tuple (source_node, source_dir)"""
         source_node, source_dir = source
 
