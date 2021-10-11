@@ -95,6 +95,9 @@ class TestValidateExcludes:
         with pytest.raises(TypeError):
             parse_and_validate_excludes("string")
 
+    def test_validate_excludes_empty_list(self):
+        assert ParsedRuntimeEnv({"excludes": []}) == {}
+
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Conda option not supported on Windows.")
