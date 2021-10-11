@@ -23,7 +23,6 @@
 #include "gtest/gtest.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/fixed_string.h"
-#include "ray/util/logging_new.h"
 
 using namespace testing;
 
@@ -210,52 +209,6 @@ TEST(PrintLogTest, LogTestWithInit) {
   RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir() + ray::GetDirSep());
   PrintLog();
   RayLog::ShutDownRayLog();
-}
-
-TEST(LogPerfTest, NewLogTest) {
-  ray_test::RayLog::StartRayLog("aa", ray_test::RayLogLevelNew::DEBUG,
-                                ray::GetUserTempDir() + ray::GetDirSep());
-  ray_test::RayLog::EnableAlwaysFlush(false);
-  const int rounds = 100000;
-
-  {
-    ScopedTimer timer("new info log");
-    for (int i = 0; i < rounds; ++i) {
-      RAY_LOG_NEW(INFO) << "This is the "
-                        << "RAY_INFO message";
-    }
-  }
-
-  {
-    ScopedTimer timer("new debug log");
-    for (int i = 0; i < rounds; ++i) {
-      RAY_LOG_NEW(DEBUG) << "This is the "
-                         << "RAY_DEBUG message";
-    }
-  }
-
-  ray::RayLog::StartRayLog("bb", ray::RayLogLevel::DEBUG,
-                           ray::GetUserTempDir() + ray::GetDirSep());
-  RayLog::EnableAlwaysFlush(false);
-
-  {
-    ScopedTimer timer("old info log");
-    for (int i = 0; i < rounds; ++i) {
-      RAY_LOG(INFO) << "This is the "
-                    << "RAY_INFO message";
-    }
-  }
-
-  {
-    ScopedTimer timer("old debug log");
-    for (int i = 0; i < rounds; ++i) {
-      RAY_LOG(DEBUG) << "This is the "
-                     << "RAY_DEBUG message";
-    }
-  }
-
-  RayLog::ShutDownRayLog();
-  ray_test::RayLog::ShutDownRayLog();
 }
 
 // This test will output large amount of logs to stderr, should be disabled in travis.
