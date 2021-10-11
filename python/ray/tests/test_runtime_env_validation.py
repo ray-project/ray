@@ -38,6 +38,7 @@ def test_directory():
         yield subdir, requirements_file, good_conda_file, bad_conda_file
         os.chdir(old_dir)
 
+
 def test_key_with_value_none():
     runtime_env_dict = {"pip": None}
     parsed_runtime_env = ParsedRuntimeEnv(runtime_env_dict)
