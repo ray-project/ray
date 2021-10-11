@@ -491,7 +491,8 @@ class StandardAutoscaler:
         pending = []
         infeasible = []
         for bundle in unfulfilled:
-            placement_group = any("_group_" in k for k in bundle)
+            placement_group = any(
+                "_group_" in k or k == "bundle" for k in bundle)
             if placement_group:
                 continue
             if self.resource_demand_scheduler.is_feasible(bundle):

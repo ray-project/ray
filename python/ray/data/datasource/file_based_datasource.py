@@ -115,12 +115,14 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                  path: str,
                  dataset_uuid: str,
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                 try_create_dir: bool = True,
                  _block_udf: Optional[Callable[[Block], Block]] = None,
                  **write_args) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
-        filesystem.create_dir(path, recursive=True)
+        if try_create_dir:
+            filesystem.create_dir(path, recursive=True)
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
         _write_block_to_file = self._write_block
