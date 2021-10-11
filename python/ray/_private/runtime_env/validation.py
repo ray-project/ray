@@ -148,7 +148,7 @@ def parse_and_validate_excludes(excludes: List[str],
                                 is_task_or_actor: bool = False) -> List[str]:
     """Parses and validates a user-provided 'excludes' option.
 
-    This is passed through without validation (for now).
+    This is validated to verify that it is of type List[str].
     """
     assert excludes is not None
 
