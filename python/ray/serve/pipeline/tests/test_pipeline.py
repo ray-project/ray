@@ -1,3 +1,4 @@
+import sys
 import tempfile
 
 import pytest
@@ -84,6 +85,7 @@ def test_basic_class(execution_mode, shared_ray_instance):
     assert greeter.call("Theodore") == "Top of the morning Theodore!"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File handling.")
 @pytest.mark.parametrize("execution_mode", ALL_EXECUTION_MODES)
 @enable_local_execution_mode_only
 def test_class_constructor_not_called_until_deployed(execution_mode,
@@ -144,5 +146,4 @@ def test_mix_classes_and_functions(execution_mode, shared_ray_instance):
 
 
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
