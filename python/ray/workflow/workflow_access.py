@@ -169,6 +169,7 @@ class WorkflowManagementActor:
             raise RuntimeError(f"The output of workflow[id={workflow_id}] "
                                "already exists.")
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        wf_store.save_workflow_prerun_metadata()
         step_id = wf_store.get_entrypoint_step_id()
         try:
             current_output = self._workflow_outputs[workflow_id].output
@@ -229,6 +230,7 @@ class WorkflowManagementActor:
             wf_store.save_workflow_meta(
                 common.WorkflowMetaData(common.WorkflowStatus.SUCCESSFUL))
             self._step_status.pop(workflow_id)
+        wf_store.save_workflow_postrun_metadata()
 
     def cancel_workflow(self, workflow_id: str) -> None:
         self._step_status.pop(workflow_id)

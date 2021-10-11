@@ -42,7 +42,6 @@ def run(entry_workflow: Workflow,
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
         ws.save_workflow_user_metadata(metadata)
-        ws.save_workflow_prerun_metadata()
 
         wf_exists = True
         try:
@@ -65,7 +64,6 @@ def run(entry_workflow: Workflow,
         result: "WorkflowExecutionResult" = ray.get(
             workflow_manager.run_or_resume.remote(workflow_id,
                                                   ignore_existing))
-        ws.save_workflow_postrun_metadata()
         if entry_workflow.data.step_type == StepType.FUNCTION:
             return flatten_workflow_output(workflow_id,
                                            result.persisted_output)
