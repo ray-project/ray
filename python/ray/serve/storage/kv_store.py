@@ -175,10 +175,14 @@ class RayS3KVStore(KVStoreBase):
     """
 
     def __init__(self,
-                 namepsace: str,
-                 bucket="",
-                 prefix="",
-                 region_name="us-west-2"):
+            namepsace: str,
+            bucket="",
+            prefix="",
+            region_name="us-west-2",
+            aws_access_key_id=None,
+            aws_secret_access_key=None,
+            aws_session_token=None,
+        ):
         self._namespace = namepsace
         self._bucket = bucket
         self._prefix = prefix
@@ -189,10 +193,9 @@ class RayS3KVStore(KVStoreBase):
         self._s3 = boto3.client(
             "s3",
             region_name=region_name,
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", None),
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY",
-                                                 None),
-            aws_session_token=os.environ.get("AWS_SESSION_TOKEN", None))
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            aws_session_token=aws_session_token)
 
     def get_storage_key(self, key: str) -> str:
         return f"{self._prefix}/{self._namespace}-{key}"
