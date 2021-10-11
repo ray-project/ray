@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Set, Union
+from typing_extensions import runtime
 import yaml
 
 import ray
@@ -144,6 +145,22 @@ def parse_and_validate_container(container: List[str],
     return container
 
 
+def parse_and_validate_excludes(excludes: List[str],
+                                is_task_or_actor: bool = False) -> List[str]:
+    """Parses and validates a user-provided 'excludes' option.
+
+    This is passed through without validation (for now).
+    """
+    assert excludes is not None
+
+    if isinstance(excludes, list) and all(
+            isinstance(s, str) for s in excludes):
+        return excludes
+    else:
+        raise TypeError("runtime_env['excludes'] must be of type "
+                        f"List[str], got {type(excludes)}")
+
+
 def parse_and_validate_env_vars(env_vars: Dict[str, str],
                                 is_task_or_actor: bool = False
                                 ) -> Optional[Dict[str, str]]:
@@ -170,6 +187,7 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str],
 # validate them.
 OPTION_TO_VALIDATION_FN = {
     "working_dir": parse_and_validate_working_dir,
+    "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,
     "pip": parse_and_validate_pip,
     "uris": parse_and_validate_uris,
