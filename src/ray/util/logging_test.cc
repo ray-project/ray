@@ -262,7 +262,7 @@ TEST(LogPerfTest, NewLogTest) {
 TEST(LogPerfTest, PerfTest) {
   RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR,
                       ray::GetUserTempDir() + ray::GetDirSep());
-  int rounds = 1;
+  int rounds = 100000;
 
   int64_t start_time = current_time_ms();
   for (int i = 0; i < rounds; ++i) {

@@ -49,7 +49,9 @@
 #pragma once
 
 #include <gtest/gtest_prod.h>
+#include <array>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <functional>
 #include <iostream>
@@ -57,6 +59,25 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "fixed_string.h"
+#include "short_alloc.h"
+
+namespace {
+template <typename T>
+auto constexpr is_atomic_v = false;
+template <typename T>
+auto constexpr is_atomic_v<std::atomic<T>> = true;
+template <typename T>
+auto constexpr is_int64_v = std::is_same_v<int64_t, T> || std::is_same_v<uint64_t, T>;
+template <class, class = void>
+struct has_value : std::false_type {};
+
+template <class T>
+struct has_value<T, std::void_t<decltype(std::declval<T>().value())>> : std::true_type {};
+
+template <typename T>
+auto constexpr has_value_v = has_value<T>::value;
+}  // namespace
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
@@ -96,7 +117,17 @@ enum class RayLogLevel {
   FATAL = 3
 };
 
-#define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
+#define STR(x) #x
+#define TOSTRING(x) STR(x)
+
+#define RAY_LOG_INTERNAL(level)                                    \
+  [] {                                                             \
+    constexpr auto path = ray::make_fixed_string(__FILE__);        \
+    constexpr size_t pos = path.rfind('/');                        \
+    constexpr auto name = path.substr<pos + 1>();                  \
+    constexpr auto prefix = name + ":" + TOSTRING(__LINE__) + ":"; \
+    return ::ray::RayLog(prefix.data(), level);                    \
+  }()
 
 #define RAY_LOG_ENABLED(level) ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)
 
@@ -106,19 +137,17 @@ enum class RayLogLevel {
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK(condition)                                                          \
-  (condition)                                                                         \
-      ? RAY_IGNORE_EXPR(0)                                                            \
-      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                               << " Check failed: " #condition " "
+#define RAY_CHECK(condition)                                                 \
+  (condition) ? RAY_IGNORE_EXPR(0)                                           \
+              : ::ray::Voidify() & RAY_LOG_INTERNAL(ray::RayLogLevel::FATAL) \
+                                       << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 
-#define RAY_DCHECK(condition)                                                         \
-  (condition)                                                                         \
-      ? RAY_IGNORE_EXPR(0)                                                            \
-      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
-                               << " Debug check failed: " #condition " "
+#define RAY_DCHECK(condition)                                                \
+  (condition) ? RAY_IGNORE_EXPR(0)                                           \
+              : ::ray::Voidify() & RAY_LOG_INTERNAL(ray::RayLogLevel::ERROR) \
+                                       << " Debug check failed: " #condition " "
 #else
 
 #define RAY_DCHECK(condition) RAY_CHECK(condition)
@@ -173,46 +202,18 @@ enum class RayLogLevel {
       RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
-// To make the logging lib plugable with other logging libs and make
-// the implementation unawared by the user, RayLog is only a declaration
-// which hide the implementation into logging.cc file.
-// In logging.cc, we can choose different log libs using different macros.
-
-// This is also a null log which does not output anything.
-class RayLogBase {
- public:
-  virtual ~RayLogBase(){};
-
-  // By default, this class is a null log because it return false here.
-  virtual bool IsEnabled() const { return false; };
-
-  // This function to judge whether current log is fatal or not.
-  virtual bool IsFatal() const { return false; };
-
-  template <typename T>
-  RayLogBase &operator<<(const T &t) {
-    if (IsEnabled()) {
-      Stream() << t;
-    }
-    if (IsFatal()) {
-      ExposeStream() << t;
-    }
-    return *this;
-  }
-
- protected:
-  virtual std::ostream &Stream() { return std::cerr; };
-  virtual std::ostream &ExposeStream() { return std::cerr; };
-};
-
 /// Callback function which will be triggered to expose fatal log.
 /// The first argument: a string representing log type or label.
 /// The second argument: log content.
 using FatalLogCallback = std::function<void(const std::string &, const std::string &)>;
 
-class RayLog : public RayLogBase {
+using short_string =
+    std::basic_string<char, std::char_traits<char>, short_alloc<char, 1024>>;
+
+class RayLog {
  public:
-  RayLog(const char *file_name, int line_number, RayLogLevel severity);
+  RayLog(const char *file, int line, RayLogLevel severity);
+  RayLog(const char *prefix, RayLogLevel severity);
 
   virtual ~RayLog();
 
@@ -264,20 +265,50 @@ class RayLog : public RayLogBase {
   static void EnableAlwaysFlush(bool enable) { always_flush_ = enable; }
   static bool IsAlwaysFlush() { return always_flush_; }
 
+  template <typename T>
+  RayLog &operator<<(const T &t) {
+    if (IsEnabled()) {
+      if constexpr (std::is_integral_v<T> || is_int64_v<T>) {
+        ToChars(t);
+      } else if constexpr (std::is_enum_v<T>) {
+        ToChars((int)t);
+      } else if constexpr (std::is_same_v<pid_t, T>) {
+        ToChars(size_t(t));
+      } else if constexpr (has_value_v<T>) {
+        ToChars(t.value());
+      } else if constexpr (is_atomic_v<T>) {
+        ToChars(t.load());
+      } else if constexpr (std::is_floating_point_v<T>) {
+        str_.append(std::to_string(t));
+      } else if constexpr (std::is_same_v<char *const *, T>) {
+        std::stringstream oss;
+        oss << t;
+        str_.append(oss.str());
+      } else {
+        str_.append(t);
+      }
+    }
+
+    return *this;
+  }
+
  private:
+  template <typename T>
+  void ToChars(const T &t) {
+    std::array<char, 20> str;
+    if (auto [ptr, ec] = std::to_chars(str.data(), str.data() + str.size(), t);
+        ec == std::errc()) {
+      str_.append(str.data(), ptr - str.data());
+    }
+  }
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
   FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
-  // Hide the implementation of log provider by void *.
-  // Otherwise, lib user may define the same macro to use the correct header file.
-  void *logging_provider_;
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
   /// log level.
   RayLogLevel severity_;
   /// Whether current log is fatal or not.
   bool is_fatal_ = false;
-  /// String stream of exposed log content.
-  std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
   /// Callback functions which will be triggered to expose fatal log.
   static std::vector<FatalLogCallback> fatal_log_callbacks_;
   static RayLogLevel severity_threshold_;
@@ -301,9 +332,10 @@ class RayLog : public RayLogBase {
 
   inline static bool always_flush_ = true;
 
- protected:
-  virtual std::ostream &Stream();
-  virtual std::ostream &ExposeStream();
+ private:
+  short_string::allocator_type::arena_type arena_;
+  short_string str_;
+  int loglevel_;
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
@@ -312,7 +344,7 @@ class Voidify {
   Voidify() {}
   // This has to be an operator with a precedence lower than << but
   // higher than ?:
-  void operator&(RayLogBase &) {}
+  void operator&(RayLog &) {}
 };
 
 }  // namespace ray
