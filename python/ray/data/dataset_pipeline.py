@@ -1,5 +1,4 @@
 import functools
-import more_itertools
 import time
 from typing import Any, Callable, List, Iterator, Iterable, Generic, Union, \
     Optional, TYPE_CHECKING
@@ -454,6 +453,33 @@ class DatasetPipeline(Generic[T]):
             containing data from that epoch only.
         """
 
+        class Peekable:
+            def __init__(self, base_iter: Iterator[T]):
+                self._iter = base_iter
+                self._buffer = None
+
+            def _fill_buffer_if_possible(self):
+                if self._buffer is None:
+                    try:
+                        self._buffer = next(self._iter)
+                        assert self._buffer is not None
+                    except StopIteration:
+                        pass
+
+            def peek(self) -> T:
+                self._fill_buffer_if_possible()
+                if self._buffer is None:
+                    raise StopIteration
+                return self._buffer
+
+            def __next__(self) -> T:
+                self._fill_buffer_if_possible()
+                if self._buffer is None:
+                    raise StopIteration
+                item = self._buffer
+                self._buffer = None
+                return item
+
         class SingleEpochIterator:
             def __init__(self, peekable_iter: Iterator[Dataset[T]]):
                 self._iter = peekable_iter
@@ -472,7 +498,7 @@ class DatasetPipeline(Generic[T]):
 
         class EpochDelimitedIterator:
             def __init__(self, pipe):
-                self._iter = more_itertools.peekable(pipe.iter_datasets())
+                self._iter = Peekable(pipe.iter_datasets())
 
             def __next__(self) -> "DatasetPipeline[T]":
                 self._iter.peek()  # Raises StopIteration on end of data.
