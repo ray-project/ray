@@ -101,7 +101,7 @@ if __name__ == "__main__":
             "log_level": "ERROR",
             "framework": "torch",
             "num_gpus": 1,
-            "num_workers": 4,
+            "num_workers": 1,
             "num_envs_per_worker": 1,
             "compress_observations": False,
             "batch_mode": "truncate_episodes",
@@ -120,7 +120,7 @@ if __name__ == "__main__":
             "sgd_minibatch_size": 64,
             "num_sgd_iter": 10,  # epoc
             "rollout_fragment_length": 512,
-            "train_batch_size": 512 * 4,
+            "train_batch_size": 512,
             "lr": 2e-05,
             "clip_actions": True,
 
