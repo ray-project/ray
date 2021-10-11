@@ -12,7 +12,8 @@ class EventListener:
     """Defining a custom event listener. Event listeners provide an efficient way
     to listen for a custom event.
 
-    Event listeners should be stateless. They will be instantiated from a coordinator actor.
+    Event listeners should be stateless. They will be instantiated from a
+    coordinator actor.
 
     Example definition
     ==================
@@ -33,7 +34,8 @@ class EventListener:
     Example Usage
     =============
 
-    >>> event_step = workflow.wait_for_event(CustomProvider, "topic1", "partition2")
+    >>> event_step = \
+        workflow.wait_for_event(CustomProvider, "topic1", "partition2")
     >>> handle_event.step(event_step).run()
 
     """
