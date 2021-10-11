@@ -313,35 +313,38 @@ Process WorkerPool::StartWorkerProcess(
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
   }
 
-  // TODO(edoakes): this is only used by Java. Once Java moves to runtime_env we
-  // should remove worker_env.
-  if (job_config) {
-    env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
-  }
-
-  if (language == Language::PYTHON) {
+  if (language == Language::PYTHON || language == Language::JAVA) {
     if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
       worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
       // Allocated_resource_json is only used in "shim process".
       worker_command_args.push_back("--allocated-instances-serialized-json=" +
                                     allocated_instances_serialized_json);
+
+      worker_command_args.push_back("--language=" + Language_Name(language));
+
+      worker_command_args.push_back("--runtime-env-hash=" +
+                                    std::to_string(runtime_env_hash));
+
+      if (serialized_runtime_env_context != "{}" &&
+          !serialized_runtime_env_context.empty()) {
+        worker_command_args.push_back("--serialized-runtime-env-context=" +
+                                      serialized_runtime_env_context);
+      }
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
       // prevent breaking tests that mock out the worker command args.
       if (worker_command_args.size() >= 2 &&
           worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
-        worker_command_args.erase(worker_command_args.begin() + 1,
-                                  worker_command_args.begin() + 2);
+        if (language == Language::PYTHON) {
+          worker_command_args.erase(worker_command_args.begin() + 1,
+                                    worker_command_args.begin() + 2);
+        } else {
+          // Erase the python executable as well for other languages.
+          worker_command_args.erase(worker_command_args.begin(),
+                                    worker_command_args.begin() + 2);
+        }
       }
-    }
-
-    worker_command_args.push_back("--runtime-env-hash=" +
-                                  std::to_string(runtime_env_hash));
-
-    if (serialized_runtime_env_context != "{}" && serialized_runtime_env_context != "") {
-      worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                    serialized_runtime_env_context);
     }
 
     if (ray_debugger_external) {
@@ -765,7 +768,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     // The worker is used for the actor creation task with dynamic options.
     if (!used) {
       // Put it into idle dedicated worker pool.
-      // TODO(guyang.sgy): This worker will not be used forever. We should kill it.
+      // TODO(SongGuyang): This worker will not be used forever. We should kill it.
       state.idle_dedicated_workers[task_id] = worker;
     }
     return;
@@ -964,7 +967,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         state.starting_workers_to_tasks[proc] = std::move(task_info);
       }
     } else {
-      // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
+      // TODO(SongGuyang): Wait until a worker is pushed or a worker can be started If
       // startup concurrency maxed out or job not started.
       PopWorkerCallbackAsync(callback, nullptr, status);
     }

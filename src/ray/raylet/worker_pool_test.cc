@@ -258,7 +258,7 @@ class WorkerPoolMock : public WorkerPool {
             is_java = true;
           }
         }
-        // TODO(guyang.sgy): support C++ language workers.
+        // TODO(SongGuyang): support C++ language workers.
         int num_workers = is_java ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
         for (int i = 0; i < num_workers; i++) {
           auto worker =
