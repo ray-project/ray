@@ -57,7 +57,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
     if (node_filter == NodeFilter::kGPU) {
       return has_gpu;
     }
-    RAY_CHECK(node_filter == NodeFilter::kCPUOnly);
+    RAY_CHECK(node_filter == NodeFilter::kNonGpu);
     return !has_gpu;
   };
 
@@ -149,16 +149,18 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
                                   spread_threshold, force_spillback, require_available);
   }
 
-  // Try schedule on CPU-only nodes.
-  const auto node_id =
-      HybridPolicyWithFilter(resource_request, local_node_id, nodes, spread_threshold,
-                             force_spillback, require_available, NodeFilter::kCPUOnly);
-  if (node_id != -1) {
-    return node_id;
+  // Try schedule on non-GPU nodes.
+  auto best_node_id = HybridPolicyWithFilter(
+      resource_request, local_node_id, nodes, spread_threshold, force_spillback,
+      /*require_available*/ true, NodeFilter::kNonGpu);
+  if (best_node_id != -1) {
+    return best_node_id;
   }
-  // Could not schedule on CPU-only nodes, schedule on GPU nodes as a last resort.
+
+  // If we cannot find any available node from non-gpu nodes, fallback to the original
+  // scheduling
   return HybridPolicyWithFilter(resource_request, local_node_id, nodes, spread_threshold,
-                                force_spillback, require_available, NodeFilter::kGPU);
+                                force_spillback, require_available);
 }
 
 }  // namespace raylet_scheduling_policy
