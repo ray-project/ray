@@ -182,7 +182,7 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
         wf_storage._put(
             wf_storage._key_step_input_metadata(step_id), metadata, True),
         wf_storage._put(
-            wf_storage._key_step_user_metadata(step_id), inputs.metadata, True),
+            wf_storage._key_step_user_metadata(step_id), inputs.user_metadata, True),
         serialization.dump_to_storage(
             wf_storage._key_step_function_body(step_id), inputs.func_body,
             workflow_id, storage),
