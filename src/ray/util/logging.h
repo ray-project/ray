@@ -69,14 +69,43 @@ template <typename T>
 auto constexpr is_atomic_v<std::atomic<T>> = true;
 template <typename T>
 auto constexpr is_int64_v = std::is_same_v<int64_t, T> || std::is_same_v<uint64_t, T>;
+
 template <class, class = void>
 struct has_value : std::false_type {};
-
 template <class T>
 struct has_value<T, std::void_t<decltype(std::declval<T>().value())>> : std::true_type {};
-
 template <typename T>
 auto constexpr has_value_v = has_value<T>::value;
+
+template <typename T>
+struct is_shared_ptr : std::false_type {};
+template <typename T>
+struct is_shared_ptr<std::shared_ptr<T>> : std::true_type {};
+template <typename T>
+auto constexpr is_shared_ptr_v = is_shared_ptr<T>::value;
+
+template <class, class = void>
+struct has_hex : std::false_type {};
+template <class T>
+struct has_hex<T, std::void_t<decltype(std::declval<T>().Hex())>> : std::true_type {};
+template <typename T>
+auto constexpr has_hex_v = has_hex<T>::value;
+
+template <class, class = void>
+struct has_to_string : std::false_type {};
+template <class T>
+struct has_to_string<T, std::void_t<decltype(std::declval<T>().ToString())>>
+    : std::true_type {};
+template <typename T>
+auto constexpr has_to_string_v = has_to_string<T>::value;
+
+template <class, class = void>
+struct has_native_handle : std::false_type {};
+template <class T>
+struct has_native_handle<T, std::void_t<decltype(std::declval<T>()->GetObjectIDs())>>
+    : std::true_type {};
+template <typename T>
+auto constexpr has_native_handle_v = has_native_handle<T>::value;
 }  // namespace
 
 #if defined(_WIN32)
@@ -270,7 +299,12 @@ class RayLog {
   RayLog &operator<<(const T &t) {
     if (IsEnabled()) {
       if constexpr (std::is_integral_v<T> || is_int64_v<T>) {
-        ToChars(t);
+        // Make gcc8/9/10 happy, before gcc11 std::to_chars only support integer.
+        if constexpr (std::is_same_v<bool, T>) {
+          ToChars(int(t));
+        } else {
+          ToChars(t);
+        }
       } else if constexpr (std::is_enum_v<T> || std::is_same_v<pid_t, T>) {
         ToChars((int)t);
       } else if constexpr (has_value_v<T>) {
@@ -279,10 +313,20 @@ class RayLog {
         ToChars(t.load());
       } else if constexpr (std::is_floating_point_v<T>) {
         str_.append(std::to_string(t));
-      } else if constexpr (std::is_same_v<char *const *, T>) {
+      } else if constexpr (std::is_same_v<char *const *, T> || is_shared_ptr_v<T>) {
         std::stringstream oss;
         oss << t;
         str_.append(oss.str());
+      } else if constexpr (has_hex_v<T>) {
+        if (t.IsNil()) {
+          str_.append("NIL_ID");
+        } else {
+          str_.append(t.Hex());
+        }
+      } else if constexpr (has_to_string_v<T>) {
+        str_.append(t.ToString());
+      } else if constexpr (has_native_handle_v<T>) {
+        ToChars(t->GetNativeHandle());
       } else {
         str_.append(t);
       }
