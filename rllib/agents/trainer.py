@@ -1218,7 +1218,7 @@ class Trainer(Trainable):
         Returns:
             any: The computed action if full_fetch=False, or
             tuple: The full output of policy.compute_actions() if
-                full_fetch=True or we have an RNN-based Policy.
+            full_fetch=True or we have an RNN-based Policy.
         """
         if normalize_actions is not None:
             deprecation_warning(

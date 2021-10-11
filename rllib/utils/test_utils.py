@@ -279,11 +279,11 @@ def check_compute_single_action(trainer,
     """Tests different combinations of args for trainer.compute_single_action.
 
     Args:
-        trainer (Trainer): The Trainer object to test.
-        include_state (bool): Whether to include the initial state of the
-            Policy's Model in the `compute_single_action` call.
-        include_prev_action_reward (bool): Whether to include the prev-action
-            and -reward in the `compute_single_action` call.
+        trainer: The Trainer object to test.
+        include_state: Whether to include the initial state of the Policy's
+            Model in the `compute_single_action` call.
+        include_prev_action_reward: Whether to include the prev-action and
+            -reward in the `compute_single_action` call.
 
     Raises:
         ValueError: If anything unexpected happens.

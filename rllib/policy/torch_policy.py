@@ -1079,7 +1079,7 @@ class TorchPolicy(Policy):
 #   and for all possible hyperparams, not just lr.
 @DeveloperAPI
 class LearningRateSchedule:
-    """Mixin for TFPolicy that adds a learning rate schedule."""
+    """Mixin for TorchPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
