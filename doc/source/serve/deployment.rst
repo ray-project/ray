@@ -244,7 +244,7 @@ To automatically include the current deployment and replica in your logs, simply
 ``logger = logging.getLogger("ray")``, and use ``logger`` within your deployment code:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
-  :lines: 1, 9, 12-14, 17
+  :lines: 1, 9, 11-14, 16-17
 
 Querying a Serve endpoint with the above deployment will produce a log line like the following:
 
