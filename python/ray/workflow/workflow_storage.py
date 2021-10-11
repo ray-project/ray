@@ -40,8 +40,10 @@ STEP_EXCEPTION = "exception.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
-WORKFLOW_PROGRESS = "progress.json"
 WORKFLOW_USER_METADATA = "user_metadata.json"
+WORKFLOW_PRERUN_METADATA = "prerun_metadata.json"
+WORKFLOW_POSTRUN_METADATA = "postrun_metadata.json"
+WORKFLOW_PROGRESS = "progress.json"
 # Without this counter, we're going to scan all steps to get the number of
 # steps with a given name. This can be very expensive if there are too
 # many duplicates.
@@ -378,7 +380,7 @@ class WorkflowStorage:
         asyncio_run(self._put(self._key_class_body(), cls))
 
     def save_step_prerun_metadata(self, step_id: StepID):
-        """Save pre-run metadata for the current step.
+        """Save pre-run metadata of the current step.
 
         Args:
             step_id: ID of the workflow step.
@@ -393,7 +395,7 @@ class WorkflowStorage:
         asyncio_run(self._put(self._key_step_prerun_metadata(step_id), metadata, True))
 
     def save_step_postrun_metadata(self, step_id: StepID):
-        """Save post-run metadata for the current step.
+        """Save post-run metadata of the current step.
 
         Args:
             step_id: ID of the workflow step.
@@ -406,6 +408,42 @@ class WorkflowStorage:
             "end_time": time.time(),
         }
         asyncio_run(self._put(self._key_step_postrun_metadata(step_id), metadata, True))
+
+    def save_workflow_user_metadata(self, metadata):
+        """Save user metadata of the current workflow.
+
+        Args:
+            metadata: user metadata of the current workflow.
+
+        Raises:
+            DataSaveError: if we fail to save the pre-run metadata.
+        """
+
+        asyncio_run(self._put(self._key_workflow_user_metadata(), metadata, True))
+
+    def save_workflow_prerun_metadata(self):
+        """Save pre-run metadata of the current workflow.
+
+        Raises:
+            DataSaveError: if we fail to save the pre-run metadata.
+        """
+
+        metadata = {
+            "start_time": time.time(),
+        }
+        asyncio_run(self._put(self._key_workflow_prerun_metadata(), metadata, True))
+
+    def save_workflow_postrun_metadata(self):
+        """Save post-run metadata of the current workflow.
+
+        Raises:
+            DataSaveError: if we fail to save the post-run metadata.
+        """
+
+        metadata = {
+            "end_time": time.time(),
+        }
+        asyncio_run(self._put(self._key_workflow_postrun_metadata(), metadata, True))
 
     def save_workflow_meta(self, metadata: WorkflowMetaData) -> None:
         """Save the metadata of the current workflow.
@@ -590,6 +628,12 @@ class WorkflowStorage:
 
     def _key_workflow_user_metadata(self):
         return [self._workflow_id, WORKFLOW_USER_METADATA]
+
+    def _key_workflow_prerun_metadata(self):
+        return [self._workflow_id, WORKFLOW_PRERUN_METADATA]
+
+    def _key_workflow_postrun_metadata(self):
+        return [self._workflow_id, WORKFLOW_POSTRUN_METADATA]
 
     def _key_num_steps_with_name(self, name):
         return [self._workflow_id, DUPLICATE_NAME_COUNTER, name]
