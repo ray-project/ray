@@ -1,6 +1,7 @@
 import pytest
 
 from ray.serve import pipeline
+from ray.serve.pipeline import ExecutionMode
 from ray.serve.pipeline.step import PipelineStep
 
 
@@ -62,6 +63,31 @@ def test_input_step_multiple_args_rejected():
     step1(pipeline.INPUT)
     with pytest.raises(ValueError):
         step1(pipeline.INPUT, step2(pipeline.INPUT))
+
+
+@pytest.mark.parametrize("execution_mode", [(ExecutionMode.LOCAL, "LOCAL"),
+                                            (ExecutionMode.TASKS, "TASKS"),
+                                            (ExecutionMode.ACTORS, "ACTORS")])
+def test_execution_mode_validation(execution_mode):
+    mode_enum, mode_str = execution_mode
+
+    @pipeline.step(execution_mode=mode_enum)
+    def f1():
+        pass
+
+    @pipeline.step(execution_mode=mode_str)
+    def f2():
+        pass
+
+    @pipeline.step(execution_mode=mode_str.lower())
+    def f3():
+        pass
+
+    with pytest.raises(TypeError):
+
+        @pipeline.step(execution_mode=123)
+        def f4():
+            pass
 
 
 if __name__ == "__main__":

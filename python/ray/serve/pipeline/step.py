@@ -1,8 +1,9 @@
 from types import FunctionType
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 from ray.serve.pipeline.node import ExecutorPipelineNode, INPUT, PipelineNode
-from ray.serve.pipeline.common import ExecutionMode, StepConfig
+from ray.serve.pipeline.common import (ExecutionMode, str_to_execution_mode,
+                                       StepConfig)
 
 
 def _validate_step_args(*args, **kwargs):
@@ -88,7 +89,7 @@ class UninstantiatedClassPipelineStep(PipelineStep):
 
 
 def step(_func_or_class: Optional[Callable] = None,
-         execution_mode: ExecutionMode = ExecutionMode.LOCAL,
+         execution_mode: Union[ExecutionMode, str] = ExecutionMode.LOCAL,
          num_replicas: int = 1) -> Callable[[Callable], PipelineStep]:
     """Decorator used to define a pipeline step.
 
@@ -112,6 +113,11 @@ def step(_func_or_class: Optional[Callable] = None,
     Returns:
         PipelineStep
     """
+
+    if isinstance(execution_mode, str):
+        execution_mode = str_to_execution_mode(execution_mode)
+    elif not isinstance(execution_mode, ExecutionMode):
+        raise TypeError("execution_mode must be an ExecutionMode or str.")
 
     config = StepConfig(
         execution_mode=execution_mode, num_replicas=num_replicas)
