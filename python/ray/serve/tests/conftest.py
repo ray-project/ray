@@ -9,6 +9,13 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
 
 
+@pytest.fixture
+def ray_shutdown():
+    yield
+    serve.shutdown()
+    ray.shutdown()
+
+
 @pytest.fixture(scope="session")
 def _shared_serve_instance():
     # Note(simon):

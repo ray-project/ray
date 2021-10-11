@@ -258,7 +258,7 @@ class WorkerPoolMock : public WorkerPool {
             is_java = true;
           }
         }
-        // TODO(guyang.sgy): support C++ language workers.
+        // TODO(SongGuyang): support C++ language workers.
         int num_workers = is_java ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
         for (int i = 0; i < num_workers; i++) {
           auto worker =
@@ -1258,8 +1258,7 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
       /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_2");
 
-  const WorkerCacheKey env1 = {
-      /*override_environment_variables=*/{}, "mock_runtime_env_1", {}};
+  const WorkerCacheKey env1 = {"mock_runtime_env_1", {}};
   const int runtime_env_hash_1 = env1.IntHash();
 
   // Push worker with runtime env 1.

@@ -860,14 +860,15 @@ class RolloutWorker(ParallelIteratorWorker):
                 summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             grad_out, info_out = {}, {}
-            if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "compute_gradients")
+            if self.policy_config.get("framework") == "tf":
                 for pid, batch in samples.policy_batches.items():
                     if pid not in self.policies_to_train:
                         continue
+                    policy = self.policy_map[pid]
+                    builder = TFRunBuilder(policy.get_session(),
+                                           "compute_gradients")
                     grad_out[pid], info_out[pid] = (
-                        self.policy_map[pid]._build_compute_gradients(
-                            builder, batch))
+                        policy._build_compute_gradients(builder, batch))
                 grad_out = {k: builder.get(v) for k, v in grad_out.items()}
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
@@ -897,14 +898,21 @@ class RolloutWorker(ParallelIteratorWorker):
         if log_once("apply_gradients"):
             logger.info("Apply gradients:\n\n{}\n".format(summarize(grads)))
         if isinstance(grads, dict):
-            if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "apply_gradients")
-                outputs = {
-                    pid: self.policy_map[pid]._build_apply_gradients(
-                        builder, grad)
-                    for pid, grad in grads.items()
+            if self.policy_config.get("framework") == "tf":
+                builders = {}
+                outputs = {}
+                for pid, grad in grads.items():
+                    if pid not in self.policies_to_train:
+                        continue
+                    policy = self.policy_map[pid]
+                    builders[pid] = TFRunBuilder(policy.get_session(),
+                                                 "apply_gradients")
+                    outputs[pid] = policy._build_apply_gradients(
+                        builders[pid], grad)
+                return {
+                    pid: builders[pid].get(op)
+                    for pid, op in outputs.items()
                 }
-                return {k: builder.get(v) for k, v in outputs.items()}
             else:
                 return {
                     pid: self.policy_map[pid].apply_gradients(g)
