@@ -1,6 +1,7 @@
 package io.ray.serve.poll;
 
 import com.google.common.base.Preconditions;
+import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
@@ -8,8 +9,16 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.serve.Constants;
+import io.ray.serve.RayServeException;
+import io.ray.serve.generated.ActorSet;
+import io.ray.serve.generated.UpdatedObject;
+import io.ray.serve.util.LogUtil;
+import io.ray.serve.util.ServeProtoUtil;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +42,26 @@ public class LongPollClient {
   /** An async thread to post the callback into. */
   private Thread pollThread;
 
+  private static final Map<LongPollNamespace, Function<byte[], Object>> DESERIALIZERS =
+      new HashMap<>();
+
+  static {
+    DESERIALIZERS.put(
+        LongPollNamespace.BACKEND_CONFIGS, body -> ServeProtoUtil.parseBackendConfig(body));
+    DESERIALIZERS.put(
+        LongPollNamespace.REPLICA_HANDLES, body -> ServeProtoUtil.parseEndpointSet(body));
+    DESERIALIZERS.put(
+        LongPollNamespace.REPLICA_HANDLES,
+        body -> {
+          try {
+            return ActorSet.parseFrom(body);
+          } catch (InvalidProtocolBufferException e) {
+            throw new RayServeException(
+                LogUtil.format("Failed to parse ActorSet from protobuf bytes."), e);
+          }
+        });
+  }
+
   public LongPollClient(BaseActorHandle hostActor, Map<KeyType, KeyListener> keyListeners) {
 
     Preconditions.checkArgument(keyListeners != null && keyListeners.size() != 0);
@@ -51,7 +80,7 @@ public class LongPollClient {
                 try {
                   pollNext();
                 } catch (RayActorException e) {
-                  LOGGER.debug("LongPollClient failed to connect to host. Shutting down.");
+                  LOGGER.error("LongPollClient failed to connect to host. Shutting down.");
                   break;
                 } catch (RayTaskException e) {
                   LOGGER.error("LongPollHost errored", e);
@@ -71,24 +100,44 @@ public class LongPollClient {
     pollThread.start();
   }
 
-  /** Poll the update. */
-  @SuppressWarnings("unchecked")
-  public void pollNext() {
+  /**
+   * Poll the update.
+   *
+   * @throws InvalidProtocolBufferException if the protobuf deserialization fails.
+   */
+  public void pollNext() throws InvalidProtocolBufferException {
     currentRef =
         ((PyActorHandle) hostActor)
             .task(PyActorMethod.of(Constants.CONTROLLER_LISTEN_FOR_CHANGE_METHOD), snapshotIds)
             .remote();
-    processUpdate((Map<KeyType, UpdatedObject>) currentRef.get());
+    processUpdate(ServeProtoUtil.parseUpdatedObjects((byte[]) currentRef.get()));
   }
 
   public void processUpdate(Map<KeyType, UpdatedObject> updates) {
-
-    LOGGER.debug("LongPollClient received updates for keys: {}", updates.keySet());
-
+    if (updates == null || updates.isEmpty()) {
+      LOGGER.info("LongPollClient received nothing.");
+      return;
+    }
+    LOGGER.info("LongPollClient received updates for keys: {}", updates.keySet());
     for (Map.Entry<KeyType, UpdatedObject> entry : updates.entrySet()) {
-      objectSnapshots.put(entry.getKey(), entry.getValue().getObjectSnapshot());
+      KeyType keyType = entry.getKey();
+      UpdatedObject updatedObject = entry.getValue();
+
+      Object objectSnapshot =
+          DESERIALIZERS
+              .get(keyType.getLongPollNamespace())
+              .apply(updatedObject.getObjectSnapshot().toByteArray());
+
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug(
+            "The updated object for key {} is {}",
+            keyType,
+            ReflectionToStringBuilder.toString(objectSnapshot));
+      }
+
+      keyListeners.get(entry.getKey()).notifyChanged(objectSnapshot);
+      objectSnapshots.put(entry.getKey(), objectSnapshot);
       snapshotIds.put(entry.getKey(), entry.getValue().getSnapshotId());
-      keyListeners.get(entry.getKey()).notifyChanged(entry.getValue().getObjectSnapshot());
     }
   }
 

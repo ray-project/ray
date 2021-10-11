@@ -485,7 +485,7 @@ RAY_CONFIG(bool, actor_register_async, true)
 RAY_CONFIG(std::string, event_level, "warning")
 
 /// Whether to avoid scheduling cpu requests on gpu nodes
-RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, false)
+RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)

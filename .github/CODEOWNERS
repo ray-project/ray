@@ -33,7 +33,6 @@
 /java/*/pom_template.xml @jovany-wang @kfstorm @raulchen
 /java/api/ @jovany-wang @kfstorm @raulchen
 
-
 # Ray Client
 /src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017 @mwtian
 
@@ -41,6 +40,14 @@
 
 # Ray tune.
 /python/ray/tune/ @ray-project/ray-tune
+
+# Ray data.
+/python/ray/data/ @ericl @scv119
+/doc/source/data/ @ericl @scv119
+
+# Ray workflows.
+/python/ray/workflow/ @ericl @iycheng
+/doc/source/workflows/ @ericl @iycheng
 
 # RLlib.
 #/python/ray/rllib/ @ray-project/rllib

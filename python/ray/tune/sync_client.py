@@ -1,19 +1,14 @@
 import distutils
 import distutils.spawn
-import inspect
 import logging
 import subprocess
 import tempfile
 import types
-import warnings
-
-from typing import Optional, List
 
 from shlex import quote
 
 from ray.tune.error import TuneError
 from ray.util.annotations import PublicAPI
-from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -70,21 +65,17 @@ def get_cloud_sync_client(remote_path):
             raise ValueError(
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX))
-        sync_up_template = ("aws s3 sync {source} {target} "
-                            "--only-show-errors {options}")
+        sync_up_template = "aws s3 sync {source} {target} --only-show-errors"
         sync_down_template = sync_up_template
-        delete_template = ("aws s3 rm {target} --recursive "
-                           "--only-show-errors {options}")
-        exclude_template = "--exclude '{pattern}'"
+        delete_template = "aws s3 rm {target} --recursive --only-show-errors"
     elif remote_path.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):
             raise ValueError(
                 "Upload uri starting with '{}' requires gsutil tool"
                 " to be installed".format(GS_PREFIX))
-        sync_up_template = "gsutil rsync -r {options} {source} {target}"
+        sync_up_template = "gsutil rsync -r {source} {target}"
         sync_down_template = sync_up_template
-        delete_template = "gsutil rm -r {options} {target}"
-        exclude_template = "-x '{regex_pattern}'"
+        delete_template = "gsutil rm -r {target}"
     elif remote_path.startswith(HDFS_PREFIX):
         if not distutils.spawn.find_executable("hdfs"):
             raise ValueError("Upload uri starting with '{}' requires hdfs tool"
@@ -92,40 +83,35 @@ def get_cloud_sync_client(remote_path):
         sync_up_template = "hdfs dfs -put -f {source} {target}"
         sync_down_template = "hdfs dfs -get -f {source} {target}"
         delete_template = "hdfs dfs -rm -r {target}"
-        exclude_template = None
     else:
         raise ValueError("Upload uri must start with one of: {}"
                          "".format(ALLOWED_REMOTE_PREFIXES))
     return CommandBasedClient(sync_up_template, sync_down_template,
-                              delete_template, exclude_template)
+                              delete_template)
 
 
 @PublicAPI(stability="beta")
 class SyncClient:
     """Client interface for interacting with remote storage options."""
 
-    def sync_up(self, source, target, exclude: Optional[List] = None):
+    def sync_up(self, source, target):
         """Syncs up from source to target.
 
         Args:
             source (str): Source path.
             target (str): Target path.
-            exclude (List[str]): Pattern of files to exclude, e.g.
-                ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
             True if sync initiation successful, False otherwise.
         """
         raise NotImplementedError
 
-    def sync_down(self, source, target, exclude: Optional[List] = None):
+    def sync_down(self, source, target):
         """Syncs down from source to target.
 
         Args:
             source (str): Source path.
             target (str): Target path.
-            exclude (List[str]): Pattern of files to exclude, e.g.
-                ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
             True if sync initiation successful, False otherwise.
@@ -156,41 +142,18 @@ class SyncClient:
         pass
 
 
-def _num_args(func):
-    sig = inspect.signature(func)
-    return len(sig.parameters)
-
-
 class FunctionBasedClient(SyncClient):
     def __init__(self, sync_up_func, sync_down_func, delete_func=None):
         self.sync_up_func = sync_up_func
-        self._sync_up_legacy = _num_args(sync_up_func) <= 2
-
         self.sync_down_func = sync_down_func
-        self._sync_down_legacy = _num_args(sync_up_func) <= 2
-
-        if self._sync_up_legacy or self._sync_down_legacy:
-            if log_once("func_sync_up_legacy"):
-                warnings.warn(
-                    "Your sync functions currently only accepts two params "
-                    "(a `source` and a `target`). In the future, we will "
-                    "pass an additional `exclude` parameter. Please adjust "
-                    "your sync function accordingly.")
-
         self.delete_func = delete_func or noop
 
-    def sync_up(self, source, target, exclude: Optional[List] = None):
-        if self._sync_up_legacy:
-            self.sync_up_func(source, target)
-        else:
-            self.sync_up_func(source, target, exclude)
+    def sync_up(self, source, target):
+        self.sync_up_func(source, target)
         return True
 
-    def sync_down(self, source, target, exclude: Optional[List] = None):
-        if self._sync_down_legacy:
-            self.sync_down_func(source, target)
-        else:
-            self.sync_down_func(source, target, exclude)
+    def sync_down(self, source, target):
+        self.sync_down_func(source, target)
         return True
 
     def delete(self, target):
@@ -203,33 +166,24 @@ NOOP = FunctionBasedClient(noop, noop)
 
 class CommandBasedClient(SyncClient):
     def __init__(self,
-                 sync_up_template: str,
-                 sync_down_template: str,
-                 delete_template: Optional[str] = noop_template,
-                 exclude_template: Optional[str] = None):
+                 sync_up_template,
+                 sync_down_template,
+                 delete_template=noop_template):
         """Syncs between two directories with the given command.
 
         Arguments:
             sync_up_template (str): A runnable string template; needs to
-                include replacement fields ``{source}``, ``{target}``, and
-                ``{options}``.
+                include replacement fields '{source}' and '{target}'.
             sync_down_template (str): A runnable string template; needs to
-                include replacement fields ``{source}``, ``{target}``, and
-                ``{options}``.
+                include replacement fields '{source}' and '{target}'.
             delete_template (Optional[str]): A runnable string template; needs
-                to include replacement field ``{target}``. Noop by default.
-            exclude_template (Optional[str]): A pattern with possible
-                replacement fields ``{pattern}`` and ``{regex_pattern}``.
-                Will replace ``{options}}`` in the sync up/down templates
-                if files/directories to exclude are passed.
+                to include replacement field '{target}'. Noop by default.
         """
         self._validate_sync_string(sync_up_template)
         self._validate_sync_string(sync_down_template)
-        self._validate_exclude_template(exclude_template)
         self.sync_up_template = sync_up_template
         self.sync_down_template = sync_down_template
         self.delete_template = delete_template
-        self.exclude_template = exclude_template
         self.logfile = None
         self._closed = False
         self.cmd_process = None
@@ -253,11 +207,11 @@ class CommandBasedClient(SyncClient):
         else:
             return self.logfile
 
-    def sync_up(self, source, target, exclude: Optional[List] = None):
-        return self._execute(self.sync_up_template, source, target, exclude)
+    def sync_up(self, source, target):
+        return self._execute(self.sync_up_template, source, target)
 
-    def sync_down(self, source, target, exclude: Optional[List] = None):
-        return self._execute(self.sync_down_template, source, target, exclude)
+    def sync_down(self, source, target):
+        return self._execute(self.sync_down_template, source, target)
 
     def delete(self, target):
         if self.is_running:
@@ -304,36 +258,13 @@ class CommandBasedClient(SyncClient):
             return self.cmd_process.returncode is None
         return False
 
-    def _execute(self,
-                 sync_template,
-                 source,
-                 target,
-                 exclude: Optional[List] = None):
+    def _execute(self, sync_template, source, target):
         """Executes sync_template on source and target."""
         if self.is_running:
             logger.warning("Last sync client cmd still in progress, skipping.")
             return False
-
-        if exclude and self.exclude_template:
-            options = []
-            if "{pattern}" in self.exclude_template:
-                for excl in exclude:
-                    options.append(self.exclude_template.format(pattern=excl))
-            elif "{regex_pattern}" in self.exclude_template:
-                # This is obviously not a great way to convert to regex,
-                # but it will do for the moment. Todo: Improve.
-                def _to_regex(pattern: str) -> str:
-                    return f"({pattern.replace('*', '.*')})"
-
-                regex_pattern = "|".join(_to_regex(excl) for excl in exclude)
-                options.append(
-                    self.exclude_template.format(regex_pattern=regex_pattern))
-            option_str = " ".join(options)
-        else:
-            option_str = ""
-
         final_cmd = sync_template.format(
-            source=quote(source), target=quote(target), options=option_str)
+            source=quote(source), target=quote(target))
         logger.debug("Running sync: {}".format(final_cmd))
         self.cmd_process = subprocess.Popen(
             final_cmd,
@@ -347,15 +278,6 @@ class CommandBasedClient(SyncClient):
         if not isinstance(sync_string, str):
             raise ValueError("{} is not a string.".format(sync_string))
         if "{source}" not in sync_string:
-            raise ValueError("Sync template missing `{source}`.")
+            raise ValueError("Sync template missing '{source}'.")
         if "{target}" not in sync_string:
-            raise ValueError("Sync template missing `{target}`.")
-
-    @staticmethod
-    def _validate_exclude_template(exclude_template):
-        if exclude_template:
-            if ("{pattern}" not in exclude_template
-                    and "{regex_pattern}" not in exclude_template):
-                raise ValueError(
-                    "Neither `{pattern}` nor `{regex_pattern}` found in "
-                    f"exclude string `{exclude_template}`")
+            raise ValueError("Sync template missing '{target}'.")
