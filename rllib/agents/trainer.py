@@ -15,6 +15,7 @@ from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
@@ -1850,23 +1851,25 @@ class Trainer(Trainable):
             "build_trainer()` function!")
 
     def _register_if_needed(self, env_object: Union[str, EnvType, None],
-                            config):
+                            config) -> Optional[str]:
         if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__
 
-            # Add convenience `_get_spaces` method.
-
-            def _get_spaces(s):
-                return s.observation_space, s.action_space
-
-            env_object._get_spaces = _get_spaces
-
             if config.get("remote_worker_envs"):
-                register_env(
-                    name,
-                    lambda cfg: ray.remote(num_cpus=0)(env_object).remote(cfg))
+
+                @ray.remote(num_cpus=0)
+                class _wrapper(env_object):
+                    # Add convenience `_get_spaces` and `_is_multi_agent`
+                    # methods.
+                    def _get_spaces(self):
+                        return self.observation_space, self.action_space
+
+                    def _is_multi_agent(self):
+                        return isinstance(self, MultiAgentEnv)
+
+                register_env(name, lambda cfg: _wrapper.remote(cfg))
             else:
                 register_env(name, lambda cfg: env_object(cfg))
             return name

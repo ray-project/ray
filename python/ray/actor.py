@@ -5,10 +5,10 @@ import weakref
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-import ray._private.runtime_env as runtime_support
+from ray._private.runtime_env.validation import (
+    override_task_or_actor_runtime_env, ParsedRuntimeEnv)
 import ray.worker
 from ray.util.annotations import PublicAPI
-from ray._private.runtime_env import parse_pip_and_conda
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
 
@@ -392,7 +392,8 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = parse_pip_and_conda(runtime_env)
+        new_runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
@@ -409,10 +410,15 @@ class ActorClass:
             resources, accelerator_type, runtime_env):
         self = ActorClass.__new__(ActorClass)
 
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
             max_restarts, max_task_retries, num_cpus, num_gpus, memory,
-            object_store_memory, resources, accelerator_type, runtime_env)
+            object_store_memory, resources, accelerator_type, new_runtime_env)
 
         return self
 
@@ -472,7 +478,8 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = parse_pip_and_conda(runtime_env)
+        new_runtime_env = ParsedRuntimeEnv(
+            runtime_env or {}, is_task_or_actor=True)
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
@@ -725,12 +732,16 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
 
-        if runtime_env is None:
+        if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
+            runtime_env = ParsedRuntimeEnv(runtime_env)
+        elif isinstance(runtime_env, ParsedRuntimeEnv):
+            pass
+        else:
             runtime_env = meta.runtime_env
 
-        job_runtime_env = worker.core_worker.get_current_runtime_env_dict()
-        runtime_env_dict = runtime_support.override_task_or_actor_runtime_env(
-            runtime_env, job_runtime_env)
+        parent_runtime_env = worker.core_worker.get_current_runtime_env()
+        parsed_runtime_env = override_task_or_actor_runtime_env(
+            runtime_env, parent_runtime_env)
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
@@ -750,8 +761,8 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            runtime_env_dict=runtime_env_dict,
-            runtime_env_uris=runtime_env_dict.get("uris") or [])
+            serialized_runtime_env=parsed_runtime_env.serialize(),
+            runtime_env_uris=parsed_runtime_env.get("uris") or [])
 
         actor_handle = ActorHandle(
             meta.language,

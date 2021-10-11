@@ -40,7 +40,7 @@ There are 3 primary API differences between Ray SGD v1 and v2.
                 optimizer.step()
                 print(f"epoch: {epoch}, loss: {loss.item()}")
 
-        from ray.util.sgd.v2 import Trainer
+        from ray.sgd import Trainer
 
         trainer = Trainer(backend="torch", num_workers=4)
         trainer.start()
@@ -102,8 +102,8 @@ you would do
 .. code-block:: python
 
     from ray.util.sgd import TrainingOperator
-    from ray.util.sgd.v2 import Trainer
-    import ray.util.sgd.v2 as sgd
+    from ray.sgd import Trainer
+    from ray import sgd
 
     class MyTrainingOperator(TrainingOperator):
        ...
@@ -155,8 +155,8 @@ The API for ``TFTrainer`` uses creator functions instead of a ``TrainingOperator
 
     from tensorflow.distribute import MultiWorkerMirroredStrategy
 
-    from ray.util.sgd.v2 import Trainer
-    import ray.util.sgd.v2 as sgd
+    from ray.sgd import Trainer
+    from ray import sgd
 
     def train_func(config):
        train_dataset, val_dataset = data_creator(config)
@@ -218,7 +218,7 @@ For example, to get the final model:
 
 .. code-block:: python
 
-    from ray.util.sgd.v2 import Trainer
+    from ray.sgd import Trainer
 
     def train_func():
        model = Net()
@@ -258,8 +258,9 @@ If you want to access any values *during* the training process, you can do so vi
 
 .. code-block:: python
 
-   import ray.util.sgd.v2 as sgd
-   from ray.util.sgd.v2 import SGDCallback, Trainer
+   from ray import sgd
+   from ray.sgd Trainer
+   from ray.sgd.callbacks import SGDCallback
    from typing import List, Dict
 
    class PrintingCallback(SGDCallback):
@@ -312,8 +313,8 @@ For example, in order to save checkpoints after every epoch:
 
 .. code-block:: python
 
-    from ray.util.sgd.v2 import Trainer
-    import ray.util.sgd.v2 as sgd
+    from ray.sgd import Trainer
+    from ray import sgd
 
     def train_func():
        model = Net()
@@ -371,8 +372,8 @@ There is a 1:1 mapping between rank 0 worker's ``sgd.report()``\ , ``sgd.save_ch
 .. code-block:: python
 
    from ray import tune
-   import ray.util.sgd.v2 as sgd
-   from ray.util.sgd.v2 import Trainer
+   from ray import sgd
+   from ray.sgd import Trainer
 
    def train_func(config)
        # In this example, nothing is expected to change over epochs,

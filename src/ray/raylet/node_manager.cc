@@ -373,7 +373,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       },
       /*runtime_env_agent_factory=*/
       [this](const std::string &ip_address, int port) {
-        RAY_CHECK(!ip_address.empty() && port != 0);
+        RAY_CHECK(!ip_address.empty() && port != 0)
+            << "ip_address: " << ip_address << " port: " << port;
         return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
@@ -526,7 +527,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
+  RAY_LOG(DEBUG) << "HandleJobStarted for job " << job_id;
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
   // increment the ref count multiple times. This is fine because

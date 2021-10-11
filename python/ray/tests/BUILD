@@ -48,6 +48,7 @@ py_test_module_list(
   files = [
     "test_client.py",
     "test_client_builder.py",
+    "test_client_compat.py",
     "test_client_init.py",
     "test_client_multi.py",
     "test_client_proxy.py",
@@ -296,6 +297,14 @@ py_test(
     name = "test_pydantic_serialization",
     size = "small",
     srcs = SRCS + ["test_pydantic_serialization.py", "pydantic_module.py"],
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_runtime_env_validation",
+    size = "small",
+    srcs = SRCS + ["test_runtime_env_validation.py"],
     tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )
