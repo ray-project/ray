@@ -1636,9 +1636,9 @@ void CoreWorker::BuildCommonTaskSpec(
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
       debugger_breakpoint,
       // TODO(SongGuyang): Move the logic of `prepare_runtime_env` from Python to Core
-      // Worker. A common process is needed. If runtime env is not provided, use job
-      // config. Only for Java and C++ because it has been set in Python by
-      // `prepare_runtime_env`.
+      // Worker. A common process is needed.
+      // If runtime env is not provided, use job config. Only for Java and C++ because it
+      // has been set in Python by `prepare_runtime_env`.
       (serialized_runtime_env.empty() || serialized_runtime_env == "{}")
           ? job_config_->runtime_env().serialized_runtime_env()
           : serialized_runtime_env,
