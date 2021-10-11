@@ -212,6 +212,7 @@ using short_string =
 
 class RayLog {
  public:
+  RayLog(RayLogLevel severity);
   RayLog(const char *file, int line, RayLogLevel severity);
   RayLog(const char *prefix, RayLogLevel severity);
 

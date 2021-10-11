@@ -315,23 +315,21 @@ void RayLog::AddFatalLogCallbacks(
                               expose_log_callbacks.end());
 }
 
-RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
+RayLog::RayLog(RayLogLevel severity)
     : is_enabled_(severity >= severity_threshold_),
       severity_(severity),
       is_fatal_(severity == RayLogLevel::FATAL),
       str_(arena_),
-      loglevel_(GetMappedSeverity(severity)) {
+      loglevel_(GetMappedSeverity(severity)) {}
+
+RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
+    : RayLog(severity) {
   if (is_enabled_) {
     str_.append(file_name).append(":").append(std::to_string(line_number)).append(":");
   }
 }
 
-RayLog::RayLog(const char *prefix, RayLogLevel severity)
-    : is_enabled_(severity >= severity_threshold_),
-      severity_(severity),
-      is_fatal_(severity == RayLogLevel::FATAL),
-      str_(arena_),
-      loglevel_(GetMappedSeverity(severity)) {
+RayLog::RayLog(const char *prefix, RayLogLevel severity) : RayLog(severity) {
   if (is_enabled_) {
     str_.append(prefix);
   }
