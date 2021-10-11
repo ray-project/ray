@@ -183,8 +183,7 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
-/// Timeout, in milliseconds, to wait before retrying a failed pull in the
-/// ObjectManager.
+/// The object manager's global timer interval in milliseconds.
 RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
@@ -486,7 +485,7 @@ RAY_CONFIG(bool, actor_register_async, true)
 RAY_CONFIG(std::string, event_level, "warning")
 
 /// Whether to avoid scheduling cpu requests on gpu nodes
-RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, false)
+RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)

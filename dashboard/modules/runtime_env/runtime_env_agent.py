@@ -79,13 +79,20 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         return self._per_job_logger_cache[job_id]
 
     async def CreateRuntimeEnv(self, request, context):
-        async def _setup_runtime_env(serialized_runtime_env):
+        async def _setup_runtime_env(serialized_runtime_env,
+                                     serialized_allocated_resource_instances):
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 runtime_env: dict = json.loads(serialized_runtime_env or "{}")
+                allocated_resource: dict = json.loads(
+                    serialized_allocated_resource_instances or "{}")
 
                 # Use a separate logger for each job.
                 per_job_logger = self.get_or_create_logger(request.job_id)
+                # TODO(chenk008): Add log about allocated_resource to
+                # avoid lint error. That will be moved to cgroup plugin.
+                per_job_logger.debug(f"Worker has resource :"
+                                     f"{allocated_resource}")
                 context = RuntimeEnvContext(
                     env_vars=runtime_env.get("env_vars"))
                 self._conda_manager.setup(
@@ -148,7 +155,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     runtime_env_context = await _setup_runtime_env(
-                        serialized_env)
+                        serialized_env,
+                        request.serialized_allocated_resource_instances)
                     break
                 except Exception as ex:
                     logger.exception("Runtime env creation failed.")

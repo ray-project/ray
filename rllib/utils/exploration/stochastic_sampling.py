@@ -61,11 +61,12 @@ class StochasticSampling(Exploration):
             dtype=np.int64)
 
     @override(Exploration)
-    def get_exploration_action(self,
-                               *,
-                               action_distribution: ActionDistribution,
-                               timestep: Optional[Union[int, TensorType]] = None,
-                               explore: bool = True):
+    def get_exploration_action(
+            self,
+            *,
+            action_distribution: ActionDistribution,
+            timestep: Optional[Union[int, TensorType]] = None,
+            explore: bool = True):
         if self.framework == "torch":
             return self._get_torch_exploration_action(action_distribution,
                                                       timestep, explore)

@@ -16,8 +16,10 @@
 
 #include <ray/api/function_manager.h>
 #include <ray/api/serializer.h>
+
 #include <boost/dll.hpp>
 #include <memory>
+
 #include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
 #include "ray/common/id.h"
@@ -62,7 +64,7 @@ class TaskExecutor {
  public:
   TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_);
 
-  /// TODO(Guyang Song): support multiple tasks execution
+  /// TODO(SongGuyang): support multiple tasks execution
   std::unique_ptr<ObjectID> Execute(InvocationSpec &invocation);
 
   static void Invoke(
