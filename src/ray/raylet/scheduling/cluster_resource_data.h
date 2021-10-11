@@ -138,7 +138,7 @@ class TaskResourceInstances {
   /// Check whether there are no resource instances.
   bool IsEmpty() const;
   /// Returns human-readable string for these resources.
-  std::string DebugString() const;
+  [[nodiscard]] std::string DebugString(const StringIdMap &string_id_map) const;
 };
 
 /// Total and available capacities of each resource of a node.
@@ -189,7 +189,7 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString(StringIdMap string_to_int_map) const;
+  [[nodiscard]] std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 struct Node {

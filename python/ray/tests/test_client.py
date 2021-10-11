@@ -708,7 +708,9 @@ def test_object_ref_cleanup():
     # See https://github.com/ray-project/ray/issues/17968 for details
     with ray_start_client_server():
         result = run_string_as_driver(object_ref_cleanup_script)
-        assert result == ""
+        assert "Error in sys.excepthook:" not in result
+        assert "AttributeError: 'NoneType' object has no " not in result
+        assert "Exception ignored in" not in result
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
