@@ -8,8 +8,9 @@ from pettingzoo.butterfly import pistonball_v4
 import supersuit as ss
 from torch import nn
 
-# This tutorial uses PettingZoo's Multi-Agent Environment API (https://www.pettingzoo.ml/)
-# with RLlib. For more information, please see the PettingZoo Team's blog post at:
+# This tutorial uses the PettingZoo (https://www.pettingzoo.ml/)
+# Multi-Agent Environment API with RLlib.
+# For more information, please see the PettingZoo Team's blog post at:
 # https://tinyurl.com/pettingzoo-rllib-tutorial
 
 
