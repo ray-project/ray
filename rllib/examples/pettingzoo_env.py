@@ -9,8 +9,8 @@ import supersuit as ss
 from torch import nn
 
 # This tutorial uses PettingZoo's Multi-Agent Environment API (https://www.pettingzoo.ml/)
-# with RLlib. For more information, please see the blog post at:
-# https://towardsdatascience.com/using-pettingzoo-with-rllib-for-multi-agent-deep-reinforcement-learning-5ff47c677abd
+# with RLlib. For more information, please see the PettingZoo Team's blog post at:
+# https://tinyurl.com/pettingzoo-rllib-tutorial
 
 
 class CNNModelV2(TorchModelV2, nn.Module):
