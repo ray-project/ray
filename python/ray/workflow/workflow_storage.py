@@ -4,6 +4,7 @@ workflows.
 """
 
 import asyncio
+import time
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
 import logging
@@ -30,9 +31,9 @@ OBJECTS_DIR = "objects"
 STEPS_DIR = "steps"
 STEP_INPUTS_METADATA = "inputs.json"
 STEP_USER_METADATA = "user_metadata.json"
-PRE_STEP_METADATA = "pre_step_metadata.json"
+STEP_PRERUN_METADATA = "prerun_metadata.json"
 STEP_OUTPUTS_METADATA = "outputs.json"
-POST_STEP_METADATA = "post_step_metadata.json"
+STEP_POSTRUN_METADATA = "postrun_metadata.json"
 STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
 STEP_EXCEPTION = "exception.pkl"
@@ -376,6 +377,36 @@ class WorkflowStorage:
         """
         asyncio_run(self._put(self._key_class_body(), cls))
 
+    def save_step_prerun_metadata(self, step_id: StepID):
+        """Save pre-run metadata for the current step.
+
+        Args:
+            step_id: ID of the workflow step.
+
+        Raises:
+            DataSaveError: if we fail to save the pre-run metadata.
+        """
+
+        metadata = {
+            "start_time": time.time(),
+        }
+        asyncio_run(self._put(self._key_step_prerun_metadata(step_id), metadata, True))
+
+    def save_step_postrun_metadata(self, step_id: StepID):
+        """Save post-run metadata for the current step.
+
+        Args:
+            step_id: ID of the workflow step.
+
+        Raises:
+            DataSaveError: if we fail to save the post-run metadata.
+        """
+
+        metadata = {
+            "end_time": time.time(),
+        }
+        asyncio_run(self._put(self._key_step_postrun_metadata(step_id), metadata, True))
+
     def save_workflow_meta(self, metadata: WorkflowMetaData) -> None:
         """Save the metadata of the current workflow.
 
@@ -524,8 +555,8 @@ class WorkflowStorage:
     def _key_step_user_metadata(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_USER_METADATA]
 
-    def _key_pre_step_metadata(self, step_id):
-        return [self._workflow_id, STEPS_DIR, step_id, PRE_STEP_METADATA]
+    def _key_step_prerun_metadata(self, step_id):
+        return [self._workflow_id, STEPS_DIR, step_id, STEP_PRERUN_METADATA]
 
     def _key_step_output(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_OUTPUT]
@@ -536,8 +567,8 @@ class WorkflowStorage:
     def _key_step_output_metadata(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_OUTPUTS_METADATA]
 
-    def _key_post_step_metadata(self, step_id):
-        return [self._workflow_id, STEPS_DIR, step_id, POST_STEP_METADATA]
+    def _key_step_postrun_metadata(self, step_id):
+        return [self._workflow_id, STEPS_DIR, step_id, STEP_POSTRUN_METADATA]
 
     def _key_step_function_body(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_FUNC_BODY]

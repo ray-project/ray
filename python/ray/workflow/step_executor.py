@@ -330,12 +330,11 @@ def _workflow_step_executor(step_type: StepType, func: Callable,
     args, kwargs = _resolve_step_inputs(baked_inputs)
     store = workflow_storage.get_workflow_storage()
     try:
-        step_start_metadata = {'start_time': time.time()}
-        asyncio.get_event_loop().run_until_complete(store._put(
-            store._key_pre_step_metadata(step_id), step_start_metadata, True))
+        store.save_step_prerun_metadata(step_id)
         persisted_output, volatile_output = _wrap_run(
             func, step_type, step_id, catch_exceptions, max_retries, *args,
             **kwargs)
+        store.save_step_postrun_metadata(step_id)
     except Exception as e:
         commit_step(store, step_id, None, e)
         raise e
@@ -372,9 +371,6 @@ def _workflow_step_executor(step_type: StepType, func: Callable,
             # advance the progress of the workflow
             store.advance_progress(step_id)
         _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
-    step_end_metadata = {'end_time': time.time()}
-    asyncio.get_event_loop().run_until_complete(store._put(
-        store._key_post_step_metadata(step_id), step_end_metadata, True))
     logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
     if isinstance(volatile_output, Workflow):
         # This is the case where a step method is called in the virtual actor.
