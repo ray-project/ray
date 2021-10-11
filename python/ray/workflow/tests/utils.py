@@ -5,7 +5,7 @@ import ray
 from ray import workflow
 from ray.workflow.storage import set_global_storage
 
-_GLOBAL_MARK_PATH= pathlib.Path(tempfile.gettempdir())
+_GLOBAL_MARK_PATH = pathlib.Path(tempfile.gettempdir())
 
 
 def unset_global_mark(name="__workflow_test"):
@@ -21,6 +21,7 @@ def set_global_mark(name="__workflow_test"):
 
 def check_global_mark(name="__workflow_test"):
     mark_file = _GLOBAL_MARK_PATH / name
+    print("checking global mark: ", mark_file)
     return mark_file.exists()
 
 

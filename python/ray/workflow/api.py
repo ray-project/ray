@@ -15,7 +15,7 @@ from ray.workflow import storage as storage_base
 from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized,
                                  Workflow, Event)
 from ray.workflow import serialization
-from ray.workflow.event_listener import EventListenerType, TimerListener
+from ray.workflow.event_listener import (EventListener, EventListenerType, TimerListener)
 from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
 from ray.util.annotations import PublicAPI
@@ -321,6 +321,10 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 @PublicAPI(stability="beta")
 def wait_for_event(event_listener_type: EventListenerType, *args,
                    **kwargs) -> Workflow:
+    if not issubclass(event_listener_type, EventListener):
+        raise TypeError(f"Event listener type is {event_listener_type.__name__}"
+                        ", which is not a subclass of workflow.EventListener")
+
     @step
     def get_message(event_listener_type: EventListenerType, *args,
                     **kwargs) -> Event:

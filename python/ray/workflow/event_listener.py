@@ -4,8 +4,8 @@ from ray.workflow.common import Event
 import time
 from typing import Callable
 
-
 EventListenerType = Callable[[], "EventListener"]
+
 
 @PublicAPI(stability="beta")
 class EventListener:
@@ -37,6 +37,7 @@ class EventListener:
     >>> handle_event.step(event_step).run()
 
     """
+
     def __init__(self):
         """Optional constructor. Only the constructor with now arguments will be
            called."""
@@ -50,7 +51,6 @@ class EventListener:
         """Optional. Called after an event has been checkpointed and a transaction can
            be safely committed."""
         pass
-
 
 
 @PublicAPI(stability="beta")

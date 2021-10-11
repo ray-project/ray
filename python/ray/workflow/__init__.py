@@ -3,6 +3,7 @@ from ray.workflow.api import (step, init, virtual_actor, get_output, get_actor,
                               wait_for_event, sleep)
 from ray.workflow.workflow_access import WorkflowExecutionError
 from ray.workflow.common import WorkflowStatus
+from ray.workflow.event_listener import EventListener
 
 __all__ = [
     "step",
@@ -18,6 +19,7 @@ __all__ = [
     "init",
     "wait_for_event",
     "sleep",
+    "EventListener"
 ]
 
 globals().update(WorkflowStatus.__members__)
