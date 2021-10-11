@@ -100,9 +100,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             config.upscale_delay_s / self.loop_period_s)
         self.scale_down_consecutive_periods = int(
             config.downscale_delay_s / self.loop_period_s)
-        print("delays", config.upscale_delay_s, config.downscale_delay_s)
-        print("scale up, scale down", self.scale_up_consecutive_periods,
-              self.scale_down_consecutive_periods)
+
         # Keeps track of previous decisions. Each time the load is above
         # 'scale_up_threshold', the counter is incremented and each time it is
         # below 'scale_down_threshold', the counter is decremented. When the
@@ -126,10 +124,6 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
         desired_num_replicas = calculate_desired_num_replicas(
             self.config, current_num_ongoing_requests)
-        print(f"ongoing reqs: {current_num_ongoing_requests}")
-        print(f"desired_num_replicas: {desired_num_replicas}")
-
-        print("decision counter: ", self.decision_counter)
         # Scale up.
         if desired_num_replicas > curr_num_replicas:
             # If the previous decision was to scale down (the counter was
@@ -144,7 +138,6 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             if self.decision_counter >= self.scale_up_consecutive_periods:
                 self.decision_counter = 0
                 decision_num_replicas = desired_num_replicas
-                print("SCALE UP")
 
         # Scale down.
         elif desired_num_replicas < curr_num_replicas:
@@ -163,11 +156,9 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
                 # curr_replicas value.  Is this okay?
                 self.decision_counter = 0
                 decision_num_replicas = desired_num_replicas
-                print("SCALE_DOWN")
 
         # Do nothing.
         else:
             self.decision_counter = 0
-            print("DO NOTHING")
-        print("decision num replicas in policy.py: ", decision_num_replicas)
+
         return decision_num_replicas

@@ -167,7 +167,6 @@ class ServeController:
             decision_num_replicas = (
                 autoscaling_policy.get_decision_num_replicas(
                     current_num_ongoing_requests, len(running_replicas)))
-            print(f"decision_num_replicas: {decision_num_replicas}")
             new_backend_config.num_replicas = decision_num_replicas
 
             replica_config = backend_info.replica_config
@@ -304,7 +303,6 @@ class ServeController:
                                  f"version '{existing_backend_info.version}'.")
 
         autoscaling_config = backend_config.autoscaling_config
-        print("Autoscaling config in deploy", autoscaling_config)
         if autoscaling_config is not None:
             autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
         else:
