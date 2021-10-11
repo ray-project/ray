@@ -11,8 +11,8 @@ from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
 
 logger = logging.getLogger(__name__)
 
-# We generate the node ids determinstically in the fake node provider, so that
-# we can associated launched nodes with their resource reports. IDs increment
+# We generate the node ids deterministically in the fake node provider, so that
+# we can associate launched nodes with their resource reports. IDs increment
 # starting with fffff*00000 for the head node, fffff*00001, etc. for workers.
 FAKE_HEAD_NODE_ID = "fffffffffffffffffffffffffffffffffffffffffffffffffff00000"
 FAKE_HEAD_NODE_TYPE = "ray.head.default"
