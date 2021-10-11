@@ -621,12 +621,12 @@ Distributed Data Ingest (Ray Datasets)
 
 Ray SGD provides native support for :ref:`Ray Datasets <datasets>` to support the following use cases:
 
-1. **Large Datasets**: :ref:`Ray Datasets <datasets>` you can easily work with datasets that are big to fit on a single node.
+1. **Large Datasets**: With :ref:`Ray Datasets <datasets>`, you can easily work with datasets that are too big to fit on a single node.
 :ref:`Ray Datasets <datasets>` will distribute the dataset across the Ray Cluster and allow you to perform dataset operations (map, filter, etc.)
 on the distributed dataset.
 2. **Automatic locality-aware sharding**: If provided a Ray Dataset, Ray SGD will automatically shard the dataset and assign each shard
-to a training worker while minimize cross-node data transfer. Unlike with standard Torch or Tensorflow datasets, each training
-worker will only load in its assigned shard into memory rather than the entire Dataset.
+to a training worker while minimizing cross-node data transfer. Unlike with standard Torch or Tensorflow datasets, each training
+worker will only load its assigned shard into memory rather than the entire ``Dataset``.
 2. **Pipelined Execution**: :ref:`Ray Datasets <datasets>` also supports pipelining, meaning that data processing operations
 can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
 and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline` for more information.
@@ -689,7 +689,7 @@ See :ref:`dataset-pipeline` for more semantics on pipelining.
 
 Example: Per-Epoch Shuffle Pipeline
 +++++++++++++++++++++++++++++++++++
-A common use case is to have a training pipeline that shuffles the dataset after every epoch/repetition.
+A common use case is to have a training pipeline that shuffles the dataset before every epoch.
 
 This is very simple to do with Ray Datasets + Ray SGD.
 
