@@ -174,7 +174,8 @@ class RayS3KVStore(KVStoreBase):
     caller must handle serialization.
     """
 
-    def __init__(self,
+    def __init__(
+            self,
             namepsace: str,
             bucket="",
             prefix="",
@@ -182,7 +183,7 @@ class RayS3KVStore(KVStoreBase):
             aws_access_key_id=None,
             aws_secret_access_key=None,
             aws_session_token=None,
-        ):
+    ):
         self._namespace = namepsace
         self._bucket = bucket
         self._prefix = prefix
