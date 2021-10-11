@@ -26,7 +26,6 @@ namespace internal {
 class InvocationSpec {
  public:
   TaskType task_type;
-  TaskID task_id;
   std::string name;
   ActorID actor_id;
   int actor_counter;

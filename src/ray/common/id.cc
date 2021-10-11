@@ -160,9 +160,10 @@ TaskID TaskID::ForDriverTask(const JobID &job_id) {
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForFakeTask() {
-  std::string data(kLength, 0);
+TaskID TaskID::ForFakeTask(const JobID &job_id) {
+  std::string data(kLength - JobID::kLength, 0);
   FillRandom(&data);
+  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   return TaskID::FromBinary(data);
 }
 

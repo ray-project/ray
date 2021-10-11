@@ -467,7 +467,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // same TaskID to request a worker
   num_leases_requested_++;
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
-  resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
+  resource_spec_msg.set_task_id(TaskID::ForFakeTask(job_id_).Binary());
   TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
 
   rpc::Address best_node_address;

@@ -101,7 +101,7 @@ class WorkerContext {
   boost::thread::id main_thread_id_;
 
  private:
-  static WorkerThreadContext &GetThreadContext();
+  WorkerThreadContext &GetThreadContext() const;
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
