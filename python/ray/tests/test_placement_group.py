@@ -596,23 +596,27 @@ def test_placement_group_strict_spread(ray_start_cluster):
 
     ray.init(address=cluster.address)
     from collections import Counter
+
     @ray.remote(num_cpus=1.0)
     def worker():
         import socket
         return socket.gethostname()
 
     nodes = [
-        node for node in ray.nodes() if node["Alive"] and "CPU" in node["Resources"]
+        node for node in ray.nodes()
+        if node["Alive"] and "CPU" in node["Resources"]
     ]
     print("Nodes:")
     for node in nodes:
-        print(f"  {node['NodeManagerHostname']} ({int(node['Resources']['CPU'])} cpus)")
+        print(f"  {node['NodeManagerHostname']} "
+              f"({int(node['Resources']['CPU'])} cpus)")
     print()
-    bundles = [{"CPU": node['Resources']['CPU']} for node in nodes]
+    bundles = [{"CPU": node["Resources"]["CPU"]} for node in nodes]
     print(f"Bundles are {bundles}")
     strategy = "STRICT_SPREAD"
     pg = ray.util.placement_group(bundles, strategy=strategy)
-    print(f"Getting placement group with {len(bundles)} bundles and strategy {strategy}...")
+    print(f"Getting placement group with {len(bundles)} "
+          f"bundles and strategy {strategy}...")
     # print(ray.get(pg.ready(), timeout=10))
     import time
     time.sleep(5)
@@ -622,9 +626,13 @@ def test_placement_group_strict_spread(ray_start_cluster):
     # now, we run a worker on each CPU in the placement group
     pg_indexes = []
     for (bundle_index, bundle) in enumerate(bundles):
-        for cpu in range(int(bundle['CPU'])):
+        for cpu in range(int(bundle["CPU"])):
             pg_indexes.append(bundle_index)
-    futures = [worker.options(placement_group=pg, placement_group_bundle_index=index).remote() for index in pg_indexes]
+    futures = [
+        worker.options(placement_group=pg,
+                       placement_group_bundle_index=index).remote()
+        for index in pg_indexes
+    ]
     hosts = Counter(ray.get(futures))
     print("Completed successfully.")
     print(f"Task to host mapping was: {hosts}")
