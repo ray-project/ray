@@ -271,10 +271,8 @@ class RayLog {
     if (IsEnabled()) {
       if constexpr (std::is_integral_v<T> || is_int64_v<T>) {
         ToChars(t);
-      } else if constexpr (std::is_enum_v<T>) {
+      } else if constexpr (std::is_enum_v<T> || std::is_same_v<pid_t, T>) {
         ToChars((int)t);
-      } else if constexpr (std::is_same_v<pid_t, T>) {
-        ToChars(size_t(t));
       } else if constexpr (has_value_v<T>) {
         ToChars(t.value());
       } else if constexpr (is_atomic_v<T>) {
@@ -290,6 +288,9 @@ class RayLog {
       }
     }
 
+    if (IsFatal()) {
+      *expose_osstream_ << t;
+    }
     return *this;
   }
 
@@ -310,6 +311,8 @@ class RayLog {
   RayLogLevel severity_;
   /// Whether current log is fatal or not.
   bool is_fatal_ = false;
+  /// String stream of exposed log content.
+  std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
   /// Callback functions which will be triggered to expose fatal log.
   static std::vector<FatalLogCallback> fatal_log_callbacks_;
   static RayLogLevel severity_threshold_;

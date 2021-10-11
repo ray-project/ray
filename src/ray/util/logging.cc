@@ -327,11 +327,19 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
   if (is_enabled_) {
     str_.append(file_name).append(":").append(std::to_string(line_number)).append(":");
   }
+  if (is_fatal_) {
+    expose_osstream_ = std::make_shared<std::ostringstream>();
+    *expose_osstream_ << file_name << ":" << line_number << ":";
+  }
 }
 
 RayLog::RayLog(const char *prefix, RayLogLevel severity) : RayLog(severity) {
   if (is_enabled_) {
     str_.append(prefix);
+  }
+  if (is_fatal_) {
+    expose_osstream_ = std::make_shared<std::ostringstream>();
+    *expose_osstream_ << prefix;
   }
 }
 
@@ -355,7 +363,12 @@ RayLog::~RayLog() {
   if (always_flush_) {
     logger->flush();
   }
-
+  if (expose_osstream_) {
+    *expose_osstream_ << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
+    for (const auto &callback : fatal_log_callbacks_) {
+      callback(EL_RAY_FATAL_CHECK_FAILED, expose_osstream_->str());
+    }
+  }
   if (severity_ == RayLogLevel::FATAL) {
     std::_Exit(EXIT_FAILURE);
   }
