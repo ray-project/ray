@@ -116,7 +116,7 @@ std::vector<bool> NativeObjectStore::Wait(const std::vector<ObjectID> &ids,
                                           int num_objects, int timeout_ms) {
   std::vector<bool> results;
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-  // TODO(guyang.sgy): Support `fetch_local` option in API.
+  // TODO(SongGuyang): Support `fetch_local` option in API.
   // Simply set `fetch_local` to be true.
   ::ray::Status status = core_worker.Wait(ids, num_objects, timeout_ms, &results, true);
   if (!status.ok()) {

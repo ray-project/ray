@@ -23,6 +23,7 @@ def env_creator(config):
 
 
 tune.register_env("cartpole", lambda env_ctx: gym.make("CartPole-v0"))
+
 tune.register_env("pistonball",
                   lambda config: PettingZooEnv(env_creator(config)))
 

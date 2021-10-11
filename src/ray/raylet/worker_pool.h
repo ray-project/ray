@@ -588,6 +588,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
 
+  /// Create runtime env asynchronously by runtime env agent.
+  void CreateRuntimeEnv(
+      const std::string &serialized_runtime_env, const JobID &job_id,
+      const std::function<void(bool, const std::string &)> &callback,
+      const std::string &serialized_allocated_resource_instances = "{}");
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
   /// Node ID of the current node.
