@@ -32,8 +32,8 @@ STEPS_DIR = "steps"
 STEP_INPUTS_METADATA = "inputs.json"
 STEP_USER_METADATA = "user_metadata.json"
 STEP_PRERUN_METADATA = "prerun_metadata.json"
-STEP_OUTPUTS_METADATA = "outputs.json"
 STEP_POSTRUN_METADATA = "postrun_metadata.json"
+STEP_OUTPUTS_METADATA = "outputs.json"
 STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
 STEP_EXCEPTION = "exception.pkl"
@@ -596,6 +596,9 @@ class WorkflowStorage:
     def _key_step_prerun_metadata(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_PRERUN_METADATA]
 
+    def _key_step_postrun_metadata(self, step_id):
+        return [self._workflow_id, STEPS_DIR, step_id, STEP_POSTRUN_METADATA]
+
     def _key_step_output(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_OUTPUT]
 
@@ -604,9 +607,6 @@ class WorkflowStorage:
 
     def _key_step_output_metadata(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_OUTPUTS_METADATA]
-
-    def _key_step_postrun_metadata(self, step_id):
-        return [self._workflow_id, STEPS_DIR, step_id, STEP_POSTRUN_METADATA]
 
     def _key_step_function_body(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_FUNC_BODY]

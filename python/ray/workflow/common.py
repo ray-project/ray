@@ -294,7 +294,7 @@ class Workflow:
             metadata: metadata to add to the workflow.
         """
         return ray.get(self.run_async(workflow_id, metadata))
-    
+
     @PublicAPI(stability="beta")
     def run_async(self, workflow_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> ObjectRef:
         """Run a workflow asynchronously.
