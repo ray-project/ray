@@ -205,8 +205,8 @@ class Trainer:
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
-                Distributed Ray py:class:`~ray.data.Dataset` or
-                py:class:`~ray.data.DatasetPipeline` to pass into the
+                Distributed Ray :ref:`Dataset <dataset-api>` or
+                :ref:`DatasetPipeline <dataset-pipeline-api>` to pass into the
                 workers, which can be accessed from the training function via
                 ``sgd.get_dataset_shard()``. Sharding will automatically be
                 handled by the Trainer. Multiple Datasets can be passed in as
@@ -410,9 +410,9 @@ class Trainer:
             func (Callable): The function that should be executed on each
                 training worker.
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
-                Distributed Ray py:class:`~ray.data.Dataset` or
-                py:class:`~ray.data.DatasetPipeline` to pass into the workers,
-                which can be accessed from the training function via
+                Distributed Ray p:ref:`Dataset <dataset-api>` or
+                :ref:`DatasetPipeline <dataset-pipeline-api>` to pass into the
+                workers, which can be accessed from the training function via
                 ``sgd.get_dataset_shard()``. Sharding will automatically be
                 handled by the Trainer. Multiple Datasets can be passed in as
                 a ``Dict`` that maps each name key to a Dataset value,
