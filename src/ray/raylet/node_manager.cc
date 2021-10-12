@@ -1104,7 +1104,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
     // Send the reply callback only after registration fully completes at the GCS.
     auto cb = [this, worker_ip_address, pid, job_id, job_config,
-               send_reply_callback = std::move(send_reply_callback)](Status status,
+               send_reply_callback = std::move(send_reply_callback)](const Status &status,
                                                                      int assigned_port) {
       if (status.ok()) {
         auto job_data_ptr = gcs::CreateJobTableData(job_id, /*is_dead*/ false,
