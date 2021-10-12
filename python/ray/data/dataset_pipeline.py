@@ -272,6 +272,8 @@ class DatasetPipeline(Generic[T]):
                     # Slice off the left-most chunk and return it.
                     res, self._buffer = self._buffer._divide(blocks_per_window)
                     assert res.num_blocks() <= blocks_per_window, res
+                    if self._buffer.num_blocks() == 0:
+                        self._buffer = None
                     return lambda: res
                 except StopIteration:
                     # Return the left-over data as a single window.
@@ -303,6 +305,10 @@ class DatasetPipeline(Generic[T]):
         Transformations done on the repeated pipeline are evaluated on each
         loop of the pipeline over the base pipeline.
 
+        Note that every repeat of the pipeline is considered an "epoch" for
+        the purposes of ``iter_epochs()``. If there are multiple repeat calls,
+        the latest repeat takes precedence for the purpose of defining epochs.
+
         Args:
             times: The number of times to loop over this pipeline, or None
                 to repeat indefinitely.
@@ -326,6 +332,7 @@ class DatasetPipeline(Generic[T]):
                 if self._original_iter:
                     try:
                         res = next(self._original_iter)
+                        res._set_epoch(0)
                         self._results.append(res)
                         return lambda: res
                     except StopIteration:
@@ -338,6 +345,7 @@ class DatasetPipeline(Generic[T]):
                 # Going through a repeat of the pipeline.
                 if self._i < self._max_i:
                     res = self._results[self._i % len(self._results)]
+                    res._set_epoch(1 + self._i // len(self._results))
                     self._i += 1
                     return lambda: res
                 else:
@@ -416,9 +424,92 @@ class DatasetPipeline(Generic[T]):
         Args:
             limit_per_dataset: Rows to print per window/dataset.
         """
+        epoch = None
         for i, ds in enumerate(self.iter_datasets()):
+            if ds._get_epoch() != epoch:
+                epoch = ds._get_epoch()
+                print("------ Epoch {} ------".format(epoch))
             print("=== Window {} ===".format(i))
             ds.show(limit_per_dataset)
+
+    def iter_epochs(self) -> Iterator["DatasetPipeline[T]"]:
+        """Split this pipeline up by epoch.
+
+        This allows reading of data per-epoch for repeated Datasets, which is
+        useful for ML training. For example, ``ray.data.range(10).repeat(50)``
+        generates a pipeline with 500 rows total split across 50 epochs. This
+        method allows iterating over the data individually per epoch
+        (repetition) of the original data.
+
+        Examples:
+            >>> epochs = ray.data.range(10).repeat(50).iter_epochs()
+            >>> for i, epoch in enumerate(epochs):
+            ...     print("Epoch", i)
+            ...     for row in epoch.iter_rows():
+            ...         print(row)
+
+        Returns:
+            Iterator over epoch objects, where each epoch is a DatasetPipeline
+            containing data from that epoch only.
+        """
+
+        class Peekable:
+            def __init__(self, base_iter: Iterator[T]):
+                self._iter = base_iter
+                self._buffer = None
+
+            def _fill_buffer_if_possible(self):
+                if self._buffer is None:
+                    try:
+                        self._buffer = next(self._iter)
+                        assert self._buffer is not None
+                    except StopIteration:
+                        pass
+
+            def peek(self) -> T:
+                self._fill_buffer_if_possible()
+                if self._buffer is None:
+                    raise StopIteration
+                return self._buffer
+
+            def __next__(self) -> T:
+                self._fill_buffer_if_possible()
+                if self._buffer is None:
+                    raise StopIteration
+                item = self._buffer
+                self._buffer = None
+                return item
+
+        class SingleEpochIterator:
+            def __init__(self, peekable_iter: Iterator[Dataset[T]]):
+                self._iter = peekable_iter
+                self._epoch = None
+
+            def __next__(self) -> Dataset[T]:
+                if (self._epoch is not None
+                        and self._iter.peek()._get_epoch() != self._epoch):
+                    raise StopIteration
+                ds = next(self._iter)
+                self._epoch = ds._get_epoch()
+                return lambda: ds
+
+            def __iter__(self):
+                return self
+
+        class EpochDelimitedIterator:
+            def __init__(self, pipe):
+                self._iter = Peekable(pipe.iter_datasets())
+
+            def __next__(self) -> "DatasetPipeline[T]":
+                self._iter.peek()  # Raises StopIteration on end of data.
+                epoch_pipe = DatasetPipeline.from_iterable(
+                    SingleEpochIterator(self._iter))
+                return epoch_pipe
+
+            def __iter__(self):
+                return self
+
+        return EpochDelimitedIterator(self)
 
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:

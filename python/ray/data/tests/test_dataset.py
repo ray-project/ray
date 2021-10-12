@@ -199,7 +199,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         metadata.append(BlockAccessor.for_block(block).get_metadata(None))
         total_rows += block_size
     block_list = BlockList(blocks, metadata)
-    ds = Dataset(block_list)
+    ds = Dataset(block_list, 0)
 
     splits = ds.split(num_splits, equal=True)
     split_counts = [split.count() for split in splits]

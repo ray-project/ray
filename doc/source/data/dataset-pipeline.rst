@@ -69,6 +69,40 @@ You can also create a DatasetPipeline from a custom iterator over dataset creato
     splits = ray.data.range(1000, parallelism=200).split(20)
     pipe = DatasetPipeline.from_iterable([lambda s=s: s for s in splits])
 
+Handling Epochs
+~~~~~~~~~~~~~~~
+
+It's common in ML training to want to divide data ingest into epochs, or repetitions over the original source dataset. DatasetPipeline provides a convenient ``.iter_epochs()`` method that can be used to split up the pipeline into epoch-delimited pipeline segments. Epochs are defined by the last call to ``.repeat()`` in a pipeline, for example:
+
+.. code-block:: python
+
+    pipe = ray.data.range(5).repeat(3).random_shuffle_each_window()
+    for i, epoch in enumerate(pipe.iter_epochs()):
+        print("Epoch {}", i)
+        for row in epoch.iter_rows():
+            print(row)
+    # ->
+    # Epoch 0
+    # 2
+    # 1
+    # 3
+    # 4
+    # 0
+    # Epoch 1
+    # 3
+    # 4
+    # 0
+    # 2
+    # 1
+    # Epoch 2
+    # 3
+    # 2
+    # 4
+    # 1
+    # 0
+
+Note that while epochs commonly consist of a single window, they can also contain multiple windows if ``.window()`` is used or there are multiple ``.repeat()`` calls.
+
 Per-Window Transformations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -79,12 +113,14 @@ While most Dataset operations are per-row (e.g., map, filter), some operations a
     # Example of randomly shuffling each window of a pipeline.
     ray.data.range(5).repeat(2).random_shuffle_each_window().show_windows()
     # -> 
+    # ----- Epoch 0 ------
     # === Window 0 ===
     # 4
     # 3
     # 1
     # 0
     # 2
+    # ----- Epoch 1 ------
     # === Window 1 ===
     # 2
     # 1
@@ -99,12 +135,14 @@ You can also apply arbitrary transformations to each window using ``DatasetPipel
     # Equivalent transformation using .foreach_window() 
     ray.data.range(5).repeat(2).foreach_window(lambda w: w.random_shuffle()).show_windows()
     # -> 
+    # ----- Epoch 0 ------
     # === Window 0 ===
     # 1
     # 0
     # 4
     # 2
     # 3
+    # ----- Epoch 1 ------
     # === Window 1 ===
     # 4
     # 2
@@ -256,6 +294,7 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
         .repeat(2) \
         .show_windows()
     # ->
+    # ------ Epoch 0 ------
     # === Window 0 ===
     # 0
     # 1
@@ -264,6 +303,7 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # 3
     # === Window 2 ===
     # 4
+    # ------ Epoch 1 ------
     # === Window 3 ===
     # 0
     # 1
@@ -273,18 +313,22 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # === Window 5 ===
     # 4
 
-    # Repeat followed by window.
+    # Repeat followed by window. Note that epoch 1 contains some leftover
+    # data from the tail end of epoch 0, since re-windowing can merge windows
+    # across epochs.
     ray.data.range(5) \
         .repeat(2) \
         .rewindow(blocks_per_window=2) \
         .show_windows()
     # ->
+    # ------ Epoch 0 ------
     # === Window 0 ===
     # 0
     # 1
     # === Window 1 ===
     # 2
     # 3
+    # ------ Epoch 1 ------
     # === Window 2 ===
     # 4
     # 0

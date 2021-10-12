@@ -44,6 +44,9 @@ BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
 
 logger = logging.getLogger(__name__)
 
+# Whether we have warned of Datasets containing multiple epochs of data.
+_epoch_warned = False
+
 
 @PublicAPI(stability="beta")
 class Dataset(Generic[T]):
@@ -63,7 +66,7 @@ class Dataset(Generic[T]):
     and simple repartition, but currently not aggregations and joins.
     """
 
-    def __init__(self, blocks: BlockList[T]):
+    def __init__(self, blocks: BlockList[T], epoch: int):
         """Construct a Dataset (internal API).
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
@@ -71,6 +74,7 @@ class Dataset(Generic[T]):
         """
         self._blocks: BlockList[T] = blocks
         self._uuid = uuid4().hex
+        self._epoch = epoch
         assert isinstance(self._blocks, BlockList), self._blocks
 
     def map(self,
@@ -125,7 +129,9 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
 
-        return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
+        return Dataset(
+            compute.apply(transform, ray_remote_args, self._blocks),
+            self._epoch)
 
     def map_batches(self,
                     fn: Union[CallableClass, Callable[[BatchType], BatchType]],
@@ -219,7 +225,9 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
 
-        return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
+        return Dataset(
+            compute.apply(transform, ray_remote_args, self._blocks),
+            self._epoch)
 
     def flat_map(self,
                  fn: Union[CallableClass, Callable[[T], Iterable[U]]],
@@ -257,7 +265,9 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
 
-        return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
+        return Dataset(
+            compute.apply(transform, ray_remote_args, self._blocks),
+            self._epoch)
 
     def filter(self,
                fn: Union[CallableClass, Callable[[T], bool]],
@@ -295,7 +305,9 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
 
-        return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
+        return Dataset(
+            compute.apply(transform, ray_remote_args, self._blocks),
+            self._epoch)
 
     def repartition(self, num_blocks: int) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
@@ -316,7 +328,7 @@ class Dataset(Generic[T]):
         """
 
         new_blocks = simple_shuffle(self._blocks, num_blocks)
-        return Dataset(new_blocks)
+        return Dataset(new_blocks, self._epoch)
 
     def random_shuffle(
             self,
@@ -360,7 +372,7 @@ class Dataset(Generic[T]):
             random_shuffle=True,
             random_seed=seed,
             _spread_resource_prefix=_spread_resource_prefix)
-        return Dataset(new_blocks)
+        return Dataset(new_blocks, self._epoch)
 
     def _move_blocks(self):
         blocks = self._blocks.copy()
@@ -557,7 +569,8 @@ class Dataset(Generic[T]):
             return equalize([
                 Dataset(
                     BlockList(
-                        list(blocks), [metadata_mapping[b] for b in blocks]))
+                        list(blocks), [metadata_mapping[b]
+                                       for b in blocks]), self._epoch)
                 for blocks in np.array_split(block_refs, n)
                 if not equal or len(blocks) > 0
             ], n)
@@ -657,7 +670,7 @@ class Dataset(Generic[T]):
                 BlockList(
                     allocation_per_actor[actor],
                     [metadata_mapping[b]
-                     for b in allocation_per_actor[actor]]))
+                     for b in allocation_per_actor[actor]]), self._epoch)
             for actor in locality_hints
         ], n)
 
@@ -733,7 +746,18 @@ class Dataset(Generic[T]):
             metadata.extend(bl._metadata)
             blocks.extend(bl._blocks)
 
-        return Dataset(LazyBlockList(calls, metadata, blocks))
+        epochs = [ds._get_epoch() for ds in datasets]
+        max_epoch = max(*epochs)
+        if len(set(epochs)) > 1:
+            global _epoch_warned
+            if not _epoch_warned:
+                logger.warning(
+                    "Dataset contains data from multiple epochs: {}, "
+                    "likely due to a `rewindow()` call. The higher epoch "
+                    "number {} will be used. This warning will not "
+                    "be shown again.".format(set(epochs), max_epoch))
+                _epoch_warned = True
+        return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
@@ -772,7 +796,7 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
-        return Dataset(sort_impl(self._blocks, key, descending))
+        return Dataset(sort_impl(self._blocks, key, descending), self._epoch)
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -823,7 +847,7 @@ class Dataset(Generic[T]):
 
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
-        return Dataset(BlockList(blocks, metadata))
+        return Dataset(BlockList(blocks, metadata), self._epoch)
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -1623,6 +1647,9 @@ class Dataset(Generic[T]):
         Transformations done on the returned pipeline are evaluated on each
         loop of the pipeline over the base dataset.
 
+        Note that every repeat of the dataset is considered an "epoch" for
+        the purposes of ``DatasetPipeline.iter_epochs()``.
+
         Examples:
             >>> # Infinite pipeline of numbers [0, 5)
             >>> ray.data.range(5).repeat().take()
@@ -1653,6 +1680,7 @@ class Dataset(Generic[T]):
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
                     raise StopIteration
+                self._ds._set_epoch(self._i)
                 self._i += 1
                 return lambda: self._ds
 
@@ -1719,8 +1747,9 @@ class Dataset(Generic[T]):
         from ray.data.dataset_pipeline import DatasetPipeline
 
         class Iterator:
-            def __init__(self, splits):
+            def __init__(self, splits, epoch):
                 self._splits = splits.copy()
+                self._epoch = epoch
 
             def __next__(self) -> "Dataset[T]":
                 if not self._splits:
@@ -1729,18 +1758,19 @@ class Dataset(Generic[T]):
                 blocks = self._splits.pop(0)
 
                 def gen():
-                    return Dataset(blocks)
+                    return Dataset(blocks, self._epoch)
 
                 return gen
 
         class Iterable:
-            def __init__(self, blocks):
+            def __init__(self, blocks, epoch):
                 self._splits = blocks.split(split_size=blocks_per_window)
+                self._epoch = epoch
 
             def __iter__(self):
-                return Iterator(self._splits)
+                return Iterator(self._splits, self._epoch)
 
-        it = Iterable(self._blocks)
+        it = Iterable(self._blocks, self._epoch)
         return DatasetPipeline(it, length=len(it._splits))
 
     @DeveloperAPI
@@ -1791,16 +1821,17 @@ class Dataset(Generic[T]):
                 right_metadata.append(ray.get(m1))
             count += num_rows
 
-        left = Dataset(BlockList(left_blocks, left_metadata))
+        left = Dataset(BlockList(left_blocks, left_metadata), self._epoch)
         if return_right_half:
-            right = Dataset(BlockList(right_blocks, right_metadata))
+            right = Dataset(
+                BlockList(right_blocks, right_metadata), self._epoch)
         else:
             right = None
         return left, right
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
         left, right = self._blocks.divide(block_idx)
-        return Dataset(left), Dataset(right)
+        return Dataset(left, self._epoch), Dataset(right, self._epoch)
 
     def __repr__(self) -> str:
         schema = self.schema()
@@ -1839,6 +1870,12 @@ class Dataset(Generic[T]):
 
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
+
+    def _get_epoch(self) -> int:
+        return self._epoch
+
+    def _set_epoch(self, epoch: int) -> None:
+        self._epoch = epoch
 
 
 def _get_num_rows(block: Block) -> int:
