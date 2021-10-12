@@ -294,6 +294,7 @@ def test_disconnect_during_get():
         disconnect_thread.join()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_valid_actor_state():
     """
     Repeatedly inject errors in the middle of mutating actor calls. Check
@@ -311,24 +312,28 @@ def test_valid_actor_state():
             return self.val
 
     i = 0
+    # This is to prevent erroring in the initial connection logic.
+    started = False
 
     def fail_every_seven(_):
         # Inject an error every seventh time this method is called
-        nonlocal i
+        nonlocal i, started
         i += 1
-        if i % 7 == 0:
+        if i % 7 == 0 and started:
             raise RuntimeError
 
     with start_middleman_server(
             on_data_response=fail_every_seven,
             on_task_request=fail_every_seven,
             on_task_response=fail_every_seven):
+        started = True
         actor = IncrActor.remote()
         for _ in range(100):
             ref = actor.incr.remote()
         assert ray.get(ref) == 100
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_valid_actor_state_2():
     """
     Do a full disconnect (cancel channel) every 11 requests. Failure

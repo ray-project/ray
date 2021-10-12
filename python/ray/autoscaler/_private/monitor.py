@@ -223,7 +223,7 @@ class Monitor:
 
         request = gcs_service_pb2.GetAllResourceUsageRequest()
         response = self.gcs_node_resources_stub.GetAllResourceUsage(
-            request, timeout=4)
+            request, timeout=60)
         resources_batch_data = response.resource_usage_data
 
         # Tell the readonly node provider what nodes to report.
@@ -244,8 +244,7 @@ class Monitor:
                     resource_message.node_id.hex())
                 resources = {}
                 for k, v in resource_message.resources_total.items():
-                    if not k.startswith("node:"):
-                        resources[k] = v
+                    resources[k] = v
                 mirror_node_types[node_type] = {
                     "resources": resources,
                     "node_config": {},

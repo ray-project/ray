@@ -183,8 +183,7 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
-/// Timeout, in milliseconds, to wait before retrying a failed pull in the
-/// ObjectManager.
+/// The object manager's global timer interval in milliseconds.
 RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
@@ -221,14 +220,8 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
-// TODO: fix win32 timeout in ci and unify these two.
-#ifdef _MSC_VER
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
-#else
-/// Number of threads used by rpc server in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 8)
-#endif
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -241,8 +234,10 @@ RAY_CONFIG(uint64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
-/// Duration to wait between retries for creating placement group in gcs server.
-RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
+/// Exponential backoff params for gcs to retry creating a placement group
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_min_interval_ms, 200)
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_max_interval_ms, 5000)
+RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5);
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
@@ -317,6 +312,9 @@ RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 /// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
+/// Max restart count for the dashboard agent.
+RAY_CONFIG(uint32_t, agent_max_restart_count, 5)
+
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000);
@@ -330,7 +328,7 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 RAY_CONFIG(bool, report_worker_backlog, true)
 
 /// The timeout for synchronous GCS requests in seconds.
-RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
 RAY_CONFIG(bool, enable_worker_prestart, true)
@@ -478,7 +476,7 @@ RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
 RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 
 /// Whether to use log reporter in event framework
-RAY_CONFIG(bool, event_log_reporter_enabled, false)
+RAY_CONFIG(bool, event_log_reporter_enabled, true)
 
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, actor_register_async, true)

@@ -598,10 +598,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                         "password.", cf.bold("--redis-password"),
                         cf.bold("--address"))
 
-        node_ip_address = services.get_node_ip_address()
-
         # Get the node IP address if one is not provided.
-        ray_params.update_if_absent(node_ip_address=node_ip_address)
+        ray_params.update_if_absent(
+            node_ip_address=services.get_node_ip_address())
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
         ray_params.update_if_absent(
             redis_port=port,
@@ -614,7 +613,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
-            default_address = f"{node_ip_address}:{port}"
+            default_address = f"{ray_params.node_ip_address}:{port}"
             redis_addresses = services.find_redis_address(default_address)
             if len(redis_addresses) > 0:
                 raise ConnectionError(

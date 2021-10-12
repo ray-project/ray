@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "process_helper.h"
+
 #include <boost/algorithm/string.hpp>
 
-#include "process_helper.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -27,9 +28,9 @@ using ray::core::WorkerType;
 
 void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_password,
                                  const std::vector<std::string> &head_args) {
-  std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
-                                    std::to_string(redis_port), "--redis-password",
-                                    redis_password});
+  std::vector<std::string> cmdargs(
+      {"ray", "start", "--head", "--port", std::to_string(redis_port), "--redis-password",
+       redis_password, "--node-ip-address", GetNodeIpAddress()});
   if (!head_args.empty()) {
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
@@ -124,7 +125,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     if (!ConfigInternal::Instance().job_id.empty()) {
       options.job_id = JobID::FromHex(ConfigInternal::Instance().job_id);
     } else {
-      /// TODO(Guyang Song): Get next job id from core worker by GCS client.
+      /// TODO(SongGuyang): Get next job id from core worker by GCS client.
       /// Random a number to avoid repeated job ids.
       /// The repeated job ids will lead to task hang when driver connects to a existing
       /// cluster more than once.

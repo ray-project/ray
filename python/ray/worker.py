@@ -191,8 +191,8 @@ class Worker:
     @property
     def runtime_env(self):
         """Get the runtime env in json format"""
-        return json.loads(
-            self.core_worker.get_job_config().runtime_env.raw_json)
+        return json.loads(self.core_worker.get_job_config()
+                          .runtime_env.serialized_runtime_env)
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
@@ -223,9 +223,6 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
-            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
-                ray.client().connect()
-                return
             raise RaySystemError("Ray has not been started yet. You can "
                                  "start Ray with 'ray.init()'.")
 
@@ -479,7 +476,7 @@ class Worker:
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
 
@@ -576,7 +573,7 @@ _global_node = None
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def init(
         address: Optional[str] = None,
         *,
@@ -974,7 +971,7 @@ _post_init_hooks = []
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -1240,7 +1237,7 @@ def listen_error_messages_raylet(worker, threads_stopped):
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def is_initialized() -> bool:
     """Check if ray.init has been called yet.
 
@@ -1559,7 +1556,7 @@ blocking_get_inside_async_warned = False
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
         *,
         timeout: Optional[float] = None) -> Union[Any, List[Any]]:
@@ -1648,7 +1645,7 @@ def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def put(value: Any, *,
         _owner: Optional["ray.actor.ActorHandle"] = None) -> ray.ObjectRef:
     """Store an object in the object store.
@@ -1702,7 +1699,7 @@ blocking_wait_inside_async_warned = False
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def wait(object_refs: List[ray.ObjectRef],
          *,
          num_returns: int = 1,
@@ -1809,7 +1806,7 @@ def wait(object_refs: List[ray.ObjectRef],
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def get_actor(name: str,
               namespace: Optional[str] = None) -> "ray.actor.ActorHandle":
     """Get a handle to a named actor.
@@ -1841,7 +1838,7 @@ def get_actor(name: str,
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     """Kill an actor forcefully.
 
@@ -1870,7 +1867,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def cancel(object_ref: ray.ObjectRef,
            *,
            force: bool = False,
@@ -1932,6 +1929,7 @@ def make_decorator(num_returns=None,
                    max_restarts=None,
                    max_task_retries=None,
                    runtime_env=None,
+                   placement_group="default",
                    worker=None,
                    retry_exceptions=None):
     def decorator(function_or_class):
@@ -1963,7 +1961,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env)
+                runtime_env, placement_group)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -2101,15 +2099,6 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        override_environment_variables (Dict[str, str]): (Deprecated in Ray
-            1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
-            field of :ref:`runtime-environments` instead.) This specifies
-            environment variables to override for the actor or task.  The
-            overrides are propagated to all child actors and tasks.  This
-            is a dictionary mapping variable names to their values.  Existing
-            variables can be overridden, new ones can be created, and an
-            existing variable can be unset by setting it to an empty string.
-            Note: can only be set via `.options()`.
     """
     worker = global_worker
 
@@ -2121,7 +2110,8 @@ def remote(*args, **kwargs):
     valid_kwargs = [
         "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
         "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions"
+        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions",
+        "placement_group"
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2154,6 +2144,7 @@ def remote(*args, **kwargs):
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
     runtime_env = kwargs.get("runtime_env")
+    placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
 
     return make_decorator(
@@ -2169,5 +2160,6 @@ def remote(*args, **kwargs):
         max_task_retries=max_task_retries,
         max_retries=max_retries,
         runtime_env=runtime_env,
+        placement_group=placement_group,
         worker=worker,
         retry_exceptions=retry_exceptions)
