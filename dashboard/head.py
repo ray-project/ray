@@ -54,7 +54,7 @@ async def make_gcs_grpc_channel(redis_client):
 
 
 class GCSHealthCheckThread(threading.Thread):
-    def __init__(self, redis_address, reddis_password):
+    def __init__(self, redis_address, redis_password):
         self.thread_local_loop = asyncio.new_event_loop()
         self.aiogrpc_gcs_channel = None
         self.gcs_heartbeat_info_stub = None
@@ -192,7 +192,7 @@ class DashboardHead:
             self.aioredis_client)
 
         self.health_check_thread = GCSHealthCheckThread(
-            redis_address, redis_password)
+            self.redis_address, self.redis_password)
         self.health_check_thread.start()
 
         # Start a grpc asyncio server.
