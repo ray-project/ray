@@ -107,7 +107,7 @@ def test_basic(ray_start_with_dashboard):
         agent_proc.kill()
         agent_proc.wait()
         # The agent will be restarted for imports failure.
-        for x in range(50):
+        for _ in range(300):
             agent_proc = _search_agent(raylet_proc.children())
             if agent_proc:
                 agent_pids.add(agent_proc.pid)
@@ -452,7 +452,6 @@ def test_get_cluster_status(ray_start_with_dashboard):
         print(response.json())
         assert response.json()["result"]
         assert "autoscalingStatus" in response.json()["data"]
-        assert response.json()["data"]["autoscalingStatus"] is None
         assert "autoscalingError" in response.json()["data"]
         assert response.json()["data"]["autoscalingError"] is None
         assert "clusterStatus" in response.json()["data"]

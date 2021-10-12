@@ -177,16 +177,16 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
     : self_node_id_(self_node_id),
       io_service_(io_service),
       gcs_client_(gcs_client),
-      worker_pool_(io_service, self_node_id_, config.node_manager_address,
-                   config.num_workers_soft_limit,
-                   config.num_initial_python_workers_for_first_job,
-                   config.maximum_startup_concurrency, config.min_worker_port,
-                   config.max_worker_port, config.worker_ports, gcs_client_,
-                   config.worker_commands,
-                   /*starting_worker_timeout_callback=*/
-                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-                   config.ray_debugger_external,
-                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+      worker_pool_(
+          io_service, self_node_id_, config.node_manager_address,
+          config.num_workers_soft_limit, config.num_initial_python_workers_for_first_job,
+          config.maximum_startup_concurrency, config.min_worker_port,
+          config.max_worker_port, config.worker_ports, gcs_client_,
+          config.worker_commands,
+          /*starting_worker_timeout_callback=*/
+          [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+          config.ray_debugger_external,
+          /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
@@ -252,7 +252,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       temp_dir_(config.temp_dir),
       initial_config_(config),
       dependency_manager_(object_manager_),
-      node_manager_server_("NodeManager", config.node_manager_port),
+      node_manager_server_("NodeManager", config.node_manager_port,
+                           config.node_manager_address == "127.0.0.1"),
       node_manager_service_(io_service, *this),
       agent_manager_service_handler_(
           new DefaultAgentManagerServiceHandler(agent_manager_)),
@@ -284,7 +285,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
-        if (std::getenv("RUNTIME_ENV_SKIP_LOCAL_GC") != nullptr) {
+        if (RayConfig::instance().runtime_env_skip_local_gc()) {
           return cb(true);
         }
         return agent_manager_->DeleteURIs({uri}, cb);
@@ -372,7 +373,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       },
       /*runtime_env_agent_factory=*/
       [this](const std::string &ip_address, int port) {
-        RAY_CHECK(!ip_address.empty() && port != 0);
+        RAY_CHECK(!ip_address.empty() && port != 0)
+            << "ip_address: " << ip_address << " port: " << port;
         return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
@@ -525,7 +527,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
+  RAY_LOG(DEBUG) << "HandleJobStarted for job " << job_id;
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
   // increment the ref count multiple times. This is fine because
@@ -743,10 +745,12 @@ void NodeManager::WarnResourceDeadlock() {
 
     std::string error_message_str = error_message.str();
     RAY_LOG(WARNING) << error_message_str;
-    auto error_data_ptr = gcs::CreateErrorTableData(
-        "resource_deadlock", error_message_str, current_time_ms(),
-        exemplar.GetTaskSpecification().JobId());
-    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+    if (RayConfig::instance().legacy_scheduler_warnings()) {
+      auto error_data_ptr = gcs::CreateErrorTableData(
+          "resource_deadlock", error_message_str, current_time_ms(),
+          exemplar.GetTaskSpecification().JobId());
+      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+    }
   }
   // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
   // tasks are never be scheduled.
@@ -1253,6 +1257,8 @@ void NodeManager::DisconnectClient(
     // Return the resources that were being used by this worker.
     cluster_task_manager_->ReleaseWorkerResources(worker);
 
+    cluster_task_manager_->ClearWorkerBacklog(worker->WorkerId());
+
     // Since some resources may have been released, we can try to dispatch more tasks.
     cluster_task_manager_->ScheduleAndDispatchTasks();
   } else if (is_driver) {
@@ -1493,7 +1499,24 @@ void NodeManager::HandleRequestResourceReport(
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
   FillResourceReport(*resources_data);
+  resources_data->set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
 
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleReportWorkerBacklog(
+    const rpc::ReportWorkerBacklogRequest &request, rpc::ReportWorkerBacklogReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+  cluster_task_manager_->ClearWorkerBacklog(worker_id);
+  std::unordered_set<SchedulingClass> seen;
+  for (const auto &backlog_report : request.backlog_reports()) {
+    const TaskSpecification resource_spec(backlog_report.resource_spec());
+    const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
+    RAY_CHECK(seen.find(scheduling_class) == seen.end());
+    cluster_task_manager_->SetWorkerBacklog(scheduling_class, worker_id,
+                                            backlog_report.backlog_size());
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1502,14 +1525,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
-  auto backlog_size = -1;
-  if (RayConfig::instance().report_worker_backlog()) {
-    // We add 1 to the backlog size because we need a worker to fulfill the
-    // current request, as well as workers to serve the requests in the
-    // backlog.
-    backlog_size = request.backlog_size() + 1;
-  }
-  RayTask task(task_message, backlog_size);
+  RayTask task(task_message);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
@@ -1659,7 +1675,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
       if (worker->IsBlocked()) {
         HandleDirectCallTaskUnblocked(worker);
       }
-      cluster_task_manager_->ReturnWorkerResources(worker);
+      cluster_task_manager_->ReleaseWorkerResources(worker);
       HandleWorkerAvailable(worker);
     }
   } else {
@@ -1865,7 +1881,8 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_id = task.GetTaskSpecification().JobId();
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
-    runtime_env_manager_.AddURIReference(actor_id.Hex(), job_config->runtime_env());
+    runtime_env_manager_.AddURIReference(actor_id.Hex(),
+                                         task.GetTaskSpecification().RuntimeEnv());
   }
 }
 
@@ -2412,9 +2429,12 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
            "resource requirements of the task.";
     std::string error_message_str = error_message.str();
     RAY_LOG(WARNING) << error_message_str;
-    auto error_data_ptr = gcs::CreateErrorTableData(
-        type, error_message_str, current_time_ms(), task.GetTaskSpecification().JobId());
-    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+    if (RayConfig::instance().legacy_scheduler_warnings()) {
+      auto error_data_ptr =
+          gcs::CreateErrorTableData(type, error_message_str, current_time_ms(),
+                                    task.GetTaskSpecification().JobId());
+      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+    }
   }
 }
 

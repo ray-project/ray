@@ -11,6 +11,6 @@ post_build_cmds:
   - pip uninstall -y numpy ray || true
   - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
   - pip3 install numpy==1.19 || true
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install -U ray[all] gym[atari]
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

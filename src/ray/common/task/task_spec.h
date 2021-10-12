@@ -100,6 +100,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
+  [[nodiscard]] rpc::RuntimeEnv RuntimeEnv() const;
+
   std::string SerializedRuntimeEnv() const;
 
   bool HasRuntimeEnv() const;
@@ -169,8 +171,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
       bool add_dummy_dependency = true) const;
 
   std::string GetDebuggerBreakpoint() const;
-
-  std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
 
   bool IsDriverTask() const;
 
@@ -254,7 +254,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
-  SchedulingClass sched_cls_id_;
+  SchedulingClass sched_cls_id_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
@@ -275,13 +275,10 @@ class WorkerCacheKey {
   /// Create a cache key with the given environment variable overrides and serialized
   /// runtime_env.
   ///
-  /// \param override_environment_variables The environment variable overrides set in this
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
-  WorkerCacheKey(
-      const std::unordered_map<std::string, std::string> override_environment_variables,
-      const std::string serialized_runtime_env,
-      const std::unordered_map<std::string, double> required_resources);
+  WorkerCacheKey(const std::string serialized_runtime_env,
+                 const std::unordered_map<std::string, double> required_resources);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -293,8 +290,7 @@ class WorkerCacheKey {
 
   /// Get the hash for this worker's environment.
   ///
-  /// \return The hash of the override_environment_variables and the serialized
-  /// runtime_env.
+  /// \return The hash of the serialized runtime_env.
   std::size_t Hash() const;
 
   /// Get the int-valued hash for this worker's environment, useful for portability in
@@ -304,8 +300,6 @@ class WorkerCacheKey {
   int IntHash() const;
 
  private:
-  /// The environment variable overrides for this worker.
-  const std::unordered_map<std::string, std::string> override_environment_variables;
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
   /// The required resources for this worker.
