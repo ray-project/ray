@@ -646,7 +646,7 @@ int main(int argc, char **argv) {
   auto raylet_socket = std::string(argv[2]);
   auto node_manager_port = std::stoi(std::string(argv[3]));
   // auto runtime_env_hash = std::string(argv[4]); // Unused in this test
-  auto startup_token_str = std::string(argv[5]);
+  auto startup_token_str = std::string(argv[4]);
   auto start = startup_token_str.find(std::string("=")) + 1;
   auto startup_token = std::stoi(startup_token_str.substr(start));
 
