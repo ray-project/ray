@@ -29,6 +29,7 @@ class PBTTrialState:
         self.orig_tag = trial.experiment_tag
         self.last_score = None
         self.last_checkpoint = None
+        self.first_result_time = -1
         self.last_perturbation_time = 0
         self.last_train_time = 0  # Used for synchronous mode.
         self.last_result = None  # Used for synchronous mode.
@@ -150,6 +151,10 @@ class PopulationBasedTraining(FIFOScheduler):
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
             to be too frequent.
+        burn_in_period (float): Models will not be considered for
+            perturbation before this interval of `time_attr` has passed. This
+            guarantees that models are trained for at least a certain amount
+            of time or timesteps before being perturbed.
         hyperparam_mutations (dict): Hyperparams to mutate. The format is
             as follows: for each key, either a list, function,
             or a tune search space object (tune.loguniform, tune.uniform,
@@ -224,6 +229,7 @@ class PopulationBasedTraining(FIFOScheduler):
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  perturbation_interval: float = 60.0,
+                 burn_in_period: float = 0.,
                  hyperparam_mutations: Dict = None,
                  quantile_fraction: float = 0.25,
                  resample_probability: float = 0.25,
@@ -272,6 +278,7 @@ class PopulationBasedTraining(FIFOScheduler):
             self._metric_op = -1.
         self._time_attr = time_attr
         self._perturbation_interval = perturbation_interval
+        self._burn_in_period = burn_in_period
         self._hyperparam_mutations = hyperparam_mutations
         self._quantile_fraction = quantile_fraction
         self._resample_probability = resample_probability
@@ -378,11 +385,18 @@ class PopulationBasedTraining(FIFOScheduler):
         time = result[self._time_attr]
         state = self._trial_state[trial]
 
-        # Continue training if perturbation interval has not been reached yet.
-        if time - state.last_perturbation_time < self._perturbation_interval:
-            return TrialScheduler.CONTINUE  # avoid checkpoint overhead
+        if state.first_result_time < 0:
+            state.first_result_time = time
 
         self._save_trial_state(state, time, result, trial)
+
+        # Continue training if burn-in period has not been reached, yet.
+        if time < self._burn_in_period:
+            return TrialScheduler.CONTINUE
+
+        # Continue training if perturbation interval has not been reached, yet.
+        if time - state.last_perturbation_time < self._perturbation_interval:
+            return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
         if not self._synch:
             state.last_perturbation_time = time
