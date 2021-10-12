@@ -90,6 +90,7 @@ genrule(
         mkdir -p "$$PY_CPP_DIR/lib/" &&
         cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/assert" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/callable_traits" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/concept" "$$BOOST_DIR" &&
