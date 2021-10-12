@@ -206,8 +206,7 @@ if __name__ == "__main__":
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
         get_worker_log_file_name(args.worker_type))
-    if out_file is not None and err_file is not None:
-        configure_log_file(out_file, err_file)
+    configure_log_file(out_file, err_file)
 
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
