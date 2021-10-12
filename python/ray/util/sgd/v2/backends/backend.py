@@ -383,9 +383,7 @@ class BackendExecutor:
 
         if isinstance(dataset_or_dict, dict):
             # Return a smaller dict for each shard.
-            dataset_shards = []
-            for _ in range(len(self.worker_group)):
-                dataset_shards.append({})
+            dataset_shards = [{} for _ in range(len(self.worker_group))]
             for key, dataset in dataset_or_dict.items():
                 split_datasets = split_dataset(dataset)
                 assert len(split_datasets) == len(self.worker_group)
@@ -412,10 +410,15 @@ class BackendExecutor:
         Args:
             train_func (Callable): The training function to run on each worker.
             run_dir (Path): The directory to use for this run.
-            dataset (Optional[Union[Dataset, DatasetPipeline]]):
+            dataset (Optional[Union[Dataset, DatasetPipeline]])
                 Distributed Ray Dataset or DatasetPipeline to pass into
-                worker. Sharding and locality hints will automatically be
-                handled.
+                worker, which can be accessed from the training function via
+                ``sgd.get_dataset_shard()``. Sharding will automatically be
+                handled by the Trainer. Multiple Datasets can be passed in as
+                a ``Dict`` that maps each name key to a Dataset value,
+                and each Dataset can be accessed from the training function
+                by passing in a `dataset_name` argument to
+                ``sgd.get_dataset_shard()``.
             checkpoint (Optional[Dict|str|Path]): The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``sgd.load_checkpoint()``. If this is a

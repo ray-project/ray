@@ -1250,9 +1250,10 @@ class Dataset(Generic[T]):
         instead of passing it into a torch ``DataLoader``.
 
         Each element in IterableDataset will be a tuple consisting of 2
-        elements. The first item is a list of the feature tensors. The
-        second item is the label tensor. Each tensor will be of shape (N,
-        1), where N is the ``batch_size`` used by the DataLoader.
+        elements. The first item is the features tensor, and the second item
+        is the label tensor. The features tensor will be of shape (N, n),
+        and the label tensor will be of shape (N, 1), where N is the
+        ``batch_size`` used by the DataLoader, and n is the number of features.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -1308,7 +1309,7 @@ class Dataset(Generic[T]):
                     label_vals, dtype=label_column_dtype)
                 label_tensor = label_tensor.view(-1, 1)
 
-                feature_tensor = []
+                feature_tensors = []
                 if feature_columns:
                     batch = batch[feature_columns]
 
@@ -1321,9 +1322,10 @@ class Dataset(Generic[T]):
                     col_vals = batch[col].values
                     t = torch.as_tensor(col_vals, dtype=dtype)
                     t = t.view(-1, 1)
-                    feature_tensor.append(t)
+                    feature_tensors.append(t)
 
-                yield (torch.cat(feature_tensor, dim=1), label_tensor)
+                features_tensor = torch.cat(feature_tensors, dim=1)
+                yield (features_tensor, label_tensor)
 
         return TorchIterableDataset(make_generator)
 

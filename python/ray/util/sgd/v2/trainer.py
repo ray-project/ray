@@ -207,8 +207,13 @@ class Trainer:
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
                 Distributed Ray py:class:`~ray.data.Dataset` or
                 py:class:`~ray.data.DatasetPipeline` to pass into the
-                workers. Sharding will automatically be
-                handled by the Trainer.
+                workers, which can be accessed from the training function via
+                ``sgd.get_dataset_shard()``. Sharding will automatically be
+                handled by the Trainer. Multiple Datasets can be passed in as
+                a ``Dict`` that maps each name key to a Dataset value,
+                and each Dataset can be accessed from the training function
+                by passing in a `dataset_name` argument to
+                ``sgd.get_dataset_shard()``.
             checkpoint (Optional[Dict|str|Path]): The checkpoint data that
                 should be loaded onto each worker and accessed by the training
                 function via ``sgd.load_checkpoint()``. If this is a ``str`` or
@@ -406,9 +411,14 @@ class Trainer:
                 training worker.
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
                 Distributed Ray py:class:`~ray.data.Dataset` or
-                py:class:`~ray.data.DatasetPipeline` to pass into
-                worker. Sharding will automatically be
-                handled by the Trainer.
+                py:class:`~ray.data.DatasetPipeline` to pass into the workers,
+                which can be accessed from the training function via
+                ``sgd.get_dataset_shard()``. Sharding will automatically be
+                handled by the Trainer. Multiple Datasets can be passed in as
+                a ``Dict`` that maps each name key to a Dataset value,
+                and each Dataset can be accessed from the training function
+                by passing in a `dataset_name` argument to
+                ``sgd.get_dataset_shard()``.
 
         Returns:
             A Trainable that can directly be passed into ``tune.run()``.
@@ -638,6 +648,7 @@ def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
     This function populates class attributes and methods.
     """
 
+    # TODO(matt): Move dataset to Ray object store, like tune.with_parameters.
     def tune_function(config, checkpoint_dir=None):
         trainer = Trainer(
             backend=backend,

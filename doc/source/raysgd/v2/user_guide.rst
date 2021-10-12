@@ -621,13 +621,13 @@ Distributed Data Ingest (Ray Datasets)
 
 Ray SGD provides native support for :ref:`Ray Datasets <datasets>` to support the following use cases:
 
-1. **Large Datasets**: :ref:`Ray Datasets <datasets>` you can easily work with datasets that are big to fit on a single node.
+1. **Large Datasets**: With :ref:`Ray Datasets <datasets>`, you can easily work with datasets that are too big to fit on a single node.
     :ref:`Ray Datasets <datasets>` will distribute the dataset across the Ray Cluster and allow you to perform dataset operations (map, filter, etc.)
     on the distributed dataset.
 2. **Automatic locality-aware sharding**: If provided a Ray Dataset, Ray SGD will automatically shard the dataset and assign each shard
-    to a training worker while minimize cross-node data transfer. Unlike with standard Torch or Tensorflow datasets, each training
-    worker will only load in its assigned shard into memory rather than the entire Dataset.
-2. **Pipelined Execution**: :ref:`Ray Datasets <datasets>` also supports pipelining, meaning that data processing operations
+    to a training worker while minimizing cross-node data transfer. Unlike with standard Torch or Tensorflow datasets, each training
+    worker will only load its assigned shard into memory rather than the entire ``Dataset``.
+3. **Pipelined Execution**: :ref:`Ray Datasets <datasets>` also supports pipelining, meaning that data processing operations
     can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
     and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline` for more information.
 
@@ -643,27 +643,30 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 
         batch_size = config["worker_batch_size"]
 
-        train_data_shard = ray.sgd.get_dataset_shard()["train"]
-        train_dataset = train_data_shard.to_torch(batch_size=batch_size)
+        train_data_shard = ray.sgd.get_dataset_shard("train")
+        train_torch_dataset = train_data_shard.to_torch(label_column="label",
+                                                  batch_size=batch_size)
 
-        val_data_shard = ray.sgd.get_dataset_shard()["val"]
-        val_dataset = val_data_shard.to_torch(batch_size=batch_size)
+        validation_data_shard = ray.sgd.get_dataset_shard("validation")
+        validation_torch_dataset = validation_data_shard.to_torch(label_column="label",
+                                                                  batch_size=batch_size)
 
         for epoch in config["num_epochs"]:
-            for X, y in train_dataset:
+            for X, y in train_torch_dataset:
                 model.train()
                 output = model(X)
-
-            for X, y in val_dataset:
+                # Train on one batch.
+            for X, y in validation_torch_dataset:
                 model.eval()
                 output = model(X)
-
+                # Validate one batch.
         return model
 
     trainer = Trainer(num_workers=8, backend="torch")
-    dataset = ray.data.read_csv("...").filter()
+    dataset = ray.data.read_csv("...")
 
-    split_index = int(dataset.count() * split)
+    # Random split dataset into 80% training data and 20% validation data.
+    split_index = int(dataset.count() * 0.8)
     train_dataset, validation_dataset = \
         dataset.random_shuffle().split_at_indices([split_index])
 
@@ -671,9 +674,9 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
         train_func,
         config={"worker_batch_size": 64, "num_epochs": 2},
         dataset={
-        "train": train_dataset,
-        "val": val_dataset
-    })
+            "train": train_dataset,
+            "validation": validation_dataset
+        })
 
 .. _sgd-dataset-pipeline:
 
@@ -686,7 +689,7 @@ See :ref:`dataset-pipeline` for more semantics on pipelining.
 
 Example: Per-Epoch Shuffle Pipeline
 +++++++++++++++++++++++++++++++++++
-A common use case is to have a training pipeline that globally shuffles the dataset after every epoch/repetition.
+A common use case is to have a training pipeline that globally shuffles the dataset before every epoch.
 
 This is very simple to do with Ray Datasets + Ray SGD.
 
@@ -695,16 +698,24 @@ This is very simple to do with Ray Datasets + Ray SGD.
     def train_func():
         # This is a dummy train function just iterating over the dataset.
         # You should replace this with your training logic.
-        shard = ray.sgd.get_dataset_shard()
-        for row in shard.iter_rows():
-            print(row)
+        dataset_pipeline_shard = ray.sgd.get_dataset_shard()
+        # Infinitely long iterator of randomly shuffled dataset shards.
+        dataset_iterator = train_dataset_pipeline_shard.iter_datasets()
+        for _ in range(config["num_epochs"]):
+            # Single randomly shuffled dataset shard.
+            train_dataset = next(dataset_iterator)
+            # Process each batch of the dataset shard.
+            # Alternatively, you can convert the shard to a native format
+            # (e.g. `train_dataset.to_torch()` or `train_dataset.to_tf()`.)
+            for batch in train_dataset.iter_batches():
+                print(batch)
 
-    # Create a pipeline that loops over its source dataset indefinitely.
-    pipe: DatasetPipeline = ray.data \
+    # Create a pipeline that loops over its source dataset indefinitely,
+    # with each repeat of the dataset randomly shuffled.
+    dataset_pipeline: DatasetPipeline = ray.data \
         .read_parquet(...) \
         .repeat() \
         .random_shuffle_each_window()
-
 
     # Pass in the pipeline to the Trainer.
     # The Trainer will automatically split the DatasetPipeline for you.
@@ -712,7 +723,7 @@ This is very simple to do with Ray Datasets + Ray SGD.
     result = trainer.run(
         train_func,
         config={"worker_batch_size": 64, "num_epochs": 2},
-        dataset=pipe)
+        dataset=dataset_pipeline)
 
 
 You can easily set the working set size for the global shuffle by specifying the window size of the ``DatasetPipeline``.

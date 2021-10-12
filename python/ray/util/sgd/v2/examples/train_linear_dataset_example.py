@@ -43,6 +43,7 @@ def get_datasets(a=5, b=10, size=1000,
 
 
 def train(iterable_dataset, model, loss_fn, optimizer, device):
+    model.train()
     for X, y in iterable_dataset:
         X = X.to(device)
         y = y.to(device)
@@ -69,7 +70,7 @@ def validate(iterable_dataset, model, loss_fn, device):
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
-    result = {"model": model.state_dict(), "loss": loss}
+    result = {"loss": loss}
     return result
 
 
@@ -172,10 +173,11 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    num_gpus = args.num_workers if args.use_gpu else 0
-
     if args.smoke_test:
-        ray.init(num_cpus=args.num_workers, num_gpus=num_gpus)
+        # 1 for datasets
+        num_cpus = args.num_workers + 1
+        num_gpus = args.num_workers if args.use_gpu else 0
+        ray.init(num_cpus=num_cpus, num_gpus=num_gpus)
     else:
         ray.init(address=args.address)
     train_linear(num_workers=args.num_workers, use_gpu=args.use_gpu)
