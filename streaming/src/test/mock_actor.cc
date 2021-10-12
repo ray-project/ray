@@ -639,7 +639,7 @@ class StreamingWorker {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc == 5);
+  RAY_CHECK(argc >= 4);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
   auto node_manager_port = std::stoi(std::string(argv[3]));

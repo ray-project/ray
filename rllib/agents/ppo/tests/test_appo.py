@@ -59,7 +59,7 @@ class TestAPPO(unittest.TestCase):
         num_iterations = 2
 
         # Only supported for tf so far.
-        for _ in framework_iterator(config, frameworks="tf"):
+        for _ in framework_iterator(config, frameworks=("tf2", "tf")):
             trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()

@@ -167,10 +167,6 @@ def test_recovery_simple(workflow_start_regular):
     with pytest.raises(RaySystemError):
         # internally we get WorkerCrashedError
         simple.step("x").run(workflow_id=workflow_id)
-
-    assert workflow.get_status(
-        workflow_id) == workflow.WorkflowStatus.RESUMABLE
-
     utils.set_global_mark()
     output = workflow.resume(workflow_id)
     assert ray.get(output) == "foo(x[append1])[append2]"

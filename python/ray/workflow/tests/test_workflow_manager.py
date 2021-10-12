@@ -8,7 +8,7 @@ from filelock import FileLock
 
 def test_workflow_manager_simple(workflow_start_regular):
     assert [] == workflow.list_all()
-    with pytest.raises(workflow.common.WorkflowNotFoundError):
+    with pytest.raises(ValueError):
         workflow.get_status("X")
 
 
