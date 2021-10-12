@@ -3,6 +3,7 @@ import argparse
 import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
 
+import ray
 import ray.util.sgd.v2 as sgd
 from ray.data import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
@@ -85,7 +86,7 @@ def train_func(config):
     return results
 
 
-def train_tensorflow_mnist(num_workers=2, use_gpu=False):
+def train_tensorflow_linear(num_workers=2, use_gpu=False):
     dataset_pipeline = get_dataset_pipeline()
     trainer = Trainer(
         backend="tensorflow", num_workers=num_workers, use_gpu=use_gpu)
@@ -100,6 +101,7 @@ def train_tensorflow_mnist(num_workers=2, use_gpu=False):
         })
     trainer.shutdown()
     print(f"Results: {results[0]}")
+    return results
 
 
 if __name__ == "__main__":
@@ -128,8 +130,6 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    import ray
-
     if args.smoke_test:
         # 1 for datasets
         num_cpus = args.num_workers + 1
@@ -137,4 +137,4 @@ if __name__ == "__main__":
         ray.init(num_cpus=num_cpus, num_gpus=num_gpus)
     else:
         ray.init(address=args.address)
-    train_tensorflow_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    train_tensorflow_linear(num_workers=args.num_workers, use_gpu=args.use_gpu)

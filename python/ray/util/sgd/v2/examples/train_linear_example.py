@@ -84,7 +84,7 @@ def train_func(config):
         sgd.report(**result)
         results.append(result)
 
-    return model.module
+    return results
 
 
 def train_linear(num_workers=2):

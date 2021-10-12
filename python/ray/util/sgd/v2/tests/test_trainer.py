@@ -1171,6 +1171,24 @@ def test_to_worker_group(ray_start_2_cpus):
     assert ray.get([w.get_count.remote() for w in workers]) == [4, 4]
 
 
+def test_train_linear_dataset(ray_start_4_cpus):
+    from ray.util.sgd.v2.examples.train_linear_dataset_example import \
+        train_linear
+
+    results = train_linear(num_workers=2, use_gpu=False)
+    for result in results:
+        assert result[-1]["loss"] < result[0]["loss"]
+
+
+def test_tensorflow_linear_dataset(ray_start_4_cpus):
+    from ray.util.sgd.v2.examples.tensorflow_linear_dataset_example import \
+        train_tensorflow_linear
+
+    results = train_tensorflow_linear(num_workers=2, use_gpu=False)
+    for result in results:
+        assert result[-1]["loss"] < result[0]["loss"]
+
+
 if __name__ == "__main__":
     import pytest
     import sys
