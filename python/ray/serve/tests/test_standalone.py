@@ -28,13 +28,6 @@ import ray._private.gcs_utils as gcs_utils
 
 
 @pytest.fixture
-def ray_shutdown():
-    yield
-    serve.shutdown()
-    ray.shutdown()
-
-
-@pytest.fixture
 def ray_cluster():
     cluster = Cluster()
     yield Cluster()

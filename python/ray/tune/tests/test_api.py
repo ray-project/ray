@@ -1663,8 +1663,7 @@ class ApiTestFast(unittest.TestCase):
                          checkpoint_period=None,
                          trial_executor=None,
                          callbacks=None,
-                         metric=None,
-                         driver_sync_trial_checkpoints=True):
+                         metric=None):
                 # should be converted from strings at this case
                 # and not None
                 capture["search_alg"] = search_alg
@@ -1682,8 +1681,7 @@ class ApiTestFast(unittest.TestCase):
                     checkpoint_period=checkpoint_period,
                     trial_executor=trial_executor,
                     callbacks=callbacks,
-                    metric=metric,
-                    driver_sync_trial_checkpoints=True)
+                    metric=metric)
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
             tune.run(
@@ -1735,8 +1733,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                          checkpoint_period=None,
                          trial_executor=None,
                          callbacks=None,
-                         metric=None,
-                         driver_sync_trial_checkpoints=True):
+                         metric=None):
                 capture["search_alg"] = search_alg
                 capture["scheduler"] = scheduler
                 super().__init__(
@@ -1752,9 +1749,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     checkpoint_period=checkpoint_period,
                     trial_executor=trial_executor,
                     callbacks=callbacks,
-                    metric=metric,
-                    driver_sync_trial_checkpoints=driver_sync_trial_checkpoints
-                )
+                    metric=metric)
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
             tune.run(
