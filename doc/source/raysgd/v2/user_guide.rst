@@ -721,11 +721,10 @@ This is very simple to do with Ray Datasets + Ray SGD.
         for _ in range(config["num_epochs"]):
             # Single randomly shuffled dataset shard.
             train_dataset = next(dataset_iterator)
-            # Process each batch of the dataset shard.
-            # Alternatively, you can convert the shard to a native format
-            # (e.g. `train_dataset.to_torch()` or `train_dataset.to_tf()`.)
-            for batch in train_dataset.iter_batches():
-                print(batch)
+            # Convert shard to native Torch Dataset.
+            train_torch_dataset = train_dataset.to_torch(label_column="label",
+                                                         batch_size=batch_size)
+            # Train on your Torch Dataset here!
 
     # Create a pipeline that loops over its source dataset indefinitely,
     # with each repeat of the dataset randomly shuffled.
