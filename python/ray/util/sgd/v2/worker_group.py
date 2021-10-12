@@ -304,11 +304,12 @@ class WorkerGroup:
                 actor._BaseWorkerMixin__execute.remote(construct_metadata))
 
         ray.get(new_actors)
-        ray.get(new_actor_metadata)
+
+        metadata = ray.get(new_actor_metadata)
 
         for i in range(len(new_actors)):
             self.workers.append(
-                Worker(actor=new_actors[i], metadata=new_actor_metadata[i]))
+                Worker(actor=new_actors[i], metadata=metadata[i]))
 
     def __len__(self):
         return len(self.workers)
