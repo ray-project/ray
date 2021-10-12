@@ -74,7 +74,7 @@ The `event_checkpointed` routine can be overridden to support systems with exact
 2. Process event.
 3. Commit event.
 
-After the workflow finishes checkpointing the event, the event listener will be invoked and can free the event. For example, to guarantee that events are consumed from a kafkaesque  queue:
+After the workflow finishes checkpointing the event, the event listener will be invoked and can free the event. For example, to guarantee that events are consumed from a `kafkaesque<https://docs.confluent.io/clients-confluent-kafka-python/current/overview.html#synchronous-commits>`  queue:
 
 
 .. code-block:: python
