@@ -1,4 +1,3 @@
-import boto3
 from enum import Enum
 from filelock import FileLock
 import hashlib
@@ -363,7 +362,6 @@ def package_exists(pkg_uri: str) -> bool:
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = resources_dir
-        self.s3 = boto3.client("s3")
         assert _internal_kv_initialized()
 
     def _get_local_path(self, pkg_uri: str) -> str:
@@ -407,11 +405,15 @@ class WorkingDirManager:
             code = code or b""
             pkg_file.write_bytes(code)
         elif protocol in (Protocol.S3):
+            try:
+                from smart_open import open
+            except ImportError:
+                raise ImportError("You must install the `smart_open` module "
+                    "to fetch URIs in s3 bucket.")
             # Download pacakge file from S3.
-            bucket = urlparse(pkg_uri).netloc
-            package_object = urlparse(pkg_uri).path.lstrip("/")
             with open(pkg_file, "wb") as f:
-                self.s3.download_fileobj(bucket, package_object, f)
+                with open(pkg_uri, "rb") as pacakge_zip:
+                    f.write(pacakge_zip)
         else:
             raise NotImplementedError(f"Protocol {protocol} is not supported")
 
