@@ -621,19 +621,23 @@ Distributed Data Ingest (Ray Datasets)
 
 Ray SGD provides native support for :ref:`Ray Datasets <datasets>` to support the following use cases:
 
-1. **Large Datasets**: With :ref:`Ray Datasets <datasets>`, you can easily work with datasets that are too big to fit on a single node.
-    :ref:`Ray Datasets <datasets>` will distribute the dataset across the Ray Cluster and allow you to perform dataset operations (map, filter, etc.)
-    on the distributed dataset.
+1. **Large Datasets**: With Ray Datasets, you can easily work with datasets that are too big to fit on a single node.
+   Ray Datasets will distribute the dataset across the Ray Cluster and allow you to perform dataset operations (map, filter, etc.)
+   on the distributed dataset.
 2. **Automatic locality-aware sharding**: If provided a Ray Dataset, Ray SGD will automatically shard the dataset and assign each shard
-    to a training worker while minimizing cross-node data transfer. Unlike with standard Torch or Tensorflow datasets, each training
-    worker will only load its assigned shard into memory rather than the entire ``Dataset``.
-3. **Pipelined Execution**: :ref:`Ray Datasets <datasets>` also supports pipelining, meaning that data processing operations
-    can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
-    and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline` for more information.
+   to a training worker while minimizing cross-node data transfer. Unlike with standard Torch or Tensorflow datasets, each training
+   worker will only load its assigned shard into memory rather than the entire ``Dataset``.
+3. **Pipelined Execution**: Ray Datasets also supports pipelining, meaning that data processing operations
+   can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
+   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline` for more information.
 
 To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Underneath the hood, Ray SGD will automatically shard the given dataset.
 
-:warning: If doing distributed training with Tensorflow and multiple workers, you need to disable the built-in Tensorflow autosharding.
+.. warning::
+
+    If you are doing distributed training with Tensorflow, you will need to
+    disable Tensorflow's built-in autosharding as the data on each worker is
+    already sharded.
 
     .. code-block:: python
 
@@ -643,7 +647,7 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
             options = tf.data.Options()
             options.experimental_distribute.auto_shard_policy = \
                 tf.data.experimental.AutoShardPolicy.OFF
-            tf_dataset = tf_dataset_shard.with_options(options)
+            tf_dataset = tf_dataset.with_options(options)
 
 
 **Simple Dataset Example**

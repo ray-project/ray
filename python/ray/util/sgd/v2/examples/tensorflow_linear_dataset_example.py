@@ -57,7 +57,6 @@ def build_and_compile_model(config):
 
 
 def train_func(config):
-
     batch_size = config.get("batch_size", 64)
     epochs = config.get("epochs", 3)
 

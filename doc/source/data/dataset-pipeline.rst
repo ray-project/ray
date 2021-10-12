@@ -181,7 +181,11 @@ Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` s
 
 Example: Per-Epoch Shuffle Pipeline
 -----------------------------------
-.. tip:: If you interested in distributed ingest for deep learning, it is recommended to use Ray Datasets in conjunction with :ref:`Ray SGD <sgd-v2-docs>`. See the example below for more info.
+.. tip::
+
+    If you interested in distributed ingest for deep learning, it is
+    recommended to use Ray Datasets in conjunction with :ref:`Ray SGD <sgd-v2-docs>`.
+    See the :ref:`example below<dataset-pipeline-ray-sgd>` for more info.
 
 ..
   https://docs.google.com/drawings/d/1vWQ-Zfxy2_Gthq8l3KmNsJ7nOCuYUQS9QMZpj5GHYx0/edit
@@ -249,6 +253,8 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
 **Pipeline**:
 
 .. image:: dataset-repeat-2.svg
+
+.. _dataset-pipeline-ray-sgd:
 
 Distributed Ingest with Ray SGD
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
