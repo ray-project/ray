@@ -484,7 +484,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of this shim processes to the extra information of
     /// the process. The shim process PID is the same with worker process PID, except
     /// starting worker process in container.
-    absl::flat_hash_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
+    absl::flat_hash_map<StartupToken, StartingWorkerProcessInfo> starting_worker_processes;
     /// A map for looking up the task by the pid of starting worker process.
     absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
     /// A map for looking up the task with dynamic options by the pid of
