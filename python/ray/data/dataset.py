@@ -1,6 +1,6 @@
 import logging
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
-    Dict, Optional, Union, TYPE_CHECKING
+    Dict, Optional, Union, TYPE_CHECKING, Tuple
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -1300,13 +1300,16 @@ class Dataset(Generic[T]):
             "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
+        This is only supported for datasets convertible to Arrow records.
+
         It is recommended to use the returned ``IterableDataset`` directly
         instead of passing it into a torch ``DataLoader``.
 
         Each element in IterableDataset will be a tuple consisting of 2
-        elements. The first item is a list of the feature tensors. The
-        second item is the label tensor. Each tensor will be of shape (N,
-        1), where N is the ``batch_size`` used by the DataLoader.
+        elements. The first item is the features tensor, and the second item
+        is the label tensor. The features tensor will be of shape (N, n),
+        and the label tensor will be of shape (N, 1), where N is the
+        ``batch_size`` used by the DataLoader, and n is the number of features.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -1362,7 +1365,7 @@ class Dataset(Generic[T]):
                     label_vals, dtype=label_column_dtype)
                 label_tensor = label_tensor.view(-1, 1)
 
-                feature_tensor = []
+                feature_tensors = []
                 if feature_columns:
                     batch = batch[feature_columns]
 
@@ -1375,16 +1378,17 @@ class Dataset(Generic[T]):
                     col_vals = batch[col].values
                     t = torch.as_tensor(col_vals, dtype=dtype)
                     t = t.view(-1, 1)
-                    feature_tensor.append(t)
+                    feature_tensors.append(t)
 
-                yield (feature_tensor, label_tensor)
+                features_tensor = torch.cat(feature_tensors, dim=1)
+                yield (features_tensor, label_tensor)
 
         return TorchIterableDataset(make_generator)
 
     def to_tf(self,
               *,
               label_column: str,
-              output_signature: List["tf.TypeSpec"],
+              output_signature: Tuple["tf.TypeSpec", "tf.TypeSpec"],
               feature_columns: Optional[List[str]] = None,
               prefetch_blocks: int = 0,
               batch_size: int = 1) -> "tf.data.Dataset":
@@ -1398,7 +1402,7 @@ class Dataset(Generic[T]):
 
         Requires all datasets to have the same columns.
 
-        Note that you probably want to call ``.split()`` on this dataset if
+        It is recommended to call ``.split()`` on this dataset if
         there are to be multiple TensorFlow workers consuming the data.
 
         The elements generated must be compatible with the given
@@ -1410,8 +1414,9 @@ class Dataset(Generic[T]):
         Args:
             label_column (str): The name of the column used as the label
                 (second element of the output tuple).
-            output_signature (List[tf.TypeSpec]): A 2-element list
-                of `tf.TypeSpec` objects corresponding to (features, label).
+            output_signature (Tuple[tf.TypeSpec, tf.TypeSpec]): A 2-element
+                tuple of `tf.TypeSpec` objects corresponding to
+                (features, label).
             feature_columns (Optional[List[str]]): List of columns in datasets
                 to use. If None, all columns will be used.
             prefetch_blocks: The number of blocks to prefetch ahead of the
@@ -1441,8 +1446,10 @@ class Dataset(Generic[T]):
                 # TensorArray.
                 yield batch.values, target_col.values
 
-        return tf.data.Dataset.from_generator(
+        dataset = tf.data.Dataset.from_generator(
             make_generator, output_signature=output_signature)
+
+        return dataset
 
     def to_dask(self) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
