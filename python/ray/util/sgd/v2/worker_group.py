@@ -303,8 +303,7 @@ class WorkerGroup:
             new_actor_metadata.append(
                 actor._BaseWorkerMixin__execute.remote(construct_metadata))
 
-        ray.get(new_actors)
-
+        # Get metadata from all actors.
         metadata = ray.get(new_actor_metadata)
 
         for i in range(len(new_actors)):
