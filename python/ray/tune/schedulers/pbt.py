@@ -29,7 +29,6 @@ class PBTTrialState:
         self.orig_tag = trial.experiment_tag
         self.last_score = None
         self.last_checkpoint = None
-        self.first_result_time = -1
         self.last_perturbation_time = 0
         self.last_train_time = 0  # Used for synchronous mode.
         self.last_result = None  # Used for synchronous mode.
@@ -384,9 +383,6 @@ class PopulationBasedTraining(FIFOScheduler):
 
         time = result[self._time_attr]
         state = self._trial_state[trial]
-
-        if state.first_result_time < 0:
-            state.first_result_time = time
 
         self._save_trial_state(state, time, result, trial)
 
