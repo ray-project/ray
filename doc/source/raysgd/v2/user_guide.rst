@@ -749,7 +749,7 @@ You can easily set the working set size for the global shuffle by specifying the
     # Create a pipeline that loops over its source dataset indefinitely.
     pipe: DatasetPipeline = ray.data \
         .read_parquet(...) \
-        .window(10) \
+        .window(blocks_per_window=10) \
         .repeat() \
         .random_shuffle_each_window()
 
