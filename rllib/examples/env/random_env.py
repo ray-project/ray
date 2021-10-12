@@ -14,9 +14,7 @@ class RandomEnv(gym.Env):
     configured as well.
     """
 
-    def __init__(self, config=None):
-        config = config or {}
-
+    def __init__(self, config):
         # Action space.
         self.action_space = config.get("action_space", Discrete(2))
         # Observation space from which to sample.
@@ -65,25 +63,3 @@ class RandomEnv(gym.Env):
 
 # Multi-agent version of the RandomEnv.
 RandomMultiAgentEnv = make_multi_agent(lambda c: RandomEnv(c))
-
-
-# Large observation space "pre-compiled" random env (for testing).
-class RandomLargeObsSpaceEnv(RandomEnv):
-    def __init__(self, config=None):
-        config = config or {}
-        config.update({
-            "observation_space": gym.spaces.Box(-1.0, 1.0, (5000, ))
-        })
-        super().__init__(config=config)
-
-
-# Large observation space + cont. actions "pre-compiled" random env
-# (for testing).
-class RandomLargeObsSpaceEnvContActions(RandomEnv):
-    def __init__(self, config=None):
-        config = config or {}
-        config.update({
-            "observation_space": gym.spaces.Box(-1.0, 1.0, (5000, )),
-            "action_space": gym.spaces.Box(-1.0, 1.0, (5, )),
-        })
-        super().__init__(config=config)

@@ -731,7 +731,7 @@ Status ServiceBasedNodeResourceInfoAccessor::AsyncUpdateResources(
         });
   };
 
-  sequencer_.Post(node_id, std::move(operation));
+  sequencer_.Post(node_id, operation);
   return Status::OK();
 }
 

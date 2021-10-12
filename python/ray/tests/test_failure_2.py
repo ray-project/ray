@@ -67,12 +67,11 @@ def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
         pass
 
     # The actor creation should be infeasible.
-    a = Foo.remote()
+    Foo.remote()
     errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
     p.close()
-    del a
 
 
 def test_warning_for_too_many_actors(shutdown_only):

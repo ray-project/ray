@@ -56,7 +56,7 @@ do
     else
         failed=true
     fi
-    if bash sanity_check_cpp.sh; then
+    if sh sanity_check_cpp.sh; then
         echo "PYTHON ${PYTHON_VERSION} succeed sanity check C++."
     else
         cpp_failed=true

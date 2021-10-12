@@ -163,8 +163,7 @@ def make_multi_agent(env_name_or_creator):
     """
 
     class MultiEnv(MultiAgentEnv):
-        def __init__(self, config=None):
-            config = config or {}
+        def __init__(self, config):
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
                 self.agents = [

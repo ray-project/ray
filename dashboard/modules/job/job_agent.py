@@ -202,9 +202,7 @@ ray.shutdown()
 
         # Per job config
         job_config_items = {
-            "runtime_env": {
-                "env_vars": self._job_info.env
-            },
+            "worker_env": self._job_info.env,
             "code_search_path": [job_package_dir],
         }
 

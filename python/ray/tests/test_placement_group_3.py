@@ -608,40 +608,5 @@ def test_placement_group_status(ray_start_cluster):
     assert cpu_usage == expected
 
 
-def test_placement_group_removal_leak_regression(ray_start_cluster):
-    """Related issue:
-        https://github.com/ray-project/ray/issues/19131
-    """
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=5)
-    ray.init(address=cluster.address)
-
-    TOTAL_CPUS = 8
-    bundles = [{"CPU": 1, "GPU": 1}]
-    bundles += [{"CPU": 1} for _ in range(TOTAL_CPUS - 1)]
-
-    pg = placement_group(bundles, strategy="PACK")
-    # Here, we simulate that the ready task is queued and
-    # the new node is up. As soon as the new node is up,
-    # the ready task is scheduled.
-    # See https://github.com/ray-project/ray/pull/19138
-    # for more details about the test.
-    o = pg.ready()
-    # Add an artificial delay until the new node is up.
-    time.sleep(3)
-    cluster.add_node(num_cpus=5, num_gpus=1)
-    ray.get(o)
-    bundle_resource_name = f"bundle_group_{pg.id.hex()}"
-    expected_bundle_wildcard_val = TOTAL_CPUS * 1000
-
-    # This should fail if there's a leakage
-    # because the bundle resources are never returned properly.
-    def check_bundle_leaks():
-        bundle_resources = ray.available_resources()[bundle_resource_name]
-        return expected_bundle_wildcard_val == bundle_resources
-
-    wait_for_condition(check_bundle_leaks)
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

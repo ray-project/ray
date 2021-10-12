@@ -13,7 +13,6 @@ from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import \
     AssertNumEvalEpisodesCallback
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -73,7 +72,7 @@ class TestTrainer(unittest.TestCase):
             trainer = pg.PGTrainer(config=config)
             pol0 = trainer.get_policy("p0")
             r = trainer.train()
-            self.assertTrue("p0" in r["info"][LEARNER_INFO])
+            self.assertTrue("p0" in r["info"]["learner"])
             for i in range(1, 3):
 
                 def new_mapping_fn(agent_id, episode, worker, **kwargs):

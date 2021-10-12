@@ -52,8 +52,6 @@ def test_replica_config_validation():
     # Check ray_actor_options validation.
     ReplicaConfig(
         Class,
-        tuple(),
-        dict(),
         ray_actor_options={
             "num_cpus": 1.0,
             "num_gpus": 10,

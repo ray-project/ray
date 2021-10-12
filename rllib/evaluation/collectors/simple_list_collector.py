@@ -756,11 +756,8 @@ class SimpleListCollector(SampleCollector):
                     "True. Alternatively, set no_done_at_end=True to "
                     "allow this.")
 
-            if len(pre_batches) > 1:
-                other_batches = pre_batches.copy()
-                del other_batches[agent_id]
-            else:
-                other_batches = {}
+            other_batches = pre_batches.copy()
+            del other_batches[agent_id]
             pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
             policy = self.policy_map[pid]
             if any(pre_batch[SampleBatch.DONES][:-1]) or len(

@@ -22,8 +22,10 @@ SGDIterator
 
 .. _sgd-api-backend-config:
 
-Backend Configurations
-----------------------
+BackendConfig
+-------------
+
+.. autoclass:: ray.sgd.BackendConfig
 
 .. _sgd-api-torch-config:
 
@@ -46,14 +48,10 @@ HorovodConfig
 
 .. autoclass:: ray.sgd.HorovodConfig
 
-
-Callbacks
----------
-
 .. _sgd-api-callback:
 
 SGDCallback
-~~~~~~~~~~~
+-----------
 
 .. autoclass:: ray.sgd.SGDCallback
     :members:
@@ -63,22 +61,19 @@ SGDCallback
 JsonLoggerCallback
 ~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.sgd.callbacks.JsonLoggerCallback
+.. autoclass:: ray.sgd.JsonLoggerCallback
 
 .. _sgd-api-tbx-logger-callback:
 
 TBXLoggerCallback
 ~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.sgd.callbacks.TBXLoggerCallback
-
-Checkpointing
--------------
+.. autoclass:: ray.sgd.TBXLoggerCallback
 
 .. _sgd-api-checkpoint-strategy:
 
 CheckpointStrategy
-~~~~~~~~~~~~~~~~~~
+------------------
 
 .. autoclass:: ray.sgd.CheckpointStrategy
 

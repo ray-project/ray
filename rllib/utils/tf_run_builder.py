@@ -59,10 +59,7 @@ class TFRunBuilder:
 _count = 0
 
 
-def run_timeline(sess, ops, debug_name, feed_dict=None, timeline_dir=None):
-    if feed_dict is None:
-        feed_dict = {}
-
+def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
     if timeline_dir:
         from tensorflow.python.client import timeline
 

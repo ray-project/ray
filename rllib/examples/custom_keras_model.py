@@ -11,10 +11,9 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet import VisionNetwork as MyVisionNetwork
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
-    LEARNER_STATS_KEY
 
 tf1, tf, tfv = try_import_tf()
 
@@ -111,7 +110,7 @@ if __name__ == "__main__":
 
     # Tests https://github.com/ray-project/ray/issues/7293
     def check_has_custom_metric(result):
-        r = result["result"]["info"][LEARNER_INFO]
+        r = result["result"]["info"]["learner"]
         if DEFAULT_POLICY_ID in r:
             r = r[DEFAULT_POLICY_ID].get(LEARNER_STATS_KEY,
                                          r[DEFAULT_POLICY_ID])

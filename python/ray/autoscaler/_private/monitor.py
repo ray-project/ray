@@ -27,8 +27,6 @@ from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-from ray.autoscaler._private.fake_multi_node.node_provider import \
-    FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
     DEBUG_AUTOSCALING_ERROR, format_readonly_node_type
 
@@ -164,10 +162,7 @@ class Monitor:
         head_node_ip = redis_address.split(":")[0]
         self.redis_address = redis_address
         self.redis_password = redis_password
-        if os.environ.get("RAY_FAKE_CLUSTER"):
-            self.load_metrics = LoadMetrics(local_ip=FAKE_HEAD_NODE_ID)
-        else:
-            self.load_metrics = LoadMetrics(local_ip=head_node_ip)
+        self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info
@@ -228,7 +223,7 @@ class Monitor:
 
         request = gcs_service_pb2.GetAllResourceUsageRequest()
         response = self.gcs_node_resources_stub.GetAllResourceUsage(
-            request, timeout=60)
+            request, timeout=4)
         resources_batch_data = response.resource_usage_data
 
         # Tell the readonly node provider what nodes to report.
@@ -249,7 +244,8 @@ class Monitor:
                     resource_message.node_id.hex())
                 resources = {}
                 for k, v in resource_message.resources_total.items():
-                    resources[k] = v
+                    if not k.startswith("node:"):
+                        resources[k] = v
                 mirror_node_types[node_type] = {
                     "resources": resources,
                     "node_config": {},

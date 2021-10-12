@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "ray/raylet/scheduling/cluster_resource_data.h"
-
 #include "ray/common/bundle_spec.h"
 #include "ray/common/task/scheduling_resources.h"
 
@@ -537,7 +536,7 @@ bool TaskResourceInstances::IsEmpty() const {
   return true;
 }
 
-std::string TaskResourceInstances::DebugString(const StringIdMap &string_id_map) const {
+std::string TaskResourceInstances::DebugString() const {
   std::stringstream buffer;
   buffer << std::endl << "  Allocation: {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -548,7 +547,7 @@ std::string TaskResourceInstances::DebugString(const StringIdMap &string_id_map)
   buffer << "  [";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << string_id_map.Get(it->first) << ":" << VectorToString(it->second) << ", ";
+    buffer << it->first << ":" << VectorToString(it->second) << ", ";
   }
 
   buffer << "]" << std::endl;

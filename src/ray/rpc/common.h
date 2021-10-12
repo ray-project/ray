@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <string>
-
 namespace ray::rpc {
 
 // Utility to read cert file from a particular location

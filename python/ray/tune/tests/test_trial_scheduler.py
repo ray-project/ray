@@ -847,7 +847,6 @@ class _MockTrial(Trial):
         self.resources = Resources(1, 0)
         self.custom_trial_name = None
         self.custom_dirname = None
-        self._default_result_or_future = None
 
     def on_checkpoint(self, checkpoint):
         self.restored_checkpoint = checkpoint.value

@@ -52,8 +52,6 @@ def init_env_vars(world_rank: int, world_size: int, node_id: str):
 
 
 class HorovodBackend(Backend):
-    share_cuda_visible_devices: bool = True
-
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: HorovodConfig):
 

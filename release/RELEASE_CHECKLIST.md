@@ -31,7 +31,6 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
     - [ ] Test passing
     - [ ] Results added to `release/release_logs`
         - [ ] microbenchmark
-- [ ] `kubernetes` manual release tests pass
 
 - [ ] ``weekly`` release test suite
     - [ ] Test passing

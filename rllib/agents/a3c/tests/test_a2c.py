@@ -3,7 +3,7 @@ import unittest
 import ray
 import ray.rllib.agents.a3c as a3c
 from ray.rllib.utils.test_utils import check_compute_single_action, \
-    check_train_results, framework_iterator
+    framework_iterator
 
 
 class TestA2C(unittest.TestCase):
@@ -29,7 +29,6 @@ class TestA2C(unittest.TestCase):
                 trainer = a3c.A2CTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
-                    check_train_results(results)
                     print(results)
                 check_compute_single_action(trainer)
                 trainer.stop()
@@ -38,9 +37,7 @@ class TestA2C(unittest.TestCase):
         config = {"min_iter_time_s": 0}
         for _ in framework_iterator(config):
             trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
-            results = trainer.train()
-            check_train_results(results)
-            print(results)
+            assert isinstance(trainer.train(), dict)
             check_compute_single_action(trainer)
             trainer.stop()
 
@@ -51,9 +48,7 @@ class TestA2C(unittest.TestCase):
         }
         for _ in framework_iterator(config):
             trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
-            results = trainer.train()
-            check_train_results(results)
-            print(results)
+            assert isinstance(trainer.train(), dict)
             check_compute_single_action(trainer)
             trainer.stop()
 

@@ -76,7 +76,8 @@ def test_omp_threads_set(shutdown_only):
     assert os.environ["OMP_NUM_THREADS"] == "1"
 
 
-def test_submit_api(shutdown_only):
+@pytest.mark.parametrize("use_tls", [False, True], indirect=True)
+def test_submit_api(shutdown_only, use_tls):
     ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
 
     @ray.remote
@@ -140,7 +141,8 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
-def test_invalid_arguments(shutdown_only):
+@pytest.mark.parametrize("use_tls", [False, True], indirect=True)
+def test_invalid_arguments(shutdown_only, use_tls):
     ray.init(num_cpus=2)
 
     for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
@@ -236,7 +238,8 @@ print("remote", ray.get(check.remote()))
                          {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"})
 
 
-def test_put_get(shutdown_only):
+@pytest.mark.parametrize("use_tls", [False, True], indirect=True)
+def test_put_get(shutdown_only, use_tls):
     ray.init(num_cpus=0)
 
     for i in range(100):
@@ -265,7 +268,8 @@ def test_put_get(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
-def test_wait_timing(shutdown_only):
+@pytest.mark.parametrize("use_tls", [False, True], indirect=True)
+def test_wait_timing(shutdown_only, use_tls):
     ray.init(num_cpus=2)
 
     @ray.remote
@@ -299,7 +303,8 @@ def test_function_descriptor():
     assert d.get(python_descriptor2) == 123
 
 
-def test_ray_options(shutdown_only):
+@pytest.mark.parametrize("use_tls", [False, True], indirect=True)
+def test_ray_options(shutdown_only, use_tls):
     ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
 
     @ray.remote(

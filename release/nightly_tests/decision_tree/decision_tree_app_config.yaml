@@ -1,4 +1,5 @@
 base_image: "anyscale/ray-ml:pinned-nightly-py37"
+env_vars: {}
 debian_packages: []
 
 python:

@@ -183,7 +183,7 @@ class SampleBatch(dict):
             >>> print(SampleBatch.concat_samples([b1, b2]))
             {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
         """
-        if any(isinstance(s, MultiAgentBatch) for s in samples):
+        if isinstance(samples[0], MultiAgentBatch):
             return MultiAgentBatch.concat_samples(samples)
         concatd_seq_lens = []
         concat_samples = []
@@ -1171,12 +1171,7 @@ class MultiAgentBatch:
         policy_batches = collections.defaultdict(list)
         env_steps = 0
         for s in samples:
-            # Some batches in `samples` are not MultiAgentBatch.
             if not isinstance(s, MultiAgentBatch):
-                # If empty SampleBatch: ok (just ignore).
-                if isinstance(s, SampleBatch) and len(s) <= 0:
-                    continue
-                # Otherwise: Error.
                 raise ValueError(
                     "`MultiAgentBatch.concat_samples()` can only concat "
                     "MultiAgentBatch types, not {}!".format(type(s).__name__))

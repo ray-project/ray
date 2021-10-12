@@ -14,13 +14,12 @@ build:macos --copt="-g1"
 build:linux --cxxopt="-std=c++17"
 build:macos --cxxopt="-std=c++17"
 build:clang-cl --cxxopt="-std=c++17"
-build:msvc-cl --cxxopt="/std:c++17"
-build:windows --cxxopt="/std:c++17"
+build:msvc --cxxopt="/std:c++17"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --force_pic
 build:macos --force_pic
 build:clang-cl --compiler=clang-cl
-build:msvc-cl --compiler=msvc-cl
+build:msvc --compiler=msvc-cl
 # `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".
 # If we don't add them, python's `click` library will raise an error.
 build --action_env=LC_ALL
@@ -39,7 +38,7 @@ build:windows --enable_runfiles
 build:linux    --per_file_copt="-\\.(asm|S)$@-Werror"
 build:macos    --per_file_copt="-\\.(asm|S)$@-Werror"
 build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
-build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
+build:msvc     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
 build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
@@ -52,7 +51,7 @@ build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZE
 # Don't generate warnings about kernel features we don't need https://github.com/ray-project/ray/issues/6832
 build:linux --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGPR_MANYLINUX1"
 # Ignore wchar_t -> char conversion warning on MSVC
-build:msvc-cl --per_file_copt="external/boost/libs/regex/src/wc_regex_traits\\.cpp@-wd4244"
+build:msvc --per_file_copt="external/boost/libs/regex/src/wc_regex_traits\\.cpp@-wd4244"
 build --http_timeout_scaling=5.0
 build --verbose_failures
 build:iwyu --experimental_action_listener=//:iwyu_cpp
@@ -178,7 +177,6 @@ build:debug --strip="never"
 # Undefined Behavior Sanitizer
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
-build:ubsan --copt -fno-sanitize=vptr
 build:ubsan --copt -fno-sanitize-recover=all
 build:ubsan --copt -g
 build:ubsan --linkopt -fsanitize=undefined

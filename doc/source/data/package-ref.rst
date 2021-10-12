@@ -15,13 +15,11 @@ Creating a Dataset
 .. autofunction:: ray.data.read_datasource
 .. autofunction:: ray.data.from_items
 .. autofunction:: ray.data.from_arrow
-.. autofunction:: ray.data.from_arrow_refs
 .. autofunction:: ray.data.from_spark
 .. autofunction:: ray.data.from_dask
 .. autofunction:: ray.data.from_modin
 .. autofunction:: ray.data.from_mars
 .. autofunction:: ray.data.from_pandas
-.. autofunction:: ray.data.from_pandas_refs
 .. autofunction:: ray.data.from_numpy
 
 Dataset API

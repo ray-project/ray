@@ -3,7 +3,7 @@ import unittest
 import ray
 import ray.rllib.agents.mbmpo as mbmpo
 from ray.rllib.utils.test_utils import check_compute_single_action, \
-    check_train_results, framework_iterator
+    framework_iterator
 
 
 class TestMBMPO(unittest.TestCase):
@@ -28,12 +28,8 @@ class TestMBMPO(unittest.TestCase):
             trainer = mbmpo.MBMPOTrainer(
                 config=config,
                 env="ray.rllib.examples.env.mbmpo_env.CartPoleWrapper")
-
             for i in range(num_iterations):
-                results = trainer.train()
-                check_train_results(results)
-                print(results)
-
+                trainer.train()
             check_compute_single_action(
                 trainer, include_prev_action_reward=False)
             trainer.stop()

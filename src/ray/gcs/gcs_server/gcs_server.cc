@@ -35,7 +35,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     : config_(config),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
-                  config.node_ip_address == "127.0.0.1", config.grpc_server_thread_num,
+                  config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service),
       raylet_client_pool_(
@@ -267,8 +267,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
         client_factory);
   }
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      main_service_, std::move(scheduler), gcs_table_storage_, gcs_pub_sub_,
-      *runtime_env_manager_,
+      std::move(scheduler), gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -479,7 +478,7 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
   });
 
-  // Install scheduling event listeners.
+  // Install scheduling policy event listeners.
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     gcs_resource_manager_->AddResourcesChangedListener([this] {
       main_service_.post([this] {
@@ -514,10 +513,9 @@ void GcsServer::PrintDebugInfo() {
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.
   RAY_LOG(INFO) << stream.str();
-  execute_after(
-      main_service_, [this] { PrintDebugInfo(); },
-      (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
-       60000) /* milliseconds */);
+  execute_after(main_service_, [this] { PrintDebugInfo(); },
+                (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
+                 60000) /* milliseconds */);
 }
 
 void GcsServer::PrintAsioStats() {
@@ -526,9 +524,8 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.StatsString() << "\n\n";
-    execute_after(
-        main_service_, [this] { PrintAsioStats(); },
-        event_stats_print_interval_ms /* milliseconds */);
+    execute_after(main_service_, [this] { PrintAsioStats(); },
+                  event_stats_print_interval_ms /* milliseconds */);
   }
 }
 

@@ -5,7 +5,7 @@
 # In short, if you change it here, PLEASE also change it in setup.py.
 #
 # setup.py install_requires
-aiohttp>=3.7
+aiohttp==3.7
 aioredis < 2
 click >= 7.0
 cloudpickle
@@ -27,7 +27,7 @@ requests
 ## setup.py extras
 dm_tree
 flask
-gym==0.19
+gym
 lz4
 scikit-image
 opencv-python-headless==4.3.0.36
@@ -68,7 +68,6 @@ opentelemetry-exporter-otlp==1.1.0
 pexpect
 Pillow; platform_system != "Windows"
 pygments
-pyspark
 pytest==5.4.3
 pytest-asyncio
 pytest-rerunfailures

@@ -130,11 +130,10 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 return pyarrow.Table.from_arrays(
                     [np.arange(start, start + count)], names=["value"])
             elif block_format == "tensor":
-                tensor = TensorArray(
-                    np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
+                return np.ones(
+                    tensor_shape, dtype=np.int64) * np.expand_dims(
                         np.arange(start, start + count),
-                        tuple(range(1, 1 + len(tensor_shape)))))
-                return pyarrow.Table.from_pydict({"value": tensor})
+                        tuple(range(1, 1 + len(tensor_shape))))
             else:
                 return list(builtins.range(start, start + count))
 
@@ -146,14 +145,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 import pyarrow
                 schema = pyarrow.Table.from_pydict({"value": [0]}).schema
             elif block_format == "tensor":
-                _check_pyarrow_version()
-                from ray.data.extensions import TensorArray
-                import pyarrow
-                tensor = TensorArray(
-                    np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
-                        np.arange(0, 10), tuple(
-                            range(1, 1 + len(tensor_shape)))))
-                schema = pyarrow.Table.from_pydict({"value": tensor}).schema
+                schema = {"dtype": "int64", "shape": (None, ) + tensor_shape}
             elif block_format == "list":
                 schema = int
             else:
@@ -221,50 +213,3 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     def on_write_failed(self, write_results: List[ObjectRef[WriteResult]],
                         error: Exception) -> None:
         self.num_failed += 1
-
-
-class RandomIntRowDatasource(Datasource[ArrowRow]):
-    """An example datasource that generates rows with random int64 columns.
-
-    Examples:
-        >>> source = RandomIntRowDatasource()
-        >>> ray.data.read_datasource(source, n=10, num_columns=2).take()
-        ... ArrowRow({'c_0': 1717767200176864416, 'c_1': 999657309586757214})
-        ... ArrowRow({'c_0': 4983608804013926748, 'c_1': 1160140066899844087})
-    """
-
-    def prepare_read(self, parallelism: int, n: int,
-                     num_columns: int) -> List[ReadTask]:
-        _check_pyarrow_version()
-        import pyarrow
-
-        read_tasks: List[ReadTask] = []
-        block_size = max(1, n // parallelism)
-
-        def make_block(count: int, num_columns: int) -> Block:
-            return pyarrow.Table.from_arrays(
-                np.random.randint(
-                    np.iinfo(np.int64).max,
-                    size=(num_columns, count),
-                    dtype=np.int64),
-                names=[f"c_{i}" for i in range(num_columns)])
-
-        schema = pyarrow.Table.from_pydict(
-            {f"c_{i}": [0]
-             for i in range(num_columns)}).schema
-
-        i = 0
-        while i < n:
-            count = min(block_size, n - i)
-            read_tasks.append(
-                ReadTask(
-                    lambda count=count, num_columns=num_columns:
-                        make_block(count, num_columns),
-                    BlockMetadata(
-                        num_rows=count,
-                        size_bytes=8 * count * num_columns,
-                        schema=schema,
-                        input_files=None)))
-            i += block_size
-
-        return read_tasks

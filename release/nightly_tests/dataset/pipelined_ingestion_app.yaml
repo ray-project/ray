@@ -1,4 +1,5 @@
 base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
+env_vars: {}
 
 python:
   pip_packages: []

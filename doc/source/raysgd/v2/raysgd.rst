@@ -5,8 +5,6 @@ RaySGD: Deep Learning on Ray
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
-
 RaySGD is a lightweight library for distributed deep learning, allowing you
 to scale up and speed up training for your deep learning models.
 
@@ -22,6 +20,7 @@ The main features are:
   future Ray releases. If you encounter any bugs, please file an
   `issue on GitHub`_.
   If you are looking for the previous API documentation, see :ref:`sgd-index`.
+
 
 Intro to RaySGD
 ---------------

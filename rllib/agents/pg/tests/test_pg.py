@@ -7,9 +7,8 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.numpy import fc
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils import check, check_compute_single_action, fc, \
+    framework_iterator
 
 
 class TestPG(unittest.TestCase):
@@ -32,10 +31,7 @@ class TestPG(unittest.TestCase):
             for env in ["FrozenLake-v0", "CartPole-v0"]:
                 trainer = pg.PGTrainer(config=config, env=env)
                 for i in range(num_iterations):
-                    results = trainer.train()
-                    check_train_results(results)
-                    print(results)
-
+                    print(trainer.train())
                 check_compute_single_action(
                     trainer, include_prev_action_reward=True)
 

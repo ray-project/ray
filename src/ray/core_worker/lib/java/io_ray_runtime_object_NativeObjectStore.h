@@ -105,12 +105,13 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *, jcl
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
- * Method:    nativeGetOwnershipInfo
+ * Method:    nativePromoteAndGetOwnershipInfo
  * Signature: ([B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *, jclass,
-                                                                    jbyteArray);
+Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(JNIEnv *,
+                                                                              jclass,
+                                                                              jbyteArray);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore

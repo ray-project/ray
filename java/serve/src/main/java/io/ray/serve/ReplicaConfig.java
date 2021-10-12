@@ -12,13 +12,13 @@ public class ReplicaConfig implements Serializable {
 
   private String backendDef;
 
-  private byte[] initArgs;
+  private Object[] initArgs;
 
   private Map<String, Object> rayActorOptions;
 
   private Map<String, Double> resource;
 
-  public ReplicaConfig(String backendDef, byte[] initArgs, Map<String, Object> rayActorOptions) {
+  public ReplicaConfig(String backendDef, Object[] initArgs, Map<String, Object> rayActorOptions) {
     this.backendDef = backendDef;
     this.initArgs = initArgs;
     this.rayActorOptions = rayActorOptions;
@@ -89,11 +89,11 @@ public class ReplicaConfig implements Serializable {
     this.backendDef = backendDef;
   }
 
-  public byte[] getInitArgs() {
+  public Object[] getInitArgs() {
     return initArgs;
   }
 
-  public void setInitArgs(byte[] initArgs) {
+  public void setInitArgs(Object[] initArgs) {
     this.initArgs = initArgs;
   }
 

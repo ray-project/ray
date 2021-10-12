@@ -52,13 +52,9 @@ parser.add_argument(
 parser.add_argument(
     "--server",
     type=str,
-    default=SERVER_ADDRESS,
-    help="The Policy server's address to connect to from this client.")
-parser.add_argument(
-    "--port",
-    type=int,
-    default=SERVER_PORT,
-    help="The port to use (on --server).")
+    default=SERVER_ADDRESS + ":" + str(SERVER_PORT),
+    help="The Policy server's address and port to connect to from this client."
+)
 parser.add_argument(
     "--no-train",
     action="store_true",
@@ -79,7 +75,7 @@ parser.add_argument(
     "learnt policy weights from the server?")
 parser.add_argument(
     "--stop-reward",
-    type=float,
+    type=int,
     default=9999,
     help="Stop once the specified reward is reached.")
 
@@ -89,7 +85,7 @@ if __name__ == "__main__":
     # Start the client for sending environment information (e.g. observations,
     # actions) to a policy server (listening on port 9900).
     client = PolicyClient(
-        "http://" + args.server + ":" + str(args.port),
+        "http://" + args.server,
         inference_mode=args.inference_mode,
         update_interval=args.update_interval_local_mode)
 

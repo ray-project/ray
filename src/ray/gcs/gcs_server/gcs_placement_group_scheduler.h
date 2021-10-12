@@ -49,8 +49,9 @@ struct pair_hash {
 };
 using ScheduleMap = std::unordered_map<BundleID, NodeID, pair_hash>;
 using ScheduleResult = std::pair<SchedulingResultStatus, ScheduleMap>;
-using BundleLocations = absl::flat_hash_map<
-    BundleID, std::pair<NodeID, std::shared_ptr<const BundleSpecification>>, pair_hash>;
+using BundleLocations =
+    absl::flat_hash_map<BundleID, std::pair<NodeID, std::shared_ptr<BundleSpecification>>,
+                        pair_hash>;
 
 class GcsPlacementGroupSchedulerInterface {
  public:
@@ -111,7 +112,7 @@ class GcsScheduleStrategy {
  public:
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleResult Schedule(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
       GcsResourceScheduler &gcs_resource_scheduler) = 0;
 
@@ -121,7 +122,7 @@ class GcsScheduleStrategy {
   /// \param bundles Bundles to be scheduled.
   /// \return Required resources.
   std::vector<ResourceSet> GetRequiredResourcesFromBundles(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles);
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles);
 
   /// Generate `ScheduleResult` from bundles and nodes .
   ///
@@ -130,7 +131,7 @@ class GcsScheduleStrategy {
   /// \param status Status of the scheduling result.
   /// \return The scheduling result from the required resource.
   ScheduleResult GenerateScheduleResult(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::vector<NodeID> &selected_nodes, const SchedulingResultStatus &status);
 };
 
@@ -140,7 +141,7 @@ class GcsScheduleStrategy {
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
   ScheduleResult Schedule(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
       GcsResourceScheduler &gcs_resource_scheduler) override;
 };
@@ -149,7 +150,7 @@ class GcsPackStrategy : public GcsScheduleStrategy {
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
   ScheduleResult Schedule(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
       GcsResourceScheduler &gcs_resource_scheduler) override;
 };
@@ -159,7 +160,7 @@ class GcsSpreadStrategy : public GcsScheduleStrategy {
 class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
   ScheduleResult Schedule(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
       GcsResourceScheduler &gcs_resource_scheduler) override;
 };
@@ -170,7 +171,7 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
 class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
  public:
   ScheduleResult Schedule(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
       GcsResourceScheduler &gcs_resource_scheduler) override;
 };
@@ -191,7 +192,7 @@ class LeaseStatusTracker {
  public:
   LeaseStatusTracker(
       std::shared_ptr<GcsPlacementGroup> placement_group,
-      const std::vector<std::shared_ptr<const BundleSpecification>> &unplaced_bundles,
+      const std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles,
       const ScheduleMap &schedule_map);
   ~LeaseStatusTracker() = default;
 
@@ -201,7 +202,7 @@ class LeaseStatusTracker {
   /// \param bundle Bundle specification the node is supposed to prepare.
   /// \return False if the prepare phase was already started. True otherwise.
   bool MarkPreparePhaseStarted(const NodeID &node_id,
-                               const std::shared_ptr<const BundleSpecification> &bundle);
+                               std::shared_ptr<BundleSpecification> bundle);
 
   /// Indicate the tracker that all prepare requests are returned.
   ///
@@ -209,9 +210,9 @@ class LeaseStatusTracker {
   /// \param bundle Bundle specification the node was supposed to schedule.
   /// \param status Status of the prepare response.
   /// \param void
-  void MarkPrepareRequestReturned(
-      const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle,
-      const Status &status);
+  void MarkPrepareRequestReturned(const NodeID &node_id,
+                                  std::shared_ptr<BundleSpecification> bundle,
+                                  const Status &status);
 
   /// Used to know if all prepare requests are returned.
   ///
@@ -229,7 +230,7 @@ class LeaseStatusTracker {
   /// \param bundle Bundle specification the node was supposed to schedule.
   /// \param status Status of the returned commit request.
   void MarkCommitRequestReturned(const NodeID &node_id,
-                                 const std::shared_ptr<const BundleSpecification> &bundle,
+                                 const std::shared_ptr<BundleSpecification> bundle,
                                  const Status &status);
 
   /// Used to know if all commit requests are returend.
@@ -250,8 +251,7 @@ class LeaseStatusTracker {
   /// Return bundles that should be scheduled.
   ///
   /// \return List of bundle specification that are supposed to be scheduled.
-  [[nodiscard]] const std::vector<std::shared_ptr<const BundleSpecification>>
-      &GetBundlesToSchedule() const;
+  const std::vector<std::shared_ptr<BundleSpecification>> &GetBundlesToSchedule() const;
 
   /// This method returns bundle locations that succeed to prepare resources.
   ///
@@ -324,7 +324,7 @@ class LeaseStatusTracker {
       node_to_bundles_when_preparing_;
 
   /// Bundles to schedule.
-  std::vector<std::shared_ptr<const BundleSpecification>> bundles_to_schedule_;
+  std::vector<std::shared_ptr<BundleSpecification>> bundles_to_schedule_;
 
   /// Location of bundles.
   std::shared_ptr<BundleLocations> bundle_locations_;
@@ -460,7 +460,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param node A node to prepare resources for a given bundle.
   /// \param callback
   void PrepareResources(
-      const std::shared_ptr<const BundleSpecification> &bundle,
+      const std::shared_ptr<BundleSpecification> &bundle,
       const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback &callback);
 
@@ -470,7 +470,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param bundle A bundle to schedule on a node.
   /// \param node A node to commit resources for a given bundle.
   /// \param callback
-  void CommitResources(const std::shared_ptr<const BundleSpecification> &bundle,
+  void CommitResources(const std::shared_ptr<BundleSpecification> &bundle,
                        const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
                        const StatusCallback callback);
 
@@ -481,7 +481,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param bundle A description of the bundle to return.
   /// \param node The node that the worker will be returned for.
   void CancelResourceReserve(
-      const std::shared_ptr<const BundleSpecification> &bundle_spec,
+      const std::shared_ptr<BundleSpecification> &bundle_spec,
       const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node);
 
   /// Get an existing lease client or connect a new one or connect a new one.

@@ -1,7 +1,6 @@
 import json
 import jsonschema
 import os
-import re
 import shutil
 from subprocess import CalledProcessError
 import tempfile
@@ -14,7 +13,7 @@ import copy
 from collections import defaultdict
 from ray.autoscaler._private.commands import get_or_create_head_node
 from jsonschema.exceptions import ValidationError
-from typing import Dict, Callable, List, Optional
+from typing import Dict, Callable
 
 import ray
 from ray.autoscaler._private.util import prepare_config, validate_config
@@ -106,56 +105,42 @@ class MockProcessRunner:
 
             return return_string.encode()
 
-    def assert_has_call(self,
-                        ip: str,
-                        pattern: Optional[str] = None,
-                        exact: Optional[List[str]] = None):
-        """Checks if the given value was called by this process runner.
-
-        NOTE: Either pattern or exact must be specified, not both!
-
-        Args:
-            ip: IP address of the node that the given call was executed on.
-            pattern: RegEx that matches one specific call.
-            exact: List of strings that when joined exactly match one call.
-        """
+    def assert_has_call(self, ip, pattern=None, exact=None):
         with self.lock:
-            assert bool(pattern) ^ bool(exact), \
+            assert pattern or exact, \
                 "Must specify either a pattern or exact match."
-            debug_output = ""
+            out = ""
             if pattern is not None:
                 for cmd in self.command_history():
                     if ip in cmd:
-                        debug_output += cmd
-                        debug_output += "\n"
-                    if re.search(pattern, cmd):
-                        return True
+                        out += cmd
+                        out += "\n"
+                if pattern in out:
+                    return True
                 else:
                     raise Exception(
-                        f"Did not find [{pattern}] in [{debug_output}] for "
-                        f"ip={ip}.\n\nFull output: {self.command_history()}")
+                        f"Did not find [{pattern}] in [{out}] for ip={ip}."
+                        f"\n\nFull output: {self.command_history()}")
             elif exact is not None:
                 exact_cmd = " ".join(exact)
                 for cmd in self.command_history():
                     if ip in cmd:
-                        debug_output += cmd
-                        debug_output += "\n"
+                        out += cmd
+                        out += "\n"
                     if cmd == exact_cmd:
                         return True
                 raise Exception(
-                    f"Did not find [{exact_cmd}] in [{debug_output}] for "
-                    f"ip={ip}.\n\nFull output: {self.command_history()}")
+                    f"Did not find [{exact_cmd}] in [{out}] for ip={ip}."
+                    f"\n\nFull output: {self.command_history()}")
 
-    def assert_not_has_call(self, ip: str, pattern: str):
-        """Ensure that the given regex pattern was never called.
-        """
+    def assert_not_has_call(self, ip, pattern):
         with self.lock:
             out = ""
             for cmd in self.command_history():
                 if ip in cmd:
                     out += cmd
                     out += "\n"
-            if re.search(pattern, out):
+            if pattern in out:
                 raise Exception("Found [{}] in [{}] for {}".format(
                     pattern, out, ip))
             else:
@@ -464,10 +449,7 @@ class AutoscalingTest(unittest.TestCase):
         fail_msg = fail_msg or "Timed out waiting for {}".format(condition)
         raise RayTestTimeoutException(fail_msg)
 
-    def waitForNodes(self, expected, comparison=None, tag_filters=None):
-        if tag_filters is None:
-            tag_filters = {}
-
+    def waitForNodes(self, expected, comparison=None, tag_filters={}):
         MAX_ITER = 50
         for i in range(MAX_ITER):
             n = len(self.provider.non_terminated_nodes(tag_filters))
@@ -2578,7 +2560,8 @@ class AutoscalingTest(unittest.TestCase):
         for i in [0, 1]:
             runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
 
     def testFileMountsNonContinuous(self):
@@ -2613,7 +2596,8 @@ class AutoscalingTest(unittest.TestCase):
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
 
         runner.clear_history()
@@ -2656,7 +2640,8 @@ class AutoscalingTest(unittest.TestCase):
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
 
     def testAutodetectResources(self):

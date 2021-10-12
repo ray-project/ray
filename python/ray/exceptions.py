@@ -28,11 +28,7 @@ class RayError(Exception):
         ray_exception = RayException()
         ray_exception.ParseFromString(b)
         if ray_exception.language == PYTHON:
-            try:
-                return pickle.loads(ray_exception.serialized_exception)
-            except Exception as e:
-                msg = "Failed to unpickle serialized exception"
-                raise RuntimeError(msg) from e
+            return pickle.loads(ray_exception.serialized_exception)
         else:
             return CrossLanguageError(ray_exception)
 

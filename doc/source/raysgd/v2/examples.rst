@@ -61,9 +61,6 @@ Ray Tune Integration Examples
 * :doc:`/raysgd/v2/examples/tune_tensorflow_mnist_example`:
   End-to-end example for tuning a TensorFlow model.
 
-* :doc:`/raysgd/v2/examples/tune_cifar_pytorch_pbt_example`:
-  End-to-end example for tuning a PyTorch model with PBT.
-
 ..
     TODO implement these examples!
 

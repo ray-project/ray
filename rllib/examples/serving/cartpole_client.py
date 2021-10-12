@@ -54,7 +54,7 @@ parser.add_argument(
     "(Policy-computed) ones.")
 parser.add_argument(
     "--stop-reward",
-    type=float,
+    type=int,
     default=9999,
     help="Stop once the specified reward is reached.")
 parser.add_argument(

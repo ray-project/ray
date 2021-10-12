@@ -4,9 +4,7 @@ import ray
 from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     MultiAgentMountainCar
-from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.test_utils import check_train_results, \
-    framework_iterator
+from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune import register_env
 
 
@@ -15,23 +13,7 @@ def check_support_multiagent(alg, config):
                  lambda _: MultiAgentMountainCar({"num_agents": 2}))
     register_env("multi_agent_cartpole",
                  lambda _: MultiAgentCartPole({"num_agents": 2}))
-
-    # Simulate a simple multi-agent setup.
-    policies = {
-        "policy_0": PolicySpec(config={"gamma": 0.99}),
-        "policy_1": PolicySpec(config={"gamma": 0.95}),
-    }
-    policy_ids = list(policies.keys())
-
-    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
-        pol_id = policy_ids[agent_id]
-        return pol_id
-
-    config["multiagent"] = {
-        "policies": policies,
-        "policy_mapping_fn": policy_mapping_fn,
-    }
-
+    config["log_level"] = "ERROR"
     for fw in framework_iterator(config):
         if fw in ["tf2", "tfe"] and \
                 alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
@@ -43,9 +25,7 @@ def check_support_multiagent(alg, config):
             a = get_trainer_class(alg)(
                 config=config, env="multi_agent_cartpole")
 
-        results = a.train()
-        check_train_results(results)
-        print(results)
+        print(a.train())
         a.stop()
 
 

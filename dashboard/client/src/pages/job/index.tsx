@@ -24,14 +24,7 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const columns = [
-  "ID",
-  "DriverIpAddress",
-  "DriverPid",
-  "IsDead",
-  "StartTime",
-  "EndTime",
-];
+const columns = ["ID", "DriverIpAddress", "DriverPid", "IsDead", "Timestamp"];
 
 const JobList = () => {
   const classes = useStyles();
@@ -105,8 +98,7 @@ const JobList = () => {
                     driverIpAddress,
                     isDead,
                     driverPid,
-                    startTime,
-                    endTime,
+                    timestamp,
                   }) => (
                     <TableRow key={jobId}>
                       <TableCell align="center">
@@ -118,12 +110,7 @@ const JobList = () => {
                         {isDead ? "true" : "false"}
                       </TableCell>
                       <TableCell align="center">
-                        {dayjs(Number(startTime)).format("YYYY/MM/DD HH:mm:ss")}
-                      </TableCell>
-                      <TableCell align="center">
-                        {endTime > 0
-                          ? dayjs(Number(endTime)).format("YYYY/MM/DD HH:mm:ss")
-                          : "-"}
+                        {dayjs(Number(timestamp)).format("YYYY/MM/DD HH:mm:ss")}
                       </TableCell>
                     </TableRow>
                   ),

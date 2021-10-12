@@ -1,8 +1,5 @@
 import logging
-import uuid
-
 from types import FunctionType
-from typing import Optional
 
 import ray
 import ray.cloudpickle as pickle
@@ -117,25 +114,23 @@ def check_serializability(key, value):
     _global_registry.register(TEST, key, value)
 
 
-def _make_key(prefix, category, key):
+def _make_key(category, key):
     """Generate a binary key for the given category and key.
 
     Args:
-        prefix (str): Prefix
         category (str): The category of the item
         key (str): The unique identifier for the item
 
     Returns:
         The key to use for storing a the value.
     """
-    return (b"TuneRegistry:" + prefix.encode("ascii") + b":" +
-            category.encode("ascii") + b"/" + key.encode("ascii"))
+    return (b"TuneRegistry:" + category.encode("ascii") + b"/" +
+            key.encode("ascii"))
 
 
 class _Registry:
-    def __init__(self, prefix: Optional[str] = None):
+    def __init__(self):
         self._to_flush = {}
-        self._prefix = prefix or uuid.uuid4().hex[:8]
 
     def register(self, category, key, value):
         """Registers the value with the global registry.
@@ -153,14 +148,14 @@ class _Registry:
 
     def contains(self, category, key):
         if _internal_kv_initialized():
-            value = _internal_kv_get(_make_key(self._prefix, category, key))
+            value = _internal_kv_get(_make_key(category, key))
             return value is not None
         else:
             return (category, key) in self._to_flush
 
     def get(self, category, key):
         if _internal_kv_initialized():
-            value = _internal_kv_get(_make_key(self._prefix, category, key))
+            value = _internal_kv_get(_make_key(category, key))
             if value is None:
                 raise ValueError(
                     "Registry value for {}/{} doesn't exist.".format(
@@ -171,12 +166,11 @@ class _Registry:
 
     def flush_values(self):
         for (category, key), value in self._to_flush.items():
-            _internal_kv_put(
-                _make_key(self._prefix, category, key), value, overwrite=True)
+            _internal_kv_put(_make_key(category, key), value, overwrite=True)
         self._to_flush.clear()
 
 
-_global_registry = _Registry(prefix="global")
+_global_registry = _Registry()
 ray.worker._post_init_hooks.append(_global_registry.flush_values)
 
 

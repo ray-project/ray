@@ -259,11 +259,8 @@ class HTTPProxyActor:
                  port: int,
                  controller_name: str,
                  controller_namespace: str,
-                 http_middlewares: Optional[List[
-                     "starlette.middleware.Middleware"]] = None):  # noqa: F821
-        if http_middlewares is None:
-            http_middlewares = []
-
+                 http_middlewares: List[
+                     "starlette.middleware.Middleware"] = []):  # noqa: F821
         self.host = host
         self.port = port
 

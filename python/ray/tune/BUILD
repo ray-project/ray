@@ -160,7 +160,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_logger.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml"],
+    tags = ["team:ml", "jenkins_only"],
 )
 
 py_test(

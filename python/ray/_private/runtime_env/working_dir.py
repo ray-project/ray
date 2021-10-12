@@ -15,7 +15,7 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_initialized)
 from ray.job_config import JobConfig
 from ray._private.thirdparty.pathspec import PathSpec
-from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env import RuntimeEnvContext
 
 default_logger = logging.getLogger(__name__)
 

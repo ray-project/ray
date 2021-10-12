@@ -61,11 +61,9 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-
-  GrpcServer(std::string name, const uint32_t port, bool listen_to_localhost_only,
-             int num_threads = 1,
-             int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
-             bool use_tls = false);
+  GrpcServer(std::string name, const uint32_t port, int num_threads = 1,
+             bool use_tls = false,
+             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/);
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -116,9 +114,6 @@ class GrpcServer {
   int port_;
   /// Whether to use TLS.
   bool use_tls_;
-  /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
-  /// interfaces (0.0.0.0)
-  const bool listen_to_localhost_only_;
   /// Indicates whether this server has been closed.
   bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.

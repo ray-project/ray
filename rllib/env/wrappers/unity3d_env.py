@@ -6,7 +6,6 @@ import time
 from typing import Callable, Optional, Tuple
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.typing import MultiAgentDict, PolicyID, AgentID
 
 logger = logging.getLogger(__name__)
@@ -305,12 +304,10 @@ class Unity3DEnv(MultiAgentEnv):
         # Policies (Unity: "behaviors") and agent-to-policy mapping fns.
         if game_name == "SoccerStrikersVsGoalie":
             policies = {
-                "Goalie": PolicySpec(
-                    observation_space=obs_spaces["Goalie"],
-                    action_space=action_spaces["Goalie"]),
-                "Striker": PolicySpec(
-                    observation_space=obs_spaces["Striker"],
-                    action_space=action_spaces["Striker"]),
+                "Goalie": (None, obs_spaces["Goalie"], action_spaces["Goalie"],
+                           {}),
+                "Striker": (None, obs_spaces["Striker"],
+                            action_spaces["Striker"], {}),
             }
 
             def policy_mapping_fn(agent_id, episode, worker, **kwargs):
@@ -318,9 +315,8 @@ class Unity3DEnv(MultiAgentEnv):
 
         else:
             policies = {
-                game_name: PolicySpec(
-                    observation_space=obs_spaces[game_name],
-                    action_space=action_spaces[game_name]),
+                game_name: (None, obs_spaces[game_name],
+                            action_spaces[game_name], {}),
             }
 
             def policy_mapping_fn(agent_id, episode, worker, **kwargs):

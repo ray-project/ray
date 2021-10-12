@@ -1,8 +1,9 @@
 import queue
 import threading
 
+from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
@@ -32,7 +33,7 @@ class LearnerThread(threading.Thread):
         self.daemon = True
         self.weights_updated = False
         self.stopped = False
-        self.learner_info = {}
+        self.stats = {}
 
     def run(self):
         # Switch on eager mode if configured.
@@ -48,18 +49,11 @@ class LearnerThread(threading.Thread):
             if replay is not None:
                 prio_dict = {}
                 with self.grad_timer:
-                    # Use LearnerInfoBuilder as a unified way to build the
-                    # final results dict from `learn_on_loaded_batch` call(s).
-                    # This makes sure results dicts always have the same
-                    # structure no matter the setup (multi-GPU, multi-agent,
-                    # minibatch SGD, tf vs torch).
-                    learner_info_builder = LearnerInfoBuilder(num_devices=1)
-                    multi_agent_results = self.local_worker.learn_on_batch(
-                        replay)
-                    for pid, results in multi_agent_results.items():
-                        learner_info_builder.add_learn_on_batch_results(
-                            results, pid)
-                        td_error = results["td_error"]
+                    grad_out = self.local_worker.learn_on_batch(replay)
+                    for pid, info in grad_out.items():
+                        td_error = info.get(
+                            "td_error",
+                            info[LEARNER_STATS_KEY].get("td_error"))
                         # Switch off auto-conversion from numpy to torch/tf
                         # tensors for the indices. This may lead to errors
                         # when sent to the buffer for processing
@@ -68,7 +62,7 @@ class LearnerThread(threading.Thread):
                         prio_dict[pid] = (
                             replay.policy_batches[pid].get("batch_indexes"),
                             td_error)
-                    self.learner_info = learner_info_builder.finalize()
+                        self.stats[pid] = get_learner_stats(info)
                     self.grad_timer.push_units_processed(replay.count)
                 self.outqueue.put((ra, prio_dict, replay.count))
             self.learner_queue_size.push(self.inqueue.qsize())

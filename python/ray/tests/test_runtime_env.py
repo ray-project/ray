@@ -13,6 +13,7 @@ import ray.experimental.internal_kv as kv
 from ray._private.test_utils import (
     run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.runtime_env import working_dir as working_dir_pkg
+from ray._private.runtime_env.validation import override_task_or_actor_runtime_env  # noqa: E501
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
@@ -773,38 +774,41 @@ def test_container_option_serialize():
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
     job_config_serialized = job_config.serialize()
     # job_config_serialized is JobConfig protobuf serialized string,
-    # job_config.runtime_env.serialized_runtime_env has container_option info
-    assert job_config_serialized.count(b"image") == 1
+    # job_config.runtime_env.raw_json has container_option info
+    # job_config.serialized_runtime_env also has container_option info
+    assert job_config_serialized.count(b"image") == 2
 
 
 def test_working_dir_override_failure(shutdown_only):
     ray.init()
 
-    with pytest.raises(NotImplementedError):
+    @ray.remote(runtime_env={"working_dir": "."})
+    def f():
+        pass
 
-        @ray.remote(runtime_env={"working_dir": "."})
-        def f():
-            pass
+    with pytest.raises(NotImplementedError):
+        f.remote()
 
     @ray.remote
     def g():
         pass
 
     with pytest.raises(NotImplementedError):
-        g.options(runtime_env={"working_dir": "."})
+        g.options(runtime_env={"working_dir": "."}).remote()
+
+    @ray.remote(runtime_env={"working_dir": "."})
+    class A:
+        pass
 
     with pytest.raises(NotImplementedError):
-
-        @ray.remote(runtime_env={"working_dir": "."})
-        class A:
-            pass
+        A.remote()
 
     @ray.remote
     class B:
         pass
 
     with pytest.raises(NotImplementedError):
-        B.options(runtime_env={"working_dir": "."})
+        B.options(runtime_env={"working_dir": "."}).remote()
 
 
 @pytest.mark.skipif(
@@ -938,6 +942,46 @@ def test_large_file_error(shutdown_only):
             ray.init(runtime_env={"working_dir": "."})
 
         os.chdir(old_dir)
+
+
+class TestOverrideTaskOrActorRuntimeEnv:
+    def test_working_dir_in_child_invalid(self):
+        child_env = {"working_dir": "some_dir"}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+
+        with pytest.raises(NotImplementedError):
+            override_task_or_actor_runtime_env(child_env, parent_env)
+
+    def test_uri_inherit(self):
+        child_env = {}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env == {"uris": ["a", "b"]}
+
+        # The dicts passed in should not be mutated.
+        assert child_env == {}
+        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
+
+    def test_uri_override(self):
+        child_env = {"uris": ["c", "d"]}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env["uris"] == ["c", "d"]
+        assert result_env.get("working_dir") is None
+
+        # The dicts passed in should not be mutated.
+        assert child_env == {"uris": ["c", "d"]}
+        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
+
+    def test_no_mutate(self):
+        child_env = {}
+        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
+        assert result_env == {"uris": ["a", "b"]}
+
+        # The dictis passed in should not be mutated.
+        assert child_env == {}
+        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
 
 
 if __name__ == "__main__":

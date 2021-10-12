@@ -2,42 +2,26 @@ package io.ray.serve.util;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-import com.google.gson.Gson;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.Constants;
 import io.ray.serve.RayServeException;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.BackendVersion;
-import io.ray.serve.generated.EndpointInfo;
-import io.ray.serve.generated.EndpointSet;
-import io.ray.serve.generated.LongPollResult;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
-import io.ray.serve.generated.UpdatedObject;
-import io.ray.serve.poll.KeyType;
-import java.util.HashMap;
-import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 
 public class ServeProtoUtil {
 
-  private static final Gson GSON = new Gson();
-
-  public static BackendConfig parseBackendConfig(byte[] backendConfigBytes) {
+  public static BackendConfig parseBackendConfig(byte[] backendConfigBytes)
+      throws InvalidProtocolBufferException {
 
     // Get a builder from BackendConfig(bytes) or create a new one.
     BackendConfig.Builder builder = null;
     if (backendConfigBytes == null) {
       builder = BackendConfig.newBuilder();
     } else {
-      BackendConfig backendConfig = null;
-      try {
-        backendConfig = BackendConfig.parseFrom(backendConfigBytes);
-      } catch (InvalidProtocolBufferException e) {
-        throw new RayServeException("Failed to parse BackendConfig from protobuf bytes.", e);
-      }
+      BackendConfig backendConfig = BackendConfig.parseFrom(backendConfigBytes);
       if (backendConfig == null) {
         builder = BackendConfig.newBuilder();
       } else {
@@ -56,12 +40,12 @@ public class ServeProtoUtil {
       builder.setMaxConcurrentQueries(100);
     }
 
-    if (builder.getGracefulShutdownWaitLoopS() == 0) {
-      builder.setGracefulShutdownWaitLoopS(2);
+    if (builder.getExperimentalGracefulShutdownWaitLoopS() == 0) {
+      builder.setExperimentalGracefulShutdownWaitLoopS(2);
     }
 
-    if (builder.getGracefulShutdownTimeoutS() == 0) {
-      builder.setGracefulShutdownTimeoutS(20);
+    if (builder.getExperimentalGracefulShutdownTimeoutS() == 0) {
+      builder.setExperimentalGracefulShutdownTimeoutS(20);
     }
 
     if (builder.getBackendLanguage() == BackendLanguage.UNRECOGNIZED) {
@@ -100,7 +84,7 @@ public class ServeProtoUtil {
 
     // Set default values.
     if (StringUtils.isBlank(builder.getCallMethod())) {
-      builder.setCallMethod(Constants.DEFAULT_CALL_METHOD);
+      builder.setCallMethod("call");
     }
 
     return builder.build();
@@ -123,48 +107,5 @@ public class ServeProtoUtil {
     }
 
     return builder.build();
-  }
-
-  public static Map<KeyType, UpdatedObject> parseUpdatedObjects(byte[] longPollResultBytes)
-      throws InvalidProtocolBufferException {
-    if (longPollResultBytes == null) {
-      return null;
-    }
-    LongPollResult longPollResult = LongPollResult.parseFrom(longPollResultBytes);
-    Map<String, UpdatedObject> updatedObjects = longPollResult.getUpdatedObjectsMap();
-    if (updatedObjects == null || updatedObjects.isEmpty()) {
-      return null;
-    }
-    Map<KeyType, UpdatedObject> udpates = new HashMap<>(updatedObjects.size());
-    updatedObjects.forEach(
-        (key, value) -> udpates.put(ServeProtoUtil.GSON.fromJson(key, KeyType.class), value));
-    return udpates;
-  }
-
-  public static Map<String, EndpointInfo> parseEndpointSet(byte[] endpointSetBytes) {
-    if (endpointSetBytes == null) {
-      return null;
-    }
-    EndpointSet endpointSet = null;
-    try {
-      endpointSet = EndpointSet.parseFrom(endpointSetBytes);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RayServeException("Failed to parse EndpointSet from protobuf bytes.", e);
-    }
-    if (endpointSet == null) {
-      return null;
-    }
-    return endpointSet.getEndpointsMap();
-  }
-
-  public static BackendVersion parseBackendVersion(byte[] backendVersionBytes) {
-    if (backendVersionBytes == null) {
-      return null;
-    }
-    try {
-      return BackendVersion.parseFrom(backendVersionBytes);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RayServeException("Failed to parse BackendVersion from protobuf bytes.", e);
-    }
   }
 }

@@ -8,6 +8,6 @@ from ray.util.sgd.v2.trainer import Trainer, SGDIterator
 
 __all__ = [
     "BackendConfig", "CheckpointStrategy", "HorovodConfig", "load_checkpoint",
-    "local_rank", "report", "save_checkpoint", "SGDIterator",
-    "TensorflowConfig", "SGDCallback", "TorchConfig", "Trainer", "world_rank"
+    "local_rank", "report", "save_checkpoint", "SGDCallback", "SGDIterator",
+    "TensorflowConfig", "TorchConfig", "Trainer", "world_rank"
 ]

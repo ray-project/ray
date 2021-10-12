@@ -7,7 +7,6 @@ import ipaddress
 import threading
 
 from grpc.experimental import aio as aiogrpc
-from distutils.version import LooseVersion
 
 import ray._private.utils
 import ray._private.services
@@ -121,7 +120,7 @@ class DashboardHead:
         ip, port = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+        self.grpc_port = ray._private.utils.add_port_to_grpc_server(
             self.server, "[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
                     self.grpc_port)
@@ -175,12 +174,8 @@ class DashboardHead:
             sys.exit(-1)
 
         # Create a http session for all modules.
-        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
-        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
-            self.http_session = aiohttp.ClientSession(
-                loop=asyncio.get_event_loop())
-        else:
-            self.http_session = aiohttp.ClientSession()
+        self.http_session = aiohttp.ClientSession(
+            loop=asyncio.get_event_loop())
 
         # Waiting for GCS is ready.
         self.aiogrpc_gcs_channel = await make_gcs_grpc_channel(

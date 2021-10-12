@@ -1,7 +1,7 @@
 import ray
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import List, Optional
 from uuid import UUID
 
 from ray.actor import ActorClass
@@ -17,6 +17,7 @@ Duration = float
 
 @dataclass
 class EndpointInfo:
+    python_methods: Optional[List[str]] = field(default_factory=list)
     route: Optional[str] = None
 
 

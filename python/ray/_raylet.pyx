@@ -7,18 +7,18 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
+import copy
 import gc
 import inspect
+import threading
+import traceback
+import time
 import logging
-import msgpack
 import os
 import pickle
-import setproctitle
 import sys
-import threading
-import time
-import traceback
 import _thread
+import setproctitle
 
 from libc.stdint cimport (
     int32_t,
@@ -100,6 +100,13 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
+import ray._private.gcs_utils as gcs_utils
+from ray import external_storage
+from ray._private.async_compat import (
+    sync_to_async, get_new_event_loop)
+import ray._private.memory_monitor as memory_monitor
+import ray.ray_constants as ray_constants
+import ray._private.profiling as profiling
 from ray.exceptions import (
     RayActorError,
     RayError,
@@ -110,15 +117,11 @@ from ray.exceptions import (
     TaskCancelledError,
     AsyncioActorExit,
 )
-from ray import external_storage
-import ray.ray_constants as ray_constants
-from ray._private.async_compat import sync_to_async, get_new_event_loop
-from ray._private.client_mode_hook import disable_client_hook
-import ray._private.gcs_utils as gcs_utils
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
-import ray._private.memory_monitor as memory_monitor
-import ray._private.profiling as profiling
 from ray._private.utils import decode
+from ray._private.client_mode_hook import (
+    disable_client_hook,
+)
+import msgpack
 
 cimport cpython
 
@@ -1350,8 +1353,8 @@ cdef class CoreWorker:
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
-                    c_string serialized_runtime_env,
-                    runtime_env_uris,
+                    runtime_env_dict,
+                    override_environment_variables
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1359,10 +1362,15 @@ cdef class CoreWorker:
             c_vector[unique_ptr[CTaskArg]] args_vector
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
-            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
+            c_string c_serialized_runtime_env
+            unordered_map[c_string, c_string] \
+                c_override_environment_variables = \
+                override_environment_variables
             c_vector[CObjectReference] return_refs
 
         with self.profile_event(b"submit_task"):
+            c_serialized_runtime_env = \
+                self.prepare_runtime_env(runtime_env_dict)
             prepare_resources(resources, &c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
@@ -1375,8 +1383,8 @@ cdef class CoreWorker:
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
                     b"",
-                    serialized_runtime_env,
-                    c_runtime_env_uris),
+                    c_serialized_runtime_env,
+                    c_override_environment_variables),
                 max_retries, retry_exceptions,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1402,8 +1410,8 @@ cdef class CoreWorker:
                      int64_t placement_group_bundle_index,
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
-                     c_string serialized_runtime_env,
-                     runtime_env_uris,
+                     runtime_env_dict,
+                     override_environment_variables
                      ):
         cdef:
             CRayFunction ray_function
@@ -1414,9 +1422,14 @@ cdef class CoreWorker:
             CActorID c_actor_id
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
-            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
+            c_string c_serialized_runtime_env
+            unordered_map[c_string, c_string] \
+                c_override_environment_variables = \
+                override_environment_variables
 
         with self.profile_event(b"submit_task"):
+            c_serialized_runtime_env = \
+                self.prepare_runtime_env(runtime_env_dict)
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
@@ -1436,8 +1449,8 @@ cdef class CoreWorker:
                             c_placement_group_id,
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
-                        serialized_runtime_env,
-                        c_runtime_env_uris),
+                        c_serialized_runtime_env,
+                        c_override_environment_variables),
                     extension_data,
                     &c_actor_id))
 
@@ -1712,11 +1725,12 @@ cdef class CoreWorker:
         return CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
                 c_object_id).SerializeAsString()
 
-    def serialize_object_ref(self, ObjectRef object_ref):
+    def serialize_and_promote_object_ref(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
             c_string serialized_object_status
+        CCoreWorkerProcess.GetCoreWorker().PromoteObjectToPlasma(c_object_id)
         CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
         return (object_ref,
@@ -1847,20 +1861,19 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
-    def get_current_runtime_env(self) -> ParsedRuntimeEnv:
+    def get_current_runtime_env_dict(self):
         # This should never change, so we can safely cache it to avoid ser/de
-        if self.current_runtime_env is None:
+        if self.current_runtime_env_dict is None:
             if self.is_driver:
-                job_config = self.get_job_config()
-                serialized_env = job_config.runtime_env.serialized_runtime_env
+                self.current_runtime_env_dict = \
+                    json.loads(self.get_job_config().serialized_runtime_env)
             else:
-                serialized_env = CCoreWorkerProcess.GetCoreWorker() \
-                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv()
-
-            self.current_runtime_env = ParsedRuntimeEnv.deserialize(
-                    serialized_env)
-
-        return self.current_runtime_env
+                self.current_runtime_env_dict = json.loads(
+                    CCoreWorkerProcess.GetCoreWorker()
+                    .GetWorkerContext()
+                    .GetCurrentSerializedRuntimeEnv()
+                )
+        return self.current_runtime_env_dict
 
     def is_exiting(self):
         return CCoreWorkerProcess.GetCoreWorker().IsExiting()
@@ -1888,26 +1901,6 @@ cdef class CoreWorker:
 
         return ref_counts
 
-    def get_actor_call_stats(self):
-        cdef:
-            unordered_map[c_string, c_vector[uint64_t]] c_tasks_count
-
-        c_tasks_count = (
-            CCoreWorkerProcess.GetCoreWorker().GetActorCallStats())
-        it = c_tasks_count.begin()
-
-        tasks_count = dict()
-        while it != c_tasks_count.end():
-            func_name = <unicode>dereference(it).first
-            counters = dereference(it).second
-            tasks_count[func_name] = {
-                "pending": counters[0],
-                "running": counters[1],
-                "finished": counters[2],
-            }
-            postincrement(it)
-        return tasks_count
-
     def set_get_async_callback(self, ObjectRef object_ref, callback):
         cpython.Py_INCREF(callback)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
@@ -1931,6 +1924,45 @@ cdef class CoreWorker:
             self.job_config = gcs_utils.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
+
+    def prepare_runtime_env(self, runtime_env_dict: dict) -> str:
+        """Merge the given new runtime env with the current runtime env.
+
+        If running in a driver, the current runtime env comes from the
+        JobConfig.  Otherwise, we are running in a worker for an actor or
+        task, and the current runtime env comes from the current TaskSpec.
+
+        The child's runtime env dict is merged with the parents via a simple
+        dict update, except for runtime_env["env_vars"], which is merged
+        with runtime_env["env_vars"] of the parent rather than overwriting it.
+        This is so that env vars set in the parent propagate to child actors
+        and tasks even if a new env var is set in the child.
+
+        Args:
+            runtime_env_dict (dict): A runtime env for a child actor or task.
+        Returns:
+            The resulting merged JSON-serialized runtime env.
+        """
+
+        result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
+
+        result_env_vars = copy.deepcopy(result_dict.get("env_vars") or {})
+        child_env_vars = runtime_env_dict.get("env_vars") or {}
+        result_env_vars.update(child_env_vars)
+
+        result_dict.update(runtime_env_dict)
+        result_dict["env_vars"] = result_env_vars
+
+        # NOTE(architkulkarni): This allows worker caching code in C++ to
+        # check if a runtime env is empty without deserializing it.
+        if result_dict["env_vars"] == {}:
+            result_dict["env_vars"] = None
+        if all(val is None for val in result_dict.values()):
+            result_dict = {}
+
+        # TODO(architkulkarni): We should just use RuntimeEnvDict here
+        # so all the serialization and validation is done in one place
+        return json.dumps(result_dict, sort_keys=True)
 
     def get_task_submission_stats(self):
         cdef:

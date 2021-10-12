@@ -83,7 +83,7 @@ class DashboardAgent(object):
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+        self.grpc_port = ray._private.utils.add_port_to_grpc_server(
             self.server, f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)

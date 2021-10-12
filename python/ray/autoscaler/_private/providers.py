@@ -56,12 +56,6 @@ def _import_readonly(provider_config):
     return ReadOnlyNodeProvider
 
 
-def _import_fake_multinode(provider_config):
-    from ray.autoscaler._private.fake_multi_node.node_provider import \
-        FakeMultiNodeProvider
-    return FakeMultiNodeProvider
-
-
 def _import_kubernetes(provider_config):
     from ray.autoscaler._private._kubernetes.node_provider import \
         KubernetesNodeProvider
@@ -123,7 +117,6 @@ def _import_external(provider_config):
 
 _NODE_PROVIDERS = {
     "local": _import_local,
-    "fake_multinode": _import_fake_multinode,
     "readonly": _import_readonly,
     "aws": _import_aws,
     "gcp": _import_gcp,
@@ -136,7 +129,6 @@ _NODE_PROVIDERS = {
 
 _PROVIDER_PRETTY_NAMES = {
     "readonly": "Readonly (Manual Cluster Setup)",
-    "fake_multinode": "Fake Multinode",
     "local": "Local",
     "aws": "AWS",
     "gcp": "GCP",

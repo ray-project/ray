@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
-
 #include "ray/util/event.h"
 
 namespace ray {
@@ -50,9 +49,6 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
       gcs_resource_scheduler_(std::move(gcs_resource_scheduler)) {}
 
 NodeID GcsBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
-  if (actor->GetActorWorkerAssignment()) {
-    ResetActorWorkerAssignment(actor.get());
-  }
   // TODO(Chong-Li): Java actors may not need a sole assignment (worker process).
   bool need_sole_actor_worker_assignment = true;
   if (auto selected_actor_worker_assignment = SelectOrAllocateActorWorkerAssignment(
@@ -223,32 +219,6 @@ void GcsBasedActorScheduler::HandleWorkerLeaseRejectedReply(
   actor->UpdateAddress(rpc::Address());
   actor->SetActorWorkerAssignment(nullptr);
   Reschedule(actor);
-}
-
-void GcsBasedActorScheduler::AddResourcesChangedListener(std::function<void()> listener) {
-  RAY_CHECK(listener != nullptr);
-  resource_changed_listeners_.emplace_back(std::move(listener));
-}
-
-void GcsBasedActorScheduler::NotifyClusterResourcesChanged() {
-  for (auto &listener : resource_changed_listeners_) {
-    listener();
-  }
-}
-
-void GcsBasedActorScheduler::ResetActorWorkerAssignment(GcsActor *actor) {
-  if (gcs_resource_manager_->ReleaseResources(
-          actor->GetActorWorkerAssignment()->GetNodeID(),
-          actor->GetActorWorkerAssignment()->GetResources())) {
-    NotifyClusterResourcesChanged();
-  };
-  actor->SetActorWorkerAssignment(nullptr);
-}
-
-void GcsBasedActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
-  if (actor && actor->GetActorWorkerAssignment()) {
-    ResetActorWorkerAssignment(actor.get());
-  }
 }
 
 }  // namespace gcs

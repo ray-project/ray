@@ -103,14 +103,13 @@ class LongPollClient:
                          "Shutting down.")
             return
 
-        if isinstance(updates, ConnectionError):
-            logger.warning("LongPollClient connection failed, shutting down.")
-            return
-
         if isinstance(updates, (ray.exceptions.RayTaskError)):
-            # Some error happened in the controller. It could be a bug or some
-            # undesired state.
-            logger.error("LongPollHost errored\n" + updates.traceback_str)
+            # This can happen during shutdown where the controller doesn't
+            # contain this key, we will just repull.
+            # NOTE(simon): should we repull or just wait in the long poll
+            # host?
+            if not isinstance(updates.as_instanceof_cause(), ValueError):
+                logger.error("LongPollHost errored\n" + updates.traceback_str)
             self._poll_next()
             return
 
@@ -168,21 +167,22 @@ class LongPollHost:
         until there's one updates.
         """
         watched_keys = keys_to_snapshot_ids.keys()
-        existent_keys = set(watched_keys).intersection(
-            set(self.snapshot_ids.keys()))
+        nonexistent_keys = set(watched_keys) - set(self.snapshot_ids.keys())
+        if len(nonexistent_keys) > 0:
+            raise ValueError(f"Keys not found: {nonexistent_keys}.")
 
-        # If there are any outdated keys (by comparing snapshot ids)
-        # return immediately.
+        # 2. If there are any outdated keys (by comparing snapshot ids)
+        #    return immediately.
         client_outdated_keys = {
             key: UpdatedObject(self.object_snapshots[key],
                                self.snapshot_ids[key])
-            for key in existent_keys
+            for key in watched_keys
             if self.snapshot_ids[key] != keys_to_snapshot_ids[key]
         }
         if len(client_outdated_keys) > 0:
             return client_outdated_keys
 
-        # Otherwise, register asyncio events to be waited.
+        # 3. Otherwise, register asyncio events to be waited.
         async_task_to_watched_keys = {}
         for key in watched_keys:
             # Create a new asyncio event for this key

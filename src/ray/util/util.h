@@ -21,6 +21,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+
 #include <unordered_map>
 
 #include "ray/util/logging.h"
@@ -166,7 +167,7 @@ class InitShutdownRAII {
   /// \param shutdown_func The shutdown function.
   /// \param args The arguments for the init function.
   template <class InitFunc, class... Args>
-  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&...args)
+  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&... args)
       : shutdown_(shutdown_func) {
     init_func(args...);
   }
@@ -258,7 +259,7 @@ template <typename T>
 class ThreadPrivate {
  public:
   template <typename... Ts>
-  explicit ThreadPrivate(Ts &&...ts) : t_(std::forward<Ts>(ts)...) {}
+  ThreadPrivate(Ts &&... ts) : t_(std::forward<Ts>(ts)...) {}
 
   T &operator*() {
     ThreadCheck();
@@ -309,45 +310,6 @@ class ThreadPrivate {
   mutable std::string thread_name_;
   mutable std::thread::id id_;
   mutable std::mutex mutex_;
-};
-
-class ExponentialBackOff {
- public:
-  ExponentialBackOff() = default;
-  ExponentialBackOff(const ExponentialBackOff &) = default;
-  ExponentialBackOff(ExponentialBackOff &&) = default;
-  ExponentialBackOff &operator=(const ExponentialBackOff &) = default;
-  ExponentialBackOff &operator=(ExponentialBackOff &&) = default;
-
-  /// Construct an exponential back off counter.
-  ///
-  /// \param[in] initial_value The start value for this counter
-  /// \param[in] multiplier The multiplier for this counter.
-  /// \param[in] max_value The maximum value for this counter. By default it's
-  ///    infinite double.
-  ExponentialBackOff(uint64_t initial_value, double multiplier,
-                     uint64_t max_value = std::numeric_limits<uint64_t>::max())
-      : curr_value_(initial_value),
-        initial_value_(initial_value),
-        max_value_(max_value),
-        multiplier_(multiplier) {
-    RAY_CHECK(multiplier > 0.0) << "Multiplier must be greater than 0";
-  }
-
-  uint64_t Next() {
-    auto ret = curr_value_;
-    curr_value_ = curr_value_ * multiplier_;
-    curr_value_ = std::min(curr_value_, max_value_);
-    return ret;
-  }
-
-  void Reset() { curr_value_ = initial_value_; }
-
- private:
-  uint64_t curr_value_;
-  uint64_t initial_value_;
-  uint64_t max_value_;
-  double multiplier_;
 };
 
 }  // namespace ray

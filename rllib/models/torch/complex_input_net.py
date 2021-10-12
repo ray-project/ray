@@ -40,9 +40,6 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         assert isinstance(self.original_space, (Dict, Tuple)), \
             "`obs_space.original_space` must be [Dict|Tuple]!"
 
-        self.processed_obs_space = self.original_space if \
-            model_config.get("_disable_preprocessor_api") else obs_space
-
         nn.Module.__init__(self)
         TorchModelV2.__init__(self, self.original_space, action_space,
                               num_outputs, model_config, name)
@@ -143,10 +140,8 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         if SampleBatch.OBS in input_dict and "obs_flat" in input_dict:
             orig_obs = input_dict[SampleBatch.OBS]
         else:
-            orig_obs = restore_original_dimensions(
-                input_dict[SampleBatch.OBS],
-                self.processed_obs_space,
-                tensorlib="torch")
+            orig_obs = restore_original_dimensions(input_dict[SampleBatch.OBS],
+                                                   self.obs_space, "tf")
         # Push image observations through our CNNs.
         outs = []
         for i, component in enumerate(tree.flatten(orig_obs)):

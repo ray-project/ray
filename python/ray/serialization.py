@@ -91,7 +91,7 @@ class SerializationContext:
             worker = ray.worker.global_worker
             worker.check_connected()
             obj, owner_address, object_status = (
-                worker.core_worker.serialize_object_ref(obj))
+                worker.core_worker.serialize_and_promote_object_ref(obj))
             return _object_ref_deserializer, \
                 (obj.binary(), obj.call_site(), owner_address, object_status)
 

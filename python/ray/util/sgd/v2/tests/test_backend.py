@@ -8,7 +8,6 @@ from ray.cluster_utils import Cluster
 from ray.util.sgd import v2 as sgd
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
-from ray.util.sgd.v2.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig
 
@@ -322,7 +321,6 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results, tmp_path):
 
     num_workers, expected_results = worker_results
 
-    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
         config,
         num_workers=num_workers,
@@ -351,7 +349,6 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results,
 
     num_workers, expected_results = worker_results
 
-    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
         config,
         num_workers=num_workers,
@@ -377,7 +374,6 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results,
 
     num_workers, expected_results = worker_results
 
-    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
         config,
         num_workers=num_workers,

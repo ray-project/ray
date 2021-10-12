@@ -1,7 +1,6 @@
 import logging
 import os
-from typing import Callable, Optional, List, Tuple, Union, Any, Dict, \
-    TYPE_CHECKING
+from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
 import urllib.parse
 
 if TYPE_CHECKING:
@@ -37,7 +36,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             paths: Union[str, List[str]],
             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
             schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-            open_stream_args: Optional[Dict[str, Any]] = None,
             _block_udf: Optional[Callable[[Block], Block]] = None,
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
@@ -54,9 +52,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
-        if open_stream_args is None:
-            open_stream_args = {}
-
         def read_files(
                 read_paths: List[str],
                 fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]):
@@ -65,7 +60,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 fs = fs.unwrap()
             builder = DelegatingArrowBlockBuilder()
             for read_path in read_paths:
-                with fs.open_input_stream(read_path, **open_stream_args) as f:
+                with fs.open_input_stream(read_path) as f:
                     data = read_file(f, read_path, **reader_args)
                     if isinstance(data, pa.Table) or isinstance(
                             data, np.ndarray):
@@ -120,21 +115,15 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                  path: str,
                  dataset_uuid: str,
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                 try_create_dir: bool = True,
-                 open_stream_args: Optional[Dict[str, Any]] = None,
                  _block_udf: Optional[Callable[[Block], Block]] = None,
                  **write_args) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
-        if try_create_dir:
-            filesystem.create_dir(path, recursive=True)
+        filesystem.create_dir(path, recursive=True)
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
         _write_block_to_file = self._write_block
-
-        if open_stream_args is None:
-            open_stream_args = {}
 
         def write_block(write_path: str, block: Block):
             logger.debug(f"Writing {write_path} file.")
@@ -143,10 +132,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 fs = fs.unwrap()
             if _block_udf is not None:
                 block = _block_udf(block)
-
-            with fs.open_output_stream(write_path, **open_stream_args) as f:
-                _write_block_to_file(f, BlockAccessor.for_block(block),
-                                     **write_args)
+            with fs.open_output_stream(write_path) as f:
+                _write_block_to_file(f, BlockAccessor.for_block(block))
 
         write_block = cached_remote_fn(write_block)
 
@@ -201,8 +188,9 @@ def _resolve_paths_and_filesystem(
             compatibility.
     """
     import pyarrow as pa
-    from pyarrow.fs import FileSystem, PyFileSystem, FSSpecHandler, \
-        _resolve_filesystem_and_path
+    from pyarrow.fs import (FileSystem, PyFileSystem, FSSpecHandler,
+                            _resolve_filesystem_and_path)
+    import fsspec
 
     if isinstance(paths, str):
         paths = [paths]
@@ -214,20 +202,11 @@ def _resolve_paths_and_filesystem(
         raise ValueError("Must provide at least one path.")
 
     if filesystem and not isinstance(filesystem, FileSystem):
-        err_msg = f"The filesystem passed must either conform to " \
-                  f"pyarrow.fs.FileSystem, or " \
-                  f"fsspec.spec.AbstractFileSystem. The provided " \
-                  f"filesystem was: {filesystem}"
-        try:
-            import fsspec
-        except ModuleNotFoundError:
-            # If filesystem is not a pyarrow filesystem and fsspec isn't
-            # installed, then filesystem is neither a pyarrow filesystem nor
-            # an fsspec filesystem, so we raise a TypeError.
-            raise TypeError(err_msg)
         if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
-            raise TypeError(err_msg)
-
+            raise TypeError(f"The filesystem passed must either conform to "
+                            f"pyarrow.fs.FileSystem, or "
+                            f"fsspec.spec.AbstractFileSystem. The provided "
+                            f"filesystem was: {filesystem}")
         filesystem = PyFileSystem(FSSpecHandler(filesystem))
 
     resolved_paths = []
@@ -287,10 +266,9 @@ def _expand_paths(paths: Union[str, List[str]],
     return expanded_paths, file_infos
 
 
-def _expand_directory(
-        path: str,
-        filesystem: "pyarrow.fs.FileSystem",
-        exclude_prefixes: Optional[List[str]] = None) -> List[str]:
+def _expand_directory(path: str,
+                      filesystem: "pyarrow.fs.FileSystem",
+                      exclude_prefixes: List[str] = [".", "_"]) -> List[str]:
     """
     Expand the provided directory path to a list of file paths.
 
@@ -305,9 +283,6 @@ def _expand_directory(
     Returns:
         A list of file paths contained in the provided directory.
     """
-    if exclude_prefixes is None:
-        exclude_prefixes = [".", "_"]
-
     from pyarrow.fs import FileSelector
     selector = FileSelector(path, recursive=True)
     files = filesystem.get_file_info(selector)
@@ -320,7 +295,7 @@ def _expand_directory(
         if not file_path.startswith(base_path):
             continue
         relative = file_path[len(base_path):]
-        if any(relative.startswith(prefix) for prefix in exclude_prefixes):
+        if any(relative.startswith(prefix) for prefix in [".", "_"]):
             continue
         filtered_paths.append((file_path, file_))
     # We sort the paths to guarantee a stable order.

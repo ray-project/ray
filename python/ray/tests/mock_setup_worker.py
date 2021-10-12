@@ -30,9 +30,6 @@ parser.add_argument(
 parser.add_argument(
     "--session-dir", type=str, help="the directory for the current session")
 
-parser.add_argument(
-    "--language", type=str, help="the language type of the worker")
-
 args, remaining_args = parser.parse_known_args()
 
 # add worker-shim-pid argument

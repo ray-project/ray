@@ -9,8 +9,6 @@ export type Job = {
   driverEntry: string;
   state: string;
   timestamp: number;
-  startTime: number;
-  endTime: number;
   namespaceId: string;
   driverPid: number;
   driverIpAddress: string;

@@ -12,7 +12,7 @@ from ray.ray_constants import env_integer
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     TUNE_INSTALLED, TUNE_CHECKPOINT_FILE_NAME, \
-    TUNE_CHECKPOINT_ID, ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
+    TUNE_CHECKPOINT_ID
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path, check_for_failure
@@ -275,21 +275,15 @@ class BackendExecutor:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
-
-            share_cuda_visible_devices_enabled = bool(
-                env_integer(ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-                            self._backend.share_cuda_visible_devices))
-
-            if (self._num_gpus_per_worker > 0
-                    and share_cuda_visible_devices_enabled):
-                self._share_cuda_visible_devices()
+            if self._num_gpus_per_worker > 0:
+                self._setup_gpus()
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
             self._increment_failures()
             self._restart()
 
-    def _share_cuda_visible_devices(self):
+    def _setup_gpus(self):
         """Sets CUDA_VISIBLE_DEVICES on all workers.
 
         For each worker, CUDA_VISIBLE_DEVICES will be set to the GPU IDs
@@ -691,18 +685,6 @@ class BackendExecutor:
 
 
 class Backend(metaclass=abc.ABCMeta):
-    """Metaclass for distributed communication backend.
-
-    Attributes:
-        share_cuda_visible_devices (bool): If True, each worker
-            process will have CUDA_VISIBLE_DEVICES set as the visible device
-            IDs of all workers on the same node for this training instance.
-            If False, each worker will have CUDA_VISIBLE_DEVICES set to the
-            device IDs allocated by Ray for that worker.
-    """
-
-    share_cuda_visible_devices: bool = False
-
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: BackendConfig):
         """Logic for starting this backend."""

@@ -777,13 +777,14 @@ def test_actor_distribution_balance(ray_start_cluster, args):
 
 # This case tests whether RequestWorkerLeaseReply carries normal task resources
 # when the request is rejected (due to resource preemption by normal tasks).
-@pytest.mark.skipif(sys.platform == "win32", reason="Time out on Windows")
+@pytest.mark.skip(
+    reason="The period of pull based resource report (10ms) is hard-coded.")
 def test_worker_lease_reply_with_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
         memory=2000 * 1024**2,
         _system_config={
-            "gcs_resource_report_poll_period_ms": 1000000,
+            "raylet_report_resources_period_milliseconds": 1000000,
             "gcs_actor_scheduling_enabled": True,
         })
     node2 = cluster.add_node(memory=1000 * 1024**2)

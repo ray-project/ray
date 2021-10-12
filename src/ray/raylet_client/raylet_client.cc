@@ -296,20 +296,13 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
 }
 
 void raylet::RayletClient::RequestWorkerLease(
-    const rpc::TaskSpec &task_spec,
+    const TaskSpecification &resource_spec,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
     const int64_t backlog_size) {
-  google::protobuf::Arena arena;
-  auto request =
-      google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
-  // The unsafe allocating here is actually safe because the life-cycle of
-  // task_spec is longer than request.
-  // Request will be sent before the end of this call, and after that, it won't be
-  // used any more.
-  request->unsafe_arena_set_allocated_resource_spec(
-      const_cast<rpc::TaskSpec *>(&task_spec));
-  request->set_backlog_size(backlog_size);
-  grpc_client_->RequestWorkerLease(*request, callback);
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
+  request.set_backlog_size(backlog_size);
+  grpc_client_->RequestWorkerLease(request, callback);
 }
 
 /// Spill objects to external storage.
@@ -319,20 +312,6 @@ void raylet::RayletClient::RequestObjectSpillage(
   rpc::RequestObjectSpillageRequest request;
   request.set_object_id(object_id.Binary());
   grpc_client_->RequestObjectSpillage(request, callback);
-}
-
-void raylet::RayletClient::ReportWorkerBacklog(
-    const WorkerID &worker_id,
-    const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
-  rpc::ReportWorkerBacklogRequest request;
-  request.set_worker_id(worker_id.Binary());
-  request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
-  grpc_client_->ReportWorkerBacklog(
-      request, [](const Status &status, const rpc::ReportWorkerBacklogReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Error reporting task backlog information: " << status;
-        }
-      });
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
@@ -394,7 +373,7 @@ void raylet::RayletClient::CommitBundleResources(
 }
 
 void raylet::RayletClient::CancelResourceReserve(
-    const BundleSpecification &bundle_spec,
+    BundleSpecification &bundle_spec,
     const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) {
   rpc::CancelResourceReserveRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());

@@ -58,9 +58,7 @@ class SimpleBlockAccessor(BlockAccessor):
         import pandas
         return pandas.DataFrame(self._items)
 
-    def to_numpy(self, column: str = None) -> np.ndarray:
-        if column:
-            raise ValueError("`column` arg not supported for list block")
+    def to_numpy(self) -> np.ndarray:
         return np.array(self._items)
 
     def to_arrow(self) -> "pyarrow.Table":

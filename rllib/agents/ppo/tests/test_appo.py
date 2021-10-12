@@ -3,7 +3,7 @@ import unittest
 import ray
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.utils.test_utils import check_compute_single_action, \
-    check_train_results, framework_iterator
+    framework_iterator
 
 
 class TestAPPO(unittest.TestCase):
@@ -27,9 +27,7 @@ class TestAPPO(unittest.TestCase):
             _config["vtrace"] = False
             trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
-                check_train_results(results)
-                print(results)
+                print(trainer.train())
             check_compute_single_action(trainer)
             trainer.stop()
 
@@ -38,9 +36,7 @@ class TestAPPO(unittest.TestCase):
             _config["vtrace"] = True
             trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
-                check_train_results(results)
-                print(results)
+                print(trainer.train())
             check_compute_single_action(trainer)
             trainer.stop()
 
@@ -59,12 +55,10 @@ class TestAPPO(unittest.TestCase):
         num_iterations = 2
 
         # Only supported for tf so far.
-        for _ in framework_iterator(config, frameworks=("tf2", "tf")):
+        for _ in framework_iterator(config, frameworks="tf"):
             trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
-                check_train_results(results)
-                print(results)
+                print(trainer.train())
             check_compute_single_action(trainer)
             trainer.stop()
 

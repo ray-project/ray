@@ -15,9 +15,8 @@ from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import (DEBUG_METRICS, DEFAULT_METRIC, DONE,
-                             TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
+                             RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -196,9 +195,7 @@ class TrialRunner:
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
-    VALID_RESUME_TYPES = [
-        True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO"
-    ]
+    VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY"]
     RAISE = "RAISE"
 
     def __init__(self,
@@ -418,7 +415,7 @@ class TrialRunner:
 
         Args:
             resume_type: One of True, "REMOTE", "LOCAL",
-                "PROMPT", "ERRORED_ONLY", "AUTO".
+                "PROMPT", "ERRORED_ONLY".
         """
         # TODO: Consider supporting ERRORED_ONLY+REMOTE?
         if not resume_type:
@@ -429,54 +426,11 @@ class TrialRunner:
         # Not clear if we need this assertion, since we should always have a
         # local checkpoint dir.
         assert self._local_checkpoint_dir or self._remote_checkpoint_dir
-
-        if resume_type == "AUTO":
-            if self._remote_checkpoint_dir:
-                logger.info(
-                    f"Trying to find and download experiment checkpoint at "
-                    f"{self._remote_checkpoint_dir}")
-                # Todo: This syncs the entire experiment including trial
-                # checkpoints. We should exclude these in the future.
-                try:
-                    self._syncer.sync_down_if_needed()
-                    self._syncer.wait()
-                except TuneError as e:
-                    logger.warning(
-                        f"Got error when trying to sync down: {e} "
-                        f"\nPlease check this error message for potential "
-                        f"access problems - if a directory was not found, "
-                        f"that is expected at this stage when you're starting "
-                        f"a new experiment.")
-                    logger.info(
-                        "No remote checkpoint was found or an error occurred "
-                        "when trying to download the experiment checkpoint. "
-                        "Please check the previous warning message for more "
-                        "details. "
-                        "Ray Tune will now start a new experiment.")
-                    return False
-                logger.info(
-                    "A remote experiment checkpoint was found and will be "
-                    "used to restore the previous experiment state.")
-                return True
-            elif not self.checkpoint_exists(self._local_checkpoint_dir):
-                logger.info("No local checkpoint was found. "
-                            "Ray Tune will now start a new experiment.")
-                return False
-            logger.info(
-                "A local experiment checkpoint was found and will be used "
-                "to restore the previous experiment state.")
-            return True
-
         if resume_type in [True, "LOCAL", "PROMPT", "ERRORED_ONLY"]:
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError(
-                    f"You called resume ({resume_type}) when no checkpoint "
-                    f"exists in local directory "
-                    f"({self._local_checkpoint_dir}). If you want to start "
-                    f"a new experiment, use `resume=\"AUTO\"` or "
-                    f"`resume=None`. If you expected an experiment to "
-                    f"already exist, check if you supplied the correct "
-                    f"`local_dir` to `tune.run()`.")
+                    f"Called resume ({resume_type}) when no checkpoint exists "
+                    f"in local directory ({self._local_checkpoint_dir}).")
             elif resume_type == "PROMPT":
                 if click.confirm(f"Resume from local directory? "
                                  f"({self._local_checkpoint_dir})"):
@@ -494,22 +448,12 @@ class TrialRunner:
                     "`upload_dir` set to `tune.run(sync_config=...)`.")
 
             # Try syncing down the upload directory.
-            logger.info(f"Downloading experiment checkpoint from "
-                        f"{self._remote_checkpoint_dir}")
-            # Todo: This syncs the entire experiment including trial
-            # checkpoints. We should exclude these in the future.
-            try:
-                self._syncer.sync_down_if_needed()
-                self._syncer.wait()
-            except TuneError as e:
-                raise RuntimeError(
-                    "Syncing the remote experiment checkpoint to the driver "
-                    "failed. Please check the error message. If you want to "
-                    "start a new experiment, use `resume=\"AUTO\"` or "
-                    "`resume=None`. If you expected an experiment to "
-                    "already exist, check if you supplied the correct "
-                    "`upload_dir` to the `tune.SyncConfig` passed to "
-                    "`tune.run()`.") from e
+            logger.info("Downloading from %s", self._remote_checkpoint_dir)
+            # TODO(ujvl): Note that this syncs down the entire directory,
+            #  which may also contain trial checkpoints. We should selectively
+            #  sync the necessary files instead.
+            self._syncer.sync_down_if_needed()
+            self._syncer.wait()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError("Called resume when no checkpoint exists "
@@ -919,8 +863,6 @@ class TrialRunner:
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
 
-        _trigger_callback_complete = False
-
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             result.update(done=True)
@@ -940,7 +882,8 @@ class TrialRunner:
                         trial=trial,
                         result=result.copy())
 
-            _trigger_callback_complete = True
+            self._callbacks.on_trial_complete(
+                iteration=self._iteration, trials=self._trials, trial=trial)
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
@@ -976,10 +919,6 @@ class TrialRunner:
         # the global checkpoint state.
         self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
-        if _trigger_callback_complete:
-            self._callbacks.on_trial_complete(
-                iteration=self._iteration, trials=self._trials, trial=trial)
-
         if trial.is_saving:
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
@@ -993,18 +932,15 @@ class TrialRunner:
     def _validate_result_metrics(self, result):
         """
         Check if any of the required metrics was not reported
-        in the last result. If the only items are ``done`` or any of
-        DEBUG_METRICS, this means that no result was ever received and
-        the trial just returned. This is also okay and will not raise
-        an error.
+        in the last result. If the only item is `done=True`, this
+        means that no result was ever received and the trial just
+        returned. This is also okay and will not raise an error.
 
         This will ignore checking for the DEFAULT_METRIC.
         """
-        if int(os.environ.get(
-                "TUNE_DISABLE_STRICT_METRIC_CHECKING", 0)) != 1 and (len({
-                    k
-                    for k in result if k not in list(DEBUG_METRICS) + [DONE]
-                }) > 1):
+        if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
+                              0)) != 1 and (len(result) > 1
+                                            or "done" not in result):
             base_metric = self._metric \
                 if self._metric != DEFAULT_METRIC else None
             scheduler_metric = self._scheduler_alg.metric \
