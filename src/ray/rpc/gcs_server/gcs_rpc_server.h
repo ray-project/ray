@@ -210,8 +210,8 @@ class NodeInfoGcsServiceHandler {
                                   RegisterNodeReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleUnregisterNode(const UnregisterNodeRequest &request,
-                                    UnregisterNodeReply *reply,
+  virtual void HandleDrainNode(const DrainNodeRequest &request,
+                                    DrainNodeReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetAllNodeInfo(const GetAllNodeInfoRequest &request,
@@ -240,7 +240,7 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
-    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
+    NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
   }

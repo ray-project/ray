@@ -429,15 +429,15 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
   return Status::OK();
 }
 
-Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
+Status ServiceBasedNodeInfoAccessor::DrainSelf() {
   RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
   NodeID node_id = NodeID::FromBinary(local_node_info_.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
-  rpc::UnregisterNodeRequest request;
+  rpc::DrainNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
-  client_impl_->GetGcsRpcClient().UnregisterNode(
+  client_impl_->GetGcsRpcClient().DrainNode(
       request,
-      [this, node_id](const Status &status, const rpc::UnregisterNodeReply &reply) {
+      [this, node_id](const Status &status, const rpc::DrainNodeReply &reply) {
         if (status.ok()) {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = NodeID::Nil();
@@ -472,14 +472,14 @@ Status ServiceBasedNodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_
   return Status::OK();
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncUnregister(const NodeID &node_id,
+Status ServiceBasedNodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
                                                      const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
-  rpc::UnregisterNodeRequest request;
+  rpc::DrainNodeRequest request;
   request.set_node_id(node_id.Binary());
-  client_impl_->GetGcsRpcClient().UnregisterNode(
+  client_impl_->GetGcsRpcClient().DrainNode(
       request,
-      [node_id, callback](const Status &status, const rpc::UnregisterNodeReply &reply) {
+      [node_id, callback](const Status &status, const rpc::DrainNodeReply &reply) {
         if (callback) {
           callback(status);
         }

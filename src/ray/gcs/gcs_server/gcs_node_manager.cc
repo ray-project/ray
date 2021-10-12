@@ -50,8 +50,8 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
-void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
-                                          rpc::UnregisterNodeReply *reply,
+void GcsNodeManager::HandleDrainNode(const rpc::DrainNodeRequest &request,
+                                          rpc::DrainNodeReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
@@ -228,7 +228,7 @@ std::string GcsNodeManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsNodeManager: {RegisterNode request count: "
          << counts_[CountType::REGISTER_NODE_REQUEST]
-         << ", UnregisterNode request count: "
+         << ", DrainNode request count: "
          << counts_[CountType::UNREGISTER_NODE_REQUEST]
          << ", GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]

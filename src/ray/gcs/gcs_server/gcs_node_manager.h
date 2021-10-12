@@ -47,8 +47,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle unregister rpc request come from raylet.
-  void HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
-                            rpc::UnregisterNodeReply *reply,
+  void HandleDrainNode(const rpc::DrainNodeRequest &request,
+                            rpc::DrainNodeReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get all node info rpc request.

@@ -164,12 +164,12 @@ message RegisterNodeReply {
   GcsStatus status = 1;
 }
 
-message UnregisterNodeRequest {
+message DrainNodeRequest {
   // The ID of node.
   bytes node_id = 1;
 }
 
-message UnregisterNodeReply {
+message DrainNodeReply {
   GcsStatus status = 1;
 }
 
@@ -208,8 +208,8 @@ message GetInternalConfigReply {
 service NodeInfoGcsService {
   // Register a node to GCS Service.
   rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
-  // Unregister a node from GCS Service.
-  rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
+  // Drain a node from GCS Service. Drained node is not guaranteed to be killed, but it will become invisible to other nodes eventually.
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
   // Get cluster internal config.

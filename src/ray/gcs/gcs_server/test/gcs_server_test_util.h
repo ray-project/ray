@@ -387,7 +387,7 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status UnregisterSelf() override { return Status::NotImplemented(""); }
+    Status DrainSelf() override { return Status::NotImplemented(""); }
 
     const NodeID &GetSelfId() const override {
       static NodeID node_id;
@@ -404,7 +404,7 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncUnregister(const NodeID &node_id,
+    Status AsyncDrainNode(const NodeID &node_id,
                            const gcs::StatusCallback &callback) override {
       if (callback) {
         callback(Status::OK());

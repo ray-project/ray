@@ -408,7 +408,7 @@ class NodeInfoAccessor {
   /// Cancel registration of local node to GCS synchronously.
   ///
   /// \return Status
-  virtual Status UnregisterSelf() = 0;
+  virtual Status DrainSelf() = 0;
 
   /// Get id of local node which was registered by 'RegisterSelf'.
   ///
@@ -433,7 +433,7 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node that to be unregistered.
   /// \param callback Callback that will be called when unregistration is complete.
   /// \return Status
-  virtual Status AsyncUnregister(const NodeID &node_id,
+  virtual Status AsyncDrainNode(const NodeID &node_id,
                                  const StatusCallback &callback) = 0;
 
   /// Get information of all nodes from GCS asynchronously.
