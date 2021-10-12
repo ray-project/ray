@@ -38,10 +38,9 @@ namespace rpc {
 
 GrpcServer::GrpcServer(std::string name, const uint32_t port,
                        bool listen_to_localhost_only, int num_threads,
-                       int64_t keepalive_time_ms, bool use_tls)
+                       int64_t keepalive_time_ms)
     : name_(std::move(name)),
       port_(port),
-      use_tls_(use_tls),
       listen_to_localhost_only_(listen_to_localhost_only),
       is_closed_(true),
       num_threads_(num_threads),
@@ -67,20 +66,11 @@ void GrpcServer::Run() {
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
-  if (std::getenv("RAY_USE_TLS")) {
-    use_tls_ = std::strcmp(std::getenv("RAY_USE_TLS"), "0") != 0;
-  } else {
-    use_tls_ = false;
-  }
-  if (use_tls_) {
-    std::string server_cert_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
-    std::string server_key_file = std::string(std::getenv("RAY_TLS_SERVER_KEY"));
-    std::string root_cert_file = std::string(std::getenv("RAY_TLS_CA_CERT"));
-
-    // Create credentials from hardcoded location
-    std::string rootcert = ReadCert(root_cert_file);
-    std::string servercert = ReadCert(server_cert_file);
-    std::string serverkey = ReadCert(server_key_file);
+  if (RayConfig::instance().USE_TLS()) {
+    // Create credentials from locations specified in config
+    std::string rootcert = ReadCert(RayConfig::instance().TLS_CA_CERT());
+    std::string servercert = ReadCert(RayConfig::instance().TLS_SERVER_CERT());
+    std::string serverkey = ReadCert(RayConfig::instance().TLS_SERVER_KEY());
     grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp = {serverkey.c_str(),
                                                               servercert.c_str()};
     grpc::SslServerCredentialsOptions ssl_opts(

@@ -54,7 +54,6 @@ class GrpcClient {
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    CheckTlSEnvironmentVariables();
     std::shared_ptr<grpc::Channel> channel = BuildChannel(argument, address, port);
 
     stub_ = GrpcService::NewStub(channel);
@@ -71,7 +70,6 @@ class GrpcClient {
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    CheckTlSEnvironmentVariables();
     std::shared_ptr<grpc::Channel> channel = BuildChannel(argument, address, port);
 
     stub_ = GrpcService::NewStub(channel);
@@ -108,10 +106,10 @@ class GrpcClient {
   std::shared_ptr<grpc::Channel> BuildChannel(const grpc::ChannelArguments &argument,
                                               const std::string &address, int port) {
     std::shared_ptr<grpc::Channel> channel;
-    if (use_tls_) {
-      std::string server_cert_file = std::string(std::getenv("RAY_TLS_SERVER_CERT"));
-      std::string server_key_file = std::string(std::getenv("RAY_TLS_SERVER_KEY"));
-      std::string root_cert_file = std::string(std::getenv("RAY_TLS_CA_CERT"));
+    if (::RayConfig::instance().USE_TLS()) {
+      std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());
+      std::string server_key_file = std::string(::RayConfig::instance().TLS_SERVER_KEY());
+      std::string root_cert_file = std::string(::RayConfig::instance().TLS_CA_CERT());
       std::string server_cert_chain = ReadCert(server_cert_file);
       std::string private_key = ReadCert(server_key_file);
       std::string cacert = ReadCert(root_cert_file);
@@ -130,13 +128,6 @@ class GrpcClient {
     return channel;
   };
 
-  void CheckTlSEnvironmentVariables() {
-    if (std::getenv("RAY_USE_TLS")) {
-      use_tls_ = std::strcmp(std::getenv("RAY_USE_TLS"), "0") != 0;
-    } else {
-      use_tls_ = false;
-    };
-  }
 };
 
 }  // namespace rpc
