@@ -33,7 +33,7 @@ class MockClusterResourceSchedulerInterface : public ClusterResourceSchedulerInt
   MOCK_METHOD(void, FillResourceUsage, (rpc::ResourcesData & data), (override));
   MOCK_METHOD(double, GetLocalAvailableCpus, (), (const, override));
   MOCK_METHOD(ray::gcs::NodeResourceInfoAccessor::ResourceMap, GetResourceTotals,
-              (const std::unordered_map<std::string, double> &resource_map_filter),
+              (const absl::flat_hash_map<std::string, double> &resource_map_filter),
               (const, override));
   MOCK_METHOD(std::string, GetLocalResourceViewString, (), (const, override));
 };

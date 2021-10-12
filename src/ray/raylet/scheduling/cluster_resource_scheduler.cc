@@ -1121,7 +1121,7 @@ double ClusterResourceScheduler::GetLocalAvailableCpus() const {
 
 ray::gcs::NodeResourceInfoAccessor::ResourceMap
 ClusterResourceScheduler::GetResourceTotals(
-    const std::unordered_map<std::string, double> &resource_map_filter) const {
+    const absl::flat_hash_map<std::string, double> &resource_map_filter) const {
   ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
   auto it = nodes_.find(local_node_id_);
   RAY_CHECK(it != nodes_.end());

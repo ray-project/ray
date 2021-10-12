@@ -82,7 +82,7 @@ class ClusterResourceSchedulerInterface {
   /// only contain the keys in the filter. Note that only the key of the map is used.
   /// \return The total resource capacity of the node.
   virtual ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
-      const std::unordered_map<std::string, double> &resource_map_filter) const = 0;
+      const absl::flat_hash_map<std::string, double> &resource_map_filter) const = 0;
 
   /// Return local resources in human-readable string form.
   virtual std::string GetLocalResourceViewString() const = 0;

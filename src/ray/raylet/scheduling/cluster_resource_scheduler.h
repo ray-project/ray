@@ -412,7 +412,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// only contain the keys in the filter. Note that only the key of the map is used.
   /// \return The total resource capacity of the node.
   ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
-      const std::unordered_map<std::string, double> &resource_map_filter) const override;
+      const absl::flat_hash_map<std::string, double> &resource_map_filter) const override;
 
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.
