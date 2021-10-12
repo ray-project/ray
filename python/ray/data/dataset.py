@@ -1380,7 +1380,6 @@ class Dataset(Generic[T]):
 
         It is recommended to call ``.split()`` on this dataset if
         there are to be multiple TensorFlow workers consuming the data.
-        Tensorflow auto-sharding will be turned off by default.
 
         The elements generated must be compatible with the given
         ``output_signature`` argument (same as in
