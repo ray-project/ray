@@ -63,9 +63,9 @@ class GCSHealthCheckThread(threading.Thread):
             try:
                 aiogrpc.init_grpc_aio()
                 redis_client = await dashboard_utils.get_aioredis_client(
-                redis_address, redis_password,
-                dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+                    redis_address, redis_password,
+                    dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                    dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
                 self.aiogrpc_gcs_channel = await (
                     make_gcs_grpc_channel(redis_client))
                 self.gcs_heartbeat_info_stub = (

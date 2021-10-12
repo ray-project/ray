@@ -197,7 +197,7 @@ if setup_spec.type == SetupType.RAY:
             "py-spy >= 0.2.0",
             "jsonschema",
             "requests",
-            "gpustat >= 1.0.0b1", # for windows
+            "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
             "prometheus_client >= 0.7.1",
         ],
