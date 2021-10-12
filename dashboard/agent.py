@@ -340,13 +340,11 @@ if __name__ == "__main__":
 
         # The dashboard is currently broken on Windows.
         # https://github.com/ray-project/ray/issues/14026.
-        if 0 and sys.platform == "win32":
+        if sys.platform == "win32":
             logger.warning(
-                "The dashboard is currently disabled on windows. "
+                "The dashboard is currently broken on windows. "
                 "See https://github.com/ray-project/ray/issues/14026 "
-                "for more details")
-            while True:
-                time.sleep(999)
+                "for more details. Experimental support only.")
 
         agent = DashboardAgent(
             args.node_ip_address,
