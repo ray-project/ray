@@ -1120,8 +1120,7 @@ double ClusterResourceScheduler::GetLocalAvailableCpus() const {
 }
 
 ray::gcs::NodeResourceInfoAccessor::ResourceMap
-ClusterResourceScheduler::GetResourceTotals(
-    const std::unordered_map<std::string, double> &resource_map_filter) const {
+ClusterResourceScheduler::GetResourceTotals() const {
   ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
   auto it = nodes_.find(local_node_id_);
   RAY_CHECK(it != nodes_.end());
@@ -1129,10 +1128,6 @@ ClusterResourceScheduler::GetResourceTotals(
   for (size_t i = 0; i < local_resources.predefined_resources.size(); i++) {
     std::string resource_name = ResourceEnumToString(static_cast<PredefinedResources>(i));
     double resource_total = local_resources.predefined_resources[i].total.Double();
-    if (resource_map_filter.count(resource_name) == 0u) {
-      continue;
-    }
-
     if (resource_total > 0) {
       auto data = std::make_shared<rpc::ResourceTableData>();
       data->set_resource_capacity(resource_total);
@@ -1143,10 +1138,6 @@ ClusterResourceScheduler::GetResourceTotals(
   for (auto entry : local_resources.custom_resources) {
     std::string resource_name = string_to_int_map_.Get(entry.first);
     double resource_total = entry.second.total.Double();
-    if (resource_map_filter.count(resource_name) == 0u) {
-      continue;
-    }
-
     if (resource_total > 0) {
       auto data = std::make_shared<rpc::ResourceTableData>();
       data->set_resource_capacity(resource_total);
