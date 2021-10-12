@@ -264,7 +264,9 @@ class Workflow:
             "remote, or stored in Ray objects.")
 
     @PublicAPI(stability="beta")
-    def run(self, workflow_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Any:
+    def run(self,
+            workflow_id: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None) -> Any:
         """Run a workflow.
 
         If the workflow with the given id already exists, it will be resumed.
@@ -296,7 +298,9 @@ class Workflow:
         return ray.get(self.run_async(workflow_id, metadata))
 
     @PublicAPI(stability="beta")
-    def run_async(self, workflow_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> ObjectRef:
+    def run_async(self,
+                  workflow_id: Optional[str] = None,
+                  metadata: Optional[Dict[str, Any]] = None) -> ObjectRef:
         """Run a workflow asynchronously.
 
         If the workflow with the given id already exists, it will be resumed.

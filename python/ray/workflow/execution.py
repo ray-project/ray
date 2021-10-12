@@ -35,7 +35,8 @@ def run(entry_workflow: Workflow,
                 json.dumps(v)
             except TypeError as e:
                 raise ValueError("metadata values must be JSON serializable, "
-                                 "however '{}' has a value whose {}.".format(k, e))
+                                 "however '{}' has a value whose {}.".format(
+                                     k, e))
 
     store = get_global_storage()
     assert ray.is_initialized()

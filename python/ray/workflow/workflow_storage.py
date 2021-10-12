@@ -378,7 +378,8 @@ class WorkflowStorage:
         """
         asyncio_run(self._put(self._key_class_body(), cls))
 
-    def save_step_prerun_metadata(self, step_id: StepID, metadata: Dict[str, Any]):
+    def save_step_prerun_metadata(self, step_id: StepID,
+                                  metadata: Dict[str, Any]):
         """Save pre-run metadata of the current step.
 
         Args:
@@ -389,9 +390,11 @@ class WorkflowStorage:
             DataSaveError: if we fail to save the pre-run metadata.
         """
 
-        asyncio_run(self._put(self._key_step_prerun_metadata(step_id), metadata, True))
+        asyncio_run(
+            self._put(self._key_step_prerun_metadata(step_id), metadata, True))
 
-    def save_step_postrun_metadata(self, step_id: StepID, metadata: Dict[str, Any]):
+    def save_step_postrun_metadata(self, step_id: StepID,
+                                   metadata: Dict[str, Any]):
         """Save post-run metadata of the current step.
 
         Args:
@@ -402,7 +405,9 @@ class WorkflowStorage:
             DataSaveError: if we fail to save the post-run metadata.
         """
 
-        asyncio_run(self._put(self._key_step_postrun_metadata(step_id), metadata, True))
+        asyncio_run(
+            self._put(
+                self._key_step_postrun_metadata(step_id), metadata, True))
 
     def save_workflow_user_metadata(self, metadata: Dict[str, Any]):
         """Save user metadata of the current workflow.
@@ -414,7 +419,8 @@ class WorkflowStorage:
             DataSaveError: if we fail to save the user metadata.
         """
 
-        asyncio_run(self._put(self._key_workflow_user_metadata(), metadata, True))
+        asyncio_run(
+            self._put(self._key_workflow_user_metadata(), metadata, True))
 
     def save_workflow_prerun_metadata(self, metadata: Dict[str, Any]):
         """Save pre-run metadata of the current workflow.
@@ -426,7 +432,8 @@ class WorkflowStorage:
             DataSaveError: if we fail to save the pre-run metadata.
         """
 
-        asyncio_run(self._put(self._key_workflow_prerun_metadata(), metadata, True))
+        asyncio_run(
+            self._put(self._key_workflow_prerun_metadata(), metadata, True))
 
     def save_workflow_postrun_metadata(self, metadata: Dict[str, Any]):
         """Save post-run metadata of the current workflow.
@@ -438,7 +445,8 @@ class WorkflowStorage:
             DataSaveError: if we fail to save the post-run metadata.
         """
 
-        asyncio_run(self._put(self._key_workflow_postrun_metadata(), metadata, True))
+        asyncio_run(
+            self._put(self._key_workflow_postrun_metadata(), metadata, True))
 
     def save_workflow_meta(self, metadata: WorkflowMetaData) -> None:
         """Save the metadata of the current workflow.

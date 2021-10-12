@@ -30,8 +30,9 @@ class WorkflowStepFunction:
                 try:
                     json.dumps(v)
                 except TypeError as e:
-                    raise ValueError("metadata values must be JSON serializable, "
-                                     "however '{}' has a value whose {}.".format(k, e))
+                    raise ValueError(
+                        "metadata values must be JSON serializable, "
+                        "however '{}' has a value whose {}.".format(k, e))
 
         self._func = func
         self._max_retries = max_retries
@@ -60,8 +61,7 @@ class WorkflowStepFunction:
                 catch_exceptions=self._catch_exceptions,
                 ray_options=self._ray_options,
                 name=self._name,
-                user_metadata=self._user_metadata
-            )
+                user_metadata=self._user_metadata)
             return Workflow(workflow_data, prepare_inputs)
 
         self.step = _build_workflow
