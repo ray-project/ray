@@ -94,15 +94,11 @@ def ray_start_regular_shared(request):
         "local_mode": True
     }, {
         "local_mode": False
-    }, {
-        "local_mode": False,
-        "use_tls": True
     }])
 def ray_start_shared_local_modes(request):
     param = getattr(request, "param", {})
     use_tls = param.pop("use_tls", False)
-    with manage_tls(use_tls):
-        with _ray_start(**param) as res:
+    with _ray_start(**param) as res:
             yield res
 
 
@@ -301,15 +297,6 @@ def log_pubsub():
     p.psubscribe(log_channel)
     yield p
     p.close()
-
-
-@contextmanager
-def manage_tls(use_tls):
-    if use_tls:
-        key_filepath, cert_filepath, temp_dir = setup_tls()
-    yield use_tls
-    if use_tls:
-        teardown_tls(key_filepath, cert_filepath, temp_dir)
 
 
 @pytest.fixture

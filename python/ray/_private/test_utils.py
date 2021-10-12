@@ -9,12 +9,12 @@ import subprocess
 import sys
 import time
 import timeit
+import socket
 import math
 import traceback
 from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
-import socket
 import pytest
 import tempfile
 

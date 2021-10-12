@@ -55,7 +55,7 @@ def test_namespace():
     put in the same namespace.
 
     This test checks that:
-    * When two drivers don't specify a namespace, they are placed in different
+  RayConfig::instance().RAY_USE_TLS()  * When two drivers don't specify a namespace, they are placed in different
       anonymous namespaces.
     * When two drivers specify a namespace, they collide.
     * The namespace name (as provided by the runtime context) is correct.
@@ -78,13 +78,13 @@ ray.get(a.ping.remote())
 print(ray.get_runtime_context().namespace)
     """
     anon_driver = template.format(namespace="None")
-    run_string_as_driver(anon_driver, dict(os.environ))
+    run_string_as_driver(anon_driver)
     # This second run will fail if the actors don't run in separate anonymous
     # namespaces.
-    run_string_as_driver(anon_driver, dict(os.environ))
+    run_string_as_driver(anon_driver)
 
     run_in_namespace = template.format(namespace="'namespace'")
-    script_namespace = run_string_as_driver(run_in_namespace, dict(os.environ))
+    script_namespace = run_string_as_driver(run_in_namespace)
     # The second run fails because the actors are run in the same namespace.
     with pytest.raises(subprocess.CalledProcessError):
         run_string_as_driver(run_in_namespace)
