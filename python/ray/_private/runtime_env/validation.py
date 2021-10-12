@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 import sys
 from typing import Any, Dict, List, Optional, Set, Union
 import yaml
@@ -27,18 +28,6 @@ def parse_and_validate_working_dir(working_dir: str,
                                    is_task_or_actor: bool = False) -> str:
     """Parses and validates a user-provided 'working_dir' option.
 
-    Attributes:
-        working_dir (Path | str): Specifies the working directory of the
-            worker. This can be
-                - A local directory
-                - A zip file
-                - A s3 bucket url that contains zipped working_dir files
-            Examples:
-                "."  # cwd
-                "local_project.zip"  # archive is unpacked into directory
-                "s3://bucket/local_project.zip" # downloaded then unpacked
-                                                # into directory
-
     The working_dir may not be specified per-task or per-actor.
 
     Otherwise, it should be a valid path to a local directory.
@@ -53,9 +42,15 @@ def parse_and_validate_working_dir(working_dir: str,
     elif not isinstance(working_dir, str):
         raise TypeError("`working_dir` must be a string, got "
                         f"{type(working_dir)}.")
+    # Validate s3 file paths
+    elif urlparse(working_dir).scheme in {"s3"}:
+        if not urlparse(working_dir).path.endswith(".zip"):
+            raise ValueError(
+                "Remote working_dir currently only supports zip file in s3.")
+    # Validate local directory
     elif not Path(working_dir).is_dir():
         raise ValueError(
-            f"working_dir {working_dir} is not a valid directory.")
+            f"working_dir {working_dir} is not a valid local directory.")
 
     return working_dir
 
@@ -199,11 +194,16 @@ class ParsedRuntimeEnv(dict):
     All options in the resulting dictionary will have non-None values.
 
     Currently supported options:
-        working_dir (Path): Specifies the working directory of the worker.
-            This can either be a local directory or zip file.
+        working_dir (Path | str): Specifies the working directory of the
+            worker. This can be
+                - A local directory
+                - A zip file
+                - A s3 bucket url that contains zipped working_dir files
             Examples:
                 "."  # cwd
                 "local_project.zip"  # archive is unpacked into directory
+                "s3://bucket/local_project.zip" # downloaded then unpacked
+                                                # into directory
         uris (List[str]): A list of URIs that define the working_dir.
         pip (List[str] | str): Either a list of pip packages, or a string
             containing the path to a pip requirements.txt file.
@@ -328,15 +328,6 @@ class ParsedRuntimeEnv(dict):
     def serialize(self) -> str:
         # Sort the keys we can compare the serialized string for equality.
         return json.dumps(self, sort_keys=True)
-
-    def get(self, key: str, default=None):
-        return self._dict.get(key, default)
-
-    def __getitem__(self, key: str):
-        return self._dict.get(key)
-
-    def __repr__(self):
-        return f"RuntimeEnvDict({self._dict})"
 
 
 def override_task_or_actor_runtime_env(

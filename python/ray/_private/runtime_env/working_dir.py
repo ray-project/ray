@@ -1,3 +1,4 @@
+import boto3
 from enum import Enum
 from filelock import FileLock
 import hashlib
@@ -38,6 +39,7 @@ class Protocol(Enum):
 
     GCS = "gcs", "For packages created and managed by the system."
     PIN_GCS = "pingcs", "For packages created and managed by the users."
+    S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -124,9 +126,36 @@ def _hash_modules(
 
 
 def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
+    """
+    Parse resource uri into protocol and package name based on its format.
+
+    Note that the output of this function is not for handling actual IO, it's
+    only for setting up local directory folders by using package name as path.
+
+    For GCS URI, netloc is the package name.
+        urlparse("gcs://_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
+            -> ParseResult(
+                scheme='gcs',
+                netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
+            )
+            -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
+
+    For S3 URI, path without leading "/" is the package name.
+        urlparse("s3://bucket/file.zip")
+            -> ParseResult(
+                scheme='s3',
+                netloc='bucket',
+                path='/file.zip'
+            )
+            -> ("s3", "file.zip")
+
+    """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
-    return (protocol, uri.netloc)
+    if protocol == Protocol.S3:
+        return (protocol, uri.path.lstrip("/"))
+    else:
+        return (protocol, uri.netloc)
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
@@ -307,7 +336,7 @@ def push_package(pkg_uri: str, pkg_path: str) -> int:
     Returns:
         The number of bytes uploaded.
     """
-    protocol, pkg_name = _parse_uri(pkg_uri)
+    protocol, _ = _parse_uri(pkg_uri)
     data = Path(pkg_path).read_bytes()
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         return _store_package_in_gcs(pkg_uri, data)
@@ -324,7 +353,7 @@ def package_exists(pkg_uri: str) -> bool:
     Return:
         True for package existing and False for not.
     """
-    protocol, pkg_name = _parse_uri(pkg_uri)
+    protocol, _ = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         return _internal_kv_exists(pkg_uri)
     else:
@@ -334,6 +363,7 @@ def package_exists(pkg_uri: str) -> bool:
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = resources_dir
+        self.s3 = boto3.client('s3')
         assert _internal_kv_initialized()
 
     def _get_local_path(self, pkg_uri: str) -> str:
@@ -362,18 +392,26 @@ class WorkingDirManager:
 
         pkg_file = Path(self._get_local_path(pkg_uri))
         local_dir = pkg_file.with_suffix("")
-        assert local_dir != pkg_file, "Invalid pkg_file!"
+        assert local_dir != pkg_file, (
+            "Invalid pkg_file! Valid package file name should end with .zip")
         if local_dir.exists():
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
             return local_dir
 
-        protocol, pkg_name = _parse_uri(pkg_uri)
+        protocol, _ = _parse_uri(pkg_uri)
         if protocol in (Protocol.GCS, Protocol.PIN_GCS):
+            # Download package file from GCS.
             code = _internal_kv_get(pkg_uri)
             if code is None:
                 raise IOError("Fetch uri failed")
             code = code or b""
             pkg_file.write_bytes(code)
+        elif protocol in (Protocol.S3):
+            # Download pacakge file from S3.
+            bucket = urlparse(pkg_uri).netloc
+            package_object = urlparse(pkg_uri).path.lstrip("/")
+            with open(pkg_file, 'wb') as f:
+                self.s3.download_fileobj(bucket, package_object, f)
         else:
             raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -424,7 +462,7 @@ class WorkingDirManager:
                 pkg_size = push_package(pkg_uri, pkg_file)
                 logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
-    def ensure_runtime_env_setup(
+    def setup_local_working_dir(
             self,
             pkg_uris: List[str],
             logger: Optional[logging.Logger] = default_logger,
@@ -435,7 +473,8 @@ class WorkingDirManager:
         into local file system if it doesn't exist.
 
         Args:
-            pkg_uri list(str): Package of the working dir for the runtime env.
+            pkg_uris (List[str]): URIs registered that represents a package
+                that can be fetched from supported backend storage to local.
 
         Return:
             Working directory is returned if the pkg_uris is not empty,
@@ -491,8 +530,10 @@ class WorkingDirManager:
         if not runtime_env.get("uris"):
             return
 
-        working_dir = self.ensure_runtime_env_setup(
-            runtime_env["uris"], logger=logger)
+        working_dir = self.setup_local_working_dir(
+            runtime_env["uris"],
+            logger=logger
+        )
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is
