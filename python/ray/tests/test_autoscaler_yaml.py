@@ -91,6 +91,9 @@ class AutoscalingConfigTest(unittest.TestCase):
                 if "local" in config_path:
                     # local tested in testValidateLocal
                     continue
+                if "fake_multi_node" in config_path:
+                    # not supported with ray up
+                    continue
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
                 config = prepare_config(config)

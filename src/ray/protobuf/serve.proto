@@ -94,3 +94,35 @@ message RequestMetadata {
 message RequestWrapper {
   bytes body = 1;
 }
+
+message UpdatedObject {
+  bytes object_snapshot = 1;
+  int32 snapshot_id = 2;
+}
+
+message LongPollRequest {
+  map<string, int32> keys_to_snapshot_ids = 1;
+}
+
+message LongPollResult {
+  map<string, UpdatedObject> updated_objects = 1;
+}
+
+message EndpointInfo {
+  string endpoint_name = 1;
+  string route = 2;
+  map<string, string> config = 3;
+}
+
+message EndpointSet {
+  map<string, EndpointInfo> endpoints = 1;
+}
+
+message ActorSet {
+  repeated string names = 1;
+}
+
+message BackendVersion {
+  string code_version = 1;
+  bytes user_config = 2;
+}
