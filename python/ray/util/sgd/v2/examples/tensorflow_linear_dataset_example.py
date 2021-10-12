@@ -30,6 +30,16 @@ def get_dataset_pipeline(a=5, b=10, size=1000) -> DatasetPipeline:
     return dataset_pipeline
 
 
+def prepare_dataset_shard(dataset_shard: tf.data.Dataset):
+    # Disable Tensorflow autosharding since the dataset has already been
+    # sharded.
+    options = tf.data.Options()
+    options.experimental_distribute.auto_shard_policy = \
+        tf.data.experimental.AutoShardPolicy.OFF
+    dataset = dataset_shard.with_options(options)
+    return dataset
+
+
 def build_and_compile_model(config):
     model = tf.keras.Sequential([
         tf.keras.Input(shape=(1, )),
@@ -61,11 +71,14 @@ def train_func(config):
     results = []
     for _ in range(epochs):
         dataset = next(dataset_iterator)
-        tf_dataset = dataset.to_tf(
-            label_column="y",
-            output_signature=(tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-                              tf.TensorSpec(shape=(None), dtype=tf.float32)),
-            batch_size=batch_size)
+        tf_dataset = prepare_dataset_shard(
+            dataset.to_tf(
+                label_column="y",
+                output_signature=(tf.TensorSpec(
+                    shape=(None, 1), dtype=tf.float32),
+                                  tf.TensorSpec(
+                                      shape=(None), dtype=tf.float32)),
+                batch_size=batch_size))
         history = multi_worker_model.fit(
             tf_dataset, callbacks=[SGDReportCallback()])
         results.append(history.history)

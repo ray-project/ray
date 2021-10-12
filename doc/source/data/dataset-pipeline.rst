@@ -256,9 +256,8 @@ Ray Datasets integrates with :ref:`Ray SGD <sgd-v2-docs>`, further simplifying y
 
 Ray SGD is a lightweight library for scalable deep learning on Ray.
 
-1. It allows you to focus on the training logic and automatically handles
-distributed setup for your framework of choice (PyTorch, Tensorflow, or Horovod).
-2. It has out of the box fault-tolerance and elastic training,
+1. It allows you to focus on the training logic and automatically handles distributed setup for your framework of choice (PyTorch, Tensorflow, or Horovod).
+2. It has out of the box fault-tolerance and elastic training
 3. And it comes with support for standard ML tools and features that practitioners love such as checkpointing and logging.
 
 **Code**
@@ -274,7 +273,7 @@ distributed setup for your framework of choice (PyTorch, Tensorflow, or Horovod)
 
     # Create a pipeline that loops over its source dataset indefinitely.
     pipe: DatasetPipeline = ray.data \
-        .read_datasource(...) \
+        .read_parquet(...) \
         .repeat() \
         .random_shuffle_each_window()
 

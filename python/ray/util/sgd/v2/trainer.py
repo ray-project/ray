@@ -205,8 +205,9 @@ class Trainer:
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
-                Distributed Ray Dataset or DatasetPipeline to pass into
-                worker. Sharding will automatically be
+                Distributed Ray py:class:`~ray.data.Dataset` or
+                py:class:`~ray.data.DatasetPipeline` to pass into the
+                workers. Sharding will automatically be
                 handled by the Trainer.
             checkpoint (Optional[Dict|str|Path]): The checkpoint data that
                 should be loaded onto each worker and accessed by the training
@@ -404,7 +405,8 @@ class Trainer:
             func (Callable): The function that should be executed on each
                 training worker.
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
-                Distributed Ray Dataset or DatasetPipeline to pass into
+                Distributed Ray py:class:`~ray.data.Dataset` or
+                py:class:`~ray.data.DatasetPipeline` to pass into
                 worker. Sharding will automatically be
                 handled by the Trainer.
 

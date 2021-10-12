@@ -3,8 +3,6 @@ from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
     Dict, Optional, Union, TYPE_CHECKING, Tuple
 from uuid import uuid4
 
-from ray.ray_constants import env_integer
-
 if TYPE_CHECKING:
     import pyarrow
     import pandas
@@ -1393,13 +1391,6 @@ class Dataset(Generic[T]):
 
         dataset = tf.data.Dataset.from_generator(
             make_generator, output_signature=output_signature)
-
-        enable_autoshard = bool(env_integer("RAY_DATA_TF_AUTOSHARD", 0))
-        if not enable_autoshard:
-            options = tf.data.Options()
-            options.experimental_distribute.auto_shard_policy = \
-                tf.data.experimental.AutoShardPolicy.OFF
-            dataset = dataset.with_options(options)
 
         return dataset
 
