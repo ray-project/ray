@@ -35,7 +35,7 @@ class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket,
              int node_manager_port, const gcs::GcsClientOptions &gcs_options,
-            StartupToken startup_token) {
+             StartupToken startup_token) {
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
