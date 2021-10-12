@@ -248,7 +248,7 @@ class ActorReplicaWrapper:
                     backend_config.max_concurrent_queries)
                 self._graceful_shutdown_timeout_s = (
                     backend_config.graceful_shutdown_timeout_s)
-            except RayActorError:
+            except Exception:
                 return ReplicaStartupStatus.FAILED, None
 
         return ReplicaStartupStatus.SUCCEEDED, version
