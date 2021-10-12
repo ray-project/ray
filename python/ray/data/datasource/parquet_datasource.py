@@ -128,8 +128,7 @@ class ParquetDatasource(FileBasedDatasource):
             inferred_schema = schema
         read_tasks = []
         serialized_pieces = [cloudpickle.dumps(p) for p in pq_ds.pieces]
-        if (_is_remote_fs(filesystem)
-                and len(pq_ds.pieces) > PARALLELIZE_META_FETCH_THRESHOLD):
+        if len(pq_ds.pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
             metadata = _fetch_metadata_remotely(serialized_pieces)
         else:
             metadata = _fetch_metadata(pq_ds.pieces)
@@ -155,12 +154,6 @@ class ParquetDatasource(FileBasedDatasource):
 
     def _file_format(self):
         return "parquet"
-
-
-def _is_remote_fs(filesystem: "pyarrow.fs.FileSystem"):
-    import pyarrow as pa
-
-    return isinstance(filesystem, (pa.fs.S3FileSystem, pa.fs.HadoopFileSystem))
 
 
 def _fetch_metadata_remotely(pieces: List[bytes]):

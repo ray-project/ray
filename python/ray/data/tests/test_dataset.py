@@ -1298,8 +1298,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space")
-         )  # Path contains space.
+        (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space"))
     ])
 def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs,
                                           data_path):
