@@ -76,30 +76,30 @@ It's common in ML training to want to divide data ingest into epochs, or repetit
 
 .. code-block:: python
 
-    pipe = ray.data.range(5).repeat(3)
+    pipe = ray.data.range(5).repeat(3).random_shuffle_each_window()
     for i, epoch in enumerate(pipe.iter_epochs()):
         print("Epoch {}", i)
-        for row in epoch.iter_items():
+        for row in epoch.iter_rows():
             print(row)
     # ->
     # Epoch 0
-    # 0
-    # 1
     # 2
+    # 1
     # 3
     # 4
+    # 0
     # Epoch 1
-    # 0
-    # 1
-    # 2
     # 3
     # 4
+    # 0
+    # 2
+    # 1
     # Epoch 2
-    # 0
-    # 1
-    # 2
     # 3
+    # 2
     # 4
+    # 1
+    # 0
 
 Note that while epochs commonly consist of a single window, they can also contain multiple windows if ``.window()`` is used or there are multiple ``.repeat()`` calls.
 
