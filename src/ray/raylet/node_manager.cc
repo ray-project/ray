@@ -553,9 +553,8 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
 }
 
 void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
-  auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
   ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
-  if (!last_heartbeat_resources->GetNormalTaskResources().IsEqual(
+  if (!last_resource_usage_->GetNormalTaskResources().IsEqual(
           normal_task_resources)) {
     RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.ToString();
     resources_data.set_resources_normal_task_changed(true);
@@ -563,7 +562,7 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
     normal_task_map = {normal_task_resources.GetResourceMap().begin(),
                        normal_task_resources.GetResourceMap().end()};
     resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-    last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
+    last_resource_usage_->SetNormalTaskResources(normal_task_resources);
   }
 }
 
@@ -573,10 +572,10 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->UpdateLastResourceUsage(
-      gcs_client_->NodeResources().GetLastResourceUsage());
+      last_resource_usage_);
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(
-      resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
+      resources_data, last_resource_usage_);
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }

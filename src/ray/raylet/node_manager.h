@@ -746,6 +746,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
+
+  /// Cache which stores resource usage in last report used to check if they are changed.
+  std::shared_ptr<SchedulingResources> last_resource_usage_ =
+      std::make_shared<SchedulingResources>();
 };
 
 }  // namespace raylet
