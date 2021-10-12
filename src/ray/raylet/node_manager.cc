@@ -1102,7 +1102,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     rpc::JobConfig job_config;
     job_config.ParseFromString(message->serialized_job_config()->str());
 
-    auto cb = [this, worker_ip_address, pid, job_id, job_config = std::move(job_config),
+    // Send the reply callback only after registration fully completes at the GCS.
+    auto cb = [this, worker_ip_address, pid, job_id, job_config,
                send_reply_callback = std::move(send_reply_callback)](Status status,
                                                                      int assigned_port) {
       if (status.ok()) {
@@ -1114,8 +1115,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
                 Status status) { send_reply_callback(status, assigned_port); }));
       }
     };
-    [[maybe_unused]] auto status =
-        worker_pool_.RegisterDriver(worker, job_config, std::move(cb));
+    RAY_UNUSED(worker_pool_.RegisterDriver(worker, job_config, std::move(cb)));
   }
 }
 
