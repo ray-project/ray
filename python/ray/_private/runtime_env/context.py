@@ -38,21 +38,19 @@ class RuntimeEnvContext:
     def exec_worker(self, passthrough_args: List[str], language: Language):
         os.environ.update(self.env_vars)
         if language == Language.PYTHON:
-            executable = f"exec {self.py_executable}"
+            executable = f"{self.py_executable}"
         else:
-            executable = "exec"
+            executable = ""
 
         # We here need to distinguish between Windows process execution and
         # Linux process execution. Default behavior is to use 'bash' in any
         # case except when running on Windows
         if sys.platform == "win32":
-            exec_command = " ".join([f'"{executable}"'] +
-                                    passthrough_args)
+            exec_command = " ".join([f'"{executable}"'] + passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
             os.system(command_str)
         else:
-            exec_command = " ".join([f"exec {executable}"] +
-                                    passthrough_args)
+            exec_command = " ".join([f"exec {executable}"] + passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
             os.execvp(file="bash", args=["bash", "-c", command_str])
 
