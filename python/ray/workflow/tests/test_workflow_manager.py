@@ -3,7 +3,7 @@ import time
 import pytest
 import ray
 from ray import workflow
-from filelock import FileLock
+from filelock import FileLock, Timeout
 
 
 def test_workflow_manager_simple(workflow_start_regular):
@@ -69,6 +69,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     assert finished_jobs == [(k, v) for (k, v) in all_tasks_status
                              if v == workflow.WorkflowStatus.SUCCESSFUL]
 
+    remaining = 50
     # Test get_status
     assert workflow.get_status("0") == "FAILED"
     assert workflow.get_status("1") == "SUCCESSFUL"
@@ -79,19 +80,21 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     lock.release()
     assert 100 == ray.get(r)
     assert workflow.get_status("0") == workflow.SUCCESSFUL
+    remaining -= 1
 
-    # Test cancel
     lock.acquire()
+    # Test cancel TODO(yic) add this test back
     workflow.resume("2")
     assert workflow.get_status("2") == workflow.RUNNING
     workflow.cancel("2")
     assert workflow.get_status("2") == workflow.CANCELED
+    remaining -= 1
 
     # Now resume_all
     resumed = workflow.resume_all(include_failed=True)
-    assert len(resumed) == 48
+    assert len(resumed) == remaining
     lock.release()
-    assert [ray.get(o) for (_, o) in resumed] == [100] * 48
+    assert [ray.get(o) for (_, o) in resumed] == [100] * remaining
 
 
 @pytest.mark.parametrize(
@@ -144,6 +147,45 @@ def test_actor_manager(workflow_start_regular, tmp_path):
     assert [("counter", workflow.RUNNING)] == workflow.list_all()
     lock.release()
     assert ray.get(v) == 1
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular", [{
+        "num_cpus": 1,
+    }], indirect=True)
+def test_workflow_cancel(workflow_start_regular, tmp_path):
+    tmp_file = str(tmp_path / "lock")
+
+    @workflow.step
+    def inf_step():
+        with FileLock(tmp_file):
+            print("INF LOCK")
+            while True:
+                time.sleep(1)
+
+    @workflow.step
+    def a_step():
+        with FileLock(tmp_file):
+            return 1
+    job_1 = inf_step.step().run_async("job_1")
+    lock = FileLock(tmp_file)
+
+    while True:
+        try:
+            lock.acquire(1)
+            lock.release()
+            time.sleep(1)
+            print("LOCK FAIL")
+        except Timeout:
+            break
+    job_2 = a_step.step().run_async("job_2")
+
+    assert workflow.get_status("job_1") == "RUNNING"
+    assert workflow.get_status("job_2") == "RUNNING"
+
+    workflow.cancel("job_1")
+    assert 1 == ray.get(job_2)
+
 
 
 if __name__ == "__main__":

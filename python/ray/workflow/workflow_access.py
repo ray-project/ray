@@ -94,21 +94,16 @@ def _resolve_workflow_output(workflow_id: Optional[str],
     return output
 
 
-def cancel_job(obj: ray.ObjectRef):
-    return
-    # TODO (yic) Enable true canceling in ray.
-    #
-    # try:
-    #     while isinstance(obj, ray.ObjectRef):
-    #         ray.cancel(obj)
-    #         obj = ray.get(obj)
-    # except Exception:
-    #     pass
+def cancel_job(objs: List[ray.ObjectRef]):
+    for obj in objs:
+        print("Cancel", obj)
+        ray.cancel(obj)
 
 
 @dataclass
 class LatestWorkflowOutput:
     output: ray.ObjectRef
+    volatile_output: ray.ObjectRef
     workflow_id: str
     step_id: "StepID"
 
@@ -125,8 +120,7 @@ class WorkflowManagementActor:
         # Cache step output. It is used for step output lookup of
         # "WorkflowRef". The dictionary entry is removed when the status of
         # a step is marked as finished (successful or failed).
-        self._step_output_cache: Dict[Tuple[str, str],
-                                      LatestWorkflowOutput] = {}
+        self._step_output_cache: Dict[str, Dict[str, LatestWorkflowOutput]] = {}
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
         self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
 
@@ -147,7 +141,7 @@ class WorkflowManagementActor:
             step result. If it does not exist, return None
         """
         try:
-            output = self._step_output_cache[(workflow_id, step_id)].output
+            output = self._step_output_cache[workflow_id][step_id].output
             return output
         except Exception:
             return None
@@ -177,11 +171,12 @@ class WorkflowManagementActor:
         result = recovery.resume_workflow_step(
             workflow_id, step_id, self._store.storage_url, current_output)
         latest_output = LatestWorkflowOutput(result.persisted_output,
+                                             result.volatile_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
         logger.info(f"run_or_resume: {workflow_id}, {step_id},"
                     f"{result.persisted_output}")
-        self._step_output_cache[(workflow_id, step_id)] = latest_output
+        self._step_output_cache.setdefault(workflow_id, {})[step_id] = latest_output
 
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
@@ -212,7 +207,10 @@ class WorkflowManagementActor:
             self._step_status.setdefault(workflow_id, {})[step_id] = status
         remaining = len(self._step_status[workflow_id])
         if status != common.WorkflowStatus.RUNNING:
-            self._step_output_cache.pop((workflow_id, step_id), None)
+            steps_cache = self._step_output_cache.get(workflow_id, {})
+            steps_cache.pop(step_id, None)
+            if len(steps_cache) == 0:
+                self._step_output_cache.pop(workflow_id, {})
 
         if status != common.WorkflowStatus.FAILED and remaining != 0:
             return
@@ -221,7 +219,8 @@ class WorkflowManagementActor:
 
         if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
-                cancel_job(self._workflow_outputs.pop(workflow_id).output)
+                results = self._workflow_outputs.pop(workflow_id)
+                cancel_job([results.output, results.volatile_output])
             wf_store.save_workflow_meta(
                 common.WorkflowMetaData(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
@@ -231,9 +230,16 @@ class WorkflowManagementActor:
             self._step_status.pop(workflow_id)
 
     def cancel_workflow(self, workflow_id: str) -> None:
+        print("Canceling workflow:", workflow_id)
         self._step_status.pop(workflow_id)
-        cancel_job(self._workflow_outputs.pop(workflow_id).output)
+        results = self._workflow_outputs.pop(workflow_id)
+        ref_list = [results.output, results.volatile_output]
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        steps_cache = self._step_output_cache.pop(workflow_id, {})
+        for v in steps_cache.values():
+            ref_list.append(v.output)
+        cancel_job(ref_list)
+
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.CANCELED))
 

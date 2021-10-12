@@ -166,6 +166,7 @@ def resume_workflow_step(
 
     persisted_output, volatile_output = _resume_workflow_step_executor.remote(
         workflow_id, step_id, store_url, current_output)
+    print("OUTPUTS: ", persisted_output, volatile_output)
     return WorkflowExecutionResult(persisted_output, volatile_output)
 
 
