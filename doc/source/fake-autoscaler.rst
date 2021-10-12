@@ -10,7 +10,7 @@ Instructions:
 
 1. Navigate to the root directory of the Ray repo you have cloned locally.
 
-2. Locate the `fake_multi_node/example.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/fake_multi_node/example.yaml>`__ example file and fill in the number of CPUs and GPUs the local machine has for the head node type config.
+2. Locate the `fake_multi_node/example.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/fake_multi_node/example.yaml>`__ example file and fill in the number of CPUs and GPUs the local machine has for the head node type config. The YAML follows the same format as cluster autoscaler configurations, but some fields are not supported.
 
 3. Configure worker types and other autoscaling configs as desired in the YAML file.
 
