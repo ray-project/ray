@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "config_internal.h"
+
 #include <boost/dll/runtime_symbol_info.hpp>
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
-
-#include "config_internal.h"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
@@ -53,7 +54,8 @@ ABSL_FLAG(std::string, ray_head_args, "",
           "command. It takes effect only if Ray head is started by a driver. Run `ray "
           "start --help` for details.");
 
-ABSL_FLAG(int64_t, startup_token, -1, "The startup token assigned to this worker process by the raylet.");
+ABSL_FLAG(int64_t, startup_token, -1,
+          "The startup token assigned to this worker process by the raylet.");
 
 namespace ray {
 namespace internal {

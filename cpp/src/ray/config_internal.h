@@ -14,8 +14,10 @@
 
 #pragma once
 #include <ray/api/ray_config.h>
+
 #include <memory>
 #include <string>
+
 #include "ray/core_worker/common.h"
 
 namespace ray {
