@@ -472,7 +472,7 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
-        pkg_name = working_dir_pkg.get_project_package_name(
+        pkg_name, protocol = working_dir_pkg.get_project_package_name(
             working_dir, [], [])
         pkg_uri = working_dir_pkg.Protocol.PIN_GCS.value + "://" + pkg_name
         working_dir_pkg.create_project_package(working_dir, [], [],

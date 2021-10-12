@@ -203,22 +203,31 @@ def get_project_package_name(
         working_dir: str,
         py_modules: List[str],
         excludes: List[str],
-        logger: Optional[logging.Logger] = default_logger) -> str:
+        logger: Optional[logging.Logger] = default_logger) -> Tuple[str, str]:
     """Get the name of the package by working dir and modules.
 
     This function will generate the name of the package by the working
     directory and modules. It'll go through all the files in working_dir
     and modules and hash the contents of these files to get the hash value
-    of this package. The final package name is: _ray_pkg_<HASH_VAL>.zip
+    of this package.
+
+    For local working_dir, the final package name is: _ray_pkg_<HASH_VAL>.zip
     Right now, only the modules given will be included. The dependencies
     are not included automatically.
+
+    For remote s3 working_dir, the final pacakge name is simply the zip file
+    name, such as my_package.zip
 
     Examples:
 
     .. code-block:: python
         >>> import any_module
         >>> get_project_package_name("/working_dir", [any_module])
-        .... _ray_pkg_af2734982a741.zip
+        .... (_ray_pkg_af2734982a741.zip, "gcs")
+
+    .. code-block:: python
+        >>> get_project_package_name("s3://bucket/my_package.zip")
+        .... (my_pacakge.zip, "s3")
 
  e.g., _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
     Args:
@@ -234,17 +243,23 @@ def get_project_package_name(
     if working_dir:
         if not isinstance(working_dir, str):
             raise TypeError("`working_dir` must be a string.")
-        working_dir = Path(working_dir).absolute()
-        if not working_dir.exists() or not working_dir.is_dir():
-            raise ValueError(f"working_dir {working_dir} must be an existing"
-                             " directory")
-        hash_val = _xor_bytes(
-            hash_val,
-            _hash_modules(
-                working_dir,
-                working_dir,
-                _get_excludes(working_dir, excludes),
-                logger=logger))
+        # No need to compute new pacakge hash for given s3 path, just use
+        # original zip file name.
+        if urlparse(working_dir).scheme in {"s3"}:
+            return (urlparse(working_dir).path.lstrip("/"), Protocol.S3)
+        else:
+            # Work with local working dir.
+            working_dir = Path(working_dir).absolute()
+            if not working_dir.exists() or not working_dir.is_dir():
+                raise ValueError(f"working_dir {working_dir} must be an "
+                                 "existing directory")
+            hash_val = _xor_bytes(
+                hash_val,
+                _hash_modules(
+                    working_dir,
+                    working_dir,
+                    _get_excludes(working_dir, excludes),
+                    logger=logger))
     for py_module in py_modules or []:
         if not isinstance(py_module, str):
             raise TypeError("`py_module` must be a string.")
@@ -255,7 +270,8 @@ def get_project_package_name(
         hash_val = _xor_bytes(
             hash_val,
             _hash_modules(module_dir, module_dir.parent, None, logger=logger))
-    return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
+    return (RAY_PKG_PREFIX + hash_val.hex() + ".zip"
+            if hash_val else None, Protocol.GCS)
 
 
 def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
@@ -268,9 +284,10 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
     Args:
         job_config (JobConfig): The job config.
     """
-    # For now, we only support local directory and packages
+    # For now, we only support local directory, packages and zip file on s3
     uris = job_config.runtime_env.get("uris")
     if uris is not None:
+        # Don't need to recompute uri twice
         return
     working_dir = job_config.runtime_env.get("working_dir")
     py_modules = job_config.runtime_env.get("py_modules")
@@ -278,9 +295,15 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
     if working_dir or py_modules:
         if excludes is None:
             excludes = []
-        pkg_name = get_project_package_name(working_dir, py_modules, excludes)
-        job_config.set_runtime_env_uris(
-            [Protocol.GCS.value + "://" + pkg_name])
+        pkg_name, protocol = get_project_package_name(working_dir, py_modules,
+                                                      excludes)
+        if protocol == Protocol.S3:
+            # Forward original s3 path in job_config
+            # Ex: s3://bucket/my_package.zip
+            job_config.set_runtime_env_uris([working_dir])
+        else:
+            job_config.set_runtime_env_uris(
+                [Protocol.GCS.value + "://" + pkg_name])
 
 
 def create_project_package(
@@ -301,6 +324,10 @@ def create_project_package(
         excludes (List(str)): The directories or file to be excluded.
         output_path (str): The path of file to be created.
     """
+    if urlparse(working_dir).scheme == Protocol.S3.value:
+        raise RuntimeError(
+            "create_project_package should not be called with s3 working_dir.")
+
     pkg_file = Path(output_path).absolute()
     with ZipFile(pkg_file, "w") as zip_handler:
         if working_dir:
@@ -339,6 +366,8 @@ def push_package(pkg_uri: str, pkg_path: str) -> int:
     data = Path(pkg_path).read_bytes()
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         return _store_package_in_gcs(pkg_uri, data)
+    elif protocol in (Protocol.S3):
+        raise RuntimeError("push_pacakge should not be called with s3 path.")
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -355,6 +384,9 @@ def package_exists(pkg_uri: str) -> bool:
     protocol, _ = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         return _internal_kv_exists(pkg_uri)
+    elif protocol in (Protocol.S3):
+        # Mark s3 path as true to skip packing & uploading on user laptop
+        return True
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -409,7 +441,7 @@ class WorkingDirManager:
                 from smart_open import open
             except ImportError:
                 raise ImportError("You must install the `smart_open` module "
-                    "to fetch URIs in s3 bucket.")
+                                  "to fetch URIs in s3 bucket.")
             # Download pacakge file from S3.
             with open(pkg_file, "wb") as f:
                 with open(pkg_uri, "rb") as pacakge_zip:
