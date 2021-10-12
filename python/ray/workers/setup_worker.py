@@ -24,7 +24,6 @@ parser.add_argument(
 parser.add_argument(
     "--language", type=str, help="the language type of the worker")
 
-
 if __name__ == "__main__":
     args, remaining_args = parser.parse_known_args()
     # NOTE(chenk008): if worker starts in a container, this worker-shim-pid
