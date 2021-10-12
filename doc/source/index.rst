@@ -371,6 +371,7 @@ Papers
 
    getting-involved.rst
    development.rst
+   fake-autoscaler.rst
    whitepaper.rst
    debugging.rst
    profiling.rst
