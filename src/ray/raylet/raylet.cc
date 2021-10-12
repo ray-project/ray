@@ -61,7 +61,10 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
     : main_service_(main_service),
-      self_node_id_(NodeID::FromRandom()),
+      self_node_id_(
+          !RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()
+              ? NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
+              : NodeID::FromRandom()),
       gcs_client_(gcs_client),
       node_manager_(main_service, self_node_id_, node_manager_config,
                     object_manager_config, gcs_client_),

@@ -919,6 +919,8 @@ class TrialRunner:
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
 
+        _trigger_callback_complete = False
+
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             result.update(done=True)
@@ -938,8 +940,7 @@ class TrialRunner:
                         trial=trial,
                         result=result.copy())
 
-            self._callbacks.on_trial_complete(
-                iteration=self._iteration, trials=self._trials, trial=trial)
+            _trigger_callback_complete = True
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
@@ -974,6 +975,10 @@ class TrialRunner:
         # PAUSE only checkpoints to memory and does not update
         # the global checkpoint state.
         self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
+
+        if _trigger_callback_complete:
+            self._callbacks.on_trial_complete(
+                iteration=self._iteration, trials=self._trials, trial=trial)
 
         if trial.is_saving:
             # Cache decision to execute on after the save is processed.
