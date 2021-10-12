@@ -217,7 +217,7 @@ class VirtualActorMetadata:
                     catch_exceptions=False,
                     ray_options={},
                     name=None,
-                    metadata=None
+                    user_metadata=None,
                 )
                 wf = Workflow(workflow_data)
                 return wf
