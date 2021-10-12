@@ -160,10 +160,9 @@ def _is_legacy_sync_fn(func) -> bool:
     sig = inspect.signature(func)
     try:
         sig.bind_partial(None, None, None)
-        return True
+        return False
     except TypeError:
-        pass
-    return False
+        return True
 
 
 class FunctionBasedClient(SyncClient):
