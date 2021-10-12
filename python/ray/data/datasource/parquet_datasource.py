@@ -138,7 +138,8 @@ class ParquetDatasource(FileBasedDatasource):
             if len(piece_data) == 0:
                 continue
             pieces, serialized_pieces, metadata = zip(*piece_data)
-            block_metadata = _get_block_metadata(pieces, metadata, schema)
+            block_metadata = _get_block_metadata(
+                pieces, metadata, inferred_schema)
             read_tasks.append(
                 ReadTask(
                     lambda pieces_=serialized_pieces: read_pieces(pieces_),
