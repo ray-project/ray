@@ -58,7 +58,7 @@ body:
   - type: textarea
     attributes:
       label: Versions / Dependencies
-      description: Please specify the versions of Ray, Python, OS, or other libraries that are used.
+      description: Please specify the versions of Ray, Python, OS, and other libraries that are used.
       placeholder: >
         Please specify the versions of dependencies.
     validations:
