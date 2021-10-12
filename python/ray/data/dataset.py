@@ -971,6 +971,8 @@ class Dataset(Generic[T]):
                       path: str,
                       *,
                       filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                      try_create_dir: bool = True,
+                      arrow_open_stream_args: Optional[Dict[str, Any]] = None,
                       **arrow_parquet_args) -> None:
         """Write the dataset to parquet.
 
@@ -989,6 +991,10 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where Parquet
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
+            arrow_open_stream_args: kwargs passed to
+                pyarrow.fs.FileSystem.open_output_stream
             arrow_parquet_args: Options to pass to
                 pyarrow.parquet.write_table(), which is used to write out each
                 block to a file.
@@ -998,12 +1004,16 @@ class Dataset(Generic[T]):
             path=path,
             dataset_uuid=self._uuid,
             filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
             **arrow_parquet_args)
 
     def write_json(self,
                    path: str,
                    *,
                    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                   try_create_dir: bool = True,
+                   arrow_open_stream_args: Optional[Dict[str, Any]] = None,
                    **pandas_json_args) -> None:
         """Write the dataset to json.
 
@@ -1022,6 +1032,10 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where json
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
+            arrow_open_stream_args: kwargs passed to
+                pyarrow.fs.FileSystem.open_output_stream
             pandas_json_args: These args will be passed to
                 pandas.DataFrame.to_json(), which we use under the hood to
                 write out each Datasets block. These
@@ -1032,12 +1046,16 @@ class Dataset(Generic[T]):
             path=path,
             dataset_uuid=self._uuid,
             filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
             **pandas_json_args)
 
     def write_csv(self,
                   path: str,
                   *,
                   filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                  try_create_dir: bool = True,
+                  arrow_open_stream_args: Optional[Dict[str, Any]] = None,
                   **arrow_csv_args) -> None:
         """Write the dataset to csv.
 
@@ -1056,6 +1074,10 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where csv
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
+            arrow_open_stream_args: kwargs passed to
+                pyarrow.fs.FileSystem.open_output_stream
             arrow_csv_args: Other CSV write options to pass to pyarrow.
         """
         self.write_datasource(
@@ -1063,6 +1085,8 @@ class Dataset(Generic[T]):
             path=path,
             dataset_uuid=self._uuid,
             filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
             **arrow_csv_args)
 
     def write_numpy(
@@ -1070,7 +1094,9 @@ class Dataset(Generic[T]):
             path: str,
             *,
             column: str = "value",
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            try_create_dir: bool = True,
+            arrow_open_stream_args: Optional[Dict[str, Any]] = None) -> None:
         """Write a tensor column of the dataset to npy files.
 
         This is only supported for datasets convertible to Arrow records that
@@ -1091,13 +1117,19 @@ class Dataset(Generic[T]):
             column: The name of the table column that contains the tensor to
                 be written. This defaults to "value".
             filesystem: The filesystem implementation to write to.
+            try_create_dir: Try to create all directories in destination path
+                if True. Does nothing if all directories already exist.
+            arrow_open_stream_args: kwargs passed to
+                pyarrow.fs.FileSystem.open_output_stream
         """
         self.write_datasource(
             NumpyDatasource(),
             path=path,
             dataset_uuid=self._uuid,
             column=column,
-            filesystem=filesystem)
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args)
 
     def write_datasource(self, datasource: Datasource[T],
                          **write_args) -> None:

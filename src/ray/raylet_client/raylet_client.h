@@ -93,6 +93,14 @@ class WorkerLeaseInterface {
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
 
+  /// Report the backlog size of a given worker and a given scheduling class to the
+  /// raylet.
+  /// \param worker_id The ID of the worker that reports the backlog size.
+  /// \param backlog_reports The backlog report for each scheduling class
+  virtual void ReportWorkerBacklog(
+      const WorkerID &worker_id,
+      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
+
   virtual ~WorkerLeaseInterface(){};
 };
 
@@ -376,6 +384,11 @@ class RayletClient : public RayletClientInterface {
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                            bool disconnect_worker) override;
+
+  /// Implements WorkerLeaseInterface.
+  void ReportWorkerBacklog(
+      const WorkerID &worker_id,
+      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override;
 
   /// Implements WorkerLeaseInterface.
   void ReleaseUnusedWorkers(

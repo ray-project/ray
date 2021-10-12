@@ -15,8 +15,9 @@ from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
-                             RESULT_DUPLICATE, SHOULD_CHECKPOINT)
+from ray.tune.result import (DEBUG_METRICS, DEFAULT_METRIC, DONE,
+                             TIME_THIS_ITER_S, RESULT_DUPLICATE,
+                             SHOULD_CHECKPOINT)
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -918,6 +919,8 @@ class TrialRunner:
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
 
+        _trigger_callback_complete = False
+
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             result.update(done=True)
@@ -937,8 +940,7 @@ class TrialRunner:
                         trial=trial,
                         result=result.copy())
 
-            self._callbacks.on_trial_complete(
-                iteration=self._iteration, trials=self._trials, trial=trial)
+            _trigger_callback_complete = True
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
@@ -974,6 +976,10 @@ class TrialRunner:
         # the global checkpoint state.
         self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
+        if _trigger_callback_complete:
+            self._callbacks.on_trial_complete(
+                iteration=self._iteration, trials=self._trials, trial=trial)
+
         if trial.is_saving:
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
@@ -987,15 +993,18 @@ class TrialRunner:
     def _validate_result_metrics(self, result):
         """
         Check if any of the required metrics was not reported
-        in the last result. If the only item is `done=True`, this
-        means that no result was ever received and the trial just
-        returned. This is also okay and will not raise an error.
+        in the last result. If the only items are ``done`` or any of
+        DEBUG_METRICS, this means that no result was ever received and
+        the trial just returned. This is also okay and will not raise
+        an error.
 
         This will ignore checking for the DEFAULT_METRIC.
         """
-        if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
-                              0)) != 1 and (len(result) > 1
-                                            or "done" not in result):
+        if int(os.environ.get(
+                "TUNE_DISABLE_STRICT_METRIC_CHECKING", 0)) != 1 and (len({
+                    k
+                    for k in result if k not in list(DEBUG_METRICS) + [DONE]
+                }) > 1):
             base_metric = self._metric \
                 if self._metric != DEFAULT_METRIC else None
             scheduler_metric = self._scheduler_alg.metric \
