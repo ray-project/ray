@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import sys
-import shutil
 from typing import Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
@@ -42,18 +41,19 @@ class RuntimeEnvContext:
             executable = f"exec {self.py_executable}"
         else:
             executable = "exec"
-            
-        if shutil.which("bash") is not None:
-            exec_command = " ".join([f"exec {executable}"] +
-                                    passthrough_args)
-            command_str = " && ".join(self.command_prefix + [exec_command])
-            os.execvp(file="bash", args=["bash", "-c", command_str])
-        elif shutil.which("cmd") is not None:
+
+        # We here need to distinguish between Windows process execution and
+        # Linux process execution. Default behavior is to use 'bash' in any
+        # case except when running on Windows
+        if sys.platform == "win32":
             exec_command = " ".join([f'"{executable}"'] +
                                     passthrough_args)
             command_str = " && ".join(self.command_prefix + [exec_command])
             os.system(command_str)
         else:
-            raise FileNotFoundError("Cannot find neither 'bash' nor 'cmd'")
+            exec_command = " ".join([f"exec {executable}"] +
+                                    passthrough_args)
+            command_str = " && ".join(self.command_prefix + [exec_command])
+            os.execvp(file="bash", args=["bash", "-c", command_str])
 
         logger.info(f"Exec'ing worker with command: {command_str}")
