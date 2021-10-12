@@ -50,10 +50,10 @@ class ResourceSet {
   ResourceSet();
 
   /// \brief Constructs ResourceSet from the specified resource map.
-  ResourceSet(const std::unordered_map<std::string, FixedPoint> &resource_map);
+  explicit ResourceSet(const absl::flat_hash_map<std::string, FixedPoint> &resource_map);
 
   /// \brief Constructs ResourceSet from the specified resource map.
-  ResourceSet(const std::unordered_map<std::string, double> &resource_map);
+  explicit ResourceSet(const absl::flat_hash_map<std::string, double> &resource_map);
 
   /// \brief Constructs ResourceSet from two equal-length vectors with label and capacity
   /// specification.
@@ -159,19 +159,23 @@ class ResourceSet {
   /// regular units and does not need to be multiplied by kResourceConversionFactor.
   ///
   /// \return map of resource in string to size in double.
-  const std::unordered_map<std::string, double> GetResourceMap() const;
+  absl::flat_hash_map<std::string, double> GetResourceMap() const;
+
+  /// Return the resources in unordered map. This is used for some languate frontend that
+  /// requires unordered map instead of flat hash map.
+  std::unordered_map<std::string, double> GetResourceUnorderedMap() const;
 
   /// \brief Return a map of the resource and size in FixedPoint. Note,
   /// size is in kResourceConversionFactor of a unit.
   ///
   /// \return map of resource in string to size in FixedPoint.
-  const std::unordered_map<std::string, FixedPoint> &GetResourceAmountMap() const;
+  const absl::flat_hash_map<std::string, FixedPoint> &GetResourceAmountMap() const;
 
   const std::string ToString() const;
 
  private:
   /// Resource capacity map.
-  std::unordered_map<std::string, FixedPoint> resource_capacity_;
+  absl::flat_hash_map<std::string, FixedPoint> resource_capacity_;
 };
 
 /// \class ResourceIds
@@ -320,7 +324,8 @@ class ResourceIdSet {
   /// \brief Construct a ResourceIdSet from a mapping from resource names to ResourceIds.
   ///
   /// \param resource_set A mapping from resource name to IDs.
-  ResourceIdSet(const std::unordered_map<std::string, ResourceIds> &available_resources);
+  explicit ResourceIdSet(
+      const absl::flat_hash_map<std::string, ResourceIds> &available_resources);
 
   /// \brief See if a requested collection of resources is contained.
   ///
@@ -380,7 +385,7 @@ class ResourceIdSet {
   /// \brief Get the underlying mapping from resource name to resource IDs.
   ///
   /// \return The resource name to resource IDs mapping.
-  const std::unordered_map<std::string, ResourceIds> &AvailableResources() const;
+  const absl::flat_hash_map<std::string, ResourceIds> &AvailableResources() const;
 
   /// Return the CPU resources.
   ///
@@ -412,7 +417,7 @@ class ResourceIdSet {
 
  private:
   /// A mapping from resource name to a set of resource IDs for that resource.
-  std::unordered_map<std::string, ResourceIds> available_resources_;
+  absl::flat_hash_map<std::string, ResourceIds> available_resources_;
 };
 
 /// \class SchedulingResources
