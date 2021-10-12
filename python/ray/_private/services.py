@@ -1361,7 +1361,8 @@ def start_raylet(redis_address,
                  start_initial_python_workers_for_first_job=False,
                  max_bytes=0,
                  backup_count=0,
-                 ray_debugger_external=False):
+                 ray_debugger_external=False,
+                 env_updates=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1407,6 +1408,8 @@ def start_raylet(redis_address,
             RotatingFileHandler's backupCount.
         ray_debugger_external (bool): True if the Ray debugger should be made
             available externally to this node.
+        env_updates (dict): Environment variable overrides.
+
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1582,7 +1585,8 @@ def start_raylet(redis_address,
         use_perftools_profiler=("RAYLET_PERFTOOLS_PATH" in os.environ),
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+        env_updates=env_updates)
 
     return process_info
 
