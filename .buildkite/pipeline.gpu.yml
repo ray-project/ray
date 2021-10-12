@@ -6,7 +6,7 @@
 #    - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
 #    - pip install -Ur ./python/requirements_ml_docker.txt
 #    - ./ci/travis/env_info.sh
-#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-jenkins_only,-flaky,gpu,gpu_only python/ray/tune/...
+#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,gpu,gpu_only python/ray/tune/...
 
 - label: ":tv: :brain: RLlib: GPU Examples {A/B}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
