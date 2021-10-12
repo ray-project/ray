@@ -1078,7 +1078,7 @@ void ClusterTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {
   for (auto it = backlog_tracker_.begin(); it != backlog_tracker_.end();) {
     it->second.erase(worker_id);
     if (it->second.empty()) {
-      it = backlog_tracker_.erase(it);
+      backlog_tracker_.erase(it++);
     } else {
       ++it;
     }
