@@ -6,8 +6,9 @@ from pathlib import Path
 import yaml
 
 from ray._private.runtime_env.validation import (
-    parse_and_validate_working_dir, parse_and_validate_conda,
-    parse_and_validate_pip, parse_and_validate_env_vars, ParsedRuntimeEnv,
+    parse_and_validate_excludes, parse_and_validate_working_dir,
+    parse_and_validate_conda, parse_and_validate_pip,
+    parse_and_validate_env_vars, ParsedRuntimeEnv,
     override_task_or_actor_runtime_env)
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
@@ -81,6 +82,24 @@ class TestValidateWorkingDir:
                 {
                     "working_dir": "."
                 }, is_task_or_actor=True)
+
+
+class TestValidateExcludes:
+    def test_validate_excludes_invalid_types(self):
+        with pytest.raises(TypeError):
+            parse_and_validate_excludes(1)
+
+        with pytest.raises(TypeError):
+            parse_and_validate_excludes(True)
+
+        with pytest.raises(TypeError):
+            parse_and_validate_excludes("string")
+
+        with pytest.raises(TypeError):
+            parse_and_validate_excludes(["string", 1])
+
+    def test_validate_excludes_empty_list(self):
+        assert ParsedRuntimeEnv({"excludes": []}) == {}
 
 
 @pytest.mark.skipif(
