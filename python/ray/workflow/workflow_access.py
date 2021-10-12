@@ -120,7 +120,8 @@ class WorkflowManagementActor:
         # Cache step output. It is used for step output lookup of
         # "WorkflowRef". The dictionary entry is removed when the status of
         # a step is marked as finished (successful or failed).
-        self._step_output_cache: Dict[str, Dict[str, LatestWorkflowOutput]] = {}
+        self._step_output_cache: Dict[str, Dict[str,
+                                                LatestWorkflowOutput]] = {}
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
         self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
 
@@ -176,7 +177,8 @@ class WorkflowManagementActor:
         self._workflow_outputs[workflow_id] = latest_output
         logger.info(f"run_or_resume: {workflow_id}, {step_id},"
                     f"{result.persisted_output}")
-        self._step_output_cache.setdefault(workflow_id, {})[step_id] = latest_output
+        self._step_output_cache.setdefault(workflow_id,
+                                           {})[step_id] = latest_output
 
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.RUNNING))

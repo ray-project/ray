@@ -167,6 +167,7 @@ def test_workflow_cancel(workflow_start_regular, tmp_path):
     def a_step():
         with FileLock(tmp_file):
             return 1
+
     job_1 = inf_step.step().run_async("job_1")
     lock = FileLock(tmp_file)
 
@@ -185,7 +186,7 @@ def test_workflow_cancel(workflow_start_regular, tmp_path):
 
     workflow.cancel("job_1")
     assert 1 == ray.get(job_2)
-
+    del job_1
 
 
 if __name__ == "__main__":
