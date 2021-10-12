@@ -29,8 +29,8 @@ from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
-from ray._private.utils import (detect_fate_sharing_support,
-                                add_port_to_grpc_server)
+from ray._private.utils import detect_fate_sharing_support
+from ray._private.tls_utils import add_port_to_grpc_server
 
 # Import psutil after ray so the packaged version is used.
 import psutil

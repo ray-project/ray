@@ -11,7 +11,6 @@ import time
 import traceback
 
 from grpc.experimental import aio as aiogrpc
-from distutils.version import LooseVersion
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -84,7 +83,7 @@ class DashboardAgent(object):
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = ray._private.utils.add_port_to_grpc_server(
+        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
             self.server, f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
@@ -144,12 +143,8 @@ class DashboardAgent(object):
             sys.exit(-1)
 
         # Create a http session for all modules.
-        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
-        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
-            self.http_session = aiohttp.ClientSession(
-                loop=asyncio.get_event_loop())
-        else:
-            self.http_session = aiohttp.ClientSession()
+        self.http_session = aiohttp.ClientSession(
+            loop=asyncio.get_event_loop())
 
         # Start a grpc asyncio server.
         await self.server.start()
@@ -342,8 +337,8 @@ if __name__ == "__main__":
         # https://github.com/ray-project/ray/issues/14026.
         if sys.platform == "win32":
             logger.warning(
-                "The dashboard is currently disabled on windows. "
-                "See https://github.com/ray-project/ray/issues/14026 "
+                "The dashboard is currently disabled on windows."
+                "See https://github.com/ray-project/ray/issues/14026"
                 "for more details")
             while True:
                 time.sleep(999)
@@ -367,34 +362,14 @@ if __name__ == "__main__":
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())
     except Exception as e:
-        # All these env vars should be available because
-        # they are provided by the parent raylet.
-        restart_count = os.environ["RESTART_COUNT"]
-        max_restart_count = os.environ["MAX_RESTART_COUNT"]
-        raylet_pid = os.environ["RAY_RAYLET_PID"]
-        node_ip = args.node_ip_address
-        if restart_count >= max_restart_count:
-            # Agent is failed to be started many times.
-            # Push an error to all drivers, so that users can know the
-            # impact of the issue.
-            redis_client = ray._private.services.create_redis_client(
-                args.redis_address, password=args.redis_password)
-            traceback_str = ray._private.utils.format_error_message(
-                traceback.format_exc())
-            message = (
-                f"(ip={node_ip}) "
-                f"The agent on node {platform.uname()[1]} failed to "
-                f"be restarted {max_restart_count} "
-                "times. There are 3 possible problems if you see this error."
-                "\n  1. The dashboard might not display correct "
-                "information on this node."
-                "\n  2. Metrics on this node won't be reported."
-                "\n  3. runtime_env APIs won't work."
-                "\nCheck out the `dashboard_agent.log` to see the "
-                "detailed failure messages.")
-            ray._private.utils.push_error_to_driver_through_redis(
-                redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR,
-                message)
-            logger.error(message)
-        logger.exception(e)
-        exit(1)
+        # Something went wrong, so push an error to all drivers.
+        redis_client = ray._private.services.create_redis_client(
+            args.redis_address, password=args.redis_password)
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
+        message = ("The agent on node {} failed with the following "
+                   "error:\n{}".format(platform.uname()[1], traceback_str))
+        ray._private.utils.push_error_to_driver_through_redis(
+            redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
+        logger.exception(message)
+        raise e

@@ -488,3 +488,11 @@ RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
+
+/// Whether or not use TLS.
+RAY_CONFIG(int64_t, USE_TLS, 0)
+
+/// Location of TLS credentials
+RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
+RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
+RAY_CONFIG(std::string, TLS_CA_CERT, "")

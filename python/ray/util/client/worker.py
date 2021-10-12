@@ -362,8 +362,8 @@ class Worker:
                 logger.debug("Internal retry for get {}".format(to_get))
         if len(to_get) != len(res):
             raise Exception(
-                "Mismatched number of items in request ({}) and response ({})"
-                .format(len(to_get), len(res)))
+                "Mismatched number of items in request ({}) and response ({})".
+                format(len(to_get), len(res)))
         if isinstance(vals, ClientObjectRef):
             res = res[0]
         return res
