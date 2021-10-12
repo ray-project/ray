@@ -61,7 +61,7 @@ py_test(
 
 py_test(
     name = "test_backend",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_backend.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]
@@ -69,7 +69,7 @@ py_test(
 
 py_test(
     name = "test_gpu",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_gpu.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":sgd_v2_lib"]

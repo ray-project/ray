@@ -43,7 +43,7 @@ def prepare_dataset_shard(dataset_shard: tf.data.Dataset):
 
 def build_and_compile_model(config):
     model = tf.keras.Sequential([
-        tf.keras.Input(shape=(1, )),
+        tf.keras.layers.InputLayer(input_shape=(1, )),
         tf.keras.layers.Dense(10),
         tf.keras.layers.Dense(1)
     ])
