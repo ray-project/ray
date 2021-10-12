@@ -404,6 +404,12 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// fields used.
   void FillResourceUsage(rpc::ResourcesData &resources_data) override;
 
+  /// Populate a UpdateResourcesRequest. This is inteneded to update the
+  /// resource totals on a node when a custom resource is created or deleted
+  /// (e.g. during the placement group lifecycle).
+  ///
+  /// \param resource_map_filter When returning the resource map, the returned result will
+  /// only contain the keys in the filter. Note that only the key of the map is used.
   /// \return The total resource capacity of the node.
   ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
       const std::unordered_map<std::string, double> &resource_map_filter) const override;

@@ -79,7 +79,8 @@ class ClusterResourceSchedulerInterface {
   /// (e.g. during the placement group lifecycle).
   ///
   /// \param resource_map_filter When returning the resource map, the returned result will
-  /// only contain the keys in the filter.
+  /// only contain the keys in the filter. Note that only the key of the map is used.
+  /// \return The total resource capacity of the node.
   virtual ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
       const std::unordered_map<std::string, double> &resource_map_filter) const = 0;
 
