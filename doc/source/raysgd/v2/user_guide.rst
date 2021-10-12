@@ -633,6 +633,19 @@ Ray SGD provides native support for :ref:`Ray Datasets <datasets>` to support th
 
 To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Underneath the hood, Ray SGD will automatically shard the given dataset.
 
+:warning: If doing distributed training with Tensorflow and multiple workers, you need to disable the built-in Tensorflow autosharding.
+
+    .. code-block:: python
+
+        def train_func():
+            ...
+            tf_dataset = sgd.get_dataset_shard().to_tf()
+            options = tf.data.Options()
+            options.experimental_distribute.auto_shard_policy = \
+                tf.data.experimental.AutoShardPolicy.OFF
+            tf_dataset = tf_dataset_shard.with_options(options)
+
+
 **Simple Dataset Example**
 
 .. code-block:: python
