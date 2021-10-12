@@ -294,6 +294,10 @@ class Workflow:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
             metadata: metadata to add to the workflow.
+
+        Returns:
+            The running result.
+
         """
         return ray.get(self.run_async(workflow_id, metadata))
 
@@ -328,6 +332,10 @@ class Workflow:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
             metadata: metadata to add to the workflow.
+
+        Returns:
+           The running result as ray.ObjectRef.
+
         """
         # TODO(suquark): avoid cyclic importing
         from ray.workflow.execution import run
