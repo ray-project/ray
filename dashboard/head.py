@@ -6,7 +6,7 @@ import logging
 import ipaddress
 import threading
 
-from grpc.experimental import aio as aiogrpc
+from grpc import aio as aiogrpc
 from distutils.version import LooseVersion
 
 import ray._private.services
@@ -54,18 +54,26 @@ async def make_gcs_grpc_channel(redis_client):
 
 
 class GCSHealthCheckThread(threading.Thread):
-    def __init__(self, redis_client):
+    def __init__(self, redis_address, reddis_password):
         self.thread_local_loop = asyncio.new_event_loop()
         self.aiogrpc_gcs_channel = None
         self.gcs_heartbeat_info_stub = None
 
         async def on_startup():
-            aiogrpc.init_grpc_aio()
-            self.aiogrpc_gcs_channel = await (
-                make_gcs_grpc_channel(redis_client))
-            self.gcs_heartbeat_info_stub = (
-                gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
-                    self.aiogrpc_gcs_channel))
+            try:
+                aiogrpc.init_grpc_aio()
+                redis_client = await dashboard_utils.get_aioredis_client(
+                redis_address, redis_password,
+                dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+                self.aiogrpc_gcs_channel = await (
+                    make_gcs_grpc_channel(redis_client))
+                self.gcs_heartbeat_info_stub = (
+                    gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+                        self.aiogrpc_gcs_channel))
+            except Exception as e:
+                logger.error('exception in on_startup: "%s"' % str(e))
+                raise
 
         self.startup_task = self.thread_local_loop.create_task(on_startup())
 
@@ -184,7 +192,7 @@ class DashboardHead:
             self.aioredis_client)
 
         self.health_check_thread = GCSHealthCheckThread(
-            redis_client=self.aioredis_client)
+            redis_address, redis_password)
         self.health_check_thread.start()
 
         # Start a grpc asyncio server.
