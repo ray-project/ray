@@ -363,7 +363,7 @@ def package_exists(pkg_uri: str) -> bool:
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = resources_dir
-        self.s3 = boto3.client('s3')
+        self.s3 = boto3.client("s3")
         assert _internal_kv_initialized()
 
     def _get_local_path(self, pkg_uri: str) -> str:
@@ -410,7 +410,7 @@ class WorkingDirManager:
             # Download pacakge file from S3.
             bucket = urlparse(pkg_uri).netloc
             package_object = urlparse(pkg_uri).path.lstrip("/")
-            with open(pkg_file, 'wb') as f:
+            with open(pkg_file, "wb") as f:
                 self.s3.download_fileobj(bucket, package_object, f)
         else:
             raise NotImplementedError(f"Protocol {protocol} is not supported")
@@ -531,9 +531,7 @@ class WorkingDirManager:
             return
 
         working_dir = self.setup_local_working_dir(
-            runtime_env["uris"],
-            logger=logger
-        )
+            runtime_env["uris"], logger=logger)
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is

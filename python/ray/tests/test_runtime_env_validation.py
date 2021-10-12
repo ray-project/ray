@@ -84,7 +84,8 @@ class TestValidateWorkingDir:
 
     def test_validate_s3_working_dir(self):
         with pytest.raises(ValueError, match="only supports zip file in s3"):
-            parse_and_validate_working_dir("s3://bucket/file", is_task_or_actor=False)
+            parse_and_validate_working_dir(
+                "s3://bucket/file", is_task_or_actor=False)
 
 
 @pytest.mark.skipif(
