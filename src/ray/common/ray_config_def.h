@@ -183,8 +183,7 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
-/// Timeout, in milliseconds, to wait before retrying a failed pull in the
-/// ObjectManager.
+/// The object manager's global timer interval in milliseconds.
 RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
@@ -307,6 +306,9 @@ RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
+/// Maximum number of pending lease requests per scheduling category
+RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
+
 /// Interval to restart dashboard agent after the process exit.
 RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 
@@ -323,10 +325,6 @@ RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000);
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
-
-/// If true, the worker's queue backlog size will be propagated to the heartbeat batch
-/// data.
-RAY_CONFIG(bool, report_worker_backlog, true)
 
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
@@ -477,7 +475,7 @@ RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
 RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 
 /// Whether to use log reporter in event framework
-RAY_CONFIG(bool, event_log_reporter_enabled, false)
+RAY_CONFIG(bool, event_log_reporter_enabled, true)
 
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, actor_register_async, true)

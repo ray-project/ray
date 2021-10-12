@@ -48,21 +48,13 @@ class MockWorkerPool : public WorkerPoolInterface {
   void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
                  const std::string &allocated_instances_serialized_json) {
     num_pops++;
-    const WorkerCacheKey env = {task_spec.JobId(), task_spec.SerializedRuntimeEnv(), {}};
-    callbacks[env.Hash()].push_back(callback);
+    const WorkerCacheKey env = {task_spec.SerializedRuntimeEnv(), {}};
+    const int runtime_env_hash = env.IntHash();
+    callbacks[runtime_env_hash].push_back(callback);
   }
 
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     workers.push_front(worker);
-  }
-
-  void TriggerPopWorkerFailedCallbacks(PopWorkerStatus status) {
-    for (auto &list : callbacks) {
-      for (auto &callback : list.second) {
-        callback(nullptr, status);
-      }
-    }
-    callbacks.clear();
   }
 
   void TriggerCallbacks() {
@@ -94,7 +86,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     }
   }
 
-  size_t CallbackSize(RuntimeEnvHash runtime_env_hash) {
+  size_t CallbackSize(int runtime_env_hash) {
     auto cb_it = callbacks.find(runtime_env_hash);
     if (cb_it != callbacks.end()) {
       auto &list = cb_it->second;
@@ -104,7 +96,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   std::list<std::shared_ptr<WorkerInterface>> workers;
-  std::unordered_map<RuntimeEnvHash, std::list<PopWorkerCallback>> callbacks;
+  std::unordered_map<int, std::list<PopWorkerCallback>> callbacks;
   int num_pops;
 };
 
@@ -128,7 +120,7 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
                    const std::vector<std::string> &runtime_env_uris = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
-  JobID job_id = JobID::Nil();
+  JobID job_id = RandomJobId();
   rpc::Address address;
   spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
@@ -254,7 +246,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
     ASSERT_TRUE(task_manager_.executing_task_args_.empty());
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
-    ASSERT_EQ(task_manager_.num_tasks_waiting_for_dispatch_, 0);
     ASSERT_EQ(task_manager_.pinned_task_arguments_bytes_, 0);
     ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
   }
@@ -388,9 +379,8 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  const WorkerCacheKey env_A = {
-      task_A.GetTaskSpecification().JobId(), serialized_runtime_env_A, {}};
-  const auto runtime_env_hash_A = env_A.Hash();
+  const WorkerCacheKey env_A = {serialized_runtime_env_A, {}};
+  const int runtime_env_hash_A = env_A.IntHash();
   std::shared_ptr<MockWorker> worker_A =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker_A));
@@ -881,7 +871,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   /*
     Test basic scheduler functionality:
-    1. Queue and attempt to schedule/dispatch atest with no workers available
+    1. Queue and attempt to schedule/dispatch a test with no workers available
     2. A worker becomes available, dispatch again.
    */
   rpc::RequestWorkerLeaseReply reply;
@@ -894,18 +884,21 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 
   std::vector<TaskID> to_cancel;
 
-  // Don't add these fist 2 tasks to `to_cancel`.
+  const WorkerID worker_id_submitting_first_task = WorkerID::FromRandom();
+  // Don't add the fist task to `to_cancel`.
   for (int i = 0; i < 1; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
-    task.SetBacklogSize(10 - i);
     task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    task_manager_.SetWorkerBacklog(task.GetTaskSpecification().GetSchedulingClass(),
+                                   worker_id_submitting_first_task, 10 - i);
     pool_.TriggerCallbacks();
   }
 
   for (int i = 1; i < 10; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
-    task.SetBacklogSize(10 - i);
     task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    task_manager_.SetWorkerBacklog(task.GetTaskSpecification().GetSchedulingClass(),
+                                   WorkerID::FromRandom(), 10 - i);
     pool_.TriggerCallbacks();
     to_cancel.push_back(task.GetTaskSpecification().TaskId());
   }
@@ -931,6 +924,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(worker);
   task_manager_.ScheduleAndDispatchTasks();
+  task_manager_.ClearWorkerBacklog(worker_id_submitting_first_task);
   pool_.TriggerCallbacks();
 
   {
@@ -1546,12 +1540,10 @@ TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
   AssertNoLeaks();
 }
 
-TEST_F(ClusterTaskManagerTest, PopWorkerFailed) {
-  // Create and queue one task.
-  std::string serialized_runtime_env = "mock_env";
-  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{},
-                            serialized_runtime_env);
-  auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
+// Regression test for https://github.com/ray-project/ray/issues/16935:
+// When a task requires 1 CPU and is infeasible because head node has 0 CPU,
+// make sure the task's resource demand is reported.
+TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
@@ -1560,46 +1552,6 @@ TEST_F(ClusterTaskManagerTest, PopWorkerFailed) {
     *callback_occurred_ptr = true;
   };
 
-  task_manager_.QueueAndScheduleTask(task, &reply, callback);
-
-  // Make sure callback doesn't occurred.
-  ASSERT_FALSE(callback_occurred);
-  ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.workers.size(), 0);
-  // Popworker was called once.
-  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 1);
-  // Try to schedule and dispatch tasks.
-  task_manager_.ScheduleAndDispatchTasks();
-  // Popworker has been called once, don't call it repeatedly.
-  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 1);
-
-  // Worker fails to start.
-  pool_.TriggerPopWorkerFailedCallbacks(PopWorkerStatus::WorkerTimedOut);
-  ASSERT_FALSE(callback_occurred);
-  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 0);
-  // Try to schedule and dispatch tasks.
-  task_manager_.ScheduleAndDispatchTasks();
-  // Task is retried.
-  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 1);
-
-  // Now Push worker succeeds.
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
-  pool_.TriggerCallbacks();
-  // Make sure callback has occurred.
-  ASSERT_TRUE(callback_occurred);
-  RayTask finished_task;
-  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task.GetTaskSpecification().TaskId());
-  AssertNoLeaks();
-}
-
-// Regression test for https://github.com/ray-project/ray/issues/16935:
-// When a task requires 1 CPU and is infeasible because head node has 0 CPU,
-// make sure the task's resource demand is reported.
-TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
   constexpr int num_cases = 5;
   // Create 5 tasks with different CPU requests.
   const std::array<int, num_cases> cpu_request = {1, 2, 1, 3, 1};
@@ -1610,10 +1562,6 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
 
   for (int i = 0; i < num_cases; ++i) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, cpu_request[i]}});
-    rpc::RequestWorkerLeaseReply reply;
-    bool callback_occurred = false;
-    auto callback = [&](const Status &, const std::function<void()> &,
-                        const std::function<void()> &) { callback_occurred = true; };
     task_manager_.QueueAndScheduleTask(task, &reply, callback);
     pool_.TriggerCallbacks();
 

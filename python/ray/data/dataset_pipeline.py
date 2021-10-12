@@ -1,7 +1,7 @@
 import functools
 import time
 from typing import Any, Callable, List, Iterator, Iterable, Generic, Union, \
-    TYPE_CHECKING
+    Optional, TYPE_CHECKING
 
 import ray
 from ray.data.dataset import Dataset, T, U, BatchType
@@ -13,12 +13,14 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
-# Operations that can be naively applied per dataset in the pipeline.
+# Operations that can be naively applied per dataset row in the pipeline.
 PER_DATASET_OPS = [
-    "map", "map_batches", "flat_map", "filter", "repartition",
-    "random_shuffle", "sort", "write_json", "write_csv", "write_parquet",
-    "write_datasource"
+    "map", "map_batches", "flat_map", "filter", "write_json", "write_csv",
+    "write_parquet", "write_datasource"
 ]
+
+# Operations that apply to each dataset holistically in the pipeline.
+HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
 
 # Similar to above but we should force evaluation immediately.
 PER_DATASET_OUTPUT_OPS = [
@@ -240,31 +242,123 @@ class DatasetPipeline(Generic[T]):
             for idx in range(n)
         ]
 
-    def window(self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
+    def rewindow(self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
         """Change the windowing (blocks per dataset) of this pipeline.
 
         Changes the windowing of this pipeline to the specified size. For
         example, if the current pipeline has two blocks per dataset, and
-        `.window(4)` is requested, adjacent datasets will be merged until each
-        dataset is 4 blocks. If `.window(1)` was requested the datasets will
-        be split into smaller windows.
+        `.rewindow(blocks_per_window=4)` is requested, adjacent datasets will
+        be merged until each dataset is 4 blocks. If
+        `.rewindow(blocks_per_window)` was requested the datasets will be
+        split into smaller windows.
 
         Args:
             blocks_per_window: The new target blocks per window.
         """
-        raise NotImplementedError
+
+        class WindowIterator:
+            def __init__(self, original_iter):
+                self._original_iter = original_iter
+                self._buffer: Optional[Dataset[T]] = None
+
+            def __next__(self) -> Dataset[T]:
+                try:
+                    # Merge windows until we meet the requested window size.
+                    if self._buffer is None:
+                        self._buffer = next(self._original_iter)
+                    while self._buffer.num_blocks() < blocks_per_window:
+                        self._buffer = self._buffer.union(
+                            next(self._original_iter))
+                    # Slice off the left-most chunk and return it.
+                    res, self._buffer = self._buffer._divide(blocks_per_window)
+                    assert res.num_blocks() <= blocks_per_window, res
+                    return lambda: res
+                except StopIteration:
+                    # Return the left-over data as a single window.
+                    if self._buffer and self._buffer.num_blocks() > 0:
+                        res = self._buffer
+                        assert res.num_blocks() <= blocks_per_window, res
+                        self._buffer = None
+                        return lambda: res
+                    else:
+                        raise
+
+        class WindowIterable:
+            def __init__(self, original_iter):
+                self._original_iter = original_iter
+
+            def __iter__(self):
+                return WindowIterator(self._original_iter)
+
+        return DatasetPipeline(
+            WindowIterable(self.iter_datasets()), length=None)
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
 
         This operation is only allowed for pipelines of a finite length. An
-        error will be raised for pipelines of infinite or unknown length.
+        error will be raised for pipelines of infinite length.
+
+        Transformations prior to the call to ``repeat()`` are evaluated once.
+        Transformations done on the repeated pipeline are evaluated on each
+        loop of the pipeline over the base pipeline.
 
         Args:
             times: The number of times to loop over this pipeline, or None
                 to repeat indefinitely.
         """
-        raise NotImplementedError
+
+        if self._length == float("inf"):
+            raise ValueError("Cannot repeat a pipeline of infinite length.")
+
+        class RepeatIterator:
+            def __init__(self, original_iter):
+                self._original_iter = original_iter
+                # Holds results to repeat.
+                self._results = []
+                # Incrementing cursor over results.
+                self._i = 0
+                # This is calculated later.
+                self._max_i = None
+
+            def __next__(self) -> Dataset[T]:
+                # Still going through the original pipeline.
+                if self._original_iter:
+                    try:
+                        res = next(self._original_iter)
+                        self._results.append(res)
+                        return lambda: res
+                    except StopIteration:
+                        self._original_iter = None
+                        # Calculate the cursor limit.
+                        if times:
+                            self._max_i = len(self._results) * (times - 1)
+                        else:
+                            self._max_i = float("inf")
+                # Going through a repeat of the pipeline.
+                if self._i < self._max_i:
+                    res = self._results[self._i % len(self._results)]
+                    self._i += 1
+                    return lambda: res
+                else:
+                    raise StopIteration
+
+        class RepeatIterable:
+            def __init__(self, original_iter):
+                self._original_iter = original_iter
+
+            def __iter__(self):
+                return RepeatIterator(self._original_iter)
+
+        if not times:
+            length = float("inf")
+        elif times and self._length:
+            length = times * self._length
+        else:
+            length = None
+
+        return DatasetPipeline(
+            RepeatIterable(self.iter_datasets()), length=length)
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
@@ -313,6 +407,19 @@ class DatasetPipeline(Generic[T]):
             total += elem
         return total
 
+    def show_windows(self, limit_per_dataset: int = 10) -> None:
+        """Print up to the given number of records from each window/dataset.
+
+        This is helpful as a debugging tool for understanding the structure of
+        dataset pipelines.
+
+        Args:
+            limit_per_dataset: Rows to print per window/dataset.
+        """
+        for i, ds in enumerate(self.iter_datasets()):
+            print("=== Window {} ===".format(i))
+            ds.show(limit_per_dataset)
+
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
         """Iterate over the output datasets of this pipeline.
@@ -326,9 +433,9 @@ class DatasetPipeline(Generic[T]):
         return PipelineExecutor(self)
 
     @DeveloperAPI
-    def foreach_dataset(self, fn: Callable[[Dataset[T]], Dataset[U]]
-                        ) -> "DatasetPipeline[U]":
-        """Apply a transform to each dataset in this pipeline.
+    def foreach_window(self, fn: Callable[[Dataset[T]], Dataset[U]]
+                       ) -> "DatasetPipeline[U]":
+        """Apply a transform to each dataset/window in this pipeline.
 
         Args:
             fn: The function to transform each dataset with.
@@ -344,6 +451,10 @@ class DatasetPipeline(Generic[T]):
             self._length,
             self._progress_bars,
             _executed=self._executed)
+
+    def foreach_dataset(self, *a, **kw) -> None:
+        raise DeprecationWarning(
+            "`foreach_dataset` has been renamed to `foreach_window`.")
 
     @staticmethod
     def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]],
@@ -361,7 +472,7 @@ class DatasetPipeline(Generic[T]):
         return DatasetPipeline(iterable, length=length)
 
     def __repr__(self) -> str:
-        return "DatasetPipeline(length={}, num_stages={})".format(
+        return "DatasetPipeline(num_windows={}, num_stages={})".format(
             self._length, 1 + len(self._stages))
 
     def __str__(self) -> str:
@@ -381,7 +492,7 @@ for method in PER_DATASET_OPS:
 
         @functools.wraps(delegate)
         def impl(self, *args, **kwargs):
-            return self.foreach_dataset(
+            return self.foreach_window(
                 lambda ds: getattr(ds, method)(*args, **kwargs))
 
         if impl.__annotations__.get("return"):
@@ -391,6 +502,33 @@ for method in PER_DATASET_OPS:
         return impl
 
     setattr(DatasetPipeline, method, make_impl(method))
+
+for method in HOLISTIC_PER_DATASET_OPS:
+
+    def make_impl(method):
+        delegate = getattr(Dataset, method)
+
+        @functools.wraps(delegate)
+        def impl(self, *args, **kwargs):
+            return self.foreach_window(
+                lambda ds: getattr(ds, method)(*args, **kwargs))
+
+        if impl.__annotations__.get("return"):
+            impl.__annotations__["return"] = impl.__annotations__[
+                "return"].replace("Dataset", "DatasetPipeline")
+
+        return impl
+
+    def deprecation_warning(method: str):
+        def impl(*a, **kw):
+            raise DeprecationWarning(
+                "`{}` has been renamed to `{}_each_window`.".format(
+                    method, method))
+
+        return impl
+
+    setattr(DatasetPipeline, method, deprecation_warning(method))
+    setattr(DatasetPipeline, method + "_each_window", make_impl(method))
 
 for method in PER_DATASET_OUTPUT_OPS:
 

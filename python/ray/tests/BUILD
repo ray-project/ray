@@ -101,6 +101,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
@@ -297,6 +298,14 @@ py_test(
     name = "test_pydantic_serialization",
     size = "small",
     srcs = SRCS + ["test_pydantic_serialization.py", "pydantic_module.py"],
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_runtime_env_validation",
+    size = "small",
+    srcs = SRCS + ["test_runtime_env_validation.py"],
     tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )
