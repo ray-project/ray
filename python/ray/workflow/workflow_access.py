@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Tuple, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from dataclasses import dataclass
 import ray
