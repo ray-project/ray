@@ -27,7 +27,7 @@ available_node_types:
             CPU: 1
             object_store_memory: 1000000000
         node_config: {}
-        min_workers: 2
+        min_workers: 0
         max_workers: 4
     ray.worker.gpu:
         resources:

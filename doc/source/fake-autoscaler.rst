@@ -18,6 +18,7 @@ Instructions:
 
 .. code-block:: shell
 
+    $ ray stop --force
     $ RAY_FAKE_CLUSTER=1 ray start \
         --autoscaling-config=./python/ray/autoscaler/_private/fake_multi_node/example.yaml \
         --head --block
