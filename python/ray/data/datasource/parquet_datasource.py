@@ -7,6 +7,7 @@ import numpy as np
 if TYPE_CHECKING:
     import pyarrow
 
+from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
@@ -68,7 +69,7 @@ class ParquetDatasource(FileBasedDatasource):
             schema = pa.schema([schema.field(column) for column in columns],
                                schema.metadata)
 
-        def read_pieces(serialized_pieces: List[str]):
+        def read_pieces(serialized_pieces: List[str]) -> pa.Table:
             # Implicitly trigger S3 subsystem initialization by importing
             # pyarrow.fs.
             import pyarrow.fs  # noqa: F401
@@ -138,7 +139,7 @@ class ParquetDatasource(FileBasedDatasource):
             if len(piece_data) == 0:
                 continue
             pieces, serialized_pieces, metadata = zip(*piece_data)
-            block_metadata = _get_block_metadata(
+            block_metadata = _build_block_metadata(
                 pieces, metadata, inferred_schema)
             read_tasks.append(
                 ReadTask(
@@ -153,12 +154,14 @@ class ParquetDatasource(FileBasedDatasource):
 
         pq.write_table(block.to_arrow(), f, **writer_args)
 
-    def _file_format(self):
+    def _file_format(self) -> str:
         return "parquet"
 
 
-def _fetch_metadata_remotely(pieces: List[bytes]):
-    remote_fetch_metadata = cached_remote_fn(_fetch_metadata_wrapper)
+def _fetch_metadata_remotely(pieces: List[bytes]) -> List[
+        ObjectRef["pyarrow.parquet.FileMetaData"]]:
+    remote_fetch_metadata = cached_remote_fn(
+        _fetch_metadata_serialization_wrapper)
     metas = []
     parallelism = min(len(pieces) // PIECES_PER_META_FETCH, 100)
     meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
@@ -170,7 +173,8 @@ def _fetch_metadata_remotely(pieces: List[bytes]):
     return list(itertools.chain.from_iterable(metas))
 
 
-def _fetch_metadata_wrapper(pieces: List[bytes]):
+def _fetch_metadata_serialization_wrapper(pieces: List[bytes]) -> List[
+        "pyarrow.parquet.FileMetaData"]:
     # Implicitly trigger S3 subsystem initialization by importing
     # pyarrow.fs.
     import pyarrow.fs  # noqa: F401
@@ -184,7 +188,9 @@ def _fetch_metadata_wrapper(pieces: List[bytes]):
     return _fetch_metadata(pieces)
 
 
-def _fetch_metadata(pieces: List["pyarrow.dataset.ParquetFileFragment"]):
+def _fetch_metadata(
+        pieces: List["pyarrow.dataset.ParquetFileFragment"]) -> List[
+            "pyarrow.parquet.FileMetaData"]:
     piece_metadata = []
     for p in pieces:
         try:
@@ -194,9 +200,10 @@ def _fetch_metadata(pieces: List["pyarrow.dataset.ParquetFileFragment"]):
     return piece_metadata
 
 
-def _get_block_metadata(pieces: List["pyarrow.dataset.ParquetFileFragment"],
-                        metadata: List["pyarrow.parquet.FileMetaData"],
-                        schema: Optional[Union[type, "pyarrow.lib.Schema"]]):
+def _build_block_metadata(
+        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        metadata: List["pyarrow.parquet.FileMetaData"],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]]) -> BlockMetadata:
     input_files = [p.path for p in pieces]
     if len(metadata) == len(pieces):
         # Piece metadata was available, construct a normal
