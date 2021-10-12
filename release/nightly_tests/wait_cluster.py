@@ -27,12 +27,14 @@ start = time.time()
 next_feedback = start
 max_time = start + args.max_time_s
 
+
 def num_alive_nodes():
     n = 0
     for node in ray.nodes():
         if node.get("Alive", False):
             n += 1
     return n
+
 
 while not curr_nodes >= args.num_nodes:
     now = time.time()

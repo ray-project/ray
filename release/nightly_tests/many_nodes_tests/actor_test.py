@@ -12,7 +12,9 @@ def test_max_actors_launch(cpus_per_actor, total_actors):
             pass
 
     print("Start launch actors")
-    actors = [Actor.options(max_restarts=-1).remote() for _ in range(total_actors)]
+    actors = [
+        Actor.options(max_restarts=-1).remote() for _ in range(total_actors)
+    ]
     return actors
 
 
