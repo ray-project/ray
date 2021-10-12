@@ -79,6 +79,9 @@ class NodeManagerWorkerClient
   /// Request a worker lease.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
 
+  /// Report task backlog information
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReportWorkerBacklog, grpc_client_, )
+
   /// Return a worker lease.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
 

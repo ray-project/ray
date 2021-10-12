@@ -125,7 +125,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     if (!ConfigInternal::Instance().job_id.empty()) {
       options.job_id = JobID::FromHex(ConfigInternal::Instance().job_id);
     } else {
-      /// TODO(Guyang Song): Get next job id from core worker by GCS client.
+      /// TODO(SongGuyang): Get next job id from core worker by GCS client.
       /// Random a number to avoid repeated job ids.
       /// The repeated job ids will lead to task hang when driver connects to a existing
       /// cluster more than once.

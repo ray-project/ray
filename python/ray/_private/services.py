@@ -21,6 +21,7 @@ from typing import Optional
 import ray
 import ray.ray_constants as ray_constants
 import redis
+from ray.core.generated.common_pb2 import Language
 
 # Import psutil and colorama after ray so the packaged version is used.
 import colorama
@@ -1360,7 +1361,8 @@ def start_raylet(redis_address,
                  start_initial_python_workers_for_first_job=False,
                  max_bytes=0,
                  backup_count=0,
-                 ray_debugger_external=False):
+                 ray_debugger_external=False,
+                 env_updates=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1373,8 +1375,8 @@ def start_raylet(redis_address,
              to.
         worker_path (str): The path of the Python file that new worker
             processes will execute.
-        setup_worker_path (str): The path of the Python file that will run
-            worker_setup_hook to set up the environment for the worker process.
+        setup_worker_path (str): The path of the Python file that will set up
+            the environment for the worker process.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1406,6 +1408,8 @@ def start_raylet(redis_address,
             RotatingFileHandler's backupCount.
         ray_debugger_external (bool): True if the Ray debugger should be made
             available externally to this node.
+        env_updates (dict): Environment variable overrides.
+
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1450,6 +1454,7 @@ def start_raylet(redis_address,
             redis_password,
             session_dir,
             node_ip_address,
+            setup_worker_path,
         )
     else:
         java_worker_command = []
@@ -1580,7 +1585,8 @@ def start_raylet(redis_address,
         use_perftools_profiler=("RAYLET_PERFTOOLS_PATH" in os.environ),
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+        env_updates=env_updates)
 
     return process_info
 
@@ -1604,6 +1610,7 @@ def build_java_worker_command(
         redis_password,
         session_dir,
         node_ip_address,
+        setup_worker_path,
 ):
     """This method assembles the command used to start a Java worker.
 
@@ -1615,6 +1622,8 @@ def build_java_worker_command(
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
         node_ip_address (str): The ip address for this node.
+        setup_worker_path (str): The path of the Python file that will set up
+            the environment for the worker process.
     Returns:
         The command string for starting Java worker.
     """
@@ -1639,7 +1648,9 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
+    command = [sys.executable] + [setup_worker_path] + ["java"] + [
+        "-D{}={}".format(*pair) for pair in pairs
+    ]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
@@ -1921,9 +1932,14 @@ def start_ray_client_server(
                                      ray_constants.SETUP_WORKER_FILENAME)
 
     command = [
-        sys.executable, setup_worker_path, "-m", "ray.util.client.server",
-        f"--redis-address={redis_address}", f"--port={ray_client_server_port}",
-        f"--mode={server_type}"
+        sys.executable,
+        setup_worker_path,
+        "-m",
+        "ray.util.client.server",
+        f"--redis-address={redis_address}",
+        f"--port={ray_client_server_port}",
+        f"--mode={server_type}",
+        f"--language={Language.Name(Language.PYTHON)}",
     ]
     if redis_password:
         command.append(f"--redis-password={redis_password}")
