@@ -345,6 +345,13 @@ def test_remove_placement_group(ray_start_cluster, connect_to_client):
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
+    @ray.remote
+    def warmup():
+        pass
+
+    # warm up the cluster.
+    ray.get([warmup.remote() for _ in range(4)])
+
     with connect_to_client_or_not(connect_to_client):
         # First try to remove a placement group that doesn't
         # exist. This should not do anything.
