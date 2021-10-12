@@ -4,6 +4,7 @@ import logging
 import os
 
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray.core.generated.common_pb2 import Language
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,9 @@ parser.add_argument(
     "--allocated-instances-serialized-json",
     type=str,
     help="the worker allocated resource")
+
+parser.add_argument(
+    "--language", type=str, help="the language type of the worker")
 
 
 def get_tmp_dir(remaining_args):
@@ -117,5 +121,5 @@ if __name__ == "__main__":
         # probably not even go through this codepath.
         runtime_env_context = RuntimeEnvContext.deserialize(
             args.serialized_runtime_env_context or "{}")
-
-        runtime_env_context.exec_worker(remaining_args)
+        runtime_env_context.exec_worker(remaining_args,
+                                        Language.Value(args.language))
