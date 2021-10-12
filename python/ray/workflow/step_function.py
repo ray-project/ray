@@ -1,4 +1,5 @@
 import functools
+import json
 from typing import Callable, Dict, Any
 
 from ray._private import signature
@@ -22,8 +23,15 @@ class WorkflowStepFunction:
             raise ValueError("max_retries should be greater or equal to 1.")
         if ray_options is not None and not isinstance(ray_options, dict):
             raise ValueError("ray_options must be a dict.")
-        if metadata is not None and not isinstance(metadata, dict):
-            raise ValueError("metadata must be a dict.")
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                raise ValueError("metadata must be a dict.")
+            for k, v in metadata.items():
+                try:
+                    json.dumps(v)
+                except TypeError as e:
+                    raise ValueError("metadata values must be JSON serializable, "
+                                     "however '{}' has a value whose {}.".format(k, e))
 
         self._func = func
         self._max_retries = max_retries
