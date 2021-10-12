@@ -54,7 +54,7 @@ Instructions:
 Using ``ray.cluster_utils.AutoscalingCluster``
 ----------------------------------------------
 
-To programmatically create an autoscaling cluster and connect to it, you can use `cluster_utils.AutoscalingCluster <https://github.com/ray-project/ray/blob/master/python/ray/cluster_utils.py>`__. Here's an example of a basic autoscaling test that launches tasks triggering autoscaling:
+To programmatically create a fake multi-node autoscaling cluster and connect to it, you can use `cluster_utils.AutoscalingCluster <https://github.com/ray-project/ray/blob/master/python/ray/cluster_utils.py>`__. Here's an example of a basic autoscaling test that launches tasks triggering autoscaling:
 
 .. literalinclude:: /../../python/ray/tests/test_autoscaler_fake_multinode.py
    :language: python
