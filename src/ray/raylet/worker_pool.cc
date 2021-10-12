@@ -517,7 +517,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
                                   StartupToken worker_startup_token,
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
-
   auto &state = GetStateForLanguage(worker->GetLanguage());
   if (state.starting_worker_processes.count(worker_startup_token) == 0) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker shim process:"

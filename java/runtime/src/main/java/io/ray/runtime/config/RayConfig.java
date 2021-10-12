@@ -160,14 +160,6 @@ public class RayConfig {
           "Worker started by raylet should accept the node manager port from raylet.");
     }
 
-    if (config.hasPath("ray.raylet.startup-token")) {
-      startupToken = config.getInt("ray.raylet.startup-token");
-    } else {
-      Preconditions.checkState(
-          workerMode != WorkerType.WORKER,
-          "Worker started by raylet should accept the startup token from raylet.");
-    }
-
     // Job code search path.
     String codeSearchPathString = null;
     if (config.hasPath("ray.job.code-search-path")) {
@@ -179,6 +171,8 @@ public class RayConfig {
     codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
 
     numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
+
+    startupToken = config.getInt("ray.raylet.startup-token");
 
     {
       loggers = new ArrayList<>();
@@ -224,7 +218,7 @@ public class RayConfig {
   }
 
   public int getStartupToken() {
-    return nodeManagerPort;
+    return startupToken;
   }
 
   public void setSessionDir(String sessionDir) {

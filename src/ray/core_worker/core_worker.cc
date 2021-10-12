@@ -119,8 +119,6 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
           options.worker_type == WorkerType::DRIVER
               ? ComputeDriverIdFromJob(options_.job_id)
               : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
-  // Ensure that either the startup token is >= 0.
-  RAY_CHECK(options.startup_token != -1)<<"Startup token of a worker cannot be -1.";
   if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
