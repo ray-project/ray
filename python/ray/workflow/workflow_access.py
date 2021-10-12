@@ -96,8 +96,11 @@ def _resolve_workflow_output(workflow_id: Optional[str],
 
 def cancel_job(objs: List[ray.ObjectRef]):
     for obj in objs:
-        print("Cancel", obj)
-        ray.cancel(obj)
+        print("Cancel Task", obj)
+        try:
+            ray.cancel(obj, force=True, recursive=True)
+        except:
+            print("ERROR")
 
 
 @dataclass

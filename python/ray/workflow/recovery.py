@@ -119,6 +119,7 @@ def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
     # The current output will always be empty for normal workflow
     # For virtual actor, if it's not empty, it means the previous job is
     # running. This is a really bad one.
+    print("RUNNING!")
     for ref in current_output:
         try:
             while isinstance(ref, ray.ObjectRef):
@@ -166,7 +167,7 @@ def resume_workflow_step(
 
     persisted_output, volatile_output = _resume_workflow_step_executor.remote(
         workflow_id, step_id, store_url, current_output)
-    print("OUTPUTS: ", persisted_output, volatile_output)
+    print("DBG", persisted_output, volatile_output, current_output)
     return WorkflowExecutionResult(persisted_output, volatile_output)
 
 

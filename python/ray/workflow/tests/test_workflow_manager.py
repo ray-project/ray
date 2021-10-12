@@ -165,6 +165,7 @@ def test_workflow_cancel(workflow_start_regular, tmp_path):
 
     @workflow.step
     def a_step():
+        print("A STEP")
         with FileLock(tmp_file):
             return 1
 
@@ -181,10 +182,12 @@ def test_workflow_cancel(workflow_start_regular, tmp_path):
             break
     job_2 = a_step.step().run_async("job_2")
 
-    assert workflow.get_status("job_1") == "RUNNING"
-    assert workflow.get_status("job_2") == "RUNNING"
+    assert workflow.get_status("job_1") == workflow.RUNNING
+    assert workflow.get_status("job_2") == workflow.RUNNING
 
     workflow.cancel("job_1")
+    assert workflow.get_status("job_1") == workflow.CANCELED
+    print("CANCE")
     assert 1 == ray.get(job_2)
     del job_1
 
