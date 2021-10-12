@@ -85,6 +85,24 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
 
+def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
+    from ray.util.sgd.v2.examples.train_linear_dataset_example import \
+        train_linear
+
+    results = train_linear(num_workers=2, use_gpu=True)
+    for result in results:
+        assert result[-1]["loss"] < result[0]["loss"]
+
+
+def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
+    from ray.util.sgd.v2.examples.tensorflow_linear_dataset_example import \
+        train_tensorflow_linear
+
+    results = train_tensorflow_linear(num_workers=2, use_gpu=True)
+    for result in results:
+        assert result[-1]["loss"] < result[0]["loss"]
+
+
 if __name__ == "__main__":
     import pytest
     import sys
