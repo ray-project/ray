@@ -23,6 +23,8 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.parquet_datasource import (
+    PARALLELIZE_META_FETCH_THRESHOLD)
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
 import ray.data.tests.util as util
@@ -1291,6 +1293,41 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     assert ds._blocks._num_computed() == 2
     np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [(None, lazy_fixture("local_path")),
+     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+     (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+     (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space"))])
+def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs,
+                                          data_path):
+    setup_data_path = _unwrap_protocol(data_path)
+    num_dfs = PARALLELIZE_META_FETCH_THRESHOLD + 1
+    for idx in range(num_dfs):
+        df = pd.DataFrame({"one": list(range(3 * idx, 3 * (idx + 1)))})
+        table = pa.Table.from_pandas(df)
+        path = os.path.join(setup_data_path, f"test_{idx}.parquet")
+        pq.write_table(table, path, filesystem=fs)
+
+    parallelism = 8
+    ds = ray.data.read_parquet(
+        data_path, filesystem=fs, parallelism=parallelism)
+
+    # Test metadata-only parquet ops.
+    assert len(ds._blocks._blocks) == 1
+    assert ds.count() == num_dfs * 3
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == num_dfs, input_files
+    assert len(ds._blocks._blocks) == 1
+
+    # Forces a data read.
+    values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
+    assert len(ds._blocks._blocks) == parallelism
+    assert sorted(values) == list(range(3 * num_dfs))
 
 
 @pytest.mark.parametrize("fs,data_path,endpoint_url", [
