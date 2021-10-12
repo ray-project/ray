@@ -139,8 +139,8 @@ class ParquetDatasource(FileBasedDatasource):
             if len(piece_data) == 0:
                 continue
             pieces, serialized_pieces, metadata = zip(*piece_data)
-            block_metadata = _build_block_metadata(
-                pieces, metadata, inferred_schema)
+            block_metadata = _build_block_metadata(pieces, metadata,
+                                                   inferred_schema)
             read_tasks.append(
                 ReadTask(
                     lambda pieces_=serialized_pieces: read_pieces(pieces_),
@@ -158,8 +158,9 @@ class ParquetDatasource(FileBasedDatasource):
         return "parquet"
 
 
-def _fetch_metadata_remotely(pieces: List[bytes]) -> List[
-        ObjectRef["pyarrow.parquet.FileMetaData"]]:
+def _fetch_metadata_remotely(
+        pieces: List[bytes]
+) -> List[ObjectRef["pyarrow.parquet.FileMetaData"]]:
     remote_fetch_metadata = cached_remote_fn(
         _fetch_metadata_serialization_wrapper)
     metas = []
@@ -173,8 +174,8 @@ def _fetch_metadata_remotely(pieces: List[bytes]) -> List[
     return list(itertools.chain.from_iterable(metas))
 
 
-def _fetch_metadata_serialization_wrapper(pieces: List[bytes]) -> List[
-        "pyarrow.parquet.FileMetaData"]:
+def _fetch_metadata_serialization_wrapper(
+        pieces: List[bytes]) -> List["pyarrow.parquet.FileMetaData"]:
     # Implicitly trigger S3 subsystem initialization by importing
     # pyarrow.fs.
     import pyarrow.fs  # noqa: F401
@@ -188,9 +189,8 @@ def _fetch_metadata_serialization_wrapper(pieces: List[bytes]) -> List[
     return _fetch_metadata(pieces)
 
 
-def _fetch_metadata(
-        pieces: List["pyarrow.dataset.ParquetFileFragment"]) -> List[
-            "pyarrow.parquet.FileMetaData"]:
+def _fetch_metadata(pieces: List["pyarrow.dataset.ParquetFileFragment"]
+                    ) -> List["pyarrow.parquet.FileMetaData"]:
     piece_metadata = []
     for p in pieces:
         try:
