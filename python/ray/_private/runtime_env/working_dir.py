@@ -377,7 +377,7 @@ class WorkingDirManager:
         """Fetch a package from a given uri if not exists locally.
 
         This function is used to fetch a pacakge from the given uri and unpack
-        it.
+        it into local working directory.
 
         Args:
             pkg_uri (str): The uri of the package to download.
