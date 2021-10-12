@@ -554,8 +554,7 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
 
 void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
   ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
-  if (!last_resource_usage_->GetNormalTaskResources().IsEqual(
-          normal_task_resources)) {
+  if (!last_resource_usage_->GetNormalTaskResources().IsEqual(normal_task_resources)) {
     RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.ToString();
     resources_data.set_resources_normal_task_changed(true);
     auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
@@ -571,11 +570,9 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
-  cluster_resource_scheduler_->UpdateLastResourceUsage(
-      last_resource_usage_);
+  cluster_resource_scheduler_->UpdateLastResourceUsage(last_resource_usage_);
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
-  cluster_task_manager_->FillResourceUsage(
-      resources_data, last_resource_usage_);
+  cluster_task_manager_->FillResourceUsage(resources_data, last_resource_usage_);
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
