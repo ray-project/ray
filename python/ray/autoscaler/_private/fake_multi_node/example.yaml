@@ -27,7 +27,7 @@ available_node_types:
             CPU: 1
             object_store_memory: 1000000000
         node_config: {}
-        min_workers: 0
+        min_workers: 2
         max_workers: 4
     ray.worker.gpu:
         resources:
@@ -38,9 +38,12 @@ available_node_types:
         min_workers: 0
         max_workers: 2
 head_node_type: ray.head.default
-auth: {}
 upscaling_speed: 1.0
 idle_timeout_minutes: 0.1
+#
+# !!! Configurations below are not supported in fake cluster mode !!!
+#
+auth: {}
 docker: {}
 initialization_commands: []
 setup_commands: []
