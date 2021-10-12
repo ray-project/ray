@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import datetime
 from typing import Dict, List, Optional, Union
 
 import collections
@@ -8,15 +9,17 @@ import sys
 import numpy as np
 import time
 
+from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.queue import Queue
+
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print, logger
-from ray.tune.result import (DEFAULT_METRIC, EPISODE_REWARD_MEAN,
-                             MEAN_ACCURACY, MEAN_LOSS, TRAINING_ITERATION,
-                             TIME_TOTAL_S, TIMESTEPS_TOTAL, AUTO_RESULT_KEYS)
-from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial
+from ray.tune.result import (
+    DEFAULT_METRIC, EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS, NODE_IP,
+    PID, TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL, AUTO_RESULT_KEYS)
+from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial, Location
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
-from ray.util.annotations import PublicAPI, DeveloperAPI
 
 try:
     from collections.abc import Mapping, MutableMapping
@@ -159,6 +162,8 @@ class TuneReporterBase(ProgressReporter):
         self._max_report_freqency = max_report_frequency
         self._last_report_time = 0
 
+        self._start_time = time.time()
+
         self._metric = metric
         self._mode = mode
 
@@ -187,6 +192,12 @@ class TuneReporterBase(ProgressReporter):
 
     def set_total_samples(self, total_samples: int):
         self._total_samples = total_samples
+
+    def set_start_time(self, timestamp: Optional[float] = None):
+        if timestamp is not None:
+            self._start_time = time.time()
+        else:
+            self._start_time = timestamp
 
     def should_report(self, trials: List[Trial], done: bool = False):
         if time.time() - self._last_report_time > self._max_report_freqency:
@@ -267,7 +278,11 @@ class TuneReporterBase(ProgressReporter):
         if not self._metrics_override:
             user_metrics = self._infer_user_metrics(trials, self._infer_limit)
             self._metric_columns.update(user_metrics)
-        messages = ["== Status ==", memory_debug_str(), *sys_info]
+        messages = [
+            "== Status ==",
+            time_passed_str(self._start_time, time.time()),
+            memory_debug_str(), *sys_info
+        ]
         if done:
             max_progress = None
             max_error = None
@@ -416,15 +431,32 @@ class JupyterNotebookReporter(TuneReporterBase):
                 "to `tune.run()` instead.")
 
         self._overwrite = overwrite
+        self._output_queue = None
+
+    def set_output_queue(self, queue: Queue):
+        self._output_queue = queue
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
-        from IPython.display import clear_output
-        from IPython.core.display import display, HTML
-        if self._overwrite:
-            clear_output(wait=True)
+        overwrite = self._overwrite
         progress_str = self._progress_str(
             trials, done, *sys_info, fmt="html", delim="<br>")
-        display(HTML(progress_str))
+
+        def update_output():
+            from IPython.display import clear_output
+            from IPython.core.display import display, HTML
+
+            if overwrite:
+                clear_output(wait=True)
+
+            display(HTML(progress_str))
+
+        if self._output_queue is not None:
+            # If an output queue is set, send callable (e.g. when using
+            # Ray client)
+            self._output_queue.put(update_output)
+        else:
+            # Else, output directly
+            update_output()
 
 
 @PublicAPI
@@ -508,6 +540,33 @@ def memory_debug_str():
     except ImportError:
         return ("Unknown memory usage. Please run `pip install psutil` "
                 "to resolve)")
+
+
+def time_passed_str(start_time: float, current_time: float):
+    current_time_dt = datetime.datetime.fromtimestamp(current_time)
+    start_time_dt = datetime.datetime.fromtimestamp(start_time)
+    delta: datetime.timedelta = current_time_dt - start_time_dt
+
+    rest = delta.total_seconds()
+    days = rest // (60 * 60 * 24)
+
+    rest -= days * (60 * 60 * 24)
+    hours = rest // (60 * 60)
+
+    rest -= hours * (60 * 60)
+    minutes = rest // 60
+
+    seconds = rest - minutes * 60
+
+    if days > 0:
+        running_for_str = f"{days:.0f} days, "
+    else:
+        running_for_str = ""
+
+    running_for_str += f"{hours:02.0f}:{minutes:02.0f}:{seconds:05.2f}"
+
+    return (f"Current time: {current_time_dt:%Y-%m-%d %H:%M:%S} "
+            f"(running for {running_for_str})")
 
 
 def _get_trials_by_state(trials: List[Trial]):
@@ -774,6 +833,18 @@ def _fair_filter_trials(trials_by_state: Dict[str, List[Trial]],
     return filtered_trials
 
 
+def _get_trial_location(trial: Trial, result: dict) -> Location:
+    # we get the location from the result, as the one in trial will be
+    # reset when trial terminates
+    node_ip, pid = result.get(NODE_IP, None), result.get(PID, None)
+    if node_ip and pid:
+        location = Location(node_ip, pid)
+    else:
+        # fallback to trial location if there hasn't been a report yet
+        location = trial.location
+    return location
+
+
 def _get_trial_info(trial: Trial, parameters: List[str], metrics: List[str]):
     """Returns the following information about a trial:
 
@@ -786,7 +857,8 @@ def _get_trial_info(trial: Trial, parameters: List[str], metrics: List[str]):
     """
     result = trial.last_result
     config = trial.config
-    trial_info = [str(trial), trial.status, str(trial.location)]
+    location = _get_trial_location(trial, result)
+    trial_info = [str(trial), trial.status, str(location)]
     trial_info += [
         unflattened_lookup(param, config, default=None) for param in parameters
     ]

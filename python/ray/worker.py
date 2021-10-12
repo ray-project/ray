@@ -602,7 +602,6 @@ def init(
         _memory: Optional[int] = None,
         _redis_password: str = ray_constants.REDIS_DEFAULT_PASSWORD,
         _temp_dir: Optional[str] = None,
-        _lru_evict: bool = False,
         _metrics_export_port: Optional[int] = None,
         _system_config: Optional[Dict[str, str]] = None,
         _tracing_startup_hook: Optional[Callable] = None,
@@ -879,7 +878,6 @@ def init(
             start_initial_python_workers_for_first_job=(
                 job_config is None or job_config.runtime_env is None),
             _system_config=_system_config,
-            lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook)
@@ -921,7 +919,6 @@ def init(
             object_ref_seed=None,
             temp_dir=_temp_dir,
             _system_config=_system_config,
-            lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
@@ -1255,6 +1252,7 @@ def connect(node,
             job_id=None,
             namespace=None,
             job_config=None,
+            runtime_env_hash=0,
             worker_shim_pid=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
@@ -1269,6 +1267,7 @@ def connect(node,
         driver_object_store_memory: Deprecated.
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
+        runtime_env_hash (int): The hash of the runtime env for this worker.
         worker_shim_pid (int): The PID of the process for setup worker
             runtime env.
         ray_debugger_host (bool): The host to bind a Ray debugger to on
@@ -1388,7 +1387,8 @@ def connect(node,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port, worker_shim_pid)
+        serialized_job_config, node.metrics_agent_port, runtime_env_hash,
+        worker_shim_pid)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # If it's a driver and it's not coming from ray client, we'll prepare the
@@ -1926,6 +1926,7 @@ def make_decorator(num_returns=None,
                    max_restarts=None,
                    max_task_retries=None,
                    runtime_env=None,
+                   placement_group="default",
                    worker=None,
                    retry_exceptions=None):
     def decorator(function_or_class):
@@ -1957,7 +1958,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env)
+                runtime_env, placement_group)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -2106,7 +2107,8 @@ def remote(*args, **kwargs):
     valid_kwargs = [
         "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
         "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions"
+        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions",
+        "placement_group"
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2139,6 +2141,7 @@ def remote(*args, **kwargs):
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
     runtime_env = kwargs.get("runtime_env")
+    placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
 
     return make_decorator(
@@ -2154,5 +2157,6 @@ def remote(*args, **kwargs):
         max_task_retries=max_task_retries,
         max_retries=max_retries,
         runtime_env=runtime_env,
+        placement_group=placement_group,
         worker=worker,
         retry_exceptions=retry_exceptions)
