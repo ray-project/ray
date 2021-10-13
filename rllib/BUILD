@@ -1383,6 +1383,13 @@ py_test(
 )
 
 py_test(
+    name = "env/tests/test_remote_worker_envs",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_remote_worker_envs.py"]
+)
+
+py_test(
     name = "env/wrappers/tests/test_unity3d_env",
     tags = ["team:ml", "env"],
     size = "small",
@@ -1879,14 +1886,14 @@ py_test(
     args = ["TestSupportedMultiAgentOffPolicy"]
 )
 
-# py_test(
-#     name = "tests/test_supported_spaces_pg",
-#     main = "tests/test_supported_spaces.py",
-#     tags = ["team:ml", "tests_dir", "tests_dir_S"],
-#     size = "enormous",
-#     srcs = ["tests/test_supported_spaces.py"],
-#     args = ["TestSupportedSpacesPG"]
-# )
+py_test(
+     name = "tests/test_supported_spaces_pg",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:ml", "tests_dir", "tests_dir_S"],
+     size = "large",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesPG"]
+ )
 
 py_test(
     name = "tests/test_supported_spaces_off_policy",

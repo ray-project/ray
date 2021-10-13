@@ -172,8 +172,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string GetDebuggerBreakpoint() const;
 
-  std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
-
   bool IsDriverTask() const;
 
   Language GetLanguage() const;
@@ -256,15 +254,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
-  SchedulingClass sched_cls_id_;
+  SchedulingClass sched_cls_id_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
+  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
       GUARDED_BY(mutex_);
-  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
+  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);
 };
@@ -277,13 +275,10 @@ class WorkerCacheKey {
   /// Create a cache key with the given environment variable overrides and serialized
   /// runtime_env.
   ///
-  /// \param override_environment_variables The environment variable overrides set in this
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
-  WorkerCacheKey(
-      const std::unordered_map<std::string, std::string> override_environment_variables,
-      const std::string serialized_runtime_env,
-      const std::unordered_map<std::string, double> required_resources);
+  WorkerCacheKey(const std::string serialized_runtime_env,
+                 const absl::flat_hash_map<std::string, double> &required_resources);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -295,8 +290,7 @@ class WorkerCacheKey {
 
   /// Get the hash for this worker's environment.
   ///
-  /// \return The hash of the override_environment_variables and the serialized
-  /// runtime_env.
+  /// \return The hash of the serialized runtime_env.
   std::size_t Hash() const;
 
   /// Get the int-valued hash for this worker's environment, useful for portability in
@@ -306,12 +300,10 @@ class WorkerCacheKey {
   int IntHash() const;
 
  private:
-  /// The environment variable overrides for this worker.
-  const std::unordered_map<std::string, std::string> override_environment_variables;
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
   /// The required resources for this worker.
-  const std::unordered_map<std::string, double> required_resources;
+  const absl::flat_hash_map<std::string, double> required_resources;
   /// The cached hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   mutable std::size_t hash_ = 0;

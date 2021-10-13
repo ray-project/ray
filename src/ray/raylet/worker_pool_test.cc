@@ -178,7 +178,7 @@ class WorkerPoolMock : public WorkerPool {
 
   int GetProcessSize() const { return worker_commands_by_proc_.size(); }
 
-  const std::unordered_map<Process, std::vector<std::string>> &GetProcesses() {
+  const absl::flat_hash_map<Process, std::vector<std::string>> &GetProcesses() {
     return worker_commands_by_proc_;
   }
 
@@ -258,7 +258,7 @@ class WorkerPoolMock : public WorkerPool {
             is_java = true;
           }
         }
-        // TODO(guyang.sgy): support C++ language workers.
+        // TODO(SongGuyang): support C++ language workers.
         int num_workers = is_java ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
         for (int i = 0; i < num_workers; i++) {
           auto worker =
@@ -302,9 +302,9 @@ class WorkerPoolMock : public WorkerPool {
  private:
   Process last_worker_process_;
   // The worker commands by process.
-  std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
+  absl::flat_hash_map<Process, std::vector<std::string>> worker_commands_by_proc_;
   double current_time_ms_ = 0;
-  std::unordered_map<Process, std::vector<std::string>> pushedProcesses_;
+  absl::flat_hash_map<Process, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
@@ -1258,8 +1258,7 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
       /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_2");
 
-  const WorkerCacheKey env1 = {
-      /*override_environment_variables=*/{}, "mock_runtime_env_1", {}};
+  const WorkerCacheKey env1 = {"mock_runtime_env_1", {}};
   const int runtime_env_hash_1 = env1.IntHash();
 
   // Push worker with runtime env 1.

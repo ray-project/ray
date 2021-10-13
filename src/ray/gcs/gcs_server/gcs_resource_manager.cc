@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+
 #include "ray/common/ray_config.h"
 #include "ray/stats/stats.h"
 
@@ -233,10 +234,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
             demand.num_infeasible_requests_queued());
-        if (RayConfig::instance().report_worker_backlog()) {
-          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                            demand.backlog_size());
-        }
+        aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                          demand.backlog_size());
       }
 
       batch->add_batch()->CopyFrom(usage.second);
@@ -322,7 +321,7 @@ void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
 
 void GcsResourceManager::UpdateResourceCapacity(
     const NodeID &node_id,
-    const std::unordered_map<std::string, double> &changed_resources) {
+    const absl::flat_hash_map<std::string, double> &changed_resources) {
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
     SchedulingResources &scheduling_resources = iter->second;
@@ -348,7 +347,7 @@ void GcsResourceManager::DeleteResources(
 void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   auto node_id = NodeID::FromBinary(node.node_id());
   if (!cluster_scheduling_resources_.contains(node_id)) {
-    std::unordered_map<std::string, double> resource_mapping(
+    absl::flat_hash_map<std::string, double> resource_mapping(
         node.resources_total().begin(), node.resources_total().end());
     // Update the cluster scheduling resources as new node is added.
     ResourceSet node_resources(resource_mapping);

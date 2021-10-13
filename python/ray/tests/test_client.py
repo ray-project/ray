@@ -469,8 +469,11 @@ def test_stdout_log_stream(ray_start_regular_shared):
         time.sleep(1)
         print_on_stderr_and_stdout.remote("Hello world")
         time.sleep(1)
-        assert len(log_msgs) == 2
-        assert all((msg.find("Hello world") for msg in log_msgs))
+        num_hello = 0
+        for msg in log_msgs:
+            if "Hello world" in msg:
+                num_hello += 1
+        assert num_hello == 2, f"Invalid logs: {log_msgs}"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -705,9 +708,12 @@ def test_object_ref_cleanup():
     # See https://github.com/ray-project/ray/issues/17968 for details
     with ray_start_client_server():
         result = run_string_as_driver(object_ref_cleanup_script)
-        assert result == ""
+        assert "Error in sys.excepthook:" not in result
+        assert "AttributeError: 'NoneType' object has no " not in result
+        assert "Exception ignored in" not in result
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25552 --port 0"],
