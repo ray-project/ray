@@ -1979,8 +1979,9 @@ if __name__ == "__main__":
         # RAY_COMMIT is set by find_ray_wheels
         populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
     elif os.environ.get("RAY_WHEELS"):
-        logger.info("Using Ray wheels provided from URL: "
-                    "{os.environ.get('RAY_WHEELS')}")
+        logger.info(f"Using Ray wheels provided from URL: "
+                    f"{os.environ.get('RAY_WHEELS')}")
+        url = os.environ.get("RAY_WHEELS")
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 
