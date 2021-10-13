@@ -7,7 +7,6 @@ import platform
 import sys
 import socket
 import json
-import time
 import traceback
 
 from grpc.experimental import aio as aiogrpc
@@ -338,13 +337,10 @@ if __name__ == "__main__":
             backup_count=args.logging_rotate_backup_count)
         setup_component_logger(**logging_params)
 
-        # The dashboard is currently broken on Windows.
-        # https://github.com/ray-project/ray/issues/14026.
         if sys.platform == "win32":
             logger.warning(
-                "The dashboard is currently broken on windows. "
-                "See https://github.com/ray-project/ray/issues/14026 "
-                "for more details. Experimental support only.")
+                "The dashboard is currently experimental on windows. "
+                "See https://github.com/ray-project/ray/issues/14026 ")
 
         agent = DashboardAgent(
             args.node_ip_address,
