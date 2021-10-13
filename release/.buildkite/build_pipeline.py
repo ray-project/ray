@@ -296,6 +296,7 @@ def ask_configuration():
                          "RAY_BRANCH and RAY_VERSION will be ignored! "
                          "Please also make sure to provide the wheels URL "
                          "for Python 3.7 on Linux."),
+                "required": False,
                 "default": RAY_WHEELS,
                 "key": "ray_wheels"
             },
