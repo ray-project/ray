@@ -5,6 +5,7 @@ import sys
 from typing import Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
+from ray.core.generated.common_pb2 import Language
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,13 @@ class RuntimeEnvContext:
     def deserialize(json_string):
         return RuntimeEnvContext(**json.loads(json_string))
 
-    def exec_worker(self, passthrough_args: List[str]):
+    def exec_worker(self, passthrough_args: List[str], language: Language):
         os.environ.update(self.env_vars)
-        exec_command = " ".join([f"exec {self.py_executable}"] +
-                                passthrough_args)
+        if language == Language.PYTHON:
+            executable = f"exec {self.py_executable}"
+        else:
+            executable = "exec"
+        exec_command = " ".join([executable] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
         logger.info(f"Exec'ing worker with command: {command_str}")
         os.execvp("bash", ["bash", "-c", command_str])

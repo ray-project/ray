@@ -10,6 +10,7 @@ from queue import Queue
 
 from grpc.experimental import aio as aiogrpc
 import grpc
+from distutils.version import LooseVersion
 
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
@@ -178,8 +179,12 @@ class DashboardHead:
             sys.exit(-1)
 
         # Create a http session for all modules.
-        self.http_session = aiohttp.ClientSession(
-            loop=asyncio.get_event_loop())
+        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
+        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
+            self.http_session = aiohttp.ClientSession(
+                loop=asyncio.get_event_loop())
+        else:
+            self.http_session = aiohttp.ClientSession()
 
         # Waiting for GCS is ready.
         gcs_address = await get_gcs_address_with_retry(self.aioredis_client)

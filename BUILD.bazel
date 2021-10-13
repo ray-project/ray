@@ -623,10 +623,12 @@ cc_library(
         "src/ray/stats/metric_exporter_client.cc",
     ],
     hdrs = [
+        "src/ray/stats/metric.h",
         "src/ray/stats/metric_defs.h",
         "src/ray/stats/metric_exporter.h",
         "src/ray/stats/metric_exporter_client.h",
         "src/ray/stats/stats.h",
+        "src/ray/stats/tag_defs.h",
     ],
     copts = COPTS,
     linkopts = select({

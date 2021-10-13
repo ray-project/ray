@@ -263,7 +263,7 @@ this default behavior by passing in specific resources.
 .. tabs::
   .. group-tab:: Python
 
-    ``ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})```
+    ``ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})``
 
   .. group-tab:: Java
 
