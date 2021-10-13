@@ -99,11 +99,10 @@ class _TorchTrainable(DistributedTrainable):
 
         pgroup_params = self.default_process_group_parameters()
         from functools import partial
-        setup_on_worker = partial(
-            setup_process_group,
-            url=address,
-            world_size=num_workers,
-            **pgroup_params)
+        setup_on_worker = partial(setup_process_group,
+                                  url=address,
+                                  world_size=num_workers,
+                                  **pgroup_params)
         ray.get([
             w.execute.remote(lambda _: setup_on_worker(world_rank=rank))
             for rank, w in enumerate(self.workers)
@@ -131,8 +130,9 @@ class _TorchTrainable(DistributedTrainable):
 
     def load_checkpoint(self, checkpoint_dir: str):
         checkpoint_obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
-        return ray.get(
-            w.restore_from_object.remote(checkpoint_obj) for w in self.workers)
+        return ray.get([
+            w.restore_from_object.remote(checkpoint_obj) for w in self.workers
+        ])
 
     def stop(self):
         ray.get([worker.stop.remote() for worker in self.workers])
@@ -211,18 +211,18 @@ def DistributedTrainableCreator(func: Callable,
         @classmethod
         def default_resource_request(cls, config: Dict) -> Resources:
 
-            return Resources(
-                cpu=0,
-                gpu=0,
-                extra_cpu=num_cpus_per_worker * num_workers,
-                extra_gpu=num_gpus_per_worker * num_workers)
+            return Resources(cpu=0,
+                             gpu=0,
+                             extra_cpu=num_cpus_per_worker * num_workers,
+                             extra_gpu=num_gpus_per_worker * num_workers)
 
     return WrappedDistributedTorchTrainable
 
 
 @contextmanager
-def distributed_checkpoint_dir(
-        step: int, disable: bool = False) -> Generator[str, None, None]:
+def distributed_checkpoint_dir(step: int,
+                               disable: bool = False
+                               ) -> Generator[str, None, None]:
     """ContextManager for creating a distributed checkpoint.
 
     Only checkpoints a file on the "main" training actor, avoiding
