@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
-from typing import Callable, Function, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
 
@@ -416,7 +416,7 @@ class WorkingDirManager:
     def fetch_package(
             self,
             pkg_uri: str,
-            open_fn: Function,
+            open_fn: Callable,
             logger: Optional[logging.Logger] = default_logger) -> int:
         """Fetch a package from a given uri if not exists locally.
 

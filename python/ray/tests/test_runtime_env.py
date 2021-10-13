@@ -49,7 +49,7 @@ try:
                  job_config=job_config,
                  logging_level=logging.DEBUG,
                  namespace="default_test_namespace"
-)
+        )
 except ValueError:
     print("ValueError")
     sys.exit(0)
@@ -67,6 +67,10 @@ if os.environ.get("EXIT_AFTER_INIT"):
 @ray.remote
 def run_test():
     return test_module.one()
+
+@ray.remote
+def run_zip_test():
+    return test_module.two()
 
 @ray.remote
 def check_file(name):
@@ -115,17 +119,21 @@ def one():
         with init_file.open(mode="w") as f:
             f.write("""
 from test_module.test import one
+from test_module.script import two
 """)
         # Mocked s3 package zip on local disk without actual S3 IO
         s3_package_zip = module_path / "s3_package.zip"
         zipped_py_script = module_path / "script.py"
         with zipped_py_script.open(mode="w") as f:
             f.write("""
-print("hello world !")
+def two():
+    return 2
 """)
         with ZipFile(s3_package_zip, mode="w") as myzip:
             myzip.write(zipped_py_script)
 
+        # Original script is removed so we only work with zipped pacakge
+        # os.remove(zipped_py_script)
         old_dir = os.getcwd()
         os.chdir(tmp_dir)
         yield tmp_dir
@@ -281,8 +289,11 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("use_remote_working_dir", [True, False])
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_single_node(ray_start_cluster_head, working_dir, client_mode):
+def test_single_node(
+    ray_start_cluster_head, working_dir, client_mode, use_remote_working_dir
+):
     cluster = ray_start_cluster_head
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     # Setup runtime env here
