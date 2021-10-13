@@ -59,7 +59,7 @@ if __name__ == "__main__":
             update_progress({"url": url})
 
     num_retries = 0
-    MAX_NUM_RETRIES = 8
+    MAX_NUM_RETRIES = 12
 
     while retry and num_retries < MAX_NUM_RETRIES:
         print(f"There are {len(retry)} URLs to retry. Sleeping 10 minutes "
