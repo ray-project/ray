@@ -8,9 +8,9 @@ import threading
 from concurrent.futures import Future
 from queue import Queue
 
+from distutils.version import LooseVersion
 from grpc.experimental import aio as aiogrpc
 import grpc
-from distutils.version import LooseVersion
 
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
