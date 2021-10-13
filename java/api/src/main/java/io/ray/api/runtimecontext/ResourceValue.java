@@ -1,6 +1,6 @@
 package io.ray.api.runtimecontext;
 
-/** A class contains resource id and capacity of this resource. */
+/** A class that contains resource id and capacity of this resource. */
 public class ResourceValue {
 
   public final Long resourceId;
