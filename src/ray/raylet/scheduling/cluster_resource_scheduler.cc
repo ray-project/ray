@@ -41,7 +41,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
-    const std::unordered_map<std::string, double> &local_node_resources,
+    const absl::flat_hash_map<std::string, double> &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
@@ -84,8 +84,8 @@ void ClusterResourceScheduler::InitResourceUnitInstanceInfo() {
 
 void ClusterResourceScheduler::AddOrUpdateNode(
     const std::string &node_id,
-    const std::unordered_map<std::string, double> &resources_total,
-    const std::unordered_map<std::string, double> &resources_available) {
+    const absl::flat_hash_map<std::string, double> &resources_total,
+    const absl::flat_hash_map<std::string, double> &resources_available) {
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, resources_total, resources_available);
   AddOrUpdateNode(string_to_int_map_.Insert(node_id), node_resources);
@@ -353,7 +353,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
-    const std::unordered_map<std::string, double> &task_resources,
+    const absl::flat_hash_map<std::string, double> &task_resources,
     bool requires_object_store_memory, bool actor_creation, bool force_spillback,
     int64_t *total_violations, bool *is_infeasible) {
   ResourceRequest resource_request = ResourceMapToResourceRequest(
@@ -982,7 +982,7 @@ bool ClusterResourceScheduler::AllocateLocalTaskResources(
 }
 
 bool ClusterResourceScheduler::AllocateLocalTaskResources(
-    const std::unordered_map<std::string, double> &task_resources,
+    const absl::flat_hash_map<std::string, double> &task_resources,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
   // We don't track object store memory demands so no need to allocate them.
@@ -1007,7 +1007,7 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
 
 bool ClusterResourceScheduler::AllocateRemoteTaskResources(
     const std::string &node_string,
-    const std::unordered_map<std::string, double> &task_resources) {
+    const absl::flat_hash_map<std::string, double> &task_resources) {
   ResourceRequest resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, task_resources, /*requires_object_store_memory=*/false);
   auto node_id = string_to_int_map_.Insert(node_string);
@@ -1148,7 +1148,7 @@ ClusterResourceScheduler::GetResourceTotals() const {
 }
 
 bool ClusterResourceScheduler::IsLocallySchedulable(
-    const std::unordered_map<std::string, double> &shape) {
+    const absl::flat_hash_map<std::string, double> &shape) {
   auto resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, shape, /*requires_object_store_memory=*/false);
   return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources()) == 0;

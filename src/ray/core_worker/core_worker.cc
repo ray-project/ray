@@ -146,7 +146,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // Initialize stats in core worker global tags.
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "core_worker"},
-      {ray::stats::VersionKey, "2.0.0.dev0"},
+      {ray::stats::VersionKey, kRayVersion},
       {ray::stats::NodeAddressKey, options_.node_ip_address}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
@@ -2254,12 +2254,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
   std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
-
   status = options_.task_execution_callback(
       task_type, task_spec.GetName(), func,
-      task_spec.GetRequiredResources().GetResourceMap(), args, arg_refs, return_ids,
-      task_spec.GetDebuggerBreakpoint(), return_objects, creation_task_exception_pb_bytes,
-      is_application_level_error);
+      task_spec.GetRequiredResources().GetResourceUnorderedMap(), args, arg_refs,
+      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
+      creation_task_exception_pb_bytes, is_application_level_error);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to

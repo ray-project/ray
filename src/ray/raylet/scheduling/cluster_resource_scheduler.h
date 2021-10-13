@@ -48,7 +48,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                            const NodeResources &local_node_resources);
   ClusterResourceScheduler(
       const std::string &local_node_id,
-      const std::unordered_map<std::string, double> &local_node_resources,
+      const absl::flat_hash_map<std::string, double> &local_node_resources,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
@@ -62,8 +62,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
   void AddOrUpdateNode(
       const std::string &node_id,
-      const std::unordered_map<std::string, double> &resource_map_total,
-      const std::unordered_map<std::string, double> &resource_map_available);
+      const absl::flat_hash_map<std::string, double> &resource_map_total,
+      const absl::flat_hash_map<std::string, double> &resource_map_available);
 
   /// Update node resources. This hanppens when a node resource usage udpated.
   ///
@@ -173,7 +173,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///          return the ID in string format of a node that can schedule the
   //           resource request.
   std::string GetBestSchedulableNode(
-      const std::unordered_map<std::string, double> &resource_request,
+      const absl::flat_hash_map<std::string, double> &resource_request,
       bool requires_object_store_memory, bool actor_creation, bool force_spillback,
       int64_t *violations, bool *is_infeasible);
 
@@ -366,7 +366,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \return True if local node has enough resources to satisfy the resource request.
   /// False otherwise.
   bool AllocateLocalTaskResources(
-      const std::unordered_map<std::string, double> &task_resources,
+      const absl::flat_hash_map<std::string, double> &task_resources,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
   bool AllocateLocalTaskResources(const ResourceRequest &resource_request,
@@ -381,7 +381,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// False otherwise.
   bool AllocateRemoteTaskResources(
       const std::string &node_id,
-      const std::unordered_map<std::string, double> &task_resources);
+      const absl::flat_hash_map<std::string, double> &task_resources);
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
@@ -430,7 +430,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// schedulable if it has the available resources needed to execute the task.
   ///
   /// \param shape The resource demand's shape.
-  bool IsLocallySchedulable(const std::unordered_map<std::string, double> &shape);
+  bool IsLocallySchedulable(const absl::flat_hash_map<std::string, double> &shape);
 
  private:
   /// Init the information about which resources are unit_instance.
