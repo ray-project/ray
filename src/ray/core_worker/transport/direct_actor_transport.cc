@@ -132,19 +132,18 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue)
   core_worker_client_pool_.Disconnect(WorkerID::FromBinary(queue.worker_id));
   queue.worker_id.clear();
   queue.pending_force_kill.reset();
+}
 
+void CoreWorkerDirectActorTaskSubmitter::FailInflightTasks(
+    const std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+        &inflight_task_callbacks) {
   // NOTE(kfstorm): We invoke the callbacks with a bad status to act like there's a
   // network issue. We don't call `task_finisher_.PendingTaskFailed` directly because
   // there's much more work to do in the callback.
-  std::vector<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
-  for (auto &entry : queue.inflight_task_callbacks) {
-    callbacks.push_back(std::move(entry.second));
-  }
-  queue.inflight_task_callbacks.clear();
   auto status = Status::IOError("Fail all inflight tasks due to actor state change.");
   rpc::PushTaskReply reply;
-  for (const auto &callback : callbacks) {
-    callback(status, reply);
+  for (const auto &entry : inflight_task_callbacks) {
+    entry.second(status, reply);
   }
 }
 
@@ -153,7 +152,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                                                       int64_t num_restarts) {
   RAY_LOG(DEBUG) << "Connecting to actor " << actor_id << " at worker "
                  << WorkerID::FromBinary(address.worker_id());
-  absl::MutexLock lock(&mu_);
+  absl::ReleasableMutexLock lock1(&mu_);
 
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
@@ -182,7 +181,13 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   if (queue->second.rpc_client) {
     // Clear the client to the old version of the actor.
     DisconnectRpcClient(queue->second);
+    auto inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
+    lock1.Release();
+    FailInflightTasks(inflight_task_callbacks);
+  } else {
+    lock1.Release();
   }
+  absl::MutexLock lock2(&mu_);
 
   queue->second.state = rpc::ActorTableData::ALIVE;
   // Update the mapping so new RPCs go out with the right intended worker id.
@@ -207,7 +212,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     const ActorID &actor_id, int64_t num_restarts, bool dead,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id;
-  absl::MutexLock lock(&mu_);
+  absl::ReleasableMutexLock lock1(&mu_);
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
   if (!dead) {
@@ -225,6 +230,10 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   // permanently dead or the new client will be inserted once the actor is
   // restarted.
   DisconnectRpcClient(queue->second);
+  auto inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
+  lock1.Release();
+  FailInflightTasks(inflight_task_callbacks);
+  absl::MutexLock lock2(&mu_);
 
   if (dead) {
     queue->second.state = rpc::ActorTableData::DEAD;
@@ -441,10 +450,10 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
       [this, task_id, actor_id](const Status &status, const rpc::PushTaskReply &reply) {
-        absl::MutexLock lock(&mu_);
+        absl::ReleasableMutexLock lock(&mu_);
         auto it = client_queues_.find(actor_id);
         RAY_CHECK(it != client_queues_.end());
-        auto queue = it->second;
+        auto &queue = it->second;
         auto callback_it = queue.inflight_task_callbacks.find(task_id);
         if (callback_it == queue.inflight_task_callbacks.end()) {
           RAY_LOG(DEBUG) << "The task " << task_id
@@ -453,6 +462,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         }
         auto reply_callback = std::move(callback_it->second);
         queue.inflight_task_callbacks.erase(callback_it);
+        lock.Release();
         reply_callback(status, reply);
       };
 

@@ -258,6 +258,11 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  /// Fail all in-flight tasks.
+  void FailInflightTasks(
+      const std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+          &inflight_task_callbacks) LOCKS_EXCLUDED(mu_);
+
   /// Whether the specified actor is alive.
   ///
   /// \param[in] actor_id The actor ID.

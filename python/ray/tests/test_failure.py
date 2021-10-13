@@ -1,4 +1,5 @@
 import os
+import signal
 import sys
 import time
 
@@ -7,6 +8,7 @@ import pytest
 
 import ray
 import ray._private.utils
+import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError, RayActorError, GetTimeoutError
 from ray._private.test_utils import (wait_for_condition, SignalActor,
@@ -594,6 +596,7 @@ def test_warning_task_waiting_on_actor(shutdown_only):
             "raylet_death_check_interval_milliseconds": 10 * 1000,
             "num_heartbeats_timeout": 10,
             "raylet_heartbeat_period_milliseconds": 100,
+            "timeout_ms_task_wait_for_death_info": 100,
         }
     }],
     indirect=True)
@@ -650,10 +653,10 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # Wait for the actor to be alive again in a new worker process.
     def check_actor_restart():
-        actors = list(ray.actors().values())
+        actors = list(ray.state.actors().values())
         assert len(actors) == 1
         print(actors)
-        return (actors[0]["State"] == ray.gcs_utils.ActorTableData.ALIVE
+        return (actors[0]["State"] == gcs_utils.ActorTableData.ALIVE
                 and actors[0]["NumRestarts"] == 1)
 
     wait_for_condition(check_actor_restart)
