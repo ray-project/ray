@@ -379,11 +379,16 @@ def get_metadata(workflow_id: str,
     Examples:
         >>> workflow_step = trip.options(name="trip", metadata={"k1": "v1"}).step()
         >>> workflow_step.run(workflow_id="trip1", metadata={"k2": "v2"})
-        >>> assert workflow.get_metadata("trip1")["status"] == "SUCCESSFUL"
-        >>> assert workflow.get_metadata("trip1")["user_metadata"] == {"k2": "v2"}
-        >>> assert workflow.get_metadata("trip1", "trip")["name"] == "trip"
-        >>> assert workflow.get_metadata("trip1", "trip")["step_type"] == "FUNCTION"
-        >>> assert workflow.get_metadata("trip1", "trip")["user_metadata"] == {"k1": "v1"}
+        >>> workflow_metadata = workflow.get_metadata("trip1")
+        >>> assert "SUCCESSFUL" == workflow_metadata["status"]
+        >>> assert {"k2": "v2"} == workflow_metadata["user_metadata"]
+        >>> assert "start_time" in workflow_metadata["stats"]
+        >>> assert "end_time" in workflow_metadata["stats"]
+        >>> step_metadata = workflow.get_metadata("trip1", "trip")
+        >>> assert "FUNCTION" == step_metadata["step_type"]
+        >>> assert {"k1": "v1"} == step_metadata["user_metadata"]
+        >>> assert "start_time" in step_metadata["stats"]
+        >>> assert "end_time" in step_metadata["stats"]
 
     Returns:
         A dictionary containing the metadata of the workflow.
