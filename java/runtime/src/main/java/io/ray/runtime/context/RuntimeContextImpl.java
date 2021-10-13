@@ -76,7 +76,7 @@ public class RuntimeContextImpl implements RuntimeContext {
       String pattern = "^GPU_group_[0-9A-Za-z]+$";
       if (entry.getKey().equals("GPU") || Pattern.matches(pattern, entry.getKey())) {
         assignedIds.addAll(
-          entry.getValue().stream().map(x -> x.resourceId).collect(Collectors.toList()));
+            entry.getValue().stream().map(x -> x.resourceId).collect(Collectors.toList()));
       }
     }
     List<Long> gpuIds;
