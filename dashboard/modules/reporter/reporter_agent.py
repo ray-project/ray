@@ -243,13 +243,13 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         if IN_KUBERNETES_POD:
             # If in a K8s pod, disable disk display by passing in dummy values.
             return {
-                '/': psutil._common.sdiskusage(
+                "/": psutil._common.sdiskusage(
                     total=1, used=0, free=1, percent=0.0)
             }
         root = os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep
         tmp = ray._private.utils.get_user_temp_dir()
         return {
-            '/': psutil.disk_usage(root),
+            "/": psutil.disk_usage(root),
             tmp: psutil.disk_usage(tmp),
         }
 
