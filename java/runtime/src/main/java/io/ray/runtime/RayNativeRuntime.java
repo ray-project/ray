@@ -5,6 +5,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
@@ -219,7 +220,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public Map<String, List<Long>> getAvailableResourceIds() {
+  public Map<String, List<ResourceValue>> getAvailableResourceIds() {
     return nativeGetResourceIds();
   }
 
@@ -246,7 +247,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native void nativeSetCoreWorker(byte[] workerId);
 
-  private static native Map<String, List<Long>> nativeGetResourceIds();
+  private static native Map<String, List<ResourceValue>> nativeGetResourceIds();
 
   static class AsyncContext {
 

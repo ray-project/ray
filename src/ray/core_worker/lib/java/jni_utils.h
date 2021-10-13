@@ -245,6 +245,11 @@ extern jclass java_placement_group_class;
 /// id field of PlacementGroup class
 extern jfieldID java_placement_group_id;
 
+/// ResourceValue class that is used to convert resource_ids() to java class
+extern jclass java_resource_value_class;
+/// Construtor of ResourceValue class
+extern jmethodID java_resource_value_init;
+
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
 extern JavaVM *jvm;

@@ -137,6 +137,9 @@ jmethodID java_native_task_executor_on_worker_shutdown;
 jclass java_placement_group_class;
 jfieldID java_placement_group_id;
 
+jclass java_resource_value_class;
+jmethodID java_resource_value_init;
+
 JavaVM *jvm;
 
 inline jclass LoadClass(JNIEnv *env, const char *class_name) {
@@ -340,6 +343,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       LoadClass(env, "io/ray/runtime/task/NativeTaskExecutor");
   java_native_task_executor_on_worker_shutdown =
       env->GetMethodID(java_native_task_executor_class, "onWorkerShutdown", "([B)V");
+
+  java_resource_value_class = LoadClass(env, "io/ray/api/runtimecontext/ResourceValue");
+  java_resource_value_init =
+      env->GetMethodID(java_resource_value_class, "<init>", "(JD)V");
   return CURRENT_JNI_VERSION;
 }
 
@@ -351,6 +358,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_boolean_class);
   env->DeleteGlobalRef(java_double_class);
   env->DeleteGlobalRef(java_object_class);
+  env->DeleteGlobalRef(java_long_class);
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
   env->DeleteGlobalRef(java_map_class);
@@ -376,4 +384,5 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_task_executor_class);
   env->DeleteGlobalRef(java_native_task_executor_class);
   env->DeleteGlobalRef(java_concurrency_group_impl_class);
+  env->DeleteGlobalRef(java_resource_value_class);
 }

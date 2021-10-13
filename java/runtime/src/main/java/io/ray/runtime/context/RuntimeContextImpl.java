@@ -6,6 +6,7 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.runtimecontext.NodeInfo;
+import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.config.RunMode;
@@ -15,6 +16,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public class RuntimeContextImpl implements RuntimeContext {
 
@@ -67,11 +70,13 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public List<Long> getGpuIds() {
-    Map<String, List<Long>> resourceIds = runtime.getAvailableResourceIds();
+    Map<String, List<ResourceValue>> resourceIds = runtime.getAvailableResourceIds();
     Set<Long> assignedIds = new HashSet<>();
-    for (Map.Entry<String, List<Long>> entry : resourceIds.entrySet()) {
-      if (entry.getKey().equals("GPU") || entry.getKey().startsWith("GPU_group_")) {
-        assignedIds.addAll(entry.getValue());
+    for (Map.Entry<String, List<ResourceValue>> entry : resourceIds.entrySet()) {
+      String pattern = "^GPU_group_[0-9A-Za-z]+$";
+      if (entry.getKey().equals("GPU") || Pattern.matches(pattern, entry.getKey())) {
+        assignedIds.addAll(
+          entry.getValue().stream().map(x -> x.resourceId).collect(Collectors.toList()));
       }
     }
     List<Long> gpuIds;

@@ -16,6 +16,7 @@ import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
 import java.util.Map;
@@ -207,11 +208,11 @@ public interface RayRuntime {
   void exitActor();
 
   /**
-   * Get the resource name and resource index list in a node.
+   * Get the resources available on this worker. Note that this API doesn't work on driver.
    *
-   * @return The resource info of one node, discard the ratio of each resource have been allocated
+   * @return The resource info of one node.
    */
-  Map<String, List<Long>> getAvailableResourceIds();
+  Map<String, List<ResourceValue>> getAvailableResourceIds();
 
   /**
    * Get a placement group by id.

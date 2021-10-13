@@ -319,7 +319,11 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
       [](JNIEnv *env, const std::vector<std::pair<int64_t, double>> &value) -> jobject {
     auto elem_converter = [](JNIEnv *env,
                              const std::pair<int64_t, double> &elem) -> jobject {
-      return env->NewObject(java_long_class, java_long_init, (jlong)elem.first);
+      jobject java_item =
+          env->NewObject(java_resource_value_class, java_resource_value_init,
+                         (jlong)elem.first, (jdouble)elem.second);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      return java_item;
     };
     return NativeVectorToJavaList<std::pair<int64_t, double>>(env, value,
                                                               std::move(elem_converter));

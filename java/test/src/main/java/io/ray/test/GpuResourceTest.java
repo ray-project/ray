@@ -31,8 +31,7 @@ public class GpuResourceTest {
           Ray.actor(GpuActor::new).setResource("GPU", 1D).remote();
       List<Long> gpuIds4 = gpuActorActorHandle4.task(GpuActor::getGpuResourceFunc).remote().get();
       Assert.assertEquals(gpuIds.get(0), gpuIds2.get(0));
-      Assert.assertEquals(Long.valueOf(1), gpuIds3.get(0));
-      Assert.assertEquals(Long.valueOf(2), gpuIds4.get(0));
+      Assert.assertNotEquals(gpuIds3.get(0), gpuIds4.get(0));
     } finally {
       Ray.shutdown();
     }
