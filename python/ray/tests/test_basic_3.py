@@ -168,7 +168,16 @@ def test_background_tasks_with_max_calls(shutdown_only):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fair_queueing(shutdown_only):
-    ray.init(num_cpus=1)
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            # Having parallel leases is slow in this case
+            # because tasks are scheduled FIFO,
+            # the more parallism we have,
+            # the more workers we need to start to execute f and g tasks
+            # before we can execute the first h task.
+            "max_pending_lease_requests_per_scheduling_category": 1
+        })
 
     @ray.remote
     def h():

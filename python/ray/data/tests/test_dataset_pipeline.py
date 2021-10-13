@@ -35,6 +35,25 @@ def test_incremental_take(shutdown_only):
     assert pipe.take(1) == [0]
 
 
+def test_epoch(ray_start_regular_shared):
+    # Test dataset repeat.
+    pipe = ray.data.range(5).map(lambda x: x * 2).repeat(3).map(
+        lambda x: x * 2)
+    results = [p.take() for p in pipe.iter_epochs()]
+    assert results == [[0, 4, 8, 12, 16], [0, 4, 8, 12, 16], [0, 4, 8, 12, 16]]
+
+    # Test dataset pipeline repeat.
+    pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
+    results = [p.take() for p in pipe.iter_epochs()]
+    assert results == [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
+
+    # Test nested repeat.
+    pipe = ray.data.range(5).repeat(2).repeat(2)
+    results = [p.take() for p in pipe.iter_epochs()]
+    assert results == [[0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
+                       [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
+
+
 def test_cannot_read_twice(ray_start_regular_shared):
     ds = ray.data.range(10)
     pipe = ds.window(blocks_per_window=1)
