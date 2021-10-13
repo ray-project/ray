@@ -312,7 +312,7 @@ def create_project_package(
         excludes: List[str],
         output_path: str,
         logger: Optional[logging.Logger] = default_logger) -> None:
-    """Create a pckage that will be used by workers.
+    """Create a package that will be used by workers.
 
     This function is used to create a package file based on working
     directory and python local modules.
@@ -390,6 +390,17 @@ def package_exists(pkg_uri: str) -> bool:
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
+def _get_smart_open():
+    """
+    Created to facilitate unit testing for s3 paths that mocked to fetch
+    local zip file instead.
+    """
+    try:
+        from smart_open import open
+    except ImportError:
+        raise ImportError("You must install the `smart_open` module "
+                            "to fetch URIs in s3 bucket.")
+    return open
 
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
@@ -402,6 +413,7 @@ class WorkingDirManager:
 
     def fetch_package(self,
                       pkg_uri: str,
+                      open_fn: function,
                       logger: Optional[logging.Logger] = default_logger
                       ) -> int:
         """Fetch a package from a given uri if not exists locally.
@@ -411,6 +423,9 @@ class WorkingDirManager:
 
         Args:
             pkg_uri (str): The uri of the package to download.
+            open_fn (function): Function used to download package files. Uses
+                smart_open by default but injected as built-in open for
+                local testing.
 
         Returns:
             The directory containing this package
@@ -437,15 +452,10 @@ class WorkingDirManager:
             code = code or b""
             pkg_file.write_bytes(code)
         elif protocol in (Protocol.S3):
-            try:
-                from smart_open import open
-            except ImportError:
-                raise ImportError("You must install the `smart_open` module "
-                                  "to fetch URIs in s3 bucket.")
             # Download pacakge file from S3.
-            with open(pkg_file, "wb") as f:
-                with open(pkg_uri, "rb") as pacakge_zip:
-                    f.write(pacakge_zip)
+            with open_fn(pkg_file, "wb") as f:
+                with open_fn(pkg_uri, "rb") as package_zip:
+                    f.write(package_zip)
         else:
             raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -520,7 +530,8 @@ class WorkingDirManager:
             # Locking to avoid multiple process download concurrently
             pkg_file = Path(self._get_local_path(pkg_uri))
             with FileLock(str(pkg_file) + ".lock"):
-                pkg_dir = self.fetch_package(pkg_uri, logger=logger)
+                open_fn = _get_smart_open()
+                pkg_dir = self.fetch_package(pkg_uri, open_fn, logger=logger)
             sys.path.insert(0, str(pkg_dir))
 
         # Right now, multiple pkg_uris are not supported correctly.

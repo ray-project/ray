@@ -6,6 +6,8 @@ import tempfile
 import time
 import requests
 from pathlib import Path
+from unittest.mock import patch, mock_open
+from zipfile import ZipFile
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -115,6 +117,16 @@ def one():
             f.write("""
 from test_module.test import one
 """)
+        # Mocked s3 package zip on local disk without actual S3 IO
+        s3_package_zip = module_path / "s3_package.zip"
+        zipped_py_script = module_path / "script.py"
+        with zipped_py_script.open(mode="w") as f:
+            f.write("""
+print("hello world !")
+""")
+        with ZipFile(s3_package_zip, mode="w") as myzip:
+            myzip.write(zipped_py_script)
+
         old_dir = os.getcwd()
         os.chdir(tmp_dir)
         yield tmp_dir
@@ -255,6 +267,13 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     assert out == "ValueError"
 
     runtime_env = f"{{ 'py_modules': [os.path.join(r'{working_dir}', 'na')] }}"
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = ""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env).strip().split()[-1]
+    assert out == "ValueError"
+
+    runtime_env = "{ 'working_dir': 's3://bucket/package' }"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
@@ -472,7 +491,7 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
-        pkg_name, protocol = working_dir_pkg.get_project_package_name(
+        pkg_name, _ = working_dir_pkg.get_project_package_name(
             working_dir, [], [])
         pkg_uri = working_dir_pkg.Protocol.PIN_GCS.value + "://" + pkg_name
         working_dir_pkg.create_project_package(working_dir, [], [],
