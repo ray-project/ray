@@ -92,7 +92,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  std::unordered_map<ObjectID, std::string> object_urls;
+  absl::flat_hash_map<ObjectID, std::string> object_urls;
   std::deque<rpc::ClientCallback<rpc::AddSpilledUrlReply>> spilled_url_callbacks;
 };
 
@@ -269,14 +269,14 @@ class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
 
   MOCK_METHOD1(IsObjectUnsubscribed, bool(const ObjectID &object_id));
 
-  std::unordered_map<ObjectID, std::string> object_urls;
+  absl::flat_hash_map<ObjectID, std::string> object_urls;
   std::list<gcs::StatusCallback> callbacks;
 };
 
 class MockObjectBuffer : public Buffer {
  public:
   MockObjectBuffer(size_t size, ObjectID object_id,
-                   std::shared_ptr<std::unordered_map<ObjectID, int>> unpins)
+                   std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins)
       : size_(size), id_(object_id), unpins_(unpins) {}
 
   MOCK_CONST_METHOD0(Data, uint8_t *());
@@ -291,7 +291,7 @@ class MockObjectBuffer : public Buffer {
 
   size_t size_;
   ObjectID id_;
-  std::shared_ptr<std::unordered_map<ObjectID, int>> unpins_;
+  std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins_;
 };
 
 class LocalObjectManagerTest : public ::testing::Test {
@@ -302,24 +302,25 @@ class LocalObjectManagerTest : public ::testing::Test {
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         manager_node_id_(NodeID::FromRandom()),
         max_fused_object_count_(15),
-        manager(manager_node_id_, "address", 1234, free_objects_batch_size,
-                /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
-                /*max_io_workers=*/2,
-                /*min_spilling_size=*/0,
-                /*is_external_storage_type_fs=*/true,
-                /*max_fused_object_count*/ max_fused_object_count_,
-                /*on_objects_freed=*/
-                [&](const std::vector<ObjectID> &object_ids) {
-                  for (const auto &object_id : object_ids) {
-                    freed.insert(object_id);
-                  }
-                },
-                /*is_plasma_object_spillable=*/
-                [&](const ray::ObjectID &object_id) {
-                  return unevictable_objects_.count(object_id) == 0;
-                },
-                /*core_worker_subscriber=*/subscriber_.get()),
-        unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
+        manager(
+            manager_node_id_, "address", 1234, free_objects_batch_size,
+            /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
+            /*max_io_workers=*/2,
+            /*min_spilling_size=*/0,
+            /*is_external_storage_type_fs=*/true,
+            /*max_fused_object_count*/ max_fused_object_count_,
+            /*on_objects_freed=*/
+            [&](const std::vector<ObjectID> &object_ids) {
+              for (const auto &object_id : object_ids) {
+                freed.insert(object_id);
+              }
+            },
+            /*is_plasma_object_spillable=*/
+            [&](const ray::ObjectID &object_id) {
+              return unevictable_objects_.count(object_id) == 0;
+            },
+            /*core_worker_subscriber=*/subscriber_.get()),
+        unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
   }
 
@@ -344,7 +345,7 @@ class LocalObjectManagerTest : public ::testing::Test {
   std::unordered_set<ObjectID> freed;
   // This hashmap is incremented when objects are unpinned by destroying their
   // unique_ptr.
-  std::shared_ptr<std::unordered_map<ObjectID, int>> unpins;
+  std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins;
   // Object ids in this field won't be evictable.
   std::unordered_set<ObjectID> unevictable_objects_;
 };

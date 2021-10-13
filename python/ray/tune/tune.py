@@ -11,13 +11,15 @@ import warnings
 
 import ray
 from ray.util.annotations import PublicAPI
+from ray.util.queue import Queue, Empty
 
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.logger import Logger
-from ray.tune.progress_reporter import detect_reporter, ProgressReporter
+from ray.tune.progress_reporter import (detect_reporter, ProgressReporter,
+                                        JupyterNotebookReporter)
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls
 from ray.tune.stopper import Stopper
@@ -314,7 +316,48 @@ def run(
         # Make sure tune.run is called on the sever node.
         remote_run = force_on_current_node(remote_run)
 
-        return ray.get(remote_run.remote(_remote=False, **remote_run_kwargs))
+        # JupyterNotebooks don't work with remote tune runs out of the box
+        # (e.g. via Ray client) as they don't have access to the main
+        # process stdout. So we introduce a queue here that accepts
+        # callables, which will then be executed on the driver side.
+        if isinstance(progress_reporter, JupyterNotebookReporter):
+            execute_queue = Queue(actor_options={
+                "num_cpus": 0,
+                **force_on_current_node(None)
+            })
+            progress_reporter.set_output_queue(execute_queue)
+
+            def get_next_queue_item():
+                try:
+                    return execute_queue.get(block=False)
+                except Empty:
+                    return None
+
+        else:
+            # If we don't need a queue, use this dummy get fn instead of
+            # scheduling an unneeded actor
+            def get_next_queue_item():
+                return None
+
+        def _handle_execute_queue():
+            execute_item = get_next_queue_item()
+            while execute_item:
+                if isinstance(execute_item, Callable):
+                    execute_item()
+
+                execute_item = get_next_queue_item()
+
+        remote_future = remote_run.remote(_remote=False, **remote_run_kwargs)
+
+        # ray.wait(...)[1] returns futures that are not ready, yet
+        while ray.wait([remote_future], timeout=0.2)[1]:
+            # Check if we have items to execute
+            _handle_execute_queue()
+
+        # Handle queue one last time
+        _handle_execute_queue()
+
+        return ray.get(remote_future)
 
     del remote_run_kwargs
 
@@ -341,8 +384,34 @@ def run(
     if num_samples == -1:
         num_samples = sys.maxsize
 
+    result_buffer_length = None
+
+    # Create scheduler here as we need access to some of its properties
+    if isinstance(scheduler, str):
+        # importing at top level causes a recursive dependency
+        from ray.tune.schedulers import create_scheduler
+        scheduler = create_scheduler(scheduler)
+    scheduler = scheduler or FIFOScheduler()
+
+    if scheduler.supports_buffered_results:
+        # Result buffering with a Hyperband scheduler is a bad idea, as
+        # hyperband tries to stop trials when processing brackets. With result
+        # buffering, we might trigger this multiple times when evaluating
+        # a single trial, which leads to unexpected behavior.
+        env_result_buffer_length = os.getenv("TUNE_RESULT_BUFFER_LENGTH", "")
+        if env_result_buffer_length:
+            warnings.warn(
+                f"You are using a {type(scheduler)} scheduler, but "
+                f"TUNE_RESULT_BUFFER_LENGTH is set "
+                f"({env_result_buffer_length}). This can lead to undesired "
+                f"and faulty behavior, so the buffer length was forcibly set "
+                f"to 1 instead.")
+        result_buffer_length = 1
+
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors, queue_trials=queue_trials)
+        reuse_actors=reuse_actors,
+        queue_trials=queue_trials,
+        result_buffer_length=result_buffer_length)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -395,11 +464,6 @@ def run(
     if is_local_mode:
         max_concurrent_trials = 1
 
-    if isinstance(scheduler, str):
-        # importing at top level causes a recursive dependency
-        from ray.tune.schedulers import create_scheduler
-        scheduler = create_scheduler(scheduler)
-
     if not search_alg:
         search_alg = BasicVariantGenerator(
             max_concurrent=max_concurrent_trials or 0)
@@ -447,7 +511,6 @@ def run(
                 "does not contain any more parameter definitions - include "
                 "them in the search algorithm's search space if necessary.")
 
-    scheduler = scheduler or FIFOScheduler()
     if not scheduler.set_search_properties(metric, mode):
         raise ValueError(
             "You passed a `metric` or `mode` argument to `tune.run()`, but "

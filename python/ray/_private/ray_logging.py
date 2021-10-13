@@ -191,6 +191,10 @@ def get_worker_log_file_name(worker_type):
 
 
 def configure_log_file(out_file, err_file):
+    # If either of the file handles are None, there are no log files to
+    # configure since we're redirecting all output to stdout and stderr.
+    if out_file is None or err_file is None:
+        return
     stdout_fileno = sys.stdout.fileno()
     stderr_fileno = sys.stderr.fileno()
     # C++ logging requires redirecting the stdout file descriptor. Note that

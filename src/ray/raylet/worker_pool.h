@@ -20,7 +20,6 @@
 #include <boost/asio/io_service.hpp>
 #include <boost/functional/hash.hpp>
 #include <queue>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -39,7 +38,7 @@ namespace ray {
 namespace raylet {
 
 using WorkerCommandMap =
-    std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
+    absl::flat_hash_map<Language, std::vector<std::string>, std::hash<int>>;
 
 enum PopWorkerStatus {
   // OK.
@@ -54,7 +53,7 @@ enum PopWorkerStatus {
   // Worker process has been started, but the worker did not register at the raylet within
   // the timeout.
   // A nullptr worker will be returned with callback.
-  WorkerTimedOut = 3,
+  WorkerPendingRegistration = 3,
   // Any fails of runtime env creation.
   // A nullptr worker will be returned with callback.
   RuntimeEnvCreationFailed = 4,
@@ -372,13 +371,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void TryKillingIdleWorkers();
 
  protected:
-  struct TaskWaitingForWorkerInfo {
-    /// The id of task.
-    TaskID task_id;
-    /// The callback function which should be called when worker registered.
-    PopWorkerCallback callback;
-  };
-
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register N workers, then add them to the pool.
@@ -403,8 +395,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
-      RuntimeEnvHash runtime_env_hash = 0,
-      const std::string &serialized_runtime_env = "{}",
+      const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
       const std::string &serialized_runtime_env_context = "{}",
       const std::string &allocated_instances_serialized_json = "{}");
 
@@ -447,17 +438,22 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_workers;
     /// The type of the worker.
     rpc::WorkerType worker_type;
-    /// The runtime env that this worker started with. Only tasks with a
-    /// matching runtime env can run on this worker.
-    /// For tasks that require dedicated workers (actor creation tasks with
-    /// dynamic worker options), this is a unique per-task key.
-    RuntimeEnvHash runtime_env_hash;
+  };
+
+  struct TaskWaitingForWorkerInfo {
+    /// The id of task.
+    TaskID task_id;
+    /// The callback function which should be called when worker registered.
+    PopWorkerCallback callback;
   };
 
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
+    /// The pool of dedicated workers for actor creation tasks
+    /// with dynamic worker options (prefix or suffix worker command.)
+    absl::flat_hash_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     // States for io workers used for python util functions.
@@ -477,18 +473,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of this shim processes to the extra information of
     /// the process. The shim process PID is the same with worker process PID, except
     /// starting worker process in container.
-    std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
-    /// A map from runtime env hash to tasks that require that runtime env.
-    /// The runtime envs for tasks in this map have been successfully created,
-    /// and the tasks are now waiting for a worker to start. Note that this map
-    /// does not include tasks that have a dedicated worker assigned to them.
-    absl::flat_hash_map<RuntimeEnvHash, std::deque<TaskWaitingForWorkerInfo>>
-        waiting_tasks_by_env_hash;
-    /// A map from runtime env hash to workers that are starting in that
-    /// runtime env. Note that this map does not include dedicated workers that
-    /// have already been assigned to a task.
-    absl::flat_hash_map<RuntimeEnvHash, absl::flat_hash_set<Process>>
-        starting_workers_by_env_hash;
+    absl::flat_hash_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
+    /// A map for looking up the task by the pid of starting worker process.
+    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
+    /// A map for looking up the task with dynamic options by the pid of
+    /// starting worker process. Note that this is used for the dedicated worker
+    /// processes.
+    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo>
+        starting_dedicated_workers_to_tasks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -498,7 +490,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   };
 
   /// Pool states per language.
-  std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
+  absl::flat_hash_map<Language, State, std::hash<int>> states_by_lang_;
 
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
   /// workers in FIFO order. The second element of std::pair is the time a worker becomes
@@ -577,10 +569,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                                       std::shared_ptr<WorkerInterface> worker,
                                       PopWorkerStatus status = PopWorkerStatus::OK);
 
-  void TriggerAsyncCallbacksForFailedWorkerStart(State &state,
-                                                 const RuntimeEnvHash &runtime_env_hash,
-                                                 const PopWorkerStatus &status);
-
   /// Try to find a task that is associated with the given worker process from the given
   /// queue. If found, invoke its PopWorkerCallback.
   /// \param workers_to_tasks The queue of tasks which waiting for workers.
@@ -594,10 +582,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// true.
   /// \param task_id  The related task id.
   void InvokePopWorkerCallbackForProcess(
-      std::unordered_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,
+      absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,
       const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
+
+  /// Create runtime env asynchronously by runtime env agent.
+  void CreateRuntimeEnv(
+      const std::string &serialized_runtime_env, const JobID &job_id,
+      const std::function<void(bool, const std::string &)> &callback,
+      const std::string &serialized_allocated_resource_instances = "{}");
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
@@ -648,7 +642,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
   /// for lookup performance.
-  std::unordered_map<std::shared_ptr<WorkerInterface>, int64_t>
+  absl::flat_hash_map<std::shared_ptr<WorkerInterface>, int64_t>
       idle_of_all_languages_map_;
 
   /// A map of idle workers that are pending exit.
@@ -662,14 +656,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
-
-  /// Some tasks require a custom worker start command, so we need a way to
-  /// associate the task with the worker once the worker registers. We use a
-  /// RuntimeEnvHash as a key so that we can treat the dedicated worker as
-  /// having a special runtime env.
-  /// We start at 1 because 0 means no runtime env (the task can run on a
-  /// default worker).
-  RuntimeEnvHash dedicated_worker_counter_ = 1;
 };
 
 }  // namespace raylet

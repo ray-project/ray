@@ -889,7 +889,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
-  std::unordered_map<std::string, double> resource_spec({{"CPU", 1}});
+  absl::flat_hash_map<std::string, double> resource_spec({{"CPU", 1}});
   ClusterResourceScheduler resource_scheduler("local", {});
   for (int i = 0; i < 100; i++) {
     resource_scheduler.AddOrUpdateNode(std::to_string(i), {}, {});
@@ -922,7 +922,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
 
   NodeResources node_resources;
 
-  std::unordered_map<std::string, double> initial_resources(
+  absl::flat_hash_map<std::string, double> initial_resources(
       {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"1", 1}, {"2", 2}, {"3", 3}});
   ClusterResourceScheduler resource_scheduler("0", initial_resources);
   NodeResources other_node_resources;
@@ -966,7 +966,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
     allocations->custom_resources = {
         {1, {0.1}},  // "1"
     };
-    std::unordered_map<std::string, double> allocation_map({
+    absl::flat_hash_map<std::string, double> allocation_map({
         {"CPU", 0.1},
         {"1", 0.1},
     });
@@ -997,7 +997,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
 TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   vector<int64_t> cust_ids{1};
   NodeResources node_resources;
-  std::unordered_map<std::string, double> initial_resources(
+  absl::flat_hash_map<std::string, double> initial_resources(
       {{"CPU", 1},
        {"GPU", 2},
        {"memory", 3},
@@ -1051,10 +1051,10 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
-  std::unordered_map<std::string, double> initial_resources({{"CPU", 1}});
+  absl::flat_hash_map<std::string, double> initial_resources({{"CPU", 1}});
   ClusterResourceScheduler resource_scheduler("local", initial_resources);
   resource_scheduler.AddOrUpdateNode("remote", {{"CPU", 2.}}, {{"CPU", 2.}});
-  const std::unordered_map<std::string, double> task_spec = {{"CPU", 1.}};
+  const absl::flat_hash_map<std::string, double> task_spec = {{"CPU", 1.}};
 
   // Allocate local resources to force tasks onto the remote node when
   // resources are available.
@@ -1100,8 +1100,8 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
 TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
   ClusterResourceScheduler resource_scheduler("local", {{"CPU", 2}});
 
-  std::unordered_map<std::string, double> resource_request = {{"CPU", 1},
-                                                              {"custom123", 2}};
+  absl::flat_hash_map<std::string, double> resource_request = {{"CPU", 1},
+                                                               {"custom123", 2}};
   int64_t t;
   bool is_infeasible;
 
@@ -1135,7 +1135,7 @@ TEST_F(ClusterResourceSchedulerTest, AvailableResourceEmptyTest) {
   ClusterResourceScheduler resource_scheduler("local", {{"custom123", 5}});
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
-  std::unordered_map<std::string, double> resource_request = {{"custom123", 5}};
+  absl::flat_hash_map<std::string, double> resource_request = {{"custom123", 5}};
   bool allocated =
       resource_scheduler.AllocateLocalTaskResources(resource_request, resource_instances);
   ASSERT_TRUE(allocated);
@@ -1143,7 +1143,7 @@ TEST_F(ClusterResourceSchedulerTest, AvailableResourceEmptyTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
-  std::unordered_map<std::string, double> resource_spec({{"CPU", 1}});
+  absl::flat_hash_map<std::string, double> resource_spec({{"CPU", 1}});
   ClusterResourceScheduler resource_scheduler("local", resource_spec);
   for (int i = 0; i < 100; i++) {
     resource_scheduler.AddOrUpdateNode(std::to_string(i), {}, {});
