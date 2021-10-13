@@ -1,15 +1,18 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import com.google.gson.Gson;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
+import io.ray.runtime.generated.Common.RuntimeEnv;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
@@ -20,6 +23,9 @@ import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -102,8 +108,20 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
             JobConfig.newBuilder()
                 .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
-                .putAllWorkerEnv(rayConfig.workerEnv)
                 .addAllCodeSearchPath(rayConfig.codeSearchPath);
+        RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
+        if (!rayConfig.workerEnv.isEmpty()) {
+          // TODO(SongGuyang): Suppport complete runtime env interface for users.
+          // Set worker env to the serialized runtime env json.
+          Gson gson = new Gson();
+          Map<String, Map<String, String>> runtimeEnv = new HashMap<>();
+          runtimeEnv.put("env_vars", rayConfig.workerEnv);
+          String gsonString = gson.toJson(runtimeEnv);
+          runtimeEnvBuilder.setSerializedRuntimeEnv(gsonString);
+        } else {
+          runtimeEnvBuilder.setSerializedRuntimeEnv("{}");
+        }
+        jobConfigBuilder.setRuntimeEnv(runtimeEnvBuilder.build());
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
       }
 
@@ -216,6 +234,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeRunTaskExecutor(taskExecutor);
   }
 
+  @Override
+  public Map<String, List<ResourceValue>> getAvailableResourceIds() {
+    return nativeGetResourceIds();
+  }
+
   private static native void nativeInitialize(
       int workerMode,
       String ndoeIpAddress,
@@ -238,6 +261,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native byte[] nativeGetActorIdOfNamedActor(String actorName, boolean global);
 
   private static native void nativeSetCoreWorker(byte[] workerId);
+
+  private static native Map<String, List<ResourceValue>> nativeGetResourceIds();
 
   static class AsyncContext {
 

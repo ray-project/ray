@@ -23,9 +23,9 @@
 namespace ray {
 
 absl::Mutex TaskSpecification::mutex_;
-std::unordered_map<SchedulingClassDescriptor, SchedulingClass>
+absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass>
     TaskSpecification::sched_cls_to_id_;
-std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
+absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor>
     TaskSpecification::sched_id_to_cls_;
 int TaskSpecification::next_sched_id_;
 
@@ -142,18 +142,13 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
 }
 
-RuntimeEnvHash TaskSpecification::GetRuntimeEnvHash() const {
-  const auto &job_id = JobId();
-  if (!HasRuntimeEnv() && job_id.IsNil()) {
-    return 0;
-  }
-
-  std::unordered_map<std::string, double> required_resource{};
+int TaskSpecification::GetRuntimeEnvHash() const {
+  absl::flat_hash_map<std::string, double> required_resource;
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {job_id, SerializedRuntimeEnv(), required_resource};
-  return env.Hash();
+  WorkerCacheKey env = {SerializedRuntimeEnv(), required_resource};
+  return env.IntHash();
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
@@ -398,13 +393,10 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
-WorkerCacheKey::WorkerCacheKey(const JobID &job_id) : WorkerCacheKey(job_id, "", {}) {}
-
 WorkerCacheKey::WorkerCacheKey(
-    const JobID &job_id, const std::string &serialized_runtime_env,
-    const std::unordered_map<std::string, double> required_resources)
-    : job_id_(job_id),
-      serialized_runtime_env(serialized_runtime_env),
+    const std::string serialized_runtime_env,
+    const absl::flat_hash_map<std::string, double> &required_resources)
+    : serialized_runtime_env(serialized_runtime_env),
       required_resources(std::move(required_resources)) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
@@ -417,13 +409,14 @@ bool WorkerCacheKey::EnvIsEmpty() const {
          required_resources.empty();
 }
 
-RuntimeEnvHash WorkerCacheKey::Hash() const {
+std::size_t WorkerCacheKey::Hash() const {
   // Cache the hash value.
   if (!hash_) {
-    if (!job_id_.IsNil()) {
-      hash_ = job_id_.Hash();
-    }
-    if (!EnvIsEmpty()) {
+    if (EnvIsEmpty()) {
+      // It's useful to have the same predetermined value for both unspecified and empty
+      // runtime envs.
+      hash_ = 0;
+    } else {
       boost::hash_combine(hash_, serialized_runtime_env);
 
       std::vector<std::pair<std::string, double>> resource_vars(
@@ -438,6 +431,8 @@ RuntimeEnvHash WorkerCacheKey::Hash() const {
   }
   return hash_;
 }
+
+int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   RAY_CHECK(IsActorCreationTask());

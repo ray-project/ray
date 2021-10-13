@@ -3,13 +3,14 @@ import collections
 import os
 import unittest
 from unittest.mock import MagicMock, Mock, patch
+
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
-from ray.tune.progress_reporter import (CLIReporter, JupyterNotebookReporter,
-                                        _fair_filter_trials, best_trial_str,
-                                        detect_reporter, trial_progress_str)
+from ray.tune.progress_reporter import (
+    CLIReporter, JupyterNotebookReporter, _fair_filter_trials, best_trial_str,
+    detect_reporter, trial_progress_str, time_passed_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -60,76 +61,92 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 END_TO_END_COMMAND = """
 import ray
 from ray import tune
+from ray.tune.trial import Location
+from ray.tune.progress_reporter import _get_trial_location
+from unittest.mock import patch
 
-reporter = tune.progress_reporter.CLIReporter(metric_columns=["done"])
 
-def f(config):
-    return {"done": True}
+def mock_get_trial_location(trial, result):
+    location = _get_trial_location(trial, result)
+    if location.pid:
+        return Location("123.123.123.123", "1")
+    return location
 
-ray.init(num_cpus=1)
-tune.run_experiments({
-    "one": {
-        "run": f,
-        "config": {
-            "a": tune.grid_search(list(range(10))),
+
+with patch("ray.tune.progress_reporter._get_trial_location",
+           mock_get_trial_location):
+    reporter = tune.progress_reporter.CLIReporter(metric_columns=["done"])
+
+    def f(config):
+        return {"done": True}
+
+    ray.init(num_cpus=1)
+    tune.run_experiments(
+        {
+            "one": {
+                "run": f,
+                "config": {
+                    "a": tune.grid_search(list(range(10))),
+                },
+            },
+            "two": {
+                "run": f,
+                "config": {
+                    "b": tune.grid_search(list(range(10))),
+                },
+            },
+            "three": {
+                "run": f,
+                "config": {
+                    "c": tune.grid_search(list(range(10))),
+                },
+            },
         },
-    },
-    "two": {
-        "run": f,
-        "config": {
-            "b": tune.grid_search(list(range(10))),
-        },
-    },
-    "three": {
-        "run": f,
-        "config": {
-            "c": tune.grid_search(list(range(10))),
-        },
-    },
-}, verbose=3, progress_reporter=reporter)"""
+        verbose=3,
+        progress_reporter=reporter)"""
 
 EXPECTED_END_TO_END_START = """Number of trials: 30/30 (29 PENDING, 1 RUNNING)
-+---------------+----------+-------+-----+-----+
-| Trial name    | status   | loc   |   a |   b |
-|---------------+----------+-------+-----+-----|
-| f_xxxxx_00000 | RUNNING  |       |   0 |     |
-| f_xxxxx_00001 | PENDING  |       |   1 |     |"""
++---------------+----------+-------------------+-----+-----+
+| Trial name    | status   | loc               |   a |   b |
+|---------------+----------+-------------------+-----+-----|
+| f_xxxxx_00000 | RUNNING  | 123.123.123.123:1 |   0 |     |
+| f_xxxxx_00001 | PENDING  |                   |   1 |     |"""
 
 EXPECTED_END_TO_END_END = """Number of trials: 30/30 (30 TERMINATED)
-+---------------+------------+-------+-----+-----+-----+--------+
-| Trial name    | status     | loc   |   a |   b |   c | done   |
-|---------------+------------+-------+-----+-----+-----+--------|
-| f_xxxxx_00000 | TERMINATED |       |   0 |     |     | True   |
-| f_xxxxx_00001 | TERMINATED |       |   1 |     |     | True   |
-| f_xxxxx_00002 | TERMINATED |       |   2 |     |     | True   |
-| f_xxxxx_00003 | TERMINATED |       |   3 |     |     | True   |
-| f_xxxxx_00004 | TERMINATED |       |   4 |     |     | True   |
-| f_xxxxx_00005 | TERMINATED |       |   5 |     |     | True   |
-| f_xxxxx_00006 | TERMINATED |       |   6 |     |     | True   |
-| f_xxxxx_00007 | TERMINATED |       |   7 |     |     | True   |
-| f_xxxxx_00008 | TERMINATED |       |   8 |     |     | True   |
-| f_xxxxx_00009 | TERMINATED |       |   9 |     |     | True   |
-| f_xxxxx_00010 | TERMINATED |       |     |   0 |     | True   |
-| f_xxxxx_00011 | TERMINATED |       |     |   1 |     | True   |
-| f_xxxxx_00012 | TERMINATED |       |     |   2 |     | True   |
-| f_xxxxx_00013 | TERMINATED |       |     |   3 |     | True   |
-| f_xxxxx_00014 | TERMINATED |       |     |   4 |     | True   |
-| f_xxxxx_00015 | TERMINATED |       |     |   5 |     | True   |
-| f_xxxxx_00016 | TERMINATED |       |     |   6 |     | True   |
-| f_xxxxx_00017 | TERMINATED |       |     |   7 |     | True   |
-| f_xxxxx_00018 | TERMINATED |       |     |   8 |     | True   |
-| f_xxxxx_00019 | TERMINATED |       |     |   9 |     | True   |
-| f_xxxxx_00020 | TERMINATED |       |     |     |   0 | True   |
-| f_xxxxx_00021 | TERMINATED |       |     |     |   1 | True   |
-| f_xxxxx_00022 | TERMINATED |       |     |     |   2 | True   |
-| f_xxxxx_00023 | TERMINATED |       |     |     |   3 | True   |
-| f_xxxxx_00024 | TERMINATED |       |     |     |   4 | True   |
-| f_xxxxx_00025 | TERMINATED |       |     |     |   5 | True   |
-| f_xxxxx_00026 | TERMINATED |       |     |     |   6 | True   |
-| f_xxxxx_00027 | TERMINATED |       |     |     |   7 | True   |
-| f_xxxxx_00028 | TERMINATED |       |     |     |   8 | True   |
-| f_xxxxx_00029 | TERMINATED |       |     |     |   9 | True   |
-+---------------+------------+-------+-----+-----+-----+--------+"""
++---------------+------------+-------------------+-----+-----+-----+--------+
+| Trial name    | status     | loc               |   a |   b |   c | done   |
+|---------------+------------+-------------------+-----+-----+-----+--------|
+| f_xxxxx_00000 | TERMINATED | 123.123.123.123:1 |   0 |     |     | True   |
+| f_xxxxx_00001 | TERMINATED | 123.123.123.123:1 |   1 |     |     | True   |
+| f_xxxxx_00002 | TERMINATED | 123.123.123.123:1 |   2 |     |     | True   |
+| f_xxxxx_00003 | TERMINATED | 123.123.123.123:1 |   3 |     |     | True   |
+| f_xxxxx_00004 | TERMINATED | 123.123.123.123:1 |   4 |     |     | True   |
+| f_xxxxx_00005 | TERMINATED | 123.123.123.123:1 |   5 |     |     | True   |
+| f_xxxxx_00006 | TERMINATED | 123.123.123.123:1 |   6 |     |     | True   |
+| f_xxxxx_00007 | TERMINATED | 123.123.123.123:1 |   7 |     |     | True   |
+| f_xxxxx_00008 | TERMINATED | 123.123.123.123:1 |   8 |     |     | True   |
+| f_xxxxx_00009 | TERMINATED | 123.123.123.123:1 |   9 |     |     | True   |
+| f_xxxxx_00010 | TERMINATED | 123.123.123.123:1 |     |   0 |     | True   |
+| f_xxxxx_00011 | TERMINATED | 123.123.123.123:1 |     |   1 |     | True   |
+| f_xxxxx_00012 | TERMINATED | 123.123.123.123:1 |     |   2 |     | True   |
+| f_xxxxx_00013 | TERMINATED | 123.123.123.123:1 |     |   3 |     | True   |
+| f_xxxxx_00014 | TERMINATED | 123.123.123.123:1 |     |   4 |     | True   |
+| f_xxxxx_00015 | TERMINATED | 123.123.123.123:1 |     |   5 |     | True   |
+| f_xxxxx_00016 | TERMINATED | 123.123.123.123:1 |     |   6 |     | True   |
+| f_xxxxx_00017 | TERMINATED | 123.123.123.123:1 |     |   7 |     | True   |
+| f_xxxxx_00018 | TERMINATED | 123.123.123.123:1 |     |   8 |     | True   |
+| f_xxxxx_00019 | TERMINATED | 123.123.123.123:1 |     |   9 |     | True   |
+| f_xxxxx_00020 | TERMINATED | 123.123.123.123:1 |     |     |   0 | True   |
+| f_xxxxx_00021 | TERMINATED | 123.123.123.123:1 |     |     |   1 | True   |
+| f_xxxxx_00022 | TERMINATED | 123.123.123.123:1 |     |     |   2 | True   |
+| f_xxxxx_00023 | TERMINATED | 123.123.123.123:1 |     |     |   3 | True   |
+| f_xxxxx_00024 | TERMINATED | 123.123.123.123:1 |     |     |   4 | True   |
+| f_xxxxx_00025 | TERMINATED | 123.123.123.123:1 |     |     |   5 | True   |
+| f_xxxxx_00026 | TERMINATED | 123.123.123.123:1 |     |     |   6 | True   |
+| f_xxxxx_00027 | TERMINATED | 123.123.123.123:1 |     |     |   7 | True   |
+| f_xxxxx_00028 | TERMINATED | 123.123.123.123:1 |     |     |   8 | True   |
+| f_xxxxx_00029 | TERMINATED | 123.123.123.123:1 |     |     |   9 | True   |
++---------------+------------+-------------------+-----+-----+-----+--------+"""  # noqa
 
 EXPECTED_END_TO_END_AC = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+
@@ -217,15 +234,26 @@ Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.
 Trial train_xxxxx_00002 reported acc=8 with parameters={'do': 'twice'}. """ + \
     "This trial completed."
 
-VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------+----------+
-| Trial name        | status   | loc   | do       |
-|-------------------+----------+-------+----------|
-| train_xxxxx_00000 | RUNNING  |       | complete |"""
+VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+----------+
+| Trial name        | status   | loc               | do       |
+|-------------------+----------+-------------------+----------|
+| train_xxxxx_00000 | RUNNING  | 123.123.123.123:1 | complete |"""
 
 VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
 import time
+from ray.tune.trial import Location
+from ray.tune.progress_reporter import _get_trial_location
+from unittest.mock import patch
+
+
+def mock_get_trial_location(trial, result):
+    location = _get_trial_location(trial, result)
+    if location.pid:
+        return Location("123.123.123.123", "1")
+    return location
+
 
 def train(config):
     if config["do"] == "complete":
@@ -242,11 +270,14 @@ def train(config):
 random.seed(1234)
 np.random.seed(1234)
 
-tune.run(
-    train,
-    config={
-        "do": tune.grid_search(["complete", "once", "twice"])
-    },"""
+
+with patch("ray.tune.progress_reporter._get_trial_location",
+           mock_get_trial_location):
+    tune.run(
+        train,
+        config={
+            "do": tune.grid_search(["complete", "once", "twice"])
+        },"""
 
 # Add "verbose=3)" etc
 
@@ -423,6 +454,27 @@ class ProgressReporterTest(unittest.TestCase):
         # Current best trial
         best1 = best_trial_str(trials[1], "metric_1")
         assert best1 == EXPECTED_BEST_1
+
+    def testTimeElapsed(self):
+        # Sun Feb 7 14:18:40 2016 -0800
+        # (time of the first Ray commit)
+        time_start = 1454825920
+        time_now = (
+            time_start + 1 * 60 * 60  # 1 hour
+            + 31 * 60  # 31 minutes
+            + 22  # 22 seconds
+        )  # time to second commit
+
+        # Local timezone output can be tricky, so we don't check the
+        # day and the hour in this test.
+        output = time_passed_str(time_start, time_now)
+        self.assertIn("Current time: 2016-02-", output)
+        self.assertIn(":50:02 (running for 01:31:22.00)", output)
+
+        time_now += 2 * 60 * 60 * 24  # plus two days
+        output = time_passed_str(time_start, time_now)
+        self.assertIn("Current time: 2016-02-", output)
+        self.assertIn(":50:02 (running for 2 days, 01:31:22.00)", output)
 
     def testCurrentBestTrial(self):
         trials = []

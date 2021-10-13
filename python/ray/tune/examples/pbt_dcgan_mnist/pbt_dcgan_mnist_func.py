@@ -77,6 +77,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="~/data/",
+        help="Set the path of the dataset.")
     args, _ = parser.parse_known_args()
     ray.init()
 
@@ -90,7 +95,7 @@ if __name__ == "__main__":
             "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
             "examples/pbt_dcgan_mnist/mnist_cnn.pt", MODEL_PATH)
 
-    dataloader = get_data_loader()
+    dataloader = get_data_loader(args.data_dir)
     if not args.smoke_test:
         plot_images(dataloader)
 

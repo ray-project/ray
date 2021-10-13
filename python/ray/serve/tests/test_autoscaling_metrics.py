@@ -59,15 +59,14 @@ def test_e2e(serve_instance):
             "min_replicas": 1,
             "max_replicas": 1
         },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        _graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1")
     class A:
         def __call__(self):
             time.sleep(0.5)
-
-    # We will send over a lot of queries. This will make sure replicas are
-    # killed quickly during cleanup.
-    A._config.experimental_graceful_shutdown_timeout_s = 1
 
     A.deploy()
     handle = A.get_handle()

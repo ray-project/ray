@@ -15,12 +15,11 @@ from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
 from ray.serve.common import BackendTag, ReplicaTag
+from ray.serve.config import BackendConfig
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
-from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
@@ -150,8 +149,6 @@ class RayServeReplica:
         self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
-
-        self.backend_config = backend_config
         self.user_config = user_config
         self.version = version
 
@@ -166,16 +163,6 @@ class RayServeReplica:
             "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
-
-        self.loop = asyncio.get_event_loop()
-        self.long_poll_client = LongPollClient(
-            controller_handle,
-            {
-                (LongPollNamespace.BACKEND_CONFIGS, self.backend_tag): self.
-                _update_backend_configs,
-            },
-            call_in_event_loop=self.loop,
-        )
 
         self.error_counter = metrics.Counter(
             "serve_deployment_error_counter",
@@ -217,6 +204,9 @@ class RayServeReplica:
         })
 
         self.restart_counter.inc()
+
+        self._shutdown_wait_loop_s = (
+            backend_config.graceful_shutdown_wait_loop_s)
 
         if backend_config.autoscaling_config:
             config = backend_config.autoscaling_config
@@ -330,9 +320,6 @@ class RayServeReplica:
                 getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
             await reconfigure_method(user_config)
 
-    def _update_backend_configs(self, new_config_bytes: bytes) -> None:
-        self.backend_config = BackendConfig.from_proto_bytes(new_config_bytes)
-
     async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()
         logger.debug("Replica {} received request {}".format(
@@ -355,19 +342,18 @@ class RayServeReplica:
         Trigger a graceful shutdown protocol that will wait for all the queued
         tasks to be completed and return to the controller.
         """
-        sleep_time = self.backend_config.experimental_graceful_shutdown_wait_loop_s  # noqa: E501
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
-            await asyncio.sleep(sleep_time)
+            await asyncio.sleep(self._shutdown_wait_loop_s)
             method_stat = self._get_handle_request_stats()
             if method_stat["running"] + method_stat["pending"] == 0:
                 break
             else:
                 logger.info(
-                    f"Waiting for an additional {sleep_time}s to shut down "
-                    f"because there are {method_stat} "
-                    "ongoing requests.")
+                    "Waiting for an additional "
+                    f"{self._shutdown_wait_loop_s}s to shut down because "
+                    f"there are {self.num_ongoing_requests} ongoing requests.")
 
         # Explicitly call the del method to trigger clean up.
         # We set the del method to noop after succssifully calling it so the

@@ -189,7 +189,7 @@ _runtime_context = None
 
 
 @PublicAPI(stability="beta")
-@client_mode_hook(auto_init=True)
+@client_mode_hook(auto_init=False)
 def get_runtime_context():
     """Get the runtime context of the current driver/worker.
 

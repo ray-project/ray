@@ -34,8 +34,6 @@ namespace ray {
 typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
-using RuntimeEnvHash = int64_t;
-
 /// ConcurrencyGroup is a group of actor methods that shares
 /// a executing thread pool.
 struct ConcurrencyGroup {
@@ -108,7 +106,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool HasRuntimeEnv() const;
 
-  [[nodiscard]] RuntimeEnvHash GetRuntimeEnvHash() const;
+  int GetRuntimeEnvHash() const;
 
   size_t NumArgs() const;
 
@@ -256,15 +254,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
-  SchedulingClass sched_cls_id_;
+  SchedulingClass sched_cls_id_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
+  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
       GUARDED_BY(mutex_);
-  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
+  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);
 };
@@ -274,17 +272,13 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 /// Class used to cache workers, keyed by runtime_env.
 class WorkerCacheKey {
  public:
-  /// Constructor for a default runtime env.
-  ///
-  explicit WorkerCacheKey(const JobID &job_id);
-
   /// Create a cache key with the given environment variable overrides and serialized
   /// runtime_env.
   ///
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
-  WorkerCacheKey(const JobID &job_id, const std::string &serialized_runtime_env,
-                 const std::unordered_map<std::string, double> required_resources);
+  WorkerCacheKey(const std::string serialized_runtime_env,
+                 const absl::flat_hash_map<std::string, double> &required_resources);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -296,16 +290,20 @@ class WorkerCacheKey {
 
   /// Get the hash for this worker's environment.
   ///
-  /// \return The hash of the override_environment_variables and the serialized
-  /// runtime_env.
-  RuntimeEnvHash Hash() const;
+  /// \return The hash of the serialized runtime_env.
+  std::size_t Hash() const;
+
+  /// Get the int-valued hash for this worker's environment, useful for portability in
+  /// flatbuffers.
+  ///
+  /// \return The hash truncated to an int.
+  int IntHash() const;
 
  private:
-  const JobID job_id_;
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
   /// The required resources for this worker.
-  const std::unordered_map<std::string, double> required_resources;
+  const absl::flat_hash_map<std::string, double> required_resources;
   /// The cached hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   mutable std::size_t hash_ = 0;
