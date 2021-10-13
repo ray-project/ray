@@ -141,9 +141,9 @@ class Worker : public WorkerInterface {
   /// Return the worker process.
   Process GetProcess() const;
   /// Return the worker process's startup token
-  StartupToken GetStartupToken() const;
+  StartupToken GetStartupToken() const override;
   void SetProcess(Process proc);
-  void SetStartupToken(StartupToken startup_token);
+  void SetStartupToken(StartupToken startup_token) override;
   /// Return this worker shim process.
   Process GetShimProcess() const;
   void SetShimProcess(Process proc);

@@ -49,7 +49,7 @@ typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvir
 typedef int pid_t;
 #endif
 
-typedef int64_t StartupToken;
+using StartupToken = int64_t;
 
 class ProcessFD;
 

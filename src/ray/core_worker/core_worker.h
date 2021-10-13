@@ -102,8 +102,8 @@ struct CoreWorkerOptions {
         metrics_agent_port(-1),
         connect_on_start(true),
         runtime_env_hash(0),
-        worker_shim_pid(0),
-        startup_token(-1) {}
+        worker_shim_pid(0)
+        {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -192,7 +192,7 @@ struct CoreWorkerOptions {
   /// This is needed because the actual core worker process
   /// may not have the same pid as the process the worker pool
   /// starts (due to shim processes).
-  StartupToken startup_token;
+  StartupToken startup_token{-1};
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
