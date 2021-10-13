@@ -28,13 +28,32 @@ namespace ray {
 namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
-#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS)                  \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
-      new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,    \
-                                HANDLER##Reply>(                                \
-          service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_, \
-          &SERVICE##Handler::Handle##HANDLER, cq, main_service_,                \
-          #SERVICE ".grpc_server." #HANDLER, MAX_ACTIVE_RPCS));                 \
+#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS)                           \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                             \
+      new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,             \
+                                HANDLER##Reply>(                                         \
+          service_, &SERVICE::AsyncService::Request##HANDLER,                            \
+          [this](const HANDLER##Request &request, HANDLER##Reply *reply,                 \
+                 SendReplyCallback send_reply_callback, google::protobuf::Arena *) {     \
+            this->service_handler_.Handle##HANDLER(request, reply, send_reply_callback); \
+          },                                                                             \
+          cq, main_service_, #SERVICE ".grpc_server." #HANDLER, MAX_ACTIVE_RPCS));       \
+  server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
+
+/// An alternative mactor which exposes arena. Use it when you want to create submessages
+/// in handler.
+#define RPC_SERVICE_HANDLER_WITH_ARENA(SERVICE, HANDLER, MAX_ACTIVE_RPCS)               \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                            \
+      new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,            \
+                                HANDLER##Reply>(                                        \
+          service_, &SERVICE::AsyncService::Request##HANDLER,                           \
+          [this](const HANDLER##Request &request, HANDLER##Reply *reply,                \
+                 SendReplyCallback send_reply_callback,                                 \
+                 google::protobuf::Arena *arena) {                                      \
+            this->service_handler_.Handle##HANDLER(request, reply, send_reply_callback, \
+                                                   arena);                              \
+          },                                                                            \
+          cq, main_service_, #SERVICE ".grpc_server." #HANDLER, MAX_ACTIVE_RPCS));      \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 // Define a void RPC client method.
