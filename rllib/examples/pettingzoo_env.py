@@ -77,7 +77,7 @@ parser.add_argument(
 parser.add_argument(
     "--timesteps",
     type=int,
-    default=10000,
+    default=1000,
     help="Number of timesteps to train.")
 parser.add_argument(
     "--checkpoint-freq",
