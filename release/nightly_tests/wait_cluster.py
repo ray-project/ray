@@ -26,6 +26,16 @@ curr_nodes = 0
 start = time.time()
 next_feedback = start
 max_time = start + args.max_time_s
+
+
+def num_alive_nodes():
+    n = 0
+    for node in ray.nodes():
+        if node.get("Alive", False):
+            n += 1
+    return n
+
+
 while not curr_nodes >= args.num_nodes:
     now = time.time()
 
@@ -42,7 +52,7 @@ while not curr_nodes >= args.num_nodes:
         next_feedback = now + args.feedback_interval_s
 
     time.sleep(5)
-    curr_nodes = len(ray.nodes())
+    curr_nodes = num_alive_nodes()
 
 passed = time.time() - start
 print(f"Cluster is up: {curr_nodes}/{args.num_nodes} nodes online after "
