@@ -1,6 +1,6 @@
 import os
 
-from ray.experimental import pipeline
+from ray.serve import pipeline
 
 
 def test_num_replicas(shared_ray_instance):
