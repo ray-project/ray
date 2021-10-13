@@ -469,8 +469,11 @@ def test_stdout_log_stream(ray_start_regular_shared):
         time.sleep(1)
         print_on_stderr_and_stdout.remote("Hello world")
         time.sleep(1)
-        assert len(log_msgs) == 2, log_msgs
-        assert all((msg.find("Hello world") for msg in log_msgs))
+        num_hello = 0
+        for msg in log_msgs:
+            if "Hello world" in msg:
+                num_hello += 1
+        assert num_hello == 2, f"Invalid logs: {log_msgs}"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
