@@ -100,7 +100,6 @@ def cancel_job(objs: List[ray.ObjectRef]):
         if isinstance(obj, ray.ObjectRef):
             ray.cancel(obj, force=True)
 
-
     for obj in objs:
         ray.cancel(obj)
         _cancel.remote(obj)

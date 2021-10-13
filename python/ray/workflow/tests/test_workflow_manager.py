@@ -155,6 +155,7 @@ def test_actor_manager(workflow_start_regular, tmp_path):
     }], indirect=True)
 def test_workflow_cancel(workflow_start_regular, tmp_path):
     tmp_file = str(tmp_path / "lock")
+
     # A step that will run forever
     @workflow.step
     def inf_step():
