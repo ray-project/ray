@@ -92,7 +92,7 @@ parser.add_argument(
 parser.add_argument(
     "--num-workers",
     type=int,
-    default=2,
+    default=3,
     help="Number of RLlib workers during training.")
 parser.add_argument(
     "--num-envs-per-workers",
