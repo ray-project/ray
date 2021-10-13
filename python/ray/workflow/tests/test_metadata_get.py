@@ -21,8 +21,10 @@ def test_user_metadata(workflow_start_regular):
         name=step_name, metadata=user_step_metadata).step().run(
             workflow_id, metadata=user_run_metadata)
 
-    assert user_run_metadata == workflow.get_metadata("simple")["user_metadata"]
-    assert user_step_metadata == workflow.get_metadata("simple", "simple_step")["user_metadata"]
+    assert user_run_metadata == workflow.get_metadata("simple")[
+        "user_metadata"]
+    assert user_step_metadata == workflow.get_metadata(
+        "simple", "simple_step")["user_metadata"]
 
 
 def test_no_user_metadata(workflow_start_regular):
@@ -37,7 +39,8 @@ def test_no_user_metadata(workflow_start_regular):
     simple.options(name=step_name).step().run(workflow_id)
 
     assert {} == workflow.get_metadata("simple")["user_metadata"]
-    assert {} == workflow.get_metadata("simple", "simple_step")["user_metadata"]
+    assert {} == workflow.get_metadata("simple",
+                                       "simple_step")["user_metadata"]
 
 
 def test_successful_workflow(workflow_start_regular):

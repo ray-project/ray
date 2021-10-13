@@ -367,7 +367,8 @@ def sleep(duration: float) -> Workflow[Event]:
 
 
 @PublicAPI(stability="beta")
-def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]:
+def get_metadata(workflow_id: str,
+                 name: Optional[str] = None) -> Dict[str, Any]:
     """Get the metadata of the workflow.
 
     Args:
