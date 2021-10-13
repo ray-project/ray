@@ -337,11 +337,6 @@ if __name__ == "__main__":
             backup_count=args.logging_rotate_backup_count)
         setup_component_logger(**logging_params)
 
-        if sys.platform == "win32":
-            logger.warning(
-                "The dashboard is currently experimental on windows. "
-                "See https://github.com/ray-project/ray/issues/14026 ")
-
         agent = DashboardAgent(
             args.node_ip_address,
             args.redis_address,
