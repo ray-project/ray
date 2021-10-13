@@ -616,38 +616,145 @@ number of retries is configurable through the ``max_retries`` argument of the
 
 .. _sgd-datasets:
 
-Training on a large dataset (Ray Datasets)
-------------------------------------------
+Distributed Data Ingest (Ray Datasets)
+--------------------------------------
 
-.. note:: This feature is coming soon!
+Ray SGD provides native support for :ref:`Ray Datasets <datasets>` to support the following use cases:
 
-SGD provides native support for :ref:`Ray Datasets <datasets>`. You can pass in a Dataset to RaySGD via ``Trainer.run``\.
-Underneath the hood, RaySGD will automatically shard the given dataset.
+1. **Large Datasets**: With Ray Datasets, you can easily work with datasets that are too big to fit on a single node.
+   Ray Datasets will distribute the dataset across the Ray Cluster and allow you to perform dataset operations (map, filter, etc.)
+   on the distributed dataset.
+2. **Automatic locality-aware sharding**: If provided a Ray Dataset, Ray SGD will automatically shard the dataset and assign each shard
+   to a training worker while minimizing cross-node data transfer. Unlike with standard Torch or Tensorflow datasets, each training
+   worker will only load its assigned shard into memory rather than the entire ``Dataset``.
+3. **Pipelined Execution**: Ray Datasets also supports pipelining, meaning that data processing operations
+   can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
+   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline` for more information.
 
+To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Underneath the hood, Ray SGD will automatically shard the given dataset.
+
+.. warning::
+
+    If you are doing distributed training with Tensorflow, you will need to
+    disable Tensorflow's built-in autosharding as the data on each worker is
+    already sharded.
+
+    .. code-block:: python
+
+        def train_func():
+            ...
+            tf_dataset = sgd.get_dataset_shard().to_tf()
+            options = tf.data.Options()
+            options.experimental_distribute.auto_shard_policy = \
+                tf.data.experimental.AutoShardPolicy.OFF
+            tf_dataset = tf_dataset.with_options(options)
+
+
+**Simple Dataset Example**
 
 .. code-block:: python
 
     def train_func(config):
+        # Create your model here.
+        model = NeuralNetwork()
+
         batch_size = config["worker_batch_size"]
-        data_shard = ray.sgd.get_data_shard()
-        dataloader = data_shard.to_torch(batch_size=batch_size)
 
-        for x, y in dataloader:
-            output = model(x)
-            ...
+        train_data_shard = ray.sgd.get_dataset_shard("train")
+        train_torch_dataset = train_data_shard.to_torch(label_column="label",
+                                                  batch_size=batch_size)
 
+        validation_data_shard = ray.sgd.get_dataset_shard("validation")
+        validation_torch_dataset = validation_data_shard.to_torch(label_column="label",
+                                                                  batch_size=batch_size)
+
+        for epoch in config["num_epochs"]:
+            for X, y in train_torch_dataset:
+                model.train()
+                output = model(X)
+                # Train on one batch.
+            for X, y in validation_torch_dataset:
+                model.eval()
+                output = model(X)
+                # Validate one batch.
         return model
 
     trainer = Trainer(num_workers=8, backend="torch")
-    dataset = ray.data.read_csv("...").filter().window(blocks_per_window=50)
+    dataset = ray.data.read_csv("...")
+
+    # Random split dataset into 80% training data and 20% validation data.
+    split_index = int(dataset.count() * 0.8)
+    train_dataset, validation_dataset = \
+        dataset.random_shuffle().split_at_indices([split_index])
 
     result = trainer.run(
         train_func,
-        config={"worker_batch_size": 64},
-        dataset=dataset)
+        config={"worker_batch_size": 64, "num_epochs": 2},
+        dataset={
+            "train": train_dataset,
+            "validation": validation_dataset
+        })
+
+.. _sgd-dataset-pipeline:
+
+Pipelined Execution
+~~~~~~~~~~~~~~~~~~~
+For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline>`.
+All operations after this conversion will be executed in a pipelined fashion.
+
+See :ref:`dataset-pipeline` for more semantics on pipelining.
+
+Example: Per-Epoch Shuffle Pipeline
++++++++++++++++++++++++++++++++++++
+A common use case is to have a training pipeline that globally shuffles the dataset before every epoch.
+
+This is very simple to do with Ray Datasets + Ray SGD.
+
+.. code-block:: python
+
+    def train_func():
+        # This is a dummy train function just iterating over the dataset.
+        # You should replace this with your training logic.
+        dataset_pipeline_shard = ray.sgd.get_dataset_shard()
+        # Infinitely long iterator of randomly shuffled dataset shards.
+        dataset_iterator = train_dataset_pipeline_shard.iter_datasets()
+        for _ in range(config["num_epochs"]):
+            # Single randomly shuffled dataset shard.
+            train_dataset = next(dataset_iterator)
+            # Convert shard to native Torch Dataset.
+            train_torch_dataset = train_dataset.to_torch(label_column="label",
+                                                         batch_size=batch_size)
+            # Train on your Torch Dataset here!
+
+    # Create a pipeline that loops over its source dataset indefinitely,
+    # with each repeat of the dataset randomly shuffled.
+    dataset_pipeline: DatasetPipeline = ray.data \
+        .read_parquet(...) \
+        .repeat() \
+        .random_shuffle_each_window()
+
+    # Pass in the pipeline to the Trainer.
+    # The Trainer will automatically split the DatasetPipeline for you.
+    trainer = Trainer(num_workers=8, backend="torch")
+    result = trainer.run(
+        train_func,
+        config={"worker_batch_size": 64, "num_epochs": 2},
+        dataset=dataset_pipeline)
 
 
-.. note:: This feature currently does not work with elastic training.
+You can easily set the working set size for the global shuffle by specifying the window size of the ``DatasetPipeline``.
+
+.. code-block:: python
+
+    # Create a pipeline that loops over its source dataset indefinitely.
+    pipe: DatasetPipeline = ray.data \
+        .read_parquet(...) \
+        .window(blocks_per_window=10) \
+        .repeat() \
+        .random_shuffle_each_window()
+
+
+See :ref:`dataset-pipeline-per-epoch-shuffle` for more info.
 
 
 .. _sgd-tune:
@@ -726,7 +833,6 @@ A couple caveats:
     print(analysis.get_best_config(metric="output", mode="max"))
     # {'num_epochs': 2, 'input': 3}
 
-.. note:: RaySGD+RayTune+RayDatasets integration is not yet supported.
 
 ..
     import ray

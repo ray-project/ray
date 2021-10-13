@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import pickle
 import itertools
@@ -66,7 +67,14 @@ class ReplicaSet:
         # Used to unblock this replica set waiting for free replicas. A newly
         # added replica or updated max_concurrent_queries value means the
         # query that waits on a free replica might be unblocked on.
-        self.config_updated_event = asyncio.Event(loop=event_loop)
+
+        # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
+        # removed it alltogether. Call accordingly.
+        if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+            self.config_updated_event = asyncio.Event()
+        else:
+            self.config_updated_event = asyncio.Event(loop=event_loop)
+
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
             "serve_deployment_queued_queries",
