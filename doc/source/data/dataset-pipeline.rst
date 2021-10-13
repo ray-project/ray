@@ -365,7 +365,7 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # === Window 5 ===
     # 4
 
-    # Repeat followed by window. Since preserve_epoch=True, at epoch boundaries
+    # Repeat followed by window. Since preserve_epochs=True, at epoch boundaries
     # windows may be smaller than the target size. If it was set to False, all
     # windows except the last would be the target size.
     ray.data.range(5) \
