@@ -40,6 +40,12 @@ def test_directory():
         os.chdir(old_dir)
 
 
+def test_key_with_value_none():
+    runtime_env_dict = {"pip": None}
+    parsed_runtime_env = ParsedRuntimeEnv(runtime_env_dict)
+    assert parsed_runtime_env == {}
+
+
 class TestValidateWorkingDir:
     @pytest.mark.parametrize("absolute_path", [True, False])
     def test_validate_working_dir_valid_path(self, test_directory,
