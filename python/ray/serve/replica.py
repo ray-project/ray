@@ -70,7 +70,7 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
             else:
                 # This allows backends to define an async __init__ method
                 # (required for FastAPI backend definition).
-                _callable = backend.__new__(backend, *init_args, **init_kwargs)
+                _callable = backend.__new__(backend)
                 await sync_to_async(_callable.__init__)(*init_args,
                                                         **init_kwargs)
             # Setting the context again to update the servable_object.
@@ -362,4 +362,5 @@ class RayServeReplica:
             logger.exception(
                 f"Exception during graceful shutdown of replica: {e}")
         finally:
-            del self.callable.__del__
+            if hasattr(self.callable, "__del__"):
+                del self.callable.__del__
