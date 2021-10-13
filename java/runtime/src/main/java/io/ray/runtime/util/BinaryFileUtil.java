@@ -64,9 +64,9 @@ public class BinaryFileUtil {
         Files.copy(is, Paths.get(tempFile.getCanonicalPath()));
         if (!tempFile.renameTo(destFile)) {
           throw new RuntimeException(
-            String.format(
-              "Couldn't rename temp file(%s) to %s",
-              tempFile.getAbsolutePath(), destFile.getAbsolutePath()));
+              String.format(
+                  "Couldn't rename temp file(%s) to %s",
+                  tempFile.getAbsolutePath(), destFile.getAbsolutePath()));
         }
         return destFile;
       } catch (IOException e) {
