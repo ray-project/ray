@@ -30,7 +30,7 @@ from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import simple_shuffle
+from ray.data.impl.shuffle import simple_shuffle, simple_coalesce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
@@ -309,25 +309,35 @@ class Dataset(Generic[T]):
             compute.apply(transform, ray_remote_args, self._blocks),
             self._epoch)
 
-    def repartition(self, num_blocks: int) -> "Dataset[T]":
+    def repartition(self, num_blocks: int, *,
+                    shuffle: bool = False) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
 
-        This is a blocking operation.
+        This is a blocking operation. After repartitioning, all blocks in the
+        returned dataset will have approximately the same number of rows.
 
         Examples:
             >>> # Set the number of output partitions to write to disk.
-            >>> ds.repartition(100).write_parquet(...)
+            >>> ds.repartition(10, shuffle=False).write_parquet(...)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             num_blocks: The number of blocks.
+            shuffle: Whether to perform a distributed shuffle during the
+                repartition (shuffle is an expensive operation). When shuffle
+                is enabled, each output block contains a subset of data rows
+                from each input block. When shuffle is disabled, output blocks
+                consist of data from only adjacent input blocks.
 
         Returns:
             The repartitioned dataset.
         """
 
-        new_blocks = simple_shuffle(self._blocks, num_blocks)
+        if shuffle:
+            new_blocks = simple_shuffle(self._blocks, num_blocks)
+        else:
+            new_blocks = simple_coalesce(self._blocks, num_blocks)
         return Dataset(new_blocks, self._epoch)
 
     def random_shuffle(
