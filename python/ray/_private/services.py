@@ -399,8 +399,8 @@ def node_ip_address_from_perspective(address):
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray.worker._global_node is not None:
         return ray.worker._global_node.node_ip_address
-    if sys.platform == "darwin":
-        # Due to the mac osx firewall,
+    if sys.platform == "darwin" or sys.platform == "win32":
+        # Due to the mac osx/windows firewall,
         # we use loopback ip as the ip address
         # to prevent security popups.
         return "127.0.0.1"
