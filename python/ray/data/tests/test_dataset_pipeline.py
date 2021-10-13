@@ -53,6 +53,17 @@ def test_epoch(ray_start_regular_shared):
     assert results == [[0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
                        [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
 
+    # Test preserve_epochs=True.
+    pipe = ray.data.range(5).repeat(2).rewindow(blocks_per_window=2)
+    results = [p.take() for p in pipe.iter_epochs()]
+    assert results == [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
+
+    # Test preserve_epochs=False.
+    pipe = ray.data.range(5).repeat(2).rewindow(
+        blocks_per_window=2, preserve_epochs=False)
+    results = [p.take() for p in pipe.iter_epochs()]
+    assert results == [[0, 1, 2, 3], [4, 0, 1, 2, 3, 4]]
+
 
 def test_cannot_read_twice(ray_start_regular_shared):
     ds = ray.data.range(10)
