@@ -16,6 +16,7 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 
 #include "absl/strings/str_format.h"
@@ -256,6 +257,51 @@ TEST(PrintLogTest, CallstackTraceTest) {
   EXPECT_TRUE(ret2.find("TestFunctionLevel2") != std::string::npos);
 }
 #endif
+
+TEST(PrintLogTest, EnableFlushTest) {
+  RayLog::EnableAlwaysFlush(false);
+  RayLog::StartRayLog("temp", RayLogLevel::DEBUG,
+                      ray::GetUserTempDir() + ray::GetDirSep());
+  RAY_LOG(INFO) << "Test log flush";
+#ifdef _WIN32
+  int pid = _getpid();
+#else
+  pid_t pid = getpid();
+#endif
+  std::string log_file_name =
+      ray::GetUserTempDir() + ray::GetDirSep() + "temp_" + std::to_string(pid) + ".log";
+  {
+    std::ifstream file(log_file_name, std::ios::binary);
+    EXPECT_TRUE(file);
+    std::string str;
+    std::getline(file, str);
+    EXPECT_TRUE(str.empty());
+  }
+
+  RayLog::ShutDownRayLog();
+  {
+    std::ifstream file(log_file_name, std::ios::binary);
+    EXPECT_TRUE(file);
+    std::string str;
+    std::getline(file, str);
+    EXPECT_TRUE(!str.empty());
+  }
+
+  RayLog::EnableAlwaysFlush(true);
+  RayLog::StartRayLog("temp1", RayLogLevel::DEBUG,
+                      ray::GetUserTempDir() + ray::GetDirSep());
+  RAY_LOG(INFO) << "not flush every time";
+  log_file_name =
+      ray::GetUserTempDir() + ray::GetDirSep() + "temp1_" + std::to_string(pid) + ".log";
+  {
+    std::ifstream file(log_file_name, std::ios::binary);
+    EXPECT_TRUE(file);
+    std::string str;
+    std::getline(file, str);
+    EXPECT_TRUE(!str.empty());
+  }
+  RayLog::ShutDownRayLog();
+}
 
 /// Catch abort signal handler for testing RAY_CHECK.
 /// We'd better to run the following test case manually since process
