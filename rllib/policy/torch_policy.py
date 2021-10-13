@@ -40,15 +40,7 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class TorchPolicy(Policy):
-    """Template for a PyTorch policy and loss to use with RLlib.
-
-    Attributes:
-        observation_space (gym.Space): observation space of the policy.
-        action_space (gym.Space): action space of the policy.
-        config (dict): config of the policy.
-        model (TorchModel): Torch model instance.
-        dist_class (type): Torch action distribution class.
-    """
+    """PyTorch specific Policy class to use with RLlib."""
 
     @DeveloperAPI
     def __init__(
@@ -73,59 +65,47 @@ class TorchPolicy(Policy):
             get_batch_divisibility_req: Optional[Callable[[Policy],
                                                           int]] = None,
     ):
-        """Build a policy from policy and loss torch modules.
-
-        Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
-        is set. Only single GPU is supported for now.
+        """Initializes a TorchPolicy instance.
 
         Args:
-            observation_space (gym.spaces.Space): observation space of the
-                policy.
-            action_space (gym.spaces.Space): action space of the policy.
-            config (TrainerConfigDict): The Policy config dict.
-            model (ModelV2): PyTorch policy module. Given observations as
+            observation_space: Observation space of the policy.
+            action_space: Action space of the policy.
+            config: The Policy's config dict.
+            model: PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
-            loss (Callable[[Policy, ModelV2, Type[TorchDistributionWrapper],
-                SampleBatch], Union[TensorType, List[TensorType]]]): Callable
-                that returns a single scalar loss or a list of loss terms.
-            action_distribution_class (Type[TorchDistributionWrapper]): Class
-                for a torch action distribution.
-            action_sampler_fn (Callable[[TensorType, List[TensorType]],
-                Tuple[TensorType, TensorType]]): A callable returning a
-                sampled action and its log-likelihood given Policy, ModelV2,
-                input_dict, explore, timestep, and is_training.
-            action_distribution_fn (Optional[Callable[[Policy, ModelV2,
-                ModelInputDict, TensorType, TensorType],
-                Tuple[TensorType, type, List[TensorType]]]]): A callable
-                returning distribution inputs (parameters), a dist-class to
-                generate an action distribution object from, and
-                internal-state outputs (or an empty list if not applicable).
-                Note: No Exploration hooks have to be called from within
-                `action_distribution_fn`. It's should only perform a simple
-                forward pass through some model.
+            loss: Callable that returns one or more (a list of) scalar loss terms.
+            action_distribution_class: Class for a torch action distribution.
+            action_sampler_fn: A callable returning a sampled action and
+                its log-likelihood given Policy, ModelV2, input_dict,
+                explore, timestep, and is_training.
+            action_distribution_fn: A callable returning distribution inputs
+                (parameters), a dist-class to generate an action distribution
+                object from, and internal-state outputs (or an empty list if
+                not applicable). Note: No Exploration hooks have to be called
+                from within `action_distribution_fn`. It's should only perform
+                a simple forward pass through some model.
                 If None, pass inputs through `self.model()` to get distribution
                 inputs.
                 The callable takes as inputs: Policy, ModelV2, ModelInputDict,
                 explore, timestep, is_training.
-            max_seq_len (int): Max sequence length for LSTM training.
-            get_batch_divisibility_req (Optional[Callable[[Policy], int]]]):
-                Optional callable that returns the divisibility requirement
-                for sample batches given the Policy.
+            max_seq_len: Max sequence length for LSTM training.
+            get_batch_divisibility_req: Optional callable that returns the
+                divisibility requirement for sample batches given the Policy.
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
 
         # Create multi-GPU model towers, if necessary.
         # - The central main model will be stored under self.model, residing
-        #   on self.device.
+        #   on self.device (normally, a CPU).
         # - Each GPU will have a copy of that model under
         #   self.model_gpu_towers, matching the devices in self.devices.
         # - Parallelization is done by splitting the train batch and passing
         #   it through the model copies in parallel, then averaging over the
         #   resulting gradients, applying these averages on the main model and
         #   updating all towers' weights from the main model.
-        # - In case of just one device (1 (fake) GPU or 1 CPU), no
+        # - In case of just one device (1 (fake or real) GPU or 1 CPU), no
         #   parallelization will be done.
 
         # Get devices to build the graph on.
@@ -142,7 +122,7 @@ class TorchPolicy(Policy):
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
-        # - no GPUs available.
+        # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             logger.info("TorchPolicy (worker={}) running on {}.".format(
                 worker_idx

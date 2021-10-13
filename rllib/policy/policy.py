@@ -62,17 +62,18 @@ class Policy(metaclass=ABCMeta):
 
     Policy is the abstract superclass for all DL-framework specific sub-classes
     (e.g. TFPolicy or TorchPolicy). It exposes APIs to
-    - Compute actions from observation (and possibly other) inputs.
-    - Manage the Policy's NN model(s), like exporting and loading their
-    weights.
-    - Postprocess a given trajectory from the environment or other input
-    via the `postprocess_trajectory` method.
-    - Compute losses from a train batch.
-    - Perform updates from a train batch on the NN-models (this normally
-    includes loss calculations) either a) in one monolithic step
-    (`train_on_batch`) or b) via batch pre-loading, then n steps of actual
-    loss computations and updates (`load_batch_into_buffer` +
-    `learn_on_loaded_batch`).
+
+    1) Compute actions from observation (and possibly other) inputs.
+    2) Manage the Policy's NN model(s), like exporting and loading their
+       weights.
+    3) Postprocess a given trajectory from the environment or other input
+       via the `postprocess_trajectory` method.
+    4) Compute losses from a train batch.
+    5) Perform updates from a train batch on the NN-models (this normally
+       includes loss calculations) either a) in one monolithic step
+       (`train_on_batch`) or b) via batch pre-loading, then n steps of actual
+       loss computations and updates (`load_batch_into_buffer` +
+       `learn_on_loaded_batch`).
 
     Note: It is not recommended to sub-class Policy directly, but rather use
     one of the following two convenience methods:
@@ -179,9 +180,8 @@ class Policy(metaclass=ABCMeta):
             kwargs: Forward compatibility placeholder.
 
         Returns:
-            actions: Single action.
-            state_outs: List of RNN state outputs, if any.
-            info: Dictionary of extra features, if any.
+            Tuple: Single action, list of RNN state outputs (if any),
+                dictionary of extra features (if any).
         """
         # Build the input-dict used for the call to
         # `self.compute_actions_from_input_dict()`.

@@ -528,19 +528,27 @@ def with_common_config(
 
 @PublicAPI
 class Trainer(Trainable):
-    """A trainer coordinates the optimization of one or more RL policies.
+    """An RLlib algorithm responsible for optimizing one or more Policies.
 
-    All RLlib trainers extend this base class, e.g., the A3CTrainer implements
-    the A3C algorithm for single and multi-agent training.
+    Trainers contain a WorkerSet (self.workers), normally used to generate
+    environment samples in parallel (`self.workers.remote_workers()`) and
+    to compute and apply learning updates (`self.workers.local_worker()`).
 
-    Trainer objects retain internal model state between calls to train(), so
-    you should create a new trainer instance for each training session.
+    Each worker (remotes and local) contains a full PolicyMap (1 Policy
+    for single-agent training, 1 or more policies for multi-agent training).
 
-    Attributes:
-        env_creator (func): Function that creates a new training env.
-        config (obj): Algorithm-specific configuration data.
-        logdir (str): Directory in which training outputs should be placed.
+    You can write your own Trainer sub-classes by using the
+    rllib.agents.trainer_template.py::build_traing() utility function.
+    This allows you to provide a custom `execution_plan`. You can find the
+    different built-in algorithms' execution plans in their respective main
+    py files, e.g. rllib.agents.dqn.dqn.py or rllib.agents.impala.impala.py.
+
+    The most important API methods a Trainer exposes are `train()`,
+    `evaluate()`, `save()` and `restore()`. Trainer objects retain internal
+    model state between calls to train(), so you should create a new
+    Trainer instance for each training session.
     """
+
     # Whether to allow unknown top-level config keys.
     _allow_unknown_configs = False
 
@@ -561,15 +569,18 @@ class Trainer(Trainable):
     @PublicAPI
     def __init__(self,
                  config: TrainerConfigDict = None,
-                 env: str = None,
+                 env: Union[str, EnvType, None] = None,
                  logger_creator: Callable[[], Logger] = None):
-        """Initialize an RLLib trainer.
+        """Initializes a Trainer instance.
 
         Args:
-            config (dict): Algorithm-specific configuration data.
-            env (str): Name of the environment to use. Note that this can also
-                be specified as the `env` key in config.
-            logger_creator (func): Function that creates a ray.tune.Logger
+            config: Algorithm-specific configuration dict.
+            env: Name of the environment to use (e.g. a gym-registered str),
+                a full class path (e.g.
+                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
+                class directly. Note that this arg can also be specified via
+                the "env" key in `config`.
+            logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
 
