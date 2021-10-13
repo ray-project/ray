@@ -220,10 +220,7 @@ class WorkflowManagementActor:
                 self._step_output_cache.pop(workflow_id, {})
         else:
             step_output = LatestWorkflowOutput(
-                output=outputs[0],
-                workflow_id=workflow_id,
-                step_id=step_id
-            )
+                output=outputs[0], workflow_id=workflow_id, step_id=step_id)
             self._step_output_cache.setdefault(workflow_id,
                                                {})[step_id] = step_output
 

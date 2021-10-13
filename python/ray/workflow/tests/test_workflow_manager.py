@@ -5,6 +5,7 @@ import ray
 from ray import workflow
 from filelock import FileLock, Timeout
 
+
 def ensure_lock(lock_file):
     lock = FileLock(lock_file)
 
