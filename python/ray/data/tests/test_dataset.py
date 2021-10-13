@@ -1316,17 +1316,17 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs,
         data_path, filesystem=fs, parallelism=parallelism)
 
     # Test metadata-only parquet ops.
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert ds.count() == num_dfs * 3
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == num_dfs, input_files
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
 
     # Forces a data read.
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
-    assert len(ds._blocks._blocks) == parallelism
+    assert ds._blocks._num_computed() == parallelism
     assert sorted(values) == list(range(3 * num_dfs))
 
 
