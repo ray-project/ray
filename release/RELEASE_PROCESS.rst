@@ -172,6 +172,9 @@ Release tests are added and maintained by the respective teams.
    As another example, if you just want to kick off all nightly RLLib tests,
    select the respective test suite and specify ``rllib`` in the test file filter.
 
+6. **Kubernetes tests must be run manually.** Refer to ``kubernetes_manual_tests/README.md``.
+   Feel free to ping code owner(s) of OSS Kubernetes support to run these.
+
 Identify and Resolve Release Blockers
 -------------------------------------
 If a release blocking issue arises in the course of testing, you should
