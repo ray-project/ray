@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Function, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
 
@@ -390,6 +390,7 @@ def package_exists(pkg_uri: str) -> bool:
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
+
 def _get_smart_open():
     """
     Created to facilitate unit testing for s3 paths that mocked to fetch
@@ -399,8 +400,9 @@ def _get_smart_open():
         from smart_open import open
     except ImportError:
         raise ImportError("You must install the `smart_open` module "
-                            "to fetch URIs in s3 bucket.")
+                          "to fetch URIs in s3 bucket.")
     return open
+
 
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
@@ -411,11 +413,11 @@ class WorkingDirManager:
         _, pkg_name = _parse_uri(pkg_uri)
         return os.path.join(self._resources_dir, pkg_name)
 
-    def fetch_package(self,
-                      pkg_uri: str,
-                      open_fn: function,
-                      logger: Optional[logging.Logger] = default_logger
-                      ) -> int:
+    def fetch_package(
+            self,
+            pkg_uri: str,
+            open_fn: Function,
+            logger: Optional[logging.Logger] = default_logger) -> int:
         """Fetch a package from a given uri if not exists locally.
 
         This function is used to fetch a pacakge from the given uri and unpack
@@ -423,7 +425,7 @@ class WorkingDirManager:
 
         Args:
             pkg_uri (str): The uri of the package to download.
-            open_fn (function): Function used to download package files. Uses
+            open_fn (Function): Function used to download package files. Uses
                 smart_open by default but injected as built-in open for
                 local testing.
 

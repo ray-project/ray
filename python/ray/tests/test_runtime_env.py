@@ -6,7 +6,6 @@ import tempfile
 import time
 import requests
 from pathlib import Path
-from unittest.mock import patch, mock_open
 from zipfile import ZipFile
 
 import ray
