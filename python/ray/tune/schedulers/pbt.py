@@ -384,8 +384,6 @@ class PopulationBasedTraining(FIFOScheduler):
         time = result[self._time_attr]
         state = self._trial_state[trial]
 
-        self._save_trial_state(state, time, result, trial)
-
         # Continue training if burn-in period has not been reached, yet.
         if time < self._burn_in_period:
             return TrialScheduler.CONTINUE
@@ -393,6 +391,8 @@ class PopulationBasedTraining(FIFOScheduler):
         # Continue training if perturbation interval has not been reached, yet.
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
+
+        self._save_trial_state(state, time, result, trial)
 
         if not self._synch:
             state.last_perturbation_time = time
