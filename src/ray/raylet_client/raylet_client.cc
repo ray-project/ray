@@ -321,6 +321,20 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
+void raylet::RayletClient::ReportWorkerBacklog(
+    const WorkerID &worker_id,
+    const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
+  rpc::ReportWorkerBacklogRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
+  grpc_client_->ReportWorkerBacklog(
+      request, [](const Status &status, const rpc::ReportWorkerBacklogReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Error reporting task backlog information: " << status;
+        }
+      });
+}
+
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
                                           bool disconnect_worker) {
   rpc::ReturnWorkerRequest request;

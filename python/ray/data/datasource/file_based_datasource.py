@@ -1,6 +1,7 @@
 import logging
 import os
-from typing import Callable, Optional, List, Tuple, Union, Any, TYPE_CHECKING
+from typing import Callable, Optional, List, Tuple, Union, Any, Dict, \
+    TYPE_CHECKING
 import urllib.parse
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             paths: Union[str, List[str]],
             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
             schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+            open_stream_args: Optional[Dict[str, Any]] = None,
             _block_udf: Optional[Callable[[Block], Block]] = None,
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
@@ -52,6 +54,9 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
+        if open_stream_args is None:
+            open_stream_args = {}
+
         def read_files(
                 read_paths: List[str],
                 fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]):
@@ -60,7 +65,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 fs = fs.unwrap()
             builder = DelegatingArrowBlockBuilder()
             for read_path in read_paths:
-                with fs.open_input_stream(read_path) as f:
+                with fs.open_input_stream(read_path, **open_stream_args) as f:
                     data = read_file(f, read_path, **reader_args)
                     if isinstance(data, pa.Table) or isinstance(
                             data, np.ndarray):
@@ -116,6 +121,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                  dataset_uuid: str,
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  try_create_dir: bool = True,
+                 open_stream_args: Optional[Dict[str, Any]] = None,
                  _block_udf: Optional[Callable[[Block], Block]] = None,
                  **write_args) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
@@ -127,6 +133,9 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         _write_block_to_file = self._write_block
 
+        if open_stream_args is None:
+            open_stream_args = {}
+
         def write_block(write_path: str, block: Block):
             logger.debug(f"Writing {write_path} file.")
             fs = filesystem
@@ -134,7 +143,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 fs = fs.unwrap()
             if _block_udf is not None:
                 block = _block_udf(block)
-            with fs.open_output_stream(write_path) as f:
+
+            with fs.open_output_stream(write_path, **open_stream_args) as f:
                 _write_block_to_file(f, BlockAccessor.for_block(block),
                                      **write_args)
 

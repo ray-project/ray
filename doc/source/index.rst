@@ -278,6 +278,7 @@ Papers
 
    data/dataset.rst
    data/dataset-pipeline.rst
+   data/examples/big_data_ingestion
    data/dataset-tensor-support.rst
    data/package-ref.rst
    data/dask-on-ray.rst
@@ -370,6 +371,7 @@ Papers
 
    getting-involved.rst
    development.rst
+   fake-autoscaler.rst
    whitepaper.rst
    debugging.rst
    profiling.rst

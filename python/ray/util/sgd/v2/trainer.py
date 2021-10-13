@@ -13,6 +13,7 @@ from ray.util.sgd.v2.backends.horovod import HorovodConfig
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.utils import RayDataset
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
     TUNE_CHECKPOINT_FILE_NAME
@@ -189,6 +190,7 @@ class Trainer:
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
             callbacks: Optional[List[SGDCallback]] = None,
+            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
             ) -> List[T]:
@@ -202,6 +204,16 @@ class Trainer:
             callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
+            dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
+                Distributed Ray :ref:`Dataset <dataset-api>` or
+                :ref:`DatasetPipeline <dataset-pipeline-api>` to pass into the
+                workers, which can be accessed from the training function via
+                ``sgd.get_dataset_shard()``. Sharding will automatically be
+                handled by the Trainer. Multiple Datasets can be passed in as
+                a ``Dict`` that maps each name key to a Dataset value,
+                and each Dataset can be accessed from the training function
+                by passing in a `dataset_name` argument to
+                ``sgd.get_dataset_shard()``.
             checkpoint (Optional[Dict|str|Path]): The checkpoint data that
                 should be loaded onto each worker and accessed by the training
                 function via ``sgd.load_checkpoint()``. If this is a ``str`` or
@@ -233,6 +245,7 @@ class Trainer:
             iterator = SGDIterator(
                 backend_executor=self._executor,
                 train_func=train_func,
+                dataset=dataset,
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
                 run_dir=self.latest_run_dir,
@@ -251,6 +264,7 @@ class Trainer:
             self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
+            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
     ) -> "SGDIterator":
@@ -305,10 +319,10 @@ class Trainer:
         return SGDIterator(
             backend_executor=self._executor,
             train_func=train_func,
-            checkpoint=checkpoint,
-            checkpoint_strategy=checkpoint_strategy,
             run_dir=self.latest_run_dir,
-        )
+            dataset=dataset,
+            checkpoint=checkpoint,
+            checkpoint_strategy=checkpoint_strategy)
 
     def _get_train_func(
             self,
@@ -385,13 +399,26 @@ class Trainer:
         """Shuts down the training execution service."""
         self._executor.shutdown()
 
-    def to_tune_trainable(self, train_func: Callable[[Dict[str, Any]], T]
-                          ) -> Type[Trainable]:
+    def to_tune_trainable(
+            self,
+            train_func: Callable[[Dict[str, Any]], T],
+            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
+    ) -> Type[Trainable]:
         """Creates a Tune ``Trainable`` from the input training function.
 
         Args:
             func (Callable): The function that should be executed on each
                 training worker.
+            dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
+                Distributed Ray p:ref:`Dataset <dataset-api>` or
+                :ref:`DatasetPipeline <dataset-pipeline-api>` to pass into the
+                workers, which can be accessed from the training function via
+                ``sgd.get_dataset_shard()``. Sharding will automatically be
+                handled by the Trainer. Multiple Datasets can be passed in as
+                a ``Dict`` that maps each name key to a Dataset value,
+                and each Dataset can be accessed from the training function
+                by passing in a `dataset_name` argument to
+                ``sgd.get_dataset_shard()``.
 
         Returns:
             A Trainable that can directly be passed into ``tune.run()``.
@@ -405,7 +432,7 @@ class Trainer:
                                "`to_tune_trainable`. Either shutdown the "
                                "Trainer or don't start it in the first place.")
 
-        return _create_tune_trainable(train_func, self._backend,
+        return _create_tune_trainable(train_func, dataset, self._backend,
                                       self._num_workers, self._use_gpu,
                                       self._resources_per_worker)
 
@@ -501,14 +528,21 @@ class SGDIterator:
     def __init__(
             self, backend_executor: BackendExecutor,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-            checkpoint: Optional[Union[Dict, str, Path]],
-            checkpoint_strategy: Optional[CheckpointStrategy], run_dir: Path):
+            run_dir: Path,
+            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
+            checkpoint: Optional[Dict],
+            checkpoint_strategy: Optional[CheckpointStrategy]):
         self._executor = backend_executor
         self._train_func = train_func
-        self._checkpoint_strategy = checkpoint_strategy
+        self._dataset = dataset
         self._run_dir = run_dir
+        self._checkpoint_strategy = checkpoint_strategy
         self._start_training(
-            train_func, checkpoint, checkpoint_strategy, run_dir=run_dir)
+            train_func=train_func,
+            run_dir=run_dir,
+            dataset=dataset,
+            checkpoint=checkpoint,
+            checkpoint_strategy=checkpoint_strategy)
 
         self._final_results = None
         self._finished_training = False
@@ -518,16 +552,18 @@ class SGDIterator:
 
     def _start_training(self,
                         train_func,
+                        run_dir,
+                        dataset,
                         checkpoint,
                         checkpoint_strategy,
-                        run_dir,
                         latest_checkpoint_id=None):
         self._run_with_error_handling(
             lambda: self._executor.start_training(
                 train_func=train_func,
+                run_dir=run_dir,
+                dataset=dataset,
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
-                run_dir=run_dir,
                 latest_checkpoint_id=latest_checkpoint_id
             )
         )
@@ -539,9 +575,10 @@ class SGDIterator:
             # Workers have already been restarted.
             self._start_training(
                 self._train_func,
+                self._run_dir,
+                self._dataset,
                 self._executor.latest_checkpoint,
                 self._checkpoint_strategy,
-                run_dir=self._run_dir,
                 latest_checkpoint_id=self._executor.latest_checkpoint_id)
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
@@ -604,13 +641,14 @@ class SGDIterator:
         return self._final_results
 
 
-def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
+def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
                            resources_per_worker):
     """Creates a Tune Trainable class for SGD training.
 
     This function populates class attributes and methods.
     """
 
+    # TODO(matt): Move dataset to Ray object store, like tune.with_parameters.
     def tune_function(config, checkpoint_dir=None):
         trainer = Trainer(
             backend=backend,
@@ -627,7 +665,7 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
             checkpoint_path = None
 
         iterator = trainer.run_iterator(
-            train_func, config, checkpoint=checkpoint_path)
+            train_func, config, dataset=dataset, checkpoint=checkpoint_path)
 
         for results in iterator:
             first_worker_results = results[0]

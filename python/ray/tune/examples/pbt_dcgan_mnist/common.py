@@ -18,7 +18,6 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 # Training parameters
-dataroot = "~/data"
 workers = 2
 batch_size = 64
 image_size = 32
@@ -44,9 +43,9 @@ train_iterations_per_step = 5
 MODEL_PATH = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
 
 
-def get_data_loader():
+def get_data_loader(data_dir="~/data"):
     dataset = dset.MNIST(
-        root=dataroot,
+        root=data_dir,
         download=True,
         transform=transforms.Compose([
             transforms.Resize(image_size),
