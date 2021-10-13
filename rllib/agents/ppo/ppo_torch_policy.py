@@ -85,17 +85,24 @@ def ppo_surrogate_loss(
 
     # Compute a value function loss.
     if policy.config["use_critic"]:
-        prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
+        #prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
         value_fn_out = model.value_function()
         vf_loss1 = torch.pow(
             value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
-        vf_clipped = prev_value_fn_out + torch.clamp(
-            value_fn_out - prev_value_fn_out, -policy.config["vf_clip_param"],
+
+        vf_loss = torch.clamp(
+            vf_loss1, -policy.config["vf_clip_param"],
             policy.config["vf_clip_param"])
-        vf_loss2 = torch.pow(
-            vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
-        vf_loss = torch.max(vf_loss1, vf_loss2)
+
         mean_vf_loss = reduce_mean_valid(vf_loss)
+
+        #vf_clipped = prev_value_fn_out + torch.clamp(
+        #    value_fn_out - prev_value_fn_out, -policy.config["vf_clip_param"],
+        #    policy.config["vf_clip_param"])
+        #vf_loss2 = torch.pow(
+        #    vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+        #vf_loss = torch.max(vf_loss1, vf_loss2)
+        #mean_vf_loss = reduce_mean_valid(vf_loss)
     # Ignore the value function.
     else:
         vf_loss = mean_vf_loss = 0.0
