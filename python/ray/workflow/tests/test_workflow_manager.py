@@ -233,6 +233,44 @@ def test_workflow_cancel_nested(workflow_start_regular, tmp_path):
     del job_1
 
 
+def test_workflow_cancel_parallel(workflow_start_regular, tmp_path):
+    lock_files = [str(tmp_path / f"lock.{i}") for i in range(10)]
+    @workflow.step(num_cpus=0)
+    def inf_step(lock_file):
+        with FileLock(lock_file):
+            while True:
+                time.sleep(1)
+
+    @workflow.step
+    def join_steps(*args):
+        return
+
+    @workflow.step
+    def a_step():
+        locks = [FileLock(f) for f in lock_files]
+        for l in locks:
+            l.acquire()
+            l.release()
+        return 1
+
+    input_steps = [inf_step.step(f) for f in lock_files]
+    job_1 = join_steps.step(*input_steps).run_async("job_1")
+    for f in lock_files:
+        ensure_lock(f)
+
+    job_2 = a_step.step().run_async("job_2")
+    assert workflow.get_status("job_1") == workflow.RUNNING
+    assert workflow.get_status("job_2") == workflow.RUNNING
+
+    # Canceled one will be turned into cancelled status
+    workflow.cancel("job_1")
+    assert workflow.get_status("job_1") == workflow.CANCELED
+    # job_2 will hold the lock and make progress since job_1 is cancelled
+    assert 1 == ray.get(job_2)
+    del job_1
+
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
