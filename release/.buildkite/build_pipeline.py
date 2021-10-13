@@ -9,6 +9,8 @@ import yaml
 
 # RAY_REPO          Repo to use for finding the wheel
 # RAY_BRANCH        Branch to find the wheel
+# RAY_VERSION       Version to find the wheel
+# RAY_WHEELS        Direct Ray wheel URL
 # RAY_TEST_REPO     Repo to use for test scripts
 # RAY_TEST_BRANCH   Branch for test scripts
 # FILTER_FILE       File filter
@@ -291,7 +293,9 @@ def ask_configuration():
             {
                 "text": "RAY_WHEELS: Please specify the Ray wheel URL.",
                 "hint": ("ATTENTION: If you provide this, RAY_REPO, "
-                         "RAY_BRANCH and RAY_VERSION will be ignored!"),
+                         "RAY_BRANCH and RAY_VERSION will be ignored! "
+                         "Please also make sure to provide the wheels URL "
+                         "for Python 3.7 on Linux."),
                 "default": RAY_WHEELS,
                 "key": "ray_wheels"
             },
@@ -362,6 +366,7 @@ def ask_configuration():
         ] + [
             "export AUTOMATIC=1",
             "python3 -m pip install --user pyyaml",
+            "rm -rf ~/ray || true",
             "git clone -b $${RAY_TEST_BRANCH} $${RAY_TEST_REPO} ~/ray",
             ("python3 ~/ray/release/.buildkite/build_pipeline.py "
              "| buildkite-agent pipeline upload"),
