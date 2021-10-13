@@ -6,7 +6,7 @@ import logging
 import ipaddress
 import threading
 
-from grpc import aio as aiogrpc
+from grpc.experimental import aio as aiogrpc
 from distutils.version import LooseVersion
 
 import ray._private.services
