@@ -8,7 +8,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import ray
 from ray import cloudpickle, ObjectRef
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag, ReplicaName, RunningReplicaInfo)
