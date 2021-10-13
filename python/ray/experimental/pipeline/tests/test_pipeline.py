@@ -3,8 +3,8 @@ import tempfile
 
 import pytest
 
-from ray.serve import pipeline
-from ray.serve.pipeline.test_utils import enable_local_execution_mode_only
+from ray.experimental import pipeline
+from ray.experimental.pipeline.test_utils import enable_local_execution_mode_only
 
 ALL_EXECUTION_MODES = list(pipeline.ExecutionMode)
 

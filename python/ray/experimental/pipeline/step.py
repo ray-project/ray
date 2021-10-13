@@ -1,9 +1,9 @@
 from types import FunctionType
 from typing import Callable, Optional, Union
 
-from ray.serve.pipeline.node import ExecutorPipelineNode, INPUT, PipelineNode
-from ray.serve.pipeline.common import (ExecutionMode, str_to_execution_mode,
-                                       StepConfig)
+from ray.experimental.pipeline.node import ExecutorPipelineNode, INPUT, PipelineNode
+from ray.experimental.pipeline.common import (
+    ExecutionMode, str_to_execution_mode, StepConfig)
 
 
 def _validate_step_args(*args, **kwargs):
