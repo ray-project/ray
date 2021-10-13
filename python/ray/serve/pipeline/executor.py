@@ -7,7 +7,7 @@ from ray import cloudpickle, ObjectRef
 from ray.actor import ActorHandle
 from ray.remote_function import RemoteFunction
 
-from ray.experimental.pipeline.common import ExecutionMode, StepConfig
+from ray.serve.pipeline.common import ExecutionMode, StepConfig
 
 
 class Executor(ABC):

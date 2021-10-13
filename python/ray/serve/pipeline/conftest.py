@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray.experimental.pipeline.test_utils import LOCAL_EXECUTION_ONLY
+from ray.serve.pipeline.test_utils import LOCAL_EXECUTION_ONLY
 
 
 @pytest.fixture(scope="session")

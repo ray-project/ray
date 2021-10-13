@@ -4,9 +4,9 @@ from typing import Any, Callable, Tuple
 import ray
 from ray import cloudpickle, ObjectRef
 
-from ray.experimental.pipeline.common import StepConfig
-from ray.experimental.pipeline.executor import (
-    create_executor_from_step_config, Executor)
+from ray.serve.pipeline.common import StepConfig
+from ray.serve.pipeline.executor import (create_executor_from_step_config,
+                                         Executor)
 
 
 class PipelineNode(ABC):

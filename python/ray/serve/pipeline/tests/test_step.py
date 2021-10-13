@@ -1,8 +1,8 @@
 import pytest
 
-from ray.experimental import pipeline
-from ray.experimental.pipeline import ExecutionMode
-from ray.experimental.pipeline.step import PipelineStep
+from ray.serve import pipeline
+from ray.serve.pipeline import ExecutionMode
+from ray.serve.pipeline.step import PipelineStep
 
 
 def test_decorator_no_args():

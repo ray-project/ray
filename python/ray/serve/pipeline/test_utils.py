@@ -3,7 +3,7 @@ from functools import wraps
 
 import pytest
 
-from ray.experimental.pipeline import ExecutionMode
+from ray.serve.pipeline import ExecutionMode
 
 LOCAL_EXECUTION_ONLY = os.environ.get("LOCAL_EXECUTION_ONLY") not in [
     None, "0"
