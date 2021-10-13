@@ -5,6 +5,17 @@ import ray
 from ray import workflow
 from filelock import FileLock, Timeout
 
+def ensure_lock(lock_file):
+    lock = FileLock(lock_file)
+
+    while True:
+        try:
+            lock.acquire(1)
+            lock.release()
+            time.sleep(1)
+        except Timeout:
+            break
+
 
 def test_workflow_manager_simple(workflow_start_regular):
     assert [] == workflow.list_all()
@@ -153,7 +164,7 @@ def test_actor_manager(workflow_start_regular, tmp_path):
     "workflow_start_regular", [{
         "num_cpus": 1,
     }], indirect=True)
-def test_workflow_cancel(workflow_start_regular, tmp_path):
+def test_workflow_cancel_simple(workflow_start_regular, tmp_path):
     tmp_file = str(tmp_path / "lock")
 
     # A step that will run forever
@@ -170,15 +181,45 @@ def test_workflow_cancel(workflow_start_regular, tmp_path):
 
     # start job 1 first and then make sure it's holding the lock
     job_1 = inf_step.step().run_async("job_1")
-    lock = FileLock(tmp_file)
+    ensure_lock(tmp_file)
+    job_2 = a_step.step().run_async("job_2")
 
-    while True:
-        try:
-            lock.acquire(1)
-            lock.release()
-            time.sleep(1)
-        except Timeout:
-            break
+    assert workflow.get_status("job_1") == workflow.RUNNING
+    assert workflow.get_status("job_2") == workflow.RUNNING
+    # Canceled one will be turned into cancelled status
+    workflow.cancel("job_1")
+    assert workflow.get_status("job_1") == workflow.CANCELED
+    # job_2 will hold the lock and make progress since job_1 is cancelled
+    assert 1 == ray.get(job_2)
+    del job_1
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular", [{
+        "num_cpus": 1,
+    }], indirect=True)
+def test_workflow_cancel_nested(workflow_start_regular, tmp_path):
+    tmp_file = str(tmp_path / "lock")
+
+    # A step that will run forever
+    @workflow.step
+    def inf_step():
+        with FileLock(tmp_file):
+            while True:
+                time.sleep(1)
+
+    @workflow.step
+    def a_step():
+        with FileLock(tmp_file):
+            return 1
+
+    @workflow.step
+    def outer_step():
+        return inf_step.step()
+
+    # start job 1 first and then make sure it's holding the lock
+    job_1 = outer_step.step().run_async("job_1")
+    ensure_lock(tmp_file)
     job_2 = a_step.step().run_async("job_2")
 
     assert workflow.get_status("job_1") == workflow.RUNNING

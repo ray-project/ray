@@ -101,14 +101,13 @@ def cancel_job(objs: List[ray.ObjectRef]):
             ray.cancel(obj, force=True)
 
     for obj in objs:
-        ray.cancel(obj)
+        ray.cancel(obj, force=True)
         _cancel.remote(obj)
 
 
 @dataclass
 class LatestWorkflowOutput:
     output: ray.ObjectRef
-    volatile_output: ray.ObjectRef
     workflow_id: str
     step_id: "StepID"
 
@@ -177,7 +176,6 @@ class WorkflowManagementActor:
         result = recovery.resume_workflow_step(
             workflow_id, step_id, self._store.storage_url, current_output)
         latest_output = LatestWorkflowOutput(result.persisted_output,
-                                             result.volatile_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
         logger.info(f"run_or_resume: {workflow_id}, {step_id},"
@@ -213,11 +211,21 @@ class WorkflowManagementActor:
         else:
             self._step_status.setdefault(workflow_id, {})[step_id] = status
         remaining = len(self._step_status[workflow_id])
+
+        # When it's not running, we need to remove the cached results
         if status != common.WorkflowStatus.RUNNING:
             steps_cache = self._step_output_cache.get(workflow_id, {})
             steps_cache.pop(step_id, None)
             if len(steps_cache) == 0:
                 self._step_output_cache.pop(workflow_id, {})
+        else:
+            step_output = LatestWorkflowOutput(
+                output=outputs[0],
+                workflow_id=workflow_id,
+                step_id=step_id
+            )
+            self._step_output_cache.setdefault(workflow_id,
+                                               {})[step_id] = step_output
 
         if status != common.WorkflowStatus.FAILED and remaining != 0:
             return
@@ -227,7 +235,7 @@ class WorkflowManagementActor:
         if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
                 results = self._workflow_outputs.pop(workflow_id)
-                cancel_job([results.output, results.volatile_output])
+                cancel_job([results.output])
             wf_store.save_workflow_meta(
                 common.WorkflowMetaData(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
@@ -239,7 +247,7 @@ class WorkflowManagementActor:
     def cancel_workflow(self, workflow_id: str) -> None:
         self._step_status.pop(workflow_id)
         results = self._workflow_outputs.pop(workflow_id)
-        ref_list = [results.output, results.volatile_output]
+        ref_list = [results.output]
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         steps_cache = self._step_output_cache.pop(workflow_id, {})
         for v in steps_cache.values():
