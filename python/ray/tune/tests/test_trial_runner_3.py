@@ -555,7 +555,8 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(
             runner2.get_trial("checkpoint").status == Trial.TERMINATED)
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
-        self.assertTrue(not runner2.get_trial("pending").last_result)
+        self.assertTrue(
+            not runner2.get_trial("pending").has_reported_at_least_once)
         runner2.step()
 
     def testCheckpointWithFunction(self):
