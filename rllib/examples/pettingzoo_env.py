@@ -77,7 +77,7 @@ parser.add_argument(
 parser.add_argument(
     "--timesteps",
     type=int,
-    default=100000,
+    default=10000,
     help="Number of timesteps to train.")
 parser.add_argument(
     "--checkpoint-freq",
@@ -92,12 +92,12 @@ parser.add_argument(
 parser.add_argument(
     "--num-workers",
     type=int,
-    default=8,
+    default=2,
     help="Number of RLlib workers during training.")
 parser.add_argument(
     "--num-envs-per-workers",
     type=int,
-    default=1,
+    default=4,
     help="Number of environments per RLlib worker.")
 
 if __name__ == "__main__":
