@@ -235,6 +235,7 @@ def test_workflow_cancel_nested(workflow_start_regular, tmp_path):
 
 def test_workflow_cancel_parallel(workflow_start_regular, tmp_path):
     lock_files = [str(tmp_path / f"lock.{i}") for i in range(10)]
+
     @workflow.step(num_cpus=0)
     def inf_step(lock_file):
         with FileLock(lock_file):
@@ -268,7 +269,6 @@ def test_workflow_cancel_parallel(workflow_start_regular, tmp_path):
     # job_2 will hold the lock and make progress since job_1 is cancelled
     assert 1 == ray.get(job_2)
     del job_1
-
 
 
 if __name__ == "__main__":
