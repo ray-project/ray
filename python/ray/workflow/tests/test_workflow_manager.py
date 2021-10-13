@@ -249,9 +249,9 @@ def test_workflow_cancel_parallel(workflow_start_regular, tmp_path):
     @workflow.step
     def a_step():
         locks = [FileLock(f) for f in lock_files]
-        for l in locks:
-            l.acquire()
-            l.release()
+        for lock in locks:
+            lock.acquire()
+            lock.release()
         return 1
 
     input_steps = [inf_step.step(f) for f in lock_files]
