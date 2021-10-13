@@ -16,6 +16,7 @@
 
 #include <chrono>
 #include <iterator>
+#include <memory>
 #include <mutex>
 #include <random>
 #include <sstream>

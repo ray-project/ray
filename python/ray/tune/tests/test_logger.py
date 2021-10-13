@@ -230,30 +230,8 @@ class LoggerSuite(unittest.TestCase):
             logger.close()
         assert "INFO" in cm.output[0]
 
-        config = {"None": None}
-        t = Trial(
-            evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
-        logger = TBXLogger(config=config, logdir=self.test_dir, trial=t)
-        logger.on_result(result(0, 4))
-        logger.on_result(result(2, 4, score=[1, 2, 3], hello={"world": 1}))
-        with self.assertLogs("ray.tune.logger", level="INFO") as cm:
-            logger.close()
-        assert "INFO" in cm.output[0]
-
     def testBadTBX(self):
         config = {"b": (1, 2, 3)}
-        t = Trial(
-            evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
-        logger = TBXLoggerCallback()
-        logger.on_trial_result(0, [], t, result(0, 4))
-        logger.on_trial_result(1, [], t, result(1, 5))
-        logger.on_trial_result(
-            2, [], t, result(2, 6, score=[1, 2, 3], hello={"world": 1}))
-        with self.assertLogs("ray.tune.logger", level="INFO") as cm:
-            logger.on_trial_complete(3, [], t)
-        assert "INFO" in cm.output[0]
-
-        config = {"None": None}
         t = Trial(
             evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
         logger = TBXLoggerCallback()
