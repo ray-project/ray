@@ -1553,7 +1553,6 @@ cdef class CoreWorker:
 
         status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
                                             c_object_id, force_kill, recursive)
-        print("CancelTask", object_ref, force_kill, recursive)
         if not status.ok():
             raise TypeError(status.message().decode())
 

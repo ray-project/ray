@@ -1964,8 +1964,6 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill,
   if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
     return direct_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
-  RAY_LOG(ERROR) << "Canceled nothing : " << task_spec.has_value()
-                 << " TaskID=" << object_id.TaskId();
   return Status::OK();
 }
 

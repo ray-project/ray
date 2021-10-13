@@ -83,7 +83,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     remaining -= 1
 
     lock.acquire()
-    # Test cancel TODO(yic) add this test back
+    # Test cancel
     workflow.resume("2")
     assert workflow.get_status("2") == workflow.RUNNING
     workflow.cancel("2")
@@ -155,20 +155,19 @@ def test_actor_manager(workflow_start_regular, tmp_path):
     }], indirect=True)
 def test_workflow_cancel(workflow_start_regular, tmp_path):
     tmp_file = str(tmp_path / "lock")
-
+    # A step that will run forever
     @workflow.step
     def inf_step():
         with FileLock(tmp_file):
-            print("INF LOCK")
             while True:
                 time.sleep(1)
 
     @workflow.step
     def a_step():
-        print("A STEP")
         with FileLock(tmp_file):
             return 1
 
+    # start job 1 first and then make sure it's holding the lock
     job_1 = inf_step.step().run_async("job_1")
     lock = FileLock(tmp_file)
 
@@ -177,17 +176,16 @@ def test_workflow_cancel(workflow_start_regular, tmp_path):
             lock.acquire(1)
             lock.release()
             time.sleep(1)
-            print("LOCK FAIL")
         except Timeout:
             break
     job_2 = a_step.step().run_async("job_2")
 
     assert workflow.get_status("job_1") == workflow.RUNNING
     assert workflow.get_status("job_2") == workflow.RUNNING
-
+    # Canceled one will be turned into cancelled status
     workflow.cancel("job_1")
     assert workflow.get_status("job_1") == workflow.CANCELED
-    print("CANCE")
+    # job_2 will hold the lock and make progress since job_1 is cancelled
     assert 1 == ray.get(job_2)
     del job_1
 

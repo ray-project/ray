@@ -95,8 +95,15 @@ def _resolve_workflow_output(workflow_id: Optional[str],
 
 
 def cancel_job(objs: List[ray.ObjectRef]):
+    @ray.remote(num_cpus=0)
+    def _cancel(obj):
+        if isinstance(obj, ray.ObjectRef):
+            ray.cancel(obj, force=True)
+
+
     for obj in objs:
-        ray.cancel(obj, force=True, recursive=True)
+        ray.cancel(obj)
+        _cancel.remote(obj)
 
 
 @dataclass
@@ -231,7 +238,6 @@ class WorkflowManagementActor:
             self._step_status.pop(workflow_id)
 
     def cancel_workflow(self, workflow_id: str) -> None:
-        print("Canceling workflow:", workflow_id)
         self._step_status.pop(workflow_id)
         results = self._workflow_outputs.pop(workflow_id)
         ref_list = [results.output, results.volatile_output]
