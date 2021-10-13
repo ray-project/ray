@@ -47,7 +47,7 @@ def test_basic():
 
         def f5(self):
             # If this method is executed in default eventloop.
-            return asyncio.get_event_loop() == self.default_eventloop
+            assert asyncio.get_event_loop() == self.default_eventloop
             return threading.current_thread().ident
 
         @ray.method(concurrency_group="io")

@@ -770,7 +770,8 @@ class ActorClass:
             
             module_name = meta.actor_creation_function_descriptor.module_name
             class_name = meta.actor_creation_function_descriptor.class_name
-            concurrency_groups_dict[cg_name]["function_descriptors"].append(PythonFunctionDescriptor(
+            concurrency_groups_dict[cg_name]["function_descriptors"].append(
+                PythonFunctionDescriptor(
                     module_name, method_name, class_name))
 
         actor_id = worker.core_worker.create_actor(

@@ -323,11 +323,15 @@ cdef c_vector[CFunctionDescriptor] prepare_function_descriptors(pyfd_list):
         CRayFunction ray_function
 
     for pyfd in pyfd_list:
-        fd_list.push_back(CFunctionDescriptorBuilder.BuildPython(pyfd.module_name, pyfd.class_name, pyfd.function_name, b""))
+        fd_list.push_back(CFunctionDescriptorBuilder.BuildPython(
+            pyfd.module_name, pyfd.class_name, pyfd.function_name, b""))
     return fd_list
 
 
-cdef int prepare_concurrency_groups(dict concurrency_groups_dict, c_vector[CConcurrencyGroup] *concurrency_groups):
+cdef int prepare_concurrency_groups(
+    dict concurrency_groups_dict,
+    c_vector[CConcurrencyGroup] *concurrency_groups):
+
     cdef:
         CConcurrencyGroup cg
         c_vector[CFunctionDescriptor] c_fd_list
@@ -487,7 +491,8 @@ cdef execute_task(
         
         # Initial eventloops for asyncio for this actor.
         if core_worker.current_actor_is_asyncio():
-            core_worker.initial_eventloops_for_concurrency_group(c_defined_concurrency_groups)
+            core_worker.initial_eventloops_for_concurrency_group(
+                c_defined_concurrency_groups)
         
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
@@ -500,7 +505,8 @@ cdef execute_task(
                   b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
     task_name = name.decode("utf-8")
-    name_of_concurrency_group_to_execute = c_name_of_concurrency_group_to_execute.decode("ascii")
+    name_of_concurrency_group_to_execute = c_name_of_concurrency_group_to_execute.decode(
+        "ascii")
     title = f"ray::{task_name}"
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
@@ -522,7 +528,7 @@ cdef execute_task(
                 int(ray_constants.from_memory_units(
                         dereference(
                             c_resources.find(b"object_store_memory")).second)))
-        
+
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
 
@@ -572,7 +578,6 @@ cdef execute_task(
                             return (ray.worker.global_worker
                                     .deserialize_objects(
                                         metadata_pairs, object_refs))
-                        # TODO: Handle this 
                         args = core_worker.run_async_func_in_event_loop(
                             deserialize_args, function_descriptor,
                             name_of_concurrency_group_to_execute)
@@ -1851,25 +1856,9 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
                         return_id, returns[0][i]))
 
-    def create_or_get_event_loop2(self):
-        if self.async_event_loop is None:
-            self.async_event_loop = get_new_event_loop()
-            asyncio.set_event_loop(self.async_event_loop)
+    cdef c_function_descriptors_to_python(
+        self, const c_vector[CFunctionDescriptor] &c_function_descriptors):
 
-        if self.async_thread is None:
-            self.async_thread = threading.Thread(
-                target=lambda: self.async_event_loop.run_forever(),
-                name="AsyncIO Thread"
-            )
-            # Making the thread a daemon causes it to exit
-            # when the main thread exits.
-            self.async_thread.daemon = True
-            self.async_thread.start()
-
-        return self.async_event_loop
-
-    cdef c_function_descriptors_to_python(self, 
-                                          const c_vector[CFunctionDescriptor] &c_function_descriptors):
         ret = []
         for i in range(c_function_descriptors.size()):
             ret.append(CFunctionDescriptorToPython(c_function_descriptors[i]))
@@ -1887,9 +1876,9 @@ cdef class CoreWorker:
         self.eventloop_for_default_cg = get_new_event_loop()
         self.thread_for_default_cg = threading.Thread(
             target=lambda: self.eventloop_for_default_cg.run_forever(),
-            name="default AsyncIO Thread"
+            name="AsyncIO Thread: default"
             )
-        # Making the thread a daemon causes it to exit
+        # Making the thread as daemon to let it exit
         # when the main thread exits.
         self.thread_for_default_cg.daemon = True
         self.thread_for_default_cg.start()
@@ -1904,7 +1893,7 @@ cdef class CoreWorker:
             async_eventloop = get_new_event_loop()
             async_thread = threading.Thread(
                 target=lambda: async_eventloop.run_forever(),
-                name="{} AsyncIO Thread".format(cg_name)
+                name="AsyncIO Thread: {}".format(cg_name)
             )
             # Making the thread a daemon causes it to exit
             # when the main thread exits.
@@ -1926,19 +1915,24 @@ cdef class CoreWorker:
 
         if specified_cgname is not None:
             if specified_cgname in self.cgname_to_eventloop_dict:
-                return self.cgname_to_eventloop_dict[specified_cgname]["eventloop"], self.cgname_to_eventloop_dict[specified_cgname]["thread"]
+                return (self.cgname_to_eventloop_dict[specified_cgname]["eventloop"],
+                        self.cgname_to_eventloop_dict[specified_cgname]["thread"])
 
         if function_descriptor in self.fd_to_cgname_dict:
             curr_cgname = self.fd_to_cgname_dict[function_descriptor]
             if curr_cgname in self.cgname_to_eventloop_dict:
-                return self.cgname_to_eventloop_dict[curr_cgname]["eventloop"],  self.cgname_to_eventloop_dict[curr_cgname]["thread"] 
+                return (self.cgname_to_eventloop_dict[curr_cgname]["eventloop"],
+                        self.cgname_to_eventloop_dict[curr_cgname]["thread"])
             else:
-                raise ValueError("The function {} is defined to be executed in the concurrency group {} . But there is no this group.".format(
-                    function_descriptor, curr_cgname))
+                raise ValueError(
+                    "The function {} is defined to be executed in the concurrency group {} . But there is no this group.".format(
+                        function_descriptor, curr_cgname))
 
         return self.eventloop_for_default_cg, self.thread_for_default_cg 
 
-    def run_async_func_in_event_loop(self, func, function_descriptor, specified_cgname, *args, **kwargs):
+    def run_async_func_in_event_loop(
+        self, func, function_descriptor, specified_cgname, *args, **kwargs):
+
         cdef:
             CFiberEvent event
         eventloop, async_thread = self.get_event_loop(function_descriptor, specified_cgname)

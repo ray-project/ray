@@ -287,7 +287,10 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
-        CConcurrencyGroup(const c_string &name, uint32_t max_concurrency, const c_vector[CFunctionDescriptor] &c_fds)
+        CConcurrencyGroup(
+            const c_string &name,
+            uint32_t max_concurrency,
+            const c_vector[CFunctionDescriptor] &c_fds)
         CConcurrencyGroup()
         c_string GetName() const
         uint32_t GetMaxConcurrency() const
