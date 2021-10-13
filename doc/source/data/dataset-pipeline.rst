@@ -78,7 +78,8 @@ It's common in ML training to want to divide data ingest into epochs, or repetit
 
 .. code-block:: python
 
-    pipe = ray.data.range(5).repeat(3).random_shuffle_each_window()
+    pipe = ray.data.from_items([0, 1, 2, 3, 4]) \
+        .repeat(3).random_shuffle_each_window()
     for i, epoch in enumerate(pipe.iter_epochs()):
         print("Epoch {}", i)
         for row in epoch.iter_rows():
@@ -113,7 +114,8 @@ While most Dataset operations are per-row (e.g., map, filter), some operations a
 .. code-block:: python
 
     # Example of randomly shuffling each window of a pipeline.
-    ray.data.range(5).repeat(2).random_shuffle_each_window().show_windows()
+    ray.data.from_items([0, 1, 2, 3, 4]) \
+        .repeat(2).random_shuffle_each_window().show_windows()
     # -> 
     # ----- Epoch 0 ------
     # === Window 0 ===
@@ -135,7 +137,8 @@ You can also apply arbitrary transformations to each window using ``DatasetPipel
 .. code-block:: python
 
     # Equivalent transformation using .foreach_window() 
-    ray.data.range(5).repeat(2).foreach_window(lambda w: w.random_shuffle()).show_windows()
+    ray.data.from_items([0, 1, 2, 3, 4]) \
+        .repeat(2).foreach_window(lambda w: w.random_shuffle()).show_windows()
     # -> 
     # ----- Epoch 0 ------
     # === Window 0 ===
@@ -341,7 +344,7 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
 .. code-block:: python
 
     # Window followed by repeat.
-    ray.data.range(5) \
+    ray.data.from_items([0, 1, 2, 3, 4]) \
         .window(blocks_per_window=2) \
         .repeat(2) \
         .show_windows()
@@ -368,7 +371,7 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # Repeat followed by window. Note that epoch 1 contains some leftover
     # data from the tail end of epoch 0, since re-windowing can merge windows
     # across epochs.
-    ray.data.range(5) \
+    ray.data.from_items([0, 1, 2, 3, 4]) \
         .repeat(2) \
         .rewindow(blocks_per_window=2) \
         .show_windows()
