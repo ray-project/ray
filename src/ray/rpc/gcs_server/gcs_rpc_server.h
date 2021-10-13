@@ -210,9 +210,8 @@ class NodeInfoGcsServiceHandler {
                                   RegisterNodeReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleDrainNode(const DrainNodeRequest &request,
-                                    DrainNodeReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleDrainNode(const DrainNodeRequest &request, DrainNodeReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetAllNodeInfo(const GetAllNodeInfoRequest &request,
                                     GetAllNodeInfoReply *reply,

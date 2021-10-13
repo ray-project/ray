@@ -405,7 +405,7 @@ struct GcsServerMocker {
     }
 
     Status AsyncDrainNode(const NodeID &node_id,
-                           const gcs::StatusCallback &callback) override {
+                          const gcs::StatusCallback &callback) override {
       if (callback) {
         callback(Status::OK());
       }

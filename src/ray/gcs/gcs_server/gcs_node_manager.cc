@@ -51,8 +51,8 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
 }
 
 void GcsNodeManager::HandleDrainNode(const rpc::DrainNodeRequest &request,
-                                          rpc::DrainNodeReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
+                                     rpc::DrainNodeReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   if (auto node = RemoveNode(node_id, /* is_intended = */ true)) {
@@ -228,8 +228,7 @@ std::string GcsNodeManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsNodeManager: {RegisterNode request count: "
          << counts_[CountType::REGISTER_NODE_REQUEST]
-         << ", DrainNode request count: "
-         << counts_[CountType::UNREGISTER_NODE_REQUEST]
+         << ", DrainNode request count: " << counts_[CountType::UNREGISTER_NODE_REQUEST]
          << ", GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
          << ", GetInternalConfig request count: "

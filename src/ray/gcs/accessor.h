@@ -434,7 +434,7 @@ class NodeInfoAccessor {
   /// \param callback Callback that will be called when unregistration is complete.
   /// \return Status
   virtual Status AsyncDrainNode(const NodeID &node_id,
-                                 const StatusCallback &callback) = 0;
+                                const StatusCallback &callback) = 0;
 
   /// Get information of all nodes from GCS asynchronously.
   ///
