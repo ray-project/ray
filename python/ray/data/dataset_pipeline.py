@@ -243,7 +243,7 @@ class DatasetPipeline(Generic[T]):
         ]
 
     def rewindow(self, *, blocks_per_window: int,
-                 preserve_epochs: bool = True) -> "DatasetPipeline[T]":
+                 preserve_epoch: bool = True) -> "DatasetPipeline[T]":
         """Change the windowing (blocks per dataset) of this pipeline.
 
         Changes the windowing of this pipeline to the specified size. For
@@ -255,7 +255,7 @@ class DatasetPipeline(Generic[T]):
 
         Args:
             blocks_per_window: The new target blocks per window.
-            preserve_epochs: Whether to preserve epoch boundaries. If set to
+            preserve_epoch: Whether to preserve epoch boundaries. If set to
                 False, then windows can contain data from two adjacent epochs.
         """
 
@@ -271,7 +271,7 @@ class DatasetPipeline(Generic[T]):
                         self._buffer = next(self._original_iter)
                     while self._buffer.num_blocks() < blocks_per_window:
                         next_ds = next(self._original_iter)
-                        if (preserve_epochs and self._buffer._get_epoch() !=
+                        if (preserve_epoch and self._buffer._get_epoch() !=
                                 next_ds._get_epoch()):
                             partial_window = self._buffer
                             self._buffer = next_ds

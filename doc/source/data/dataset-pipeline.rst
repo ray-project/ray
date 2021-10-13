@@ -336,7 +336,7 @@ See :ref:`the SGD User Guide <sgd-dataset-pipeline>` for more details.
 Changing Pipeline Structure
 ---------------------------
 
-Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``. The latter may produce windows that span multiple copies of the same original data if ``preserve_epochs=False`` is set:
+Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``. The latter may produce windows that span multiple copies of the same original data if ``reserve_epoch=False`` is set:
 
 .. code-block:: python
 
@@ -365,12 +365,12 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # === Window 5 ===
     # 4
 
-    # Repeat followed by window. Since preserve_epochs=True, at epoch boundaries
+    # Repeat followed by window. Since preserve_epoch=True, at epoch boundaries
     # windows may be smaller than the target size. If it was set to False, all
     # windows except the last would be the target size.
     ray.data.range(5) \
         .repeat(2) \
-        .rewindow(blocks_per_window=2, preserve_epochs=True) \
+        .rewindow(blocks_per_window=2, preserve_epoch=True) \
         .show_windows()
     # ->
     # ------ Epoch 0 ------

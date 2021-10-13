@@ -53,14 +53,14 @@ def test_epoch(ray_start_regular_shared):
     assert results == [[0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
                        [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
 
-    # Test preserve_epochs=True.
+    # Test preserve_epoch=True.
     pipe = ray.data.range(5).repeat(2).rewindow(blocks_per_window=2)
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
 
-    # Test preserve_epochs=False.
+    # Test preserve_epoch=False.
     pipe = ray.data.range(5).repeat(2).rewindow(
-        blocks_per_window=2, preserve_epochs=False)
+        blocks_per_window=2, preserve_epoch=False)
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2, 3], [4, 0, 1, 2, 3, 4]]
 
