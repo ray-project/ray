@@ -38,15 +38,16 @@ class RuntimeEnvContext:
     def exec_worker(self, passthrough_args: List[str], language: Language):
         os.environ.update(self.env_vars)
 
-        if sys.platform == "win32":
+        if language == Language.PYTHON and sys.platform == "win32":
+            executable = f'"{self.py_executable}"'  # Path may contain spaces
+        elif language == Language.PYTHON:
+            executable = f"exec {self.py_executable}"
+        elif sys.platform == "win32":
             executable = ""
         else:
             executable = "exec "
 
-        if language == Language.PYTHON:
-            executable += f"{self.py_executable}"
-
-        exec_command = " ".join([f'"{executable}"'] + passthrough_args)
+        exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
 
         if sys.platform == "win32":
