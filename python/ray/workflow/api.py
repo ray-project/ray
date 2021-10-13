@@ -367,6 +367,31 @@ def sleep(duration: float) -> Workflow[Event]:
 
 
 @PublicAPI(stability="beta")
+def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]:
+    """Get the metadata of the workflow.
+
+    Args:
+        workflow_id: The workflow to get the metadata of.
+        name: If set, fetch the metadata of the specific step instead of
+            the metadata of the workflow.
+
+    Examples:
+        >>> workflow_step = trip.options(name="trip", metadata={"k1": "v1"}).step()
+        >>> workflow_step.run(workflow_id="trip1", metadata={"k2": "v2"})
+        >>> assert workflow.get_metadata("trip1")["status"] == "SUCCESSFUL"
+        >>> assert workflow.get_metadata("trip1")["user_metadata"] == {"k2": "v2"}
+        >>> assert workflow.get_metadata("trip1", "trip")["name"] == "trip"
+        >>> assert workflow.get_metadata("trip1", "trip")["step_type"] == "FUNCTION"
+        >>> assert workflow.get_metadata("trip1", "trip")["user_metadata"] == {"k1": "v1"}
+
+    Returns:
+        A dictionary containing the metadata of the workflow.
+    """
+    ensure_ray_initialized()
+    return execution.get_metadata(workflow_id, name)
+
+
+@PublicAPI(stability="beta")
 def cancel(workflow_id: str) -> None:
     """Cancel a workflow. Workflow checkpoints will still be saved in storage. To
        clean up saved checkpoints, see `workflow.delete()`.
@@ -425,4 +450,4 @@ def delete(workflow_id: str) -> None:
 
 
 __all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor",
-           "resume_all", "get_status", "cancel")
+           "resume_all", "get_status", "get_metadata", "cancel")
