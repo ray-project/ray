@@ -223,6 +223,14 @@ py_test(
 )
 
 py_test(
+    name = "test_util_wrappers",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_utils",
     size = "small",
     srcs = serve_tests_srcs,
