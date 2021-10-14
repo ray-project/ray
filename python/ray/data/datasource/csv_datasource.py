@@ -4,7 +4,8 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import (FileBasedDatasource)
+from ray.data.datasource.file_based_datasource import (FileBasedDatasource,
+                                                       _WriteOptionsWrapper)
 
 
 class CSVDatasource(FileBasedDatasource):
@@ -28,6 +29,8 @@ class CSVDatasource(FileBasedDatasource):
         from pyarrow import csv
 
         write_options = writer_args.pop("write_options", None)
+        if isinstance(write_options, _WriteOptionsWrapper):
+            write_options = write_options.unwrap()
         csv.write_csv(block.to_arrow(), f, write_options, **writer_args)
 
     def _file_format(self):
