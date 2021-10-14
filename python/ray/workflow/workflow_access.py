@@ -97,6 +97,22 @@ def _resolve_workflow_output(workflow_id: Optional[str],
 
 
 def cancel_job(objs: List[ray.ObjectRef]):
+    """Helper function to cancel a job.
+
+    To cancel a job we need to cancel it recursively.
+    We'll first cancel the outter obj ref and then use another task to cancel
+    the inner obj ref. It'll work for all cases, explained below.
+
+      1. The obj ref is a nested obj ref
+         a) Outter obj ref hasn't been finished
+             - Cancel the outter job is enough.
+             - Ray will handle the failure of creating another remote task
+               to cancel the inner one, since it doesn't exist.
+         b) Outter obj ref has been finished.
+             - Cancel the outer job first.
+             - Recursively cancel the inner ones.
+    """
+
     @ray.remote(num_cpus=0)
     def _cancel(obj):
         if isinstance(obj, ray.ObjectRef):
