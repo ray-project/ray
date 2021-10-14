@@ -1521,7 +1521,7 @@ def start_raylet(redis_address,
         agent_command = [
             sys.executable,
             "-u",
-            os.path.join(RAY_PATH, "dashboard/agent.py"),
+            os.path.join(RAY_PATH, "dashboard", "agent.py"),
             f"--node-ip-address={node_ip_address}",
             f"--redis-address={redis_address}",
             f"--metrics-export-port={metrics_export_port}",
