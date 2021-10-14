@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 
 import collections
 import itertools
-import math
 import numpy as np
 
 import ray
@@ -356,7 +355,10 @@ class Dataset(Generic[T]):
 
         reduce_task = cached_remote_fn(_shuffle_reduce)
         reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
-        reduce_out = [reduce_task.options(num_returns=2).remote(*s.get_internal_block_refs()) for s in splits]
+        reduce_out = [
+            reduce_task.options(num_returns=2).remote(
+                *s.get_internal_block_refs()) for s in splits
+        ]
         del splits  # Early-release memory.
 
         new_blocks, new_metadata = zip(*reduce_out)
@@ -364,8 +366,8 @@ class Dataset(Generic[T]):
         new_metadata = ray.get(list(new_metadata))
         reduce_bar.close()
 
-        return Dataset(BlockList(list(new_blocks), list(new_metadata)), self._epoch)
-
+        return Dataset(
+            BlockList(list(new_blocks), list(new_metadata)), self._epoch)
 
     def random_shuffle(
             self,
