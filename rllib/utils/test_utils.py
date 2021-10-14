@@ -576,7 +576,8 @@ def run_learning_tests_from_yaml(
     # Loop through all collected files and gather experiments.
     # Augment all by `torch` framework.
     for yaml_file in yaml_files:
-        tf_experiments = yaml.load(open(yaml_file).read())
+        tf_experiments = yaml.load(
+            open(yaml_file).read(), Loader=yaml.FullLoader)
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
