@@ -1,3 +1,4 @@
+import os
 import re
 import socket
 import subprocess
@@ -23,7 +24,7 @@ def search_agents(cluster):
         for p in processes:
             try:
                 for c in p.cmdline():
-                    if "dashboard/agent.py" in c:
+                    if os.path.join("dashboard", "agent.py") in c:
                         return p
             except Exception:
                 pass
