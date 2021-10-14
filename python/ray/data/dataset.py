@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 import collections
 import itertools
+import math
 import numpy as np
 
 import ray
@@ -30,7 +31,7 @@ from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import simple_shuffle, simple_coalesce
+from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
@@ -336,9 +337,28 @@ class Dataset(Generic[T]):
 
         if shuffle:
             new_blocks = simple_shuffle(self._blocks, num_blocks)
-        else:
-            new_blocks = simple_coalesce(self._blocks, num_blocks)
-        return Dataset(new_blocks, self._epoch)
+            return Dataset(new_blocks, self._epoch)
+
+        count = self.count()
+        stride = math.ceil(count / num_blocks)
+        indices = list(range(stride, count, stride))
+        assert len(indices) < num_blocks, (indices, num_blocks)
+        splits = self.split_at_indices(indices)
+        self._blocks.clear()
+
+        reduce_task = cached_remote_fn(_shuffle_reduce)
+        reduce_bar = ProgressBar(
+            "Fast Reduce", position=0, total=len(splits))
+        reduce_out = [reduce_task.options(num_returns=2).remote(*s.get_blocks()) for s in splits]
+        del splits
+
+        new_blocks, new_metadata = zip(*reduce_out)
+        reduce_bar.block_until_complete(list(new_blocks))
+        new_metadata = ray.get(list(new_metadata))
+        reduce_bar.close()
+
+        return Dataset(BlockList(list(new_blocks), list(new_metadata)), self._epoch)
+
 
     def random_shuffle(
             self,
