@@ -387,6 +387,60 @@ def ask_configuration():
     ]
 
 
+def create_test_step(
+        ray_repo: str,
+        ray_branch: str,
+        ray_version: str,
+        ray_wheels: str,
+        ray_test_repo: str,
+        ray_test_branch: str,
+        test_file: str,
+        test_name: ReleaseTest,
+):
+    if ray_wheels:
+        ray_wheels_str = f" ({ray_wheels}) "
+
+    logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
+    cmd = str(f"RAY_REPO=\"{ray_repo}\" "
+              f"RAY_BRANCH=\"{ray_branch}\" "
+              f"RAY_VERSION=\"{ray_version}\" "
+              f"RAY_WHEELS=\"{ray_wheels}\" "
+              f"RELEASE_RESULTS_DIR=/tmp/artifacts "
+              f"python release/e2e.py "
+              f"--category {ray_branch} "
+              f"--test-config {test_file} "
+              f"--test-name {test_name} "
+              f"--keep-results-dir")
+
+    if test_name.smoke_test:
+        logging.info("This test will run as a smoke test.")
+        cmd += " --smoke-test"
+
+    step_conf = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
+
+    if test_name.retry:
+        logging.info(f"This test will be retried up to "
+                     f"{test_name.retry} times.")
+        step_conf["retry"] = {
+            "automatic": [{
+                "exit_status": "*",
+                "limit": test_name.retry
+            }]
+        }
+
+    step_conf["commands"] = [
+        "pip install -q -r release/requirements.txt",
+        "pip install -U boto3 botocore",
+        f"git clone -b {ray_test_branch} {ray_test_repo} ~/ray", cmd,
+        "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
+        "|| true"
+    ]
+
+    step_conf["label"] = f"{ray_wheels_str}{test_name} ({ray_branch}) - " \
+                         f"{ray_test_branch}/{ray_test_repo}"
+    return step_conf
+
+
 def build_pipeline(steps):
     all_steps = []
 
@@ -401,6 +455,14 @@ def build_pipeline(steps):
 
     FILTER_FILE = os.environ.get("FILTER_FILE", "")
     FILTER_TEST = os.environ.get("FILTER_TEST", "")
+
+    ray_wheels_list = [""]
+    if RAY_WHEELS:
+        ray_wheels_list = RAY_WHEELS.split("\n")
+
+    if len(ray_wheels_list) > 1:
+        logging.info(f"This will run a bisec on the following URLs/commits: "
+                     f"{ray_wheels_list}")
 
     logging.info(
         f"Building pipeline \n"
@@ -430,44 +492,18 @@ def build_pipeline(steps):
 
             logging.info(f"Adding test: {test_base}/{test_name}")
 
-            cmd = str(f"RAY_REPO=\"{RAY_REPO}\" "
-                      f"RAY_BRANCH=\"{RAY_BRANCH}\" "
-                      f"RAY_VERSION=\"{RAY_VERSION}\" "
-                      f"RAY_WHEELS=\"{RAY_WHEELS}\" "
-                      f"RELEASE_RESULTS_DIR=/tmp/artifacts "
-                      f"python release/e2e.py "
-                      f"--category {RAY_BRANCH} "
-                      f"--test-config {test_file} "
-                      f"--test-name {test_name} "
-                      f"--keep-results-dir")
+            for ray_wheels in ray_wheels_list:
+                step_conf = create_test_step(
+                    ray_repo=RAY_REPO,
+                    ray_branch=RAY_BRANCH,
+                    ray_version=RAY_VERSION,
+                    ray_wheels=ray_wheels,
+                    ray_test_repo=RAY_TEST_REPO,
+                    ray_test_branch=RAY_TEST_BRANCH,
+                    test_file=test_file,
+                    test_name=test_name)
 
-            if test_name.smoke_test:
-                logging.info("This test will run as a smoke test.")
-                cmd += " --smoke-test"
-
-            step_conf = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
-
-            if test_name.retry:
-                logging.info(f"This test will be retried up to "
-                             f"{test_name.retry} times.")
-                step_conf["retry"] = {
-                    "automatic": [{
-                        "exit_status": "*",
-                        "limit": test_name.retry
-                    }]
-                }
-
-            step_conf["commands"] = [
-                "pip install -q -r release/requirements.txt",
-                "pip install -U boto3 botocore",
-                f"git clone -b {RAY_TEST_BRANCH} {RAY_TEST_REPO} ~/ray", cmd,
-                "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
-                "|| true"
-            ]
-
-            step_conf["label"] = f"{test_name} ({RAY_BRANCH}) - " \
-                                 f"{RAY_TEST_BRANCH}/{test_base}"
-            all_steps.append(step_conf)
+                all_steps.append(step_conf)
 
     return all_steps
 
