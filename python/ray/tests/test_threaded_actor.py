@@ -45,7 +45,7 @@ def test_threaded_actor_basic(shutdown_only):
 
 def test_threaded_actor_api_thread_safe(shutdown_only):
     """Test if Ray APIs are thread safe
-        when they are used within threaded actor
+        when they are used within threaded actor.
     """
     ray.init(
         num_cpus=8,
@@ -103,6 +103,8 @@ def test_threaded_actor_api_thread_safe(shutdown_only):
 
 
 def test_threaded_actor_creation_and_kill(ray_start_cluster):
+    """Test the scenario where the threaded actors are created and killed.
+    """
     cluster = ray_start_cluster
     NUM_CPUS_PER_NODE = 3
     NUM_NODES = 2
@@ -131,6 +133,9 @@ def test_threaded_actor_creation_and_kill(ray_start_cluster):
         def terminate(self):
             ray.actor.exit_actor()
 
+    # - Create threaded actors
+    # - Submit many tasks.
+    # - Ungracefully kill them in the middle.
     for _ in range(10):
         actors = [
             ThreadedActor.options(max_concurrency=10).remote()
@@ -146,6 +151,9 @@ def test_threaded_actor_creation_and_kill(ray_start_cluster):
             ray.kill(actor)
     ensure_cpu_returned(NUM_NODES * NUM_CPUS_PER_NODE)
 
+    # - Create threaded actors
+    # - Submit many tasks.
+    # - Gracefully kill them in the middle.
     for _ in range(10):
         actors = [
             ThreadedActor.options(max_concurrency=10).remote()
