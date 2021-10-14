@@ -21,8 +21,10 @@ def test_user_metadata(workflow_start_regular):
         name=step_name, metadata=user_step_metadata).step().run(
             workflow_id, metadata=user_run_metadata)
 
-    assert workflow.get_metadata("simple")["user_metadata"] == user_run_metadata
-    assert workflow.get_metadata("simple", "simple_step")["user_metadata"] == user_step_metadata
+    assert workflow.get_metadata("simple")[
+        "user_metadata"] == user_run_metadata
+    assert workflow.get_metadata(
+        "simple", "simple_step")["user_metadata"] == user_step_metadata
 
 
 def test_no_user_metadata(workflow_start_regular):
@@ -37,7 +39,8 @@ def test_no_user_metadata(workflow_start_regular):
     simple.options(name=step_name).step().run(workflow_id)
 
     assert workflow.get_metadata("simple")["user_metadata"] == {}
-    assert workflow.get_metadata("simple","simple_step")["user_metadata"] == {}
+    assert workflow.get_metadata("simple",
+                                 "simple_step")["user_metadata"] == {}
 
 
 def test_successful_workflow(workflow_start_regular):
@@ -116,7 +119,8 @@ def test_no_workflow_found(workflow_start_regular):
 
     with pytest.raises(ValueError) as excinfo:
         workflow.get_metadata("simple", "simple_step1")
-    assert str(excinfo.value) == "No such step_id simple_step1 in workflow simple"
+    assert str(
+        excinfo.value) == "No such step_id simple_step1 in workflow simple"
 
 
 if __name__ == "__main__":

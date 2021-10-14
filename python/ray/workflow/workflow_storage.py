@@ -456,9 +456,11 @@ class WorkflowStorage:
             The metadata of the given step.
         """
         if not asyncio_run(self._scan([self._workflow_id])):
-            raise ValueError("No such workflow_id {}".format(self._workflow_id))
+            raise ValueError("No such workflow_id {}".format(
+                self._workflow_id))
         if not asyncio_run(self._scan([self._workflow_id, "steps", step_id])):
-            raise ValueError("No such step_id {} in workflow {}".format(step_id, self._workflow_id))
+            raise ValueError("No such step_id {} in workflow {}".format(
+                step_id, self._workflow_id))
 
         tasks = [
             self._get(self._key_step_input_metadata(step_id), True, True),
@@ -487,7 +489,8 @@ class WorkflowStorage:
             The metadata of the current workflow.
         """
         if not asyncio_run(self._scan([self._workflow_id])):
-            raise ValueError("No such workflow_id {}".format(self._workflow_id))
+            raise ValueError("No such workflow_id {}".format(
+                self._workflow_id))
 
         tasks = [
             self._get(self._key_workflow_metadata(), True, True),
