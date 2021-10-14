@@ -24,7 +24,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
                const rpc::Address &actor_addr),
               (override));
   MOCK_METHOD(bool, PendingTaskFailed,
-              (const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+              (const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
                const std::shared_ptr<rpc::RayException> &creation_task_exception,
                bool immediately_mark_object_fail),
               (override));
