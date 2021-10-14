@@ -1974,8 +1974,9 @@ if __name__ == "__main__":
 
     maybe_fetch_api_token()
     if args.ray_wheels:
-        os.environ["RAY_WHEELS"] = str(args.ray_wheels)
         url = commit_or_url(str(args.ray_wheels))
+        # Overwrite with actual URL
+        os.environ["RAY_WHEELS"] = url
     elif not args.check and not os.environ.get("RAY_WHEELS"):
         url = find_ray_wheels(
             GLOBAL_CONFIG["RAY_REPO"],
@@ -1992,6 +1993,8 @@ if __name__ == "__main__":
         logger.info(f"Using Ray wheels provided from URL/commit: "
                     f"{os.environ.get('RAY_WHEELS')}")
         url = commit_or_url(os.environ.get("RAY_WHEELS"))
+        # Overwrite with actual URL
+        os.environ["RAY_WHEELS"] = url
 
     populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
 

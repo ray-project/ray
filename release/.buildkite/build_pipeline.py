@@ -296,7 +296,12 @@ def ask_configuration():
                 "hint": ("ATTENTION: If you provide this, RAY_REPO, "
                          "RAY_BRANCH and RAY_VERSION will be ignored! "
                          "Please also make sure to provide the wheels URL "
-                         "for Python 3.7 on Linux."),
+                         "for Python 3.7 on Linux.\n"
+                         "You can also insert a commit hash here instead "
+                         "of a full URL.\n"
+                         "NOTE: You can specify multiple commits or URLs "
+                         "for easy bisection (one per line) - this will "
+                         "run each test on each of the specified wheels."),
                 "required": False,
                 "default": RAY_WHEELS,
                 "key": "ray_wheels"
