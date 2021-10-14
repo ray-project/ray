@@ -77,6 +77,7 @@ a = Foo.options(lifetime="detached", name="abc").remote()
 ray.get(a.ping.remote())
 print(ray.get_runtime_context().namespace)
     """
+
     anon_driver = template.format(namespace="None")
     run_string_as_driver(anon_driver)
     # This second run will fail if the actors don't run in separate anonymous

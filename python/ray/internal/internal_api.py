@@ -66,7 +66,8 @@ def get_store_stats(state, node_manager_address=None, node_manager_port=None):
         options=[
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
             ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
-        ])
+        ],
+    )
 
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
@@ -92,7 +93,8 @@ def node_stats(node_manager_address=None,
         options=[
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
             ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
-        ])
+        ],
+    )
 
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     node_stats = stub.GetNodeStats(

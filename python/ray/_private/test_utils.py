@@ -9,12 +9,12 @@ import subprocess
 import sys
 import time
 import timeit
+import socket
 import math
 import traceback
 from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
-import socket
 import pytest
 import tempfile
 
@@ -25,7 +25,6 @@ import ray._private.gcs_utils as gcs_utils
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
-
 try:
     from prometheus_client.parser import text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
@@ -723,7 +722,7 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
     os.remove(key_filepath)
     os.remove(cert_filepath)
     os.removedirs(temp_dir)
-    os.environ["RAY_USE_TLS"] = "0"
+    del os.environ["RAY_USE_TLS"]
     del os.environ["RAY_TLS_SERVER_CERT"]
     del os.environ["RAY_TLS_SERVER_KEY"]
     del os.environ["RAY_TLS_CA_CERT"]
