@@ -570,8 +570,7 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
-  cluster_resource_scheduler_->UpdateLastResourceUsage(last_resource_usage_);
-  cluster_resource_scheduler_->FillResourceUsage(resources_data);
+  cluster_resource_scheduler_->FillResourceUsage(resources_data, last_resource_usage_);
   cluster_task_manager_->FillResourceUsage(resources_data, last_resource_usage_);
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
@@ -1504,9 +1503,46 @@ void NodeManager::HandleRequestResourceReport(
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
   FillResourceReport(*resources_data);
-  resources_data->set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
+  bool resource_deadlock_warned = resource_deadlock_warned_ >= 1;
+  if (last_report_resource_deadlock_warned_ != resource_deadlock_warned) {
+    last_report_resource_deadlock_warned_ = resource_deadlock_warned;
+    resources_data->set_cluster_full_of_actors_detected_changed(true);
+    resources_data->set_cluster_full_of_actors_detected(resource_deadlock_warned);
+  } else {
+    resources_data->set_cluster_full_of_actors_detected_changed(false);
+  }
 
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  if (ResourcesDataChanged(*resources_data)) {
+    if (resources_data->resources_available_changed()) {
+      last_resource_usage_->SetAvailableResources(
+          ResourceSet(MapFromProtobuf(resources_data->resources_available())));
+    }
+    if (resources_data->resources_total_size() > 0) {
+      last_resource_usage_->SetTotalResources(
+          ResourceSet(MapFromProtobuf(resources_data->resources_total())));
+    }
+    if (resources_data->resource_load_changed()) {
+      last_resource_usage_->SetLoadResources(
+          ResourceSet(MapFromProtobuf(resources_data->resource_load())));
+    } else {
+      resources_data->clear_resource_load();
+      resources_data->clear_resource_load_by_shape();
+    }
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    resources_data->Clear();
+    send_reply_callback(Status::Invalid("Resources not changed"), nullptr, nullptr);
+  }
+}
+
+bool NodeManager::ResourcesDataChanged(rpc::ResourcesData &resources_data) {
+  return resources_data.resources_total_size() > 0 ||
+         resources_data.resources_available_changed() ||
+         resources_data.resource_load_changed() ||
+         resources_data.resources_normal_task_changed() ||
+         resources_data.should_global_gc() ||
+         resources_data.object_pulls_queued_changed() ||
+         resources_data.cluster_full_of_actors_detected_changed();
 }
 
 void NodeManager::HandleReportWorkerBacklog(

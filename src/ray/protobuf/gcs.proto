@@ -438,37 +438,43 @@ message ResourceLoad {
 message ResourcesData {
   // Node id.
   bytes node_id = 1;
-  // Resource capacity currently available on this node manager.
-  map<string, double> resources_available = 2;
+  // IP address of the node.
+  string node_manager_address = 2;
+
+  // Total resource capacity configured for this node manager.
+  map<string, double> resources_total = 3;
   // Indicates whether available resources is changed. Only used when light
   // heartbeat enabled.
-  bool resources_available_changed = 3;
-  // Total resource capacity configured for this node manager.
-  map<string, double> resources_total = 4;
-  // Aggregate outstanding resource load on this node manager.
-  map<string, double> resource_load = 5;
+  bool resources_available_changed = 4;
+  // Resource capacity currently available on this node manager.
+  map<string, double> resources_available = 5;
   // Indicates whether resource load is changed. Only used when
   // light heartbeat enabled.
   bool resource_load_changed = 6;
+  // Aggregate outstanding resource load on this node manager.
+  map<string, double> resource_load = 7;
   // The resource load on this node, sorted by resource shape.
-  ResourceLoad resource_load_by_shape = 7;
+  ResourceLoad resource_load_by_shape = 8;
+  // Indicates whether resource normal task is changed. Only used when
+  // light heartbeat enabled.
+  bool resources_normal_task_changed = 9;
+  // Normal task resources.
+  map<string, double> resources_normal_task = 10;
+  // The timestamp that normal task resources are measured.
+  int64 resources_normal_task_timestamp = 11;
+
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 8;
-  // IP address of the node.
-  string node_manager_address = 9;
+  bool should_global_gc = 121;
+  // Whether the `object_pulls_queued` changed.
+  bool object_pulls_queued_changed = 13;
   // Whether this node has object pulls queued. This can happen if
   // the node has more pull requests than available object store
   // memory. This is a proxy for available object store memory.
-  bool object_pulls_queued = 10;
-  // Normal task resources.
-  map<string, double> resources_normal_task = 11;
-  // Indicates whether resource normal task is changed. Only used when
-  // light heartbeat enabled.
-  bool resources_normal_task_changed = 12;
-  // The timestamp that normal task resources are measured.
-  int64 resources_normal_task_timestamp = 13;
+  bool object_pulls_queued = 14;
+  // Whether the `cluster_full_of_actors_detected` changed.
+  bool cluster_full_of_actors_detected_changed = 15;
   // Whether this node has detected a resource deadlock (full of actors).
-  bool cluster_full_of_actors_detected = 14;
+  bool cluster_full_of_actors_detected = 16;
 }
 
 message ResourceUsageBatchData {

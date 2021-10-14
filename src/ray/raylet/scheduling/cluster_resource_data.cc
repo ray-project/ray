@@ -317,6 +317,55 @@ bool NodeResources::operator==(const NodeResources &other) {
 
 bool NodeResources::operator!=(const NodeResources &other) { return !(*this == other); }
 
+bool NodeResources::AvailableEquals(const NodeResources &other) {
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    if (this->predefined_resources[i].available !=
+        other.predefined_resources[i].available) {
+      return false;
+    }
+  }
+
+  if (this->custom_resources.size() != other.custom_resources.size()) {
+    return false;
+  }
+
+  for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
+       ++it1) {
+    auto it2 = other.custom_resources.find(it1->first);
+    if (it2 == other.custom_resources.end()) {
+      return false;
+    }
+    if (it1->second.available != it2->second.available) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool NodeResources::TotalEquals(const NodeResources &other) {
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    if (this->predefined_resources[i].total != other.predefined_resources[i].total) {
+      return false;
+    }
+  }
+
+  if (this->custom_resources.size() != other.custom_resources.size()) {
+    return false;
+  }
+
+  for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
+       ++it1) {
+    auto it2 = other.custom_resources.find(it1->first);
+    if (it2 == other.custom_resources.end()) {
+      return false;
+    }
+    if (it1->second.total != it2->second.total) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   std::stringstream buffer;
   buffer << " {\n";

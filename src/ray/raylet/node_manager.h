@@ -602,6 +602,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
+  /// Whether resources data has been marked as changed.
+  ///
+  /// \param resources_data The resources data to be checked.
+  /// \return true if the resources data has been marked as changed.
+  bool ResourcesDataChanged(rpc::ResourcesData &resources_data);
+
   /// ID of this node.
   NodeID self_node_id_;
   instrumented_io_context &io_service_;
@@ -750,6 +756,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Cache which stores resource usage in last report used to check if they are changed.
   std::shared_ptr<SchedulingResources> last_resource_usage_ =
       std::make_shared<SchedulingResources>();
+
+  /// Whether resource deadlock warned in last report.
+  bool last_report_resource_deadlock_warned_;
 };
 
 }  // namespace raylet

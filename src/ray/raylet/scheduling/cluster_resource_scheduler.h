@@ -402,7 +402,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &resources_data) override;
+  void FillResourceUsage(
+      rpc::ResourcesData &resources_data,
+      std::shared_ptr<SchedulingResources> last_report_resources) override;
 
   /// Populate a UpdateResourcesRequest. This is inteneded to update the
   /// resource totals on a node when a custom resource is created or deleted
@@ -413,13 +415,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \return The total resource capacity of the node.
   ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
       const absl::flat_hash_map<std::string, double> &resource_map_filter) const override;
-
-  /// Update last report resources local cache from gcs cache,
-  /// this is needed when gcs fo.
-  ///
-  /// \param gcs_resources: The remote cache from gcs.
-  void UpdateLastResourceUsage(
-      const std::shared_ptr<SchedulingResources> gcs_resources) override;
 
   double GetLocalAvailableCpus() const override;
 
@@ -470,8 +465,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Keep the mapping between node and resource IDs in string representation
   /// to integer representation. Used for improving map performance.
   StringIdMap string_to_int_map_;
-  /// Cached resources, used to compare with newest one in light heartbeat mode.
-  std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
@@ -482,6 +475,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
 
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
+
+  // Whether object pulls was queued in last report.
+  bool last_report_object_pulls_queued_;
 };
 
 }  // end namespace ray

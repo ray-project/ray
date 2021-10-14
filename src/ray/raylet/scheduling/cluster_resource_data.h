@@ -169,6 +169,10 @@ class NodeResources {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   bool operator!=(const NodeResources &other);
+  /// Returns if available resources in this equals another.
+  bool AvailableEquals(const NodeResources &other);
+  /// Returns if total resources in this equals another.
+  bool TotalEquals(const NodeResources &other);
   /// Returns human-readable string for these resources.
   std::string DebugString(StringIdMap string_to_int_map) const;
   /// Returns compact dict-like string.

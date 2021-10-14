@@ -135,7 +135,9 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
     for (auto &entry : node_resources.custom_resources) {
       local_view.custom_resources[entry.first].available = entry.second.available;
     }
+  }
 
+  if (resource_data.object_pulls_queued_changed()) {
     local_view.object_pulls_queued = resource_data.object_pulls_queued();
   }
 
@@ -1024,27 +1026,18 @@ void ClusterResourceScheduler::ReleaseWorkerResources(
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
-void ClusterResourceScheduler::UpdateLastResourceUsage(
-    std::shared_ptr<SchedulingResources> gcs_resources) {
-  NodeResources node_resources = ResourceMapToNodeResources(
-      string_to_int_map_, gcs_resources->GetTotalResources().GetResourceMap(),
-      gcs_resources->GetAvailableResources().GetResourceMap());
-  last_report_resources_.reset(new NodeResources(node_resources));
-}
+void ClusterResourceScheduler::FillResourceUsage(
+    rpc::ResourcesData &resources_data,
+    std::shared_ptr<SchedulingResources> last_report_resources) {
+  NodeResources last_report_node_resources = ResourceMapToNodeResources(
+      string_to_int_map_, last_report_resources->GetTotalResources().GetResourceMap(),
+      last_report_resources->GetAvailableResources().GetResourceMap());
 
-void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_data) {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
       << "Error: Populating heartbeat failed. Please file a bug report: "
          "https://github.com/ray-project/ray/issues/new.";
-
-  // Initialize if last report resources is empty.
-  if (!last_report_resources_) {
-    NodeResources node_resources =
-        ResourceMapToNodeResources(string_to_int_map_, {{}}, {{}});
-    last_report_resources_.reset(new NodeResources(node_resources));
-  }
 
   // Reset all local views for remote nodes. This is needed in case tasks that
   // we spilled back to a remote node were not actually scheduled on the
@@ -1057,56 +1050,55 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   }
 
   // Automatically report object store usage.
-  // XXX: this MUTATES the resources field, which is needed since we are storing
-  // it in last_report_resources_.
   if (get_used_object_store_memory_ != nullptr) {
     auto &capacity = resources.predefined_resources[OBJECT_STORE_MEM];
     double used = get_used_object_store_memory_();
     capacity.available = FixedPoint(capacity.total.Double() - used);
   }
 
+  bool avail_changed = !resources.AvailableEquals(last_report_node_resources);
+  bool total_changed = !resources.TotalEquals(last_report_node_resources);
+
+  resources_data.set_resources_available_changed(avail_changed);
+
   for (int i = 0; i < PredefinedResources_MAX; i++) {
     const auto &label = ResourceEnumToString((PredefinedResources)i);
     const auto &capacity = resources.predefined_resources[i];
-    const auto &last_capacity = last_report_resources_->predefined_resources[i];
     // Note: available may be negative, but only report positive to GCS.
-    if (capacity.available != last_capacity.available && capacity.available > 0) {
-      resources_data.set_resources_available_changed(true);
+    if (avail_changed && capacity.available > 0) {
       (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
-    if (capacity.total != last_capacity.total) {
+    if (total_changed) {
       (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
   for (const auto &it : resources.custom_resources) {
     uint64_t custom_id = it.first;
     const auto &capacity = it.second;
-    const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
     const auto &label = string_to_int_map_.Get(custom_id);
     // Note: available may be negative, but only report positive to GCS.
-    if (capacity.available != last_capacity.available && capacity.available > 0) {
-      resources_data.set_resources_available_changed(true);
+    if (avail_changed && capacity.available > 0) {
       (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
-    if (capacity.total != last_capacity.total) {
+    if (total_changed) {
       (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
 
   if (get_pull_manager_at_capacity_ != nullptr) {
     resources.object_pulls_queued = get_pull_manager_at_capacity_();
-    if (last_report_resources_->object_pulls_queued != resources.object_pulls_queued) {
+    if (last_report_object_pulls_queued_ != resources.object_pulls_queued) {
+      last_report_object_pulls_queued_ = resources.object_pulls_queued;
+      resources_data.set_object_pulls_queued_changed(true);
       resources_data.set_object_pulls_queued(resources.object_pulls_queued);
-      resources_data.set_resources_available_changed(true);
+    } else {
+      resources_data.set_object_pulls_queued_changed(false);
     }
   }
 
-  if (resources != *last_report_resources_.get()) {
-    last_report_resources_.reset(new NodeResources(resources));
-  }
-
+  // todo wangtao remove this flag
   if (!RayConfig::instance().enable_light_weight_resource_report()) {
     resources_data.set_resources_available_changed(true);
   }

@@ -932,9 +932,12 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
                     other_cust_capacities);
   resource_scheduler.AddOrUpdateNode(12345, other_node_resources);
 
+  std::shared_ptr<SchedulingResources> last_resource_usage_ =
+      std::make_shared<SchedulingResources>();
+
   {  // Cluster is idle.
     rpc::ResourcesData data;
-    resource_scheduler.FillResourceUsage(data);
+    resource_scheduler.FillResourceUsage(data, last_resource_usage_);
 
     auto available = data.resources_available();
     auto total = data.resources_total();
@@ -972,8 +975,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
     });
     resource_scheduler.AllocateLocalTaskResources(allocation_map, allocations);
     rpc::ResourcesData data;
-    resource_scheduler.UpdateLastResourceUsage(std::make_shared<SchedulingResources>());
-    resource_scheduler.FillResourceUsage(data);
+    resource_scheduler.FillResourceUsage(data, last_resource_usage_);
 
     auto available = data.resources_available();
     auto total = data.resources_total();
@@ -1012,10 +1014,12 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   initNodeResources(other_node_resources, other_pred_capacities, cust_ids,
                     other_cust_capacities);
   resource_scheduler.AddOrUpdateNode(12345, other_node_resources);
+  std::shared_ptr<SchedulingResources> last_resource_usage_ =
+      std::make_shared<SchedulingResources>();
 
   {
     rpc::ResourcesData data;
-    resource_scheduler.FillResourceUsage(data);
+    resource_scheduler.FillResourceUsage(data, last_resource_usage_);
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 750 * 1024 * 1024);
@@ -1025,7 +1029,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   used_object_store_memory = 450 * 1024 * 1024;
   {
     rpc::ResourcesData data;
-    resource_scheduler.FillResourceUsage(data);
+    resource_scheduler.FillResourceUsage(data, last_resource_usage_);
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 550 * 1024 * 1024);
@@ -1034,7 +1038,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   used_object_store_memory = 0;
   {
     rpc::ResourcesData data;
-    resource_scheduler.FillResourceUsage(data);
+    resource_scheduler.FillResourceUsage(data, last_resource_usage_);
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 1000 * 1024 * 1024);
@@ -1043,7 +1047,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   used_object_store_memory = 9999999999;
   {
     rpc::ResourcesData data;
-    resource_scheduler.FillResourceUsage(data);
+    resource_scheduler.FillResourceUsage(data, last_resource_usage_);
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 0);
@@ -1065,7 +1069,9 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
   ASSERT_FALSE(resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
   // View of local resources is not affected by resource usage report.
   rpc::ResourcesData data;
-  resource_scheduler.FillResourceUsage(data);
+  std::shared_ptr<SchedulingResources> last_resource_usage_ =
+      std::make_shared<SchedulingResources>();
+  resource_scheduler.FillResourceUsage(data, last_resource_usage_);
   ASSERT_FALSE(resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
 
   for (int num_slots_available = 0; num_slots_available <= 2; num_slots_available++) {
@@ -1077,7 +1083,7 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
     bool is_infeasible;
     for (int i = 0; i < 3; i++) {
       // Resource usage report tick should reset the remote node's resources.
-      resource_scheduler.FillResourceUsage(data);
+      resource_scheduler.FillResourceUsage(data, last_resource_usage_);
       for (int j = 0; j < num_slots_available; j++) {
         ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false,
                                                             false, &t, &is_infeasible),

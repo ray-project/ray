@@ -279,13 +279,19 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     }
     if (resources.resource_load_changed()) {
       (*iter->second.mutable_resource_load()) = resources.resource_load();
+      (*iter->second.mutable_resource_load_by_shape()) =
+          resources.resource_load_by_shape();
     }
     if (resources.resources_normal_task_changed()) {
       (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
     }
-    (*iter->second.mutable_resource_load_by_shape()) = resources.resource_load_by_shape();
-    iter->second.set_cluster_full_of_actors_detected(
-        resources.cluster_full_of_actors_detected());
+    if (resources.cluster_full_of_actors_detected_changed()) {
+      iter->second.set_cluster_full_of_actors_detected(
+          resources.cluster_full_of_actors_detected());
+    }
+    if (resources.object_pulls_queued_changed()) {
+      iter->second.set_object_pulls_queued(resources.object_pulls_queued());
+    }
   }
 }
 
