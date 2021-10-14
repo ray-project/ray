@@ -45,7 +45,7 @@ template <class GrpcService>
 class GrpcClient {
  public:
   GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager,
-             bool use_tls = true)
+             bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
     grpc::ChannelArguments argument;
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
@@ -107,7 +107,8 @@ class GrpcClient {
                                               const std::string &address, int port) {
     std::shared_ptr<grpc::Channel> channel;
     if (::RayConfig::instance().USE_TLS()) {
-      std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());
+      std::string server_cert_file =
+          std::string(::RayConfig::instance().TLS_SERVER_CERT());
       std::string server_key_file = std::string(::RayConfig::instance().TLS_SERVER_KEY());
       std::string root_cert_file = std::string(::RayConfig::instance().TLS_CA_CERT());
       std::string server_cert_chain = ReadCert(server_cert_file);
@@ -127,7 +128,6 @@ class GrpcClient {
     }
     return channel;
   };
-
 };
 
 }  // namespace rpc

@@ -55,7 +55,7 @@ def test_namespace():
     put in the same namespace.
 
     This test checks that:
-  RayConfig::instance().RAY_USE_TLS()  * When two drivers don't specify a namespace, they are placed in different
+    * When two drivers don't specify a namespace, they are placed in different
       anonymous namespaces.
     * When two drivers specify a namespace, they collide.
     * The namespace name (as provided by the runtime context) is correct.

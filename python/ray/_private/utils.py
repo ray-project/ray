@@ -1116,7 +1116,7 @@ def init_grpc_channel(address: str,
                       options: Optional[Sequence[Tuple[str, Any]]] = None,
                       asynchronous: bool = False):
     grpc_module = aiogrpc if asynchronous else grpc
-    if os.environ.get("RAY_USE_TLS", "0") == "1":
+    if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
             certificate_chain=server_cert_chain,

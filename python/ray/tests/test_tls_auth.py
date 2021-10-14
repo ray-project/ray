@@ -2,18 +2,37 @@
 import logging
 import os
 import sys
+import subprocess
 
 import pytest
 
-import ray
+from ray._private.test_utils import run_string_as_driver
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.mark.parametrize("use_tls", [True], indirect=True)
-def test_put_get_with_tls(shutdown_only, use_tls):
-    ray.init(num_cpus=0)
+def test_init_with_tls(use_tls):
+    # Run as a new process to pick up environment variables set
+    # in the use_tls fixture
+    run_string_as_driver(
+        """
+import ray
+try:
+    ray.init()
+finally:
+    ray.shutdown()
+    """,
+        env=os.environ)
 
+
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_put_get_with_tls(use_tls):
+    run_string_as_driver(
+        """
+import ray
+ray.init()
+try:
     for i in range(100):
         value_before = i * 10**6
         object_ref = ray.put(value_before)
@@ -37,45 +56,82 @@ def test_put_get_with_tls(shutdown_only, use_tls):
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
+finally:
+    ray.shutdown()
+    """,
+        env=os.environ)
 
 
-@pytest.mark.parametrize("use_tls", [True], indirect=True)
-def test_submit_with_tls(shutdown_only, use_tls):
-    ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
+@pytest.mark.parametrize("use_tls", [True], indirect=True, scope="module")
+def test_submit_with_tls(use_tls):
+    run_string_as_driver(
+        """
+import ray
+ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
 
-    @ray.remote
-    def f(n):
-        return list(range(n))
+@ray.remote
+def f(n):
+    return list(range(n))
 
-    id1, id2, id3 = f._remote(args=[3], num_returns=3)
-    assert ray.get([id1, id2, id3]) == [0, 1, 2]
+id1, id2, id3 = f._remote(args=[3], num_returns=3)
+assert ray.get([id1, id2, id3]) == [0, 1, 2]
 
-    @ray.remote
-    class Actor:
-        def __init__(self, x, y=0):
-            self.x = x
-            self.y = y
+@ray.remote
+class Actor:
+    def __init__(self, x, y=0):
+        self.x = x
+        self.y = y
 
-        def method(self, a, b=0):
-            return self.x, self.y, a, b
+    def method(self, a, b=0):
+        return self.x, self.y, a, b
 
-    a = Actor._remote(
-        args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
+a = Actor._remote(
+    args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
 
-    id1, id2, id3, id4 = a.method._remote(
-        args=["test"], kwargs={"b": 2}, num_returns=4)
-    assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
+id1, id2, id3, id4 = a.method._remote(
+    args=["test"], kwargs={"b": 2}, num_returns=4)
+assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
+    """,
+        env=os.environ)
 
 
 @pytest.mark.skipif(
     sys.platform == "darwin",
     reason=("Cryptography doesn't install in Mac build pipeline"))
 @pytest.mark.parametrize("use_tls", [True], indirect=True)
-def test_client_connect_to_tls_server(use_tls, init_and_serve):
-    from ray.util.client import ray as ray_client
-    os.environ["RAY_USE_TLS"] = "0"
-    with pytest.raises(ConnectionError):
-        ray_client.connect("localhost:50051")
+def test_client_connect_to_tls_server(use_tls, call_ray_start):
+    for k, v in os.environ.items():
+        if k.startswith("RAY_"):
+            print("export {}={}".format(k, v))
 
-    os.environ["RAY_USE_TLS"] = "1"
-    ray_client.connect("localhost:50051")
+    tls_env = os.environ.copy(
+    )  # use_tls fixture sets TLS environment variables
+    without_tls_env = {}
+
+    # Attempt to connect without TLS
+    try:
+        out = run_string_as_driver(
+            """
+from ray.util.client import ray as ray_client
+ray_client.connect("localhost:10001")
+     """,
+            env=without_tls_env)
+    except subprocess.CalledProcessError as e:
+        assert "ConnectionError" in e.output.decode("utf-8")
+
+    # Attempt to connect with TLS
+    out = run_string_as_driver(
+        """
+import ray
+from ray.util.client import ray as ray_client
+ray_client.connect("localhost:10001")
+print(ray.is_initialized())
+     """,
+        env=tls_env)
+    assert out == "True\n"
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

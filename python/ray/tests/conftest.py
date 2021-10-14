@@ -89,17 +89,15 @@ def ray_start_regular_shared(request):
 
 
 @pytest.fixture(
-    scope="module",
-    params=[{
+    scope="module", params=[{
         "local_mode": True
     }, {
         "local_mode": False
     }])
 def ray_start_shared_local_modes(request):
     param = getattr(request, "param", {})
-    use_tls = param.pop("use_tls", False)
     with _ray_start(**param) as res:
-            yield res
+        yield res
 
 
 @pytest.fixture

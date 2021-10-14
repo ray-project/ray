@@ -101,7 +101,8 @@ class Worker:
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
-        self._secure = secure or os.environ.get("RAY_USE_TLS", "0") == "1"
+        self._secure = secure or os.environ.get("RAY_USE_TLS",
+                                                "0").lower() in ("1", "true")
         self._conn_str = conn_str
         self._connection_retries = connection_retries
 
@@ -160,7 +161,7 @@ class Worker:
         if self._secure:
             if self._credentials is not None:
                 credentials = self._credentials
-            elif os.environ.get("RAY_USE_TLS", "0") == "1":
+            elif os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
                 server_cert_chain, private_key, ca_cert = ray._private.utils \
                     .load_certs_from_env()
                 credentials = grpc.ssl_channel_credentials(
@@ -362,8 +363,8 @@ class Worker:
                 logger.debug("Internal retry for get {}".format(to_get))
         if len(to_get) != len(res):
             raise Exception(
-                "Mismatched number of items in request ({}) and response ({})".
-                format(len(to_get), len(res)))
+                "Mismatched number of items in request ({}) and response ({})"
+                .format(len(to_get), len(res)))
         if isinstance(vals, ClientObjectRef):
             res = res[0]
         return res

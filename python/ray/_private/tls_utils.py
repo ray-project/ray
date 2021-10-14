@@ -59,7 +59,7 @@ def generate_self_signed_tls_certs():
 
 
 def add_port_to_grpc_server(server, address):
-    if os.environ.get("RAY_USE_TLS", "0") == "1":
+    if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_server_credentials(
             [(private_key, server_cert_chain)],
@@ -71,7 +71,14 @@ def add_port_to_grpc_server(server, address):
 
 
 def load_certs_from_env():
-    if os.environ.get("RAY_USE_TLS", "0") == "1":
+    if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
+        if ("RAY_TLS_SERVER_CERT" not in os.environ) or \
+                ("RAY_TLS_SERVER_KEY" not in os.environ):
+            raise RuntimeError(
+                "If the environment variable RAY_USE_TLS is set to true"
+                "then both RAY_TLS_SERVER_CERT and RAY_TLS_SERVER_KEY must "
+                "also be set.")
+
         with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
             server_cert_chain = f.read()
         with open(os.environ["RAY_TLS_SERVER_KEY"], "rb") as f:
