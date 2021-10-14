@@ -38,6 +38,7 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
                 num_gpus=resource_quantity,
                 resources=custom_resources))
     cluster.wait_for_nodes()
+    num_nodes = len(nodes)
 
     ray.init(address=cluster.address)
     while not ray.is_initialized():
@@ -70,7 +71,11 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
         # Randomly schedule tasks or actors on placement groups that
         # are not removed.
         for pg in pgs_unremoved:
-            tasks.append(mock_task.options(placement_group=pg).remote())
+            for i in range(num_nodes):
+                tasks.append(
+                    mock_task.options(
+                        placement_group=pg,
+                        placement_group_bundle_index=i).remote())
         # Remove the rest of placement groups.
         for pg in pgs_removed:
             remove_placement_group(pg)
