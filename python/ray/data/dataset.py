@@ -329,7 +329,7 @@ class Dataset(Generic[T]):
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block.
                 When shuffle is disabled, output blocks consist of data from
-                only adjacent input blocks, which minimizes data movement.
+                neighboring input blocks only, which minimizes data movement.
 
         Returns:
             The repartitioned dataset.
