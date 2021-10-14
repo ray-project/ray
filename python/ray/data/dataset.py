@@ -340,18 +340,24 @@ class Dataset(Generic[T]):
             new_blocks = simple_shuffle(self._blocks, num_blocks)
             return Dataset(new_blocks, self._epoch)
 
+        # Compute the (n-1) indices needed for an equal split of the data.
         count = self.count()
-        stride = math.ceil(count / num_blocks)
-        indices = list(range(stride, count, stride))
+        indices = []
+        cur_idx = 0
+        for _ in range(num_blocks - 1):
+            cur_idx += count / num_blocks
+            indices.append(int(cur_idx))
         assert len(indices) < num_blocks, (indices, num_blocks)
-        splits = self.split_at_indices(indices)
-        self._blocks.clear()
+        if indices:
+            splits = self.split_at_indices(indices)
+            self._blocks.clear()  # Early-release memory.
+        else:
+            splits = [self]
 
         reduce_task = cached_remote_fn(_shuffle_reduce)
-        reduce_bar = ProgressBar(
-            "Fast Reduce", position=0, total=len(splits))
-        reduce_out = [reduce_task.options(num_returns=2).remote(*s.get_blocks()) for s in splits]
-        del splits
+        reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
+        reduce_out = [reduce_task.options(num_returns=2).remote(*s.get_internal_block_refs()) for s in splits]
+        del splits  # Early-release memory.
 
         new_blocks, new_metadata = zip(*reduce_out)
         reduce_bar.block_until_complete(list(new_blocks))
