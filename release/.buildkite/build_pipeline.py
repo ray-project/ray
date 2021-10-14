@@ -154,6 +154,7 @@ NIGHTLY_TESTS = {
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
         "serve_micro_benchmark",
+        "serve_cluster_fault_tolerance",
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
         "rte_many_tasks_actors",
