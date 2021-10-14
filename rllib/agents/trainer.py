@@ -633,90 +633,6 @@ class Trainer(Trainable):
 
         super().__init__(config, logger_creator)
 
-    @classmethod
-    @override(Trainable)
-    def default_resource_request(
-            cls, config: PartialTrainerConfigDict) -> \
-            Union[Resources, PlacementGroupFactory]:
-        cf = dict(cls._default_config, **config)
-
-        eval_config = cf["evaluation_config"]
-
-        # TODO(ekl): add custom resources here once tune supports them
-        # Return PlacementGroupFactory containing all needed resources
-        # (already properly defined as device bundles).
-        return PlacementGroupFactory(
-            bundles=[{
-                # Driver.
-                "CPU": cf["num_cpus_for_driver"],
-                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
-            }] + [
-                {
-                    # RolloutWorkers.
-                    "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"],
-                } for _ in range(cf["num_workers"])
-            ] + ([
-                {
-                    # Evaluation workers.
-                    # Note: The local eval worker is located on the driver CPU.
-                    "CPU": eval_config.get("num_cpus_per_worker",
-                                           cf["num_cpus_per_worker"]),
-                    "GPU": eval_config.get("num_gpus_per_worker",
-                                           cf["num_gpus_per_worker"]),
-                } for _ in range(cf["evaluation_num_workers"])
-            ] if cf["evaluation_interval"] else []),
-            strategy=config.get("placement_strategy", "PACK"))
-
-    @override(Trainable)
-    @PublicAPI
-    def train(self) -> ResultDict:
-        """Overrides super.train to synchronize global vars."""
-
-        result = None
-        for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
-            try:
-                result = Trainable.train(self)
-            except RayError as e:
-                if self.config["ignore_worker_failures"]:
-                    logger.exception(
-                        "Error in train call, attempting to recover")
-                    self._try_recover()
-                else:
-                    logger.info(
-                        "Worker crashed during call to train(). To attempt to "
-                        "continue training without the failed worker, set "
-                        "`'ignore_worker_failures': True`.")
-                    raise e
-            except Exception as e:
-                time.sleep(0.5)  # allow logs messages to propagate
-                raise e
-            else:
-                break
-        if result is None:
-            raise RuntimeError("Failed to recover from worker crash")
-
-        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
-            self._sync_filters_if_needed(self.workers)
-
-        return result
-
-    def _sync_filters_if_needed(self, workers: WorkerSet):
-        if self.config.get("observation_filter", "NoFilter") != "NoFilter":
-            FilterManager.synchronize(
-                workers.local_worker().filters,
-                workers.remote_workers(),
-                update_remote=self.config["synchronize_filters"])
-            logger.debug("synchronized filters: {}".format(
-                workers.local_worker().filters))
-
-    @override(Trainable)
-    def log_result(self, result: ResultDict):
-        self.callbacks.on_train_result(trainer=self, result=result)
-        # log after the callback is invoked, so that the user has a chance
-        # to mutate the result
-        Trainable.log_result(self, result)
-
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
@@ -821,68 +737,37 @@ class Trainer(Trainable):
                 num_workers=self.config["evaluation_num_workers"])
 
     @override(Trainable)
-    def cleanup(self):
-        if hasattr(self, "workers"):
-            self.workers.stop()
-        if hasattr(self, "optimizer") and self.optimizer:
-            self.optimizer.stop()
+    @PublicAPI
+    def train(self) -> ResultDict:
+        """Overrides super.train to synchronize global vars."""
 
-    @override(Trainable)
-    def save_checkpoint(self, checkpoint_dir: str) -> str:
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+        result = None
+        for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
+            try:
+                result = Trainable.train(self)
+            except RayError as e:
+                if self.config["ignore_worker_failures"]:
+                    logger.exception(
+                        "Error in train call, attempting to recover")
+                    self._try_recover()
+                else:
+                    logger.info(
+                        "Worker crashed during call to train(). To attempt to "
+                        "continue training without the failed worker, set "
+                        "`'ignore_worker_failures': True`.")
+                    raise e
+            except Exception as e:
+                time.sleep(0.5)  # allow logs messages to propagate
+                raise e
+            else:
+                break
+        if result is None:
+            raise RuntimeError("Failed to recover from worker crash")
 
-        return checkpoint_path
+        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
+            self._sync_filters_if_needed(self.workers)
 
-    @override(Trainable)
-    def load_checkpoint(self, checkpoint_path: str):
-        extra_data = pickle.load(open(checkpoint_path, "rb"))
-        self.__setstate__(extra_data)
-
-    @DeveloperAPI
-    def _make_workers(
-            self, *, env_creator: Callable[[EnvContext], EnvType],
-            validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-            policy_class: Type[Policy], config: TrainerConfigDict,
-            num_workers: int) -> WorkerSet:
-        """Default factory method for a WorkerSet running under this Trainer.
-
-        Override this method by passing a custom `make_workers` into
-        `build_trainer`.
-
-        Args:
-            env_creator (callable): A function that return and Env given an env
-                config.
-            validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
-                Optional callable to validate the generated environment (only
-                on worker=0).
-            policy (Type[Policy]): The Policy class to use for creating the
-                policies of the workers.
-            config (TrainerConfigDict): The Trainer's config.
-            num_workers (int): Number of remote rollout workers to create.
-                0 for local only.
-
-        Returns:
-            WorkerSet: The created WorkerSet.
-        """
-        return WorkerSet(
-            env_creator=env_creator,
-            validate_env=validate_env,
-            policy_class=policy_class,
-            trainer_config=config,
-            num_workers=num_workers,
-            logdir=self.logdir)
-
-    @DeveloperAPI
-    def _init(self, config: TrainerConfigDict,
-              env_creator: Callable[[EnvContext], EnvType]):
-        """Subclasses should override this for custom initialization."""
-        raise NotImplementedError
-
-    @Deprecated(new="Trainer.evaluate", error=False)
-    def _evaluate(self) -> dict:
-        return self.evaluate()
+        return result
 
     @PublicAPI
     def evaluate(self, episodes_left_fn: Optional[Callable[[int], int]] = None
@@ -893,10 +778,10 @@ class Trainer(Trainable):
         merging evaluation_config with the normal trainer config.
 
         Args:
-            episodes_left_fn (Optional[Callable[[int], int]]): An optional
-                callable taking the already run num episodes as only arg
-                and returning the number of episodes left to run. It's used
-                to find out whether evaluation should continue.
+            episodes_left_fn: An optional callable taking the already run
+                num episodes as only arg and returning the number of
+                episodes left to run. It's used to find out whether
+                evaluation should continue.
         """
         # In case we are evaluating (in a thread) parallel to training,
         # we may have to re-enable eager mode here (gets disabled in the
@@ -908,8 +793,8 @@ class Trainer(Trainable):
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
 
+        # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
-            # Sync weights to the evaluation WorkerSet.
             self._sync_weights_to_workers(worker_set=self.evaluation_workers)
             self._sync_filters_if_needed(self.evaluation_workers)
 
@@ -997,25 +882,6 @@ class Trainer(Trainable):
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers())
         return {"evaluation": metrics}
-
-    @DeveloperAPI
-    def _before_evaluate(self):
-        """Pre-evaluation callback."""
-        pass
-
-    @DeveloperAPI
-    def _sync_weights_to_workers(
-            self,
-            *,
-            worker_set: Optional[WorkerSet] = None,
-            workers: Optional[List[RolloutWorker]] = None,
-    ) -> None:
-        """Sync "main" weights to given WorkerSet or list of workers."""
-        assert worker_set is not None
-        # Broadcast the new policy weights to all evaluation workers.
-        logger.info("Synchronizing weights to workers.")
-        weights = ray.put(self.workers.local_worker().save())
-        worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     @PublicAPI
     def compute_single_action(
@@ -1168,10 +1034,6 @@ class Trainer(Trainable):
         else:
             return action
 
-    @Deprecated(new="compute_single_action", error=False)
-    def compute_action(self, *args, **kwargs):
-        return self.compute_single_action(*args, **kwargs)
-
     @PublicAPI
     def compute_actions(
             self,
@@ -1198,7 +1060,7 @@ class Trainer(Trainable):
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
         Args:
-            observation: observation from the environment.
+            observation: Observation from the environment.
             state: RNN hidden state, if any. If state is not None,
                 then all of compute_single_action(...) is returned
                 (computed action, rnn state(s), logits dictionary).
@@ -1304,31 +1166,21 @@ class Trainer(Trainable):
         else:
             return actions
 
-    @property
-    def _name(self) -> str:
-        """Subclasses should override this to declare their name."""
-        raise NotImplementedError
-
-    @property
-    def _default_config(self) -> TrainerConfigDict:
-        """Subclasses should override this to declare their default config."""
-        raise NotImplementedError
-
     @PublicAPI
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
         Args:
-            policy_id (PolicyID): ID of the policy to return.
+            policy_id: ID of the policy to return.
         """
         return self.workers.local_worker().get_policy(policy_id)
 
     @PublicAPI
-    def get_weights(self, policies: List[PolicyID] = None) -> dict:
+    def get_weights(self, policies: Optional[List[PolicyID]] = None) -> dict:
         """Return a dictionary of policy ids to weights.
 
         Args:
-            policies (list): Optional list of policies to return weights for,
+            policies: Optional list of policies to return weights for,
                 or None for all policies.
         """
         return self.workers.local_worker().get_weights(policies)
@@ -1338,7 +1190,7 @@ class Trainer(Trainable):
         """Set policy weights by policy id.
 
         Args:
-            weights (dict): Map of policy ids to weights to set.
+            weights: Map of policy ids to weights to set.
         """
         self.workers.local_worker().set_weights(weights)
 
@@ -1516,6 +1368,146 @@ class Trainer(Trainable):
             self.config["collect_metrics_timeout"],
             min_history=self.config["metrics_smoothing_episodes"],
             selected_workers=selected_workers)
+
+    @override(Trainable)
+    def save_checkpoint(self, checkpoint_dir: str) -> str:
+        checkpoint_path = os.path.join(checkpoint_dir,
+                                       "checkpoint-{}".format(self.iteration))
+        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+
+        return checkpoint_path
+
+    @override(Trainable)
+    def load_checkpoint(self, checkpoint_path: str):
+        extra_data = pickle.load(open(checkpoint_path, "rb"))
+        self.__setstate__(extra_data)
+
+    @override(Trainable)
+    def log_result(self, result: ResultDict):
+        self.callbacks.on_train_result(trainer=self, result=result)
+        # log after the callback is invoked, so that the user has a chance
+        # to mutate the result
+        Trainable.log_result(self, result)
+
+    @override(Trainable)
+    def cleanup(self):
+        if hasattr(self, "workers"):
+            self.workers.stop()
+        if hasattr(self, "optimizer") and self.optimizer:
+            self.optimizer.stop()
+
+    @classmethod
+    @override(Trainable)
+    def default_resource_request(
+            cls, config: PartialTrainerConfigDict) -> \
+            Union[Resources, PlacementGroupFactory]:
+        cf = dict(cls._default_config, **config)
+
+        eval_config = cf["evaluation_config"]
+
+        # TODO(ekl): add custom resources here once tune supports them
+        # Return PlacementGroupFactory containing all needed resources
+        # (already properly defined as device bundles).
+        return PlacementGroupFactory(
+            bundles=[{
+                # Driver.
+                "CPU": cf["num_cpus_for_driver"],
+                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+            }] + [
+                {
+                    # RolloutWorkers.
+                    "CPU": cf["num_cpus_per_worker"],
+                    "GPU": cf["num_gpus_per_worker"],
+                } for _ in range(cf["num_workers"])
+            ] + ([
+                {
+                    # Evaluation workers.
+                    # Note: The local eval worker is located on the driver CPU.
+                    "CPU": eval_config.get("num_cpus_per_worker",
+                                           cf["num_cpus_per_worker"]),
+                    "GPU": eval_config.get("num_gpus_per_worker",
+                                           cf["num_gpus_per_worker"]),
+                } for _ in range(cf["evaluation_num_workers"])
+            ] if cf["evaluation_interval"] else []),
+            strategy=config.get("placement_strategy", "PACK"))
+
+    @DeveloperAPI
+    def _before_evaluate(self):
+        """Pre-evaluation callback."""
+        pass
+
+    @DeveloperAPI
+    def _init(self, config: TrainerConfigDict,
+              env_creator: Callable[[EnvContext], EnvType]):
+        """Subclasses should override this for custom initialization."""
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def _make_workers(
+            self, *, env_creator: Callable[[EnvContext], EnvType],
+            validate_env: Optional[Callable[[EnvType, EnvContext], None]],
+            policy_class: Type[Policy], config: TrainerConfigDict,
+            num_workers: int) -> WorkerSet:
+        """Default factory method for a WorkerSet running under this Trainer.
+
+        Override this method by passing a custom `make_workers` into
+        `build_trainer`.
+
+        Args:
+            env_creator (callable): A function that return and Env given an env
+                config.
+            validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
+                Optional callable to validate the generated environment (only
+                on worker=0).
+            policy (Type[Policy]): The Policy class to use for creating the
+                policies of the workers.
+            config (TrainerConfigDict): The Trainer's config.
+            num_workers (int): Number of remote rollout workers to create.
+                0 for local only.
+
+        Returns:
+            WorkerSet: The created WorkerSet.
+        """
+        return WorkerSet(
+            env_creator=env_creator,
+            validate_env=validate_env,
+            policy_class=policy_class,
+            trainer_config=config,
+            num_workers=num_workers,
+            logdir=self.logdir)
+
+    def _sync_filters_if_needed(self, workers: WorkerSet):
+        if self.config.get("observation_filter", "NoFilter") != "NoFilter":
+            FilterManager.synchronize(
+                workers.local_worker().filters,
+                workers.remote_workers(),
+                update_remote=self.config["synchronize_filters"])
+            logger.debug("synchronized filters: {}".format(
+                workers.local_worker().filters))
+
+    @DeveloperAPI
+    def _sync_weights_to_workers(
+            self,
+            *,
+            worker_set: Optional[WorkerSet] = None,
+            workers: Optional[List[RolloutWorker]] = None,
+    ) -> None:
+        """Sync "main" weights to given WorkerSet or list of workers."""
+        assert worker_set is not None
+        # Broadcast the new policy weights to all evaluation workers.
+        logger.info("Synchronizing weights to workers.")
+        weights = ray.put(self.workers.local_worker().save())
+        worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
+
+    @property
+    def _name(self) -> str:
+        """Subclasses should override this to declare their name."""
+        raise NotImplementedError
+
+    @property
+    def _default_config(self) -> TrainerConfigDict:
+        """Subclasses should override this to declare their default config."""
+        raise NotImplementedError
 
     @classmethod
     @override(Trainable)
@@ -1882,6 +1874,14 @@ class Trainer(Trainable):
             "{} is an invalid env specification. ".format(env_object) +
             "You can specify a custom env as either a class "
             "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
+
+    @Deprecated(new="Trainer.evaluate", error=False)
+    def _evaluate(self) -> dict:
+        return self.evaluate()
+
+    @Deprecated(new="compute_single_action", error=False)
+    def compute_action(self, *args, **kwargs):
+        return self.compute_single_action(*args, **kwargs)
 
     def __repr__(self):
         return self._name

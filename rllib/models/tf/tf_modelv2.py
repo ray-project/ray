@@ -15,7 +15,7 @@ tf1, tf, tfv = try_import_tf()
 
 @PublicAPI
 class TFModelV2(ModelV2):
-    """TF version of ModelV2, which is always also a keras Model.
+    """TF version of ModelV2, which should contain a tf keras Model.
 
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
@@ -23,20 +23,7 @@ class TFModelV2(ModelV2):
     def __init__(self, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str):
-        """Initialize a TFModelV2.
-
-        Here is an example implementation for a subclass
-        ``MyModelClass(TFModelV2)``::
-
-            def __init__(self, *args, **kwargs):
-                super(MyModelClass, self).__init__(*args, **kwargs)
-                input_layer = tf.keras.layers.Input(...)
-                hidden_layer = tf.keras.layers.Dense(...)(input_layer)
-                output_layer = tf.keras.layers.Dense(...)(hidden_layer)
-                value_layer = tf.keras.layers.Dense(...)(hidden_layer)
-                self.base_model = tf.keras.Model(
-                    input_layer, [output_layer, value_layer])
-        """
+        """Initializes a TFModelV2 instance."""
         super().__init__(
             obs_space,
             action_space,
