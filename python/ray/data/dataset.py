@@ -319,17 +319,17 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> # Set the number of output partitions to write to disk.
-            >>> ds.repartition(10, shuffle=False).write_parquet(...)
+            >>> ds.repartition(10).write_parquet(...)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             num_blocks: The number of blocks.
             shuffle: Whether to perform a distributed shuffle during the
-                repartition (shuffle is an expensive operation). When shuffle
-                is enabled, each output block contains a subset of data rows
-                from each input block. When shuffle is disabled, output blocks
-                consist of data from only adjacent input blocks.
+                repartition. When shuffle is enabled, each output block
+                contains a subset of data rows from each input block.
+                When shuffle is disabled, output blocks consist of data from
+                only adjacent input blocks, which minimizes data movement.
 
         Returns:
             The repartitioned dataset.
