@@ -377,7 +377,8 @@ def get_metadata(workflow_id: str,
             the metadata of the workflow.
 
     Examples:
-        >>> workflow_step = trip.options(name="trip", metadata={"k1": "v1"}).step()
+        >>> workflow_step = trip.options(
+        ...     name="trip", metadata={"k1": "v1"}).step()
         >>> workflow_step.run(workflow_id="trip1", metadata={"k2": "v2"})
         >>> workflow_metadata = workflow.get_metadata("trip1")
         >>> assert workflow_metadata["status"] == "SUCCESSFUL"
