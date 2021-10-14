@@ -274,9 +274,15 @@ def test_reconfigure_with_exception(serve_instance):
     with pytest.raises(RuntimeError):
         A.options(user_config="hi").deploy()
 
+    def rolled_back():
+        try:
+            config = ray.get(A.get_handle().remote())
+            return config == "not_hi"
+        except Exception:
+            return False
+
     # Ensure we should be able to rollback to "hi" config
-    config = ray.get(A.get_handle().remote())
-    assert config == "not_hi"
+    wait_for_condition(rolled_back)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
