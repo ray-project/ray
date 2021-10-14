@@ -21,10 +21,8 @@ def test_user_metadata(workflow_start_regular):
         name=step_name, metadata=user_step_metadata).step().run(
             workflow_id, metadata=user_run_metadata)
 
-    assert user_run_metadata == workflow.get_metadata("simple")[
-        "user_metadata"]
-    assert user_step_metadata == workflow.get_metadata(
-        "simple", "simple_step")["user_metadata"]
+    assert workflow.get_metadata("simple")["user_metadata"] == user_run_metadata
+    assert workflow.get_metadata("simple", "simple_step")["user_metadata"] == user_step_metadata
 
 
 def test_no_user_metadata(workflow_start_regular):
@@ -38,9 +36,8 @@ def test_no_user_metadata(workflow_start_regular):
 
     simple.options(name=step_name).step().run(workflow_id)
 
-    assert {} == workflow.get_metadata("simple")["user_metadata"]
-    assert {} == workflow.get_metadata("simple",
-                                       "simple_step")["user_metadata"]
+    assert workflow.get_metadata("simple")["user_metadata"] == {}
+    assert workflow.get_metadata("simple","simple_step")["user_metadata"] == {}
 
 
 def test_successful_workflow(workflow_start_regular):
@@ -55,7 +52,7 @@ def test_successful_workflow(workflow_start_regular):
     simple.options(name=step_name).step().run(workflow_id)
 
     workflow_metadata = workflow.get_metadata("simple")
-    assert "SUCCESSFUL" == workflow_metadata["status"]
+    assert workflow_metadata["status"] == "SUCCESSFUL"
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" in workflow_metadata["stats"]
 
@@ -78,7 +75,7 @@ def test_running_and_canceled_workflow(workflow_start_regular):
     time.sleep(10)
 
     workflow_metadata = workflow.get_metadata("simple")
-    assert "RUNNING" == workflow_metadata["status"]
+    assert workflow_metadata["status"] == "RUNNING"
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" not in workflow_metadata["stats"]
 
@@ -89,13 +86,37 @@ def test_running_and_canceled_workflow(workflow_start_regular):
     workflow.cancel(workflow_id)
 
     workflow_metadata = workflow.get_metadata("simple")
-    assert "CANCELED" == workflow_metadata["status"]
+    assert workflow_metadata["status"] == "CANCELED"
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" not in workflow_metadata["stats"]
 
     step_metadata = workflow.get_metadata("simple", "simple_step")
     assert "start_time" in step_metadata["stats"]
     assert "end_time" not in step_metadata["stats"]
+
+
+def test_no_workflow_found(workflow_start_regular):
+
+    step_name = "simple_step"
+    workflow_id = "simple"
+
+    @workflow.step
+    def simple():
+        return 0
+
+    simple.options(name=step_name).step().run(workflow_id)
+
+    with pytest.raises(ValueError) as excinfo:
+        workflow.get_metadata("simple1")
+    assert str(excinfo.value) == "No such workflow_id simple1"
+
+    with pytest.raises(ValueError) as excinfo:
+        workflow.get_metadata("simple1", "simple_step")
+    assert str(excinfo.value) == "No such workflow_id simple1"
+
+    with pytest.raises(ValueError) as excinfo:
+        workflow.get_metadata("simple", "simple_step1")
+    assert str(excinfo.value) == "No such step_id simple_step1 in workflow simple"
 
 
 if __name__ == "__main__":
