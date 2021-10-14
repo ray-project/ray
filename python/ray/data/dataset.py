@@ -353,6 +353,7 @@ class Dataset(Generic[T]):
         else:
             splits = [self]
 
+        # Coalesce each split into a single block.
         reduce_task = cached_remote_fn(_shuffle_reduce)
         reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
         reduce_out = [
@@ -360,7 +361,6 @@ class Dataset(Generic[T]):
                 *s.get_internal_block_refs()) for s in splits
         ]
         del splits  # Early-release memory.
-
         new_blocks, new_metadata = zip(*reduce_out)
         reduce_bar.block_until_complete(list(new_blocks))
         new_metadata = ray.get(list(new_metadata))
