@@ -388,7 +388,7 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     # Test excluding all files using gitignore pattern matching syntax
     runtime_env = f"""{{
         "working_dir": r"{working_dir}",
-        "excludes": ["**"]
+        "excludes": ["*"]
     }}"""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
