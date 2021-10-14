@@ -21,15 +21,20 @@ To contribute a patch:
    a git hook that will run the linter before you push your changes.
 5. Add new unit tests for your code.
 
+For instructions on setting up your development environment, check out the
+`getting involved`_ documentation page.
+
+
 .. _`Github Discussions`: https://github.com/ray-project/ray/discussions
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
+.. _`getting involved`: https://docs.ray.io/en/master/getting-involved.html
 
 PR Review Process
 -----------------
 
 For contributors who are in the ray-project organization:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  ~~~~~
 
 - When you first create a PR, add an reviewer to the `assignee` section.
 - Assignees will review your PR and add `@author-action-required` label if further actions are required.
