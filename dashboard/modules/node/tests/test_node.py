@@ -169,7 +169,7 @@ def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
         # 1 ref for my_obj
         assert summary["totalLocalRefCount"] == 1
 
-    assert wait_until_succeeded_without_exception(
+    wait_until_succeeded_without_exception(
         check_mem_table, (AssertionError, ), timeout_ms=1000)
 
 
@@ -535,7 +535,7 @@ def test_errors(enable_test_module, disable_aiohttp_cache,
         assert type(actor_errs["data"]["errors"]) is dict
         assert len(actor_errs["data"]["errors"][ea_pid]) == 4
 
-    assert wait_until_succeeded_without_exception(
+    wait_until_succeeded_without_exception(
         check_errs, (AssertionError, ), timeout_ms=1000)
 
 
