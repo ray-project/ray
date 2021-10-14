@@ -1267,6 +1267,18 @@ cc_test(
 )
 
 cc_test(
+    name = "short_alloc_test",
+    size = "small",
+    srcs = ["src/ray/util/short_alloc_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "util_test",
     size = "small",
     srcs = ["src/ray/util/util_test.cc"],
