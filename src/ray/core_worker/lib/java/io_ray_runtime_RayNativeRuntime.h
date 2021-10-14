@@ -49,14 +49,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEn
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
- * Method:    nativeSetResource
- * Signature: (Ljava/lang/String;D[B)V
- */
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
-    JNIEnv *, jclass, jstring, jdouble, jbyteArray);
-
-/*
- * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeKillActor
  * Signature: ([BZ)V
  */
@@ -81,6 +73,14 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *, jcla
  */
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(JNIEnv *, jclass, jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_RayNativeRuntime
+ * Method:    nativeGetResourceIds
+ * Signature: ()Ljava/util/Map;
+ */
+JNIEXPORT jobject JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *, jclass);
 
 #ifdef __cplusplus
 }

@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
-  std::unordered_map<std::string, double> static_resource_conf;
+  absl::flat_hash_map<std::string, double> static_resource_conf;
 
   // IO Service for node manager.
   instrumented_io_context main_service;
@@ -195,7 +195,7 @@ int main(int argc, char *argv[]) {
         if (!agent_command.empty()) {
           node_manager_config.agent_command = agent_command;
         } else {
-          RAY_LOG(DEBUG) << "Agent command is empty.";
+          RAY_LOG(DEBUG) << "Agent command is empty. Not starting agent.";
         }
 
         node_manager_config.report_resources_period_ms =
@@ -212,6 +212,7 @@ int main(int argc, char *argv[]) {
 
         // Configuration for the object manager.
         ray::ObjectManagerConfig object_manager_config;
+        object_manager_config.object_manager_address = node_ip_address;
         object_manager_config.object_manager_port = object_manager_port;
         object_manager_config.store_socket_name = store_socket_name;
 
@@ -244,7 +245,7 @@ int main(int argc, char *argv[]) {
         // Initialize stats.
         const ray::stats::TagsType global_tags = {
             {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::VersionKey, "2.0.0.dev0"},
+            {ray::stats::VersionKey, kRayVersion},
             {ray::stats::NodeAddressKey, node_ip_address}};
         ray::stats::Init(global_tags, metrics_agent_port);
 
@@ -257,7 +258,8 @@ int main(int argc, char *argv[]) {
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
           ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
-                            {{"node_id", raylet->GetNodeId().Hex()}}, log_dir);
+                            {{"node_id", raylet->GetNodeId().Hex()}}, log_dir,
+                            RayConfig::instance().event_level());
         };
 
         raylet->Start();

@@ -152,11 +152,15 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CAddress "ray::rpc::Address":
         CAddress()
-        const c_string &SerializeAsString()
+        const c_string &SerializeAsString() const
         void ParseFromString(const c_string &serialized)
         void CopyFrom(const CAddress& address)
         const c_string &worker_id()
-
+    cdef cppclass CObjectReference "ray::rpc::ObjectReference":
+        CObjectReference()
+        CAddress owner_address() const
+        const c_string &object_id() const
+        const c_string &call_site() const
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
@@ -187,27 +191,6 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CPlacementStrategy PLACEMENT_STRATEGY_STRICT_SPREAD \
         "ray::core::PlacementStrategy::STRICT_SPREAD"
 
-cdef extern from "ray/common/task/scheduling_resources.h" nogil:
-    cdef cppclass ResourceSet "ray::ResourceSet":
-        ResourceSet()
-        ResourceSet(const unordered_map[c_string, double] &resource_map)
-        ResourceSet(const c_vector[c_string] &resource_labels,
-                    const c_vector[double] resource_capacity)
-        c_bool operator==(const ResourceSet &rhs) const
-        c_bool IsEqual(const ResourceSet &other) const
-        c_bool IsSubset(const ResourceSet &other) const
-        c_bool IsSuperset(const ResourceSet &other) const
-        c_bool AddOrUpdateResource(const c_string &resource_name,
-                                   double capacity)
-        c_bool RemoveResource(const c_string &resource_name)
-        void AddResources(const ResourceSet &other)
-        c_bool SubtractResourcesStrict(const ResourceSet &other)
-        c_bool GetResource(const c_string &resource_name, double *value) const
-        double GetNumCpus() const
-        c_bool IsEmpty() const
-        const unordered_map[c_string, double] &GetResourceMap() const
-        const c_string ToString() const
-
 cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
     cdef cppclass CBuffer "ray::Buffer":
         uint8_t *Data() const
@@ -221,7 +204,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
         CRayObject(const shared_ptr[CBuffer] &data,
                    const shared_ptr[CBuffer] &metadata,
-                   const c_vector[CObjectID] &nested_ids)
+                   const c_vector[CObjectReference] &nested_refs)
         c_bool HasData() const
         c_bool HasMetadata() const
         const size_t DataSize() const
@@ -242,7 +225,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CTaskArgByReference "ray::TaskArgByReference":
         CTaskArgByReference(const CObjectID &object_id,
-                            const CAddress &owner_address)
+                            const CAddress &owner_address,
+                            const c_string &call_site)
 
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
@@ -255,8 +239,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      c_string serialized_runtime_env,
-                     const unordered_map[c_string, c_string]
-                     &override_environment_variables)
+                     c_vector[c_string] runtime_env_uris)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -272,8 +255,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
             c_string serialized_runtime_env,
-            const unordered_map[c_string, c_string]
-            &override_environment_variables)
+            c_vector[c_string] runtime_env_uris)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":

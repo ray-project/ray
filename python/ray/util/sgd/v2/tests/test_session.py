@@ -1,9 +1,11 @@
 import time
 
 import pytest
+
+import ray
 from ray.util.sgd.v2.session import init_session, shutdown_session, \
-    get_session, world_rank, report, save_checkpoint, TrainingResultType, \
-    load_checkpoint
+    get_session, world_rank, local_rank, report, save_checkpoint, \
+    TrainingResultType, load_checkpoint, get_dataset_shard
 
 
 @pytest.fixture(scope="function")
@@ -11,7 +13,7 @@ def session():
     def f():
         return 1
 
-    init_session(training_func=f, world_rank=0)
+    init_session(training_func=f, world_rank=0, local_rank=0)
     yield get_session()
     shutdown_session()
 
@@ -34,10 +36,28 @@ def test_world_rank(session):
         world_rank()
 
 
+def test_local_rank(session):
+    assert local_rank() == 0
+    shutdown_session()
+    with pytest.raises(ValueError):
+        local_rank()
+
+
 def test_train(session):
     session.start()
     output = session.finish()
     assert output == 1
+
+
+def test_get_dataset_shard():
+    dataset = ray.data.from_items([1, 2, 3])
+    init_session(
+        training_func=lambda: 1,
+        world_rank=0,
+        local_rank=0,
+        dataset_shard=dataset)
+    assert get_dataset_shard() == dataset
+    shutdown_session()
 
 
 def test_report():
@@ -45,7 +65,7 @@ def test_report():
         for i in range(2):
             report(loss=i)
 
-    init_session(training_func=train, world_rank=0)
+    init_session(training_func=train, world_rank=0, local_rank=0)
     session = get_session()
     session.start()
     assert session.get_next().data["loss"] == 0
@@ -62,7 +82,7 @@ def test_report_fail():
             report(i)
         return 1
 
-    init_session(training_func=train, world_rank=0)
+    init_session(training_func=train, world_rank=0, local_rank=0)
     session = get_session()
     session.start()
     assert session.get_next() is None
@@ -96,7 +116,7 @@ def test_checkpoint():
         assert next.type == TrainingResultType.CHECKPOINT
         assert next.data["epoch"] == expected
 
-    init_session(training_func=train, world_rank=0)
+    init_session(training_func=train, world_rank=0, local_rank=0)
     session = get_session()
     session.start()
     validate_zero(0)
@@ -110,7 +130,7 @@ def test_checkpoint():
         assert next.type == TrainingResultType.CHECKPOINT
         assert next.data == {}
 
-    init_session(training_func=train, world_rank=1)
+    init_session(training_func=train, world_rank=1, local_rank=1)
     session = get_session()
     session.start()
     validate_nonzero()
@@ -129,7 +149,7 @@ def test_load_checkpoint_after_save():
             checkpoint = load_checkpoint()
             assert checkpoint["epoch"] == i
 
-    init_session(training_func=train, world_rank=0)
+    init_session(training_func=train, world_rank=0, local_rank=0)
     session = get_session()
     session.start()
     for i in range(2):
@@ -145,7 +165,7 @@ def test_locking():
         import _thread
         _thread.interrupt_main()
 
-    init_session(training_func=train_1, world_rank=0)
+    init_session(training_func=train_1, world_rank=0, local_rank=0)
     session = get_session()
     with pytest.raises(KeyboardInterrupt):
         session.start()
@@ -156,7 +176,7 @@ def test_locking():
             report(loss=i)
         train_1()
 
-    init_session(training_func=train_2, world_rank=0)
+    init_session(training_func=train_2, world_rank=0, local_rank=0)
     session = get_session()
     session.start()
     time.sleep(3)

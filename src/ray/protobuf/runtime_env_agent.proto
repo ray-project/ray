@@ -13,42 +13,37 @@
 // limitations under the License.
 
 syntax = "proto3";
+option cc_enable_arenas = true;
 
 package ray.rpc;
 
 import "src/ray/protobuf/agent_manager.proto";
 
 message CreateRuntimeEnvRequest {
-  // Runtime env description.
   string serialized_runtime_env = 1;
-  // Job id.
   bytes job_id = 2;
+  // Serialized allocated resource instances. Key is resource type, value is allocated
+  // instances. For example,{"CPU":20000,"memory":40000,"GPU":[10000, 10000]} means 2 cpu
+  // cores, 2 Gi memory, GPU 0 and GPU 1.
+  string serialized_allocated_resource_instances = 3;
 }
 
 message CreateRuntimeEnvReply {
-  // The status of runtime env creation.
   AgentRpcStatus status = 1;
-  // The error message.
   string error_message = 2;
-  // Runtime env context.
   string serialized_runtime_env_context = 3;
 }
 
-message DeleteRuntimeEnvRequest {
-  // Runtime env description.
-  string serialized_runtime_env = 1;
+message DeleteURIsRequest {
+  repeated string uris = 1;
 }
 
-message DeleteRuntimeEnvReply {
-  // The status of runtime env deletion.
+message DeleteURIsReply {
   AgentRpcStatus status = 1;
-  // The error message.
   string error_message = 2;
 }
 
 service RuntimeEnvService {
-  // Create runtime env.
   rpc CreateRuntimeEnv(CreateRuntimeEnvRequest) returns (CreateRuntimeEnvReply);
-  // Delete runtime env.
-  rpc DeleteRuntimeEnv(DeleteRuntimeEnvRequest) returns (DeleteRuntimeEnvReply);
+  rpc DeleteURIs(DeleteURIsRequest) returns (DeleteURIsReply);
 }

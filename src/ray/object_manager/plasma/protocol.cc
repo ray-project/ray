@@ -545,7 +545,7 @@ Status ReadGetRequest(uint8_t *data, size_t size, std::vector<ObjectID> &object_
 }
 
 Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[],
-                    std::unordered_map<ObjectID, PlasmaObject> &plasma_objects,
+                    absl::flat_hash_map<ObjectID, PlasmaObject> &plasma_objects,
                     int64_t num_objects, const std::vector<MEMFD_TYPE> &store_fds,
                     const std::vector<int64_t> &mmap_sizes) {
   flatbuffers::FlatBufferBuilder fbb;

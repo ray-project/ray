@@ -7,7 +7,15 @@ import os
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
+
+import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2 import Trainer
+
+
+class SGDReportCallback(Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        sgd.report(**logs)
 
 
 def mnist_dataset(batch_size):
@@ -56,11 +64,15 @@ def train_func(config):
         multi_worker_model = build_and_compile_cnn_model(config)
 
     history = multi_worker_model.fit(
-        multi_worker_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch)
-    return history.history
+        multi_worker_dataset,
+        epochs=epochs,
+        steps_per_epoch=steps_per_epoch,
+        callbacks=[SGDReportCallback()])
+    results = history.history
+    return results
 
 
-def train_tensorflow_mnist(num_workers=1, use_gpu=False):
+def train_tensorflow_mnist(num_workers=2, use_gpu=False):
     trainer = Trainer(
         backend="tensorflow", num_workers=num_workers, use_gpu=use_gpu)
     trainer.start()
@@ -86,7 +98,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=1,
+        default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--use-gpu",

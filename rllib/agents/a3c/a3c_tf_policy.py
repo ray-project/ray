@@ -75,8 +75,8 @@ def actor_critic_loss(policy: Policy, model: ModelV2,
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
     if policy.is_recurrent():
-        max_seq_len = tf.reduce_max(train_batch["seq_lens"])
-        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
+        mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = tf.reshape(mask, [-1])
     else:
         mask = tf.ones_like(train_batch[SampleBatch.REWARDS])
@@ -111,7 +111,7 @@ def grad_stats(policy: Policy, train_batch: SampleBatch,
         "grad_gnorm": tf.linalg.global_norm(grads),
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function()),
+            policy.model.value_function())
     }
 
 

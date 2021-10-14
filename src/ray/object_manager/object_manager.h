@@ -17,7 +17,7 @@
 #include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -49,6 +49,8 @@
 namespace ray {
 
 struct ObjectManagerConfig {
+  /// The IP address this object manager is running on.
+  std::string object_manager_address;
   /// The port that the object manager should use to listen for connections
   /// from other object managers. If this is 0, the object manager will choose
   /// its own port.
@@ -56,7 +58,7 @@ struct ObjectManagerConfig {
   /// The object manager's global timer frequency.
   unsigned int timer_freq_ms;
   /// The time in milliseconds to wait before retrying a pull
-  /// that fails due to node id lookup.
+  /// that failed.
   unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
@@ -153,7 +155,7 @@ class ObjectManager : public ObjectManagerInterface,
   }
 
  public:
-  /// Takes user-defined ObjectDirectoryInterface implementation.
+  /// Takes user-defined IObjectDirectory implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
   /// the given ObjectDirectory instance.
   ///
@@ -162,7 +164,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(
       instrumented_io_context &main_service, const NodeID &self_node_id,
-      const ObjectManagerConfig &config, ObjectDirectoryInterface *object_directory,
+      const ObjectManagerConfig &config, IObjectDirectory *object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       SpillObjectsCallback spill_objects_callback,
@@ -430,7 +432,7 @@ class ObjectManager : public ObjectManagerInterface,
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
   /// The object directory interface to access object information.
-  ObjectDirectoryInterface *object_directory_;
+  IObjectDirectory *object_directory_;
 
   /// Object store runner.
   ObjectStoreRunner object_store_internal_;

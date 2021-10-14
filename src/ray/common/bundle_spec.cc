@@ -74,6 +74,10 @@ PlacementGroupID BundleSpecification::PlacementGroupId() const {
   return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id());
 }
 
+NodeID BundleSpecification::NodeId() const {
+  return NodeID::FromBinary(message_->node_id());
+}
+
 int64_t BundleSpecification::Index() const {
   return message_->bundle_id().bundle_index();
 }
@@ -89,16 +93,19 @@ std::string BundleSpecification::DebugString() const {
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const PlacementGroupID &group_id,
                                          int64_t bundle_index) {
-  std::string str;
+  std::stringstream os;
   if (bundle_index >= 0) {
-    str = original_resource_name + "_group_" + std::to_string(bundle_index) + "_" +
-          group_id.Hex();
+    os << original_resource_name << kGroupKeyword << std::to_string(bundle_index) << "_"
+       << group_id.Hex();
   } else {
     RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
-    str = original_resource_name + "_group_" + group_id.Hex();
+    os << original_resource_name << kGroupKeyword << group_id.Hex();
   }
-  RAY_CHECK(GetOriginalResourceName(str) == original_resource_name) << str;
-  return str;
+  std::string result = os.str();
+  RAY_DCHECK(GetOriginalResourceName(result) == original_resource_name)
+      << "Generated: " << GetOriginalResourceName(result)
+      << " Original: " << original_resource_name;
+  return result;
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
@@ -109,12 +116,12 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
 
 bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
                    const int bundle_index) {
-  return resource.find("_group_" + std::to_string(bundle_index) + "_" + group_id.Hex()) !=
-         std::string::npos;
+  return resource.find(kGroupKeyword + std::to_string(bundle_index) + "_" +
+                       group_id.Hex()) != std::string::npos;
 }
 
 std::string GetOriginalResourceName(const std::string &resource) {
-  auto idx = resource.find("_group_");
+  auto idx = resource.find(kGroupKeyword);
   RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
   return resource.substr(0, idx);
 }

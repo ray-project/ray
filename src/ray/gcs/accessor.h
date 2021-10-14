@@ -14,12 +14,15 @@
 
 #pragma once
 
+#include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
+#include "ray/rpc/client_call.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 
@@ -95,8 +98,9 @@ class ActorInfoAccessor {
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
   /// \return Status
-  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
-                                  const StatusCallback &callback) = 0;
+  virtual Status AsyncCreateActor(
+      const TaskSpecification &task_spec,
+      const rpc::ClientCallback<rpc::CreateActorReply> &callback) = 0;
 
   /// Subscribe to any register or update operations of actors.
   ///
@@ -458,8 +462,8 @@ class NodeInfoAccessor {
   /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
   /// \return The item returned by GCS. If the item to read doesn't exist or the node is
   /// dead, this optional object is empty.
-  virtual boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
-                                                bool filter_dead_nodes = true) const = 0;
+  virtual absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
+                                               bool filter_dead_nodes = true) const = 0;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.

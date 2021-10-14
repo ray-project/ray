@@ -27,7 +27,6 @@ auth:
 
 available_node_types:
   ray.head.default:
-    max_workers: 0
     resources: {}
     node_config:
       # The launch template to use to launch the instances. Any parameters that

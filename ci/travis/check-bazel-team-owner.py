@@ -35,7 +35,7 @@ def perform_check(raw_xml_string: str):
 
     if len(missing_owners):
         raise Exception(
-            f"Cannot find ownder for tests {missing_owners}, please add "
+            f"Cannot find owner for tests {missing_owners}, please add "
             "`team:*` to the tags.")
 
     print(owners)

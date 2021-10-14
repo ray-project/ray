@@ -1,8 +1,8 @@
 import pytest
+from pydantic import ValidationError
 
 from ray.serve.config import (BackendConfig, DeploymentMode, HTTPOptions,
                               ReplicaConfig)
-from pydantic import ValidationError
 
 
 def test_backend_config_validation():
@@ -52,6 +52,8 @@ def test_replica_config_validation():
     # Check ray_actor_options validation.
     ReplicaConfig(
         Class,
+        tuple(),
+        dict(),
         ray_actor_options={
             "num_cpus": 1.0,
             "num_gpus": 10,
@@ -101,6 +103,16 @@ def test_http_options():
     assert HTTPOptions(location=None).location == "NoServer"
     assert HTTPOptions(
         location=DeploymentMode.EveryNode).location == "EveryNode"
+
+
+def test_with_proto():
+    # Test roundtrip
+    config = BackendConfig(num_replicas=100, max_concurrent_queries=16)
+    assert config == BackendConfig.from_proto_bytes(config.to_proto_bytes())
+
+    # Test user_config object
+    config = BackendConfig(user_config={"python": ("native", ["objects"])})
+    assert config == BackendConfig.from_proto_bytes(config.to_proto_bytes())
 
 
 if __name__ == "__main__":

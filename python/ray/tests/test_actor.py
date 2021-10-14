@@ -353,13 +353,13 @@ def test_keyword_args(ray_start_regular_shared):
 
     # Make sure we get an exception if the constructor is called
     # incorrectly.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote()
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote(0, 1, 2, arg3=3)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote(0, arg0=1)
 
     # Make sure we get an exception if the method is called incorrectly.
@@ -732,6 +732,7 @@ def test_define_actor(ray_start_regular_shared):
         t.f(1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_deletion(ray_start_regular_shared):
     # Make sure that when an actor handles goes out of scope, the actor
     # destructor is called.

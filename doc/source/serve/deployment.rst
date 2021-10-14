@@ -23,6 +23,10 @@ service using ``serve.start(detached=True)``. In this case, the Serve instance w
 run on the Ray cluster even after the script that calls it exits. If you want to run another script
 to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
 
+All non-detached Serve instances will be started in the current namespace that was specified when connecting to the cluster. If a namespace is specified for a detached Serve instance, it will be used. Otherwise if the current namespace is anonymous, the Serve instance will be started in the ``serve`` namespace.
+
+If ``serve.start()`` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster with the same namespace that was specified when starting the instance and run ``serve.start()``.
+
 Deploying on a Single Node
 ==========================
 
@@ -240,7 +244,7 @@ To automatically include the current deployment and replica in your logs, simply
 ``logger = logging.getLogger("ray")``, and use ``logger`` within your deployment code:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
-  :lines: 1, 9, 11-13, 15-16
+  :lines: 1, 9, 11-14, 16-17
 
 Querying a Serve endpoint with the above deployment will produce a log line like the following:
 
@@ -286,7 +290,7 @@ Save the following file as ``promtail-local-config.yaml``:
       job: ray
       __path__: /tmp/ray/session_latest/logs/*.*
 
-The relevant part for Ray is the ``static_configs`` field, where we have indicated the location of our log files with ``__path__``.  
+The relevant part for Ray is the ``static_configs`` field, where we have indicated the location of our log files with ``__path__``.
 The expression ``*.*`` will match all files, but not directories, which cause an error with Promtail.
 
 We will run Loki locally.  Grab the default config file for Loki with the following command in your terminal:
@@ -330,7 +334,7 @@ Now click "Explore" in the left-side panel.  You are ready to run some queries!
 
 To filter all these Ray logs for the ones relevant to our deployment, use the following `LogQL <https://grafana.com/docs/loki/latest/logql/>`__ query:
 
-.. code-block:: shell 
+.. code-block:: shell
 
   {job="ray"} |= "deployment=Counter"
 
@@ -373,7 +377,7 @@ The following metrics are exposed by Ray Serve:
      - The number of requests processed by the router.
    * - ``serve_handle_request_counter``
      - The number of requests processed by this ServeHandle.
-   * - ``serve_deployment_queued_queries`` 
+   * - ``serve_deployment_queued_queries``
      - The number of queries for this deployment waiting to be assigned to a replica.
 
 To see this in action, run ``ray start --head --metrics-export-port=8080`` in your terminal, and then run the following script:

@@ -40,7 +40,7 @@ def test_scale_up(ray_cluster):
         return pids
 
     serve.start(detached=True)
-    client = serve.connect()
+    client = serve.api._connect()
 
     D.deploy()
     pids1 = get_pids(1)

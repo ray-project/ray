@@ -86,11 +86,20 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
       std::shared_ptr<GcsResourceManager> gcs_resource_manager,
       std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
-      std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
+      std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
+          schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       rpc::ClientFactoryFn client_factory = nullptr);
 
   virtual ~GcsBasedActorScheduler() = default;
+
+  /// Handle the destruction of an actor.
+  ///
+  /// \param actor The actor to be destoryed.
+  void OnActorDestruction(std::shared_ptr<GcsActor> actor) override;
+
+  /// Add resources changed event handler.
+  void AddResourcesChangedListener(std::function<void()> listener);
 
  protected:
   /// Select a node for the actor based on cluster resources.
@@ -142,7 +151,16 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   void HandleWorkerLeaseRejectedReply(std::shared_ptr<GcsActor> actor,
                                       const rpc::RequestWorkerLeaseReply &reply);
 
+  /// Reset the actor's current assignment, while releasing acquired resources.
+  void ResetActorWorkerAssignment(GcsActor *actor);
+
+  /// Notify that the cluster resources are changed.
+  void NotifyClusterResourcesChanged();
+
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+
+  /// The resource changed listeners.
+  std::vector<std::function<void()>> resource_changed_listeners_;
 
   /// Gcs resource scheduler
   std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler_;

@@ -11,19 +11,25 @@ from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 from ray.tune.utils import merge_dicts, deep_update
 
 
-def add_mixins(base, mixins):
+def add_mixins(base, mixins, reversed=False):
     """Returns a new class with mixins applied in priority order."""
 
     mixins = list(mixins or [])
 
     while mixins:
+        if reversed:
 
-        class new_base(mixins.pop(), base):
-            pass
+            class new_base(base, mixins.pop()):
+                pass
+
+        else:
+
+            class new_base(mixins.pop(), base):
+                pass
 
         base = new_base
 
@@ -71,6 +77,7 @@ __all__ = [
     "add_mixins",
     "check",
     "check_compute_single_action",
+    "check_train_results",
     "deep_update",
     "deprecation_warning",
     "fc",

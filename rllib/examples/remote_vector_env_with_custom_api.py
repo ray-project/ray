@@ -65,7 +65,7 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteVectorEnv(TaskSettableEnv):
     of gym.Env).
     """
 
-    def __init__(self, config):
+    def __init__(self, config=None):
         self.action_space = gym.spaces.Box(0, 1, shape=(1, ))
         self.observation_space = gym.spaces.Box(0, 1, shape=(2, ))
         self.task = 1
@@ -102,13 +102,12 @@ class TaskSettingCallback(DefaultCallbacks):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(num_cpus=6, local_mode=True)
+    ray.init(num_cpus=6)
 
     config = {
         # Specify your custom (single, non-vectorized) env directly as a
         # class. This way, RLlib can auto-create Actors from this class
         # and handle everything correctly.
-        # TODO: Test for multi-agent case.
         "env": NonVectorizedEnvToBeVectorizedIntoRemoteVectorEnv,
         # Set up our own callbacks.
         "callbacks": TaskSettingCallback,

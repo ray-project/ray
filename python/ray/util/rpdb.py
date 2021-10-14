@@ -16,6 +16,7 @@ import uuid
 from pdb import Pdb
 import setproctitle
 import traceback
+from typing import Callable
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
@@ -60,6 +61,20 @@ class LF2CRLF_FileWrapper(object):
     def writelines(self, lines, nl_rex=re.compile("\r?\n")):
         for line in lines:
             self.write(line, nl_rex)
+
+
+class PdbWrap(Pdb):
+    """Wrap PDB to run a custom exit hook on continue."""
+
+    def __init__(self, exit_hook: Callable[[], None]):
+        self._exit_hook = exit_hook
+        Pdb.__init__(self)
+
+    def do_continue(self, arg):
+        self._exit_hook()
+        return Pdb.do_continue(self, arg)
+
+    do_c = do_cont = do_continue
 
 
 class RemotePdb(Pdb):
@@ -139,7 +154,7 @@ class RemotePdb(Pdb):
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
 
-    do_c = do_continue
+    do_c = do_cont = do_continue
 
     def set_trace(self, frame=None):
         if frame is None:
@@ -258,6 +273,24 @@ def set_trace(breakpoint_uuid=None):
             if breakpoint_uuid else None,
             debugger_external=ray.worker.global_worker.ray_debugger_external)
         rdb.set_trace(frame=frame)
+
+
+def _driver_set_trace():
+    """The breakpoint hook to use for the driver.
+
+    This disables Ray driver logs temporarily so that the PDB console is not
+    spammed: https://github.com/ray-project/ray/issues/18172
+    """
+    print("*** Temporarily disabling Ray worker logs ***")
+    ray.worker._worker_logs_enabled = False
+
+    def enable_logging():
+        print("*** Re-enabling Ray worker logs ***")
+        ray.worker._worker_logs_enabled = True
+
+    pdb = PdbWrap(enable_logging)
+    frame = sys._getframe().f_back
+    pdb.set_trace(frame)
 
 
 def post_mortem():

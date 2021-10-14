@@ -15,7 +15,7 @@ from ray.autoscaler._private._azure.config import (_configure_key_pair as
                                                    _azure_configure_key_pair)
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.util import prepare_config, validate_config,\
-    _get_default_config, merge_setup_commands
+    _get_default_config, merge_setup_commands, fill_node_type_min_max_workers
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private._kubernetes.node_provider import\
     KubernetesNodeProvider
@@ -90,6 +90,9 @@ class AutoscalingConfigTest(unittest.TestCase):
                     continue
                 if "local" in config_path:
                     # local tested in testValidateLocal
+                    continue
+                if "fake_multi_node" in config_path:
+                    # not supported with ray up
                     continue
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
@@ -416,7 +419,8 @@ class AutoscalingConfigTest(unittest.TestCase):
     def testExampleFull(self):
         """
         Test that example-full yamls are unmodified by prepared_config,
-        except possibly by having setup_commands merged.
+        except possibly by having setup_commands merged and
+        default per-node max/min workers set.
         """
         providers = ["aws", "gcp", "azure"]
         for provider in providers:
@@ -425,6 +429,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             config = yaml.safe_load(open(path).read())
             config_copy = copy.deepcopy(config)
             merge_setup_commands(config_copy)
+            fill_node_type_min_max_workers(config_copy)
             assert config_copy == prepare_config(config)
 
     @pytest.mark.skipif(

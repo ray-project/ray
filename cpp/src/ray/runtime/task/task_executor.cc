@@ -20,6 +20,8 @@
 
 #include "../../util/function_helper.h"
 #include "../abstract_ray_runtime.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 
 namespace ray {
 
@@ -73,7 +75,7 @@ std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 TaskExecutor::TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_)
     : abstract_ray_tuntime_(abstract_ray_tuntime_) {}
 
-// TODO(Guyang Song): Make a common task execution function used for both local mode and
+// TODO(SongGuyang): Make a common task execution function used for both local mode and
 // cluster mode.
 std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
   abstract_ray_tuntime_.GetWorkerContext();
@@ -123,10 +125,11 @@ Status TaskExecutor::ExecuteTask(
     ray::TaskType task_type, const std::string task_name, const RayFunction &ray_function,
     const std::unordered_map<std::string, double> &required_resources,
     const std::vector<std::shared_ptr<ray::RayObject>> &args_buffer,
-    const std::vector<ObjectID> &arg_reference_ids,
+    const std::vector<rpc::ObjectReference> &arg_refs,
     const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
     std::vector<std::shared_ptr<ray::RayObject>> *results,
-    std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+    std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
+    bool *is_application_level_error) {
   RAY_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();
@@ -158,6 +161,11 @@ Status TaskExecutor::ExecuteTask(
   if (!status.ok()) {
     if (status.IsIntentionalSystemExit()) {
       return status;
+    } else {
+      RAY_EVENT(ERROR, EL_RAY_CPP_TASK_FAILED)
+              .WithField("task_type", TaskType_Name(task_type))
+              .WithField("function_name", func_name)
+          << "C++ task failed: " << status.ToString();
     }
 
     std::string meta_str = std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
@@ -188,6 +196,10 @@ Status TaskExecutor::ExecuteTask(
     }
 
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
+  } else {
+    if (!status.ok()) {
+      return ray::Status::CreationTaskError();
+    }
   }
   return ray::Status::OK();
 }

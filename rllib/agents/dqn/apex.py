@@ -23,6 +23,7 @@ from ray.rllib.agents.dqn.dqn import calculate_rr_weights, \
 from ray.rllib.agents.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
+                                        STEPS_TRAINED_THIS_ITER_COUNTER,
                                         _get_global_vars, _get_shared_metrics)
 from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -33,6 +34,7 @@ from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import SampleBatchType
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -90,7 +92,7 @@ class OverrideDefaultResourceRequest:
                 # replay buffer and use 1 CPU each.
                 "CPU": cf["num_cpus_for_driver"] +
                 cf["optimizer"]["num_replay_buffer_shards"],
-                "GPU": cf["num_gpus"]
+                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
             }] + [
                 {
                     # RolloutWorkers.
@@ -167,6 +169,7 @@ def apex_execution_plan(workers: WorkerSet,
         metrics = _get_shared_metrics()
         # Manually update the steps trained counter since the learner thread
         # is executing outside the pipeline.
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
         metrics.counters[STEPS_TRAINED_COUNTER] += count
         metrics.timers["learner_dequeue"] = learner_thread.queue_timer
         metrics.timers["learner_grad"] = learner_thread.grad_timer
@@ -227,7 +230,7 @@ def apex_execution_plan(workers: WorkerSet,
         result["info"].update({
             "exploration_infos": exploration_infos,
             "learner_queue": learner_thread.learner_queue_size.stats(),
-            "learner": copy.deepcopy(learner_thread.stats),
+            LEARNER_INFO: copy.deepcopy(learner_thread.learner_info),
             "replay_shard_0": replay_stats,
         })
         return result

@@ -2,6 +2,15 @@
 # Tests from the python/ray/util/sgd/v2/examples directory.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
+py_test(
+    name = "mlflow_fashion_mnist_example",
+    size = "medium",
+    main = "examples/mlflow_fashion_mnist_example.py",
+    srcs = ["examples/mlflow_fashion_mnist_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test"]
+)
 
 py_test(
     name = "transformers_example",
@@ -15,6 +24,36 @@ py_test(
     "--max_train_steps=2", "--start_local", "--num_workers=2"]
 )
 
+py_test(
+    name = "tune_cifar_pytorch_pbt_example",
+    size = "medium",
+    main = "examples/tune_cifar_pytorch_pbt_example.py",
+    srcs = ["examples/tune_cifar_pytorch_pbt_example.py"],
+    tags = ["team:ml", "exclusive", "pytorch"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "tune_linear_dataset_example",
+    size = "medium",
+    main = "examples/tune_linear_dataset_example.py",
+    srcs = ["examples/tune_linear_dataset_example.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test", "--use-gpu"]
+)
+
+py_test(
+    name = "tune_linear_example",
+    size = "medium",
+    main = "examples/tune_linear_example.py",
+    srcs = ["examples/tune_linear_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/v2/tests directory.
 # Please keep these sorted alphabetically.
@@ -22,9 +61,17 @@ py_test(
 
 py_test(
     name = "test_backend",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_backend.py"],
     tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
+py_test(
+    name = "test_gpu",
+    size = "large",
+    srcs = ["tests/test_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":sgd_v2_lib"]
 )
 
@@ -38,15 +85,32 @@ py_test(
 
 py_test(
     name = "test_trainer",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]
 )
 
 py_test(
-    name = "test_worker_group",
+    name = "test_tune",
+    size = "medium",
+    srcs = ["tests/test_tune.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
+py_test(
+    name = "test_utils",
     size = "small",
+    srcs = ["tests/test_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
+
+py_test(
+    name = "test_worker_group",
+    size = "medium",
     srcs = ["tests/test_worker_group.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]

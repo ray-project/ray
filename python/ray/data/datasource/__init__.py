@@ -1,5 +1,6 @@
-from ray.data.datasource.datasource import (
-    Datasource, RangeDatasource, DummyOutputDatasource, ReadTask, WriteTask)
+from ray.data.datasource.datasource import (Datasource, RangeDatasource,
+                                            DummyOutputDatasource, ReadTask,
+                                            RandomIntRowDatasource)
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.numpy_datasource import NumpyDatasource
@@ -18,7 +19,7 @@ __all__ = [
     "_S3FileSystemWrapper",
     "Datasource",
     "RangeDatasource",
+    "RandomIntRowDatasource",
     "DummyOutputDatasource",
     "ReadTask",
-    "WriteTask",
 ]
