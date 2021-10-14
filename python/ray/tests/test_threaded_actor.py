@@ -38,7 +38,7 @@ def test_threaded_actor_basic(shutdown_only):
     seqnos = ray.get(a.get_all.remote())
     # Currently, the caller submission order is not guaranteed
     # when the threaded actor is used.
-    assert sorted(seqnos) == [i for i in range(max_seq)]
+    assert sorted(seqnos) == list(range(max_seq))
     ray.kill(a)
     ensure_cpu_returned(1)
 
@@ -89,7 +89,7 @@ def test_threaded_actor_api_thread_safe(shutdown_only):
     # Test in-memory return obj
     seqnos = ray.get(
         [a.in_memory_return_test.remote(seqno) for seqno in range(max_seq)])
-    assert sorted(seqnos) == [i for i in range(max_seq)]
+    assert sorted(seqnos) == list(range(max_seq))
 
     # Test plasma return obj
     real = ray.get(
