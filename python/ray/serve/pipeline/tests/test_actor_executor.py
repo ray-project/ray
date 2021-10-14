@@ -9,7 +9,7 @@ def test_num_replicas(shared_ray_instance):
         return os.getpid()
 
     get_pid = get_pid(pipeline.INPUT).deploy()
-    assert len(set(get_pid.call("") for _ in range(100))) == 3
+    assert len({get_pid.call("") for _ in range(100)}) == 3
 
 
 if __name__ == "__main__":
