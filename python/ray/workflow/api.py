@@ -371,6 +371,22 @@ def get_metadata(workflow_id: str,
                  name: Optional[str] = None) -> Dict[str, Any]:
     """Get the metadata of the workflow.
 
+    This will return a dict of metadata of either the workflow (
+    if only workflow_id is given) or a specific workflow step (if
+    both workflow_id and step name are given). Exception will be
+    raised if the given workflow id or step name does not exist.
+
+    If only workflow id is given, this will return metadata on
+    workflow level, which includes running status, workflow-level
+    user metadata and workflow-level running stats (e.g. the
+    start time and end time of the workflow).
+
+    If both workflow id and step name are given, this will return
+    metadata on workflow step level, which includes step inputs,
+    step-level user metadata and step-level running stats (e.g.
+    the start time and end time of the step).
+
+
     Args:
         workflow_id: The workflow to get the metadata of.
         name: If set, fetch the metadata of the specific step instead of
@@ -393,6 +409,9 @@ def get_metadata(workflow_id: str,
 
     Returns:
         A dictionary containing the metadata of the workflow.
+
+    Raises:
+        ValueError: if given workflow or workflow step does not exist.
     """
     ensure_ray_initialized()
     return execution.get_metadata(workflow_id, name)
