@@ -64,6 +64,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
                        int max_worker_port, const std::vector<int> &worker_ports,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
+                       const std::string &native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external, const std::function<double()> get_time)
     : io_service_(&io_service),
@@ -72,6 +73,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
       num_workers_soft_limit_(num_workers_soft_limit),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
+      native_library_path_(native_library_path),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
       ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
@@ -224,6 +226,7 @@ Process WorkerPool::StartWorkerProcess(
   std::vector<std::string> options;
 
   // Append Ray-defined per-job options here
+  std::string code_search_path;
   if (language == Language::JAVA || language == Language::CPP) {
     if (job_config) {
       std::string code_search_path_str;
@@ -235,6 +238,7 @@ Process WorkerPool::StartWorkerProcess(
         code_search_path_str += path;
       }
       if (!code_search_path_str.empty()) {
+        code_search_path = code_search_path_str;
         if (language == Language::JAVA) {
           code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
         } else if (language == Language::CPP) {
@@ -311,6 +315,28 @@ Process WorkerPool::StartWorkerProcess(
     // We pass the job ID to worker processes via an environment variable, so we don't
     // need to add a new CLI parameter for both Python and Java workers.
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
+  }
+
+  // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
+  if (language == Language::CPP) {
+    // Set native library path for shared library search.
+    if (!native_library_path_.empty() || !code_search_path.empty()) {
+#if defined(__APPLE__)
+      static const std::string kLibraryPathEnvName = "DYLD_LIBRARY_PATH";
+#elif defined(__linux__)
+      static const std::string kLibraryPathEnvName = "LD_LIBRARY_PATH";
+#endif
+      auto path_env_p = std::getenv(kLibraryPathEnvName.c_str());
+      std::string path_env = native_library_path_;
+      if (path_env_p != nullptr && strlen(path_env_p) != 0) {
+        path_env = path_env + ":" + path_env_p;
+      }
+      // Append per-job code search path to library path.
+      if (!code_search_path.empty()) {
+        path_env = path_env + ":" + code_search_path;
+      }
+      env.emplace(kLibraryPathEnvName, path_env);
+    }
   }
 
   if (language == Language::PYTHON || language == Language::JAVA) {
@@ -427,6 +453,15 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     for (const auto &arg : worker_command_args) {
       stream << " " << arg;
     }
+    stream << ", and the envs:";
+    for (const auto &entry : env) {
+      stream << " " << entry.first << ":" << entry.second << ",";
+    }
+    if (env.size() > 0) {
+      // Erase the last ","
+      stream.seekp(-1, std::ios_base::end);
+    }
+    stream << ".";
     RAY_LOG(DEBUG) << stream.str();
   }
 
