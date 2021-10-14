@@ -9,13 +9,16 @@ import unittest
 from unittest.mock import patch
 import yaml
 
+from collections import deque
+
 import ray
 from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.integration.docker import DockerSyncer
 from ray.tune.integration.kubernetes import KubernetesSyncer
-from ray.tune.syncer import CommandBasedClient, detect_sync_to_driver
+from ray.tune.syncer import (CommandBasedClient, detect_sync_to_driver,
+                             get_cloud_sync_client)
 
 
 class TestSyncFunctionality(unittest.TestCase):
@@ -261,6 +264,78 @@ class TestSyncFunctionality(unittest.TestCase):
                 },
                 sync_config=sync_config).trials
             self.assertEqual(mock_sync.call_count, 0)
+
+    def testCloudSyncExclude(self):
+        captured = deque(maxlen=1)
+        captured.append("")
+
+        def always_true(*args, **kwargs):
+            return True
+
+        def capture_popen(command, *args, **kwargs):
+            captured.append(command)
+
+        with patch("subprocess.Popen", capture_popen), patch(
+                "distutils.spawn.find_executable", always_true):
+            # S3
+            s3_client = get_cloud_sync_client("s3://test-bucket/test-dir")
+            s3_client.sync_down("s3://test-bucket/test-dir/remote_source",
+                                "local_target")
+
+            self.assertEqual(
+                captured[0].strip(),
+                "aws s3 sync s3://test-bucket/test-dir/remote_source "
+                "local_target --only-show-errors")
+
+            s3_client.sync_down(
+                "s3://test-bucket/test-dir/remote_source",
+                "local_target",
+                exclude=["*/checkpoint_*"])
+            self.assertEqual(
+                captured[0].strip(),
+                "aws s3 sync s3://test-bucket/test-dir/remote_source "
+                "local_target --only-show-errors "
+                "--exclude '*/checkpoint_*'")
+
+            s3_client.sync_down(
+                "s3://test-bucket/test-dir/remote_source",
+                "local_target",
+                exclude=["*/checkpoint_*", "*.big"])
+            self.assertEqual(
+                captured[0].strip(),
+                "aws s3 sync s3://test-bucket/test-dir/remote_source "
+                "local_target --only-show-errors "
+                "--exclude '*/checkpoint_*' --exclude '*.big'")
+
+            # GS
+            gs_client = get_cloud_sync_client("gs://test-bucket/test-dir")
+            gs_client.sync_down("gs://test-bucket/test-dir/remote_source",
+                                "local_target")
+
+            self.assertEqual(
+                captured[0].strip(), "gsutil rsync -r  "
+                "gs://test-bucket/test-dir/remote_source "
+                "local_target")
+
+            gs_client.sync_down(
+                "gs://test-bucket/test-dir/remote_source",
+                "local_target",
+                exclude=["*/checkpoint_*"])
+            self.assertEqual(
+                captured[0].strip(), "gsutil rsync -r "
+                "-x '(.*/checkpoint_.*)' "
+                "gs://test-bucket/test-dir/remote_source "
+                "local_target")
+
+            gs_client.sync_down(
+                "gs://test-bucket/test-dir/remote_source",
+                "local_target",
+                exclude=["*/checkpoint_*", "*.big"])
+            self.assertEqual(
+                captured[0].strip(), "gsutil rsync -r "
+                "-x '(.*/checkpoint_.*)|(.*.big)' "
+                "gs://test-bucket/test-dir/remote_source "
+                "local_target")
 
     def testSyncDetection(self):
         kubernetes_conf = {
