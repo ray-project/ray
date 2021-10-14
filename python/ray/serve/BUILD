@@ -223,7 +223,7 @@ py_test(
 )
 
 py_test(
-    name = "test_util",
+    name = "test_utils",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
