@@ -102,8 +102,7 @@ struct CoreWorkerOptions {
         metrics_agent_port(-1),
         connect_on_start(true),
         runtime_env_hash(0),
-        worker_shim_pid(0)
-        {}
+        worker_shim_pid(0) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;

@@ -177,7 +177,9 @@ class WorkerPoolMock : public WorkerPool {
     return state.restore_io_worker_state.num_starting_io_workers;
   }
 
-  StartupToken GetStartupToken(const Process& proc) { return startup_tokens_by_proc_[proc]; }
+  StartupToken GetStartupToken(const Process &proc) {
+    return startup_tokens_by_proc_[proc];
+  }
 
   int GetProcessSize() const { return worker_commands_by_proc_.size(); }
 
@@ -515,7 +517,8 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
 
 TEST_F(WorkerPoolTest, HandleUnknownWorkerRegistration) {
   auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON);
-  auto status = worker_pool_->RegisterWorker(worker, 1234, 1234, -1, [](const Status& /*unused*/, int /*unused*/) {});
+  auto status = worker_pool_->RegisterWorker(
+      worker, 1234, 1234, -1, [](const Status & /*unused*/, int /*unused*/) {});
   ASSERT_FALSE(status.ok());
 }
 
