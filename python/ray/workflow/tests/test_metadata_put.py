@@ -28,7 +28,7 @@ def test_step_user_metadata(workflow_start_regular):
 
     checkpointed_metadata = get_metadata(
         [workflow_id, "steps", step_name, workflow_storage.STEP_USER_METADATA])
-    assert metadata == checkpointed_metadata
+    assert checkpointed_metadata == metadata
 
 
 def test_step_runtime_metadata(workflow_start_regular):
@@ -65,7 +65,7 @@ def test_workflow_user_metadata(workflow_start_regular):
 
     checkpointed_metadata = get_metadata(
         [workflow_id, workflow_storage.WORKFLOW_USER_METADATA])
-    assert metadata == checkpointed_metadata
+    assert checkpointed_metadata == metadata
 
 
 def test_workflow_runtime_metadata(workflow_start_regular):
@@ -101,8 +101,8 @@ def test_no_user_metadata(workflow_start_regular):
         [workflow_id, "steps", step_name, workflow_storage.STEP_USER_METADATA])
     checkpointed_user_run_metadata = get_metadata(
         [workflow_id, workflow_storage.WORKFLOW_USER_METADATA])
-    assert {} == checkpointed_user_step_metadata
-    assert {} == checkpointed_user_run_metadata
+    assert checkpointed_user_step_metadata == {}
+    assert checkpointed_user_run_metadata == {}
 
 
 def test_all_metadata(workflow_start_regular):
@@ -134,12 +134,33 @@ def test_all_metadata(workflow_start_regular):
         [workflow_id, workflow_storage.WORKFLOW_PRERUN_METADATA])
     checkpointed_post_run_meta = get_metadata(
         [workflow_id, workflow_storage.WORKFLOW_POSTRUN_METADATA])
-    assert user_step_metadata == checkpointed_user_step_metadata
-    assert user_run_metadata == checkpointed_user_run_metadata
+    assert checkpointed_user_step_metadata == user_step_metadata
+    assert checkpointed_user_run_metadata == user_run_metadata
     assert "start_time" in checkpointed_pre_step_meta
     assert "start_time" in checkpointed_pre_run_meta
     assert "end_time" in checkpointed_post_step_meta
     assert "end_time" in checkpointed_post_run_meta
+
+
+def test_not_dict_metadata(workflow_start_regular):
+    @workflow.step
+    def simple():
+        return 0
+
+    with pytest.raises(ValueError):
+        simple.options(metadata="x")
+
+
+def test_not_json_serializable_metadata(workflow_start_regular):
+    @workflow.step
+    def simple():
+        return 0
+
+    class X:
+        pass
+
+    with pytest.raises(ValueError):
+        simple.options(metadata={"x": X()})
 
 
 if __name__ == "__main__":
