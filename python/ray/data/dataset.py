@@ -327,9 +327,10 @@ class Dataset(Generic[T]):
             num_blocks: The number of blocks.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
-                contains a subset of data rows from each input block.
-                When shuffle is disabled, output blocks consist of data from
-                neighboring input blocks only, which minimizes data movement.
+                contains a subset of data rows from each input block, which
+                requires all-to-all data movement. When shuffle is disabled,
+                output blocks are created from adjacent input blocks,
+                minimizing data movement.
 
         Returns:
             The repartitioned dataset.
