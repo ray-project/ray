@@ -457,7 +457,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     for (const auto &entry : env) {
       stream << " " << entry.first << ":" << entry.second << ",";
     }
-    if (env.size() > 0) {
+    if (!env.empty()) {
       // Erase the last ","
       stream.seekp(-1, std::ios_base::end);
     }
