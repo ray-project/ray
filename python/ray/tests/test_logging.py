@@ -223,6 +223,35 @@ def test_log_monitor_backpressure(ray_start_cluster):
     assert (datetime.now() - now).seconds >= update_interval
 
 
+def test_log_redirect_to_stdout(shutdown_only):
+    os.environ["GLOG_logtostderr"] = "1"
+    ray.init()
+
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    log_components = [
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
+    ]
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        for i in range(10):
+            print(f"test {i}")
+
+    ray.get(f.remote())
+
+    paths = list(log_dir_path.iterdir())
+
+    for component in log_components:
+        for path in paths:
+            filename = path.stem
+            assert component not in filename
+
+
 if __name__ == "__main__":
     import pytest
     import sys
