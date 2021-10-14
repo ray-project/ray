@@ -4,6 +4,10 @@
 import ray
 from ray.tune import run_experiments
 from ray.tune.utils.release_test_util import ProgressCallback
+# from memory_profiler import profile
+# from mem_top import mem_top
+
+import gc
 
 num_redis_shards = 5
 redis_max_memory = 10**8
@@ -20,22 +24,35 @@ assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
 ray.init(address="auto")
 
 # Run the workload.
+import tracemalloc
+tracemalloc.start()
+# @profile
+def run():
+    run_experiments(
+        {
+            "ppo": {
+                "run": "PPO",
+                "env": "CartPole-v0",
+                # "num_samples": 10000,
+                "num_samples": 1000,
+                "config": {
+                    "framework": "torch",
+                    "num_workers": 7,
+                    "num_gpus": 0,
+                    "num_sgd_iter": 1,
+                },
+                "stop": {
+                    "timesteps_total": 1,
+                },
+            }
+        },
+        callbacks=[ProgressCallback()])
 
-run_experiments(
-    {
-        "ppo": {
-            "run": "PPO",
-            "env": "CartPole-v0",
-            "num_samples": 10000,
-            "config": {
-                "framework": "torch",
-                "num_workers": 7,
-                "num_gpus": 0,
-                "num_sgd_iter": 1,
-            },
-            "stop": {
-                "timesteps_total": 1,
-            },
-        }
-    },
-    callbacks=[ProgressCallback()])
+run()
+snapshot = tracemalloc.take_snapshot()
+top_stats = snapshot.statistics('lineno')
+
+print("[ Top 100 ]")
+for stat in top_stats[:100]:
+    print(stat)
+
