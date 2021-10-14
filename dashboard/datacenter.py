@@ -1,5 +1,4 @@
 import logging
-from re import L
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.memory_utils as memory_utils
 # TODO(fyrestone): Not import from dashboard module.
@@ -119,7 +118,7 @@ class DataOrganizer:
             pid_to_language[pid] = core_worker_stats["language"]
             pid_to_job_id[pid] = core_worker_stats["jobId"]
 
-       # Clean up logs from a dead pid.
+    # Clean up logs from a dead pid.
         dead_pids = set(node_logs.keys()) - pids_on_node
         for dead_pid in dead_pids:
             if dead_pid in node_logs:

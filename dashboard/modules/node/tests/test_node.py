@@ -369,7 +369,7 @@ def test_logs(enable_test_module, disable_aiohttp_cache,
         assert len(actor_one_logs["data"]["logs"][la_pid]) == 4
 
     assert wait_until_succeeded_without_exception(
-        check_logs, (AssertionError,), timeout_ms=1000)
+        check_logs, (AssertionError, ), timeout_ms=1000)
 
 
 @pytest.mark.parametrize(
@@ -377,7 +377,7 @@ def test_logs(enable_test_module, disable_aiohttp_cache,
         "include_dashboard": True
     }], indirect=True)
 def test_logs_clean_up(enable_test_module, disable_aiohttp_cache,
-              ray_start_cluster_head):
+                       ray_start_cluster_head):
     """Check if logs from the dead pids are GC'ed.
     """
     cluster = ray_start_cluster_head
@@ -410,8 +410,9 @@ def test_logs_clean_up(enable_test_module, disable_aiohttp_cache,
         node_logs = node_logs_response.json()
         assert node_logs["result"]
         assert la_pid in node_logs["data"]["logs"]
+
     assert wait_until_succeeded_without_exception(
-        check_logs, (AssertionError,), timeout_ms=1000)
+        check_logs, (AssertionError, ), timeout_ms=1000)
     ray.kill(la)
 
     def check_logs_not_exist():
@@ -423,7 +424,7 @@ def test_logs_clean_up(enable_test_module, disable_aiohttp_cache,
         assert la_pid not in node_logs["data"]["logs"]
 
     assert wait_until_succeeded_without_exception(
-        check_logs_not_exist, (AssertionError,), timeout_ms=10000)
+        check_logs_not_exist, (AssertionError, ), timeout_ms=10000)
 
 
 @pytest.mark.parametrize(
@@ -431,7 +432,7 @@ def test_logs_clean_up(enable_test_module, disable_aiohttp_cache,
         "include_dashboard": True
     }], indirect=True)
 def test_logs_max_count(enable_test_module, disable_aiohttp_cache,
-              ray_start_cluster_head):
+                        ray_start_cluster_head):
     """Test that each Ray worker cannot cache more than 1000 logs at a time.
     """
     cluster = ray_start_cluster_head
@@ -465,9 +466,9 @@ def test_logs_max_count(enable_test_module, disable_aiohttp_cache,
         assert node_logs["result"]
         assert type(node_logs["data"]["logs"]) is dict
         assert la_pid in node_logs["data"]["logs"]
-        assert (
-            len(node_logs["data"]["logs"][la_pid])
-                == node_consts.MAX_LOGS_TO_CACHE)
+        assert (len(
+            node_logs["data"]["logs"][la_pid]) == node_consts.MAX_LOGS_TO_CACHE
+                )
 
         actor_one_logs_response = requests.get(
             f"{webui_url}/node_logs",
@@ -479,12 +480,11 @@ def test_logs_max_count(enable_test_module, disable_aiohttp_cache,
         actor_one_logs = actor_one_logs_response.json()
         assert actor_one_logs["result"]
         assert type(actor_one_logs["data"]["logs"]) is dict
-        assert (
-            len(actor_one_logs["data"]["logs"][la_pid])
-                == node_consts.MAX_LOGS_TO_CACHE)
+        assert (len(actor_one_logs["data"]["logs"][la_pid]) ==
+                node_consts.MAX_LOGS_TO_CACHE)
 
     assert wait_until_succeeded_without_exception(
-        check_logs, (AssertionError,), timeout_ms=10000)
+        check_logs, (AssertionError, ), timeout_ms=10000)
 
 
 @pytest.mark.parametrize(
@@ -536,7 +536,7 @@ def test_errors(enable_test_module, disable_aiohttp_cache,
         assert len(actor_errs["data"]["errors"][ea_pid]) == 4
 
     assert wait_until_succeeded_without_exception(
-        check_errs, (AssertionError,), timeout_ms=1000)
+        check_errs, (AssertionError, ), timeout_ms=1000)
 
 
 if __name__ == "__main__":
