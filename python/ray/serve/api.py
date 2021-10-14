@@ -16,12 +16,12 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendInfo, GoalId
+from ray.serve.common import BackendInfo, GoalId, ReplicaTag
 from ray.serve.config import (AutoscalingConfig, BackendConfig, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, HTTP_PROXY_TIMEOUT,
                                  SERVE_CONTROLLER_NAME)
-from ray.serve.controller import ReplicaTag, ServeController
+from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
