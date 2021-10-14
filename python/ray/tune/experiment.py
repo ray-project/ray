@@ -6,7 +6,6 @@ import os
 
 from pickle import PicklingError
 
-from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -304,6 +303,8 @@ class Experiment:
 
     @property
     def is_durable_trainable(self):
+        # Local import to avoid cyclical dependencies
+        from ray.tune.durable_trainable import DurableTrainable
         trainable_cls = get_trainable_cls(self._run_identifier)
         return issubclass(trainable_cls, DurableTrainable)
 

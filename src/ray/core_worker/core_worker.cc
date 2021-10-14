@@ -32,30 +32,6 @@ namespace {
 // Duration between internal book-keeping heartbeats.
 const uint64_t kInternalHeartbeatMillis = 1000;
 
-void BuildCommonTaskSpec(
-    TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-    const std::string name, const TaskID &current_task_id, const uint64_t task_index,
-    const TaskID &caller_id, const rpc::Address &address, const RayFunction &function,
-    const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
-    const std::unordered_map<std::string, double> &required_resources,
-    const std::unordered_map<std::string, double> &required_placement_resources,
-    const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-    const std::string debugger_breakpoint, const std::string &serialized_runtime_env,
-    const std::vector<std::string> &runtime_env_uris,
-    const std::string &concurrency_group_name = "") {
-  // Build common task spec.
-  builder.SetCommonTaskSpec(
-      task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
-      current_task_id, task_index, caller_id, address, num_returns, required_resources,
-      required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, serialized_runtime_env, runtime_env_uris,
-      concurrency_group_name);
-  // Set task arguments.
-  for (const auto &arg : args) {
-    builder.AddArg(*arg);
-  }
-}
-
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
   if (options.worker_type == WorkerType::DRIVER) {
     RAY_CHECK(!options.job_id.IsNil());
@@ -170,7 +146,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // Initialize stats in core worker global tags.
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "core_worker"},
-      {ray::stats::VersionKey, "2.0.0.dev0"},
+      {ray::stats::VersionKey, kRayVersion},
       {ray::stats::NodeAddressKey, options_.node_ip_address}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
@@ -681,7 +657,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
       RayConfig::instance().worker_lease_timeout_milliseconds(), actor_creator_,
       RayConfig::instance().max_tasks_in_flight_per_worker(),
-      boost::asio::steady_timer(io_service_));
+      boost::asio::steady_timer(io_service_),
+      RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
   auto report_locality_data_callback =
       [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
              uint64_t object_size) {
@@ -1008,6 +985,12 @@ void CoreWorker::InternalHeartbeat() {
   if (direct_actor_submitter_ != nullptr) {
     direct_actor_submitter_->CheckTimeoutTasks();
   }
+
+  // Periodically report the lastest backlog so that
+  // local raylet will have the eventually consistent view of worker backlogs
+  // even in cases where backlog reports from direct_task_transport
+  // are lost or reordered.
+  direct_task_submitter_->ReportWorkerBacklog();
 
   // Check for unhandled exceptions to raise after a timeout on the driver.
   // Only do this for TTY, since shells like IPython sometimes save references
@@ -1642,6 +1625,37 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   return resources;
 }
 
+void CoreWorker::BuildCommonTaskSpec(
+    TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
+    const std::string &name, const TaskID &current_task_id, uint64_t task_index,
+    const TaskID &caller_id, const rpc::Address &address, const RayFunction &function,
+    const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
+    const std::unordered_map<std::string, double> &required_resources,
+    const std::unordered_map<std::string, double> &required_placement_resources,
+    const BundleID &bundle_id, bool placement_group_capture_child_tasks,
+    const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
+    const std::vector<std::string> &runtime_env_uris,
+    const std::string &concurrency_group_name) {
+  // Build common task spec.
+  builder.SetCommonTaskSpec(
+      task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
+      current_task_id, task_index, caller_id, address, num_returns, required_resources,
+      required_placement_resources, bundle_id, placement_group_capture_child_tasks,
+      debugger_breakpoint,
+      // TODO(SongGuyang): Move the logic of `prepare_runtime_env` from Python to Core
+      // Worker. A common process is needed.
+      // If runtime env is not provided, use job config. Only for Java and C++ because it
+      // has been set in Python by `prepare_runtime_env`.
+      (serialized_runtime_env.empty() || serialized_runtime_env == "{}")
+          ? job_config_->runtime_env().serialized_runtime_env()
+          : serialized_runtime_env,
+      runtime_env_uris, concurrency_group_name);
+  // Set task arguments.
+  for (const auto &arg : args) {
+    builder.AddArg(*arg);
+  }
+}
+
 std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
     const TaskOptions &task_options, int max_retries, bool retry_exceptions,
@@ -2240,12 +2254,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
   std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
-
   status = options_.task_execution_callback(
       task_type, task_spec.GetName(), func,
-      task_spec.GetRequiredResources().GetResourceMap(), args, arg_refs, return_ids,
-      task_spec.GetDebuggerBreakpoint(), return_objects, creation_task_exception_pb_bytes,
-      is_application_level_error);
+      task_spec.GetRequiredResources().GetResourceUnorderedMap(), args, arg_refs,
+      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
+      creation_task_exception_pb_bytes, is_application_level_error);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to

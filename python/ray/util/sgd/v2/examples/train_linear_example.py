@@ -129,4 +129,5 @@ if __name__ == "__main__":
         ray.init(num_cpus=2)
     else:
         ray.init(address=args.address)
+
     train_linear(num_workers=args.num_workers)

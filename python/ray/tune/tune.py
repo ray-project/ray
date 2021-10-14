@@ -384,8 +384,34 @@ def run(
     if num_samples == -1:
         num_samples = sys.maxsize
 
+    result_buffer_length = None
+
+    # Create scheduler here as we need access to some of its properties
+    if isinstance(scheduler, str):
+        # importing at top level causes a recursive dependency
+        from ray.tune.schedulers import create_scheduler
+        scheduler = create_scheduler(scheduler)
+    scheduler = scheduler or FIFOScheduler()
+
+    if scheduler.supports_buffered_results:
+        # Result buffering with a Hyperband scheduler is a bad idea, as
+        # hyperband tries to stop trials when processing brackets. With result
+        # buffering, we might trigger this multiple times when evaluating
+        # a single trial, which leads to unexpected behavior.
+        env_result_buffer_length = os.getenv("TUNE_RESULT_BUFFER_LENGTH", "")
+        if env_result_buffer_length:
+            warnings.warn(
+                f"You are using a {type(scheduler)} scheduler, but "
+                f"TUNE_RESULT_BUFFER_LENGTH is set "
+                f"({env_result_buffer_length}). This can lead to undesired "
+                f"and faulty behavior, so the buffer length was forcibly set "
+                f"to 1 instead.")
+        result_buffer_length = 1
+
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors, queue_trials=queue_trials)
+        reuse_actors=reuse_actors,
+        queue_trials=queue_trials,
+        result_buffer_length=result_buffer_length)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -438,11 +464,6 @@ def run(
     if is_local_mode:
         max_concurrent_trials = 1
 
-    if isinstance(scheduler, str):
-        # importing at top level causes a recursive dependency
-        from ray.tune.schedulers import create_scheduler
-        scheduler = create_scheduler(scheduler)
-
     if not search_alg:
         search_alg = BasicVariantGenerator(
             max_concurrent=max_concurrent_trials or 0)
@@ -490,7 +511,6 @@ def run(
                 "does not contain any more parameter definitions - include "
                 "them in the search algorithm's search space if necessary.")
 
-    scheduler = scheduler or FIFOScheduler()
     if not scheduler.set_search_properties(metric, mode):
         raise ValueError(
             "You passed a `metric` or `mode` argument to `tune.run()`, but "

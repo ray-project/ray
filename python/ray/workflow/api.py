@@ -101,6 +101,9 @@ def step(*args, **kwargs):
     name = kwargs.pop("name", None)
     if name is not None:
         step_options["name"] = name
+    metadata = kwargs.pop("metadata", None)
+    if metadata is not None:
+        step_options["metadata"] = metadata
     if len(kwargs) != 0:
         step_options["ray_options"] = kwargs
     return make_step_decorator(step_options)

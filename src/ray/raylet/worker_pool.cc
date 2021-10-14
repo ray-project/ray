@@ -313,35 +313,38 @@ Process WorkerPool::StartWorkerProcess(
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
   }
 
-  // TODO(edoakes): this is only used by Java. Once Java moves to runtime_env we
-  // should remove worker_env.
-  if (job_config) {
-    env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
-  }
-
-  if (language == Language::PYTHON) {
+  if (language == Language::PYTHON || language == Language::JAVA) {
     if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
       worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
       // Allocated_resource_json is only used in "shim process".
       worker_command_args.push_back("--allocated-instances-serialized-json=" +
                                     allocated_instances_serialized_json);
+
+      worker_command_args.push_back("--language=" + Language_Name(language));
+
+      worker_command_args.push_back("--runtime-env-hash=" +
+                                    std::to_string(runtime_env_hash));
+
+      if (serialized_runtime_env_context != "{}" &&
+          !serialized_runtime_env_context.empty()) {
+        worker_command_args.push_back("--serialized-runtime-env-context=" +
+                                      serialized_runtime_env_context);
+      }
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
       // prevent breaking tests that mock out the worker command args.
       if (worker_command_args.size() >= 2 &&
           worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
-        worker_command_args.erase(worker_command_args.begin() + 1,
-                                  worker_command_args.begin() + 2);
+        if (language == Language::PYTHON) {
+          worker_command_args.erase(worker_command_args.begin() + 1,
+                                    worker_command_args.begin() + 2);
+        } else {
+          // Erase the python executable as well for other languages.
+          worker_command_args.erase(worker_command_args.begin(),
+                                    worker_command_args.begin() + 2);
+        }
       }
-    }
-
-    worker_command_args.push_back("--runtime-env-hash=" +
-                                  std::to_string(runtime_env_hash));
-
-    if (serialized_runtime_env_context != "{}" && serialized_runtime_env_context != "") {
-      worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                    serialized_runtime_env_context);
     }
 
     if (ray_debugger_external) {
@@ -481,6 +484,24 @@ void WorkerPool::MarkPortAsFree(int port) {
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
   all_jobs_[job_id] = job_config;
+  if (job_config.runtime_env().runtime_env_eager_install() &&
+      job_config.has_runtime_env()) {
+    auto const &runtime_env = job_config.runtime_env().serialized_runtime_env();
+    RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
+                  << ". The runtime environment was " << runtime_env << ".";
+    CreateRuntimeEnv(
+        runtime_env, job_id,
+        [job_id](bool successful, const std::string &serialized_runtime_env_context) {
+          if (successful) {
+            RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job " << job_id
+                          << ". The result context was " << serialized_runtime_env_context
+                          << ".";
+          } else {
+            RAY_LOG(ERROR) << "[Eagerly] Couldn't create a runtime environment for job "
+                           << job_id << ".";
+          }
+        });
+  }
 }
 
 void WorkerPool::HandleJobFinished(const JobID &job_id) {
@@ -716,7 +737,7 @@ void WorkerPool::PopDeleteWorker(
 }
 
 void WorkerPool::InvokePopWorkerCallbackForProcess(
-    std::unordered_map<Process, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
+    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
     const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
     const PopWorkerStatus &status, bool *found, bool *worker_used, TaskID *task_id) {
   *found = false;
@@ -747,7 +768,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     // The worker is used for the actor creation task with dynamic options.
     if (!used) {
       // Put it into idle dedicated worker pool.
-      // TODO(guyang.sgy): This worker will not be used forever. We should kill it.
+      // TODO(SongGuyang): This worker will not be used forever. We should kill it.
       state.idle_dedicated_workers[task_id] = worker;
     }
     return;
@@ -946,7 +967,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         state.starting_workers_to_tasks[proc] = std::move(task_info);
       }
     } else {
-      // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
+      // TODO(SongGuyang): Wait until a worker is pushed or a worker can be started If
       // startup concurrency maxed out or job not started.
       PopWorkerCallbackAsync(callback, nullptr, status);
     }
@@ -974,25 +995,24 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
 
-      // create runtime env.
       if (task_spec.HasRuntimeEnv()) {
-        agent_manager_->CreateRuntimeEnv(
-            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
-            allocated_instances_serialized_json,
-            [start_worker_process_fn, callback, &state, task_spec, dynamic_options,
-             allocated_instances_serialized_json](
-                bool success, const std::string &serialized_runtime_env_context) {
-              if (success) {
+        // create runtime env.
+        CreateRuntimeEnv(
+            task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
+            [start_worker_process_fn, callback, &state, task_spec, dynamic_options](
+                bool successful, const std::string &serialized_runtime_env_context) {
+              if (successful) {
                 start_worker_process_fn(task_spec, state, dynamic_options, true,
                                         task_spec.SerializedRuntimeEnv(),
                                         serialized_runtime_env_context, callback);
               } else {
-                RAY_LOG(WARNING) << "Couldn't create a runtime environment for task "
-                                 << task_spec.TaskId() << ". The runtime environment was "
-                                 << task_spec.SerializedRuntimeEnv() << ".";
                 callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
+                RAY_LOG(WARNING)
+                    << "Create runtime env failed for task " << task_spec.TaskId()
+                    << " and couldn't create the dedicated worker.";
               }
-            });
+            },
+            allocated_instances_serialized_json);
       } else {
         start_worker_process_fn(task_spec, state, dynamic_options, true, "", "",
                                 callback);
@@ -1035,9 +1055,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       // Start a new worker process.
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
-        agent_manager_->CreateRuntimeEnv(
-            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
-            allocated_instances_serialized_json,
+        CreateRuntimeEnv(
+            task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
             [start_worker_process_fn, callback, &state, task_spec](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (successful) {
@@ -1045,12 +1064,13 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                         task_spec.SerializedRuntimeEnv(),
                                         serialized_runtime_env_context, callback);
               } else {
-                RAY_LOG(WARNING) << "Couldn't create a runtime environment for task "
-                                 << task_spec.TaskId() << ". The runtime environment was "
-                                 << task_spec.SerializedRuntimeEnv() << ".";
                 callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
+                RAY_LOG(WARNING)
+                    << "Create runtime env failed for task " << task_spec.TaskId()
+                    << " and couldn't create the worker.";
               }
-            });
+            },
+            allocated_instances_serialized_json);
       } else {
         start_worker_process_fn(task_spec, state, {}, false, "", "", callback);
       }
@@ -1322,6 +1342,26 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
     RAY_LOG(FATAL) << "Unknown worker type: " << worker_type;
   }
   UNREACHABLE;
+}
+
+void WorkerPool::CreateRuntimeEnv(
+    const std::string &serialized_runtime_env, const JobID &job_id,
+    const std::function<void(bool, const std::string &)> &callback,
+    const std::string &serialized_allocated_resource_instances) {
+  // create runtime env.
+  agent_manager_->CreateRuntimeEnv(
+      job_id, serialized_runtime_env, serialized_allocated_resource_instances,
+      [job_id, serialized_runtime_env, callback](
+          bool successful, const std::string &serialized_runtime_env_context) {
+        if (successful) {
+          callback(true, serialized_runtime_env_context);
+        } else {
+          RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
+                           << ". The runtime environment was " << serialized_runtime_env
+                           << ".";
+          callback(false, "");
+        }
+      });
 }
 
 }  // namespace raylet
