@@ -252,6 +252,12 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))
                 logs_for_pid = list(logs_for_ip.get(pid, []))
                 logs_for_pid.extend(data["lines"])
+                
+                # Only cache upto MAX_LOGS_TO_CACHE
+                if len(logs_for_pid) > node_consts.MAX_LOGS_TO_CACHE:
+                    offset = len(logs_for_pid) - node_consts.MAX_LOGS_TO_CACHE
+                    del logs_for_pid[:offset]
+
                 logs_for_ip[pid] = logs_for_pid
                 DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
                 logger.info(f"Received a log for {ip} and {pid}")
