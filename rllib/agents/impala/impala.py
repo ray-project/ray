@@ -7,8 +7,9 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
-from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
-    _get_global_vars, _get_shared_metrics
+from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
+                                        STEPS_TRAINED_THIS_ITER_COUNTER,
+                                        _get_global_vars, _get_shared_metrics)
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
@@ -284,6 +285,7 @@ def record_steps_trained(item):
     metrics = _get_shared_metrics()
     # Manually update the steps trained counter since the learner thread
     # is executing outside the pipeline.
+    metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
     metrics.counters[STEPS_TRAINED_COUNTER] += count
     return item
 

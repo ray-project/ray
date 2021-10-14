@@ -116,6 +116,7 @@ class RayParams:
         ray_debugger_external (bool): If true, make the Ray debugger for a
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
+        env_vars (dict): Override environment variables for the raylet.
     """
 
     def __init__(self,
@@ -168,7 +169,7 @@ class RayParams:
                  metrics_export_port=None,
                  tracing_startup_hook=None,
                  no_monitor=False,
-                 lru_evict=False):
+                 env_vars=None):
         self.object_ref_seed = object_ref_seed
         self.external_addresses = external_addresses
         self.redis_address = redis_address
@@ -215,17 +216,10 @@ class RayParams:
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
         self.ray_debugger_external = ray_debugger_external
+        self.env_vars = env_vars
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
-
-        # Set the internal config options for LRU eviction.
-        if lru_evict:
-            raise DeprecationWarning(
-                "The lru_evict flag is deprecated as Ray natively "
-                "supports object spilling. Please read "
-                "https://docs.ray.io/en/master/memory-management.html#object-spilling "  # noqa
-                "for more details.")
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:

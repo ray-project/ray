@@ -108,7 +108,7 @@ if __name__ == "__main__":
     # Explicit yaml config file.
     if args.f:
         with open(args.f, "r") as fp:
-            experiment_config = yaml.load(fp)
+            experiment_config = yaml.safe_load(fp)
             experiment_config = experiment_config[next(
                 iter(experiment_config))]
             config = experiment_config.get("config", {})

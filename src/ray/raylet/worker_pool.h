@@ -20,7 +20,6 @@
 #include <boost/asio/io_service.hpp>
 #include <boost/functional/hash.hpp>
 #include <queue>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -39,7 +38,7 @@ namespace ray {
 namespace raylet {
 
 using WorkerCommandMap =
-    std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
+    absl::flat_hash_map<Language, std::vector<std::string>, std::hash<int>>;
 
 enum PopWorkerStatus {
   // OK.
@@ -454,7 +453,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::vector<std::string> worker_command;
     /// The pool of dedicated workers for actor creation tasks
     /// with dynamic worker options (prefix or suffix worker command.)
-    std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
+    absl::flat_hash_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     // States for io workers used for python util functions.
@@ -474,13 +473,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of this shim processes to the extra information of
     /// the process. The shim process PID is the same with worker process PID, except
     /// starting worker process in container.
-    std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
+    absl::flat_hash_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
     /// A map for looking up the task by the pid of starting worker process.
-    std::unordered_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
+    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
     /// A map for looking up the task with dynamic options by the pid of
     /// starting worker process. Note that this is used for the dedicated worker
     /// processes.
-    std::unordered_map<Process, TaskWaitingForWorkerInfo>
+    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo>
         starting_dedicated_workers_to_tasks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
@@ -491,7 +490,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   };
 
   /// Pool states per language.
-  std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
+  absl::flat_hash_map<Language, State, std::hash<int>> states_by_lang_;
 
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
   /// workers in FIFO order. The second element of std::pair is the time a worker becomes
@@ -583,7 +582,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// true.
   /// \param task_id  The related task id.
   void InvokePopWorkerCallbackForProcess(
-      std::unordered_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,
+      absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,
       const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
@@ -643,7 +642,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
   /// for lookup performance.
-  std::unordered_map<std::shared_ptr<WorkerInterface>, int64_t>
+  absl::flat_hash_map<std::shared_ptr<WorkerInterface>, int64_t>
       idle_of_all_languages_map_;
 
   /// A map of idle workers that are pending exit.
