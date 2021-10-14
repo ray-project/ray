@@ -321,10 +321,13 @@ Process WorkerPool::StartWorkerProcess(
   if (language == Language::CPP) {
     // Set native library path for shared library search.
     if (!native_library_path_.empty() || !code_search_path.empty()) {
+#if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
 #if defined(__APPLE__)
       static const std::string kLibraryPathEnvName = "DYLD_LIBRARY_PATH";
 #elif defined(__linux__)
       static const std::string kLibraryPathEnvName = "LD_LIBRARY_PATH";
+#elif defined(_WIN32)
+      static const std::string kLibraryPathEnvName = "PATH";
 #endif
       auto path_env_p = std::getenv(kLibraryPathEnvName.c_str());
       std::string path_env = native_library_path_;
@@ -336,6 +339,7 @@ Process WorkerPool::StartWorkerProcess(
         path_env = path_env + ":" + code_search_path;
       }
       env.emplace(kLibraryPathEnvName, path_env);
+#endif
     }
   }
 
