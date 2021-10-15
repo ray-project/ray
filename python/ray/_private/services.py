@@ -1181,7 +1181,10 @@ def start_dashboard(require_dashboard,
                 port_test_socket.bind((host, port))
                 port_test_socket.close()
             except socket.error as e:
-                if e.errno in {48, 98}:  # address already in use.
+                # 10013 on windows is a bit more broad than just
+                # "address in use": it can also indicate "permission denied".
+                # TODO: improve the error message?
+                if e.errno in {48, 98, 10013}:  # address already in use.
                     raise ValueError(
                         f"Failed to bind to {host}:{port} because it's "
                         "already occupied. You can use `ray start "
@@ -1518,7 +1521,7 @@ def start_raylet(redis_address,
         agent_command = [
             sys.executable,
             "-u",
-            os.path.join(RAY_PATH, "dashboard/agent.py"),
+            os.path.join(RAY_PATH, "dashboard", "agent.py"),
             f"--node-ip-address={node_ip_address}",
             f"--redis-address={redis_address}",
             f"--metrics-export-port={metrics_export_port}",
