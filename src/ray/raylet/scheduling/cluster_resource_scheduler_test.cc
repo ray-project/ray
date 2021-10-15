@@ -952,13 +952,14 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
     ASSERT_EQ(total[kCPU_ResourceLabel], 1);
     ASSERT_EQ(total[kGPU_ResourceLabel], 2);
     ASSERT_EQ(total[kMemory_ResourceLabel], 3);
+    ASSERT_EQ(total[kObjectStoreMemory_ResourceLabel], 0);
     ASSERT_EQ(total["1"], 1);
     ASSERT_EQ(total["2"], 2);
     ASSERT_EQ(total["3"], 3);
 
     // GCS doesn't like entries which are 0.
     ASSERT_EQ(available.size(), 6);
-    ASSERT_EQ(total.size(), 6);
+    ASSERT_EQ(total.size(), 7);
   }
   {  // Task running on node with {"CPU": 0.1, "1": 0.1}
     std::shared_ptr<TaskResourceInstances> allocations =

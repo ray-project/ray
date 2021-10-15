@@ -1098,7 +1098,6 @@ void ClusterResourceScheduler::FillResourceUsage(
     }
   }
 
-  // todo wangtao remove this flag
   if (!RayConfig::instance().enable_light_weight_resource_report()) {
     resources_data.set_resources_available_changed(true);
   }

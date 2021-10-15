@@ -329,13 +329,12 @@ bool NodeResources::AvailableEquals(const NodeResources &other) {
     return false;
   }
 
-  for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
-       ++it1) {
-    auto it2 = other.custom_resources.find(it1->first);
+  for (const auto &custom_resource : this->custom_resources) {
+    auto it2 = other.custom_resources.find(custom_resource.first);
     if (it2 == other.custom_resources.end()) {
       return false;
     }
-    if (it1->second.available != it2->second.available) {
+    if (custom_resource.second.available != it2->second.available) {
       return false;
     }
   }
@@ -353,13 +352,12 @@ bool NodeResources::TotalEquals(const NodeResources &other) {
     return false;
   }
 
-  for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
-       ++it1) {
-    auto it2 = other.custom_resources.find(it1->first);
+  for (const auto &custom_resource : this->custom_resources) {
+    auto it2 = other.custom_resources.find(custom_resource.first);
     if (it2 == other.custom_resources.end()) {
       return false;
     }
-    if (it1->second.total != it2->second.total) {
+    if (custom_resource.second.total != it2->second.total) {
       return false;
     }
   }
