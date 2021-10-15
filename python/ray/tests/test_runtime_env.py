@@ -5,6 +5,7 @@ import random
 import tempfile
 import time
 import requests
+from unittest.mock import patch
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -69,10 +70,6 @@ def run_test():
     return test_module.one()
 
 @ray.remote
-def run_zip_test():
-    return test_module.two()
-
-@ray.remote
 def check_file(name):
     try:
         with open(name) as f:
@@ -109,6 +106,26 @@ def working_dir():
         path = Path(tmp_dir)
         module_path = path / "test_module"
         module_path.mkdir(parents=True)
+
+        # Create two "test.py" file with same module name and function
+        # signature, but different return value. Regular runtime env
+        # working_dir uses existing file and should return 1 on each
+        # call; While s3 remote runtime env should unzip and overwrite
+        # test.py to return 2 instead.
+
+        # Mocked s3 package zip on local disk without actual S3 IO
+        s3_package_zip = module_path / "s3_package.zip"
+        zipped_test_file = module_path / "test.py"
+        with zipped_test_file.open(mode="w") as f:
+            f.write("""
+def one():
+    return 2
+""")
+        with ZipFile(s3_package_zip, mode="w") as myzip:
+            myzip.write(zipped_test_file)
+        # Original script is removed so we only work with zipped pacakge
+        os.remove(zipped_test_file)
+
         init_file = module_path / "__init__.py"
         test_file = module_path / "test.py"
         with test_file.open(mode="w") as f:
@@ -119,21 +136,8 @@ def one():
         with init_file.open(mode="w") as f:
             f.write("""
 from test_module.test import one
-from test_module.script import two
 """)
-        # Mocked s3 package zip on local disk without actual S3 IO
-        s3_package_zip = module_path / "s3_package.zip"
-        zipped_py_script = module_path / "script.py"
-        with zipped_py_script.open(mode="w") as f:
-            f.write("""
-def two():
-    return 2
-""")
-        with ZipFile(s3_package_zip, mode="w") as myzip:
-            myzip.write(zipped_py_script)
 
-        # Original script is removed so we only work with zipped pacakge
-        # os.remove(zipped_py_script)
         old_dir = os.getcwd()
         os.chdir(tmp_dir)
         yield tmp_dir
@@ -289,21 +293,29 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("use_remote_working_dir", [True, False])
+@pytest.mark.parametrize("use_local_working_dir", [True, False])
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_single_node(
-    ray_start_cluster_head, working_dir, client_mode, use_remote_working_dir
+    ray_start_cluster_head, working_dir, client_mode, use_local_working_dir
 ):
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    # Setup runtime env here
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    # Execute the following cmd in driver with runtime_env
-    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    print(out)
-    assert out.strip().split()[-1] == "1000"
+    with patch("ray.dashboard.modules.runtime_env.runtime_env_agent.WorkingDirManager._get_smart_open") as open_mock:
+        cluster = ray_start_cluster_head
+        address, env, runtime_env_dir = start_client_server(cluster, client_mode)
+        # Setup runtime env here
+        if use_local_working_dir:
+            runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+        else:
+            runtime_env = f"""{{  "working_dir": "s3://{working_dir}/test_module/s3_package.zip" }}"""
+        # Execute the following cmd in driver with runtime_env
+        execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
+        script = driver_script.format(**locals())
+
+        open_mock.return_value = open
+        out = run_string_as_driver(script, env)
+        if use_local_working_dir:
+            assert out.strip().split()[-1] == "1000"
+        else:
+            assert out.strip().split()[-1] == "2000"
     assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
