@@ -14,8 +14,7 @@ def test_was_current_actor_reconstructed(shutdown_only):
     class A(object):
         def __init__(self):
             self._was_reconstructed = ray.get_runtime_context(
-            ).was_current_actor_reconstructed
-
+            ).was_current_actor_reconstructe
         def get_was_reconstructed(self):
             return self._was_reconstructed
 

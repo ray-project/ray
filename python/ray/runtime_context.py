@@ -2,7 +2,6 @@ import ray.worker
 import logging
 from ray._private.client_mode_hook import client_mode_hook
 from ray.util.annotations import PublicAPI
-from ray.worker import _global_node
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +12,7 @@ class RuntimeContext(object):
 
     def __init__(self, worker):
         assert worker is not None
+        self.address_info = ray.worker.get_global_address_info()
         self.worker = worker
 
     def get(self):
@@ -28,7 +28,7 @@ class RuntimeContext(object):
             "node_ip_address": self.node_ip_address,
             "raylet_ip_address": self.raylet_ip_address,
             "redis_address": self.redis_address,
-            "object_store_memory": self.object_store_memory,
+            "object_store_address": self.object_store_address,
             "raylet_socket_name": self.raylet_socket_name,
             "webui_url": self.webui_url,
             "session_dir": self.session_dir,
@@ -128,35 +128,35 @@ class RuntimeContext(object):
 
     @property
     def node_ip_address(self):
-        return _global_node.node_ip_address
+        return self.address_info["node_ip_address"]
 
     @property
     def raylet_ip_address(self):
-        return _global_node.raylet_ip_address
+        return self.address_info["raylet_ip_address"]
 
     @property
     def redis_address(self):
-        return _global_node.redis_address
+        return self.address_info["redis_address"]
 
     @property
-    def object_store_memory(self):
-        return _global_node.object_store_memory
+    def object_store_address(self):
+        return self.address_info["object_store_address"]
 
     @property
     def raylet_socket_name(self):
-        return _global_node.raylet_socket_name
+        return self.address_info["raylet_socket_name"]
 
     @property
     def webui_url(self):
-        return _global_node.webui_url
+        return self.address_info["webui_url"]
 
     @property
     def session_dir(self):
-        return _global_node.session_dir
+        return self.address_info["session_dir"]
 
     @property
     def metrics_export_port(self):
-        return _global_node.metrics_export_port
+        return self.address_info["metrics_export_port"]
 
     @property
     def was_current_actor_reconstructed(self):

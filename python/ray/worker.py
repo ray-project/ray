@@ -2160,3 +2160,8 @@ def remote(*args, **kwargs):
         placement_group=placement_group,
         worker=worker,
         retry_exceptions=retry_exceptions)
+
+
+
+def get_global_address_info():
+    return dict(_global_node.address_info)
