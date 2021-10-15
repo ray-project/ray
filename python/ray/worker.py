@@ -2162,6 +2162,5 @@ def remote(*args, **kwargs):
         retry_exceptions=retry_exceptions)
 
 
-
 def get_global_address_info():
     return dict(_global_node.address_info)
