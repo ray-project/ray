@@ -1785,30 +1785,27 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                   max_retries);
 
     if (actor_name.empty()) {
-      io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(actor_creator_->AsyncRegisterActor(
-                task_spec, [this, task_spec](Status status) {
-                  if (!status.ok()) {
-                    RAY_LOG(ERROR)
-                        << "Failed to register actor: " << task_spec.ActorCreationId()
-                        << ". Error message: " << status.ToString();
-                  } else {
-                    RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
-                  }
-                }));
-          },
-          "ActorCreator.AsyncRegisterActor");
+      io_service_.post([ this, task_spec = std::move(task_spec) ]() {
+        RAY_UNUSED(actor_creator_->AsyncRegisterActor(task_spec, [this, task_spec](
+                                                                     Status status) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to register actor: " << task_spec.ActorCreationId()
+                           << ". Error message: " << status.ToString();
+          } else {
+            RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+          }
+        }));
+      },
+                       "ActorCreator.AsyncRegisterActor");
     } else {
       auto status = actor_creator_->RegisterActor(task_spec);
       if (!status.ok()) {
         return status;
       }
-      io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
-          },
-          "CoreWorker.SubmitTask");
+      io_service_.post([ this, task_spec = std::move(task_spec) ]() {
+        RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+      },
+                       "CoreWorker.SubmitTask");
     }
   }
   return Status::OK();
@@ -1993,7 +1990,7 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
   }
   std::promise<Status> p;
   auto f = p.get_future();
-  io_service_.post([this, p = &p, actor_id, force_kill, no_restart]() {
+  io_service_.post([ this, p = &p, actor_id, force_kill, no_restart ]() {
     auto cb = [this, p, actor_id, force_kill, no_restart](Status status) mutable {
       if (status.ok()) {
         RAY_CHECK_OK(gcs_client_->Actors().AsyncKillActor(actor_id, force_kill,
@@ -2484,7 +2481,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
     task_execution_service_.post(
-        [this, request, reply, send_reply_callback = std::move(send_reply_callback)] {
+        [ this, request, reply, send_reply_callback = std::move(send_reply_callback) ] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
           if (exiting_) return;
@@ -2629,7 +2626,7 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   const auto actor_id = ActorID::FromBinary(request.actor_id());
   if (actor_creator_->IsActorInRegistering(actor_id)) {
     actor_creator_->AsyncWaitForActorRegisterFinish(
-        actor_id, [this, actor_id, respond = std::move(respond)](auto status) {
+        actor_id, [ this, actor_id, respond = std::move(respond) ](auto status) {
           if (!status.ok()) {
             respond(actor_id);
           } else {
@@ -3081,16 +3078,15 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
   reply->set_success(is_idle);
-  send_reply_callback(
-      Status::OK(),
-      [this, is_idle]() {
-        // If the worker is idle, we exit.
-        if (is_idle) {
-          Exit(rpc::WorkerExitType::IDLE_EXIT);
-        }
-      },
-      // We need to kill it regardless if the RPC failed.
-      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+  send_reply_callback(Status::OK(),
+                      [this, is_idle]() {
+                        // If the worker is idle, we exit.
+                        if (is_idle) {
+                          Exit(rpc::WorkerExitType::IDLE_EXIT);
+                        }
+                      },
+                      // We need to kill it regardless if the RPC failed.
+                      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 }
 
 void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,

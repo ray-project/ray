@@ -66,7 +66,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
                        const WorkerCommandMap &worker_commands,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external, const std::function<double()> get_time)
-    : startup_token_(0),
+    : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
@@ -173,6 +173,10 @@ void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
   }
 }
 
+void WorkerPool::update_worker_startup_token_counter() {
+  worker_startup_token_counter_ += 1;
+}
+
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     PopWorkerStatus *status, const std::vector<std::string> &dynamic_options,
@@ -264,7 +268,8 @@ Process WorkerPool::StartWorkerProcess(
 
   // Append startup-token for JAVA here
   if (language == Language::JAVA) {
-    options.push_back("-Dray.raylet.startup-token=" + std::to_string(startup_token_));
+    options.push_back("-Dray.raylet.startup-token=" +
+                      std::to_string(worker_startup_token_counter_));
   }
 
   // Append user-defined per-process options here
@@ -367,9 +372,11 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   if (language == Language::PYTHON) {
-    worker_command_args.push_back("--startup-token=" + std::to_string(startup_token_));
+    worker_command_args.push_back("--startup-token=" +
+                                  std::to_string(worker_startup_token_counter_));
   } else if (language == Language::CPP) {
-    worker_command_args.push_back("--startup_token=" + std::to_string(startup_token_));
+    worker_command_args.push_back("--startup_token=" +
+                                  std::to_string(worker_startup_token_counter_));
   }
 
   // Start a process and measure the startup time.
@@ -381,11 +388,12 @@ Process WorkerPool::StartWorkerProcess(
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process of " << workers_to_start
                 << " worker(s) with pid " << proc.GetId();
-  MonitorStartingWorkerProcess(proc, startup_token_, language, worker_type);
+  MonitorStartingWorkerProcess(proc, worker_startup_token_counter_, language,
+                               worker_type);
   state.starting_worker_processes.emplace(
-      startup_token_,
+      worker_startup_token_counter_,
       StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc});
-  startup_token_ += 1;
+  update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -540,8 +548,9 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   RAY_CHECK(worker);
   auto &state = GetStateForLanguage(worker->GetLanguage());
   if (state.starting_worker_processes.count(worker_startup_token) == 0) {
-    RAY_LOG(WARNING) << "Received a register request from an unknown worker shim process:"
-                     << worker_shim_pid;
+    RAY_LOG(WARNING)
+        << "Received a register request from an unknown worker shim process: "
+        << worker_shim_pid;
     Status status = Status::Invalid("Unknown worker");
     send_reply_callback(status, /*port=*/0);
     return status;
@@ -550,7 +559,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   worker->SetShimProcess(shim_process);
   auto process = Process::FromPid(pid);
   worker->SetProcess(process);
-  worker->SetStartupToken(worker_startup_token);
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
   // should bind on a random port.
@@ -575,7 +583,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const auto &shim_process = worker->GetShimProcess();
-  const StartupToken &worker_startup_token = worker->GetStartupToken();
+  const StartupToken worker_startup_token = worker->GetStartupToken();
   RAY_CHECK(shim_process.IsValid());
 
   auto it = state.starting_worker_processes.find(worker_startup_token);

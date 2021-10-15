@@ -133,12 +133,6 @@ class Worker;
 /// The WorkerPool is responsible for managing a pool of Workers. Each Worker
 /// is a container for a unit of work.
 class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
- protected:
-  /// Gloabl startup token variable. Incremented once assigned
-  /// to a worker process and is added to
-  /// state.starting_worker_processes.
-  StartupToken startup_token_;
-
  public:
   /// Create a pool and asynchronously start at least the specified number of workers per
   /// language.
@@ -380,6 +374,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void TryKillingIdleWorkers();
 
  protected:
+  void update_worker_startup_token_counter();
+
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register N workers, then add them to the pool.
@@ -426,6 +422,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                  std::shared_ptr<WorkerInterface> worker,
                                  PopWorkerStatus status);
+
+  /// Gloabl startup token variable. Incremented once assigned
+  /// to a worker process and is added to
+  /// state.starting_worker_processes.
+  StartupToken worker_startup_token_counter_;
 
   struct IOWorkerState {
     /// The pool of idle I/O workers.
@@ -481,9 +482,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// All workers that have registered but is about to disconnect. They shouldn't be
     /// popped anymore.
     std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
-    /// A map from the pids of this shim processes to the extra information of
-    /// the process. The shim process PID is the same with worker process PID, except
-    /// starting worker process in container.
+    /// A map from the startup tokens of worker processes, assigned by the raylet, to
+    /// the extra information of the process. Note that the shim process PID is the
+    /// same with worker process PID, except starting worker process in container.
     absl::flat_hash_map<StartupToken, StartingWorkerProcessInfo>
         starting_worker_processes;
     /// A map for looking up the task by the pid of starting worker process.

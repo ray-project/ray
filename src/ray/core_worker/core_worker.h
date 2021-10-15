@@ -191,7 +191,7 @@ struct CoreWorkerOptions {
   /// This is needed because the actual core worker process
   /// may not have the same pid as the process the worker pool
   /// starts (due to shim processes).
-  StartupToken startup_token{-1};
+  StartupToken startup_token{0};
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.

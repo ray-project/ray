@@ -30,8 +30,9 @@ Worker::Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &
                const Language &language, rpc::WorkerType worker_type,
                const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
-               rpc::ClientCallManager &client_call_manager)
+               rpc::ClientCallManager &client_call_manager, StartupToken startup_token)
     : worker_id_(worker_id),
+      startup_token_(startup_token),
       language_(language),
       worker_type_(worker_type),
       ip_address_(ip_address),
