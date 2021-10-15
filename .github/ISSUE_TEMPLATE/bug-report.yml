@@ -57,6 +57,15 @@ body:
 
   - type: textarea
     attributes:
+      label: Versions / Dependencies
+      description: Please specify the versions of Ray, Python, OS, and other libraries that are used.
+      placeholder: >
+        Please specify the versions of dependencies.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
       label: Reproduction script
       description: >
         Please provide a reproducible script. Providing a narrow reproduction (minimal / no external dependencies) will

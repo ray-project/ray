@@ -421,11 +421,12 @@ def find_ray_wheels(repo: str, branch: str, version: str):
 
 def populate_wheels_sanity_check(commit: Optional[str] = None):
     if not commit:
-        raise RuntimeError(f"Could not populate wheels sanity check command: "
-                           f"Commit hash missing. Got: {commit}")
-
-    cmd = (f"python -c 'import ray; "
-           f"assert ray.__commit__ == \"{commit}\", ray.__commit__'")
+        cmd = ("python -c 'import ray; print("
+               "\"No commit sanity check available, but this is the "
+               "Ray wheel commit:\", ray.__commit__)'")
+    else:
+        cmd = (f"python -c 'import ray; "
+               f"assert ray.__commit__ == \"{commit}\", ray.__commit__'")
     os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
@@ -1806,7 +1807,7 @@ def run_test(test_config_file: str,
              session_name: Optional[str] = None,
              app_config_id_override=None) -> Dict[str, Any]:
     with open(test_config_file, "rt") as f:
-        test_configs = yaml.load(f, Loader=yaml.FullLoader)
+        test_configs = yaml.safe_load(f)
 
     test_config_dict = {}
     for test_config in test_configs:
@@ -1965,7 +1966,7 @@ if __name__ == "__main__":
     if args.ray_wheels:
         os.environ["RAY_WHEELS"] = str(args.ray_wheels)
         url = str(args.ray_wheels)
-    elif not args.check:
+    elif not args.check and not os.environ.get("RAY_WHEELS"):
         url = find_ray_wheels(
             GLOBAL_CONFIG["RAY_REPO"],
             GLOBAL_CONFIG["RAY_BRANCH"],
@@ -1977,7 +1978,12 @@ if __name__ == "__main__":
                                f"branch {GLOBAL_CONFIG['RAY_BRANCH']}")
 
         # RAY_COMMIT is set by find_ray_wheels
-        populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
+    elif os.environ.get("RAY_WHEELS"):
+        logger.info(f"Using Ray wheels provided from URL: "
+                    f"{os.environ.get('RAY_WHEELS')}")
+        url = os.environ.get("RAY_WHEELS")
+
+    populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 

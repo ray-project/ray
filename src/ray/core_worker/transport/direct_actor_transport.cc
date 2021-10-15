@@ -506,6 +506,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   }
 
   if (task_spec.IsActorCreationTask()) {
+    worker_context_.SetCurrentActorId(task_spec.ActorCreationId());
     SetMaxActorConcurrency(task_spec.IsAsyncioActor(), task_spec.MaxActorConcurrency());
   }
 
