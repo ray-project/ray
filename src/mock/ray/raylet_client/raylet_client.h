@@ -103,7 +103,8 @@ class MockResourceTrackingInterface : public ResourceTrackingInterface {
                const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback),
               (override));
   MOCK_METHOD(void, RequestResourceReport,
-              (const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback),
+              (bool initial_report,
+               const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback),
               (override));
 };
 
@@ -179,7 +180,8 @@ class MockRayletClientInterface : public RayletClientInterface {
                const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback),
               (override));
   MOCK_METHOD(void, RequestResourceReport,
-              (const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback),
+              (bool initial_report,
+               const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback),
               (override));
 };
 
