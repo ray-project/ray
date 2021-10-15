@@ -278,6 +278,16 @@ TEST(PrintLogTest, EnableFlushTest) {
     EXPECT_TRUE(str.empty());
   }
 
+  // Will trigger flush on error.
+  RAY_LOG(ERROR) << "Test log flush";
+  {
+    std::ifstream file(log_file_name, std::ios::binary);
+    EXPECT_TRUE(file);
+    std::string str;
+    std::getline(file, str);
+    EXPECT_TRUE(!str.empty());
+  }
+
   RayLog::ShutDownRayLog();
   {
     std::ifstream file(log_file_name, std::ios::binary);

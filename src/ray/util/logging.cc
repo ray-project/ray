@@ -371,6 +371,13 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     logging_provider_ = new LoggingProvider(
         file_name, line_number, GetMappedSeverity(severity), expose_osstream_);
   }
+  if (!always_flush_) {
+    auto logger = spdlog::get(RayLog::GetLoggerName());
+    if (!logger) {
+      logger = DefaultStdErrLogger::Instance().GetDefaultLogger();
+    }
+    logger->flush_on(spdlog::level::err);
+  }
 }
 
 std::ostream &RayLog::Stream() {
