@@ -221,7 +221,7 @@ class ResultThread(threading.Thread):
             self._ready_index_queue.put(self._indices[ready_id])
 
         if not self._got_error and self._callback is not None:
-                self._callback(batch_results)
+            self._callback(batch_results)
 
     def got_error(self):
         # Should only be called after the thread finishes.
@@ -733,10 +733,10 @@ class Pool:
             chunksize: number of tasks to submit as a batch to each actor
                 process. If unspecified, a suitable chunksize will be chosen.
             callback: Will only be called if none of the results were errors,
-                and will only be called once after all the results are finished.
+                and will only be called once after all results are finished.
                 A Python List of all the finished results will be passed as the
                 only argument to the callback.
-            error_callback: callback to be executed on the first errored result.
+            error_callback: callback executed on the first errored result.
                 The Exception raised by the task will be passed as the only
                 argument to the callback.
 

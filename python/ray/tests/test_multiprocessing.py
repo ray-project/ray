@@ -10,7 +10,6 @@ import queue
 import ray
 from ray._private.test_utils import SignalActor
 from ray.util.multiprocessing import Pool, TimeoutError
-from ray.workflow.examples.comparisons.cadence.file_processing_workflow import process
 
 
 def teardown_function(function):
@@ -353,7 +352,8 @@ def test_starmap(pool):
     assert pool.starmap(lambda x, y: x + y, zip([1, 2], [3, 4])) == [4, 6]
 
 
-def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib):
+def test_callbacks(pool_4_processes,
+                   pool_4_processes_python_multiprocessing_lib):
     callback_queue = queue.Queue()
 
     def callback(result):
@@ -363,9 +363,8 @@ def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib
         callback_queue.put(error)
 
     # Will not error, check that callback is called.
-    result = pool_4_processes.apply_async(callback_test_helper,
-                                          ((0, [1]), ),
-                                          callback=callback)
+    result = pool_4_processes.apply_async(
+        callback_test_helper, ((0, [1]), ), callback=callback)
     assert callback_queue.get() == [0]
     result.get()
 
@@ -376,15 +375,16 @@ def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib
     with pytest.raises(Exception, match="intentional failure"):
         result.get()
 
-    # Ensure Ray's map_async behavior matches Python Multiprocessing's map_async
-    process_pools = [pool_4_processes,
-                     pool_4_processes_python_multiprocessing_lib]
-                     
+    # Ensure Ray's map_async behavior matches Multiprocessing's map_async
+    process_pools = [
+        pool_4_processes, pool_4_processes_python_multiprocessing_lib
+    ]
+
     for process_pool in process_pools:
         # Test error callbacks for map_async.
         test_callback_types = ["regular callback", "error callback"]
         for callback_type in test_callback_types:
-            indices, error_indices = [index for index in range(100)], []
+            indices, error_indices = list(range(100)), []
             if callback_type == "error callback":
                 error_indices = [2, 50, 98]
             result = process_pool.map_async(
@@ -396,29 +396,29 @@ def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib
             result.wait()
 
             callback_results = callback_queue.get()
-            
+
             if callback_type == "regular callback":
                 assert result.successful()
             else:
                 assert not result.successful()
 
             if callback_type == "regular callback":
-                # Check that the regular callback returned a list of all indices
+                # Check that regular callback returned a list of all indices
                 for index in callback_results:
                     assert index in indices
                     indices.remove(index)
                 assert len(indices) == 0
             else:
-                # Check that the error callback returned a single exception
+                # Check that error callback returned a single exception
                 assert isinstance(callback_results, Exception)
 
 
 def callback_test_helper(args):
-    '''
-    This is a helper function for the test_callbacks test. It needs to be placed
+    """
+    This is a helper function for the test_callbacks test. It must be placed
     outside the test because Python's Multiprocessing library uses Pickle to
     serialize functions, but Pickle cannot serialize local functions.
-    '''
+    """
     time.sleep(0.1 * random.random())
     index = args[0]
     err_indices = args[1]
