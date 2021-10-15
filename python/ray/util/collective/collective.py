@@ -619,6 +619,21 @@ def recv_multigpu(tensor,
     g.recv([tensor], opts)
 
 
+def synchronize(gpu_id: int):
+    """Synchronize the current process to a give device.
+
+    Args:
+        gpu_id (int): the GPU device id to synchronize.
+
+    Returns:
+        None
+    """
+    if not types.cupy_available():
+        raise RuntimeError("synchronize call requires CUDA and NCCL.")
+    import cupy as cp
+    cp.cuda.Device(gpu_id).synchronize()
+
+
 def _check_and_get_group(group_name):
     """Check the existence and return the group handle."""
     _check_inside_actor()
