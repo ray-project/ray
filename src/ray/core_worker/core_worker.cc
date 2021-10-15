@@ -1971,7 +1971,10 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   bool recursive_success = true;
   for (const auto &child_id : task_manager_->GetPendingChildrenTasks(task_id)) {
     auto child_spec = task_manager_->GetTaskSpec(child_id);
-  if (child_spec.has_value() && !child_spec.value().IsActorCreationTask() && !child_spec.value().IsActorTask()) {
+  if (child_spec.has_value() &&
+      // Actor related task is not allowed to be canceled
+      !child_spec.value().IsActorCreationTask() &&
+      !child_spec.value().IsActorTask()) {
       auto result =
           direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
       recursive_success = recursive_success && result.ok();
