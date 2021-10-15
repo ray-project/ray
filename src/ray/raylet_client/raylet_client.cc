@@ -429,8 +429,8 @@ void raylet::RayletClient::PinObjectIDs(
     request.add_object_ids(object_id.Binary());
   }
   pins_in_flight_++;
-  auto rpc_callback = [ this, callback = std::move(callback) ](
-      Status status, const rpc::PinObjectIDsReply &reply) {
+  auto rpc_callback = [this, callback = std::move(callback)](
+                          Status status, const rpc::PinObjectIDsReply &reply) {
     pins_in_flight_--;
     callback(status, reply);
   };
