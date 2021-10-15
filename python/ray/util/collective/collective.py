@@ -99,6 +99,14 @@ class GroupManager(object):
         # Release the communicator resources
         g.destroy_group()
 
+        # Release the detached actors spawned by `create_collective_group()`
+        name = "info_" + group_name
+        try:
+            store = ray.get_actor(name)
+            ray.kill(store)
+        except ValueError:
+            pass
+
 
 _group_mgr = GroupManager()
 
