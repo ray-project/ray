@@ -639,7 +639,7 @@ def test_args_named_and_star(ray_start_shared_local_modes):
 
 
 def test_oversized_function(ray_start_shared_local_modes):
-    bar = np.zeros(100 * 1024)
+    bar = np.zeros(100 * 1024 * 125)
 
     @ray.remote
     class Actor:
