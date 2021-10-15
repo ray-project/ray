@@ -123,8 +123,6 @@ class DataOrganizer:
         for dead_pid in dead_pids:
             if dead_pid in node_logs:
                 node_logs.mutable().pop(dead_pid)
-            if dead_pid in node_errs:
-                node_errs.mutable().pop(dead_pid)
 
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)

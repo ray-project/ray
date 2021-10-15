@@ -9,6 +9,8 @@ from grpc.experimental import aio as aiogrpc
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 from ray.dashboard.modules.node import node_consts
+from ray.dashboard.modules.node.node_consts import (MAX_LOGS_TO_CACHE,
+                                                    LOG_PRUNE_THREASHOLD)
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import async_loop_forever
@@ -249,17 +251,20 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 data = json.loads(ray._private.utils.decode(msg))
                 ip = data["ip"]
                 pid = str(data["pid"])
-                logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))
-                logs_for_pid = list(logs_for_ip.get(pid, []))
-                logs_for_pid.extend(data["lines"])
+                if pid != "autoscaler":
+                    logs_for_ip = dict(
+                        DataSource.ip_and_pid_to_logs.get(ip, {}))
+                    logs_for_pid = list(logs_for_ip.get(pid, []))
+                    logs_for_pid.extend(data["lines"])
 
-                # Only cache upto MAX_LOGS_TO_CACHE
-                if len(logs_for_pid) > node_consts.MAX_LOGS_TO_CACHE:
-                    offset = len(logs_for_pid) - node_consts.MAX_LOGS_TO_CACHE
-                    del logs_for_pid[:offset]
+                    # Only cache upto MAX_LOGS_TO_CACHE
+                    logs_length = len(logs_for_pid)
+                    if logs_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
+                        offset = logs_length - MAX_LOGS_TO_CACHE
+                        del logs_for_pid[:offset]
 
-                logs_for_ip[pid] = logs_for_pid
-                DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
+                    logs_for_ip[pid] = logs_for_pid
+                    DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
                 logger.info(f"Received a log for {ip} and {pid}")
             except Exception:
                 logger.exception("Error receiving log info.")
