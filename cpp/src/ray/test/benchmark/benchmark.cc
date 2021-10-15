@@ -4,7 +4,7 @@
 #include <chrono>
 #include <set>
 
-using namespace ::ray::api;
+using namespace ::ray;
 
 void NoReturn() {}
 int ReturnVal() { return 1; }
@@ -59,7 +59,7 @@ void Execute(F f, std::string func_name, size_t num_repeats) {
 }
 
 template <typename R, typename F>
-void ExecuteLatancy(F f, std::string func_name, size_t num_repeats) {
+void RunLatencyTest(F f, std::string func_name, size_t num_repeats) {
   std::set<uint64_t> set;
   for (size_t i = 0; i < num_repeats; i++) {
     auto start = std::chrono::system_clock::now();
@@ -83,42 +83,44 @@ void ExecuteLatancy(F f, std::string func_name, size_t num_repeats) {
 }
 
 TEST(BenchmarkTest, SimpleLatancyTest) {
-  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
+  ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate).Remote();
   size_t num_repeats = 20;
-  ExecuteLatancy<int>([&actor] { return actor.Task(&Counter::Add).Remote(); },
+  RunLatencyTest<int>([&actor] { return actor.Task(&Counter::Add).Remote(); },
                       "&Counter::Add", num_repeats);
 
-  ExecuteLatancy<void>([] { return Ray::Task(NoReturn).Remote(); }, "NoReturn",
+  RunLatencyTest<void>([] { return ray::Task(NoReturn).Remote(); }, "NoReturn",
                        num_repeats);
 
-  ExecuteLatancy<int>([] { return Ray::Task(ReturnVal).Remote(); }, "ReturnVal",
+  RunLatencyTest<int>([] { return ray::Task(ReturnVal).Remote(); }, "ReturnVal",
                       num_repeats);
 }
 
 TEST(BenchmarkTest, SimpleRemoteTest) {
-  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
+  ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate).Remote();
   size_t num_repeats = 100000;
   Execute([&actor] { actor.Task(&Counter::Add).Remote(); }, "&Counter::Add", num_repeats);
 
-  Execute([] { Ray::Task(NoReturn).Remote(); }, "NoReturn", num_repeats);
+  Execute([] { ray::Task(NoReturn).Remote(); }, "NoReturn", num_repeats);
 
-  Execute([] { Ray::Task(ReturnVal).Remote(); }, "ReturnVal", num_repeats);
+  Execute([] { ray::Task(ReturnVal).Remote(); }, "ReturnVal", num_repeats);
 }
 
 TEST(BenchmarkTest, RemoteWithArgsTest) {
   size_t num_repeats = 100000;
   std::string small_str(100, ' ');
-  Execute([&small_str] { Ray::Task(Input).Remote(small_str); }, "Input small_str",
+  Execute([&small_str] { ray::Task(Input).Remote(small_str); }, "Input small_str",
           num_repeats);
-  Execute([&small_str] { Ray::Task(Echo).Remote(small_str); }, "Echo small_str",
+  Execute([&small_str] { ray::Task(Echo).Remote(small_str); }, "Echo small_str",
           num_repeats);
-  Ray::Shutdown();
 }
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ray::api::RayConfig config;
 
-  Ray::Init(config, &argc, &argv);
-  return RUN_ALL_TESTS();
+  ray::RayConfig config;
+  ray::Init(config, argc, argv);
+  int ret = RUN_ALL_TESTS();
+  ray::Shutdown();
+
+  return ret;
 }

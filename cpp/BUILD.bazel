@@ -233,9 +233,6 @@ cc_test(
     srcs = glob([
         "src/ray/test/benchmark/*.cc",
     ]),
-    args = [
-        "--ray-dynamic-library-path=$(location benchmark_test.so)",
-    ],
     copts = COPTS,
     data = [
         "benchmark_test.so",
