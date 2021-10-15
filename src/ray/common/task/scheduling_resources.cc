@@ -31,7 +31,9 @@ ResourceSet::ResourceSet(const absl::flat_hash_map<std::string, FixedPoint> &res
 }
 
 ResourceSet::ResourceSet(const absl::flat_hash_map<std::string, double> &resource_map) {
+  RAY_LOG(INFO) << "WANGTAO " << resource_map.size();
   for (auto const &resource_pair : resource_map) {
+    RAY_LOG(INFO) << "WANGTAO " << resource_pair.first << " " << std::to_string(resource_pair.second);
     RAY_CHECK(resource_pair.second > 0);
     resource_capacity_[resource_pair.first] = FixedPoint(resource_pair.second);
   }

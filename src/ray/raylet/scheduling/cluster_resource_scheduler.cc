@@ -1069,7 +1069,7 @@ void ClusterResourceScheduler::FillResourceUsage(
       (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
-    if (total_changed) {
+    if (total_changed && capacity.total > 0) {
       (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
@@ -1082,7 +1082,7 @@ void ClusterResourceScheduler::FillResourceUsage(
       (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
-    if (total_changed) {
+    if (total_changed && capacity.total > 0) {
       (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
