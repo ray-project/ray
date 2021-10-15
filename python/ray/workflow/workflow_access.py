@@ -116,17 +116,18 @@ def cancel_job(objs: List[ray.ObjectRef]):
     @ray.remote(num_cpus=1)
     def _cancel(obj):
         if isinstance(obj, ray.ObjectRef):
-            ray.cancel(obj, force=True)
+            try:
+                ray.cancel(obj, force=True)
+                ray.wait(_cancel.remote(obj))
+            except Exception:
+                pass
 
     for obj in objs:
         try:
-            ray.cancel(obj, force=True)
+            ray.cancel(obj)
+            ray.wait(_cancel.remote(obj))
         except Exception:
-            # Sometimes it's a task from actors
-            # and ray doesn't allow actor task to be canceled
-            # So do nothing here
             pass
-        _cancel.remote(obj)
 
 
 @dataclass
