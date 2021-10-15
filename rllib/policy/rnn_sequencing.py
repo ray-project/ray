@@ -13,6 +13,7 @@ current algorithms: https://github.com/ray-project/ray/issues/2992
 
 import logging
 import numpy as np
+import tree  # pip install dm_tree
 from typing import List, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -109,8 +110,7 @@ def pad_batch_to_sequences_of_same_size(
         if k.startswith("state_in_"):
             state_keys.append(k)
         elif not feature_keys and not k.startswith("state_out_") and \
-                k not in ["infos", SampleBatch.SEQ_LENS] and \
-                isinstance(v, np.ndarray):
+                k not in ["infos", SampleBatch.SEQ_LENS]:
             feature_keys_.append(k)
 
     feature_sequences, initial_states, seq_lens = \
@@ -127,7 +127,7 @@ def pad_batch_to_sequences_of_same_size(
             shuffle=shuffle)
 
     for i, k in enumerate(feature_keys_):
-        batch[k] = feature_sequences[i]
+        batch[k] = tree.unflatten_as(batch[k], feature_sequences[i])
     for i, k in enumerate(state_keys):
         batch[k] = initial_states[i]
     batch[SampleBatch.SEQ_LENS] = np.array(seq_lens)
@@ -260,32 +260,34 @@ def chop_into_sequences(*,
             seq_lens.append(seq_len)
         seq_lens = np.array(seq_lens, dtype=np.int32)
 
-    assert sum(seq_lens) == len(feature_columns[0])
-
     # Dynamically shrink max len as needed to optimize memory usage
     if dynamic_max:
         max_seq_len = max(seq_lens) + _extra_padding
 
     feature_sequences = []
-    for f in feature_columns:
-        # Save unnecessary copy.
-        if not isinstance(f, np.ndarray):
-            f = np.array(f)
-        length = len(seq_lens) * max_seq_len
-        if f.dtype == np.object or f.dtype.type is np.str_:
-            f_pad = [None] * length
-        else:
-            # Make sure type doesn't change.
-            f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
-        seq_base = 0
-        i = 0
-        for len_ in seq_lens:
-            for seq_offset in range(len_):
-                f_pad[seq_base + seq_offset] = f[i]
-                i += 1
-            seq_base += max_seq_len
-        assert i == len(f), f
-        feature_sequences.append(f_pad)
+    for col in feature_columns:
+        feature_sequences.append([])
+
+        for f in tree.flatten(col):
+            # Save unnecessary copy.
+            if not isinstance(f, np.ndarray):
+                f = np.array(f)
+
+            length = len(seq_lens) * max_seq_len
+            if f.dtype == np.object or f.dtype.type is np.str_:
+                f_pad = [None] * length
+            else:
+                # Make sure type doesn't change.
+                f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
+            seq_base = 0
+            i = 0
+            for len_ in seq_lens:
+                for seq_offset in range(len_):
+                    f_pad[seq_base + seq_offset] = f[i]
+                    i += 1
+                seq_base += max_seq_len
+            assert i == len(f), f
+            feature_sequences[-1].append(f_pad)
 
     if states_already_reduced_to_init:
         initial_states = state_columns
@@ -304,7 +306,7 @@ def chop_into_sequences(*,
 
     if shuffle:
         permutation = np.random.permutation(len(seq_lens))
-        for i, f in enumerate(feature_sequences):
+        for i, f in enumerate(tree.flatten(feature_sequences)):
             orig_shape = f.shape
             f = np.reshape(f, (len(seq_lens), -1) + f.shape[1:])
             f = f[permutation]

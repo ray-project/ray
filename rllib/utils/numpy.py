@@ -55,7 +55,7 @@ def sigmoid(x, derivative=False):
         return 1 / (1 + np.exp(-x))
 
 
-def softmax(x, axis=-1):
+def softmax(x, axis=-1, epsilon=None):
     """
     Returns the softmax values for x as:
     S(xi) = e^xi / SUMj(e^xj), where j goes over all elements in x.
@@ -63,15 +63,18 @@ def softmax(x, axis=-1):
     Args:
         x (np.ndarray): The input to the softmax function.
         axis (int): The axis along which to softmax.
+        epsilon: Optional epsilon as a minimum value. If None, use
+            `SMALL_NUMBER`.
 
     Returns:
         np.ndarray: The softmax over x.
     """
+    epsilon = epsilon or SMALL_NUMBER
     # x_exp = np.maximum(np.exp(x), SMALL_NUMBER)
     x_exp = np.exp(x)
     # return x_exp /
     #   np.maximum(np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
-    return np.maximum(x_exp / np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
+    return np.maximum(x_exp / np.sum(x_exp, axis, keepdims=True), epsilon)
 
 
 def relu(x, alpha=0.0):

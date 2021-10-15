@@ -575,9 +575,9 @@ class SampleBatch(dict):
         `self.max_seq_len` to the given `max_seq_len` value.
 
         Args:
-            max_len (int): The max (total) length to zero pad to.
-            exclude_states (bool): If True, also right-zero-pad all
-                `state_in_x` data. If False, leave `state_in_x` keys
+            max_seq_len: The max (total) length to zero pad to.
+            exclude_states: If False, also right-zero-pad all
+                `state_in_x` data. If True, leave `state_in_x` keys
                 as-is.
 
         Returns:
