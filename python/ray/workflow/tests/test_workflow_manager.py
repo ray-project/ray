@@ -76,6 +76,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
         workflow.WorkflowStatus.RUNNING
     })
     assert len(all_tasks_status) == 100
+
     assert failed_jobs == [(k, v) for (k, v) in all_tasks_status
                            if v == workflow.WorkflowStatus.FAILED]
     assert finished_jobs == [(k, v) for (k, v) in all_tasks_status

@@ -112,8 +112,8 @@ def cancel_job(objs: List[ray.ObjectRef]):
              - Cancel the outer job first.
              - Recursively cancel the inner ones.
     """
-
-    @ray.remote(num_cpus=0)
+    # Set it to be 1 cpu to avoid overloading
+    @ray.remote(num_cpus=1)
     def _cancel(obj):
         if isinstance(obj, ray.ObjectRef):
             ray.cancel(obj, force=True)
@@ -251,10 +251,10 @@ class WorkflowManagementActor:
 
         if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
-                results = self._workflow_outputs.pop(workflow_id)
-                cancel_job([results.output])
-            wf_store.save_workflow_meta(
-                common.WorkflowMetaData(common.WorkflowStatus.FAILED))
+                result = self._workflow_outputs.pop(workflow_id)
+                cancel_job([result.output])
+                wf_store.save_workflow_meta(
+                    common.WorkflowMetaData(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
         else:
             wf_store.save_workflow_meta(
