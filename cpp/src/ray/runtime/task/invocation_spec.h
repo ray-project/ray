@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/api/ray_runtime.h>
+
 #include <msgpack.hpp>
 
 #include "ray/common/id.h"

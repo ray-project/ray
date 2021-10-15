@@ -16,7 +16,6 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
@@ -47,18 +46,19 @@ class TaskManagerTest : public ::testing::Test {
         reference_counter_(std::shared_ptr<ReferenceCounter>(
             new ReferenceCounter(rpc::Address(), publisher_.get(), subscriber_.get(),
                                  lineage_pinning_enabled))),
-        manager_(store_, reference_counter_,
-                 [this](TaskSpecification &spec, bool delay) {
-                   num_retries_++;
-                   return Status::OK();
-                 },
-                 [this](const NodeID &node_id) { return all_nodes_alive_; },
-                 [this](const ObjectID &object_id) {
-                   objects_to_recover_.push_back(object_id);
-                 },
-                 [](const JobID &job_id, const std::string &type,
-                    const std::string &error_message,
-                    double timestamp) { return Status::OK(); }) {}
+        manager_(
+            store_, reference_counter_,
+            [this](TaskSpecification &spec, bool delay) {
+              num_retries_++;
+              return Status::OK();
+            },
+            [this](const NodeID &node_id) { return all_nodes_alive_; },
+            [this](const ObjectID &object_id) {
+              objects_to_recover_.push_back(object_id);
+            },
+            [](const JobID &job_id, const std::string &type,
+               const std::string &error_message,
+               double timestamp) { return Status::OK(); }) {}
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
