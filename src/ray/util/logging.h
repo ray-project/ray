@@ -49,6 +49,7 @@
 #pragma once
 
 #include <gtest/gtest_prod.h>
+
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -245,7 +246,12 @@ class RayLog : public RayLogBase {
   static bool IsLevelEnabled(RayLogLevel log_level);
 
   /// Install the failure signal handler to output call stack when crash.
-  static void InstallFailureSignalHandler();
+  ///
+  /// \param argv0 This is the argv[0] supplied to main(). It enables an alternative way
+  /// to locate the object file containing debug symbols for ELF format executables. If
+  /// this is left as nullptr, symbolization can fail in some cases. More details in:
+  /// https://github.com/abseil/abseil-cpp/blob/master/absl/debugging/symbolize_elf.inc
+  static void InstallFailureSignalHandler(const char *argv0);
 
   /// To check failure signal handler enabled or not.
   static bool IsFailureSignalHandlerEnabled();
