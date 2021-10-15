@@ -2,7 +2,7 @@ import numpy as np
 import time
 import ray
 import ray.autoscaler.sdk
-from ray.test_utils import Semaphore
+from ray._private.test_utils import Semaphore
 
 import json
 import os
@@ -199,7 +199,8 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "num_args": MAX_ARGS,
         "returns_time": returns_time,
         "num_returns": MAX_RETURNS,
-        "get_time": MAX_RAY_GET_ARGS,
+        "get_time": get_time,
+        "num_get_args": MAX_RAY_GET_ARGS,
         "queued_time": queued_time,
         "num_queued": MAX_QUEUED_TASKS,
         "large_object_time": large_object_time,

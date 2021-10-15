@@ -47,7 +47,7 @@ class ServeRLlibPolicy:
 
         # Compute and return the action for the given observation.
         obs = json_input["observation"]
-        action = self.trainer.compute_action(obs)
+        action = self.trainer.compute_single_action(obs)
 
         return {"action": int(action)}
 

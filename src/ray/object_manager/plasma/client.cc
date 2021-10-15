@@ -512,17 +512,6 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
                     is_from_worker);
 }
 
-Status PlasmaClient::Impl::Get(const ObjectID *object_ids, int64_t num_objects,
-                               int64_t timeout_ms, ObjectBuffer *out,
-                               bool is_from_worker) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
-  const auto wrap_buffer = [](const ObjectID &object_id,
-                              const std::shared_ptr<Buffer> &buffer) { return buffer; };
-  return GetBuffers(object_ids, num_objects, timeout_ms, wrap_buffer, out,
-                    is_from_worker);
-}
-
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
   auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
@@ -692,16 +681,6 @@ Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
   return Status::OK();
 }
 
-Status PlasmaClient::Impl::SetClientOptions(const std::string &client_name,
-                                            int64_t output_memory_quota) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  RAY_RETURN_NOT_OK(SendSetOptionsRequest(store_conn_, client_name, output_memory_quota));
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(
-      PlasmaReceive(store_conn_, MessageType::PlasmaSetOptionsReply, &buffer));
-  return ReadSetOptionsReply(buffer.data(), buffer.size());
-}
-
 Status PlasmaClient::Impl::Disconnect() {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
@@ -745,11 +724,6 @@ Status PlasmaClient::Connect(const std::string &store_socket_name,
                         num_retries);
 }
 
-Status PlasmaClient::SetClientOptions(const std::string &client_name,
-                                      int64_t output_memory_quota) {
-  return impl_->SetClientOptions(client_name, output_memory_quota);
-}
-
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             const ray::rpc::Address &owner_address,
                                             int64_t data_size, const uint8_t *metadata,
@@ -773,12 +747,6 @@ Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,
 Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                          std::vector<ObjectBuffer> *object_buffers, bool is_from_worker) {
   return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
-}
-
-Status PlasmaClient::Get(const ObjectID *object_ids, int64_t num_objects,
-                         int64_t timeout_ms, ObjectBuffer *object_buffers,
-                         bool is_from_worker) {
-  return impl_->Get(object_ids, num_objects, timeout_ms, object_buffers, is_from_worker);
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) {

@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "gtest/gtest_prod.h"
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
@@ -123,6 +124,13 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *node_resource_accessor_;
   }
 
+  /// Get the sub-interface for accessing task information in GCS.
+  /// This function is thread safe.
+  TaskInfoAccessor &Tasks() {
+    RAY_CHECK(task_accessor_ != nullptr);
+    return *task_accessor_;
+  }
+
   /// Get the sub-interface for accessing error information in GCS.
   /// This function is thread safe.
   ErrorInfoAccessor &Errors() {
@@ -159,7 +167,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
-  GcsClient(const GcsClientOptions &options) : options_(options) {}
+  GcsClient(const GcsClientOptions &options = GcsClientOptions()) : options_(options) {}
 
   GcsClientOptions options_;
 
@@ -171,6 +179,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<ObjectInfoAccessor> object_accessor_;
   std::unique_ptr<NodeInfoAccessor> node_accessor_;
   std::unique_ptr<NodeResourceInfoAccessor> node_resource_accessor_;
+  std::unique_ptr<TaskInfoAccessor> task_accessor_;
   std::unique_ptr<ErrorInfoAccessor> error_accessor_;
   std::unique_ptr<StatsInfoAccessor> stats_accessor_;
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;

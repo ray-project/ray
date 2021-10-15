@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <condition_variable>
 
 #include "ray/common/ray_config.h"
@@ -5,6 +19,7 @@
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
+namespace core {
 
 // Notify the user about an unhandled error after this amount of time. This only
 // applies to interactive console (e.g., IPython), see:
@@ -124,13 +139,11 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 }
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
-    std::function<void(const RayObject &, const ObjectID &)> store_in_plasma,
     std::shared_ptr<ReferenceCounter> counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler)
-    : store_in_plasma_(store_in_plasma),
-      ref_counter_(counter),
+    : ref_counter_(std::move(counter)),
       raylet_client_(raylet_client),
       check_signals_(check_signals),
       unhandled_exception_handler_(unhandled_exception_handler) {}
@@ -171,33 +184,14 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
   return ptr;
 }
 
-std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
-    const ObjectID &object_id) {
-  absl::MutexLock lock(&mu_);
-  auto iter = objects_.find(object_id);
-  if (iter != objects_.end()) {
-    auto obj = iter->second;
-    obj->SetAccessed();
-    if (obj->IsInPlasmaError()) {
-      return nullptr;
-    }
-    return obj;
-  }
-  RAY_CHECK(store_in_plasma_ != nullptr)
-      << "Cannot promote object without plasma provider callback.";
-  promoted_to_plasma_.insert(object_id);
-  return nullptr;
-}
-
 bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
-                                                  object.GetNestedIds(), true);
+                                                  object.GetNestedRefs(), true);
   bool stored_in_direct_memory = true;
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
   // plasma.
-  bool should_put_in_plasma = false;
   {
     absl::MutexLock lock(&mu_);
 
@@ -211,15 +205,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
       auto &callbacks = async_callback_it->second;
       async_callbacks = std::move(callbacks);
       object_async_get_requests_.erase(async_callback_it);
-    }
-
-    auto promoted_it = promoted_to_plasma_.find(object_id);
-    if (promoted_it != promoted_to_plasma_.end()) {
-      RAY_CHECK(store_in_plasma_ != nullptr);
-      // Only need to promote to plasma if it wasn't already put into plasma
-      // by the task that created the object.
-      should_put_in_plasma = !object.IsInPlasmaError();
-      promoted_to_plasma_.erase(promoted_it);
     }
 
     bool should_add_entry = true;
@@ -251,14 +236,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
     if (!async_callbacks.empty()) {
       object_entry->SetAccessed();
     }
-  }
-
-  // Must be called without holding the lock because store_in_plasma_ goes
-  // through the regular CoreWorker::Put() codepath, which calls into the
-  // in-memory store (would cause deadlock).
-  if (should_put_in_plasma) {
-    store_in_plasma_(object, object_id);
-    stored_in_direct_memory = false;
   }
 
   // It's important for performance to run the callbacks outside the lock.
@@ -571,4 +548,5 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
   return item;
 }
 
+}  // namespace core
 }  // namespace ray

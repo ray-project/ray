@@ -12,6 +12,7 @@ import time
 import traceback
 
 import ray.ray_constants as ray_constants
+import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 import ray._private.utils
 from ray._private.ray_logging import setup_component_logger
@@ -23,6 +24,17 @@ logger = logging.getLogger(__name__)
 
 # The groups are worker id, job id, and pid.
 JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-(\d+)-(\d+)")
+# The groups are job id.
+RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
+# Log name update interval under pressure.
+# We need it because log name update is CPU intensive and uses 100%
+# of cpu when there are many log files.
+LOG_NAME_UPDATE_INTERVAL_S = float(
+    os.getenv("LOG_NAME_UPDATE_INTERVAL_S", 0.5))
+# Once there are more files than this threshold,
+# log monitor start giving backpressure to lower cpu usages.
+RAY_LOG_MONITOR_MANY_FILES_THRESHOLD = int(
+    os.getenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", 1000))
 
 
 class LogFileInfo:
@@ -43,6 +55,8 @@ class LogFileInfo:
         self.is_err_file = is_err_file
         self.job_id = job_id
         self.worker_pid = worker_pid
+        self.actor_name = None
+        self.task_name = None
 
 
 class LogMonitor:
@@ -100,6 +114,7 @@ class LogMonitor:
                 if (file_info.worker_pid != "raylet"
                         and file_info.worker_pid != "gcs_server"
                         and file_info.worker_pid != "autoscaler"
+                        and file_info.worker_pid != "runtime_env"
                         and file_info.worker_pid is not None):
                     assert not isinstance(file_info.worker_pid, str), (
                         "PID should be an int type. "
@@ -134,8 +149,12 @@ class LogMonitor:
         monitor_log_paths = glob.glob(f"{self.logs_dir}/monitor.log")
         # If gcs server restarts, there can be multiple log files.
         gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
+        # runtime_env setup process is logged here
+        runtime_env_setup_paths = glob.glob(
+            f"{self.logs_dir}/runtime_env*.log")
+        total_files = 0
         for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +
-                          monitor_log_paths):
+                          monitor_log_paths + runtime_env_setup_paths):
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
@@ -145,6 +164,14 @@ class LogMonitor:
                 else:
                     job_id = None
                     worker_pid = None
+
+                # Perform existence check first because most file will not be
+                # including runtime_env. This saves some cpu cycle.
+                if "runtime_env" in file_path:
+                    runtime_env_job_match = RUNTIME_ENV_SETUP_PATTERN.match(
+                        file_path)
+                    if runtime_env_job_match:
+                        job_id = runtime_env_job_match.group(1)
 
                 is_err_file = file_path.endswith("err")
 
@@ -160,6 +187,8 @@ class LogMonitor:
                         worker_pid=worker_pid))
                 log_filename = os.path.basename(file_path)
                 logger.info(f"Beginning to track file {log_filename}")
+            total_files += 1
+        return total_files
 
     def open_closed_files(self):
         """Open some closed files if they may have new lines.
@@ -225,10 +254,29 @@ class LogMonitor:
             True if anything was published and false otherwise.
         """
         anything_published = False
+        lines_to_publish = []
+
+        def flush():
+            nonlocal lines_to_publish
+            nonlocal anything_published
+            if len(lines_to_publish) > 0:
+                self.redis_client.publish(
+                    gcs_utils.LOG_FILE_CHANNEL,
+                    json.dumps({
+                        "ip": self.ip,
+                        "pid": file_info.worker_pid,
+                        "job": file_info.job_id,
+                        "is_err": file_info.is_err_file,
+                        "lines": lines_to_publish,
+                        "actor_name": file_info.actor_name,
+                        "task_name": file_info.task_name,
+                    }))
+                anything_published = True
+                lines_to_publish = []
+
         for file_info in self.open_file_infos:
             assert not file_info.file_handle.closed
 
-            lines_to_publish = []
             max_num_lines_to_read = 100
             for _ in range(max_num_lines_to_read):
                 try:
@@ -241,7 +289,19 @@ class LogMonitor:
                         break
                     if next_line[-1] == "\n":
                         next_line = next_line[:-1]
-                    lines_to_publish.append(next_line)
+                    if next_line.startswith(
+                            ray_constants.LOG_PREFIX_ACTOR_NAME):
+                        flush()  # Possible change of task/actor name.
+                        file_info.actor_name = next_line.split(
+                            ray_constants.LOG_PREFIX_ACTOR_NAME, 1)[1]
+                        file_info.task_name = None
+                    elif next_line.startswith(
+                            ray_constants.LOG_PREFIX_TASK_NAME):
+                        flush()  # Possible change of task/actor name.
+                        file_info.task_name = next_line.split(
+                            ray_constants.LOG_PREFIX_TASK_NAME, 1)[1]
+                    else:
+                        lines_to_publish.append(next_line)
                 except Exception:
                     logger.error(
                         f"Error: Reading file: {file_info.filename}, "
@@ -256,21 +316,12 @@ class LogMonitor:
                     file_info.worker_pid = "gcs_server"
                 elif "/monitor" in file_info.filename:
                     file_info.worker_pid = "autoscaler"
+                elif "/runtime_env" in file_info.filename:
+                    file_info.worker_pid = "runtime_env"
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
-
-            if len(lines_to_publish) > 0:
-                self.redis_client.publish(
-                    ray.gcs_utils.LOG_FILE_CHANNEL,
-                    json.dumps({
-                        "ip": self.ip,
-                        "pid": file_info.worker_pid,
-                        "job": file_info.job_id,
-                        "is_err": file_info.is_err_file,
-                        "lines": lines_to_publish
-                    }))
-                anything_published = True
+            flush()
 
         return anything_published
 
@@ -280,14 +331,20 @@ class LogMonitor:
         This will query Redis once every second to check if there are new log
         files to monitor. It will also store those log files in Redis.
         """
+        total_log_files = 0
+        last_updated = time.time()
         while True:
-            self.update_log_filenames()
+            elapsed_seconds = int(time.time() - last_updated)
+            if (total_log_files < RAY_LOG_MONITOR_MANY_FILES_THRESHOLD
+                    or elapsed_seconds > LOG_NAME_UPDATE_INTERVAL_S):
+                total_log_files = self.update_log_filenames()
+                last_updated = time.time()
             self.open_closed_files()
             anything_published = self.check_log_files_and_publish_updates()
             # If nothing was published, then wait a little bit before checking
             # for logs to avoid using too much CPU.
             if not anything_published:
-                time.sleep(0.05)
+                time.sleep(0.1)
 
 
 if __name__ == "__main__":

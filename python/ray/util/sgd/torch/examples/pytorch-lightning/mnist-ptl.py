@@ -165,7 +165,7 @@ if __name__ == "__main__":
         ray.init(num_cpus=2)
         args.num_epochs = 1
     elif args.server_address:
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(address=args.address)
     train_mnist(

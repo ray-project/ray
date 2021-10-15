@@ -89,11 +89,11 @@ Deploying an application
 ------------------------
 
 The recommended way of connecting to a Ray cluster is to use the
-``ray.client(...).connect()`` API and connect via the Ray Client.
+``ray.init("ray://<host>:<port>")`` API and connect via the Ray Client.
 
 .. note::
 
-  Using ``ray.client(...).connect()`` is generally a best practice because it allows
+  Using ``ray.init("ray://<host>:<port>")`` is generally a best practice because it allows
   you to test your code locally, and deploy to a cluster with **no code
   changes**.
 

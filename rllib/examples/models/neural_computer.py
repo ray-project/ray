@@ -1,10 +1,10 @@
-import torch
-import gym
-from torch import nn
 from collections import OrderedDict
+import gym
 from typing import Union, Dict, List, Tuple
+
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 try:
@@ -12,6 +12,8 @@ try:
 except ModuleNotFoundError:
     print("dnc module not found. Did you forget to 'pip install dnc'?")
     raise
+
+torch, nn = try_import_torch()
 
 
 class DNCMemory(TorchModelV2, nn.Module):

@@ -155,7 +155,7 @@
 - name: serve
   cluster:
     app_config: app_config.yaml
-    compute_template: tpl_cpu_1.yaml
+    compute_template: tpl_cpu_1_hd.yaml
 
   run:
     timeout: 86400
@@ -170,7 +170,7 @@
 - name: serve_failure
   cluster:
     app_config: app_config.yaml
-    compute_template: tpl_cpu_1.yaml
+    compute_template: tpl_cpu_1_hd.yaml
 
   run:
     timeout: 86400

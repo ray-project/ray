@@ -3,6 +3,7 @@ import sys
 import time
 import os
 import pytest
+from unittest import mock
 
 import pickle
 import numpy as np
@@ -46,11 +47,21 @@ def test_svm_single_node(shutdown_only):
         "class_weight": [None, "balanced"],
     }
 
+    class MockParallel(joblib.Parallel):
+        def _terminate_backend(self):
+            if self._backend is not None:
+                # test ObjectRef caching (PR #16879)
+                assert any(o is digits.data
+                           for o, ref in self._backend._pool._registry)
+                self._backend.terminate()
+
     model = SVC(kernel="rbf")
-    search = RandomizedSearchCV(model, param_space, cv=3, n_iter=2, verbose=10)
-    register_ray()
-    with joblib.parallel_backend("ray"):
-        search.fit(digits.data, digits.target)
+    with mock.patch("sklearn.model_selection._search.Parallel", MockParallel):
+        search = RandomizedSearchCV(
+            model, param_space, cv=3, n_iter=2, verbose=10)
+        register_ray()
+        with joblib.parallel_backend("ray"):
+            search.fit(digits.data, digits.target)
     assert ray.is_initialized()
 
 
@@ -63,11 +74,21 @@ def test_svm_multiple_nodes(ray_start_cluster_2_nodes):
         "class_weight": [None, "balanced"],
     }
 
+    class MockParallel(joblib.Parallel):
+        def _terminate_backend(self):
+            if self._backend is not None:
+                # test ObjectRef caching (PR #16879)
+                assert any(o is digits.data
+                           for o, ref in self._backend._pool._registry)
+                self._backend.terminate()
+
     model = SVC(kernel="rbf")
-    search = RandomizedSearchCV(model, param_space, cv=5, n_iter=2, verbose=10)
-    register_ray()
-    with joblib.parallel_backend("ray"):
-        search.fit(digits.data, digits.target)
+    with mock.patch("sklearn.model_selection._search.Parallel", MockParallel):
+        search = RandomizedSearchCV(
+            model, param_space, cv=5, n_iter=2, verbose=10)
+        register_ray()
+        with joblib.parallel_backend("ray"):
+            search.fit(digits.data, digits.target)
     assert ray.is_initialized()
 
 

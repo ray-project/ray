@@ -7,20 +7,21 @@ import socket
 import subprocess
 import sys
 import traceback
+import warnings
 
 import aioredis
 
 import ray
-import ray.gcs_utils
-import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
-from ray.new_dashboard import k8s_utils
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
+from ray.dashboard import k8s_utils
+import ray.dashboard.utils as dashboard_utils
 import ray._private.services
 import ray._private.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS)
 from ray._private.metrics_agent import MetricsAgent, Gauge, Record
+from ray.util.debug import log_once
 import psutil
 
 logger = logging.getLogger(__name__)
@@ -30,10 +31,13 @@ IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 
 try:
     import gpustat.core as gpustat
-except ImportError:
+except (ModuleNotFoundError, ImportError):
     gpustat = None
-    logger.warning(
-        "Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
+    if log_once("gpustat_import_warning"):
+        warnings.warn("`gpustat` package is not installed. GPU monitoring is "
+                      "not available. To have full functionality of the "
+                      "dashboard please install `pip install ray["
+                      "default]`.)")
 
 
 def recursive_asdict(o):
@@ -236,19 +240,18 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_disk_usage():
-        dirs = [
-            os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep,
-            ray._private.utils.get_user_temp_dir(),
-        ]
         if IN_KUBERNETES_POD:
             # If in a K8s pod, disable disk display by passing in dummy values.
             return {
-                x: psutil._common.sdiskusage(
+                "/": psutil._common.sdiskusage(
                     total=1, used=0, free=1, percent=0.0)
-                for x in dirs
             }
-        else:
-            return {x: psutil.disk_usage(x) for x in dirs}
+        root = os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep
+        tmp = ray._private.utils.get_user_temp_dir()
+        return {
+            "/": psutil.disk_usage(root),
+            tmp: psutil.disk_usage(tmp),
+        }
 
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()

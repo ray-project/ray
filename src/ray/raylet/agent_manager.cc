@@ -17,6 +17,8 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 
@@ -34,6 +36,8 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
                 << ", port: " << agent_port_ << ", pid: " << agent_pid_;
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
+  // Reset the restart count after registration is done.
+  agent_restart_count_ = 0;
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
@@ -63,14 +67,16 @@ void AgentManager::StartAgent() {
   ProcessEnvironment env;
   env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
   env.insert({"RAY_RAYLET_PID", std::to_string(getpid())});
+  // Report the restart count to the agent so that we can decide whether or not
+  // report the error message to drivers.
+  env.insert({"RESTART_COUNT", std::to_string(agent_restart_count_)});
+  env.insert({"MAX_RESTART_COUNT",
+              std::to_string(RayConfig::instance().agent_max_restart_count())});
   Process child(argv.data(), nullptr, ec, false, env);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent with return value " << ec << ": "
                    << ec.message();
-    RAY_UNUSED(delay_executor_([this] { StartAgent(); },
-                               RayConfig::instance().agent_restart_interval_ms()));
-    return;
   }
 
   std::thread monitor_thread([this, child]() mutable {
@@ -81,8 +87,11 @@ void AgentManager::StartAgent() {
     auto timer = delay_executor_(
         [this, child]() mutable {
           if (agent_pid_ != child.GetId()) {
-            RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                             << " has not registered, restart it.";
+            RAY_EVENT(ERROR, EL_RAY_AGENT_NOT_REGISTERED)
+                    .WithField("ip", agent_ip_address_)
+                    .WithField("pid", agent_pid_)
+                << "Agent process with pid " << child.GetId()
+                << " has not registered, restart it.";
             child.Kill();
           }
         },
@@ -91,30 +100,57 @@ void AgentManager::StartAgent() {
     int exit_code = child.Wait();
     timer->cancel();
 
-    RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                     << " exit, return value " << exit_code;
-    RAY_UNUSED(delay_executor_([this] { StartAgent(); },
-                               RayConfig::instance().agent_restart_interval_ms()));
+    RAY_EVENT(ERROR, EL_RAY_AGENT_EXIT)
+            .WithField("ip", agent_ip_address_)
+            .WithField("pid", agent_pid_)
+        << "Agent process with pid " << child.GetId() << " exit, return value "
+        << exit_code;
+    if (agent_restart_count_ < RayConfig::instance().agent_max_restart_count()) {
+      RAY_UNUSED(delay_executor_(
+          [this] {
+            agent_restart_count_++;
+            StartAgent();
+          },
+          // Retrying with exponential backoff
+          RayConfig::instance().agent_restart_interval_ms() *
+              std::pow(2, (agent_restart_count_ + 1))));
+    } else {
+      RAY_LOG(INFO) << "Agent has failed "
+                    << RayConfig::instance().agent_max_restart_count()
+                    << " times in a row without registering the agent. This is highly "
+                       "likely there's a bug in the dashboard agent. Please check out "
+                       "the dashboard_agent.log file.";
+    }
   });
   monitor_thread.detach();
 }
 
-void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
-                                    CreateRuntimeEnvCallback callback) {
+void AgentManager::CreateRuntimeEnv(
+    const JobID &job_id, const std::string &serialized_runtime_env,
+    const std::string &serialized_allocated_resource_instances,
+    CreateRuntimeEnvCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
         << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
         << serialized_runtime_env;
-    delay_executor_([this, serialized_runtime_env,
-                     callback] { CreateRuntimeEnv(serialized_runtime_env, callback); },
-                    RayConfig::instance().agent_manager_retry_interval_ms());
+    delay_executor_(
+        [this, job_id, serialized_runtime_env, serialized_allocated_resource_instances,
+         callback] {
+          CreateRuntimeEnv(job_id, serialized_runtime_env,
+                           serialized_allocated_resource_instances, callback);
+        },
+        RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
   rpc::CreateRuntimeEnvRequest request;
+  request.set_job_id(job_id.Hex());
   request.set_serialized_runtime_env(serialized_runtime_env);
+  request.set_serialized_allocated_resource_instances(
+      serialized_allocated_resource_instances);
   runtime_env_agent_client_->CreateRuntimeEnv(
-      request, [this, serialized_runtime_env, callback](
-                   Status status, const rpc::CreateRuntimeEnvReply &reply) {
+      request,
+      [this, job_id, serialized_runtime_env, serialized_allocated_resource_instances,
+       callback](const Status &status, const rpc::CreateRuntimeEnvReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true, reply.serialized_runtime_env_context());
@@ -130,51 +166,49 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
               << ", status = " << status
               << ", maybe there are some network problems, will retry it later.";
           delay_executor_(
-              [this, serialized_runtime_env, callback] {
-                CreateRuntimeEnv(serialized_runtime_env, callback);
+              [this, job_id, serialized_runtime_env,
+               serialized_allocated_resource_instances, callback] {
+                CreateRuntimeEnv(job_id, serialized_runtime_env,
+                                 serialized_allocated_resource_instances, callback);
               },
               RayConfig::instance().agent_manager_retry_interval_ms());
         }
       });
 }
 
-void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
-                                    DeleteRuntimeEnvCallback callback) {
+void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
+                              DeleteURIsCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
-        << "Runtime env agent is not registered yet. Will retry DeleteRuntimeEnv later: "
-        << serialized_runtime_env;
-    delay_executor_([this, serialized_runtime_env,
-                     callback] { DeleteRuntimeEnv(serialized_runtime_env, callback); },
+        << "Runtime env agent is not registered yet. Will retry DeleteURIs later.";
+    delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
                     RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::DeleteRuntimeEnvRequest request;
-  request.set_serialized_runtime_env(serialized_runtime_env);
-  runtime_env_agent_client_->DeleteRuntimeEnv(
-      request, [this, serialized_runtime_env, callback](
-                   Status status, const rpc::DeleteRuntimeEnvReply &reply) {
-        if (status.ok()) {
-          if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-            callback();
-          } else {
-            RAY_LOG(ERROR) << "Failed to delete runtime env: " << serialized_runtime_env
-                           << ", error message: " << reply.error_message();
-            callback();
-          }
+  rpc::DeleteURIsRequest request;
+  for (const auto &uri : uris) {
+    request.add_uris(uri);
+  }
+  runtime_env_agent_client_->DeleteURIs(request, [this, uris, callback](
+                                                     Status status,
+                                                     const rpc::DeleteURIsReply &reply) {
+    if (status.ok()) {
+      if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
+        callback(true);
+      } else {
+        RAY_LOG(ERROR) << "Failed to delete URIs"
+                       << ", error message: " << reply.error_message();
+        callback(false);
+      }
 
-        } else {
-          RAY_LOG(ERROR)
-              << "Failed to delete the runtime env: " << serialized_runtime_env
-              << ", status = " << status
-              << ", maybe there are some network problems, will retry it later.";
-          delay_executor_(
-              [this, serialized_runtime_env, callback] {
-                DeleteRuntimeEnv(serialized_runtime_env, callback);
-              },
-              RayConfig::instance().agent_manager_retry_interval_ms());
-        }
-      });
+    } else {
+      RAY_LOG(ERROR) << "Failed to delete URIs"
+                     << ", status = " << status
+                     << ", maybe there are some network problems, will retry it later.";
+      delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
+                      RayConfig::instance().agent_manager_retry_interval_ms());
+    }
+  });
 }
 
 }  // namespace raylet

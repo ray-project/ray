@@ -5,7 +5,7 @@ import time
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.test_utils import get_other_nodes
+from ray._private.test_utils import get_other_nodes
 
 
 def update_progress(result):
@@ -74,12 +74,11 @@ while True:
           "  - Total elapsed time: {}.".format(
               iteration, new_time - previous_time, new_time,
               new_time - start_time))
-    previous_time = new_time
-    iteration += 1
-
     update_progress({
         "iteration": iteration,
         "iteration_time": new_time - previous_time,
         "absolute_time": new_time,
         "elapsed_time": new_time - start_time,
     })
+    previous_time = new_time
+    iteration += 1

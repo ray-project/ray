@@ -21,6 +21,7 @@
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
@@ -31,6 +32,7 @@
 
 namespace ray {
 namespace gcs {
+class GcsActorWorkerAssignment;
 
 /// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
 /// the fields inside `ActorTableData`.
@@ -85,7 +87,8 @@ class GcsActor {
       break;
     }
 
-    actor_table_data_.set_serialized_runtime_env(task_spec.serialized_runtime_env());
+    actor_table_data_.set_serialized_runtime_env(
+        task_spec.runtime_env().serialized_runtime_env());
   }
 
   /// Get the node id on which this actor is created.
@@ -125,14 +128,21 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
+  std::shared_ptr<const GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
+
+  void SetActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr);
+
  private:
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
+  // TODO(Chong-Li): Considering shared assignments, this pointer would be moved out.
+  std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr_ = nullptr;
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
-using CreateActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+using CreateActorCallback =
+    std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>;
 
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
@@ -185,6 +195,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_pub_sub Used to publish gcs message.
   GcsActorManager(
+      boost::asio::io_context &io_context,
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
@@ -211,6 +222,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void HandleGetNamedActorInfo(const rpc::GetNamedActorInfoRequest &request,
                                rpc::GetNamedActorInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleListNamedActors(const rpc::ListNamedActorsRequest &request,
+                             rpc::ListNamedActorsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                              rpc::GetAllActorInfoReply *reply,
@@ -248,6 +263,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \returns ActorID The ID of the actor. Nil if the actor was not found.
   ActorID GetActorIDByName(const std::string &name,
                            const std::string &ray_namespace) const;
+
+  /// Get names of named actors.
+  //
+  /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
+  /// \param[in] namespace The namespace to filter to if all_namespaces is false.
+  /// \returns List of <namespace, name> pairs.
+  std::vector<std::pair<std::string, std::string>> ListNamedActors(
+      bool all_namespaces, const std::string &ray_namespace) const;
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources
@@ -289,7 +312,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// creation task has been scheduled successfully.
   ///
   /// \param actor The actor that has been created.
-  void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor);
+  void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
+                              const rpc::PushTaskReply &reply);
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
@@ -319,6 +343,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void CollectStats() const;
 
   std::string DebugString() const;
+
+  bool GetSchedulePendingActorsPosted() const;
+
+  void SetSchedulePendingActorsPosted(bool posted);
 
  private:
   /// A data structure representing an actor's owner.
@@ -409,6 +437,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_timestamp(actor.timestamp());
     actor_delta->set_pid(actor.pid());
+    // Acotr's namespace and name are used for removing cached name when it's dead.
+    if (!actor.ray_namespace().empty()) {
+      actor_delta->set_ray_namespace(actor.ray_namespace());
+    }
+    if (!actor.name().empty()) {
+      actor_delta->set_name(actor.name());
+    }
     return actor_delta;
   }
 
@@ -457,6 +492,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// according to its owner, or the owner dies.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
+  boost::asio::io_context &io_context_;
   /// The scheduler to schedule all registered actors.
   std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
@@ -480,6 +516,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
 
+  /// Indicate whether a call of SchedulePendingActors has been posted.
+  bool schedule_pending_actors_posted_;
+
   // Debug info.
   enum CountType {
     REGISTER_ACTOR_REQUEST = 0,
@@ -488,7 +527,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     GET_NAMED_ACTOR_INFO_REQUEST = 3,
     GET_ALL_ACTOR_INFO_REQUEST = 4,
     KILL_ACTOR_REQUEST = 5,
-    CountType_MAX = 6,
+    LIST_NAMED_ACTORS_REQUEST = 6,
+    CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

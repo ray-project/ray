@@ -1,6 +1,7 @@
 import gym
 from gym.spaces import Box, Discrete
 import numpy as np
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -115,8 +116,10 @@ class SACTorchModel(TorchModelV2, nn.Module):
             else:
                 target_entropy = -np.prod(action_space.shape)
 
-        self.target_entropy = torch.tensor(
-            data=[target_entropy], dtype=torch.float32, requires_grad=False)
+        target_entropy = nn.Parameter(
+            torch.from_numpy(np.array([target_entropy])).float(),
+            requires_grad=False)
+        self.register_parameter("target_entropy", target_entropy)
 
     @override(TorchModelV2)
     def forward(self, input_dict: Dict[str, TensorType],
@@ -176,7 +179,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
                 self.concat_obs_and_actions = True
             else:
                 if isinstance(orig_space, gym.spaces.Tuple):
-                    spaces = orig_space.spaces
+                    spaces = list(orig_space.spaces)
                 elif isinstance(orig_space, gym.spaces.Dict):
                     spaces = list(orig_space.spaces.values())
                 else:
@@ -279,7 +282,12 @@ class SACTorchModel(TorchModelV2, nn.Module):
             if isinstance(model_out, (list, tuple)):
                 model_out = torch.cat(model_out, dim=-1)
             elif isinstance(model_out, dict):
-                model_out = torch.cat(list(model_out.values()), dim=-1)
+                model_out = torch.cat(
+                    [
+                        torch.unsqueeze(val, 1) if len(val.shape) == 1 else val
+                        for val in tree.flatten(model_out.values())
+                    ],
+                    dim=-1)
         out, _ = self.action_model({"obs": model_out}, [], None)
         return out
 

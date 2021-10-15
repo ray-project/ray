@@ -33,9 +33,6 @@ namespace ray {
 
 using rpc::HeartbeatTableData;
 
-// Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU};
-
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
@@ -51,8 +48,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                            const NodeResources &local_node_resources);
   ClusterResourceScheduler(
       const std::string &local_node_id,
-      const std::unordered_map<std::string, double> &local_node_resources,
-      std::function<int64_t(void)> get_used_object_store_memory = nullptr);
+      const absl::flat_hash_map<std::string, double> &local_node_resources,
+      std::function<int64_t(void)> get_used_object_store_memory = nullptr,
+      std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
@@ -64,8 +62,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
   void AddOrUpdateNode(
       const std::string &node_id,
-      const std::unordered_map<std::string, double> &resource_map_total,
-      const std::unordered_map<std::string, double> &resource_map_available);
+      const absl::flat_hash_map<std::string, double> &resource_map_total,
+      const absl::flat_hash_map<std::string, double> &resource_map_available);
 
   /// Update node resources. This hanppens when a node resource usage udpated.
   ///
@@ -80,13 +78,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \param ID of the node to be removed.
   bool RemoveNode(int64_t node_id);
   bool RemoveNode(const std::string &node_id_string) override;
-
-  /// Check whether a resource request is feasible on a given node. A node is
-  /// feasible if it has the total resources needed to eventually execute the
-  /// task, even if those resources are currently allocated.
-  ///
-  /// \param shape The resource demand's shape.
-  bool IsLocallyFeasible(const std::unordered_map<std::string, double> shape);
 
   /// Check whether a resource request is feasible on a given node. A node is
   /// feasible if it has the total resources needed to eventually execute the
@@ -182,9 +173,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///          return the ID in string format of a node that can schedule the
   //           resource request.
   std::string GetBestSchedulableNode(
-      const std::unordered_map<std::string, double> &resource_request,
-      bool actor_creation, bool force_spillback, int64_t *violations,
-      bool *is_infeasible);
+      const absl::flat_hash_map<std::string, double> &resource_request,
+      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
+      int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
@@ -375,7 +366,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \return True if local node has enough resources to satisfy the resource request.
   /// False otherwise.
   bool AllocateLocalTaskResources(
-      const std::unordered_map<std::string, double> &task_resources,
+      const absl::flat_hash_map<std::string, double> &task_resources,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
   bool AllocateLocalTaskResources(const ResourceRequest &resource_request,
@@ -390,7 +381,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// False otherwise.
   bool AllocateRemoteTaskResources(
       const std::string &node_id,
-      const std::unordered_map<std::string, double> &task_resources);
+      const absl::flat_hash_map<std::string, double> &task_resources);
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
@@ -413,8 +404,15 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// fields used.
   void FillResourceUsage(rpc::ResourcesData &resources_data) override;
 
+  /// Populate a UpdateResourcesRequest. This is inteneded to update the
+  /// resource totals on a node when a custom resource is created or deleted
+  /// (e.g. during the placement group lifecycle).
+  ///
+  /// \param resource_map_filter When returning the resource map, the returned result will
+  /// only contain the keys in the filter. Note that only the key of the map is used.
   /// \return The total resource capacity of the node.
-  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals() const override;
+  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
+      const absl::flat_hash_map<std::string, double> &resource_map_filter) const override;
 
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.
@@ -423,10 +421,28 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void UpdateLastResourceUsage(
       const std::shared_ptr<SchedulingResources> gcs_resources) override;
 
+  double GetLocalAvailableCpus() const override;
+
+  /// Serialize task resource instances to json string.
+  ///
+  /// \param task_allocation Allocated resource instances for a task.
+  /// \return The task resource instances json string
+  std::string SerializedTaskResourceInstances(
+      std::shared_ptr<TaskResourceInstances> task_allocation) const;
+
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 
+  /// Check whether a task request is schedulable on a the local node. A node is
+  /// schedulable if it has the available resources needed to execute the task.
+  ///
+  /// \param shape The resource demand's shape.
+  bool IsLocallySchedulable(const absl::flat_hash_map<std::string, double> &shape);
+
  private:
+  /// Init the information about which resources are unit_instance.
+  void InitResourceUnitInstanceInfo();
+
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.
   ///
@@ -458,6 +474,14 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
+  /// Function to get whether the pull manager is at capacity.
+  std::function<bool(void)> get_pull_manager_at_capacity_;
+
+  // Specify predefine resources that consists of unit-size instances.
+  std::unordered_set<int64_t> predefined_unit_instance_resources_{};
+
+  // Specify custom resources that consists of unit-size instances.
+  std::unordered_set<int64_t> custom_unit_instance_resources_{};
 };
 
 }  // end namespace ray

@@ -1,5 +1,6 @@
 import glob
 import os
+import pickle
 import shutil
 import sys
 import tempfile
@@ -8,13 +9,16 @@ import unittest
 from unittest.mock import patch
 import yaml
 
+from collections import deque
+
 import ray
 from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.integration.docker import DockerSyncer
 from ray.tune.integration.kubernetes import KubernetesSyncer
-from ray.tune.syncer import CommandBasedClient, detect_sync_to_driver
+from ray.tune.syncer import (CommandBasedClient, detect_sync_to_driver,
+                             get_cloud_sync_client)
 
 
 class TestSyncFunctionality(unittest.TestCase):
@@ -23,6 +27,7 @@ class TestSyncFunctionality(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         ray.init(num_cpus=2)
 
@@ -120,7 +125,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 }).trials
 
         with patch.object(CommandBasedClient, "_execute") as mock_fn:
-            with patch("ray.util.get_node_ip_address") as mock_sync:
+            with patch("ray.tune.syncer.get_node_ip_address") as mock_sync:
                 sync_config = tune.SyncConfig(
                     sync_to_driver="echo {source} {target}")
                 mock_sync.return_value = "0.0.0.0"
@@ -169,10 +174,16 @@ class TestSyncFunctionality(unittest.TestCase):
                 time.sleep(1)
                 tune.report(score=i)
 
-        mock = unittest.mock.Mock()
-
         def counter(local, remote):
-            mock()
+            count_file = os.path.join(tmpdir, "count.txt")
+            if not os.path.exists(count_file):
+                count = 0
+            else:
+                with open(count_file, "rb") as fp:
+                    count = pickle.load(fp)
+            count += 1
+            with open(count_file, "wb") as fp:
+                pickle.dump(count, fp)
 
         sync_config = tune.SyncConfig(
             upload_dir="test", sync_to_cloud=counter, cloud_sync_period=1)
@@ -191,7 +202,11 @@ class TestSyncFunctionality(unittest.TestCase):
             sync_config=sync_config,
         ).trials
 
-        self.assertEqual(mock.call_count, 12)
+        count_file = os.path.join(tmpdir, "count.txt")
+        with open(count_file, "rb") as fp:
+            count = pickle.load(fp)
+
+        self.assertEqual(count, 12)
         shutil.rmtree(tmpdir)
 
     def testClusterSyncFunction(self):
@@ -216,7 +231,7 @@ class TestSyncFunctionality(unittest.TestCase):
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
-        with patch("ray.util.get_node_ip_address") as mock_sync:
+        with patch("ray.tune.syncer.get_node_ip_address") as mock_sync:
             mock_sync.return_value = "0.0.0.0"
             sync_config = tune.SyncConfig(sync_to_driver=sync_func_driver)
             [trial] = tune.run(
@@ -249,6 +264,78 @@ class TestSyncFunctionality(unittest.TestCase):
                 },
                 sync_config=sync_config).trials
             self.assertEqual(mock_sync.call_count, 0)
+
+    def testCloudSyncExclude(self):
+        captured = deque(maxlen=1)
+        captured.append("")
+
+        def always_true(*args, **kwargs):
+            return True
+
+        def capture_popen(command, *args, **kwargs):
+            captured.append(command)
+
+        with patch("subprocess.Popen", capture_popen), patch(
+                "distutils.spawn.find_executable", always_true):
+            # S3
+            s3_client = get_cloud_sync_client("s3://test-bucket/test-dir")
+            s3_client.sync_down("s3://test-bucket/test-dir/remote_source",
+                                "local_target")
+
+            self.assertEqual(
+                captured[0].strip(),
+                "aws s3 sync s3://test-bucket/test-dir/remote_source "
+                "local_target --only-show-errors")
+
+            s3_client.sync_down(
+                "s3://test-bucket/test-dir/remote_source",
+                "local_target",
+                exclude=["*/checkpoint_*"])
+            self.assertEqual(
+                captured[0].strip(),
+                "aws s3 sync s3://test-bucket/test-dir/remote_source "
+                "local_target --only-show-errors "
+                "--exclude '*/checkpoint_*'")
+
+            s3_client.sync_down(
+                "s3://test-bucket/test-dir/remote_source",
+                "local_target",
+                exclude=["*/checkpoint_*", "*.big"])
+            self.assertEqual(
+                captured[0].strip(),
+                "aws s3 sync s3://test-bucket/test-dir/remote_source "
+                "local_target --only-show-errors "
+                "--exclude '*/checkpoint_*' --exclude '*.big'")
+
+            # GS
+            gs_client = get_cloud_sync_client("gs://test-bucket/test-dir")
+            gs_client.sync_down("gs://test-bucket/test-dir/remote_source",
+                                "local_target")
+
+            self.assertEqual(
+                captured[0].strip(), "gsutil rsync -r  "
+                "gs://test-bucket/test-dir/remote_source "
+                "local_target")
+
+            gs_client.sync_down(
+                "gs://test-bucket/test-dir/remote_source",
+                "local_target",
+                exclude=["*/checkpoint_*"])
+            self.assertEqual(
+                captured[0].strip(), "gsutil rsync -r "
+                "-x '(.*/checkpoint_.*)' "
+                "gs://test-bucket/test-dir/remote_source "
+                "local_target")
+
+            gs_client.sync_down(
+                "gs://test-bucket/test-dir/remote_source",
+                "local_target",
+                exclude=["*/checkpoint_*", "*.big"])
+            self.assertEqual(
+                captured[0].strip(), "gsutil rsync -r "
+                "-x '(.*/checkpoint_.*)|(.*.big)' "
+                "gs://test-bucket/test-dir/remote_source "
+                "local_target")
 
     def testSyncDetection(self):
         kubernetes_conf = {

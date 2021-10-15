@@ -9,7 +9,7 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 """
 
 import argparse
-from gym.spaces import Tuple, MultiDiscrete, Dict, Discrete
+from gym.spaces import Dict, Discrete, Tuple, MultiDiscrete
 import os
 
 import ray
@@ -17,6 +17,7 @@ from ray import tune
 from ray.tune import register_env, grid_search
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
@@ -51,11 +52,15 @@ parser.add_argument(
     type=float,
     default=7.0,
     help="Reward at which we stop training.")
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     grouping = {
         "group_1": [0, 1],
@@ -80,14 +85,8 @@ if __name__ == "__main__":
             grouping, obs_space=obs_space, act_space=act_space))
 
     if args.run == "contrib/MADDPG":
-        obs_space_dict = {
-            "agent_1": Discrete(6),
-            "agent_2": Discrete(6),
-        }
-        act_space_dict = {
-            "agent_1": TwoStepGame.action_space,
-            "agent_2": TwoStepGame.action_space,
-        }
+        obs_space = Discrete(6)
+        act_space = TwoStepGame.action_space
         config = {
             "learning_starts": 100,
             "env_config": {
@@ -95,12 +94,14 @@ if __name__ == "__main__":
             },
             "multiagent": {
                 "policies": {
-                    "pol1": (None, Discrete(6), TwoStepGame.action_space, {
-                        "agent_id": 0,
-                    }),
-                    "pol2": (None, Discrete(6), TwoStepGame.action_space, {
-                        "agent_id": 1,
-                    }),
+                    "pol1": PolicySpec(
+                        observation_space=obs_space,
+                        action_space=act_space,
+                        config={"agent_id": 0}),
+                    "pol2": PolicySpec(
+                        observation_space=obs_space,
+                        action_space=act_space,
+                        config={"agent_id": 1}),
                 },
                 "policy_mapping_fn": (
                     lambda aid, **kwargs: "pol2" if aid else "pol1"),
@@ -119,7 +120,7 @@ if __name__ == "__main__":
                 "final_epsilon": 0.05,
             },
             "num_workers": 0,
-            "mixer": grid_search([None, "qmix", "vdn"]),
+            "mixer": grid_search([None, "qmix"]),
             "env_config": {
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
@@ -145,6 +146,9 @@ if __name__ == "__main__":
     config = dict(config, **{
         "env": "grouped_twostep" if group else TwoStepGame,
     })
+
+    if args.as_test:
+        config["seed"] = 1234
 
     results = tune.run(args.run, stop=stop, config=config, verbose=2)
 

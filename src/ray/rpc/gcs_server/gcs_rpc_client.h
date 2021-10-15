@@ -104,6 +104,8 @@ class GcsRpcClient {
         address, port, client_call_manager);
     object_info_grpc_client_ = std::make_unique<GrpcClient<ObjectInfoGcsService>>(
         address, port, client_call_manager);
+    task_info_grpc_client_ = std::make_unique<GrpcClient<TaskInfoGcsService>>(
+        address, port, client_call_manager);
     stats_grpc_client_ =
         std::make_unique<GrpcClient<StatsGcsService>>(address, port, client_call_manager);
     worker_info_grpc_client_ = std::make_unique<GrpcClient<WorkerInfoGcsService>>(
@@ -142,6 +144,10 @@ class GcsRpcClient {
 
   /// Get actor data from GCS Service by name.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetNamedActorInfo,
+                             actor_info_grpc_client_, )
+
+  /// Get all named actor names from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, ListNamedActors,
                              actor_info_grpc_client_, )
 
   /// Get all actor data from GCS Service.
@@ -193,6 +199,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, ReportHeartbeat,
                              heartbeat_info_grpc_client_, )
 
+  /// Check GCS is alive.
+  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, CheckAlive,
+                             heartbeat_info_grpc_client_, )
+
   /// Get object's locations from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
                              object_info_grpc_client_, )
@@ -208,6 +218,22 @@ class GcsRpcClient {
   /// Remove location of object to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation,
                              object_info_grpc_client_, )
+
+  /// Add a task to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTask, task_info_grpc_client_, )
+
+  /// Get task information from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, GetTask, task_info_grpc_client_, )
+
+  /// Add a task lease to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTaskLease, task_info_grpc_client_, )
+
+  /// Get task lease information from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, GetTaskLease, task_info_grpc_client_, )
+
+  /// Attempt task reconstruction to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AttemptTaskReconstruction,
+                             task_info_grpc_client_, )
 
   /// Add profile data to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService, AddProfileData, stats_grpc_client_, )
@@ -276,6 +302,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
   std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
   std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
+  std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
   std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>

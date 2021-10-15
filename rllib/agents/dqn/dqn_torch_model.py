@@ -122,7 +122,13 @@ class DQNTorchModel(TorchModelV2, nn.Module):
 
         # Value layer (nodes=1).
         if self.dueling:
-            value_module.add_module("V", SlimFC(ins, 1, activation_fn=None))
+            if use_noisy:
+                value_module.add_module(
+                    "V",
+                    NoisyLayer(ins, self.num_atoms, sigma0, activation=None))
+            elif q_hiddens:
+                value_module.add_module(
+                    "V", SlimFC(ins, self.num_atoms, activation_fn=None))
             self.value_module = value_module
 
     def get_q_value_distributions(self, model_out):

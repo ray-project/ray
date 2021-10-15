@@ -5,8 +5,9 @@ import ray
 
 import numpy as np
 import pytest
+import time
 
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 
 @pytest.mark.parametrize(
@@ -83,6 +84,13 @@ def test_async_actor_task_retries(ray_start_regular):
     assert ray.get(ref_0) == 0
     # seqno 1
     ref_1 = dying.get.remote(1, wait=True)
+    # Need a barrier here to ensure ordering between the async and sync call.
+    # Otherwise ref2 could be executed prior to ref1.
+    for i in range(100):
+        if ray.get(signal.cur_num_waiters.remote()) > 0:
+            break
+        time.sleep(.1)
+    assert ray.get(signal.cur_num_waiters.remote()) > 0
     # seqno 2
     ref_2 = dying.set_should_exit.remote()
     assert ray.get(ref_2) is None

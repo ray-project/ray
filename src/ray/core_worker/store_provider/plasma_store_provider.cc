@@ -20,6 +20,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+namespace core {
 
 void BufferTracker::Record(const ObjectID &object_id, TrackedBuffer *buffer,
                            const std::string &call_site) {
@@ -75,11 +76,6 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
   RAY_IGNORE_EXPR(store_client_.Disconnect());
-}
-
-Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
-                                                       int64_t limit_bytes) {
-  return store_client_.SetClientOptions(name, limit_bytes);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
@@ -186,8 +182,8 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = plasma_results[i].metadata;
       }
-      const auto result_object =
-          std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
+      const auto result_object = std::make_shared<RayObject>(
+          data, metadata, std::vector<rpc::ObjectReference>());
       (*results)[object_id] = result_object;
       remaining.erase(object_id);
       if (result_object->IsException()) {
@@ -223,8 +219,8 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = plasma_results[i].metadata;
       }
-      const auto result_object =
-          std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
+      const auto result_object = std::make_shared<RayObject>(
+          data, metadata, std::vector<rpc::ObjectReference>());
       (*results)[object_id] = result_object;
     }
   }
@@ -278,10 +274,10 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
   // and Get from the local object store in batches. This loop will run indefinitely
   // until the objects are all fetched if timeout is -1.
-  int unsuccessful_attempts = 0;
   bool should_break = false;
   bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;
+  auto fetch_start_time_ms = current_time_ms();
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
     for (const auto &id : remaining) {
@@ -312,8 +308,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     should_break = timed_out || *got_exception;
 
     if ((previous_size - remaining.size()) < batch_ids.size()) {
-      unsuccessful_attempts++;
-      WarnIfAttemptedTooManyTimes(unsuccessful_attempts, remaining);
+      WarnIfFetchHanging(fetch_start_time_ms, remaining);
     }
     if (check_signals_) {
       Status status = check_signals_();
@@ -406,10 +401,10 @@ CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
   return buffer_tracker_->UsedObjects();
 }
 
-void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
-    int num_attempts, const absl::flat_hash_set<ObjectID> &remaining) {
-  if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
-      0) {
+void CoreWorkerPlasmaStoreProvider::WarnIfFetchHanging(
+    int64_t fetch_start_time_ms, const absl::flat_hash_set<ObjectID> &remaining) {
+  int64_t duration_ms = current_time_ms() - fetch_start_time_ms;
+  if (duration_ms > RayConfig::instance().fetch_warn_timeout_milliseconds()) {
     std::ostringstream oss;
     size_t printed = 0;
     for (auto &id : remaining) {
@@ -427,12 +422,10 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
       oss << ", etc";
     }
     RAY_LOG(WARNING)
-        << "Attempted " << num_attempts << " times to reconstruct objects, but "
-        << "some objects are still unavailable. If this message continues to print,"
-        << " it may indicate that object's creating task is hanging, or something "
-           "wrong"
-        << " happened in raylet backend. " << remaining.size()
-        << " object(s) pending: " << oss.str() << ".";
+        << "Objects " << oss.str() << " are still not local after "
+        << (duration_ms / 1000) << "s. "
+        << "If this message continues to print, ray.get() is likely hung. Please file an "
+           "issue at https://github.com/ray-project/ray/issues/.";
   }
 }
 
@@ -447,4 +440,5 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   return Status::OK();
 }
 
+}  // namespace core
 }  // namespace ray

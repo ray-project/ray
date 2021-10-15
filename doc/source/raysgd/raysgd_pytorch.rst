@@ -3,13 +3,16 @@
 Distributed PyTorch
 ===================
 
+.. warning:: This is an older version of Ray SGD. A newer, more light-weight version of Ray SGD is in alpha as of Ray 1.7.
+         See the documentation :ref:`here <sgd-v2-docs>`. To migrate from v1 to v2 you can follow the :ref:`migration guide <sgd-migration>`.
+
 The RaySGD ``TorchTrainer`` simplifies distributed model training for PyTorch.
 
 
 .. image:: raysgd-actors.svg
     :align: center
 
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
 
 The ``TorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to wrap your training code in bash scripts.
 

@@ -16,6 +16,7 @@ class IOContext:
         worker_index (int): When there are multiple workers created, this
             uniquely identifies the current worker.
         worker (RolloutWorker): RolloutWorker object reference.
+        input_config (dict): The input configuration for custom input.
     """
 
     @PublicAPI
@@ -32,3 +33,8 @@ class IOContext:
     @PublicAPI
     def default_sampler_input(self) -> Any:
         return self.worker.sampler
+
+    @PublicAPI
+    @property
+    def input_config(self):
+        return self.config.get("input_config", {})

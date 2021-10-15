@@ -20,6 +20,9 @@ BUILD_DIR="${TRAVIS_BUILD_DIR-}"
 if [ -z "${BUILD_DIR}" ]; then
   BUILD_DIR="${GITHUB_WORKSPACE}"
 fi
+if [ -n "${BUILDKITE-}" ]; then
+  BUILD_DIR="${ROOT_DIR}/../.."
+fi
 TEST_DIR="${BUILD_DIR}/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 DASHBOARD_TEST_SCRIPT="${BUILD_DIR}/python/ray/tests/test_dashboard.py"
@@ -110,6 +113,7 @@ elif [[ "$platform" == "macosx" ]]; then
     PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
 
     # Install the wheel.
+    "$PIP_CMD" uninstall -y ray
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.

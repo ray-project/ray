@@ -79,8 +79,8 @@ def gather_experiences_tree_aggregation(workers: WorkerSet,
     # Divide up the workers between aggregators.
     worker_assignments = [[] for _ in range(config["num_aggregation_workers"])]
     i = 0
-    for w in range(len(workers.remote_workers())):
-        worker_assignments[i].append(w)
+    for worker_idx in range(len(workers.remote_workers())):
+        worker_assignments[i].append(worker_idx)
         i += 1
         i %= len(worker_assignments)
     logger.info("Worker assignments: {}".format(worker_assignments))

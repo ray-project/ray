@@ -4,6 +4,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.options.ActorCreationOptions;
+import io.ray.api.options.CallOptions;
 import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
@@ -151,10 +152,16 @@ public class ClassLoaderTest extends BaseTest {
             BaseActorHandle.class,
             FunctionDescriptor.class,
             Object[].class,
-            Optional.class);
+            Optional.class,
+            CallOptions.class);
     callActorFunctionMethod.setAccessible(true);
     return (ObjectRef<T>)
         callActorFunctionMethod.invoke(
-            TestUtils.getUnderlyingRuntime(), rayActor, functionDescriptor, args, returnType);
+            TestUtils.getUnderlyingRuntime(),
+            rayActor,
+            functionDescriptor,
+            args,
+            returnType,
+            new CallOptions.Builder().build());
   }
 }

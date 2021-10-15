@@ -1,7 +1,8 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+cloud_id: cld_17WvYIBBkdgLwEUNcLeRAE
 region: us-west-2
 
 aws:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:

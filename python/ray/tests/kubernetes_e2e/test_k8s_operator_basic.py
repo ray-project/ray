@@ -66,14 +66,17 @@ def retry_until_true(f):
 
 
 @retry_until_true
-def wait_for_pods(n, namespace=NAMESPACE):
+def wait_for_pods(n, namespace=NAMESPACE, name_filter=""):
     client = kubernetes.client.CoreV1Api()
     pods = client.list_namespaced_pod(namespace=namespace).items
-    # Double-check that the correct image is use.
+    count = 0
     for pod in pods:
-        assert pod.spec.containers[0].image == IMAGE,\
-            pod.spec.containers[0].image
-    return len(pods) == n
+        if name_filter in pod.metadata.name:
+            count += 1
+            # Double-check that the correct image is use.
+            assert pod.spec.containers[0].image == IMAGE,\
+                pod.spec.containers[0].image
+    return count == n
 
 
 @retry_until_true
@@ -320,6 +323,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             print(">>>Submitting a job to test Ray client connection.")
             cmd = f"kubectl -n {NAMESPACE} create -f {job_file.name}"
             subprocess.check_call(cmd, shell=True)
+            wait_for_pods(1, name_filter="job")
             job_pod = [pod for pod in pods() if "job" in pod].pop()
             time.sleep(10)
             wait_for_job(job_pod)

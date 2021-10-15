@@ -58,7 +58,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.server_address:
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(num_cpus=8)
 
@@ -87,7 +87,9 @@ if __name__ == "__main__":
 
     bohb_search = TuneBOHB(
         # space=config_space,  # If you want to set the space manually
-        max_concurrent=4)
+    )
+    bohb_search = tune.suggest.ConcurrencyLimiter(
+        bohb_search, max_concurrent=4)
 
     analysis = tune.run(
         MyTrainableClass,

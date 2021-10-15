@@ -20,7 +20,7 @@
 #include <type_traits>
 
 namespace ray {
-namespace api {
+namespace internal {
 
 template <typename T>
 struct FilterArgType {
@@ -67,5 +67,5 @@ inline std::enable_if_t<std::is_member_function_pointer<Function>::value> Static
       "arguments not match");
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

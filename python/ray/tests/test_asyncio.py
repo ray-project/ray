@@ -1,13 +1,16 @@
 # coding: utf-8
 import asyncio
+import os
 import sys
 import threading
+import time
 
 import pytest
 
 import ray
-from ray.test_utils import SignalActor, kill_actor_and_wait_for_failure, \
-    wait_for_condition
+from ray._private.test_utils import (SignalActor,
+                                     kill_actor_and_wait_for_failure,
+                                     wait_for_condition, wait_for_pid_to_exit)
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -241,6 +244,22 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
     ray.get(check_actor_gone_now.remote())
 
 
+def test_asyncio_exit_actor_no_process_leak(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+        async def exit(self):
+            ray.actor.exit_actor()
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.exit.remote())
+    wait_for_pid_to_exit(pid)
+
+
 def test_async_callback(ray_start_regular_shared):
     global_set = set()
 
@@ -284,6 +303,8 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     # Test we report unhandled exceptions.
     ray.worker._unhandled_error_handler = interceptor
     x1 = f.remote()
+    # NOTE: Unhandled exception is from waiting for the value of x1's ObjectID
+    # in x1's destructor, and receiving an exception from f() instead.
     del x1
     wait_for_condition(lambda: num_exceptions == 1)
 
@@ -294,6 +315,27 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     del x1
     await asyncio.sleep(1)
     assert num_exceptions == 1, num_exceptions
+
+
+# This case tests that the asyncio actor shouldn't create thread
+# pool with max_concurrency threads. Otherwise it will allocate
+# too many resources for threads to lead worker crash.
+def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def sync_thread_id(self):
+            time.sleep(2)
+            return threading.current_thread().ident
+
+        async def async_thread_id(self):
+            time.sleep(2)
+            return threading.current_thread().ident
+
+    a = Actor.options(max_concurrency=100000).remote()
+    sync_id, async_id = ray.get(
+        [a.sync_thread_id.remote(),
+         a.async_thread_id.remote()])
+    assert sync_id == async_id
 
 
 if __name__ == "__main__":

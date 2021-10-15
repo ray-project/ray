@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import click
 from datetime import datetime
@@ -15,17 +15,20 @@ from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
-                             RESULT_DUPLICATE, SHOULD_CHECKPOINT)
+from ray.tune.result import (DEBUG_METRICS, DEFAULT_METRIC, DONE,
+                             TIME_THIS_ITER_S, RESULT_DUPLICATE,
+                             SHOULD_CHECKPOINT)
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
+from ray.tune.experiment import Experiment
 from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
@@ -57,9 +60,13 @@ class _ExperimentCheckpointManager:
 
     """
 
-    def __init__(self, checkpoint_dir: str,
-                 checkpoint_period: Union[int, float, str], start_time: float,
-                 session_str: str, syncer: CloudSyncer):
+    def __init__(self,
+                 checkpoint_dir: str,
+                 checkpoint_period: Union[int, float, str],
+                 start_time: float,
+                 session_str: str,
+                 syncer: CloudSyncer,
+                 sync_trial_checkpoints: bool = True):
         self._checkpoint_dir = checkpoint_dir
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
         if self._auto_checkpoint_enabled:
@@ -71,6 +78,7 @@ class _ExperimentCheckpointManager:
         self._session_str = session_str
 
         self._syncer = syncer
+        self._sync_trial_checkpoints = sync_trial_checkpoints
 
         self._last_checkpoint_time = 0.
 
@@ -123,10 +131,16 @@ class _ExperimentCheckpointManager:
 
         checkpoint_time_start = time.monotonic()
         _serialize_and_write()
-        if force:
-            self._syncer.sync_up()
+
+        if self._sync_trial_checkpoints:
+            exclude = None
         else:
-            self._syncer.sync_up_if_needed()
+            exclude = ["*/checkpoint_*"]
+
+        if force:
+            self._syncer.sync_up(exclude=exclude)
+        else:
+            self._syncer.sync_up_if_needed(exclude=exclude)
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
         if self._auto_checkpoint_enabled:
@@ -193,7 +207,9 @@ class TrialRunner:
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
-    VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY"]
+    VALID_RESUME_TYPES = [
+        True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO"
+    ]
     RAISE = "RAISE"
 
     def __init__(self,
@@ -209,7 +225,8 @@ class TrialRunner:
                  checkpoint_period=None,
                  trial_executor=None,
                  callbacks=None,
-                 metric=None):
+                 metric=None,
+                 driver_sync_trial_checkpoints=False):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
@@ -278,6 +295,8 @@ class TrialRunner:
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
         self._updated_queue = False
+        self._result_wait_time = int(
+            os.getenv("TUNE_TRIAL_RESULT_WAIT_TIME_S", "1"))
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
@@ -292,7 +311,9 @@ class TrialRunner:
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
-        if self._validate_resume(resume_type=resume):
+        if self._validate_resume(
+                resume_type=resume,
+                driver_sync_trial_checkpoints=driver_sync_trial_checkpoints):
             errored_only = False
             if isinstance(resume, str):
                 errored_only = resume.upper() == "ERRORED_ONLY"
@@ -322,21 +343,42 @@ class TrialRunner:
 
         self._callbacks = CallbackList(callbacks or [])
 
-        self._callbacks.setup()
-
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
         self._checkpoint_period = checkpoint_period
-        self._checkpoint_manager = self._create_checkpoint_manager()
+        self._checkpoint_manager = self._create_checkpoint_manager(
+            driver_sync_trial_checkpoints)
 
-    def _create_checkpoint_manager(self):
+    def setup_experiments(self, experiments: List[Experiment],
+                          total_num_samples: int) -> None:
+        """Obtains any necessary information from experiments.
+
+        Mainly used to setup callbacks.
+
+        Args:
+            experiments (List[Experiment]): List of Experiments
+                to use.
+            total_num_samples (int): Total number of samples
+                factoring in grid search samplers.
+        """
+        experiment = experiments[0]
+        spec = experiment.public_spec if experiment else {}
+        spec["total_num_samples"] = total_num_samples
+        self._callbacks.setup(**spec)
+
+    def end_experiment_callbacks(self) -> None:
+        """Calls ``on_experiment_end`` method in callbacks."""
+        self._callbacks.on_experiment_end(trials=self._trials)
+
+    def _create_checkpoint_manager(self, sync_trial_checkpoints: bool = True):
         return _ExperimentCheckpointManager(
             checkpoint_dir=self._local_checkpoint_dir,
             checkpoint_period=self._checkpoint_period,
             start_time=self._start_time,
             session_str=self._session_str,
-            syncer=self._syncer)
+            syncer=self._syncer,
+            sync_trial_checkpoints=sync_trial_checkpoints)
 
     @property
     def resumed(self):
@@ -350,12 +392,52 @@ class TrialRunner:
     def scheduler_alg(self):
         return self._scheduler_alg
 
-    def _validate_resume(self, resume_type):
+    def _run_and_catch(self, func):
+        """Run the corresponding `func`.
+
+        First try to run the function with trials as argument. If the function
+        is expecting TrialRunner instead, catch that exception and run with
+        TrialRunner as argument.
+
+        Note, this is as best as we can do to urge people to migrate while
+        "try" not to break the API. However, since none of TrialExecutor's
+        method guarantees transactional semantics or idempotency, Executor
+        may behave strange in the following scenario:
+
+        def func(trial_runner):
+          non_idempotent_blob
+          f(trial_runner)  # throws AttributeError
+
+        With _run_and_catch, non_idempotent_blob is executed twice, which may
+        lead to weird behaviors.
+        """
+        try:
+            func(self.get_trials())
+        except AttributeError as e:
+            if str(e) != "'list' object has no attribute 'get_trials'":
+                raise
+            else:
+                logger.warning(
+                    "TrialExecutor is migrating off of TrialRunner "
+                    "interface. Expect List[Trial] to be passed in directly. "
+                    "See details at "
+                    "https://github.com/ray-project/ray/issues/17665. "
+                    "Please finish the migration ASAP. "
+                    "Although we try to catch exception and recover from "
+                    "caller side, but as there is no atomicity nor "
+                    "idempotency guaranteed by TrialExecutor API contract, "
+                    "weird behaviors may happen.")
+                func(self)
+
+    def _validate_resume(self, resume_type,
+                         driver_sync_trial_checkpoints=True):
         """Checks whether to resume experiment.
 
         Args:
             resume_type: One of True, "REMOTE", "LOCAL",
-                "PROMPT", "ERRORED_ONLY".
+                "PROMPT", "ERRORED_ONLY", "AUTO".
+            driver_sync_trial_checkpoints: Boolean indicating if the driver
+                should sync trial checkpoints from the driver node to cloud.
         """
         # TODO: Consider supporting ERRORED_ONLY+REMOTE?
         if not resume_type:
@@ -366,29 +448,90 @@ class TrialRunner:
         # Not clear if we need this assertion, since we should always have a
         # local checkpoint dir.
         assert self._local_checkpoint_dir or self._remote_checkpoint_dir
+
+        if resume_type == "AUTO":
+            if self._remote_checkpoint_dir:
+                logger.info(
+                    f"Trying to find and download experiment checkpoint at "
+                    f"{self._remote_checkpoint_dir}")
+                # Todo: This syncs the entire experiment including trial
+                # checkpoints. We should exclude these in the future.
+                try:
+                    self._syncer.sync_down_if_needed()
+                    self._syncer.wait()
+                except TuneError as e:
+                    logger.warning(
+                        f"Got error when trying to sync down: {e} "
+                        f"\nPlease check this error message for potential "
+                        f"access problems - if a directory was not found, "
+                        f"that is expected at this stage when you're starting "
+                        f"a new experiment.")
+                    logger.info(
+                        "No remote checkpoint was found or an error occurred "
+                        "when trying to download the experiment checkpoint. "
+                        "Please check the previous warning message for more "
+                        "details. "
+                        "Ray Tune will now start a new experiment.")
+                    return False
+                logger.info(
+                    "A remote experiment checkpoint was found and will be "
+                    "used to restore the previous experiment state.")
+                return True
+            elif not self.checkpoint_exists(self._local_checkpoint_dir):
+                logger.info("No local checkpoint was found. "
+                            "Ray Tune will now start a new experiment.")
+                return False
+            logger.info(
+                "A local experiment checkpoint was found and will be used "
+                "to restore the previous experiment state.")
+            return True
+
         if resume_type in [True, "LOCAL", "PROMPT", "ERRORED_ONLY"]:
             if not self.checkpoint_exists(self._local_checkpoint_dir):
-                raise ValueError("Called resume when no checkpoint exists "
-                                 "in local directory.")
+                raise ValueError(
+                    f"You called resume ({resume_type}) when no checkpoint "
+                    f"exists in local directory "
+                    f"({self._local_checkpoint_dir}). If you want to start "
+                    f"a new experiment, use `resume=\"AUTO\"` or "
+                    f"`resume=None`. If you expected an experiment to "
+                    f"already exist, check if you supplied the correct "
+                    f"`local_dir` to `tune.run()`.")
             elif resume_type == "PROMPT":
-                if click.confirm("Resume from local directory?"):
+                if click.confirm(f"Resume from local directory? "
+                                 f"({self._local_checkpoint_dir})"):
                     return True
 
         if resume_type in ["REMOTE", "PROMPT"]:
             if resume_type == "PROMPT" and not click.confirm(
-                    "Try downloading from remote directory?"):
+                    f"Try downloading from remote directory? "
+                    f"({self._remote_checkpoint_dir})"):
                 return False
             if not self._remote_checkpoint_dir:
                 raise ValueError(
-                    "Called resume from remote without remote directory.")
+                    "Called resume from remote without remote directory. "
+                    "Fix this by passing a `SyncConfig` object with "
+                    "`upload_dir` set to `tune.run(sync_config=...)`.")
 
             # Try syncing down the upload directory.
-            logger.info("Downloading from %s", self._remote_checkpoint_dir)
-            # TODO(ujvl): Note that this syncs down the entire directory,
-            #  which may also contain trial checkpoints. We should selectively
-            #  sync the necessary files instead.
-            self._syncer.sync_down_if_needed()
-            self._syncer.wait()
+            logger.info(f"Downloading experiment checkpoint from "
+                        f"{self._remote_checkpoint_dir}")
+            if driver_sync_trial_checkpoints:
+                exclude = None
+            else:
+                exclude = ["*/checkpoint_*"]
+
+            try:
+                self._syncer.sync_down_if_needed(exclude=exclude)
+                self._syncer.wait()
+            except TuneError as e:
+                raise RuntimeError(
+                    "Syncing the remote experiment checkpoint to the driver "
+                    "failed. Please check the error message. If you want to "
+                    "start a new experiment, use `resume=\"AUTO\"` or "
+                    "`resume=None`. If you expected an experiment to "
+                    "already exist, check if you supplied the correct "
+                    "`upload_dir` to the `tune.SyncConfig` passed to "
+                    "`tune.run()`.") from e
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError("Called resume when no checkpoint exists "
@@ -473,6 +616,19 @@ class TrialRunner:
             else:
                 self.add_trial(trial)
 
+    def update_pending_trial_resources(
+            self, resources: Union[dict, PlacementGroupFactory]):
+        """Update trial resources when resuming from checkpoint.
+
+        Only updating the pending ones.
+        """
+        assert resources
+        if isinstance(resources, dict) and "gpu" not in resources:
+            resources["gpu"] = 0
+        for trial in self._trials:
+            if trial.status == Trial.PENDING:
+                trial.update_resources(resources=resources)
+
     def is_finished(self):
         """Returns whether all trials have finished running."""
         # The checks here are partly redundant but optimized for quick
@@ -496,7 +652,7 @@ class TrialRunner:
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
-            self.trial_executor.on_step_begin(self)
+            self._run_and_catch(self.trial_executor.on_step_begin)
         with warn_if_slow("callbacks.on_step_begin"):
             self._callbacks.on_step_begin(
                 iteration=self._iteration, trials=self._trials)
@@ -543,12 +699,12 @@ class TrialRunner:
 
         if may_handle_events:
             if self.trial_executor.get_running_trials():
-                timeout = None
+                timeout = self._result_wait_time
                 if self.trial_executor.in_staging_grace_period():
                     timeout = 0.1
-                self._process_events(timeout=timeout)  # blocking
+                self._process_events(timeout=timeout)
             else:
-                self.trial_executor.on_no_available_trials(self)
+                self._run_and_catch(self.trial_executor.on_no_available_trials)
 
         self._stop_experiment_if_needed()
 
@@ -565,7 +721,7 @@ class TrialRunner:
             if self.is_finished():
                 self._server.shutdown()
         with warn_if_slow("on_step_end"):
-            self.trial_executor.on_step_end(self)
+            self._run_and_catch(self.trial_executor.on_step_end)
         with warn_if_slow("callbacks.on_step_end"):
             self._callbacks.on_step_end(
                 iteration=self._iteration, trials=self._trials)
@@ -785,6 +941,8 @@ class TrialRunner:
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
 
+        _trigger_callback_complete = False
+
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             result.update(done=True)
@@ -804,8 +962,7 @@ class TrialRunner:
                         trial=trial,
                         result=result.copy())
 
-            self._callbacks.on_trial_complete(
-                iteration=self._iteration, trials=self._trials, trial=trial)
+            _trigger_callback_complete = True
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
@@ -841,6 +998,10 @@ class TrialRunner:
         # the global checkpoint state.
         self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
+        if _trigger_callback_complete:
+            self._callbacks.on_trial_complete(
+                iteration=self._iteration, trials=self._trials, trial=trial)
+
         if trial.is_saving:
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
@@ -854,15 +1015,18 @@ class TrialRunner:
     def _validate_result_metrics(self, result):
         """
         Check if any of the required metrics was not reported
-        in the last result. If the only item is `done=True`, this
-        means that no result was ever received and the trial just
-        returned. This is also okay and will not raise an error.
+        in the last result. If the only items are ``done`` or any of
+        DEBUG_METRICS, this means that no result was ever received and
+        the trial just returned. This is also okay and will not raise
+        an error.
 
         This will ignore checking for the DEFAULT_METRIC.
         """
-        if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
-                              0)) != 1 and (len(result) > 1
-                                            or "done" not in result):
+        if int(os.environ.get(
+                "TUNE_DISABLE_STRICT_METRIC_CHECKING", 0)) != 1 and (len({
+                    k
+                    for k in result if k not in list(DEBUG_METRICS) + [DONE]
+                }) > 1):
             base_metric = self._metric \
                 if self._metric != DEFAULT_METRIC else None
             scheduler_metric = self._scheduler_alg.metric \
@@ -1183,7 +1347,12 @@ class TrialRunner:
         self._live_trials.discard(trial)
 
     def cleanup_trials(self):
-        self.trial_executor.cleanup(self)
+        self._run_and_catch(self.trial_executor.cleanup)
+
+    def cleanup(self):
+        """Cleanup trials and callbacks."""
+        self.cleanup_trials()
+        self.end_experiment_callbacks()
 
     def _reconcile_live_trials(self):
         """Loop through live trials and remove if terminated"""

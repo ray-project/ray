@@ -51,8 +51,8 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     if (iter->second->state_ == CommitState::COMMITTED) {
       // If the bundle state is already committed, it means that prepare request is just
       // stale.
-      RAY_LOG(INFO) << "Duplicate prepare bundle request, skip it directly. This should "
-                       "only happen when GCS restarts.";
+      RAY_LOG(DEBUG) << "Duplicate prepare bundle request, skip it directly. This should "
+                        "only happen when GCS restarts.";
       return true;
     } else {
       // If there was a bundle in prepare state, it already locked resources, we will
@@ -61,8 +61,7 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     }
   }
 
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
+  auto resource_instances = std::make_shared<TaskResourceInstances>();
   bool allocated = cluster_resource_scheduler_->AllocateLocalTaskResources(
       bundle_spec.GetRequiredResources().GetResourceMap(), resource_instances);
 
@@ -92,7 +91,7 @@ void NewPlacementGroupResourceManager::CommitBundle(
   } else {
     // Ignore request If the bundle state is already committed.
     if (it->second->state_ == CommitState::COMMITTED) {
-      RAY_LOG(INFO) << "Duplicate committ bundle request, skip it directly.";
+      RAY_LOG(DEBUG) << "Duplicate committ bundle request, skip it directly.";
       return;
     }
   }
@@ -103,23 +102,29 @@ void NewPlacementGroupResourceManager::CommitBundle(
   const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
   const auto &task_resource_instances = *bundle_state->resources_;
 
-  for (const auto &resource : bundle_spec.GetFormattedResources()) {
+  const auto &resources = bundle_spec.GetFormattedResources();
+  for (const auto &resource : resources) {
     const auto &resource_name = resource.first;
     const auto &original_resource_name = GetOriginalResourceName(resource_name);
-    const auto &instances =
-        task_resource_instances.Get(original_resource_name, string_id_map);
-
-    cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
+    if (original_resource_name != kBundle_ResourceLabel) {
+      const auto &instances =
+          task_resource_instances.Get(original_resource_name, string_id_map);
+      cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
+    } else {
+      cluster_resource_scheduler_->AddLocalResourceInstances(resource_name,
+                                                             {resource.second});
+    }
   }
   cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
-  update_resources_(cluster_resource_scheduler_->GetResourceTotals());
+  update_resources_(
+      cluster_resource_scheduler_->GetResourceTotals(/*resource_name_filter*/ resources));
 }
 
 void NewPlacementGroupResourceManager::ReturnBundle(
     const BundleSpecification &bundle_spec) {
   auto it = pg_bundles_.find(bundle_spec.BundleId());
   if (it == pg_bundles_.end()) {
-    RAY_LOG(INFO) << "Duplicate cancel request, skip it directly.";
+    RAY_LOG(DEBUG) << "Duplicate cancel request, skip it directly.";
     return;
   }
   const auto &bundle_state = it->second;
@@ -136,8 +141,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
   // Substract placement group resources from resource allocator
   // `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
+  auto resource_instances = std::make_shared<TaskResourceInstances>();
   cluster_resource_scheduler_->AllocateLocalTaskResources(placement_group_resources,
                                                           resource_instances);
 
@@ -150,6 +154,9 @@ void NewPlacementGroupResourceManager::ReturnBundle(
       // will be resource leak.
       cluster_resource_scheduler_->DeleteLocalResource(resource.first);
       deleted.push_back(resource.first);
+    } else {
+      RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
+                     << "] is not empty. Resources are not deleted from the local node.";
     }
   }
   pg_bundles_.erase(it);

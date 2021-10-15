@@ -108,7 +108,8 @@ class PlacementGroupFactory:
                  strategy: str = "PACK",
                  *args,
                  **kwargs):
-        self._bundles = bundles
+        self._bundles = [{k: float(v)
+                          for k, v in bundle.items()} for bundle in bundles]
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs
@@ -121,6 +122,15 @@ class PlacementGroupFactory:
     @property
     def head_cpus(self):
         return self._bundles[0].get("CPU", None)
+
+    @property
+    def required_resources(self) -> Dict[str, float]:
+        """Returns a dict containing the sums of all resources"""
+        resources = {}
+        for bundle in self._bundles:
+            for k, v in bundle.items():
+                resources[k] = resources.get(k, 0) + v
+        return resources
 
     def _bind(self):
         sig = signature(placement_group)
@@ -231,6 +241,11 @@ class PlacementGroupManager:
         self._staging_futures: Dict[ObjectRef, Tuple[PlacementGroupFactory,
                                                      PlacementGroup]] = {}
 
+        # Cache of unstaged PGs (cleaned after full PG removal)
+        self._unstaged_pg_pgf: Dict[PlacementGroup, PlacementGroupFactory] = {}
+        self._unstaged_pgf_pg: Dict[PlacementGroupFactory, Set[
+            PlacementGroup]] = defaultdict(set)
+
         # Placement groups used by trials
         self._in_use_pgs: Dict[PlacementGroup, "Trial"] = {}
         self._in_use_trials: Dict["Trial", PlacementGroup] = {}
@@ -283,7 +298,13 @@ class PlacementGroupManager:
             if force or (time.time() -
                          self._removal_delay) >= self._pgs_for_removal[pg]:
                 self._pgs_for_removal.pop(pg)
+
                 remove_placement_group(pg)
+
+                # Remove from unstaged cache
+                if pg in self._unstaged_pg_pgf:
+                    pgf = self._unstaged_pg_pgf.pop(pg)
+                    self._unstaged_pgf_pg[pgf].discard(pg)
 
     def cleanup_existing_pg(self, block: bool = False):
         """Clean up (remove) all existing placement groups.
@@ -313,7 +334,14 @@ class PlacementGroupManager:
                     # If block=False, only run once
                     has_non_removed_pg_left = block
                     pg = get_placement_group(info["name"])
+
                     remove_placement_group(pg)
+
+                    # Remove from unstaged cache
+                    if pg in self._unstaged_pg_pgf:
+                        pgf = self._unstaged_pg_pgf.pop(pg)
+                        self._unstaged_pgf_pg[pgf].discard(pg)
+
                 time.sleep(0.1)
 
     def stage_trial_pg(self, trial: "Trial"):
@@ -338,12 +366,17 @@ class PlacementGroupManager:
 
     def _stage_pgf_pg(self, pgf: PlacementGroupFactory):
         """Create placement group for factory"""
-        # This creates the placement group
-        pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
+        if len(self._unstaged_pgf_pg[pgf]) > 0:
+            # This re-uses a previously unstaged placement group
+            pg = self._unstaged_pgf_pg[pgf].pop()
+            del self._unstaged_pg_pgf[pg]
+            self._pgs_for_removal.pop(pg, None)
+        else:
+            # This creates the placement group
+            pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
 
         self._staging[pgf].add(pg)
         self._staging_futures[pg.ready()] = (pgf, pg)
-
         self._latest_staging_start_time = time.time()
 
         return True
@@ -414,6 +447,7 @@ class PlacementGroupManager:
         return actor_cls.options(
             placement_group=pg,
             placement_group_bundle_index=0,
+            placement_group_capture_child_tasks=True,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources)
@@ -467,10 +501,15 @@ class PlacementGroupManager:
         pgf = trial.placement_group_factory
 
         staged_pg = self._unstage_unused_pg(pgf)
-        if not staged_pg:
+        if not staged_pg and not self._unstaged_pgf_pg[pgf]:
+            # If we have an unstaged placement group for this factory,
+            # this might be the same one we unstaged previously. If so,
+            # we should continue with the caching. If not, this will be
+            # reconciled later.
             return None
 
-        self.remove_pg(staged_pg)
+        if staged_pg:
+            self.remove_pg(staged_pg)
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
@@ -524,8 +563,14 @@ class PlacementGroupManager:
         self._ready[pgf].add(pg)
         return True
 
-    def return_pg(self, trial: "Trial"):
+    def return_pg(self,
+                  trial: "Trial",
+                  destroy_pg_if_cannot_replace: bool = True):
         """Return pg, making it available for other trials to use.
+
+        If destroy_pg_if_cannot_replace is True, this will only return
+        a placement group if a staged placement group can be replaced
+        by it. If not, it will destroy the placement group.
 
         Args:
             trial (Trial): Return placement group of this trial.
@@ -540,6 +585,16 @@ class PlacementGroupManager:
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
+
+        if destroy_pg_if_cannot_replace:
+            staged_pg = self._unstage_unused_pg(pgf)
+
+            # Could not replace
+            if not staged_pg:
+                self.remove_pg(pg)
+                return False
+
+            self.remove_pg(staged_pg)
         self._ready[pgf].add(pg)
 
         return True
@@ -580,6 +635,11 @@ class PlacementGroupManager:
                 if pg == trial_pg:
                     trial_future = future
                     break
+
+            # Track unstaged placement groups for potential reuse
+            self._unstaged_pg_pgf[trial_pg] = pgf
+            self._unstaged_pgf_pg[pgf].add(trial_pg)
+
             del self._staging_futures[trial_future]
 
         elif self._ready[pgf]:
@@ -650,6 +710,15 @@ class PlacementGroupManager:
 
             pgf_expected[trial.placement_group_factory] += \
                 1 if trial.status in ["PAUSED", "PENDING", "RUNNING"] else 0
+
+        # Ensure that unexpected placement groups are accounted for
+        for pgf in self._staging:
+            if pgf not in pgf_expected:
+                pgf_expected[pgf] = 0
+
+        for pgf in self._ready:
+            if pgf not in pgf_expected:
+                pgf_expected[pgf] = 0
 
         # Count cached placement groups
         for pg, pgf in self._cached_pgs.items():

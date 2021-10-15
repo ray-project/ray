@@ -106,7 +106,8 @@ if __name__ == "__main__":
         use_gpu=False if args.smoke_test else True,
         num_hosts=1 if args.smoke_test else 2,
         num_slots=2 if args.smoke_test else 2,
-        replicate_pem=False)
+        replicate_pem=False,
+        timeout_s=300)
 
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),

@@ -6,44 +6,31 @@ pendulum-cql:
     env: Pendulum-v0
     run: CQL
     stop:
-        episode_reward_mean: -300
-        #timesteps_total: 10000
+        evaluation/episode_reward_mean: -700
+        timesteps_total: 100000
     config:
         # Works for both torch and tf.
         framework: tf
+
         # Use one or more offline files or "input: sampler" for online learning.
-        input: ["/your/json/file/here"]
-        horizon: 200
-        soft_horizon: true
-        Q_model:
-          fcnet_activation: relu
-          fcnet_hiddens: [256, 256]
-        policy_model:
-          fcnet_activation: relu
-          fcnet_hiddens: [256, 256]
-        tau: 0.005
-        target_entropy: auto
-        no_done_at_end: true
-        n_step: 3
-        rollout_fragment_length: 1
-        prioritized_replay: false
-        train_batch_size: 256
-        target_network_update_freq: 1
-        timesteps_per_iteration: 1000
-        learning_starts: 256
-        optimization:
-          actor_learning_rate: 0.0003
-          critic_learning_rate: 0.0003
-          entropy_learning_rate: 0.0003
-        num_workers: 0
-        num_gpus: 1
-        clip_actions: False
-        normalize_actions: true
-        evaluation_num_workers: 1
-        evaluation_interval: 1
+        input: ["tests/data/pendulum/enormous.zip"]
+        # Our input file above comes from an SAC run. Actions in there
+        # are already normalized (produced by SquashedGaussian).
+        actions_in_input_normalized: true
+        clip_actions: true
+
+        twin_q: true
+        train_batch_size: 2000
+        learning_starts: 0
+        bc_iters: 100
+
         metrics_smoothing_episodes: 5
-        bc_iters: 0
+
         # Evaluate in an actual environment.
+        evaluation_interval: 1
+        evaluation_num_workers: 2
+        evaluation_num_episodes: 10
+        evaluation_parallel_to_training: true
         evaluation_config:
             input: sampler
             explore: False

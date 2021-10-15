@@ -23,7 +23,7 @@ if __name__ == "__main__":
         ray.init(num_cpus=2)  # force pausing to happen for test
     else:
         if args.server_address:
-            ray.util.connect(args.server_address)
+            ray.init(f"ray://{args.server_address}")
         else:
             ray.init()
 

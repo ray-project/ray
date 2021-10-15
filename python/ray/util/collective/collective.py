@@ -26,9 +26,6 @@ try:
         gloo_collective_group import GLOOGroup
 except ImportError:
     _GLOO_AVAILABLE = False
-    logger.warning("PyGloo seems unavailable. Please install PyGloo "
-                   "following the guide at: "
-                   "https://github.com/ray-project/pygloo.")
 
 
 def nccl_available():
@@ -620,6 +617,21 @@ def recv_multigpu(tensor,
     opts.src_rank = src_rank
     opts.src_gpu_index = src_gpu_index
     g.recv([tensor], opts)
+
+
+def synchronize(gpu_id: int):
+    """Synchronize the current process to a give device.
+
+    Args:
+        gpu_id (int): the GPU device id to synchronize.
+
+    Returns:
+        None
+    """
+    if not types.cupy_available():
+        raise RuntimeError("synchronize call requires CUDA and NCCL.")
+    import cupy as cp
+    cp.cuda.Device(gpu_id).synchronize()
 
 
 def _check_and_get_group(group_name):

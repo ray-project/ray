@@ -6,7 +6,7 @@ import ray
 import ray.rllib.agents.marwil as marwil
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 
@@ -51,7 +51,11 @@ class TestBC(unittest.TestCase):
             trainer = marwil.BCTrainer(config=config, env="CartPole-v0")
             learnt = False
             for i in range(num_iterations):
-                eval_results = trainer.train().get("evaluation")
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+
+                eval_results = results.get("evaluation")
                 if eval_results:
                     print("iter={} R={}".format(
                         i, eval_results["episode_reward_mean"]))

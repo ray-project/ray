@@ -22,6 +22,7 @@
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
+namespace core {
 
 struct LocalityData {
   uint64_t object_size;
@@ -95,4 +96,5 @@ class LocalLeasePolicy : public LeasePolicyInterface {
   const rpc::Address local_node_rpc_address_;
 };
 
+}  // namespace core
 }  // namespace ray

@@ -1,19 +1,80 @@
 # coding: utf-8
+
 import os
+import pytest
+import time
 import unittest
 
 import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune import Trainable
+from ray.tune.callback import Callback
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from unittest.mock import patch
+
+
+class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
+    def setUp(self):
+        os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
+        self.cluster = Cluster(
+            initialize_head=True,
+            connect=True,
+            head_node_args={
+                "num_cpus": 4,
+                "num_gpus": 2,
+            })
+
+    def tearDown(self):
+        ray.shutdown()
+        self.cluster.shutdown()
+
+    # no autoscaler case, resource is not sufficient. Log warning for now.
+    @patch.object(ray.tune.trial_executor.logger, "warning")
+    def testRaiseErrorNoAutoscaler(self, mocked_warn):
+        class FailureInjectorCallback(Callback):
+            """Adds random failure injection to the TrialExecutor."""
+
+            def __init__(self, steps=4):
+                self._step = 0
+                self.steps = steps
+
+            def on_step_begin(self, iteration, trials, **info):
+                self._step += 1
+                if self._step >= self.steps:
+                    raise RuntimeError
+
+        def train(config):
+            pass
+
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                train,
+                callbacks=[
+                    # Make sure that the test is not stuck forever,
+                    # as what would happen for the users now, unfortunately.
+                    FailureInjectorCallback(),
+                ],
+                resources_per_trial={
+                    "cpu": 5,  # more than what the cluster can offer.
+                    "gpu": 3,
+                })
+        msg = ("Ignore this message if the cluster is autoscaling. "
+               "You asked for 5.0 cpu and 3.0 gpu per trial, "
+               "but the cluster only has 4.0 cpu and 2.0 gpu. "
+               "Stop the tuning job and "
+               "adjust the resources requested per trial "
+               "(possibly via `resources_per_trial` "
+               "or via `num_workers` for rllib) "
+               "and/or add more resources to your Ray runtime.")
+        mocked_warn.assert_called_once_with(msg)
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -22,6 +83,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         self.trial_executor = RayTrialExecutor(queue_trials=False)
         ray.init(num_cpus=2, ignore_reinit_error=True)
@@ -190,6 +252,68 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(trial.config.get("hi"), 1)
         self.assertEqual(trial.experiment_tag, "modified_mock")
         self.assertEqual(Trial.RUNNING, trial.status)
+
+    def testForceTrialCleanup(self):
+        class B(Trainable):
+            def step(self):
+                print("Step start")
+                time.sleep(10)
+                print("Step done")
+                return dict(my_metric=1, timesteps_this_iter=1, done=True)
+
+            def reset_config(self, config):
+                self.config = config
+                return True
+
+            def cleanup(self):
+                print("Cleanup start")
+                time.sleep(10)
+                print("Cleanup done")
+
+        # First check if the trials terminate gracefully by default
+        trials = self.generate_trials({
+            "run": B,
+            "config": {
+                "foo": 0
+            },
+        }, "grid_search")
+        trial = trials[0]
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        time.sleep(5)
+        print("Stop trial")
+        self.trial_executor.stop_trial(trial)
+        print("Start trial cleanup")
+        start = time.time()
+        self.trial_executor.cleanup([trial])
+        self.assertGreaterEqual(time.time() - start, 12.0)
+
+        # Check forceful termination. It should run for much less than the
+        # sleep periods in the Trainable
+        trials = self.generate_trials({
+            "run": B,
+            "config": {
+                "foo": 0
+            },
+        }, "grid_search")
+        trial = trials[0]
+        os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "1"
+        self.trial_executor = RayTrialExecutor(queue_trials=False)
+        os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "0"
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        time.sleep(5)
+        print("Stop trial")
+        self.trial_executor.stop_trial(trial)
+        print("Start trial cleanup")
+        start = time.time()
+        self.trial_executor.cleanup([trial])
+        self.assertLess(time.time() - start, 5.0)
+
+        # also check if auto-filled metrics were returned
+        self.assertIn(PID, trial.last_result)
+        self.assertIn(TRIAL_ID, trial.last_result)
+        self.assertNotIn("my_metric", trial.last_result)
 
     @staticmethod
     def generate_trials(spec, name):
@@ -419,8 +543,11 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
+    def testForceTrialCleanup(self):
+        self.skipTest("Skipping as force trial cleanup is not applicable"
+                      " for local mode.")
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

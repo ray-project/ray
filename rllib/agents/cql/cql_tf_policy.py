@@ -12,15 +12,13 @@ import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_tf_policy import \
     apply_gradients as sac_apply_gradients, \
     compute_and_clip_gradients as sac_compute_and_clip_gradients,\
-    get_distribution_inputs_and_class, build_sac_model, \
+    get_distribution_inputs_and_class, _get_dist_class, build_sac_model, \
     postprocess_trajectory, setup_late_mixins, stats, validate_spaces, \
     ActorCriticOptimizerMixin as SACActorCriticOptimizerMixin, \
     ComputeTDErrorMixin, TargetNetworkMixin
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
-    MAX_LOG_NN_OUTPUT
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.exploration.random import Random
@@ -106,8 +104,10 @@ def cql_loss(policy: Policy, model: ModelV2,
         "is_training": True,
     }, [], None)
 
-    action_dist_t = policy.dist_class(
-        model.get_policy_output(model_out_t), policy.model)
+    action_dist_class = _get_dist_class(policy, policy.config,
+                                        policy.action_space)
+    action_dist_t = action_dist_class(
+        model.get_policy_output(model_out_t), model)
     policy_t, log_pis_t = action_dist_t.sample_logp()
     log_pis_t = tf.expand_dims(log_pis_t, -1)
 
@@ -126,34 +126,18 @@ def cql_loss(policy: Policy, model: ModelV2,
         actor_loss = tf.reduce_mean(
             tf.stop_gradient(alpha) * log_pis_t - min_q)
     else:
-
-        def bc_log(model, obs, actions):
-            z = tf.math.atanh(actions)
-            logits = model.get_policy_output(obs)
-            mean, log_std = tf.split(logits, 2, axis=-1)
-            # Mean Clamping for Stability
-            mean = tf.clip_by_value(mean, MEAN_MIN, MEAN_MAX)
-            log_std = tf.clip_by_value(log_std, MIN_LOG_NN_OUTPUT,
-                                       MAX_LOG_NN_OUTPUT)
-            std = tf.math.exp(log_std)
-            normal_dist = tfp.distributions.Normal(mean, std)
-            return tf.reduce_sum(
-                normal_dist.log_prob(z) -
-                tf.math.log(1 - actions * actions + SMALL_NUMBER),
-                axis=-1)
-
-        bc_logp = bc_log(model, model_out_t, actions)
+        bc_logp = action_dist_t.logp(actions)
         actor_loss = tf.reduce_mean(
             tf.stop_gradient(alpha) * log_pis_t - bc_logp)
+        # actor_loss = -tf.reduce_mean(bc_logp)
 
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:
     # Q-values for the batched actions.
-    action_dist_tp1 = policy.dist_class(
-        model.get_policy_output(model_out_tp1), policy.model)
-    policy_tp1, log_pis_tp1 = action_dist_tp1.sample_logp()
+    action_dist_tp1 = action_dist_class(
+        model.get_policy_output(model_out_tp1), model)
+    policy_tp1, _ = action_dist_tp1.sample_logp()
 
-    log_pis_tp1 = tf.expand_dims(log_pis_tp1, -1)
     q_t = model.get_q_values(model_out_t, actions)
     q_t_selected = tf.squeeze(q_t, axis=-1)
     if twin_q:
@@ -189,13 +173,13 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     # CQL Loss (We are using Entropy version of CQL (the best version))
     rand_actions, _ = policy._random_action_generator.get_exploration_action(
-        action_distribution=policy.dist_class(
+        action_distribution=action_dist_class(
             tf.tile(action_dist_tp1.inputs, (num_actions, 1)), model),
         timestep=0,
         explore=True)
-    curr_actions, curr_logp = policy_actions_repeat(model, policy.dist_class,
+    curr_actions, curr_logp = policy_actions_repeat(model, action_dist_class,
                                                     model_out_t, num_actions)
-    next_actions, next_logp = policy_actions_repeat(model, policy.dist_class,
+    next_actions, next_logp = policy_actions_repeat(model, action_dist_class,
                                                     model_out_tp1, num_actions)
 
     q1_rand = q_values_repeat(model, model_out_t, rand_actions)

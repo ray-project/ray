@@ -9,14 +9,14 @@ serve.start()
 
 
 @serve.deployment
-class MyBackend:
+class MyDeployment:
     def __init__(self):
         self.my_counter = metrics.Counter(
             "my_counter",
             description=("The number of excellent requests to this backend."),
-            tag_keys=("backend", ))
+            tag_keys=("deployment", ))
         self.my_counter.set_default_tags({
-            "backend": serve.get_current_backend_tag()
+            "deployment": serve.get_current_deployment()
         })
 
     def call(self, excellent=False):
@@ -24,9 +24,9 @@ class MyBackend:
             self.my_counter.inc()
 
 
-MyBackend.deploy()
+MyDeployment.deploy()
 
-handle = MyBackend.get_handle()
+handle = MyDeployment.get_handle()
 while True:
     ray.get(handle.call.remote(excellent=True))
     time.sleep(1)

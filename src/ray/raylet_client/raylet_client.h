@@ -68,6 +68,10 @@ class WorkerLeaseInterface {
       const ray::TaskSpecification &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1) = 0;
+  virtual void RequestWorkerLease(
+      const rpc::TaskSpec &task_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size = -1) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -88,6 +92,14 @@ class WorkerLeaseInterface {
   virtual void CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
+
+  /// Report the backlog size of a given worker and a given scheduling class to the
+  /// raylet.
+  /// \param worker_id The ID of the worker that reports the backlog size.
+  /// \param backlog_reports The backlog report for each scheduling class
+  virtual void ReportWorkerBacklog(
+      const WorkerID &worker_id,
+      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
 
   virtual ~WorkerLeaseInterface(){};
 };
@@ -117,7 +129,7 @@ class ResourceReserveInterface {
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
   virtual void CancelResourceReserve(
-      BundleSpecification &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
   virtual void ReleaseUnusedBundles(
@@ -348,14 +360,6 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
-  /// Sets a resource with the specified capacity and client id
-  /// \param resource_name Name of the resource to be set
-  /// \param capacity Capacity of the resource
-  /// \param node_id NodeID where the resource is to be set
-  /// \return ray::Status
-  ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::NodeID &node_id);
-
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.
   /// \param callback Callback that will be called after raylet completes the
@@ -368,11 +372,23 @@ class RayletClient : public RayletClientInterface {
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size) override {
+    RequestWorkerLease(resource_spec.GetMessage(), callback, backlog_size);
+  }
+
+  void RequestWorkerLease(
+      const rpc::TaskSpec &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size) override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                            bool disconnect_worker) override;
+
+  /// Implements WorkerLeaseInterface.
+  void ReportWorkerBacklog(
+      const WorkerID &worker_id,
+      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override;
 
   /// Implements WorkerLeaseInterface.
   void ReleaseUnusedWorkers(
@@ -397,7 +413,7 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements CancelResourceReserveInterface.
   void CancelResourceReserve(
-      BundleSpecification &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 
@@ -452,6 +468,9 @@ class RayletClient : public RayletClientInterface {
 
   /// The number of object ID pin RPCs currently in flight.
   std::atomic<int64_t> pins_in_flight_{0};
+
+ protected:
+  RayletClient() {}
 };
 
 }  // namespace raylet

@@ -102,3 +102,13 @@ XGBoost (tune.integration.xgboost)
 .. autoclass:: ray.tune.integration.xgboost.TuneReportCallback
 
 .. autoclass:: ray.tune.integration.xgboost.TuneReportCheckpointCallback
+
+
+.. _tune-integration-lightgbm:
+
+LightGBM (tune.integration.lightgbm)
+------------------------------------
+
+.. autoclass:: ray.tune.integration.lightgbm.TuneReportCallback
+
+.. autoclass:: ray.tune.integration.lightgbm.TuneReportCheckpointCallback

@@ -105,8 +105,6 @@ class SubscriberTest : public ::testing::Test {
  public:
   SubscriberTest()
       : self_node_id_(NodeID::FromRandom()),
-        self_node_address_("address"),
-        self_node_port_(1234),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) {
           std::shared_ptr<SubscriberClientInterface> t = owner_client;
@@ -118,9 +116,9 @@ class SubscriberTest : public ::testing::Test {
   void SetUp() {
     object_subscribed_.clear();
     object_failed_to_subscribe_.clear();
-    subscriber_ = std::make_shared<Subscriber>(
-        self_node_id_, self_node_address_, self_node_port_,
-        /*max_command_batch_size*/ 3, client_pool, &callback_service_);
+    subscriber_ = std::make_shared<Subscriber>(self_node_id_,
+                                               /*max_command_batch_size*/ 3, client_pool,
+                                               &callback_service_);
   }
 
   const rpc::Address GenerateOwnerAddress(
@@ -153,12 +151,19 @@ class SubscriberTest : public ::testing::Test {
     return success;
   }
 
+  bool FailureMessagePublished(rpc::ChannelType channel_type,
+                               std::vector<ObjectID> &object_ids) {
+    auto published = owner_client->FailureMessagePublished(channel_type, object_ids);
+    // reset should be called in order to run the poll_one again.
+    callback_service_.poll();
+    callback_service_.reset();
+    return published;
+  }
+
   void TearDown() {}
 
   instrumented_io_context callback_service_;
   const NodeID self_node_id_;
-  const std::string self_node_address_;
-  const int self_node_port_;
   std::shared_ptr<MockWorkerClient> owner_client;
   std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
       client_pool;
@@ -600,23 +605,34 @@ TEST_F(SubscriberTest, TestFailureMessagePublished) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  auto failure_callback = [this, object_id](const std::string &key_id) {
-    object_failed_to_subscribe_.emplace(object_id);
+  const auto object_id2 = ObjectID::FromRandom();
+  auto failure_callback = [this](const std::string &key_id) {
+    const auto id = ObjectID::FromBinary(key_id);
+    object_failed_to_subscribe_.emplace(id);
   };
   subscriber_->Subscribe(GenerateSubMessage(object_id), channel, owner_addr,
                          object_id.Binary(), subscription_callback, failure_callback);
+  subscriber_->Subscribe(GenerateSubMessage(object_id), channel, owner_addr,
+                         object_id2.Binary(), subscription_callback, failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
 
   // Failure message is published.
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
-  ASSERT_TRUE(owner_client->FailureMessagePublished(channel, objects_batched));
+  ASSERT_TRUE(FailureMessagePublished(channel, objects_batched));
   // Callback is not invoked.
   ASSERT_EQ(object_subscribed_.count(object_id), 0);
   // Failure callback is invoked.
   ASSERT_EQ(object_failed_to_subscribe_.count(object_id), 1);
-  // Since the long polling is failed due to the publisher failure, we shouldn't have any
-  // outstanding long polling request.
+  // Since object2 is still subscribed, we should have the long polling requests.
+  ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
+
+  // Test the second failure is published, and there's no more long polling.
+  objects_batched.clear();
+  objects_batched.push_back(object_id2);
+  ASSERT_TRUE(FailureMessagePublished(channel, objects_batched));
+  ASSERT_EQ(object_subscribed_.count(object_id2), 0);
+  ASSERT_EQ(object_failed_to_subscribe_.count(object_id2), 1);
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
 }
 

@@ -11,43 +11,7 @@ We give two examples, one using a `FastAPI <https://fastapi.tiangolo.com/>`__ we
 Scaling Up a FastAPI Application
 --------------------------------
 
-For this example, you must have either `Pytorch <https://pytorch.org/>`_ or `Tensorflow <https://www.tensorflow.org/>`_ installed, as well as `Huggingface Transformers <https://github.com/huggingface/transformers>`_ and `FastAPI <https://fastapi.tiangolo.com/>`_.  For example:
-
-.. code-block:: bash
-
-  pip install "ray[serve]" tensorflow transformers fastapi
-
-Here’s a simple FastAPI web server. It uses Huggingface Transformers to auto-generate text based on a short initial input using `OpenAI’s GPT-2 model <https://openai.com/blog/better-language-models/>`_.
-
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/fastapi.py
-
-To scale this up, we define a Ray Serve backend containing our text model and call it from Python using a ServeHandle:
-
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/servehandle_fastapi.py
-
-To run this example, save it as ``main.py`` and then in the same directory, run the following commands to start a local Ray cluster on your machine and run the FastAPI application:
-
-.. code-block:: bash
-
-  ray start --head
-  uvicorn main:app
-
-Now you can query your web server, for example by running the following in another terminal:
-
-.. code-block:: bash
-
-  curl "http://127.0.0.1:8000/generate?query=Hello%20friend%2C%20how"
-
-The terminal should then print the generated text:
-
-.. code-block:: bash
-
-  [{"generated_text":"Hello friend, how's your morning?\n\nSven: Thank you.\n\nMRS. MELISSA: I feel like it really has done to you.\n\nMRS. MELISSA: The only thing I"}]%
-
-To clean up the Ray cluster, run ``ray stop`` in the terminal.
-
-.. tip::
-  According to the backend configuration parameter ``num_replicas``, Ray Serve will place multiple replicas of your model across multiple CPU cores and multiple machines (provided you have :ref:`started a multi-node Ray cluster <cluster-index>`), which will correspondingly multiply your throughput.
+Ray Serve has a native integration with FastAPI - please see :ref:`serve-fastapi-http`.
 
 Scaling Up an AIOHTTP Application
 ---------------------------------

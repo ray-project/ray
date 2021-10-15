@@ -165,7 +165,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.server_address:
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
     else:
         num_cpus = 4 if args.smoke_test else None
         ray.init(address=args.address, num_cpus=num_cpus, log_to_driver=True)

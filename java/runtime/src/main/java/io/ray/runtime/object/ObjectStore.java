@@ -3,6 +3,7 @@ package io.ray.runtime.object;
 import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.WaitResult;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
@@ -32,6 +33,16 @@ public abstract class ObjectStore {
   public abstract ObjectId putRaw(NativeRayObject obj);
 
   /**
+   * Put a raw object into object store, and assign its ownership to the actor identified by
+   * ownerActorId.
+   *
+   * @param obj The ray object.
+   * @param ownerActorId The id of the actor to assign ownership.
+   * @return Generated ID of the object.
+   */
+  public abstract ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId);
+
+  /**
    * Put a raw object with specified ID into object store.
    *
    * @param obj The ray object.
@@ -51,6 +62,22 @@ public abstract class ObjectStore {
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
     return putRaw(ObjectSerializer.serialize(object));
+  }
+
+  /**
+   * Serialize and put an object to the object store, and assign its ownership to the actor
+   * identified by ownerActorId.
+   *
+   * @param object The object to put.
+   * @param ownerActorId The id of the actor to assign ownership.
+   * @return Id of the object.
+   */
+  public ObjectId put(Object object, ActorId ownerActorId) {
+    if (object instanceof NativeRayObject) {
+      throw new IllegalArgumentException(
+          "Trying to put a NativeRayObject. Please use putRaw instead.");
+    }
+    return putRaw(ObjectSerializer.serialize(object), ownerActorId);
   }
 
   /**
@@ -197,12 +224,12 @@ public abstract class ObjectStore {
   public abstract Address getOwnerAddress(ObjectId id);
 
   /**
-   * Promote the given object to the underlying object store, and get the ownership info.
+   * Get the ownership info.
    *
    * @param objectId The ID of the object to promote
    * @return the serialized ownership address
    */
-  public abstract byte[] promoteAndGetOwnershipInfo(ObjectId objectId);
+  public abstract byte[] getOwnershipInfo(ObjectId objectId);
 
   /**
    * Add a reference to an ObjectID that will deserialized. This will also start the process to

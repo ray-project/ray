@@ -57,7 +57,7 @@ DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
         "min_iter_time_s": 10,
         "num_workers": 2,
         "num_gpus": 0,
-        "num_data_loader_buffers": 1,
+        "num_multi_gpu_tower_stacks": 1,
         "minibatch_buffer_size": 1,
         "num_sgd_iter": 1,
         "replay_proportion": 0.0,

@@ -421,44 +421,40 @@ def parse_script_args():
 def main():
     args, unknown = parse_script_args()
     logging.info("Received arguments: {}".format(args))
-    success = 1
-    try:
-        # Create test spec
-        test_spec = TestSpec(
-            num_workers=args.num_workers,
-            worker_obj_store_size_in_gb=args.worker_obj_store_size_in_gb,
-            error_rate=args.error_rate,
-            trigger_object_spill=args.trigger_object_spill,
-        )
-        logging.info("Created test spec: {}".format(test_spec))
 
-        # Create the data save path if it doesn't exist.
-        data_save_path = args.data_save_path
-        if not os.path.exists(data_save_path):
-            os.makedirs(data_save_path, mode=0o777, exist_ok=True)
-        os.chmod(data_save_path, mode=0o777)
+    # Create test spec
+    test_spec = TestSpec(
+        num_workers=args.num_workers,
+        worker_obj_store_size_in_gb=args.worker_obj_store_size_in_gb,
+        error_rate=args.error_rate,
+        trigger_object_spill=args.trigger_object_spill,
+    )
+    logging.info("Created test spec: {}".format(test_spec))
 
-        # Lazily construct Xarrays
-        xarray_filename_pairs = lazy_create_xarray_filename_pairs(test_spec)
+    # Create the data save path if it doesn't exist.
+    data_save_path = args.data_save_path
+    if not os.path.exists(data_save_path):
+        os.makedirs(data_save_path, mode=0o777, exist_ok=True)
+    os.chmod(data_save_path, mode=0o777)
 
-        # Connect to the Ray cluster
-        ray.init(address="auto")
+    # Lazily construct Xarrays
+    xarray_filename_pairs = lazy_create_xarray_filename_pairs(test_spec)
 
-        # Save all the Xarrays to disk; this will trigger
-        # Dask computations on Ray.
-        logging.info("Saving {} xarrays..".format(len(xarray_filename_pairs)))
-        SaveRoutines.save_all_xarrays(
-            xarray_filename_pairs=xarray_filename_pairs,
-            dirpath=data_save_path,
-            batch_size=test_spec.batch_size,
-            ray_scheduler=ray_dask_get,
-        )
-        print(ray.internal.internal_api.memory_summary(stats_only=True))
-    except Exception as e:
-        logging.exception(e)
-        success = 0
+    # Connect to the Ray cluster
+    ray.init(address="auto")
+
+    # Save all the Xarrays to disk; this will trigger
+    # Dask computations on Ray.
+    logging.info("Saving {} xarrays..".format(len(xarray_filename_pairs)))
+    SaveRoutines.save_all_xarrays(
+        xarray_filename_pairs=xarray_filename_pairs,
+        dirpath=data_save_path,
+        batch_size=test_spec.batch_size,
+        ray_scheduler=ray_dask_get,
+    )
+    print(ray.internal.internal_api.memory_summary(stats_only=True))
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
-        f.write(json.dumps({"success": success}))
+        f.write(json.dumps({"success": 1}))
 
 
 if __name__ == "__main__":

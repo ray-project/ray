@@ -21,7 +21,7 @@ COPTS_WITHOUT_LOG = select({
     ],
 })
 
-COPTS = ["-DRAY_USE_SPDLOG"] + COPTS_WITHOUT_LOG
+COPTS = COPTS_WITHOUT_LOG
 
 PYX_COPTS = select({
     "//:msvc-cl": [
@@ -128,6 +128,7 @@ def copy_to_workspace(name, srcs, dstdir = ""):
             dstdir = "." + ("\\" + dstdir.replace("/", "\\")).rstrip("\\") + "\\",
         ),
         local = 1,
+        tags = ["no-cache"],
     )
 
 def native_java_binary(module_name, name, native_binary_name):

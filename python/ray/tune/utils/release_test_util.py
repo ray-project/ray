@@ -34,7 +34,11 @@ class ProgressCallback(tune.callback.Callback):
 
 
 class TestDurableTrainable(DurableTrainable):
-    def __init__(self, remote_checkpoint_dir, config, logger_creator=None):
+    def __init__(self,
+                 remote_checkpoint_dir,
+                 config,
+                 logger_creator=None,
+                 **kwargs):
         self.setup_env()
 
         super(TestDurableTrainable, self).__init__(

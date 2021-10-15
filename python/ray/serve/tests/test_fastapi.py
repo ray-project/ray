@@ -11,10 +11,15 @@ from fastapi import (Cookie, Depends, FastAPI, Header, Query, Request,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.applications import Starlette
+import starlette.responses
+from starlette.routing import Route
 
 import ray
 from ray import serve
+from ray.exceptions import GetTimeoutError
 from ray.serve.http_util import make_fastapi_class_based_view
+from ray._private.test_utils import SignalActor
 
 
 def test_fastapi_function(serve_instance):
@@ -387,6 +392,23 @@ def test_fastapi_duplicate_routes(serve_instance):
         assert resp.status_code == 404
 
 
+def test_asgi_compatible(serve_instance):
+    async def homepage(_):
+        return starlette.responses.JSONResponse({"hello": "world"})
+
+    app = Starlette(routes=[Route("/", homepage)])
+
+    @serve.deployment
+    @serve.ingress(app)
+    class MyApp:
+        pass
+
+    MyApp.deploy()
+
+    resp = requests.get("http://localhost:8000/MyApp/")
+    assert resp.json() == {"hello": "world"}
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("route_prefix", [None, "/", "/subpath"])
 def test_doc_generation(serve_instance, route_prefix):
@@ -465,6 +487,112 @@ def test_fastapi_multiple_headers(serve_instance):
 
     resp = requests.get("http://localhost:8000/f")
     assert resp.cookies.get_dict() == {"a": "b", "c": "d"}
+
+
+def test_fastapi_nested_field_in_response_model(serve_instance):
+    # https://github.com/ray-project/ray/issues/16757
+    class TestModel(BaseModel):
+        a: str
+        b: List[str]
+
+    app = FastAPI()
+
+    @app.get("/", response_model=TestModel)
+    def test_endpoint():
+        test_model = TestModel(a="a", b=["b"])
+        return test_model
+
+    @serve.deployment(route_prefix="/")
+    @serve.ingress(app)
+    class TestDeployment:
+        # https://github.com/ray-project/ray/issues/17363
+        @app.get("/inner", response_model=TestModel)
+        def test_endpoint_2(self):
+            test_model = TestModel(a="a", b=["b"])
+            return test_model
+
+    TestDeployment.deploy()
+
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json() == {"a": "a", "b": ["b"]}
+
+    resp = requests.get("http://localhost:8000/inner")
+    assert resp.json() == {"a": "a", "b": ["b"]}
+
+
+def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
+    """
+    Tests that the class constructor is called before the startup hooks
+    are run in FastAPIWrapper. SignalActor event is set from a startup hook
+    and is awaited in the class constructor. If the class constructor is run
+    before the startup hooks, the SignalActor event will time out while waiting
+    and the test will pass.
+    """
+    app = FastAPI()
+    signal = SignalActor.remote()
+
+    @app.on_event("startup")
+    def startup_event():
+        ray.get(signal.send.remote())
+
+    @serve.deployment(route_prefix="/")
+    @serve.ingress(app)
+    class TestDeployment:
+        def __init__(self):
+            self.test_passed = False
+            try:
+                ray.get(signal.wait.remote(), timeout=.1)
+                self.test_passed = False
+            except GetTimeoutError:
+                self.test_passed = True
+
+        @app.get("/")
+        def root(self):
+            return self.test_passed
+
+    TestDeployment.deploy()
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_fastapi_shutdown_hook(serve_instance):
+    # https://github.com/ray-project/ray/issues/18349
+    signal = SignalActor.remote()
+
+    app = FastAPI()
+
+    @app.on_event("shutdown")
+    def call_signal():
+        signal.send.remote()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        pass
+
+    A.deploy()
+    A.delete()
+    ray.get(signal.wait.remote(), timeout=20)
+
+
+def test_fastapi_method_redefinition(serve_instance):
+    app = FastAPI()
+
+    @serve.deployment(route_prefix="/a")
+    @serve.ingress(app)
+    class A:
+        @app.get("/")
+        def method(self):
+            return "hi get"
+
+        @app.post("/")  # noqa: F811 method redefinition
+        def method(self):
+            return "hi post"
+
+    A.deploy()
+    assert requests.get("http://localhost:8000/a/").json() == "hi get"
+    assert requests.post("http://localhost:8000/a/").json() == "hi post"
 
 
 if __name__ == "__main__":

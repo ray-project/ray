@@ -178,8 +178,8 @@ For a high-level overview, see this example:
         "loguniform": tune.loguniform(1e-4, 1e-2),
 
         # Sample a float uniformly between 0.0001 and 0.1, while
-        # sampling in log space and rounding to increments of 0.0005
-        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-4),
+        # sampling in log space and rounding to increments of 0.00005
+        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),
 
         # Sample a random float from a normal distribution with
         # mean=10 and sd=2

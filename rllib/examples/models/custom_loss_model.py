@@ -36,6 +36,11 @@ class CustomLossModel(TFModelV2):
         return self.fcnet(input_dict, state, seq_lens)
 
     @override(ModelV2)
+    def value_function(self):
+        # Delegate to our FCNet.
+        return self.fcnet.value_function()
+
+    @override(ModelV2)
     def custom_loss(self, policy_loss, loss_inputs):
         # Create a new input reader per worker.
         reader = JsonReader(
@@ -61,7 +66,7 @@ class CustomLossModel(TFModelV2):
             -action_dist.logp(input_ops["actions"]))
         return policy_loss + 10 * self.imitation_loss
 
-    def custom_stats(self):
+    def metrics(self):
         return {
             "policy_loss": self.policy_loss,
             "imitation_loss": self.imitation_loss,
@@ -91,6 +96,11 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
     def forward(self, input_dict, state, seq_lens):
         # Delegate to our FCNet.
         return self.fcnet(input_dict, state, seq_lens)
+
+    @override(ModelV2)
+    def value_function(self):
+        # Delegate to our FCNet.
+        return self.fcnet.value_function()
 
     @override(ModelV2)
     def custom_loss(self, policy_loss, loss_inputs):

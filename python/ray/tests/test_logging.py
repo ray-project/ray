@@ -1,11 +1,14 @@
 import os
+import re
+
+from datetime import datetime
 from collections import defaultdict, Counter
 from pathlib import Path
-import re
 
 import ray
 from ray import ray_constants
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import (wait_for_condition, init_log_pubsub,
+                                     get_log_message)
 
 
 def set_logging_config(max_bytes, backup_count):
@@ -179,6 +182,74 @@ def test_worker_id_names(shutdown_only):
         # There should be a "python-core-.*.log", "worker-.*.out",
         # and "worker-.*.err"
         assert count == 3
+
+
+def test_log_monitor_backpressure(ray_start_cluster):
+    update_interval = 3
+    os.environ["LOG_NAME_UPDATE_INTERVAL_S"] = str(update_interval)
+    # Intentionally set low to trigger the backpressure condition.
+    os.environ["RAY_LOG_MONITOR_MANY_FILES_THRESHOLD"] = "1"
+    expected_str = "abc"
+
+    # Test log monitor still works with backpressure.
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    # Connect a driver to the Ray cluster.
+    ray.init(address=cluster.address)
+    p = init_log_pubsub()
+    # It always prints the monitor messages.
+    logs = get_log_message(p, 1)
+
+    @ray.remote
+    class Actor:
+        def print(self):
+            print(expected_str)
+
+    now = datetime.now()
+    a = Actor.remote()
+    a.print.remote()
+    logs = get_log_message(p, 1)
+    assert logs[0] == expected_str
+    # Since the log file update is delayed,
+    # it should take more than update_interval
+    # to publish a message for a new worker.
+    assert (datetime.now() - now).seconds >= update_interval
+
+    now = datetime.now()
+    a = Actor.remote()
+    a.print.remote()
+    logs = get_log_message(p, 1)
+    assert logs[0] == expected_str
+    assert (datetime.now() - now).seconds >= update_interval
+
+
+def test_log_redirect_to_stdout(shutdown_only):
+    os.environ["GLOG_logtostderr"] = "1"
+    ray.init()
+
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    log_components = [
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
+    ]
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        for i in range(10):
+            print(f"test {i}")
+
+    ray.get(f.remote())
+
+    paths = list(log_dir_path.iterdir())
+
+    for component in log_components:
+        for path in paths:
+            filename = path.stem
+            assert component not in filename
 
 
 if __name__ == "__main__":
