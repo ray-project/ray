@@ -86,6 +86,25 @@ def test_workflow_runtime_metadata(workflow_start_regular):
     assert "end_time" in postrun_meta
 
 
+def test_no_user_metadata(workflow_start_regular):
+
+    workflow_id = "simple"
+    step_name = "simple_step"
+
+    @workflow.step(name=step_name)
+    def simple():
+        return 0
+
+    simple.step().run(workflow_id)
+
+    checkpointed_user_step_metadata = get_metadata(
+        [workflow_id, "steps", step_name, workflow_storage.STEP_USER_METADATA])
+    checkpointed_user_run_metadata = get_metadata(
+        [workflow_id, workflow_storage.WORKFLOW_USER_METADATA])
+    assert {} == checkpointed_user_step_metadata
+    assert {} == checkpointed_user_run_metadata
+
+
 def test_all_metadata(workflow_start_regular):
 
     user_step_metadata = {"k1": "v1"}
