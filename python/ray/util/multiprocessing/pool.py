@@ -185,6 +185,7 @@ class ResultThread(threading.Thread):
 
     def run(self):
         unready = copy.copy(self._object_refs)
+        batch_results = []
         while self._num_ready < self._total_object_refs:
             # Get as many new IDs from the queue as possible without blocking,
             # unless we have no IDs to wait on, in which case we block.
@@ -203,17 +204,24 @@ class ResultThread(threading.Thread):
                 batch = ray.get(ready_id)
             except ray.exceptions.RayError as e:
                 batch = [e]
-            for result in batch:
-                if isinstance(result, Exception):
-                    self._got_error = True
-                    if self._error_callback is not None:
-                        self._error_callback(result)
-                elif self._callback is not None:
-                    self._callback(result)
+
+            # Call either the regular callback or exception callback only once
+            if not self._got_error:
+                for result in batch:
+                    if isinstance(result, Exception):
+                        self._got_error = True
+                        if self._error_callback is not None:
+                            self._error_callback(result)
+                            break
+            if not self._got_error:
+                batch_results.extend(batch)
 
             self._num_ready += 1
             self._results[self._indices[ready_id]] = batch
             self._ready_index_queue.put(self._indices[ready_id])
+
+        if not self._got_error and self._callback is not None:
+                self._callback(batch_results)
 
     def got_error(self):
         # Should only be called after the thread finishes.
@@ -724,11 +732,13 @@ class Pool:
                 func.
             chunksize: number of tasks to submit as a batch to each actor
                 process. If unspecified, a suitable chunksize will be chosen.
-            callback: callback to be executed on each successful result once it
-                is finished.
-            error_callback: callback to be executed on each errored result once
-                it is finished. The exception raised by the task will be passed
-                as the only argument to the callback.
+            callback: Will only be called if none of the results were errors,
+                and will only be called once after all the results are finished.
+                A Python List of all the finished results will be passed as the
+                only argument to the callback.
+            error_callback: callback to be executed on the first errored result.
+                The Exception raised by the task will be passed as the only
+                argument to the callback.
 
         Returns:
             AsyncResult
