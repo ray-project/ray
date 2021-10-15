@@ -202,8 +202,7 @@ class WorkerPoolMock : public WorkerPool {
       Process proc, const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
       const rpc::WorkerType worker_type = rpc::WorkerType::WORKER,
-      int runtime_env_hash = 0,
-      StartupToken worker_startup_token = 0) {
+      int runtime_env_hash = 0, StartupToken worker_startup_token = 0) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<ClientConnection>, int64_t,

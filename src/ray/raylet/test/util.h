@@ -188,7 +188,6 @@ class MockWorker : public WorkerInterface {
   }
 
  protected:
-
   void SetStartupToken(StartupToken startup_token) {
     RAY_CHECK(false) << "Method unused";
   };

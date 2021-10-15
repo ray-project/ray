@@ -16,8 +16,8 @@
 
 #include <memory>
 
-#include "gtest/gtest_prod.h"
 #include "absl/memory/memory.h"
+#include "gtest/gtest_prod.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -116,13 +116,13 @@ class WorkerInterface {
 
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
 
-  protected:
-    virtual void SetStartupToken(StartupToken startup_token) = 0;
+ protected:
+  virtual void SetStartupToken(StartupToken startup_token) = 0;
 
-    FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
-    FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
-    FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
-    FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
+  FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
+  FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker
@@ -228,7 +228,6 @@ class Worker : public WorkerInterface {
   }
 
  protected:
-
   void SetStartupToken(StartupToken startup_token);
 
  private:
