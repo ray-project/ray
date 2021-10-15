@@ -332,11 +332,11 @@ Process WorkerPool::StartWorkerProcess(
       auto path_env_p = std::getenv(kLibraryPathEnvName.c_str());
       std::string path_env = native_library_path_;
       if (path_env_p != nullptr && strlen(path_env_p) != 0) {
-        path_env = path_env + ":" + path_env_p;
+        path_env.append(":").append(path_env_p);
       }
       // Append per-job code search path to library path.
       if (!code_search_path.empty()) {
-        path_env = path_env + ":" + code_search_path;
+        path_env.append(":").append(code_search_path);
       }
       env.emplace(kLibraryPathEnvName, path_env);
 #endif
@@ -452,21 +452,25 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
                                  const ProcessEnvironment &env) {
   if (RAY_LOG_ENABLED(DEBUG)) {
-    std::stringstream stream;
-    stream << "Starting worker process with command:";
+    std::string debug_info;
+    debug_info.append("Starting worker process with command:");
     for (const auto &arg : worker_command_args) {
-      stream << " " << arg;
+      debug_info.append(" ").append(arg);
     }
-    stream << ", and the envs:";
+    debug_info.append(", and the envs:");
     for (const auto &entry : env) {
-      stream << " " << entry.first << ":" << entry.second << ",";
+      debug_info.append(" ")
+          .append(entry.first)
+          .append(":")
+          .append(entry.second)
+          .append(",");
     }
     if (!env.empty()) {
       // Erase the last ","
-      stream.seekp(-1, std::ios_base::end);
+      debug_info.pop_back();
     }
-    stream << ".";
-    RAY_LOG(DEBUG) << stream.str();
+    debug_info.append(".");
+    RAY_LOG(DEBUG) << debug_info;
   }
 
   // Launch the process to create the worker.
