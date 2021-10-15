@@ -124,7 +124,7 @@ def cancel_job(objs: List[ray.ObjectRef]):
 
     for obj in objs:
         try:
-            ray.cancel(obj)
+            ray.cancel(obj, force=True)
             ray.wait(_cancel.remote(obj))
         except Exception:
             pass
