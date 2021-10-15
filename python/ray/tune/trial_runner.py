@@ -60,9 +60,13 @@ class _ExperimentCheckpointManager:
 
     """
 
-    def __init__(self, checkpoint_dir: str,
-                 checkpoint_period: Union[int, float, str], start_time: float,
-                 session_str: str, syncer: CloudSyncer):
+    def __init__(self,
+                 checkpoint_dir: str,
+                 checkpoint_period: Union[int, float, str],
+                 start_time: float,
+                 session_str: str,
+                 syncer: CloudSyncer,
+                 sync_trial_checkpoints: bool = True):
         self._checkpoint_dir = checkpoint_dir
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
         if self._auto_checkpoint_enabled:
@@ -74,6 +78,7 @@ class _ExperimentCheckpointManager:
         self._session_str = session_str
 
         self._syncer = syncer
+        self._sync_trial_checkpoints = sync_trial_checkpoints
 
         self._last_checkpoint_time = 0.
 
@@ -126,10 +131,16 @@ class _ExperimentCheckpointManager:
 
         checkpoint_time_start = time.monotonic()
         _serialize_and_write()
-        if force:
-            self._syncer.sync_up()
+
+        if self._sync_trial_checkpoints:
+            exclude = None
         else:
-            self._syncer.sync_up_if_needed()
+            exclude = ["*/checkpoint_*"]
+
+        if force:
+            self._syncer.sync_up(exclude=exclude)
+        else:
+            self._syncer.sync_up_if_needed(exclude=exclude)
         checkpoint_time_taken = time.monotonic() - checkpoint_time_start
 
         if self._auto_checkpoint_enabled:
@@ -214,7 +225,8 @@ class TrialRunner:
                  checkpoint_period=None,
                  trial_executor=None,
                  callbacks=None,
-                 metric=None):
+                 metric=None,
+                 driver_sync_trial_checkpoints=False):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
@@ -299,7 +311,9 @@ class TrialRunner:
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
-        if self._validate_resume(resume_type=resume):
+        if self._validate_resume(
+                resume_type=resume,
+                driver_sync_trial_checkpoints=driver_sync_trial_checkpoints):
             errored_only = False
             if isinstance(resume, str):
                 errored_only = resume.upper() == "ERRORED_ONLY"
@@ -333,7 +347,8 @@ class TrialRunner:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
         self._checkpoint_period = checkpoint_period
-        self._checkpoint_manager = self._create_checkpoint_manager()
+        self._checkpoint_manager = self._create_checkpoint_manager(
+            driver_sync_trial_checkpoints)
 
     def setup_experiments(self, experiments: List[Experiment],
                           total_num_samples: int) -> None:
@@ -356,13 +371,14 @@ class TrialRunner:
         """Calls ``on_experiment_end`` method in callbacks."""
         self._callbacks.on_experiment_end(trials=self._trials)
 
-    def _create_checkpoint_manager(self):
+    def _create_checkpoint_manager(self, sync_trial_checkpoints: bool = True):
         return _ExperimentCheckpointManager(
             checkpoint_dir=self._local_checkpoint_dir,
             checkpoint_period=self._checkpoint_period,
             start_time=self._start_time,
             session_str=self._session_str,
-            syncer=self._syncer)
+            syncer=self._syncer,
+            sync_trial_checkpoints=sync_trial_checkpoints)
 
     @property
     def resumed(self):
@@ -413,12 +429,15 @@ class TrialRunner:
                     "weird behaviors may happen.")
                 func(self)
 
-    def _validate_resume(self, resume_type):
+    def _validate_resume(self, resume_type,
+                         driver_sync_trial_checkpoints=True):
         """Checks whether to resume experiment.
 
         Args:
             resume_type: One of True, "REMOTE", "LOCAL",
                 "PROMPT", "ERRORED_ONLY", "AUTO".
+            driver_sync_trial_checkpoints: Boolean indicating if the driver
+                should sync trial checkpoints from the driver node to cloud.
         """
         # TODO: Consider supporting ERRORED_ONLY+REMOTE?
         if not resume_type:
@@ -496,10 +515,13 @@ class TrialRunner:
             # Try syncing down the upload directory.
             logger.info(f"Downloading experiment checkpoint from "
                         f"{self._remote_checkpoint_dir}")
-            # Todo: This syncs the entire experiment including trial
-            # checkpoints. We should exclude these in the future.
+            if driver_sync_trial_checkpoints:
+                exclude = None
+            else:
+                exclude = ["*/checkpoint_*"]
+
             try:
-                self._syncer.sync_down_if_needed()
+                self._syncer.sync_down_if_needed(exclude=exclude)
                 self._syncer.wait()
             except TuneError as e:
                 raise RuntimeError(
@@ -919,6 +941,8 @@ class TrialRunner:
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
 
+        _trigger_callback_complete = False
+
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             result.update(done=True)
@@ -938,8 +962,7 @@ class TrialRunner:
                         trial=trial,
                         result=result.copy())
 
-            self._callbacks.on_trial_complete(
-                iteration=self._iteration, trials=self._trials, trial=trial)
+            _trigger_callback_complete = True
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
@@ -974,6 +997,10 @@ class TrialRunner:
         # PAUSE only checkpoints to memory and does not update
         # the global checkpoint state.
         self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
+
+        if _trigger_callback_complete:
+            self._callbacks.on_trial_complete(
+                iteration=self._iteration, trials=self._trials, trial=trial)
 
         if trial.is_saving:
             # Cache decision to execute on after the save is processed.
