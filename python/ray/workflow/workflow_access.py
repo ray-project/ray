@@ -119,7 +119,13 @@ def cancel_job(objs: List[ray.ObjectRef]):
             ray.cancel(obj, force=True)
 
     for obj in objs:
-        ray.cancel(obj, force=True)
+        try:
+            ray.cancel(obj, force=True)
+        except Exception:
+            # Sometimes it's a task from actors
+            # and ray doesn't allow actor task to be canceled
+            # So do nothing here
+            pass
         _cancel.remote(obj)
 
 
