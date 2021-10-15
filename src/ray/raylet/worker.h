@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "gtest/gtest_prod.h"
 #include "absl/memory/memory.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
@@ -51,7 +52,6 @@ class WorkerInterface {
   /// Return the worker process's startup token
   virtual StartupToken GetStartupToken() const = 0;
   virtual void SetProcess(Process proc) = 0;
-  virtual void SetStartupToken(StartupToken startup_token) = 0;
   /// Return the worker shim process.
   virtual Process GetShimProcess() const = 0;
   virtual void SetShimProcess(Process proc) = 0;
@@ -115,6 +115,14 @@ class WorkerInterface {
   virtual bool IsRegistered() = 0;
 
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
+
+  protected:
+    virtual void SetStartupToken(StartupToken startup_token) = 0;
+
+    FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
+    FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
+    FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
+    FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker
@@ -143,7 +151,6 @@ class Worker : public WorkerInterface {
   /// Return the worker process's startup token
   StartupToken GetStartupToken() const;
   void SetProcess(Process proc);
-  void SetStartupToken(StartupToken startup_token);
   /// Return this worker shim process.
   Process GetShimProcess() const;
   void SetShimProcess(Process proc);
@@ -219,6 +226,10 @@ class Worker : public WorkerInterface {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
+
+ protected:
+
+  void SetStartupToken(StartupToken startup_token);
 
  private:
   /// The worker's ID.

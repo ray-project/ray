@@ -202,7 +202,8 @@ class WorkerPoolMock : public WorkerPool {
       Process proc, const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
       const rpc::WorkerType worker_type = rpc::WorkerType::WORKER,
-      int runtime_env_hash = 0) {
+      int runtime_env_hash = 0,
+      StartupToken worker_startup_token = 0) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<ClientConnection>, int64_t,
@@ -218,7 +219,7 @@ class WorkerPoolMock : public WorkerPool {
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
         job_id, runtime_env_hash, WorkerID::FromRandom(), language, worker_type,
-        "127.0.0.1", client, client_call_manager_, startup_tokens_by_proc_[proc]);
+        "127.0.0.1", client, client_call_manager_, worker_startup_token);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
     auto rpc_client = std::make_shared<MockWorkerClient>(instrumented_io_service_);
@@ -269,8 +270,8 @@ class WorkerPoolMock : public WorkerPool {
         for (int i = 0; i < num_workers; i++) {
           auto worker =
               CreateWorker(it->first, is_java ? Language::JAVA : Language::PYTHON, JOB_ID,
-                           rpc::WorkerType::WORKER, runtime_env_hash);
-          worker->SetStartupToken(startup_tokens_by_proc_[it->first]);
+                           rpc::WorkerType::WORKER, runtime_env_hash,
+                           startup_tokens_by_proc_[it->first]);
           OnWorkerStarted(worker);
           PushAvailableWorker(worker);
         }
