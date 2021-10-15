@@ -22,7 +22,7 @@ GcsResourceReportPoller::GcsResourceReportPoller(
     std::function<void(const rpc::ResourcesData &)> handle_resource_report,
     std::function<int64_t(void)> get_current_time_milli,
     std::function<void(
-        const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+        const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &, const bool &,
         std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
         request_report)
     : ticker_(polling_service_),
@@ -126,8 +126,9 @@ void GcsResourceReportPoller::TryPullResourceReport() {
 void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState> state) {
   inflight_pulls_++;
 
+  const bool &initial_report = state->last_pull_time == -1 ? true : false;
   request_report_(
-      state->address, raylet_client_pool_,
+      state->address, raylet_client_pool_, initial_report,
       [this, state](const Status &status, const rpc::RequestResourceReportReply &reply) {
         if (status.ok()) {
           // TODO (Alex): This callback is always posted onto the main thread. Since most
@@ -151,6 +152,7 @@ void GcsResourceReportPoller::NodeResourceReportReceived(
 
   // Schedule the next pull. The scheduling `TryPullResourceReport` loop will handle
   // validating that this node is still in the cluster.
+  state->last_pull_time = state->next_pull_time;
   state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
   to_pull_queue_.push_back(state);
 

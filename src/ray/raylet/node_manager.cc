@@ -568,16 +568,10 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_id(self_node_id_.Binary());
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
-  // Update local cache from gcs remote cache, this is needed when gcs restart.
-  // We should always keep the cache view consistent.
-  RAY_LOG(INFO) << "WANGTAO";
   cluster_resource_scheduler_->FillResourceUsage(resources_data, last_resource_usage_);
-    RAY_LOG(INFO) << "WANGTAO";
   cluster_task_manager_->FillResourceUsage(resources_data, last_resource_usage_);
-    RAY_LOG(INFO) << "WANGTAO";
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
-      RAY_LOG(INFO) << "WANGTAO";
   }
 
   // If plasma store is under high pressure, we should try to schedule a global gc.
@@ -602,7 +596,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
     DoLocalGC();
     should_local_gc_ = false;
   }
-    RAY_LOG(INFO) << "WANGTAO";
 }
 
 void NodeManager::DoLocalGC() {
@@ -1506,9 +1499,15 @@ void NodeManager::HandleUpdateResourceUsage(
 void NodeManager::HandleRequestResourceReport(
     const rpc::RequestResourceReportRequest &request,
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // When gcs server restarts, it requires all nodes' initial report.
+  if (request.initial_report()) {
+    last_resource_usage_->SetAvailableResources(ResourceSet());
+    last_resource_usage_->SetTotalResources(ResourceSet());
+    last_resource_usage_->SetLoadResources(ResourceSet());
+    last_resource_usage_->SetNormalTaskResources(ResourceSet());
+  }
   auto resources_data = reply->mutable_resources();
   FillResourceReport(*resources_data);
-  RAY_LOG(INFO) << "WANGTAO ";
   bool resource_deadlock_warned = resource_deadlock_warned_ >= 1;
   if (last_report_resource_deadlock_warned_ != resource_deadlock_warned) {
     last_report_resource_deadlock_warned_ = resource_deadlock_warned;

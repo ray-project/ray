@@ -54,15 +54,17 @@ class GcsResourceReportPoller {
           []() { return absl::GetCurrentTimeNanos() / (1000 * 1000); },
       std::function<void(
           const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+          const bool &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
           request_report =
               [](const rpc::Address &address,
                  std::shared_ptr<rpc::NodeManagerClientPool> &raylet_client_pool,
+                 const bool &initial_report,
                  std::function<void(const Status &,
                                     const rpc::RequestResourceReportReply &)>
                      callback) {
                 auto raylet_client = raylet_client_pool->GetOrConnectByAddress(address);
-                raylet_client->RequestResourceReport(callback);
+                raylet_client->RequestResourceReport(initial_report, callback);
               });
 
   ~GcsResourceReportPoller();
@@ -104,7 +106,7 @@ class GcsResourceReportPoller {
   std::function<int64_t(void)> get_current_time_milli_;
   // Send the `RequestResourceReport` RPC.
   std::function<void(
-      const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+      const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &, const bool &,
       std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
       request_report_;
   // The minimum delay between two pull requests to the same thread.

@@ -439,8 +439,10 @@ void raylet::RayletClient::UpdateResourceUsage(
 }
 
 void raylet::RayletClient::RequestResourceReport(
+    bool initial_report,
     const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) {
   rpc::RequestResourceReportRequest request;
+  request.set_initial_report(initial_report);
   grpc_client_->RequestResourceReport(request, callback);
 }
 

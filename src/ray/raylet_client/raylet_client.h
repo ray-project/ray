@@ -162,6 +162,7 @@ class ResourceTrackingInterface {
       const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) = 0;
 
   virtual void RequestResourceReport(
+      bool initial_report,
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
 
   virtual ~ResourceTrackingInterface(){};
@@ -436,6 +437,7 @@ class RayletClient : public RayletClientInterface {
       const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override;
 
   void RequestResourceReport(
+      bool initial_report,
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
 
   // Subscribe to receive notification on plasma object
