@@ -133,7 +133,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param changed_resources Changed resources of a node.
   void UpdateResourceCapacity(
       const NodeID &node_id,
-      const std::unordered_map<std::string, double> &changed_resources);
+      const absl::flat_hash_map<std::string, double> &changed_resources);
 
   /// Add resources changed listener.
   void AddResourcesChangedListener(std::function<void()> listener);

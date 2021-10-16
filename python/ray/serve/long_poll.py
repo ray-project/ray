@@ -15,8 +15,7 @@ class LongPollNamespace(Enum):
     def __repr__(self):
         return f"{self.__class__.__name__}.{self.name}"
 
-    REPLICA_HANDLES = auto()
-    BACKEND_CONFIGS = auto()
+    RUNNING_REPLICAS = auto()
     ROUTE_TABLE = auto()
 
 

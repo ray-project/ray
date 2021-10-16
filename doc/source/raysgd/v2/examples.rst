@@ -52,6 +52,18 @@ Iterator API Examples
 * :doc:`/raysgd/v2/examples/mlflow_fashion_mnist_example`:
   Example for using the Iterator API for custom MLFlow integration.
 
+Ray Datasets Integration Examples
+---------------------------------
+
+* :doc:`/raysgd/v2/examples/tensorflow_linear_dataset_example`:
+  Simple example for training a linear TensorFlow model.
+
+* :doc:`/raysgd/v2/examples/train_linear_dataset_example`:
+  Simple example for training a linear PyTorch model.
+
+* :doc:`/raysgd/v2/examples/tune_linear_dataset_example`:
+  Simple example for tuning a linear PyTorch model.
+
 Ray Tune Integration Examples
 -----------------------------
 
