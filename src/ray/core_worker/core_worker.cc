@@ -117,9 +117,12 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
       // We are not sure if the default argv[0] would be suitable for loading symbols
-      // so leaving it unspecified. This would make symbolization of crash traces fail in
-      // some circumstances.
-      RayLog::InstallFailureSignalHandler(nullptr);
+      // so leaving it unspecified as nullptr. This could make symbolization of crash
+      // traces fail in some circumstances.
+      //
+      // Also, chain the crash handler installed by the language worker, e.g. Python
+      // worker.
+      RayLog::InstallFailureSignalHandler(nullptr, /*chain=*/true);
     }
   } else {
     RAY_CHECK(options_.log_dir.empty())

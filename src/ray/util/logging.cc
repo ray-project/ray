@@ -325,7 +325,7 @@ bool RayLog::IsFailureSignalHandlerEnabled() {
   return is_failure_signal_handler_installed_;
 }
 
-void RayLog::InstallFailureSignalHandler(const char *argv0) {
+void RayLog::InstallFailureSignalHandler(const char *argv0, bool chain) {
 #ifdef _WIN32
   // If process fails to initialize, don't display an error window.
   SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
@@ -337,6 +337,7 @@ void RayLog::InstallFailureSignalHandler(const char *argv0) {
   }
   absl::InitializeSymbolizer(argv0);
   absl::FailureSignalHandlerOptions options;
+  options.call_previous_handler = chain;
   options.writerfn = WriteFailureMessage;
   absl::InstallFailureSignalHandler(options);
   is_failure_signal_handler_installed_ = true;
