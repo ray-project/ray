@@ -157,6 +157,17 @@ def test_basic(ray_start_with_dashboard):
     assert agent_ports is not None
 
 
+def test_no_dashbaord(ray_start_without_dashboard):
+    @ray.remote
+    def foo():
+        time.sleep(10)
+        return 1
+
+    ray.get(foo.remote())
+    all_processes = ray.worker._global_node.all_processes
+    assert ray_constants.PROCESS_TYPE_DASHBOARD not in all_processes
+
+
 @pytest.mark.parametrize(
     "ray_start_with_dashboard", [{
         "dashboard_host": "127.0.0.1"

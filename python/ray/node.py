@@ -847,7 +847,8 @@ class Node:
             start_initial_python_workers_for_first_job,
             ray_debugger_external=self._ray_params.ray_debugger_external,
             env_updates=self._ray_params.env_vars,
-            disable_dashboard=(self._ray_params.include_dashboard == False),
+            disable_dashboard=(
+                self._ray_params.include_dashboard == False),  # noqa: E712
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]

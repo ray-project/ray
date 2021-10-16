@@ -63,6 +63,15 @@ def ray_start_with_dashboard(request):
         yield address_info
 
 
+@pytest.fixture
+def ray_start_without_dashboard(request):
+    param = getattr(request, "param", {})
+    if param.get("num_cpus") is None:
+        param["num_cpus"] = 1
+    with _ray_start(include_dashboard=False, **param) as res:
+        yield res
+
+
 # The following fixture will start ray with 0 cpu.
 @pytest.fixture
 def ray_start_no_cpu(request):
