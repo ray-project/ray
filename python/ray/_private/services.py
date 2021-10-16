@@ -1365,7 +1365,8 @@ def start_raylet(redis_address,
                  max_bytes=0,
                  backup_count=0,
                  ray_debugger_external=False,
-                 env_updates=None):
+                 env_updates=None,
+                 disable_dashboard=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1412,6 +1413,7 @@ def start_raylet(redis_address,
         ray_debugger_external (bool): True if the Ray debugger should be made
             available externally to this node.
         env_updates (dict): Environment variable overrides.
+        disable_dashboard (bool): True if dashboard is disabled
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1510,7 +1512,7 @@ def start_raylet(redis_address,
         try:
             import ray.dashboard.optional_deps  # noqa: F401
 
-            return True
+            return True and not disable_dashboard
         except ImportError:
             return False
 
