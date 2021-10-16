@@ -1,4 +1,5 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37"
+base_image: "anyscale/ray-ml:pinned-nightly-py38"
+env_vars: {"RAY_grpc_based_resource_broadcast": "true"}
 debian_packages: []
 
 python:

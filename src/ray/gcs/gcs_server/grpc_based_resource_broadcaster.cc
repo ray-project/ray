@@ -115,7 +115,7 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
 
   // Serializing is relatively expensive on large batches, so we should only do it once.
   std::string serialized_batch = batch.SerializeAsString();
-  stats::OutboundHeartbeatSizeKB.Record((double)(batch.ByteSizeLong() / 1024.0));
+  stats::OutboundHeartbeatSizeKB.Record((double)(serialized_batch.size() / 1024.0));
 
   absl::MutexLock guard(&mutex_);
   num_skipped_nodes_ = 0;
