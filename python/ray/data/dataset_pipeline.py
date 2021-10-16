@@ -238,8 +238,9 @@ class DatasetPipeline(Generic[T]):
             # Disable progress bars for the split readers since they would
             # overwhelm the console.
             DatasetPipeline(
-                SplitIterator(idx, coordinator), progress_bars=False)
-            for idx in range(n)
+                SplitIterator(idx, coordinator),
+                length=self._length,
+                progress_bars=False) for idx in range(n)
         ]
 
     def rewindow(self, *, blocks_per_window: int,
@@ -301,8 +302,13 @@ class DatasetPipeline(Generic[T]):
             def __iter__(self):
                 return WindowIterator(self._original_iter)
 
+        if self._length == float("inf"):
+            length = float("inf")
+        else:
+            length = None
+
         return DatasetPipeline(
-            WindowIterable(self.iter_datasets()), length=None)
+            WindowIterable(self.iter_datasets()), length=length)
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
@@ -401,6 +407,9 @@ class DatasetPipeline(Generic[T]):
         Returns:
             The number of records in the dataset pipeline.
         """
+        if self._length == float("inf"):
+            raise ValueError("Cannot count a pipeline of infinite length.")
+
         pipe = self.map_batches(lambda batch: [len(batch)])
         total = 0
         for elem in pipe.iter_rows():
@@ -417,6 +426,9 @@ class DatasetPipeline(Generic[T]):
         Returns:
             The sum of the records in the dataset pipeline.
         """
+        if self._length == float("inf"):
+            raise ValueError("Cannot sum a pipeline of infinite length.")
+
         pipe = self.map_batches(
             lambda batch: [batch.sum()[0]], batch_format="pandas")
         total = 0
