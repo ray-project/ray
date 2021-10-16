@@ -116,17 +116,14 @@ def cancel_job(objs: List[ray.ObjectRef]):
     @ray.remote(num_cpus=1)
     def _cancel(obj):
         if isinstance(obj, ray.ObjectRef):
-            try:
-                ray.cancel(obj, force=True)
-                ray.wait(_cancel.remote(obj))
-            except Exception:
-                pass
+            return ray.cancel(obj, force=True, recursive=True)
 
     for obj in objs:
         try:
-            ray.cancel(obj, force=True)
-            ray.wait(_cancel.remote(obj))
-        except Exception:
+            r = ray.cancel(obj, force=True,recursive=True)
+            while isinstance(r, ray.ObjectRef):
+                r = ray.get(r)
+        except Exception as e:
             pass
 
 
@@ -135,6 +132,7 @@ class LatestWorkflowOutput:
     output: ray.ObjectRef
     workflow_id: str
     step_id: "StepID"
+    failed: bool = False
 
 
 # TODO(suquark): we may use an actor pool in the future if too much
@@ -233,7 +231,7 @@ class WorkflowManagementActor:
         # the workflow finishes.
 
         self._step_status.setdefault(workflow_id, {})
-        if status == common.WorkflowStatus.SUCCESSFUL:
+        if status in (common.WorkflowStatus.FAILED, common.WorkflowStatus.SUCCESSFUL):
             self._step_status[workflow_id].pop(step_id, None)
         else:
             self._step_status.setdefault(workflow_id, {})[step_id] = status
@@ -251,22 +249,18 @@ class WorkflowManagementActor:
             self._step_output_cache.setdefault(workflow_id,
                                                {})[step_id] = step_output
 
-        if status != common.WorkflowStatus.FAILED and remaining != 0:
+        if status == common.WorkflowStatus.FAILED:
+            self._workflow_outputs[workflow_id].failed = True
+
+        # There are still other tasks running for this job
+        if remaining != 0:
             return
 
+        # Record the final results
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
-
-        if status == common.WorkflowStatus.FAILED:
-            if workflow_id in self._workflow_outputs:
-                result = self._workflow_outputs.pop(workflow_id)
-                cancel_job([result.output])
-                wf_store.save_workflow_meta(
-                    common.WorkflowMetaData(common.WorkflowStatus.FAILED))
-            self._step_status.pop(workflow_id)
-        else:
-            wf_store.save_workflow_meta(
-                common.WorkflowMetaData(common.WorkflowStatus.SUCCESSFUL))
-            self._step_status.pop(workflow_id)
+        wf_status = common.WorkflowStatus.FAILED if self._workflow_outputs[workflow_id].failed else common.WorkflowStatus.SUCCESSFUL
+        wf_store.save_workflow_meta(common.WorkflowMetaData(wf_status))
+        self._step_status.pop(workflow_id)
         workflow_postrun_metadata = {"end_time": time.time()}
         wf_store.save_workflow_postrun_metadata(workflow_postrun_metadata)
 
