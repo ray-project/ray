@@ -365,7 +365,7 @@ def test_callbacks(pool_4_processes,
     # Will not error, check that callback is called.
     result = pool_4_processes.apply_async(
         callback_test_helper, ((0, [1]), ), callback=callback)
-    assert callback_queue.get() == [0]
+    assert callback_queue.get() == 0
     result.get()
 
     # Will error, check that error_callback is called.
