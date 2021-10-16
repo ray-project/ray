@@ -60,7 +60,7 @@ void GcsServer::Start() {
   // Init stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
-      {ray::stats::VersionKey, "2.0.0.dev0"},
+      {ray::stats::VersionKey, kRayVersion},
       {ray::stats::NodeAddressKey, config_.node_ip_address}};
   ray::stats::Init(
       global_tags, [this](const ray::stats::GetAgentAddressCallback &callback) {

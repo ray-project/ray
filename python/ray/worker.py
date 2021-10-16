@@ -602,7 +602,6 @@ def init(
         _memory: Optional[int] = None,
         _redis_password: str = ray_constants.REDIS_DEFAULT_PASSWORD,
         _temp_dir: Optional[str] = None,
-        _lru_evict: bool = False,
         _metrics_export_port: Optional[int] = None,
         _system_config: Optional[Dict[str, str]] = None,
         _tracing_startup_hook: Optional[Callable] = None,
@@ -879,7 +878,6 @@ def init(
             start_initial_python_workers_for_first_job=(
                 job_config is None or job_config.runtime_env is None),
             _system_config=_system_config,
-            lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook)
@@ -921,7 +919,6 @@ def init(
             object_ref_seed=None,
             temp_dir=_temp_dir,
             _system_config=_system_config,
-            lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
@@ -1257,6 +1254,7 @@ def connect(node,
             job_config=None,
             runtime_env_hash=0,
             worker_shim_pid=0,
+            startup_token=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
@@ -1273,6 +1271,8 @@ def connect(node,
         runtime_env_hash (int): The hash of the runtime env for this worker.
         worker_shim_pid (int): The PID of the process for setup worker
             runtime env.
+        startup_token (int): The startup token of the process assigned to
+            it during startup as a command line argument.
         ray_debugger_host (bool): The host to bind a Ray debugger to on
             this worker.
     """
@@ -1390,7 +1390,8 @@ def connect(node,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, runtime_env_hash, worker_shim_pid)
+        serialized_job_config, runtime_env_hash,
+        worker_shim_pid, startup_token)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # If it's a driver and it's not coming from ray client, we'll prepare the
