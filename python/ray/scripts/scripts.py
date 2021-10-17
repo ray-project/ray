@@ -851,7 +851,7 @@ def stop(force, verbose, log_style, log_color):
                 cli_logger.verbose(
                     "Attempted to stop `{}`, but process was already dead.",
                     cf.bold(proc_string))
-                pass
+                total_stopped += 1
             except (psutil.Error, OSError) as ex:
                 cli_logger.error("Could not terminate `{}` due to {}",
                                  cf.bold(proc_string), str(ex))
