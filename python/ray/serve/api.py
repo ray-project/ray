@@ -753,11 +753,10 @@ class Deployment:
             init_kwargs (optional): kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
-        if len(init_args) == 0 and self._replica_config.init_args is not None:
-            init_args = self._replica_config.init_args
-        if len(init_kwargs
-               ) == 0 and self._replica_config.init_kwargs is not None:
-            init_kwargs = self._replica_config.init_kwargs
+        if len(init_args) > 0:
+            self._replica_config.init_args = init_args
+        if len(init_kwargs) > 0:
+            self._replica_config.init_kwargs = init_kwargs
 
         return _get_global_client().deploy(
             self._name,
