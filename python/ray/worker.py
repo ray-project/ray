@@ -2166,4 +2166,4 @@ def remote(*args, **kwargs):
         placement_group=placement_group,
         worker=worker,
         retry_exceptions=retry_exceptions,
-        concurrency_groups=concurrency_groups)
+        concurrency_groups=concurrency_groups or [])
