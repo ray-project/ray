@@ -26,9 +26,9 @@ from typing import Dict, List, Tuple
 
 class DepGraph(object):
     def __init__(self):
-        self.edges: Dict[str, Dict[str, bool]] = {}
-        self.ids: Dict[str, int] = {}
-        self.inv_ids: Dict[int, str] = {}
+        self.edges = {}
+        self.ids = {}
+        self.inv_ids = {}
 
 
 def _run_shell(args: List[str]) -> str:
