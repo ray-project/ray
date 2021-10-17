@@ -31,8 +31,8 @@ class ReplicaState(Enum):
 
 
 class ReplicaStartupStatus(Enum):
-    PENDING = 1
-    PENDING_SLOW_START = 2
+    PENDING_ALLOCATION = 1
+    PENDING_INITIALIZATION = 2
     SUCCEEDED = 3
     FAILED = 4
 
@@ -180,6 +180,8 @@ class ActorReplicaWrapper:
                 backend_info.backend_config.to_proto_bytes(), version,
                 self._controller_name, self._detached)
 
+        self._initialized_obj_ref = self._actor_handle \
+            .initialization_check.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
 
@@ -235,11 +237,15 @@ class ActorReplicaWrapper:
                 version:
                     - replica __init__() and reconfigure() succeeded.
         """
+        ready, _ = ray.wait([self._initialized_obj_ref], timeout=0)
+        if len(ready) == 0:
+            return ReplicaStartupStatus.PENDING_ALLOCATION, None
+
         ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if len(ready) == 0:
-            return ReplicaStartupStatus.PENDING, None
+            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         elif len(ready) > 0:
             try:
                 backend_config, version = ray.get(ready)[0]
@@ -406,10 +412,7 @@ class BackendReplica(VersionedReplica):
         """
         status, version = self._actor.check_ready()
 
-        if status == ReplicaStartupStatus.PENDING:
-            if time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
-                status = ReplicaStartupStatus.PENDING_SLOW_START
-        elif status == ReplicaStartupStatus.SUCCEEDED:
+        if status == ReplicaStartupStatus.SUCCEEDED:
             # Re-assign BackendVersion if start / update / recover succeeded
             # by reading re-computed version in RayServeReplica
             if version is not None:
@@ -1001,10 +1004,9 @@ class BackendState:
 
         return GoalStatus.PENDING
 
-    def _check_startup_replicas(self,
-                                original_state: ReplicaState,
-                                stop_on_slow=False
-                                ) -> Tuple[List[BackendReplica], bool]:
+    def _check_startup_replicas(
+            self, original_state: ReplicaState, stop_on_slow=False
+    ) -> Tuple[List[Tuple[BackendReplica, ReplicaStartupStatus]], bool]:
         """
         Common helper function for startup actions tracking and status
         transition: STARTING, UPDATING and RECOVERING.
@@ -1030,18 +1032,25 @@ class BackendState:
 
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
-            elif start_status == ReplicaStartupStatus.PENDING:
-                # Not done yet, remain at same state
-                self._replicas.add(original_state, replica)
-            else:
-                # Slow start, remain at same state but also add to
-                # slow start replicas.
-                if not stop_on_slow:
-                    self._replicas.add(original_state, replica)
-                else:
+            # TODO: this check is redundant - would it be better to remove it?
+            elif start_status in [
+                    ReplicaStartupStatus.PENDING_ALLOCATION,
+                    ReplicaStartupStatus.PENDING_INITIALIZATION,
+            ]:
+
+                is_slow = time.time(
+                ) - replica._start_time > SLOW_STARTUP_WARNING_S
+
+                if is_slow:
+                    slow_replicas.append((replica, start_status))
+
+                # Does it make sense to stop replicas in PENDING_ALLOCATION
+                # state?
+                if is_slow and stop_on_slow:
                     replica.stop(graceful=False)
                     self._replicas.add(ReplicaState.STOPPING, replica)
-                slow_replicas.append(replica)
+                else:
+                    self._replicas.add(original_state, replica)
 
         return slow_replicas, transitioned_to_running
 
@@ -1084,17 +1093,35 @@ class BackendState:
         if (len(slow_start_replicas)
                 and time.time() - self._prev_startup_warning >
                 SLOW_STARTUP_WARNING_PERIOD_S):
-            required, available = slow_start_replicas[
-                0].resource_requirements()
-            logger.warning(
-                f"Deployment '{self._name}' has "
-                f"{len(slow_start_replicas)} replicas that have taken "
-                f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
-                "may be caused by waiting for the cluster to auto-scale, "
-                "waiting for a runtime environment to install, or a slow "
-                "constructor. Resources required "
-                f"for each replica: {required}, resources available: "
-                f"{available}. component=serve deployment={self._name}")
+
+            pending_allocation = []
+            pending_initialization = []
+
+            for replica, startup_status in slow_start_replicas:
+                if startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
+                    pending_allocation.append(replica)
+                if startup_status \
+                        == ReplicaStartupStatus.PENDING_INITIALIZATION:
+                    pending_initialization.append(replica)
+
+            if len(pending_allocation) > 0:
+                required, available = slow_start_replicas[0][
+                    0].resource_requirements()
+                logger.warning(
+                    f"Deployment '{self._name}' has "
+                    f"{len(pending_allocation)} replicas that have taken "
+                    f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
+                    "may be caused by waiting for the cluster to auto-scale, "
+                    "or waiting for a runtime environment to install. "
+                    "Resources required "
+                    f"for each replica: {required}, resources available: "
+                    f"{available}. component=serve deployment={self._name}")
+
+            if len(pending_initialization) > 0:
+                logger.warning(
+                    f"Deployment '{self._name}' has "
+                    f"{len(pending_initialization)} replicas that have taken "
+                    f"more than {SLOW_STARTUP_WARNING_S}s to initialize")
 
             self._prev_startup_warning = time.time()
 
