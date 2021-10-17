@@ -103,6 +103,6 @@ After the workflow finishes checkpointing the event, the event listener will be 
 
 When writing complex event listeners, there are a few properties the author should be aware of.
 
-* The event provider **definition** must be serializable
-* Event provider instances are _not_ serialized.
-* Event providers should be **stateless**.
+* The event listener **definition** must be serializable
+* Event listener instances are _not_ serialized.
+* Event listeners should be **stateless**.

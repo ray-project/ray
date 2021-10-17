@@ -137,9 +137,4 @@ Workflows can be efficiently triggered by timers or external events using the ev
 
 
     # If a step's arguments include events, the step function won't be executed until all of the events have occured.
-    gather.step(sleep_step, event_step, "hello world")
-
-
-
-
-
+    gather.step(sleep_step, event_step, "hello world").run()

@@ -321,7 +321,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 
 @PublicAPI(stability="beta")
 def wait_for_event(event_listener_type: EventListenerType, *args,
-                   **kwargs) -> Workflow:
+                   **kwargs) -> Workflow[Event]:
     if not issubclass(event_listener_type, EventListener):
         raise TypeError(
             f"Event listener type is {event_listener_type.__name__}"
@@ -349,13 +349,15 @@ def wait_for_event(event_listener_type: EventListenerType, *args,
 
 
 @PublicAPI
-def sleep(duration: float) -> Workflow:
+def sleep(duration: float) -> Workflow[Event]:
     """
     A workfow that resolves after sleeping for a given duration.
     """
+
     @step
     def end_time():
         return time.time() + duration
+
     return wait_for_event(TimerListener, end_time.step())
 
 
