@@ -121,20 +121,154 @@ class TestReplicaConfig:
         with pytest.raises(ValueError):
             r.set_ray_actor_options({"placement_group": None})
 
+    def test_init_args(self):
+        r1 = ReplicaConfig(func_or_class=TestClass, init_args=("hi", 123))
+        assert r1.init_args == ("hi", 123)
+        r1.set_init_args(tuple())
+        assert r1.init_args == tuple()
+
+        with pytest.raises(TypeError, match="tuple"):
+            ReplicaConfig(func_or_class=TestClass, init_args={})
+
+        with pytest.raises(ValueError, match="function deployments"):
+            ReplicaConfig(func_or_class=test_function, init_args=("hi", 123))
+
+        with pytest.raises(ValueError, match="function deployments"):
+            ReplicaConfig(
+                func_or_class=serialized_function, init_args=("hi", 123))
+
+    def test_init_kwargs(self):
+        r1 = ReplicaConfig(func_or_class=TestClass, init_kwargs={"hi": 123})
+        assert r1.init_kwargs == {"hi": 123}
+        r1.set_init_kwargs(dict())
+        assert r1.init_kwargs == dict()
+
+        with pytest.raises(TypeError, match="dict"):
+            ReplicaConfig(func_or_class=TestClass, init_kwargs=tuple())
+
+        with pytest.raises(ValueError, match="function deployments"):
+            ReplicaConfig(func_or_class=test_function, init_kwargs={"hi": 123})
+
+        with pytest.raises(ValueError, match="function deployments"):
+            ReplicaConfig(
+                func_or_class=serialized_function, init_args={"hi": 123})
+
     def test_num_cpus(self):
-        pass
+        r = ReplicaConfig(func_or_class=TestClass)
+        assert r.num_cpus == 1.0
+        r.set_num_cpus(2)
+        assert r.num_cpus == 2.0
+        r.set_num_cpus(2.0)
+        assert r.num_cpus == 2.0
+        with pytest.raises(TypeError):
+            r.set_num_cpus("1")
+        with pytest.raises(ValueError):
+            r.set_num_cpus(-0.1)
 
     def test_num_gpus(self):
-        pass
+        r = ReplicaConfig(func_or_class=TestClass)
+        assert r.num_gpus == 0.0
+        r.set_num_gpus(2)
+        assert r.num_gpus == 2.0
+        r.set_num_gpus(2.0)
+        assert r.num_gpus == 2.0
+        with pytest.raises(TypeError):
+            r.set_num_gpus("1")
+        with pytest.raises(ValueError):
+            r.set_num_gpus(-0.1)
 
     def test_resources(self):
-        pass
+        r = ReplicaConfig(func_or_class=TestClass, resources={"test_key": 0})
+        assert r.resources == {"test_key": 0}
+        r.set_resources({"test_key": 1})
+        assert r.resources == {"test_key": 1}
+        r.set_resources({"test_key": 0.1})
+        assert r.resources == {"test_key": 0.1}
+        r.set_resources({"test_key": 1.0})
+        assert r.resources == {"test_key": 1.0}
+
+        with pytest.raises(TypeError, match="keys must be strings"):
+            r.set_resources({123: 1})
+
+        with pytest.raises(TypeError, match="values must be ints or floats"):
+            r.set_resources({"test_key": "abc"})
+
+        with pytest.raises(ValueError, match="must be >= 0"):
+            r.set_resources({"test_key": -1})
+
+        with pytest.raises(
+                ValueError, match="use num_cpus_per_replica instead"):
+            r.set_resources({"CPU": 1})
+
+        with pytest.raises(
+                ValueError, match="use num_gpus_per_replica instead"):
+            r.set_resources({"GPU": 1})
 
     def test_accelerator_type(self):
-        pass
+        r = ReplicaConfig(func_or_class=TestClass, accelerator_type="test")
+        assert r.accelerator_type == "test"
+        r.set_accelerator_type("test2")
+        assert r.accelerator_type == "test2"
+
+        with pytest.raises(TypeError):
+            r.set_accelerator_type(1)
 
     def test_runtime_env(self):
-        pass
+        r = ReplicaConfig(
+            func_or_class=TestClass, runtime_env={"pip": ["requests"]})
+        assert r.runtime_env == {"pip": ["requests"]}
+        r.set_runtime_env(runtime_env={"uris": ["fake_uri"]})
+        assert r.runtime_env == {"uris": ["fake_uri"]}
+
+    def test_override_runtime_env(self):
+        # Should pick up parent env if nothing was specified.
+        r1 = ReplicaConfig(func_or_class=TestClass)
+        r1.override_runtime_env({"pip": ["requests"], "uris": ["fake_uri"]})
+        assert r1.runtime_env == {"pip": ["requests"], "uris": ["fake_uri"]}
+
+        # Should pick up URIs from parent env if not specified, even if other
+        # options were.
+        r2 = ReplicaConfig(
+            func_or_class=TestClass, runtime_env={"pip": ["requests"]})
+        r2.override_runtime_env({
+            "pip": ["requests2"],
+            "conda": {},
+            "uris": ["fake_uri"]
+        })
+        assert r2.runtime_env == {"pip": ["requests"], "uris": ["fake_uri"]}
+
+        # working_dir should be stripped from parent env.
+        r2 = ReplicaConfig(func_or_class=TestClass)
+        r2.override_runtime_env({"working_dir": ".", "uris": ["fake_uri"]})
+        assert r2.runtime_env == {"uris": ["fake_uri"]}
+
+    def test_get_resource_dict(self):
+        r = ReplicaConfig(func_or_class=TestClass)
+        assert r.get_resource_dict() == {"CPU": 1.0}
+
+        r.set_num_cpus(0.0)
+        assert r.get_resource_dict() == {}
+
+        r.set_num_cpus(2.0)
+        assert r.get_resource_dict() == {"CPU": 2.0}
+
+        r.set_num_gpus(1.0)
+        assert r.get_resource_dict() == {"CPU": 2.0, "GPU": 1.0}
+
+        r.set_resources({"FAKE1": 1.0, "FAKE2": 2.0})
+        assert r.get_resource_dict() == {
+            "CPU": 2.0,
+            "GPU": 1.0,
+            "FAKE1": 1.0,
+            "FAKE2": 2.0
+        }
+
+        r.set_num_cpus(0.0)
+        r.set_num_gpus(0.0)
+        assert r.get_resource_dict() == {"FAKE1": 1.0, "FAKE2": 2.0}
+
+        r.set_resources({})
+        assert r.get_resource_dict() == {}
 
 
 def test_http_options():

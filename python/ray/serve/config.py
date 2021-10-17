@@ -201,10 +201,20 @@ class ReplicaConfig:
             raise ValueError(
                 "init_args not supported for function deployments.")
 
+        if not isinstance(init_args, tuple):
+            raise TypeError("init_args must be a tuple.")
+
+        self.init_args = init_args
+
     def set_init_kwargs(self, init_kwargs: Dict[Any, Any]):
         if self.serialized_func_or_class.is_function:
             raise ValueError(
                 "init_kwargs not supported for function deployments.")
+
+        if not isinstance(init_kwargs, dict):
+            raise TypeError("init_kwargs must be a dict.")
+
+        self.init_kwargs = init_kwargs
 
     def set_num_cpus(self, num_cpus: Union[int, float]):
         if not isinstance(num_cpus, (int, float)):
@@ -229,33 +239,25 @@ class ReplicaConfig:
             raise TypeError(
                 "resources_per_replica must be a Dict[str, float], "
                 f"got {type(resources)}.")
-        elif "CPU" in resources:
+        if "CPU" in resources:
             raise ValueError(
                 "CPU cannot be passed in resources_per_replica, use "
                 "num_cpus_per_replica instead.")
-        elif "GPU" in resources:
+        if "GPU" in resources:
             raise ValueError(
                 "GPU cannot be passed in resources_per_replica, use "
-                "num_cpus_per_replica instead.")
-        elif "memory" in resources:
-            memory = resources["memory"]
-            if not isinstance(memory, (int, float)):
-                raise TypeError(
-                    "memory in resources_per_replica must be an int or a "
-                    "float.")
-            elif memory < 0:
-                raise ValueError(
-                    "memory in resources_per_replica must be >= 0.")
-        elif "object_store_memory" in resources:
-            object_store_memory = resources["object_store_memory"]
-            if not isinstance(object_store_memory, (int, float)):
-                raise TypeError(
-                    "object_store_memory in resources_per_replica must be an "
-                    "int or a float.")
-            elif object_store_memory < 0:
-                raise ValueError(
-                    "object_store_memory in resources_per_replica must be "
-                    ">= 0.")
+                "num_gpus_per_replica instead.")
+
+        for k, v in resources.items():
+            if not isinstance(k, str):
+                raise TypeError("resource keys must be strings, got "
+                                f"{type(k)} for key '{k}'.")
+            if not isinstance(v, (int, float)):
+                raise TypeError("resource values must be ints or floats, "
+                                f"got {type(v)} for key '{k}'.")
+            if v < 0:
+                raise ValueError("resource values must be >= 0, "
+                                 f"got {v} for key '{k}'.")
 
         self.resources = resources
 
@@ -266,8 +268,17 @@ class ReplicaConfig:
         respectively.
         """
         d = self.resources.copy() if self.resources is not None else {}
-        d.update({"CPU": self.num_cpus, "GPU": self.num_gpus})
+        if self.num_cpus != 0:
+            d["CPU"] = self.num_cpus
+        if self.num_gpus != 0:
+            d["GPU"] = self.num_gpus
         return d
+
+    def set_accelerator_type(self, accelerator_type: str):
+        if not isinstance(accelerator_type, str):
+            raise TypeError("accelerator_type must be a string.")
+
+        self.accelerator_type = accelerator_type
 
     def set_runtime_env(self, runtime_env: Dict[Any, str]):
         if runtime_env is not None and not isinstance(runtime_env, dict):
