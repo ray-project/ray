@@ -342,9 +342,10 @@ if __name__ == "__main__":
         type=str,
         help="Path of a .py source file relative to --base_dir.")
     parser.add_argument("--test", type=str, help="Specific test to check.")
-    parser.add_argument("--smoke-test",
-                        action="store_true",
-                        help="Load only a few tests for testing.")
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="Load only a few tests for testing.")
 
     args = parser.parse_args()
 

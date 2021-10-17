@@ -12,10 +12,10 @@ class TestPyDepAnalysis(unittest.TestCase):
         f.close()
 
     def test_full_module_path(self):
-        self.assertEqual(pda._full_module_path("aa.bb.cc", "__init__.py"),
-                         "aa.bb.cc")
-        self.assertEqual(pda._full_module_path("aa.bb.cc", "dd.py"),
-                         "aa.bb.cc.dd")
+        self.assertEqual(
+            pda._full_module_path("aa.bb.cc", "__init__.py"), "aa.bb.cc")
+        self.assertEqual(
+            pda._full_module_path("aa.bb.cc", "dd.py"), "aa.bb.cc.dd")
         self.assertEqual(pda._full_module_path("", "dd.py"), "dd")
 
     def test_bazel_path_to_module_path(self):
@@ -44,11 +44,11 @@ class TestPyDepAnalysis(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             src_path = os.path.join(tmpdir, "continuation1.py")
             self.create_tmp_file(
-                src_path, '''
+                src_path, """
 import ray.rllib.env.\\
     mock_env
 b = 2
-''')
+""")
             pda._process_file(graph, src_path, "ray")
 
         self.assertEqual(len(graph.ids), 2)
@@ -64,11 +64,11 @@ b = 2
         with tempfile.TemporaryDirectory() as tmpdir:
             src_path = os.path.join(tmpdir, "continuation1.py")
             self.create_tmp_file(
-                src_path, '''
+                src_path, """
 from ray.rllib.env import (ClassName,
     module1, module2)
 b = 2
-''')
+""")
             pda._process_file(graph, src_path, "ray")
 
         self.assertEqual(len(graph.ids), 2)
@@ -84,11 +84,11 @@ b = 2
         with tempfile.TemporaryDirectory() as tmpdir:
             src_path = "multi_line_comment_3.py"
             self.create_tmp_file(
-                os.path.join(tmpdir, src_path), '''
+                os.path.join(tmpdir, src_path), """
 from ray.rllib.env import mock_env
 a = 1
 b = 2
-''')
+""")
             # Touch ray/rllib/env/mock_env.py in tmpdir,
             # so that it looks like a module.
             module_dir = os.path.join(tmpdir, "python", "ray", "rllib", "env")
@@ -112,11 +112,11 @@ b = 2
         with tempfile.TemporaryDirectory() as tmpdir:
             src_path = "multi_line_comment_3.py"
             self.create_tmp_file(
-                os.path.join(tmpdir, src_path), '''
+                os.path.join(tmpdir, src_path), """
 from ray.rllib.env import MockEnv
 a = 1
 b = 2
-''')
+""")
             # Touch ray/rllib/env.py in tmpdir,
             # MockEnv is a class on env module.
             module_dir = os.path.join(tmpdir, "python", "ray", "rllib")

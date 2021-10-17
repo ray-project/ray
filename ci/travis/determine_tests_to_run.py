@@ -67,10 +67,8 @@ def get_commit_range():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output",
-                        type=str,
-                        help="json or envvars",
-                        default="envvars")
+    parser.add_argument(
+        "--output", type=str, help="json or envvars", default="envvars")
     args = parser.parse_args()
 
     RAY_CI_TUNE_AFFECTED = 0
@@ -101,7 +99,8 @@ if __name__ == "__main__":
         try:
             graph = pda.build_dep_graph()
             rllib_tests = pda.list_rllib_tests()
-            print("Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
+            print(
+                "Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
 
             impacted = {}
             for test in rllib_tests:
