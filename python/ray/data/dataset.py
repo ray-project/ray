@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
+    from ray.data.grouped_dataset import GroupedDataset
 
 import collections
 import itertools
@@ -22,7 +23,7 @@ import numpy as np
 import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U
 from ray.data.datasource import (Datasource, CSVDatasource, JSONDatasource,
                                  NumpyDatasource, ParquetDatasource)
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -35,9 +36,6 @@ from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
-
-T = TypeVar("T")
-U = TypeVar("U")
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
@@ -758,6 +756,10 @@ class Dataset(Generic[T]):
                     "be shown again.".format(set(epochs), max_epoch))
                 _epoch_warned = True
         return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
+
+    def groupBy(self, key: Callable[[T], Any]) -> "GroupedDataset[T]":
+        from ray.data.grouped_dataset import GroupedDataset
+        return GroupedDataset(self, key)
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,

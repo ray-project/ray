@@ -12,6 +12,8 @@ from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 
 T = TypeVar("T")
+U = TypeVar("U")
+K = TypeVar("K")
 
 # Represents a batch of records to be stored in the Ray object store.
 #
@@ -157,4 +159,10 @@ class BlockAccessor(Generic[T]):
             blocks: List["Block[T]"], key: Any,
             descending: bool) -> Tuple[Block[T], BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
+        raise NotImplementedError
+
+    @staticmethod
+    def group_and_aggregate_sorted_blocks(
+        blocks: List["Block[T]"], key, agg_func):
+        """Return a grouped and aggregated block from a list of sorted blocks."""
         raise NotImplementedError

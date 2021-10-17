@@ -1,7 +1,8 @@
 import random
 import sys
+import heapq
 from typing import Callable, Iterator, List, Tuple, Union, Any, Optional, \
-    TYPE_CHECKING
+    Iterable, TYPE_CHECKING
 
 import numpy as np
 
@@ -10,11 +11,10 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.impl.block_builder import BlockBuilder
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T
+from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, K
 
 # A simple block can be sorted by value (None) or a lambda function (Callable).
 SortKeyT = Union[None, Callable[[T], Any]]
-
 
 class SimpleBlockBuilder(BlockBuilder[T]):
     def __init__(self):
@@ -133,4 +133,33 @@ class SimpleBlockAccessor(BlockAccessor):
             descending: bool) -> Tuple[Block[T], BlockMetadata]:
         ret = [x for block in blocks for x in block]
         ret.sort(key=key, reverse=descending)
+        return ret, SimpleBlockAccessor(ret).get_metadata(None)
+
+    @staticmethod
+    def group_and_aggregate_sorted_blocks(
+        blocks: List[Block[T]], key: Callable[[T], K],
+        agg_func: Callable[[K, Iterable[T]], U]) -> Tuple[Block[Tuple[K, U]], BlockMetadata]:
+        iter = heapq.merge(*[SimpleBlockAccessor(block).iter_rows() for block in blocks], key=key)
+        next_element = None
+        ret = []
+        while True:
+            try:
+                if next_element is None:
+                    next_element = next(iter)
+                next_key = key(next_element)
+                def gen():
+                    nonlocal iter
+                    nonlocal next_key
+                    nonlocal next_element
+                    while key(next_element) == next_key:
+                        yield next_element
+                        try:
+                            next_element = next(iter)
+                        except StopIteration:
+                            next_element = None
+                            break
+                ret.append((next_key, agg_func(next_key, gen())))
+            except StopIteration:
+                break
+
         return ret, SimpleBlockAccessor(ret).get_metadata(None)
