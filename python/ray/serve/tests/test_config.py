@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from ray.serve.config import (BackendConfig, DeploymentMode, HTTPOptions,
-                              ReplicaConfig)
+                              ReplicaConfig, SerializedFuncOrClass)
 
 
 def test_backend_config_validation():
@@ -37,24 +37,43 @@ def test_backend_config_update():
         b.num_replicas = -1
 
 
-def test_replica_config_validation():
-    class Class:
-        pass
+class TestClass:
+    pass
 
-    def function(_):
-        pass
 
-    ReplicaConfig(Class)
-    ReplicaConfig(function)
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class())
+def test_function():
+    pass
 
-    # Check ray_actor_options validation.
-    ReplicaConfig(
-        Class,
-        tuple(),
-        dict(),
-        ray_actor_options={
+
+serialized_class = SerializedFuncOrClass(TestClass)
+serialized_function = SerializedFuncOrClass(test_function)
+
+
+class TestReplicaConfig:
+    def test_func_or_class_validation(self):
+        r1 = ReplicaConfig(func_or_class=TestClass)
+        assert not r1.serialized_func_or_class.is_function
+        r1.set_func_or_class(test_function)
+        assert r1.serialized_func_or_class.is_function
+        r2 = ReplicaConfig(func_or_class=test_function)
+        assert r2.serialized_func_or_class.is_function
+        r2.set_func_or_class(TestClass)
+        assert not r2.serialized_func_or_class.is_function
+        r3 = ReplicaConfig(func_or_class=serialized_class)
+        assert not r3.serialized_func_or_class.is_function
+        r3.set_func_or_class(serialized_function)
+        assert r3.serialized_func_or_class.is_function
+        r4 = ReplicaConfig(func_or_class=serialized_function)
+        assert r4.serialized_func_or_class.is_function
+        r4.set_func_or_class(serialized_class)
+        assert not r4.serialized_func_or_class.is_function
+
+        with pytest.raises(TypeError):
+            ReplicaConfig(func_or_class=TestClass())
+
+    def test_ray_actor_options_conversion(self):
+        r = ReplicaConfig(func_or_class=TestClass)
+        r.set_ray_actor_options({
             "num_cpus": 1.0,
             "num_gpus": 10,
             "resources": {
@@ -63,37 +82,59 @@ def test_replica_config_validation():
             "memory": 1000000.0,
             "object_store_memory": 1000000,
         })
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options=1.0)
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options=False)
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"num_cpus": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"num_cpus": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"num_gpus": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"num_gpus": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"memory": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"memory": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(
-            Class, ray_actor_options={"object_store_memory": "hello"})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"object_store_memory": -1})
-    with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"resources": None})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"name": None})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"lifetime": None})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"max_restarts": None})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"placement_group": None})
+        assert r.num_cpus == 1.0
+        assert r.num_gpus == 10.0
+        assert r.resources == {
+            "abc": 1.0,
+            "memory": 1000000.0,
+            "object_store_memory": 1000000
+        }
+
+    def test_ray_actor_options_invalid_types(self):
+        r = ReplicaConfig(func_or_class=TestClass)
+        with pytest.raises(TypeError):
+            r.set_ray_actor_options(1.0)
+        with pytest.raises(TypeError):
+            r.set_ray_actor_options({"num_cpus": "hello"})
+        with pytest.raises(ValueError):
+            r.set_ray_actor_options({"num_cpus": -1})
+        with pytest.raises(TypeError):
+            r.set_ray_actor_options({"num_gpus": "hello"})
+        with pytest.raises(ValueError):
+            r.set_ray_actor_options({"num_gpus": -1})
+        with pytest.raises(TypeError):
+            r.set_ray_actor_options({"memory": "hello"})
+        with pytest.raises(ValueError):
+            r.set_ray_actor_options({"memory": -1})
+        with pytest.raises(TypeError):
+            r.set_ray_actor_options({"object_store_memory": "hello"})
+        with pytest.raises(ValueError):
+            r.set_ray_actor_options({"object_store_memory": -1})
+        with pytest.raises(TypeError):
+            r.set_ray_actor_options({"resources": None})
+        with pytest.raises(ValueError):
+            r.set_ray_actor_options({"name": None})
+        with pytest.raises(ValueError):
+            r.set_ray_actor_options({"lifetime": None})
+        with pytest.raises(ValueError):
+            r.set_ray_actor_options({"max_restarts": None})
+        with pytest.raises(ValueError):
+            r.set_ray_actor_options({"placement_group": None})
+
+    def test_num_cpus(self):
+        pass
+
+    def test_num_gpus(self):
+        pass
+
+    def test_resources(self):
+        pass
+
+    def test_accelerator_type(self):
+        pass
+
+    def test_runtime_env(self):
+        pass
 
 
 def test_http_options():

@@ -1,11 +1,12 @@
 import inspect
 import pickle
+import copy
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
-from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
+from pydantic import (BaseModel, NonNegativeFloat, PositiveInt, validator)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
 from ray.serve.generated.serve_pb2 import (BackendConfig as BackendConfigProto,
                                            AutoscalingConfig as
@@ -121,103 +122,208 @@ class BackendConfig(BaseModel):
         return cls(**data)
 
 
+class SerializedFuncOrClass:
+    def __init__(self, func_or_class: Callable):
+        self.is_function = False
+        if inspect.isfunction(func_or_class):
+            self.is_function = True
+        elif not inspect.isclass(func_or_class):
+            raise TypeError("@serve.deployment must be called on a class or "
+                            f"function, got {type(func_or_class)}.")
+
+        self.name: str = func_or_class.__name__
+        self.is_function: bool = inspect.isfunction(func_or_class)
+        self.serialized_bytes: bytes = cloudpickle.dumps(func_or_class)
+
+
 class ReplicaConfig:
     def __init__(self,
-                 backend_def: Callable,
+                 func_or_class: Union[Callable, SerializedFuncOrClass],
                  init_args: Optional[Tuple[Any]] = None,
                  init_kwargs: Optional[Dict[Any, Any]] = None,
-                 ray_actor_options=None):
-        # Validate that backend_def is an import path, function, or class.
-        if isinstance(backend_def, str):
-            self.func_or_class_name = backend_def
-            pass
-        elif inspect.isfunction(backend_def):
-            self.func_or_class_name = backend_def.__name__
-            if init_args:
-                raise ValueError(
-                    "init_args not supported for function backend.")
-            if init_kwargs:
-                raise ValueError(
-                    "init_kwargs not supported for function backend.")
-        elif inspect.isclass(backend_def):
-            self.func_or_class_name = backend_def.__name__
+                 num_cpus: Optional[float] = None,
+                 num_gpus: Optional[float] = None,
+                 resources: Optional[Dict[str, float]] = None,
+                 accelerator_type: Optional[str] = None,
+                 runtime_env: Optional[Dict[str, Any]] = None):
+        self.set_func_or_class(func_or_class)
+
+        self.init_args = tuple()
+        if init_args is not None:
+            self.set_init_args(init_args)
+
+        self.init_kwargs = dict()
+        if init_kwargs is not None:
+            self.set_init_kwargs(init_kwargs)
+
+        self.num_cpus = 1.0
+        if num_cpus is not None:
+            self.set_num_cpus(num_cpus)
+
+        self.num_gpus = 0.0
+        if num_gpus is not None:
+            self.set_num_gpus(num_gpus)
+
+        self.resources = None
+        if resources is not None:
+            self.set_resources(resources)
+
+        self.accelerator_type = None
+        if accelerator_type is not None:
+            self.set_accelerator_type(accelerator_type)
+
+        self.runtime_env = None
+        if runtime_env is not None:
+            self.set_runtime_env(runtime_env)
+
+    def copy(self) -> "ReplicaConfig":
+        return ReplicaConfig(
+            func_or_class=self.serialized_func_or_class,
+            num_cpus=self.num_cpus,
+            num_gpus=self.num_gpus,
+            resources=copy.copy(self.resources),
+            accelerator_type=self.accelerator_type,
+            runtime_env=copy.copy(self.runtime_env))
+
+    def set_func_or_class(
+            self, func_or_class: Union[Callable, SerializedFuncOrClass]):
+        if isinstance(func_or_class, SerializedFuncOrClass):
+            serialized_func_or_class = func_or_class
         else:
+            serialized_func_or_class = SerializedFuncOrClass(func_or_class)
+
+        # Serialize the function or class to make this datastructure
+        # environment-independent.
+        self.serialized_func_or_class = serialized_func_or_class
+
+    def set_init_args(self, init_args: Tuple[Any]):
+        if self.serialized_func_or_class.is_function:
+            raise ValueError(
+                "init_args not supported for function deployments.")
+
+    def set_init_kwargs(self, init_kwargs: Dict[Any, Any]):
+        if self.serialized_func_or_class.is_function:
+            raise ValueError(
+                "init_kwargs not supported for function deployments.")
+
+    def set_num_cpus(self, num_cpus: Union[int, float]):
+        if not isinstance(num_cpus, (int, float)):
+            raise TypeError("num_cpus_per_replica must be int or float, "
+                            f"got {type(num_cpus)}.")
+        elif num_cpus < 0:
+            raise ValueError("num_cpus_per_replica must be >= 0.")
+
+        self.num_cpus = float(num_cpus)
+
+    def set_num_gpus(self, num_gpus: Union[int, float]) -> float:
+        if not isinstance(num_gpus, (int, float)):
+            raise TypeError("num_gpus_per_replica must be int or float, "
+                            f"got {type(num_gpus)}.")
+        elif num_gpus < 0:
+            raise ValueError("num_gpus_per_replica must be >= 0.")
+
+        self.num_gpus = float(num_gpus)
+
+    def set_resources(self, resources: Dict[str, float]):
+        if not isinstance(resources, dict):
             raise TypeError(
-                "Backend must be an import path, function or class, it is {}.".
-                format(type(backend_def)))
-
-        self.serialized_backend_def = cloudpickle.dumps(backend_def)
-        self.init_args = init_args if init_args is not None else ()
-        self.init_kwargs = init_kwargs if init_kwargs is not None else {}
-        if ray_actor_options is None:
-            self.ray_actor_options = {}
-        else:
-            self.ray_actor_options = ray_actor_options
-
-        self.resource_dict = {}
-        self._validate()
-
-    def _validate(self):
-
-        if "placement_group" in self.ray_actor_options:
-            raise ValueError("Providing placement_group for backend actors "
-                             "is not currently supported.")
-
-        if not isinstance(self.ray_actor_options, dict):
-            raise TypeError("ray_actor_options must be a dictionary.")
-        elif "lifetime" in self.ray_actor_options:
+                "resources_per_replica must be a Dict[str, float], "
+                f"got {type(resources)}.")
+        elif "CPU" in resources:
             raise ValueError(
-                "Specifying lifetime in ray_actor_options is not allowed.")
-        elif "name" in self.ray_actor_options:
+                "CPU cannot be passed in resources_per_replica, use "
+                "num_cpus_per_replica instead.")
+        elif "GPU" in resources:
             raise ValueError(
-                "Specifying name in ray_actor_options is not allowed.")
-        elif "max_restarts" in self.ray_actor_options:
-            raise ValueError("Specifying max_restarts in "
-                             "ray_actor_options is not allowed.")
-        else:
-            # Ray defaults to zero CPUs for placement, we default to one here.
-            if "num_cpus" not in self.ray_actor_options:
-                self.ray_actor_options["num_cpus"] = 1
-            num_cpus = self.ray_actor_options["num_cpus"]
-            if not isinstance(num_cpus, (int, float)):
-                raise TypeError(
-                    "num_cpus in ray_actor_options must be an int or a float.")
-            elif num_cpus < 0:
-                raise ValueError("num_cpus in ray_actor_options must be >= 0.")
-            self.resource_dict["CPU"] = num_cpus
-
-            num_gpus = self.ray_actor_options.get("num_gpus", 0)
-            if not isinstance(num_gpus, (int, float)):
-                raise TypeError(
-                    "num_gpus in ray_actor_options must be an int or a float.")
-            elif num_gpus < 0:
-                raise ValueError("num_gpus in ray_actor_options must be >= 0.")
-            self.resource_dict["GPU"] = num_gpus
-
-            memory = self.ray_actor_options.get("memory", 0)
+                "GPU cannot be passed in resources_per_replica, use "
+                "num_cpus_per_replica instead.")
+        elif "memory" in resources:
+            memory = resources["memory"]
             if not isinstance(memory, (int, float)):
                 raise TypeError(
-                    "memory in ray_actor_options must be an int or a float.")
+                    "memory in resources_per_replica must be an int or a "
+                    "float.")
             elif memory < 0:
-                raise ValueError("num_gpus in ray_actor_options must be >= 0.")
-            self.resource_dict["memory"] = memory
-
-            object_store_memory = self.ray_actor_options.get(
-                "object_store_memory", 0)
+                raise ValueError(
+                    "memory in resources_per_replica must be >= 0.")
+        elif "object_store_memory" in resources:
+            object_store_memory = resources["object_store_memory"]
             if not isinstance(object_store_memory, (int, float)):
                 raise TypeError(
-                    "object_store_memory in ray_actor_options must be "
-                    "an int or a float.")
+                    "object_store_memory in resources_per_replica must be an "
+                    "int or a float.")
             elif object_store_memory < 0:
                 raise ValueError(
-                    "object_store_memory in ray_actor_options must be >= 0.")
-            self.resource_dict["object_store_memory"] = object_store_memory
+                    "object_store_memory in resources_per_replica must be "
+                    ">= 0.")
 
-            custom_resources = self.ray_actor_options.get("resources", {})
-            if not isinstance(custom_resources, dict):
-                raise TypeError(
-                    "resources in ray_actor_options must be a dictionary.")
-            self.resource_dict.update(custom_resources)
+        self.resources = resources
+
+    def get_resource_dict(self) -> Dict[str, float]:
+        """Return a dictionary of all resources required by the replicas.
+
+        Includes num_cpus and num_gpus, which will be 'CPU' and 'GPU',
+        respectively.
+        """
+        d = self.resources.copy() if self.resources is not None else {}
+        d.update({"CPU": self.num_cpus, "GPU": self.num_gpus})
+        return d
+
+    def set_runtime_env(self, runtime_env: Dict[Any, str]):
+        if runtime_env is not None and not isinstance(runtime_env, dict):
+            raise TypeError("runtime_env must be a Dict, "
+                            f"got {type(runtime_env)}.")
+
+        self.runtime_env = runtime_env
+
+    def set_ray_actor_options(self, ray_actor_options: Dict[str, Any]):
+        """Sets the options specified in ray_actor_options in the replica_config.
+
+        This is used to support the legacy `ray_actor_options` API and will be
+        removed in a future release.
+        """
+        if not isinstance(ray_actor_options, dict):
+            raise TypeError("ray_actor_options must be a dictionary.")
+        elif "placement_group" in ray_actor_options:
+            raise ValueError(
+                "Specifying placement_group in ray_actor_options is not "
+                "allowed.")
+        elif "lifetime" in ray_actor_options:
+            raise ValueError(
+                "Specifying lifetime in ray_actor_options is not allowed.")
+        elif "name" in ray_actor_options:
+            raise ValueError(
+                "Specifying name in ray_actor_options is not allowed.")
+        elif "max_restarts" in ray_actor_options:
+            raise ValueError("Specifying max_restarts in "
+                             "ray_actor_options is not allowed.")
+
+        if "num_cpus" in ray_actor_options:
+            self.set_num_cpus(ray_actor_options["num_cpus"])
+
+        if "num_gpus" in ray_actor_options:
+            self.set_num_gpus(ray_actor_options["num_gpus"])
+
+        resources = ray_actor_options.get("resources", {})
+        if "memory" in ray_actor_options:
+            resources["memory"] = ray_actor_options["memory"]
+        if "object_store_memory" in ray_actor_options:
+            resources["object_store_memory"] = ray_actor_options[
+                "object_store_memory"]
+
+        self.set_resources(resources)
+
+    def override_runtime_env(self, curr_job_env: Dict[str, Any]):
+        if self.runtime_env is None:
+            self.runtime_env = curr_job_env
+        else:
+            self.runtime_env.setdefault("uris", curr_job_env.get("uris"))
+
+        # working_dir cannot be passed per-actor.
+        # TODO(edoakes): we should remove this once we refactor working_dir to
+        # not get rewritten into the "uris" field.
+        if "working_dir" in self.runtime_env:
+            del self.runtime_env["working_dir"]
 
 
 class DeploymentMode(str, Enum):

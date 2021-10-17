@@ -2,7 +2,6 @@ import asyncio
 import logging
 import pickle
 import traceback
-import inspect
 from typing import Any, Callable, Optional, Tuple
 import time
 
@@ -15,7 +14,7 @@ from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
 from ray.serve.common import BackendTag, ReplicaTag
-from ray.serve.config import BackendConfig
+from ray.serve.config import BackendConfig, SerializedFuncOrClass
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
@@ -31,13 +30,14 @@ from ray.exceptions import RayTaskError
 logger = _get_logger()
 
 
-def create_replica_wrapper(name: str, serialized_backend_def: bytes):
+def create_replica_wrapper(name: str,
+                           serialized_func_or_class: SerializedFuncOrClass):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
-    serialized_backend_def = serialized_backend_def
+    serialized_func_or_class = serialized_func_or_class
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
@@ -45,17 +45,10 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
                            init_kwargs, backend_config_proto_bytes: bytes,
                            version: BackendVersion, controller_name: str,
                            detached: bool):
-            backend = cloudpickle.loads(serialized_backend_def)
+            func_or_class = cloudpickle.loads(
+                serialized_func_or_class.serialized_bytes)
             backend_config = BackendConfig.from_proto_bytes(
                 backend_config_proto_bytes)
-
-            if inspect.isfunction(backend):
-                is_function = True
-            elif inspect.isclass(backend):
-                is_function = False
-            else:
-                assert False, ("backend_def must be function, class, or "
-                               "corresponding import path.")
 
             # Set the controller name so that serve.connect() in the user's
             # backend code will connect to the instance that this backend is
@@ -65,12 +58,12 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
                 replica_tag,
                 controller_name,
                 servable_object=None)
-            if is_function:
-                _callable = backend
+            if serialized_func_or_class.is_function:
+                _callable = func_or_class
             else:
                 # This allows backends to define an async __init__ method
                 # (required for FastAPI backend definition).
-                _callable = backend.__new__(backend)
+                _callable = func_or_class.__new__(func_or_class)
                 await sync_to_async(_callable.__init__)(*init_args,
                                                         **init_kwargs)
             # Setting the context again to update the servable_object.
@@ -85,10 +78,10 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
                 detached)
             controller_handle = ray.get_actor(
                 controller_name, namespace=controller_namespace)
-            self.backend = RayServeReplica(_callable, backend_tag, replica_tag,
-                                           backend_config,
-                                           backend_config.user_config, version,
-                                           is_function, controller_handle)
+            self.backend = RayServeReplica(
+                _callable, backend_tag, replica_tag, backend_config,
+                backend_config.user_config, version,
+                serialized_func_or_class.is_function, controller_handle)
 
             # asyncio.Event used to signal that the replica is shutting down.
             self.shutdown_event = asyncio.Event()

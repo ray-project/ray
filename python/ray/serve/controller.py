@@ -206,8 +206,8 @@ class ServeController:
             entry["ray_job_id"] = ("None"
                                    if backend_info.deployer_job_id is None else
                                    backend_info.deployer_job_id.hex())
-            entry[
-                "class_name"] = backend_info.replica_config.func_or_class_name
+            entry["class_name"] = (
+                backend_info.replica_config.serialized_func_or_class.name)
             entry["version"] = backend_info.version or "None"
             # TODO(architkulkarni): When we add the feature to allow
             # deployments with no HTTP route, update the below line.
@@ -299,8 +299,8 @@ class ServeController:
                                  f"version '{existing_backend_info.version}'.")
         backend_info = BackendInfo(
             actor_def=ray.remote(
-                create_replica_wrapper(name,
-                                       replica_config.serialized_backend_def)),
+                create_replica_wrapper(
+                    name, replica_config.serialized_func_or_class)),
             version=version,
             backend_config=backend_config,
             replica_config=replica_config,

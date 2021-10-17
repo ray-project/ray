@@ -154,7 +154,7 @@ class ActorReplicaWrapper:
         """
         Start a new actor for current BackendReplica instance.
         """
-        self._actor_resources = backend_info.replica_config.resource_dict
+        self._actor_resources = backend_info.replica_config.get_resource_dict()
         self._max_concurrent_queries = (
             backend_info.backend_config.max_concurrent_queries)
         self._graceful_shutdown_timeout_s = (
@@ -173,7 +173,11 @@ class ActorReplicaWrapper:
             lifetime="detached" if self._detached else None,
             placement_group=self._placement_group,
             placement_group_capture_child_tasks=False,
-            **backend_info.replica_config.ray_actor_options).remote(
+            num_cpus=backend_info.replica_config.num_cpus,
+            num_gpus=backend_info.replica_config.num_gpus,
+            resources=backend_info.replica_config.resources,
+            accelerator_type=backend_info.replica_config.accelerator_type,
+            runtime_env=backend_info.replica_config.runtime_env).remote(
                 self.backend_tag, self.replica_tag,
                 backend_info.replica_config.init_args,
                 backend_info.replica_config.init_kwargs,

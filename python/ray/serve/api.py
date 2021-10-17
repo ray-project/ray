@@ -7,7 +7,8 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, overload
+from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
+import warnings
 from weakref import WeakValueDictionary
 
 from fastapi import APIRouter, FastAPI
@@ -37,6 +38,13 @@ _global_client = None
 
 _UUID_RE = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}")
+
+# Warning in 1.8, raise exception in 1.9, remove in 1.10.
+_RAY_ACTOR_OPTIONS_DEPRECATED_WARNING = (
+    "ray_actor_options is deprecated and "
+    "will be removed in a future release. "
+    "Use specific options such as "
+    "`num_cpus_per_replica` instead.")
 
 
 def _get_controller_namespace(detached):
@@ -187,43 +195,20 @@ class Client:
     @_ensure_connected
     def deploy(self,
                name: str,
-               backend_def: Union[Callable, Type[Callable], str],
-               init_args: Tuple[Any],
-               init_kwargs: Dict[Any, Any],
-               ray_actor_options: Optional[Dict] = None,
-               config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
+               backend_config: BackendConfig,
+               replica_config: ReplicaConfig,
                version: Optional[str] = None,
                prev_version: Optional[str] = None,
                route_prefix: Optional[str] = None,
                url: str = "",
                _blocking: Optional[bool] = True) -> Optional[GoalId]:
-        if config is None:
-            config = {}
-        if ray_actor_options is None:
-            ray_actor_options = {}
 
-        curr_job_env = ray.get_runtime_context().runtime_env
-        if "runtime_env" in ray_actor_options:
-            ray_actor_options["runtime_env"].setdefault(
-                "uris", curr_job_env.get("uris"))
-        else:
-            ray_actor_options["runtime_env"] = curr_job_env
-
-        if "working_dir" in ray_actor_options["runtime_env"]:
-            del ray_actor_options["runtime_env"]["working_dir"]
-
-        replica_config = ReplicaConfig(
-            backend_def,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
-            ray_actor_options=ray_actor_options)
-
-        if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj(config)
-        elif isinstance(config, BackendConfig):
-            backend_config = config
-        else:
-            raise TypeError("config must be a BackendConfig or a dictionary.")
+        # Pick up the runtime_env of the deploying job by default and inherit
+        # URIs anytime they aren't specified.
+        # NOTE: We do this at deploy time instead of when the Deployment is
+        # defined because we need Ray to be running to get the current job env.
+        replica_config.override_runtime_env(
+            ray.get_runtime_context().runtime_env)
 
         goal_id, updating = ray.get(
             self._controller.deploy.remote(
@@ -599,15 +584,12 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 @PublicAPI
 class Deployment:
     def __init__(self,
-                 func_or_class: Callable,
                  name: str,
-                 config: BackendConfig,
+                 backend_config: BackendConfig,
+                 replica_config: ReplicaConfig,
                  version: Optional[str] = None,
                  prev_version: Optional[str] = None,
-                 init_args: Optional[Tuple[Any]] = None,
-                 init_kwargs: Optional[Tuple[Any]] = None,
                  route_prefix: Optional[str] = None,
-                 ray_actor_options: Optional[Dict] = None,
                  _internal=False) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
 
@@ -620,19 +602,12 @@ class Deployment:
             raise RuntimeError(
                 "The Deployment constructor should not be called "
                 "directly. Use `@serve.deployment` instead.")
-        if not callable(func_or_class):
-            raise TypeError(
-                "@serve.deployment must be called on a class or function.")
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
         if not (prev_version is None or isinstance(prev_version, str)):
             raise TypeError("prev_version must be a string.")
-        if not (init_args is None or isinstance(init_args, tuple)):
-            raise TypeError("init_args must be a tuple.")
-        if not (init_kwargs is None or isinstance(init_kwargs, dict)):
-            raise TypeError("init_kwargs must be a dict.")
         if route_prefix is not None:
             if not isinstance(route_prefix, str):
                 raise TypeError("route_prefix must be a string.")
@@ -643,32 +618,21 @@ class Deployment:
                     "route_prefix must not end with '/' unless it's the root.")
             if "{" in route_prefix or "}" in route_prefix:
                 raise ValueError("route_prefix may not contain wildcards.")
-        if not (ray_actor_options is None
-                or isinstance(ray_actor_options, dict)):
-            raise TypeError("ray_actor_options must be a dict.")
-
-        if init_args is None:
-            init_args = ()
-        if init_kwargs is None:
-            init_kwargs = {}
 
         # TODO(architkulkarni): Enforce that autoscaling_config and
         # user-provided num_replicas should be mutually exclusive.
-        if version is None and config.autoscaling_config is not None:
+        if version is None and backend_config.autoscaling_config is not None:
             # TODO(architkulkarni): Remove this restriction.
             raise ValueError(
                 "Currently autoscaling is only supported for "
                 "versioned deployments. Try @serve.deployment(version=...).")
 
-        self._func_or_class = func_or_class
-        self._name = name
-        self._version = version
-        self._prev_version = prev_version
-        self._config = config
-        self._init_args = init_args
-        self._init_kwargs = init_kwargs
-        self._route_prefix = route_prefix
-        self._ray_actor_options = ray_actor_options
+        self._name: str = name
+        self._version: Optional[str] = version
+        self._prev_version: Optional[str] = prev_version
+        self._backend_config: BackendConfig = backend_config
+        self._replica_config: ReplicaConfig = replica_config
+        self._route_prefix: Optional[str] = route_prefix
 
     @property
     def name(self) -> str:
@@ -695,22 +659,22 @@ class Deployment:
     @property
     def func_or_class(self) -> Callable:
         """Underlying class or function that this deployment wraps."""
-        return self._func_or_class
+        return cloudpickle.loads(self._replica_config.func_or_class)
 
     @property
     def num_replicas(self) -> int:
         """Current target number of replicas."""
-        return self._config.num_replicas
+        return self._backend_config.num_replicas
 
     @property
     def user_config(self) -> Any:
         """Current dynamic user-provided config options."""
-        return self._config.user_config
+        return self._backend_config.user_config
 
     @property
     def max_concurrent_queries(self) -> int:
         """Current max outstanding queries from each handle."""
-        return self._config.max_concurrent_queries
+        return self._backend_config.max_concurrent_queries
 
     @property
     def route_prefix(self) -> Optional[str]:
@@ -718,19 +682,56 @@ class Deployment:
         return self._route_prefix
 
     @property
-    def ray_actor_options(self) -> Optional[Dict]:
-        """Actor options such as resources required for each replica."""
-        return self._ray_actor_options
+    def ray_actor_options(self) -> Dict:
+        """Actor options such as resources required for each replica.
+
+        DEPRECATED: Use specific options such as `num_cpus_per_replica`
+        directly instead.
+        """
+        warnings.warn(_RAY_ACTOR_OPTIONS_DEPRECATED_WARNING)
+
+        d = {
+            "num_cpus": self.num_cpus_per_replica,
+            "runtime_env": self.runtime_env
+        }
+        if self.num_gpus_per_replica != 0:
+            d["num_gpus"] = self.num_gpus_per_replica
+        if len(self.resources_per_replica) > 0:
+            d["resources"] = self.resources_per_replica
+        if self.accelerator_type is not None:
+            d["accelerator_type"] = self.accelerator_type
+
+        return d
+
+    @property
+    def num_cpus_per_replica(self) -> float:
+        """Number of CPUs per replica."""
+        return self._replica_config.num_cpus
+
+    @property
+    def num_gpus_per_replica(self) -> float:
+        """Number of GPUs per replica."""
+        return self._replica_config.num_gpus
+
+    @property
+    def resources_per_replica(self) -> Dict[str, float]:
+        """Non-CPU or GPU resource requirements per replica."""
+        return self._replica_config.resources
+
+    @property
+    def accelerator_type(self) -> Optional[str]:
+        """Accelerator type required by this deployment's replicas."""
+        return self._replica_config.accelerator_type
 
     @property
     def init_args(self) -> Tuple[Any]:
         """Positional args passed to the underlying class's constructor."""
-        return self._init_args
+        return self._replica_config.init_args
 
     @property
     def init_kwargs(self) -> Tuple[Any]:
         """Keyword args passed to the underlying class's constructor."""
-        return self._init_args
+        return self._replica_config.init_kwargs
 
     @property
     def url(self):
@@ -752,18 +753,16 @@ class Deployment:
             init_kwargs (optional): kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
-        if len(init_args) == 0 and self._init_args is not None:
-            init_args = self._init_args
-        if len(init_kwargs) == 0 and self._init_kwargs is not None:
-            init_kwargs = self._init_kwargs
+        if len(init_args) == 0 and self._replica_config.init_args is not None:
+            init_args = self._replica_config.init_args
+        if len(init_kwargs
+               ) == 0 and self._replica_config.init_kwargs is not None:
+            init_kwargs = self._replica_config.init_kwargs
 
         return _get_global_client().deploy(
             self._name,
-            self._func_or_class,
-            init_args,
-            init_kwargs,
-            ray_actor_options=self._ray_actor_options,
-            config=self._config,
+            self._backend_config,
+            self._replica_config,
             version=self._version,
             prev_version=self._prev_version,
             route_prefix=self._route_prefix,
@@ -802,6 +801,11 @@ class Deployment:
                 init_kwargs: Optional[Dict[Any, Any]] = None,
                 route_prefix: Optional[str] = None,
                 num_replicas: Optional[int] = None,
+                num_cpus_per_replica: Optional[float] = None,
+                num_gpus_per_replica: Optional[float] = None,
+                resources_per_replica: Optional[Dict[str, float]] = None,
+                accelerator_type: Optional[str] = None,
+                runtime_env: Optional[Dict[str, Any]] = None,
                 ray_actor_options: Optional[Dict] = None,
                 user_config: Optional[Any] = None,
                 max_concurrent_queries: Optional[int] = None,
@@ -815,16 +819,13 @@ class Deployment:
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
         """
-        new_config = self._config.copy()
+        new_backend_config = self._backend_config.copy()
         if num_replicas is not None:
-            new_config.num_replicas = num_replicas
+            new_backend_config.num_replicas = num_replicas
         if user_config is not None:
-            new_config.user_config = user_config
+            new_backend_config.user_config = user_config
         if max_concurrent_queries is not None:
-            new_config.max_concurrent_queries = max_concurrent_queries
-
-        if func_or_class is None:
-            func_or_class = self._func_or_class
+            new_backend_config.max_concurrent_queries = max_concurrent_queries
 
         if name is None:
             name = self._name
@@ -832,42 +833,59 @@ class Deployment:
         if version is None:
             version = self._version
 
-        if init_args is None:
-            init_args = self._init_args
-
-        if init_kwargs is None:
-            init_kwargs = self._init_kwargs
-
         if route_prefix is None:
             if self._route_prefix == f"/{self._name}":
                 route_prefix = None
             else:
                 route_prefix = self._route_prefix
 
-        if ray_actor_options is None:
-            ray_actor_options = self._ray_actor_options
-
         if _autoscaling_config is None:
-            new_config.autoscaling_config = _autoscaling_config
+            new_backend_config.autoscaling_config = _autoscaling_config
 
         if _graceful_shutdown_wait_loop_s is not None:
-            new_config.graceful_shutdown_wait_loop_s = (
+            new_backend_config.graceful_shutdown_wait_loop_s = (
                 _graceful_shutdown_wait_loop_s)
 
         if _graceful_shutdown_timeout_s is not None:
-            new_config.graceful_shutdown_timeout_s = (
+            new_backend_config.graceful_shutdown_timeout_s = (
                 _graceful_shutdown_timeout_s)
 
+        new_replica_config = self._replica_config.copy()
+        if func_or_class is not None:
+            new_replica_config.set_func_or_class(func_or_class)
+
+        if init_args is not None:
+            new_replica_config.set_init_args(init_args)
+
+        if init_kwargs is not None:
+            new_replica_config.set_init_kwargs(init_kwargs)
+
+        if num_cpus_per_replica is not None:
+            new_replica_config.set_num_cpus_per_replica(num_cpus_per_replica)
+
+        if num_gpus_per_replica is not None:
+            new_replica_config.set_num_gpus_per_replica(num_gpus_per_replica)
+
+        if resources_per_replica is not None:
+            new_replica_config.set_resources_per_replica(resources_per_replica)
+
+        if accelerator_type is not None:
+            new_replica_config.set_accelerator_type(accelerator_type)
+
+        if runtime_env is not None:
+            new_replica_config.set_runtime_env(runtime_env)
+
+        if ray_actor_options is not None:
+            warnings.warn(_RAY_ACTOR_OPTIONS_DEPRECATED_WARNING)
+            new_replica_config.set_ray_actor_options(ray_actor_options)
+
         return Deployment(
-            func_or_class,
             name,
-            new_config,
+            new_backend_config,
+            new_replica_config,
             version=version,
             prev_version=prev_version,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
             route_prefix=route_prefix,
-            ray_actor_options=ray_actor_options,
             _internal=True,
         )
 
@@ -875,11 +893,9 @@ class Deployment:
         return all([
             self._name == other._name,
             self._version == other._version,
-            self._config == other._config,
-            self._init_args == other._init_args,
-            self._init_kwargs == other._init_kwargs,
+            self._backend_config == other._config,
+            self._replica_config == other._replica_config,
             self._route_prefix == other._route_prefix,
-            self._ray_actor_options == self._ray_actor_options,
         ])
 
     def __str__(self):
@@ -925,6 +941,11 @@ def deployment(
         version: Optional[str] = None,
         prev_version: Optional[str] = None,
         num_replicas: Optional[int] = None,
+        num_cpus_per_replica: Optional[float] = None,
+        num_gpus_per_replica: Optional[float] = None,
+        resources_per_replica: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         route_prefix: Optional[str] = None,
@@ -938,27 +959,39 @@ def deployment(
     """Define a Serve deployment.
 
     Args:
-        name (Optional[str]): Globally-unique name identifying this deployment.
+        name: Globally-unique name identifying this deployment.
             If not provided, the name of the class or function will be used.
-        version (Optional[str]): Version of the deployment. This is used to
+        version: Version of the deployment. This is used to
             indicate a code change for the deployment; when it is re-deployed
             with a version change, a rolling update of the replicas will be
             performed. If not provided, every deployment will be treated as a
             new version.
-        prev_version (Optional[str]): Version of the existing deployment which
+        prev_version: Version of the existing deployment which
             is used as a precondition for the next deployment. If prev_version
             does not match with the existing deployment's version, the
             deployment will fail. If not provided, deployment procedure will
             not check the existing deployment's version.
-        num_replicas (Optional[int]): The number of processes to start up that
+        num_replicas: The number of processes to start up that
             will handle requests to this deployment. Defaults to 1.
-        init_args (Optional[Tuple]): Positional args to be passed to the class
+        num_cpus_per_replica: The number of CPUs that will be
+            set as a requirement for each actor replica of the deployment.
+            Defaults to 1.
+        num_gpus_per_replica: The number of GPUs that will be
+            set as a requirement for each actor replica of the deployment.
+            Defaults to 0.
+        resources_per_replica: Non-CPU or GPU resource requirements for each
+            actor replica.
+        accelerator_type: Accelerator type required by this deployment.
+        runtime_env: Environment for this deployment's replicas to run in. See
+            Ray runtime_env documentation for supported options. By default,
+            this will inherit from the driver that calls `.deploy()`.
+        init_args: Positional args to be passed to the class
             constructor when starting up deployment replicas. These can also be
             passed when you call `.deploy()` on the returned Deployment.
-        init_kwargs (Optional[Dict]): Keyword args to be passed to the class
+        init_kwargs: Keyword args to be passed to the class
             constructor when starting up deployment replicas. These can also be
             passed when you call `.deploy()` on the returned Deployment.
-        route_prefix (Optional[str]): Requests to paths under this HTTP path
+        route_prefix: Requests to paths under this HTTP path
             prefix will be routed to this deployment. Defaults to '/{name}'.
             Routing is done based on longest-prefix match, so if you have
             deployment A with a prefix of '/a' and deployment B with a prefix
@@ -966,15 +999,15 @@ def deployment(
             to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
             a '/' unless they're the root (just '/'), which acts as a
             catch-all.
-        ray_actor_options (dict): Options to be passed to the Ray actor
-            constructor such as resource requirements.
-        user_config (Optional[Any]): [experimental] Config to pass to the
+        ray_actor_options: REPRECATED (use more specific options like
+            `num_cpus_per_replica` instead.
+        user_config: [experimental] Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and
             restarting its replicas. The user_config needs to be hashable to
             keep track of updates, so it must only contain hashable types, or
             hashable types nested in lists and dictionaries.
-        max_concurrent_queries (Optional[int]): The maximum number of queries
+        max_concurrent_queries: The maximum number of queries
             that will be sent to a replica of this deployment without receiving
             a response. Defaults to 100.
 
@@ -991,36 +1024,47 @@ def deployment(
         Deployment
     """
 
-    config = BackendConfig()
+    backend_config = BackendConfig()
     if num_replicas is not None:
-        config.num_replicas = num_replicas
+        backend_config.num_replicas = num_replicas
 
     if user_config is not None:
-        config.user_config = user_config
+        backend_config.user_config = user_config
 
     if max_concurrent_queries is not None:
-        config.max_concurrent_queries = max_concurrent_queries
+        backend_config.max_concurrent_queries = max_concurrent_queries
 
     if _autoscaling_config is not None:
-        config.autoscaling_config = _autoscaling_config
+        backend_config.autoscaling_config = _autoscaling_config
 
     if _graceful_shutdown_wait_loop_s is not None:
-        config.graceful_shutdown_wait_loop_s = _graceful_shutdown_wait_loop_s
+        backend_config.graceful_shutdown_wait_loop_s = (
+            _graceful_shutdown_wait_loop_s)
 
     if _graceful_shutdown_timeout_s is not None:
-        config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
+        backend_config.graceful_shutdown_timeout_s = (
+            _graceful_shutdown_timeout_s)
 
     def decorator(_func_or_class):
+        replica_config = ReplicaConfig(
+            func_or_class=_func_or_class,
+            num_cpus=num_cpus_per_replica,
+            num_gpus=num_gpus_per_replica,
+            resources=resources_per_replica,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+        )
+        if ray_actor_options is not None:
+            warnings.warn(_RAY_ACTOR_OPTIONS_DEPRECATED_WARNING)
+            replica_config.set_ray_actor_options(ray_actor_options)
+
         return Deployment(
-            _func_or_class,
             name if name is not None else _func_or_class.__name__,
-            config,
+            backend_config,
+            replica_config,
             version=version,
             prev_version=prev_version,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
             route_prefix=route_prefix,
-            ray_actor_options=ray_actor_options,
             _internal=True,
         )
 
@@ -1055,14 +1099,11 @@ def get_deployment(name: str) -> Deployment:
         raise KeyError(f"Deployment {name} was not found. "
                        "Did you call Deployment.deploy()?")
     return Deployment(
-        cloudpickle.loads(backend_info.replica_config.serialized_backend_def),
         name,
         backend_info.backend_config,
+        backend_info.replica_config,
         version=backend_info.version,
-        init_args=backend_info.replica_config.init_args,
-        init_kwargs=backend_info.replica_config.init_kwargs,
         route_prefix=route_prefix,
-        ray_actor_options=backend_info.replica_config.ray_actor_options,
         _internal=True,
     )
 
@@ -1078,15 +1119,11 @@ def list_deployments() -> Dict[str, Deployment]:
     deployments = {}
     for name, (backend_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            cloudpickle.loads(
-                backend_info.replica_config.serialized_backend_def),
             name,
             backend_info.backend_config,
+            backend_info.replica_config,
             version=backend_info.version,
-            init_args=backend_info.replica_config.init_args,
-            init_kwargs=backend_info.replica_config.init_kwargs,
             route_prefix=route_prefix,
-            ray_actor_options=backend_info.replica_config.ray_actor_options,
             _internal=True,
         )
 
