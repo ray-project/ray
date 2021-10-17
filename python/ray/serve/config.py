@@ -137,6 +137,8 @@ class SerializedFuncOrClass:
 
 
 class ReplicaConfig:
+    """Holds metadata for creating Deployment replicas."""
+
     def __init__(self,
                  func_or_class: Union[Callable, SerializedFuncOrClass],
                  init_args: Optional[Tuple[Any]] = None,
@@ -265,7 +267,8 @@ class ReplicaConfig:
         """Return a dictionary of all resources required by the replicas.
 
         Includes num_cpus and num_gpus, which will be 'CPU' and 'GPU',
-        respectively.
+        respectively. This is suitable to be passed to create a placement
+        group or print warnings about resources.
         """
         d = self.resources.copy() if self.resources is not None else {}
         if self.num_cpus != 0:
