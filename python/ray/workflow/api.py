@@ -353,7 +353,10 @@ def sleep(duration: float) -> Workflow:
     """
     A workfow that resolves after sleeping for a given duration.
     """
-    return wait_for_event(TimerListener, time.time() + duration)
+    @step
+    def end_time():
+        return time.time() + duration
+    return wait_for_event(TimerListener, end_time.step())
 
 
 @PublicAPI(stability="beta")

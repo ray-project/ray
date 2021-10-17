@@ -25,6 +25,18 @@ def test_sleep(workflow_start_regular_shared):
     assert 1 < duration < 3
 
 
+def test_sleep_checkpointing(workflow_start_regular_shared):
+    """Test that the workflow sleep only starts after `run` not when the step is
+    defined."""
+    sleep_step = workflow.sleep(2)
+    time.sleep(2)
+    start_time = time.time()
+    sleep_step.run()
+    end_time = time.time()
+    duration = end_time - start_time
+    assert 1 < duration
+
+
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
     [{
