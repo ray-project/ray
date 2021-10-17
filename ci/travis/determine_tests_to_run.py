@@ -99,6 +99,12 @@ if __name__ == "__main__":
 
         # Dry run py_dep_analysis.py to see which tests we would have run.
         try:
+            print("--------")
+            print("cur_dir is: ", os.getcwd())
+            for f in os.listdir('.'):
+                print(f)
+            print("--------")
+
             graph = pda.build_dep_graph()
             rllib_tests = pda.list_rllib_tests()
             impacted = {}
