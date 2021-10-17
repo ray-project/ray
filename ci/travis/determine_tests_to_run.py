@@ -101,7 +101,7 @@ if __name__ == "__main__":
         try:
             graph = pda.build_dep_graph()
             rllib_tests = pda.list_rllib_tests()
-            print("Total # of RLlib tests: ", len(tests), file=sys.stderr)
+            print("Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
 
             impacted = {}
             for test in rllib_tests:
