@@ -430,7 +430,8 @@ class ActorClass:
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
             max_restarts, max_task_retries, num_cpus, num_gpus, memory,
-            object_store_memory, resources, accelerator_type, new_runtime_env)
+            object_store_memory, resources, accelerator_type, new_runtime_env,
+            [])
 
         return self
 

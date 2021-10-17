@@ -1,16 +1,9 @@
 # coding: utf-8
 import asyncio
-import os
 import sys
 import threading
-import time
-
 import pytest
-
 import ray
-from ray._private.test_utils import (SignalActor,
-                                     kill_actor_and_wait_for_failure,
-                                     wait_for_condition, wait_for_pid_to_exit)
 
 
 # This tests the methods are executed in the correct eventloop.
@@ -82,7 +75,8 @@ def test_basic():
     a.f2.options(concurrency_group="compute").remote()
 
 
-# The case tests that the asyncio count down works well in one concurrency group.
+# The case tests that the asyncio count down works well in one concurrency
+# group.
 def test_async_methods_in_concurrency_group():
     # TODO: concurrency is 2 will cause this case hang. maybe we can test it.
     @ray.remote(concurrency_groups={"async": 3})
@@ -119,5 +113,4 @@ def test_async_methods_in_concurrency_group():
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))

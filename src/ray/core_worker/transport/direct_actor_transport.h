@@ -308,7 +308,8 @@ class FiberStateManager final {
     }
   }
 
-  /// Get the corresponding fiber state by the give concurrency group or function descriptor.
+  /// Get the corresponding fiber state by the give concurrency group or function
+  /// descriptor.
   ///
   /// Return the corresponding fiber state of the concurrency group
   /// if concurrency_group_name is given.
