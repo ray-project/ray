@@ -107,8 +107,9 @@ if __name__ == "__main__":
             for test in rllib_tests:
                 for file in files:
                     if pda.test_depends_on_file(graph, test, file):
-                        impacted[test] = True
-            print("RLlib tests impacted:", file=sys.stderr)
+                        impacted[test[0]] = True
+
+            print("RLlib tests impacted: ", len(impacted), file=sys.stderr)
             for test in impacted.keys():
                 print("    ", test, file=sys.stderr)
         except Exception as e:

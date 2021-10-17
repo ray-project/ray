@@ -253,7 +253,8 @@ def _depends(graph: DepGraph, visited: Dict[int, bool], tid: int,
     return []
 
 
-def test_depends_on_file(graph: DepGraph, test: str, path: str) -> List[int]:
+def test_depends_on_file(graph: DepGraph, test: Tuple[str, Tuple[str]],
+                         path: str) -> List[int]:
     """Give dependency graph, check if a test depends on a specific .py file.
 
     Args:
