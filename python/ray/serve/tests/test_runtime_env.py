@@ -318,17 +318,12 @@ else:
 serve.start()
 
 
-@serve.deployment
+@serve.deployment(runtime_env={{"pip": ["ray[serve]", "requests==2.25.1"]}})
 def requests_version(request):
     return requests.__version__
 
 
-requests_version.options(
-    ray_actor_options={{
-        "runtime_env": {{
-            "pip": ["ray[serve]", "requests==2.25.1"]
-        }}
-    }}).deploy()
+requests_version.deploy()
 
 assert requests.get("http://127.0.0.1:8000/requests_version").text == "2.25.1"
 """.format(

@@ -161,34 +161,34 @@ Resource Management (CPUs, GPUs)
 --------------------------------
 
 To assign hardware resources per replica, you can pass resource requirements to
-``ray_actor_options``.
+the ``@serve.deployment`` decorator.
 By default, each replica requires one CPU.
-To learn about options to pass in, take a look at :ref:`Resources with Actor<actor-resource-guide>` guide.
+To learn about options to pass in, take a look at :ref:`Resources with Actors<actor-resource-guide>` guide.
 
-For example, to create a deployment where each replica uses a single GPU, you can do the
+For example, to create a deployment where each replica uses a single GPU and no CPUs, you can do the
 following:
 
 .. code-block:: python
 
-  @serve.deployment(ray_actor_options={"num_gpus": 1})
+  @serve.deployment(num_cpus_per_replica=0, num_gpus_per_replica=1)
   def func(*args):
       return do_something_with_my_gpu()
 
 Fractional Resources
 --------------------
 
-The resources specified in ``ray_actor_options`` can also be *fractional*.
+The resources specified in ``@serve.deployment`` can also be *fractional*.
 This allows you to flexibly share resources between replicas.
 For example, if you have two models and each doesn't fully saturate a GPU, you might want to have them share a GPU by allocating 0.5 GPUs each.
 The same could be done to multiplex over CPUs.
 
 .. code-block:: python
 
-  @serve.deployment(name="deployment1", ray_actor_options={"num_gpus": 0.5})
+  @serve.deployment(name="deployment1", num_gpus_per_replica=0.5)
   def func(*args):
       return do_something_with_my_gpu()
 
-  @serve.deployment(name="deployment2", ray_actor_options={"num_gpus": 0.5})
+  @serve.deployment(name="deployment2", num_gpus_per_replica=0.5)
   def func(*args):
       return do_something_with_my_gpu()
 
@@ -246,8 +246,8 @@ Python dependencies.  For example, you can simultaneously serve one deployment
 that uses legacy Tensorflow 1 and another that uses Tensorflow 2.
 
 This is supported on Mac OS and Linux using Ray's :ref:`runtime-environments` feature.
-As with all other Ray actor options, pass the runtime environment in via ``ray_actor_options`` in
-your deployment.  Be sure to first run ``pip install "ray[default]"`` to ensure the
+To use this, pass the runtime environment into the ``@serve.deployment`` decorator.
+To use runtime environments you must run ``pip install "ray[default]"`` to ensure the
 Runtime Environments feature is installed.
 
 Example:
