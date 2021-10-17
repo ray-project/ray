@@ -20,6 +20,24 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 
+message WorkerBacklogReport {
+  // TaskSpec indicating the scheduling class.
+  // Cannot send scheduling class directly
+  // since it's local to each process.
+  TaskSpec resource_spec = 1;
+  // Size of the backlog for the above scheduling class.
+  int64 backlog_size = 2;
+}
+
+message ReportWorkerBacklogRequest {
+  // Unique id of the worker that's reporting the backlog
+  bytes worker_id = 1;
+  // Backlog report per scheduling class
+  repeated WorkerBacklogReport backlog_reports = 2;
+}
+
+message ReportWorkerBacklogReply {}
+
 // Request a worker from the raylet with the specified resources.
 message RequestWorkerLeaseRequest {
   // TaskSpec containing the requested resources.
@@ -255,6 +273,8 @@ service NodeManagerService {
       returns (RequestResourceReportReply);
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
+  // Report task backlog information from a worker to the raylet
+  rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
   // This method is only used by GCS, and the purpose is to release leased workers

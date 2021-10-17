@@ -3,7 +3,7 @@ import logging
 import pickle
 import traceback
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 import time
 
 import starlette.responses
@@ -108,11 +108,15 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
-        async def reconfigure(self, user_config: Optional[Any] = None) -> None:
-            await self.backend.reconfigure(user_config)
+        async def reconfigure(self, user_config: Optional[Any] = None
+                              ) -> Tuple[BackendConfig, BackendVersion]:
+            if user_config is not None:
+                await self.backend.reconfigure(user_config)
 
-        def get_version(self) -> BackendVersion:
-            return self.backend.version
+            return self.get_metadata()
+
+        def get_metadata(self) -> Tuple[BackendConfig, BackendVersion]:
+            return self.backend.backend_config, self.backend.version
 
         async def prepare_for_shutdown(self):
             self.shutdown_event.set()
@@ -145,6 +149,7 @@ class RayServeReplica:
                  replica_tag: ReplicaTag, backend_config: BackendConfig,
                  user_config: Any, version: BackendVersion, is_function: bool,
                  controller_handle: ActorHandle) -> None:
+        self.backend_config = backend_config
         self.backend_tag = backend_tag
         self.replica_tag = replica_tag
         self.callable = _callable
@@ -292,22 +297,19 @@ class RayServeReplica:
 
         return result
 
-    async def reconfigure(self,
-                          user_config: Optional[Any] = None) -> BackendVersion:
-        if user_config:
-            self.user_config = user_config
-            self.version = BackendVersion(
-                self.version.code_version, user_config=user_config)
-            if self.is_function:
-                raise ValueError(
-                    "backend_def must be a class to use user_config")
-            elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
-                raise RayServeException("user_config specified but backend " +
-                                        self.backend_tag + " missing " +
-                                        BACKEND_RECONFIGURE_METHOD + " method")
-            reconfigure_method = sync_to_async(
-                getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
-            await reconfigure_method(user_config)
+    async def reconfigure(self, user_config: Any):
+        self.user_config = user_config
+        self.version = BackendVersion(
+            self.version.code_version, user_config=user_config)
+        if self.is_function:
+            raise ValueError("backend_def must be a class to use user_config")
+        elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
+            raise RayServeException("user_config specified but backend " +
+                                    self.backend_tag + " missing " +
+                                    BACKEND_RECONFIGURE_METHOD + " method")
+        reconfigure_method = sync_to_async(
+            getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
+        await reconfigure_method(user_config)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()
@@ -356,7 +358,9 @@ class RayServeReplica:
         try:
             if hasattr(self.callable, "__del__"):
                 self.callable.__del__()
-        except Exception:
-            logger.exception("Exception during graceful shutdown of replica.")
+        except Exception as e:
+            logger.exception(
+                f"Exception during graceful shutdown of replica: {e}")
         finally:
-            self.callable.__del__ = lambda _self: None
+            if hasattr(self.callable, "__del__"):
+                del self.callable.__del__
