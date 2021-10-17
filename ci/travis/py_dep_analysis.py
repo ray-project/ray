@@ -69,8 +69,6 @@ def list_rllib_tests(n: int = -1, test: str = None) -> Tuple[str, List[str]]:
         if n > 0 and len(all_tests) >= n:
             break
 
-    print("Total # of tests: ", len(all_tests))
-
     return all_tests
 
 
@@ -265,7 +263,7 @@ def test_depends_on_file(graph: DepGraph, test: str, path: str) -> List[int]:
     """
     query = _file_path_to_module_path(path)
     if query not in graph.ids:
-        print("Warning: unknown source file ", path)
+        # Not a file that we care about.
         return []
 
     t, srcs = test
@@ -280,7 +278,7 @@ def test_depends_on_file(graph: DepGraph, test: str, path: str) -> List[int]:
 
         tid = _file_path_to_module_path(src)
         if tid not in graph.ids:
-            print("Warning: unknown test ", t)
+            # Not a test that we care about.
             # TODO(jungong): What tests are these?????
             continue
 
@@ -370,6 +368,7 @@ if __name__ == "__main__":
         # The way Tune tests are defined, they all depend on
         # the entire tune codebase.
         tests = list_rllib_tests(5 if args.smoke_test else -1, args.test)
+        print("Total # of tests: ", len(tests))
 
         for t in tests:
             branch = test_depends_on_file(graph, t, args.file)
