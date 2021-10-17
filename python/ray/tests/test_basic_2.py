@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
         "local_mode": False
     }],
     indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on Windows")
 def test_variable_number_of_args(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -85,6 +86,7 @@ def test_variable_number_of_args(shutdown_only):
         "local_mode": False
     }],
     indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on Windows")
 def test_defining_remote_functions(shutdown_only):
     ray.init(num_cpus=3)
 
@@ -342,6 +344,8 @@ def test_call_chain(ray_start_cluster):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="init issue")
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="reddit connection issue on Windows")
 def test_system_config_when_connecting(ray_start_cluster):
     config = {"object_timeout_milliseconds": 200}
     cluster = ray.cluster_utils.Cluster()
@@ -374,7 +378,7 @@ def test_get_multiple(ray_start_regular_shared):
     results = ray.get([object_refs[i] for i in indices])
     assert results == indices
 
-
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_get_with_timeout(ray_start_regular_shared):
     SignalActor = create_remote_signal_actor(ray)
     signal = SignalActor.remote()
@@ -398,6 +402,7 @@ def test_get_with_timeout(ray_start_regular_shared):
 
 
 # https://github.com/ray-project/ray/issues/6329
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on Windows")
 def test_call_actors_indirect_through_tasks(ray_start_regular_shared):
     @ray.remote
     class Counter:
@@ -427,6 +432,7 @@ def test_call_actors_indirect_through_tasks(ray_start_regular_shared):
         ray.get(zoo.remote([c]))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on Windows")
 def test_inline_arg_memory_corruption(ray_start_regular_shared):
     @ray.remote
     def f():
@@ -448,6 +454,7 @@ def test_inline_arg_memory_corruption(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on Windows")
 def test_skip_plasma(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -465,6 +472,7 @@ def test_skip_plasma(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on Windows")
 def test_actor_large_objects(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -484,6 +492,7 @@ def test_actor_large_objects(ray_start_regular_shared):
     assert isinstance(ray.get(obj_ref), np.ndarray)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on Windows")
 def test_actor_pass_by_ref(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -512,6 +521,7 @@ def test_actor_pass_by_ref(ray_start_regular_shared):
         ray.get(a.f.remote(error.remote()))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on Windows")
 def test_actor_recursive(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -535,6 +545,7 @@ def test_actor_recursive(ray_start_regular_shared):
     assert result == [x * 2 for x in range(100)]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on Windows")
 def test_actor_concurrent(ray_start_regular_shared):
     @ray.remote
     class Batcher:
@@ -561,6 +572,7 @@ def test_actor_concurrent(ray_start_regular_shared):
     assert r1 == r2 == r3
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on Windows")
 def test_actor_max_concurrency(ray_start_regular_shared):
     """
     Test that an actor of max_concurrency=N should only run
@@ -594,6 +606,7 @@ def test_actor_max_concurrency(ray_start_regular_shared):
     assert ray.get(actor.get_num_threads.remote()) <= CONCURRENCY
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on Windows")
 def test_wait(ray_start_regular_shared):
     @ray.remote
     def f(delay):
@@ -641,6 +654,7 @@ def test_wait(ray_start_regular_shared):
         ray.wait([1])
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_duplicate_args(ray_start_regular_shared):
     @ray.remote
     def f(arg1,
@@ -722,6 +736,7 @@ if __name__ == "__main__":
 
 @pytest.mark.skipif(
     client_test_enabled(), reason="JobConfig doesn't work in client mode")
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on Windows")
 def test_use_dynamic_function_and_class():
     # Test use dynamically defined functions
     # and classes for remote tasks and actors.

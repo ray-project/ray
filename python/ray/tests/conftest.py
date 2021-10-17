@@ -19,6 +19,10 @@ def shutdown_only():
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    if os.name == 'nt':
+        # Give a little time for the OS to free resources
+        import time
+        time.sleep(5)
 
 
 def get_default_fixure_system_config():
@@ -52,6 +56,10 @@ def _ray_start(**kwargs):
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    if os.name == 'nt':
+        # Give a little time for the OS to free resources
+        import time
+        time.sleep(5)
 
 
 @pytest.fixture
