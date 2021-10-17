@@ -42,8 +42,6 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
-# this is just a test
-
 
 def _check_default_resources_override(run_identifier):
     if not isinstance(run_identifier, str):
