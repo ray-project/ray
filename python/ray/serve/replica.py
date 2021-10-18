@@ -3,7 +3,7 @@ import logging
 import pickle
 import traceback
 import inspect
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple, Dict
 import time
 
 import starlette.responses
@@ -228,7 +228,7 @@ class RayServeReplica:
                     f" component=serve deployment={self.backend_tag} "
                     f"replica={self.replica_tag}"))
 
-    def _get_handle_request_stats(self) -> Dict[str, int]:
+    def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
         actor_stats = (
             ray.runtime_context.get_runtime_context()._get_actor_call_stats())
         method_stat = actor_stats.get("RayServeWrappedReplica.handle_request")
@@ -349,6 +349,10 @@ class RayServeReplica:
             # the notification to remove this replica first.
             await asyncio.sleep(self._shutdown_wait_loop_s)
             method_stat = self._get_handle_request_stats()
+            # The handle_request method wasn't even invoked.
+            if method_stat is None:
+                break
+            # The handle_request method has 0 inflight requests.
             if method_stat["running"] + method_stat["pending"] == 0:
                 break
             else:
