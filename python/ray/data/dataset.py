@@ -349,7 +349,7 @@ class Dataset(Generic[T]):
         assert len(indices) < num_blocks, (indices, num_blocks)
         if indices:
             splits = self.split_at_indices(indices)
-            self._blocks.clear()  # Early-release memory.
+            # TODO this saves memory: self._blocks.clear()
         else:
             splits = [self]
 
