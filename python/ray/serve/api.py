@@ -753,15 +753,18 @@ class Deployment:
             init_kwargs (optional): kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
-        if len(init_args) > 0:
-            self._replica_config.init_args = init_args
-        if len(init_kwargs) > 0:
-            self._replica_config.init_kwargs = init_kwargs
+        replica_config = self._replica_config
+        if len(init_args) > 0 or len(init_kwargs) > 0:
+            replica_config = replica_config.copy()
+            if len(init_args) > 0:
+                replica_config.set_init_args(init_args)
+            if len(init_kwargs) > 0:
+                replica_config.init_kwargs(init_kwargs)
 
         return _get_global_client().deploy(
             self._name,
             self._backend_config,
-            self._replica_config,
+            replica_config,
             version=self._version,
             prev_version=self._prev_version,
             route_prefix=self._route_prefix,
@@ -1047,6 +1050,8 @@ def deployment(
     def decorator(_func_or_class):
         replica_config = ReplicaConfig(
             func_or_class=_func_or_class,
+            init_args=init_args,
+            init_kwargs=init_kwargs,
             num_cpus=num_cpus_per_replica,
             num_gpus=num_gpus_per_replica,
             resources=resources_per_replica,
