@@ -1,23 +1,25 @@
 .. _sgd-migration:
 
-Migrating from Ray SGD v1
-=========================
+Migrating from Ray SGD to Ray Train
+===================================
 
-In Ray 1.7, we are rolling out a new and more streamlined version of Ray SGD. Ray SGD v2 focuses on usability and composability - it has a much simpler API, has support for more deep learning backends, integrates better with other libraries in the Ray ecosystem, and will continue to be actively developed with more features.
+In Ray 1.7, we are rolling out a new and more streamlined version of Ray SGD.
+As of Ray 1.8, the new version of Ray SGD has been rebranded as Ray Train.
+Ray Train focuses on usability and composability - it has a much simpler API, has support for more deep learning backends, integrates better with other libraries in the Ray ecosystem, and will continue to be actively developed with more features.
 
-This guide will help you easily migrate existing code from Ray SGD v1 to Ray SGD v2. If you are new to Ray SGD as a whole, you should get started with :ref:`Ray SGD v2 directly <sgd-v2-docs>`.
+This guide will help you easily migrate existing code from Ray SGD v1 to Ray Train. If you are new to Ray SGD as a whole, you should get started with :ref:`Ray Train directly <train-docs>`.
 
-For a full list of features that Ray SGD v2 provides, please check out the :ref:`user guide<sgd-user-guide>`.
+For a full list of features that Ray Train provides, please check out the :ref:`user guide<train-user-guide>`.
 
-.. note:: If there are any issues or anything missing with this guide or any feedback on Ray SGD v2 overall, please file a `Github issue on the Ray repo  <https://github.com/ray-project/ray/issues>`_!
+.. note:: If there are any issues or anything missing with this guide or any feedback on Ray Train overall, please file a `Github issue on the Ray repo  <https://github.com/ray-project/ray/issues>`_!
 
 What are the API differences?
 -----------------------------
 
-There are 3 primary API differences between Ray SGD v1 and v2.
+There are 3 primary API differences between Ray SGD v1 and Ray Train.
 
 1. There is a single ``Trainer`` interface for all backends (torch, tensorflow, horovod), and the backend is simply specified via an argument: ``Trainer(backend="torch")``\ , ``Trainer(backend="horovod")``\ , etc. Any features that we add to Ray SGD will be supported for all backends, and there won't be any API divergence like there was with a separate ``TorchTrainer`` and ``TFTrainer``.
-2. The ``TrainingOperator`` and creator functions are replaced by a more natural user-defined training function. You no longer have to make your training logic fit into a restrictive interface. In Ray SGD v2, you simply have to provide a training function that describes the full logic for your training execution and this will be distributed by Ray SGD v2.
+2. The ``TrainingOperator`` and creator functions are replaced by a more natural user-defined training function. You no longer have to make your training logic fit into a restrictive interface. In Ray SGD v2, you simply have to provide a training function that describes the full logic for your training execution and this will be distributed by Ray Train.
 
     .. code-block:: python
 
@@ -40,7 +42,7 @@ There are 3 primary API differences between Ray SGD v1 and v2.
                 optimizer.step()
                 print(f"epoch: {epoch}, loss: {loss.item()}")
 
-        from ray.sgd import Trainer
+        from ray.train.dl import Trainer
 
         trainer = Trainer(backend="torch", num_workers=4)
         trainer.start()
@@ -49,7 +51,7 @@ There are 3 primary API differences between Ray SGD v1 and v2.
 
 Currently, this means that you are now responsible for modifying your code to support distributed training (specifying ``DistributedDataParallel`` for ``torch`` or ``MultiWorkerMirroredStrategy`` for ``tensorflow``) as opposed to having this be automatically handled internally. However, we have plans to provide utilities that you can use to automatically handle these recipes for you.
 
-3. Rather than iteratively calling ``trainer.train()`` or ``trainer.validate()`` for each epoch, in Ray SGD v2 the training function defines the full training execution and is run via ``trainer.run(train_func)``.
+3. Rather than iteratively calling ``trainer.train()`` or ``trainer.validate()`` for each epoch, in Ray Train the training function defines the full training execution and is run via ``trainer.run(train_func)``.
 
 In the following sections, we will guide you through the steps to migrate:
 
@@ -65,15 +67,15 @@ The main change you will have to make is how you define your training logic. In 
 
 PyTorch
 ~~~~~~~
-In v1, the training logic is defined through the ``train_epoch`` and ``train_batch`` methods of a ``TrainingOperator`` class which is passed into the ``TorchTrainer``. To migrate to Ray SGD v2, there are 2 options:
+In v1, the training logic is defined through the ``train_epoch`` and ``train_batch`` methods of a ``TrainingOperator`` class which is passed into the ``TorchTrainer``. To migrate to Ray Train, there are 2 options:
 
 1. If you felt the ``TrainingOperator`` is too unnecessary and complex, or you had to customize it extensively, you can define your own training function.
-2. If you liked having your training logic in the ``TrainingOperator``, you can continue to use the ``TrainingOperator`` with Ray SGD v2.
+2. If you liked having your training logic in the ``TrainingOperator``, you can continue to use the ``TrainingOperator`` with Ray Train.
 
 **Alternative 1: Custom Training Function**
 You can define your own custom training function, and use only the parts from ``TrainingOperator.train_epoch``, ``TrainingOperator.setup``, and ``TrainingOperator.validate`` that are necessary for your application.
 
-You can see a full example on how to :ref:`port over regular PyTorch DDP code to Ray SGD here <sgd-porting-code>`
+You can see a full example on how to :ref:`port over regular PyTorch DDP code to Ray Train here <train-porting-code>`
 
 **Alternative 2: Continue to use TrainingOperator**
 Alternatively, if you liked having the ``TrainingOperator``, you can define a training function that instantiates your `TrainingOperator` and you can call methods directly on the operator object.
@@ -102,14 +104,14 @@ you would do
 .. code-block:: python
 
     from ray.util.sgd import TrainingOperator
-    from ray.sgd import Trainer
-    from ray import sgd
+    from ray import train
+    from ray.train.dl import Trainer
 
     class MyTrainingOperator(TrainingOperator):
        ...
 
     def train_func(config):
-       device = torch.device(f"cuda:{sgd.local_rank()}" if
+       device = torch.device(f"cuda:{train.local_rank()}" if
                      torch.cuda.is_available() else "cpu")
        if torch.cuda.is_available():
            torch.cuda.set_device(device)
@@ -117,8 +119,8 @@ you would do
        # Set the args to whatever values you want.
        training_operator = MyTrainingOperator(
            config=config,
-           world_rank=sgd.world_rank(),
-           local_rank=sgd.local_rank(),
+           world_rank=train.world_rank(),
+           local_rank=train.local_rank(),
            is_distributed=True,
            device=device,
            use_gpu=True,
@@ -136,7 +138,7 @@ you would do
            validation_loader = training_operator._get_validation_loader()
            training_operator.validate(iterator=iter(validation_loader))
 
-       if sgd.world_rank() == 0:
+       if train.world_rank() == 0:
            return training_operator._get_original_models()
        else:
            return None
@@ -149,14 +151,14 @@ you would do
 Tensorflow
 ~~~~~~~~~~
 
-The API for ``TFTrainer`` uses creator functions instead of a ``TrainingOperator`` to define the training logic. To port over Ray SGD v1 Tensorflow code to v2 you can do the following:
+The API for ``TFTrainer`` uses creator functions instead of a ``TrainingOperator`` to define the training logic. To port over Ray SGD v1 Tensorflow code to Ray Train you can do the following:
 
 .. code-block:: python
 
     from tensorflow.distribute import MultiWorkerMirroredStrategy
 
-    from ray.sgd import Trainer
-    from ray import sgd
+    from ray import train
+    from ray.train.dl import Trainer
 
     def train_func(config):
        train_dataset, val_dataset = data_creator(config)
@@ -167,7 +169,7 @@ The API for ``TFTrainer`` uses creator functions instead of a ``TrainingOperator
        for epoch_idx in range(config["num_epochs"]):
            model.fit(train_dataset)
 
-       if sgd.world_rank() == 0:
+       if train.world_rank() == 0:
            return model
        else:
            return None
@@ -176,21 +178,21 @@ The API for ``TFTrainer`` uses creator functions instead of a ``TrainingOperator
     trainer.start()
     model = trainer.run(train_func)[0]
 
-You can see a full example :ref:`here <sgd-porting-code>`.
+You can see a full example :ref:`here <train-porting-code>`.
 
 .. _sgd-migration-trainer:
 
 Interacting with the ``Trainer``
 --------------------------------
 
-In Ray SGD v1, you can iteratively call ``trainer.train()`` or ``trainer.validate()`` for each epoch, and can then interact with the trainer to get certain state (model, checkpoints, results, etc.). In Ray SGD v2, this is replaced by a single training function that defines the full training & validation loop for all epochs.
+In Ray SGD v1, you can iteratively call ``trainer.train()`` or ``trainer.validate()`` for each epoch, and can then interact with the trainer to get certain state (model, checkpoints, results, etc.). In Ray Train, this is replaced by a single training function that defines the full training & validation loop for all epochs.
 
 There are 3 ways to get state during or after the training execution:
 
 
 #. Return values from your training function
-#. Intermediate results via ``sgd.report()``
-#. Saving & loading checkpoints via ``sgd.save_checkpoint()`` and ``sgd.load_checkpoint()``
+#. Intermediate results via ``train.report()``
+#. Saving & loading checkpoints via ``train.save_checkpoint()`` and ``train.load_checkpoint()``
 
 Return Values
 ~~~~~~~~~~~~~
@@ -199,7 +201,7 @@ To get any state from training *after* training has completed, you can simply re
 
 For example, to get the final model:
 
-**SGD v1**
+**Ray SGD v1**
 
 .. code-block:: python
 
@@ -214,11 +216,11 @@ For example, to get the final model:
 
     trained_model = trainer.get_model()
 
-**SGD v2**
+**Ray Train**
 
 .. code-block:: python
 
-    from ray.sgd import Trainer
+    from ray.train.dl import Trainer
 
     def train_func():
        model = Net()
@@ -237,9 +239,9 @@ For example, to get the final model:
 Intermediate Reporting
 ~~~~~~~~~~~~~~~~~~~~~~
 
-If you want to access any values *during* the training process, you can do so via ``sgd.report()``. You can pass in any values to ``sgd.report()`` and these values from all workers will be sent to any callbacks passed into your ``Trainer``.
+If you want to access any values *during* the training process, you can do so via ``train.report()``. You can pass in any values to ``train.report()`` and these values from all workers will be sent to any callbacks passed into your ``Trainer``.
 
-**SGD v1**
+**Ray SGD v1**
 
 .. code-block:: python
 
@@ -254,22 +256,22 @@ If you want to access any values *during* the training process, you can do so vi
         print(trainer.train(reduce_results=False))
 
 
-**SGD v2**
+**Ray Train**
 
 .. code-block:: python
 
-   from ray import sgd
-   from ray.sgd Trainer
-   from ray.sgd.callbacks import SGDCallback
+   from ray import train
+   from ray.train import TrainingCallback
+   from ray.train.dl Trainer
    from typing import List, Dict
 
-   class PrintingCallback(SGDCallback):
+   class PrintingCallback(TrainingCallback):
        def handle_result(self, results: List[Dict], **info):
            print(results)
 
    def train_func():
        for i in range(3):
-           sgd.report(epoch=i)
+           train.report(epoch=i)
 
    trainer = Trainer(backend="torch", num_workers=2)
    trainer.start()
@@ -282,18 +284,18 @@ If you want to access any values *during* the training process, you can do so vi
    # [{'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014500617980957031, '_training_iteration': 3}, {'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0015292167663574219, '_training_iteration': 3}]
    trainer.shutdown()
 
-See the :ref:`v2 User Guide <sgd-user-guide>` for more details.
+See the :ref:`Ray Train User Guide <train-user-guide>` for more details.
 
 Checkpointing
 ~~~~~~~~~~~~~
 
-Finally, you can also use ``sgd.save_checkpoint()`` and ``sgd.load_checkpoint()`` to write checkpoints to disk during the training process, and to load from the most recently saved checkpoint in the case of node failures.
+Finally, you can also use ``train.save_checkpoint()`` and ``train.load_checkpoint()`` to write checkpoints to disk during the training process, and to load from the most recently saved checkpoint in the case of node failures.
 
-See the :ref:`Checkpointing <sgd-checkpointing>` and :ref:`Fault Tolerance & Elastic Training <sgd-fault-tolerance>` sections on the user guide for more info.
+See the :ref:`Checkpointing <train-checkpointing>` and :ref:`Fault Tolerance & Elastic Training <train-fault-tolerance>` sections on the user guide for more info.
 
 For example, in order to save checkpoints after every epoch:
 
-**SGD v1**
+**Ray SGD v1**
 
 .. code-block:: python
 
@@ -309,12 +311,12 @@ For example, in order to save checkpoints after every epoch:
         trainer.save_checkpoint(checkpoint_dir="~/ray_results")
 
 
-**SGD v2**
+**Ray Train**
 
 .. code-block:: python
 
-    from ray.sgd import Trainer
-    from ray import sgd
+    from ray import train
+    from ray.train.dl import Trainer
 
     def train_func():
        model = Net()
@@ -322,7 +324,7 @@ For example, in order to save checkpoints after every epoch:
        for i in range(3):
            for batch in train_loader:
                model.train(batch)
-           sgd.save_checkpoint(epoch=i, model=model.state_dict()))
+           train.save_checkpoint(epoch=i, model=model.state_dict()))
 
     trainer = Trainer(backend="torch")
     trainer.start()
@@ -334,11 +336,11 @@ For example, in order to save checkpoints after every epoch:
 Hyperparameter Tuning with Ray Tune
 -----------------------------------
 
-Ray SGD v2 also comes with an easier to use interface for Hyperparameter Tuning with Ray Tune using Tune's function API instead of its Class API. In particular, it is much easier to define custom procedures because the logic is entirely defined by your training function.
+Ray Train also comes with an easier to use interface for Hyperparameter Tuning with Ray Tune using Tune's function API instead of its Class API. In particular, it is much easier to define custom procedures because the logic is entirely defined by your training function.
 
-There is a 1:1 mapping between rank 0 worker's ``sgd.report()``\ , ``sgd.save_checkpoint()``\ , and ``sgd.load_checkpoint()`` with ``tune.report()``\ , ``tune.save_checkpoint()``\ , and ``tune.load_checkpoint()``.
+There is a 1:1 mapping between rank 0 worker's ``train.report()``\ , ``train.save_checkpoint()``\ , and ``train.load_checkpoint()`` with ``tune.report()``\ , ``tune.save_checkpoint()``\ , and ``tune.load_checkpoint()``.
 
-**SGD v1**
+**Ray SGD v1**
 
 .. code-block:: python
 
@@ -367,19 +369,18 @@ There is a 1:1 mapping between rank 0 worker's ``sgd.report()``\ , ``sgd.save_ch
 
 
 
-**SGD v2**
+**Ray Train**
 
 .. code-block:: python
 
-   from ray import tune
-   from ray import sgd
-   from ray.sgd import Trainer
+   from ray import train, tune
+   from ray.train.dl import Trainer
 
    def train_func(config)
        # In this example, nothing is expected to change over epochs,
        # and the output metric is equivalent to the input value.
        for _ in range(config["num_epochs"]):
-           sgd.report(output=config["input"])
+           train.report(output=config["input"])
 
    trainer = Trainer(backend="torch", num_workers=2)
    trainable = trainer.to_tune_trainable(train_func)
@@ -390,4 +391,4 @@ There is a 1:1 mapping between rank 0 worker's ``sgd.report()``\ , ``sgd.save_ch
    print(analysis.get_best_config(metric="output", mode="max"))
    # {'num_epochs': 2, 'input': 3}
 
-For more information see :ref:`sgd-tune`
+For more information see :ref:`train-tune`

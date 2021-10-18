@@ -1,11 +1,11 @@
-.. _sgd-arch:
+.. _train-arch:
 
-RaySGD Architecture
-===================
+Ray Train Architecture
+======================
 
-A diagram of the RaySGD architecture is provided below.
+A diagram of the Ray Train architecture is provided below.
 
-.. image:: sgd-arch.svg
+.. image:: train-arch.svg
     :width: 70%
     :align: center
 
@@ -13,14 +13,13 @@ A diagram of the RaySGD architecture is provided below.
 Trainer
 -------
 
-The Trainer is the main class that is exposed in the RaySGD API that users will interact with.
-
+The Trainer is the main class that is exposed in the Ray Train API that users will interact with.
 
 * The user will pass in a *function* which defines the training logic.
-* The Trainer will create an :ref:`Executor <sgd-arch-executor>` to run the distributed training.
+* The Trainer will create an :ref:`Executor <train-arch-executor>` to run the distributed training.
 * The Trainer will handle callbacks based on the results from the BackendExecutor.
 
-.. _sgd-arch-executor:
+.. _train-arch-executor:
 
 Executor
 --------

@@ -2,11 +2,11 @@ import abc
 from typing import List, Dict
 
 
-class SGDCallback(metaclass=abc.ABCMeta):
-    """Abstract SGD callback class."""
+class TrainingCallback(metaclass=abc.ABCMeta):
+    """Abstract Train callback class."""
 
     def handle_result(self, results: List[Dict], **info):
-        """Called every time sgd.report() is called.
+        """Called every time train.report() is called.
 
         Args:
             results (List[Dict]): List of results from the training

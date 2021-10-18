@@ -21,7 +21,7 @@ TIME_TOTAL_S = "_time_total_s"
 
 # Env var name
 ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
-    "SGD_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS")
+    "TRAIN_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS")
 
 # Will not be reported unless ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
 # env var is not 0
@@ -47,4 +47,5 @@ TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 
 # Integer value which if set will override the value of
 # Backend.share_cuda_visible_devices. 1 for True, 0 for False.
-ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV = "SGD_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
+ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV =\
+    "TRAIN_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"

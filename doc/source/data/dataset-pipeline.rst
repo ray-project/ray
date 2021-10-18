@@ -230,7 +230,7 @@ Example: Per-Epoch Shuffle Pipeline
 .. tip::
 
     If you interested in distributed ingest for deep learning, it is
-    recommended to use Ray Datasets in conjunction with :ref:`Ray SGD <sgd-v2-docs>`.
+    recommended to use Ray Datasets in conjunction with :ref:`Ray Train <train-docs>`.
     See the :ref:`example below<dataset-pipeline-ray-sgd>` for more info.
 
 ..
@@ -304,7 +304,7 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
 
 Distributed Ingest with Ray SGD
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Ray Datasets integrates with :ref:`Ray SGD <sgd-v2-docs>`, further simplifying your distributed ingest pipeline.
+Ray Datasets integrates with :ref:`Ray Train <train-docs>`, further simplifying your distributed ingest pipeline.
 
 Ray SGD is a lightweight library for scalable deep learning on Ray.
 
@@ -339,7 +339,7 @@ Ray SGD is a lightweight library for scalable deep learning on Ray.
         dataset=pipe)
 
 Ray SGD is responsible for the orchestration of the training workers and will automatically split the Dataset for you.
-See :ref:`the SGD User Guide <sgd-dataset-pipeline>` for more details.
+See :ref:`the SGD User Guide <train-dataset-pipeline>` for more details.
 
 Changing Pipeline Structure
 ---------------------------

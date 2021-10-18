@@ -8,17 +8,17 @@ from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
 
 from ray.actor import ActorHandle
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
-    InactiveWorkerGroupError, SGDBackendError, TrainingWorkerError
+    InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
 from ray.util.sgd.v2.backends.horovod import HorovodConfig
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
-from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.callbacks.callback import TrainingCallback
 from ray.util.sgd.v2.utils import RayDataset
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
     TUNE_CHECKPOINT_FILE_NAME
 
-# Ray SGD should be usable even if Tune is not installed.
+# Ray Train should be usable even if Tune is not installed.
 from ray.util.sgd.v2.utils import construct_path
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
@@ -53,7 +53,7 @@ class Trainer:
     Directory structure:
     - A logdir is created during instantiation. This will hold all the
     results/checkpoints for the lifetime of the Trainer. By default, it will be
-    of the form ``~/ray_results/sgd_<datestring>``.
+    of the form ``~/ray_results/train_<datestring>``.
     - A run_dir is created for each ``run`` call. This will
     hold the checkpoints and results for a single ``trainer.run()`` or
     ``trainer.run_iterator()`` call. It will be of the form ``run_<run_id>``.
@@ -137,9 +137,9 @@ class Trainer:
         # Create directory for logs.
         log_dir = Path(log_dir) if log_dir else None
         if not log_dir:
-            # Initialize timestamp for identifying this SGD training execution.
+            # Initialize timestamp for identifying this Train  execution.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            log_dir = Path(f"sgd_{timestr}")
+            log_dir = Path(f"train_{timestr}")
         log_dir = construct_path(log_dir, DEFAULT_RESULTS_DIR)
         log_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Trainer logs will be logged in: {log_dir}")
@@ -189,7 +189,7 @@ class Trainer:
     def run(self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
-            callbacks: Optional[List[SGDCallback]] = None,
+            callbacks: Optional[List[TrainingCallback]] = None,
             dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
@@ -201,23 +201,23 @@ class Trainer:
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
-            callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
-                will be executed during training. If this is not set,
+            callbacks (Optional[List[TrainingCallback]]): A list of Callbacks
+                which will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
                 Distributed Ray :ref:`Dataset <dataset-api>` or
                 :ref:`DatasetPipeline <dataset-pipeline-api>` to pass into the
                 workers, which can be accessed from the training function via
-                ``sgd.get_dataset_shard()``. Sharding will automatically be
+                ``train.get_dataset_shard()``. Sharding will automatically be
                 handled by the Trainer. Multiple Datasets can be passed in as
                 a ``Dict`` that maps each name key to a Dataset value,
                 and each Dataset can be accessed from the training function
                 by passing in a `dataset_name` argument to
-                ``sgd.get_dataset_shard()``.
+                ``train.get_dataset_shard()``.
             checkpoint (Optional[Dict|str|Path]): The checkpoint data that
                 should be loaded onto each worker and accessed by the training
-                function via ``sgd.load_checkpoint()``. If this is a ``str`` or
-                ``Path`` then the value is expected to be a path to a file
+                function via ``train.load_checkpoint()``. If this is a ``str``
+                or ``Path`` then the value is expected to be a path to a file
                 that contains a serialized checkpoint dict. If this is
                 ``None`` then no checkpoint will be loaded.
             checkpoint_strategy (Optional[CheckpointStrategy]): The
@@ -242,7 +242,7 @@ class Trainer:
         train_func = self._get_train_func(train_func, config)
 
         try:
-            iterator = SGDIterator(
+            iterator = TrainingIterator(
                 backend_executor=self._executor,
                 train_func=train_func,
                 dataset=dataset,
@@ -267,7 +267,7 @@ class Trainer:
             dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
-    ) -> "SGDIterator":
+    ) -> "TrainingIterator":
         """Same as ``run`` except returns an iterator over the results.
 
         This is useful if you want to have more customization of what to do
@@ -281,7 +281,7 @@ class Trainer:
                 for _ in config["epochs"]:
                     metrics = train()
                     metrics = validate(...)
-                    ray.sgd.report(**metrics)
+                    ray.train.report(**metrics)
                 return model
 
             iterator = trainer.run_iterator(train_func, config=config)
@@ -300,7 +300,7 @@ class Trainer:
                 ``train_func``. If None then an empty Dict will be created.
             checkpoint (Optional[Dict|Path|str]): The checkpoint data that
                 should be loaded onto each worker and accessed by the
-                training function via ``sgd.load_checkpoint()``. If this is a
+                training function via ``train.load_checkpoint()``. If this is a
                 ``str`` or ``Path`` then the value is expected to be a path
                 to a file that contains a serialized checkpoint dict. If this
                 is ``None`` then no checkpoint will be loaded.
@@ -308,7 +308,7 @@ class Trainer:
                 configurations for saving checkpoints.
 
         Returns:
-            An Iterator over the intermediate results from ``sgd.report()``.
+            An Iterator over the intermediate results from ``train.report()``.
         """
         # Create new log directory for this run.
         self._run_id += 1
@@ -316,7 +316,7 @@ class Trainer:
 
         train_func = self._get_train_func(train_func, config)
 
-        return SGDIterator(
+        return TrainingIterator(
             backend_executor=self._executor,
             train_func=train_func,
             run_dir=self.latest_run_dir,
@@ -369,7 +369,7 @@ class Trainer:
         """Path to the checkpoint directory.
 
         Returns ``None`` if ``run()`` has not been called or if
-        ``sgd.checkpoint()`` has not been called from ``train_func``within
+        ``train.checkpoint()`` has not been called from ``train_func``within
         the most recent call to ``run``.
         """
         return self._executor.latest_checkpoint_dir
@@ -379,7 +379,7 @@ class Trainer:
         """Path to the latest persisted checkpoint from the latest run.
 
         Returns ``None`` if ``run()`` has not been called or if
-        ``sgd.checkpoint()`` has not been called from ``train_func`` within
+        ``train.checkpoint()`` has not been called from ``train_func`` within
         the most recent call to ``run``.
         """
         return self._executor.latest_checkpoint_path
@@ -391,7 +391,7 @@ class Trainer:
         This checkpoint may not be saved to disk.
 
         Returns ``None`` if ``run()`` has not been called or if
-        ``sgd.checkpoint()`` has not been called from ``train_func``.
+        ``train.checkpoint()`` has not been called from ``train_func``.
         """
         return self._executor.latest_checkpoint
 
@@ -413,12 +413,12 @@ class Trainer:
                 Distributed Ray p:ref:`Dataset <dataset-api>` or
                 :ref:`DatasetPipeline <dataset-pipeline-api>` to pass into the
                 workers, which can be accessed from the training function via
-                ``sgd.get_dataset_shard()``. Sharding will automatically be
+                ``train.get_dataset_shard()``. Sharding will automatically be
                 handled by the Trainer. Multiple Datasets can be passed in as
                 a ``Dict`` that maps each name key to a Dataset value,
                 and each Dataset can be accessed from the training function
                 by passing in a `dataset_name` argument to
-                ``sgd.get_dataset_shard()``.
+                ``train.get_dataset_shard()``.
 
         Returns:
             A Trainable that can directly be passed into ``tune.run()``.
@@ -437,11 +437,11 @@ class Trainer:
                                       self._resources_per_worker)
 
     def to_worker_group(self, train_cls: Type, *args,
-                        **kwargs) -> "SGDWorkerGroup":
+                        **kwargs) -> "TrainWorkerGroup":
         """Returns Ray actors with the provided class and the backend started.
 
         This is useful if you want to provide your own class for training
-        and have more control over execution, but still want to use Ray SGD
+        and have more control over execution, but still want to use Ray Train
         to setup the appropriate backend configurations (torch, tf, etc.).
 
         .. code-block:: python
@@ -474,10 +474,10 @@ class Trainer:
                                "Trainer or don't start it in the first place.")
         self._executor.start(
             train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs)
-        return SGDWorkerGroup(self._executor.worker_group)
+        return TrainWorkerGroup(self._executor.worker_group)
 
 
-class SGDWorkerGroup:
+class TrainWorkerGroup:
     """A container for a group of Ray actors.
 
     You should not instantiate this directly and only use this as the output
@@ -522,8 +522,8 @@ class SGDWorkerGroup:
         self._worker_group.shutdown(patience_s=patience_s)
 
 
-class SGDIterator:
-    """An iterator over SGD results. Returned by ``trainer.run_iterator``."""
+class TrainingIterator:
+    """An iterator over Train results. Returned by ``trainer.run_iterator``."""
 
     def __init__(
             self, backend_executor: BackendExecutor,
@@ -587,7 +587,7 @@ class SGDIterator:
                 "already or never started in the first place. "
                 "Either create a new Trainer or start this one.") \
                 from None
-        except SGDBackendError:
+        except TrainBackendError:
             raise RuntimeError("Training failed. You should not be seeing "
                                "this error and this is a bug. Please create "
                                "a new issue at "
@@ -643,7 +643,7 @@ class SGDIterator:
 
 def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
                            resources_per_worker):
-    """Creates a Tune Trainable class for SGD training.
+    """Creates a Tune Trainable class for Train training.
 
     This function populates class attributes and methods.
     """
@@ -676,7 +676,7 @@ def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
 
     trainable_cls = wrap_function(tune_function)
 
-    class SgdTrainable(trainable_cls):
+    class TrainTrainable(trainable_cls):
         """Add default resources to the Trainable."""
 
         @classmethod
@@ -693,4 +693,4 @@ def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
             bundles = head_bundle + worker_bundles
             return PlacementGroupFactory(bundles, strategy="PACK")
 
-    return SgdTrainable
+    return TrainTrainable

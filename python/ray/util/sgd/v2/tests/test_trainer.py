@@ -13,7 +13,7 @@ from ray.util.sgd.v2 import Trainer, TorchConfig, TensorflowConfig, \
     HorovodConfig
 from ray.util.sgd.v2.backends.backend import BackendConfig, Backend, \
     BackendExecutor
-from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.callbacks.callback import TrainingCallback
 from ray.util.sgd.v2.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.util.sgd.v2.examples.horovod.horovod_example import train_func as \
     horovod_torch_train_func, HorovodTrainClass
@@ -81,7 +81,7 @@ class TestBackend(Backend):
         pass
 
 
-class TestCallback(SGDCallback):
+class TestCallback(TrainingCallback):
     def __init__(self):
         self.result_list = []
 
@@ -122,7 +122,7 @@ def gen_new_backend_executor(special_f):
     return TestBackendExecutor
 
 
-class KillCallback(SGDCallback):
+class KillCallback(TrainingCallback):
     def __init__(self, fail_on, worker_group):
         self.counter = 0
         self.fail_on = fail_on

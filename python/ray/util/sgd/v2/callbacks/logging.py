@@ -9,14 +9,14 @@ from pathlib import Path
 from ray.util.debug import log_once
 from ray.util.ml_utils.dict import flatten_dict
 from ray.util.ml_utils.json import SafeFallbackEncoder
-from ray.util.sgd.v2.callbacks import SGDCallback
+from ray.util.sgd.v2.callbacks import TrainingCallback
 from ray.util.sgd.v2.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
                                        TIME_TOTAL_S, TIMESTAMP, PID)
 
 logger = logging.getLogger(__name__)
 
 
-class SGDLogdirMixin:
+class TrainingLogdirMixin:
     def start_training(self, logdir: str, **info):
         if self._logdir:
             logdir_path = Path(self._logdir)
@@ -36,9 +36,9 @@ class SGDLogdirMixin:
         return Path(self._logdir_path)
 
 
-class SGDSingleFileLoggingCallback(
-        SGDLogdirMixin, SGDCallback, metaclass=abc.ABCMeta):
-    """Abstract SGD logging callback class.
+class TrainingSingleFileLoggingCallback(
+        TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta):
+    """Abstract Train logging callback class.
 
     Args:
         logdir (Optional[str]): Path to directory where the results file
@@ -102,8 +102,8 @@ class SGDSingleFileLoggingCallback(
         return self._log_path
 
 
-class JsonLoggerCallback(SGDSingleFileLoggingCallback):
-    """Logs SGD results in json format.
+class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
+    """Logs Train results in json format.
 
     Args:
         logdir (Optional[str]): Path to directory where the results file
@@ -139,9 +139,9 @@ class JsonLoggerCallback(SGDSingleFileLoggingCallback):
                 loaded_results + [results_to_log], f, cls=SafeFallbackEncoder)
 
 
-class SGDSingleWorkerLoggingCallback(
-        SGDLogdirMixin, SGDCallback, metaclass=abc.ABCMeta):
-    """Abstract SGD logging callback class.
+class TrainingSingleWorkerLoggingCallback(
+        TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta):
+    """Abstract Train logging callback class.
 
     Allows only for single-worker logging.
 
@@ -174,8 +174,8 @@ class SGDSingleWorkerLoggingCallback(
         return worker_to_log
 
 
-class TBXLoggerCallback(SGDSingleWorkerLoggingCallback):
-    """Logs SGD results in TensorboardX format.
+class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
+    """Logs Train results in TensorboardX format.
 
     Args:
         logdir (Optional[str]): Path to directory where the results file

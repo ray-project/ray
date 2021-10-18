@@ -9,7 +9,7 @@ MIN = "min"
 
 @dataclass
 class CheckpointStrategy:
-    """Configurable parameters for defining the SGD checkpointing strategy.
+    """Configurable parameters for defining the Train checkpointing strategy.
 
     Default behavior is to persist all checkpoints to disk. If
     ``num_to_keep`` is set, the default retention policy is to keep the

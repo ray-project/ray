@@ -1,20 +1,20 @@
-.. _sgd-v2-docs:
+.. _train-docs:
 
-RaySGD: Deep Learning on Ray
-=============================
+Ray Train: Distributed Deep Learning
+====================================
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
+.. tip:: Get in touch with us if you're using or considering using `Ray Train <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
 
-RaySGD is a lightweight library for distributed deep learning, allowing you
+Ray Train is a lightweight library for distributed deep learning, allowing you
 to scale up and speed up training for your deep learning models.
 
 The main features are:
 
 - **Ease of use**: Scale your single process training code to a cluster in just a couple lines of code.
-- **Composability**: RaySGD interoperates with :ref:`Ray Tune <tune-main>` to tune your distributed model and :ref:`Ray Datasets <datasets>` to train on large amounts of data.
-- **Interactivity**: RaySGD fits in your workflow with support to run from any environment, including seamless Jupyter notebook support.
+- **Composability**: Ray Train interoperates with :ref:`Ray Tune <tune-main>` to tune your distributed model and :ref:`Ray Datasets <datasets>` to train on large amounts of data.
+- **Interactivity**: Ray Train fits in your workflow with support to run from any environment, including seamless Jupyter notebook support.
 
 .. note::
 
@@ -23,18 +23,18 @@ The main features are:
   `issue on GitHub`_.
   If you are looking for the previous API documentation, see :ref:`sgd-index`.
 
-Intro to RaySGD
----------------
+Intro to Ray Train
+------------------
 
-RaySGD is a library that aims to simplify distributed deep learning.
+Ray Train is a library that aims to simplify distributed deep learning.
 
-**Frameworks**: RaySGD is built to abstract away the coordination/configuration setup of distributed deep learning frameworks such as Pytorch Distributed and Tensorflow Distributed, allowing users to only focus on implementing training logic.
+**Frameworks**: Ray Train is built to abstract away the coordination/configuration setup of distributed deep learning frameworks such as Pytorch Distributed and Tensorflow Distributed, allowing users to only focus on implementing training logic.
 
-* For Pytorch, RaySGD automatically handles the construction of the distributed process group.
-* For Tensorflow, RaySGD automatically handles the coordination of the ``TF_CONFIG``. The current implementation assumes that the user will use a MultiWorkerMirroredStrategy, but this will change in the near future.
-* For Horovod, RaySGD automatically handles the construction of the Horovod runtime and Rendezvous server.
+* For Pytorch, Ray Train automatically handles the construction of the distributed process group.
+* For Tensorflow, Ray Train automatically handles the coordination of the ``TF_CONFIG``. The current implementation assumes that the user will use a MultiWorkerMirroredStrategy, but this will change in the near future.
+* For Horovod, Ray Train automatically handles the construction of the Horovod runtime and Rendezvous server.
 
-**Built for data scientists/ML practitioners**: RaySGD has support for standard ML tools and features that practitioners love:
+**Built for data scientists/ML practitioners**: Ray Train has support for standard ML tools and features that practitioners love:
 
 * Callbacks for early stopping
 * Checkpointing
@@ -44,22 +44,22 @@ RaySGD is a library that aims to simplify distributed deep learning.
 **Integration with Ray Ecosystem**: Distributed deep learning often comes with a lot of complexity.
 
 
-* Use :ref:`Ray Datasets <datasets>` with RaySGD to handle and train on large amounts of data.
-* Use :ref:`Ray Tune <tune-main>` with RaySGD to leverage cutting edge hyperparameter techniques and distribute both your training and tuning.
+* Use :ref:`Ray Datasets <datasets>` with Ray Train to handle and train on large amounts of data.
+* Use :ref:`Ray Tune <tune-main>` with Ray Train to leverage cutting edge hyperparameter techniques and distribute both your training and tuning.
 * You can leverage the :ref:`Ray cluster launcher <cluster-cloud>` to launch autoscaling or spot instance clusters to train your model at scale on any cloud.
 
 
 Quick Start
 -----------
 
-RaySGD abstracts away the complexity of setting up a distributed training
+Ray Train abstracts away the complexity of setting up a distributed training
 system. Let's take following simple examples:
 
 .. tabs::
 
   .. group-tab:: PyTorch
 
-    This example shows how you can use RaySGD with PyTorch.
+    This example shows how you can use Ray Train with PyTorch.
 
     First, set up your dataset and model.
 
@@ -119,7 +119,7 @@ system. Let's take following simple examples:
     Now let's convert this to a distributed multi-worker training function!
 
     First, update the training function code to use PyTorch's
-    ``DistributedDataParallel``. With RaySGD, you just pass in your distributed
+    ``DistributedDataParallel``. With Ray Train, you just pass in your distributed
     data parallel code as as you would normally run it with
     ``torch.distributed.launch``.
 
@@ -147,7 +147,7 @@ system. Let's take following simple examples:
 
     .. code-block:: python
 
-        from ray.sgd import Trainer
+        from ray.train.dl import Trainer
 
         trainer = Trainer(backend="torch", num_workers=4)
         trainer.start()
@@ -155,12 +155,12 @@ system. Let's take following simple examples:
         trainer.shutdown()
 
 
-    See :ref:`sgd-porting-code` for a more comprehensive example.
+    See :ref:`train-porting-code` for a more comprehensive example.
 
 
   .. group-tab:: TensorFlow
 
-    This example shows how you can use RaySGD to set up `Multi-worker training
+    This example shows how you can use Ray Train to set up `Multi-worker training
     with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_.
 
     First, set up your dataset and model.
@@ -227,7 +227,7 @@ system. Let's take following simple examples:
 
         def train_func_distributed():
             per_worker_batch_size = 64
-            # This environment variable will be set by Ray SGD.
+            # This environment variable will be set by Ray Train.
             tf_config = json.loads(os.environ['TF_CONFIG'])
             num_workers = len(tf_config['cluster']['worker'])
 
@@ -247,7 +247,7 @@ system. Let's take following simple examples:
 
     .. code-block:: python
 
-        from ray.sgd import Trainer
+        from ray.train.dl import Trainer
 
         trainer = Trainer(backend="tensorflow", num_workers=4)
         trainer.start()
@@ -255,7 +255,7 @@ system. Let's take following simple examples:
         trainer.shutdown()
 
 
-    See :ref:`sgd-porting-code` for a more comprehensive example.
+    See :ref:`train-porting-code` for a more comprehensive example.
 
 
-**Next steps:** Check out the :ref:`User Guide <sgd-user-guide>`!
+**Next steps:** Check out the :ref:`User Guide <train-user-guide>`!

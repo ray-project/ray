@@ -73,7 +73,7 @@ class Session:
         self.training_thread.start()
 
     def pause_reporting(self):
-        """Ignore all future ``sgd.report()`` calls."""
+        """Ignore all future ``train.report()`` calls."""
         self.ignore_report = True
 
     def finish(self):
@@ -198,7 +198,7 @@ _session = None
 def init_session(*args, **kwargs) -> None:
     global _session
     if _session:
-        raise ValueError("An SGD session is already in use. Do not call "
+        raise ValueError("A Train session is already in use. Do not call "
                          "`init_session()` manually.")
     _session = Session(*args, **kwargs)
 
@@ -206,10 +206,10 @@ def init_session(*args, **kwargs) -> None:
 def get_session() -> Session:
     global _session
     if _session is None or not isinstance(_session, Session):
-        raise ValueError("Trying to access an SGD session that has not been "
-                         "initialized yet. SGD functions like `sgd.report()` "
-                         "should only be called from inside the training "
-                         "function.")
+        raise ValueError("Trying to access a Train session that has not been "
+                         "initialized yet. Train functions like "
+                         "`train.report()` should only be called from inside "
+                         "the training function.")
     return _session
 
 
@@ -229,12 +229,12 @@ def get_dataset_shard(
     .. code-block:: python
 
         import ray
-        from ray.util import sgd
+        from ray import train
 
         def train_func():
             model = Net()
             for iter in range(100):
-                data_shard = sgd.get_dataset_shard().to_torch()
+                data_shard = train.get_dataset_shard().to_torch()
                 model.train(data_shard)
             return model
 
@@ -274,17 +274,17 @@ def get_dataset_shard(
 
 
 def report(**kwargs) -> None:
-    """Reports all keyword arguments to SGD as intermediate results.
+    """Reports all keyword arguments to Train as intermediate results.
 
     .. code-block:: python
 
         import time
-        from ray.util import sgd
+        from ray import train
 
         def train_func():
             for iter in range(100):
                 time.sleep(1)
-                sgd.report(hello="world")
+                train.report(hello="world")
 
         trainer = Trainer(backend="torch")
         trainer.start()
@@ -292,7 +292,7 @@ def report(**kwargs) -> None:
         trainer.shutdown()
 
     Args:
-        **kwargs: Any key value pair to be reported by SGD.
+        **kwargs: Any key value pair to be reported by Train.
             If callbacks are provided, they are executed on these
             intermediate results.
     """
@@ -306,12 +306,12 @@ def world_rank() -> int:
     .. code-block:: python
 
         import time
-        from ray.util import sgd
+        from ray import train
 
         def train_func():
             for iter in range(100):
                 time.sleep(1)
-                if sgd.world_rank() == 0:
+                if train.world_rank() == 0:
                     print("Worker 0")
 
         trainer = Trainer(backend="torch")
@@ -330,11 +330,11 @@ def local_rank() -> int:
     .. code-block:: python
 
         import time
-        from ray.util import sgd
+        from ray import train
 
         def train_func():
             if torch.cuda.is_available():
-                torch.cuda.set_device(sgd.local_rank())
+                torch.cuda.set_device(train.local_rank())
             ...
 
         trainer = Trainer(backend="torch", use_gpu=True)
@@ -352,10 +352,10 @@ def load_checkpoint() -> Optional[Dict]:
 
     .. code-block:: python
 
-        from ray.util import sgd
+        from ray import train
 
         def train_func():
-            checkpoint = sgd.load_checkpoint()
+            checkpoint = train.load_checkpoint()
             for iter in range(checkpoint["epoch"], 5):
                 print(iter)
 
@@ -367,9 +367,9 @@ def load_checkpoint() -> Optional[Dict]:
         trainer.shutdown()
 
     Args:
-        **kwargs: Any key value pair to be checkpointed by SGD.
+        **kwargs: Any key value pair to be checkpointed by Train.
     Returns:
-        The most recently saved checkpoint if ``sgd.save_checkpoint()``
+        The most recently saved checkpoint if ``train.save_checkpoint()``
         has been called. Otherwise, the checkpoint that the session was
         originally initialized with. ``None`` if neither exist.
     """
@@ -378,17 +378,17 @@ def load_checkpoint() -> Optional[Dict]:
 
 
 def save_checkpoint(**kwargs) -> None:
-    """Checkpoints all keyword arguments to SGD as restorable state.
+    """Checkpoints all keyword arguments to Train as restorable state.
 
     .. code-block:: python
 
         import time
-        from ray.util import sgd
+        from ray import train
 
         def train_func():
             for iter in range(100):
                 time.sleep(1)
-                sgd.save_checkpoint(epoch=iter)
+                train.save_checkpoint(epoch=iter)
 
         trainer = Trainer(backend="torch")
         trainer.start()
@@ -396,7 +396,7 @@ def save_checkpoint(**kwargs) -> None:
         trainer.shutdown()
 
     Args:
-        **kwargs: Any key value pair to be checkpointed by SGD.
+        **kwargs: Any key value pair to be checkpointed by Train.
     """
     session = get_session()
     session.checkpoint(**kwargs)

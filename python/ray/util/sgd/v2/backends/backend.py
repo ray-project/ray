@@ -37,7 +37,7 @@ class BackendConfig:
         raise NotImplementedError
 
 
-class SGDBackendError(Exception):
+class TrainBackendError(Exception):
     """Errors with BackendExecutor that should not be exposed to user."""
 
 
@@ -50,7 +50,7 @@ class CheckpointManager:
 
     The full default path will be:
 
-    ~/ray_results/sgd_<datestring>/run_<run_id>/checkpoints/
+    ~/ray_results/train_<datestring>/run_<run_id>/checkpoints/
     checkpoint_<checkpoint_id>
 
     Attributes:
@@ -203,7 +203,7 @@ class BackendExecutor:
 
     This class holds a worker group and is responsible for executing the
     training function on the workers, and collecting intermediate results
-    from ``sgd.report()`` and ``sgd.checkpoint()``.
+    from ``train.report()`` and ``train.checkpoint()``.
 
     Args:
         backend_config (BackendConfig): The configurations for this
@@ -413,15 +413,15 @@ class BackendExecutor:
             dataset (Optional[Union[Dataset, DatasetPipeline]])
                 Distributed Ray Dataset or DatasetPipeline to pass into
                 worker, which can be accessed from the training function via
-                ``sgd.get_dataset_shard()``. Sharding will automatically be
+                ``train.get_dataset_shard()``. Sharding will automatically be
                 handled by the Trainer. Multiple Datasets can be passed in as
                 a ``Dict`` that maps each name key to a Dataset value,
                 and each Dataset can be accessed from the training function
                 by passing in a `dataset_name` argument to
-                ``sgd.get_dataset_shard()``.
+                ``train.get_dataset_shard()``.
             checkpoint (Optional[Dict|str|Path]): The checkpoint data that
                 should be loaded onto each worker and accessed by the
-                training function via ``sgd.load_checkpoint()``. If this is a
+                training function via ``train.load_checkpoint()``. If this is a
                 ``str`` or ``Path`` then the value is expected to be a path
                 to a file that contains a serialized checkpoint dict. If this
                 is ``None`` then no checkpoint will be loaded.
@@ -451,7 +451,7 @@ class BackendExecutor:
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics
                 )
             except ValueError:
-                raise SGDBackendError(
+                raise TrainBackendError(
                     "Attempting to start training but a "
                     "previous training run is still ongoing. "
                     "You must call `finish_training` before "
@@ -489,8 +489,8 @@ class BackendExecutor:
         """Fetches the next ``TrainingResult`` from each worker.
 
         Each ``TrainingResult`` is expected to correspond to the same step from
-        each worker (e.g. the same call to ``sgd.report()`` or
-        ``sgd.checkpoint()``).
+        each worker (e.g. the same call to ``train.report()`` or
+        ``train.checkpoint()``).
 
         Returns:
             A list of ``TrainingResult``s with the same
@@ -503,19 +503,19 @@ class BackendExecutor:
                 session = get_session()
             except ValueError:
                 # Session is not initialized yet.
-                raise SGDBackendError("`fetch_next_result` has been called "
-                                      "before `start_training`. Please call "
-                                      "`start_training` before "
-                                      "`fetch_next_result`.")
+                raise TrainBackendError("`fetch_next_result` has been called "
+                                        "before `start_training`. Please call "
+                                        "`start_training` before "
+                                        "`fetch_next_result`.")
 
             try:
                 result = session.get_next()
             except RuntimeError:
                 # Training thread has not been started yet.
-                raise SGDBackendError("`fetch_next_result` has been called "
-                                      "before `start_training`. Please call "
-                                      "`start_training` before "
-                                      "`fetch_next_result`.")
+                raise TrainBackendError("`fetch_next_result` has been called "
+                                        "before `start_training`. Please call "
+                                        "`start_training` before "
+                                        "`fetch_next_result`.")
 
             return result
 
@@ -527,11 +527,12 @@ class BackendExecutor:
         if any(r is None for r in results):
             # Either all workers have results or none of them do.
             if not all(r is None for r in results):
-                raise RuntimeError("Some workers returned results while "
-                                   "others didn't. Make sure that "
-                                   "`sgd.report()` and `sgd.checkpoint()` are "
-                                   "called the same number of times on all "
-                                   "workers.")
+                raise RuntimeError(
+                    "Some workers returned results while "
+                    "others didn't. Make sure that "
+                    "`train.report()` and `train.checkpoint()` "
+                    "are called the same number of times on all "
+                    "workers.")
             else:
                 # Return None if all results are None.
                 return None
@@ -539,19 +540,19 @@ class BackendExecutor:
         result_type = first_result.type
         if any(r.type != result_type for r in results):
             raise RuntimeError("Some workers returned results with "
-                               "different types. Make sure `sgd.report()` and "
-                               "`sgd.save_checkpoint()` are called the same "
-                               "number of times and in the same order on each "
-                               "worker.")
+                               "different types. Make sure `train.report()` "
+                               "and `train.save_checkpoint()` are called the "
+                               "same number of times and in the same order on "
+                               "each worker.")
         return results
 
     def fetch_next_result(self) -> Optional[List[Dict]]:
-        """Fetch next results produced by ``sgd.report()`` from each worker.
+        """Fetch next results produced by ``train.report()`` from each worker.
 
         Assumes ``start_training`` has already been called.
 
         Returns:
-            A list of dictionaries of values passed to ``sgd.report()`` from
+            A list of dictionaries of values passed to ``train.report()`` from
                 each worker. Each item corresponds to an intermediate result
                 a single worker. If there are no more items to fetch,
                 returns None.
@@ -570,10 +571,10 @@ class BackendExecutor:
                 self.checkpoint_manager._process_checkpoint(results)
                 # Iterate until next REPORT call or training has finished.
             else:
-                raise SGDBackendError(f"Unexpected result type: "
-                                      f"{result_type}. "
-                                      f"Expected one of "
-                                      f"{[type in TrainingResultType]}")
+                raise TrainBackendError(f"Unexpected result type: "
+                                        f"{result_type}. "
+                                        f"Expected one of "
+                                        f"{[type in TrainingResultType]}")
 
     def finish_training(self) -> List[T]:
         """Finish training and return final results. Propagate any exceptions.
@@ -593,10 +594,10 @@ class BackendExecutor:
                 session = get_session()
             except ValueError:
                 # Session is not initialized yet.
-                raise SGDBackendError("`finish_training` has been called "
-                                      "before `start_training`. Please call "
-                                      "`start_training` before "
-                                      "`finish_training`.")
+                raise TrainBackendError("`finish_training` has been called "
+                                        "before `start_training`. Please call "
+                                        "`start_training` before "
+                                        "`finish_training`.")
 
             return session.pause_reporting()
 
@@ -606,10 +607,10 @@ class BackendExecutor:
                 session = get_session()
             except ValueError:
                 # Session is not initialized yet.
-                raise SGDBackendError("`finish_training` has been called "
-                                      "before `start_training`. Please call "
-                                      "`start_training` before "
-                                      "`finish_training`.")
+                raise TrainBackendError("`finish_training` has been called "
+                                        "before `start_training`. Please call "
+                                        "`start_training` before "
+                                        "`finish_training`.")
 
             try:
                 # session.finish raises any Exceptions from training.
@@ -621,7 +622,7 @@ class BackendExecutor:
 
             return output
 
-        # Disable workers from enqueuing results from `sgd.report()`.
+        # Disable workers from enqueuing results from `train.report()`.
         # Results will not be processed during the execution of `finish`.
         # Note: Reported results may still be enqueued at this point,
         #       and should be handled appropriately.
@@ -654,7 +655,7 @@ class BackendExecutor:
         Args:
             remote_values (list): List of object refs representing functions
                 that may fail in the middle of execution. For example, running
-                a SGD training loop in multiple parallel actor calls.
+                a Train training loop in multiple parallel actor calls.
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
