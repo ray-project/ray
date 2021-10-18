@@ -701,8 +701,7 @@ void GcsPlacementGroupManager::Tick() {
   // Note that we don't currently have a known race condition that requires this, but we
   // added as a safety check. https://github.com/ray-project/ray/pull/18419
   SchedulePendingPlacementGroups();
-  execute_after(
-      io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+  execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
@@ -735,6 +734,8 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
+  std::unordered_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
+      group_to_bundles;
   for (auto &item : gcs_init_data.PlacementGroups()) {
     auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);
     if (item.second.state() != rpc::PlacementGroupTableData::REMOVED) {
@@ -755,6 +756,9 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
         for (const auto &bundle : bundles) {
           if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
             node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
+            group_to_bundles[PlacementGroupID::FromBinary(
+                                 bundle.bundle_id().placement_group_id())]
+                .emplace_back(std::make_shared<BundleSpecification>(bundle));
           }
         }
       }
@@ -763,6 +767,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
 
   // Notify raylets to release unused bundles.
   gcs_placement_group_scheduler_->ReleaseUnusedBundles(node_to_bundles);
+  gcs_placement_group_scheduler_->Initialize(group_to_bundles);
 
   SchedulePendingPlacementGroups();
 }
