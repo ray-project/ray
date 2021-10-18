@@ -33,8 +33,9 @@ class Counter {
 
 RAY_REMOTE(Counter::FactoryCreate, &Counter::Add, &Counter::Get);
 
+/// Only ray.call, don't get ObjectRef result.
 template <typename F>
-void Execute(F f, std::string func_name, size_t num_repeats) {
+void RunLatencyTestIgnoreGetResult(F f, std::string func_name, size_t num_repeats) {
   auto start = std::chrono::system_clock::now();
   for (size_t i = 0; i < num_repeats; i++) {
     f();
@@ -54,8 +55,6 @@ void Execute(F f, std::string func_name, size_t num_repeats) {
       .append(std::to_string(duration / num_repeats))
       .append(" ns.");
   RAYLOG(INFO) << out;
-
-  std::cout << out << std::endl;
 }
 
 template <typename R, typename F>
@@ -78,8 +77,6 @@ void RunLatencyTest(F f, std::string func_name, size_t num_repeats) {
     out.append(std::to_string(time)).append("ns\n");
   }
   RAYLOG(INFO) << out;
-
-  std::cout << out << std::endl;
 }
 
 TEST(BenchmarkTest, SimpleLatancyTest) {
@@ -98,20 +95,23 @@ TEST(BenchmarkTest, SimpleLatancyTest) {
 TEST(BenchmarkTest, SimpleRemoteTest) {
   ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate).Remote();
   size_t num_repeats = 100000;
-  Execute([&actor] { actor.Task(&Counter::Add).Remote(); }, "&Counter::Add", num_repeats);
+  RunLatencyTestIgnoreGetResult([&actor] { actor.Task(&Counter::Add).Remote(); },
+                                "&Counter::Add", num_repeats);
 
-  Execute([] { ray::Task(NoReturn).Remote(); }, "NoReturn", num_repeats);
+  RunLatencyTestIgnoreGetResult([] { ray::Task(NoReturn).Remote(); }, "NoReturn",
+                                num_repeats);
 
-  Execute([] { ray::Task(ReturnVal).Remote(); }, "ReturnVal", num_repeats);
+  RunLatencyTestIgnoreGetResult([] { ray::Task(ReturnVal).Remote(); }, "ReturnVal",
+                                num_repeats);
 }
 
 TEST(BenchmarkTest, RemoteWithArgsTest) {
   size_t num_repeats = 100000;
   std::string small_str(100, ' ');
-  Execute([&small_str] { ray::Task(Input).Remote(small_str); }, "Input small_str",
-          num_repeats);
-  Execute([&small_str] { ray::Task(Echo).Remote(small_str); }, "Echo small_str",
-          num_repeats);
+  RunLatencyTestIgnoreGetResult([&small_str] { ray::Task(Input).Remote(small_str); },
+                                "Input small_str", num_repeats);
+  RunLatencyTestIgnoreGetResult([&small_str] { ray::Task(Echo).Remote(small_str); },
+                                "Echo small_str", num_repeats);
 }
 
 int main(int argc, char **argv) {
