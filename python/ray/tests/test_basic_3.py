@@ -194,7 +194,7 @@ def test_fair_queueing(shutdown_only):
     # https://github.com/ray-project/ray/issues/3644
     timeout = 510.0 if sys.platform == "win32" else 60.0
     ready, _ = ray.wait(
-        [f.remote() for _ in range(1000)], timeout=510.0, num_returns=1000)
+        [f.remote() for _ in range(1000)], timeout=timeout, num_returns=1000)
     assert len(ready) == 1000, len(ready)
 
 
