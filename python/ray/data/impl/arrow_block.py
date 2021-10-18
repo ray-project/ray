@@ -169,9 +169,8 @@ class ArrowBlockAccessor(BlockAccessor):
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
-            # TODO(ekl) there must be a cleaner way to force a copy of a table.
-            copy = [c.to_pandas() for c in view.itercolumns()]
-            return pyarrow.Table.from_arrays(copy, schema=self._table.schema)
+            return pyarrow.Table.from_pandas(
+                view.to_pandas(), schema=view.schema)
         else:
             return view
 
