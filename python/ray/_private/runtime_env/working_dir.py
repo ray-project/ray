@@ -1,5 +1,5 @@
 from enum import Enum
-from filelock import FileLock
+from filelock import FileLock, logger
 import hashlib
 import logging
 import os
@@ -284,6 +284,7 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
     Args:
         job_config (JobConfig): The job config.
     """
+    default_logger.info(f"rewrite_runtime_env_uris, {job_config.runtime_env}")
     # For now, we only support local directory, packages and zip file on s3
     uris = job_config.runtime_env.get("uris")
     if uris is not None:
@@ -324,7 +325,8 @@ def create_project_package(
         excludes (List(str)): The directories or file to be excluded.
         output_path (str): The path of file to be created.
     """
-    if urlparse(working_dir).scheme == Protocol.S3.value:
+    default_logger.info(f"create_project_package, {working_dir}")
+    if urlparse(working_dir).scheme == Protocol.S3:
         raise RuntimeError(
             "create_project_package should not be called with s3 working_dir.")
 
@@ -393,31 +395,19 @@ def package_exists(pkg_uri: str) -> bool:
 
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
+        default_logger.info("Started WorkingDirManager")
         self._resources_dir = resources_dir
         assert _internal_kv_initialized()
 
     def _get_local_path(self, pkg_uri: str) -> str:
+        default_logger.info("_get_local_path")
         _, pkg_name = _parse_uri(pkg_uri)
         return os.path.join(self._resources_dir, pkg_name)
 
-    def _get_smart_open(logger):
-        """
-        Created to facilitate unit testing for s3 paths that mocked to fetch
-        local zip file instead.
-        """
-        logger.info(">>>> Calling get smart open....")
-        try:
-            from smart_open import open
-        except ImportError:
-            raise ImportError("You must install the `smart_open` module "
-                            "to fetch URIs in s3 bucket.")
-        return open
-
-    def fetch_package(
-            self,
-            pkg_uri: str,
-            open_fn: Callable,
-            logger: Optional[logging.Logger] = default_logger) -> int:
+    def fetch_package(self,
+                      pkg_uri: str,
+                      logger: Optional[logging.Logger] = default_logger
+                      ) -> int:
         """Fetch a package from a given uri if not exists locally.
 
         This function is used to fetch a pacakge from the given uri and unpack
@@ -425,9 +415,6 @@ class WorkingDirManager:
 
         Args:
             pkg_uri (str): The uri of the package to download.
-            open_fn (Callable): Function used to download package files. Uses
-                smart_open by default but injected as built-in open for
-                local testing.
 
         Returns:
             The directory containing this package
@@ -435,7 +422,7 @@ class WorkingDirManager:
         if logger is None:
             logger = default_logger
 
-        logger.debug(f"Fetching package for uri: {pkg_uri}")
+        logger.info(f"Fetching package for uri: {pkg_uri}")
 
         pkg_file = Path(self._get_local_path(pkg_uri))
         local_dir = pkg_file.with_suffix("")
@@ -453,15 +440,24 @@ class WorkingDirManager:
                 raise IOError("Fetch uri failed")
             code = code or b""
             pkg_file.write_bytes(code)
-        elif protocol in (Protocol.S3):
+        elif protocol == Protocol.S3:
             # Download pacakge file from S3.
-            with open_fn(pkg_file, "wb") as f:
-                with open_fn(pkg_uri, "rb") as package_zip:
-                    f.write(package_zip)
+            try:
+                from smart_open import open
+                import boto3
+            except ImportError:
+                raise ImportError("You must `pip install smart_open` and "
+                                  "`pip install boto3` to fetch URIs in s3 "
+                                  "bucket.")
+
+            tp = {'client': boto3.client('s3')}
+            with open(pkg_uri, "rb", transport_params=tp) as package_zip:
+                with open(pkg_file, "wb") as fin:
+                    fin.write(package_zip.read())
         else:
             raise NotImplementedError(f"Protocol {protocol} is not supported")
 
-        logger.debug(f"Unpacking {pkg_file} to {local_dir}")
+        logger.info(f"Unpacking {pkg_file} to {local_dir}")
         with ZipFile(str(pkg_file), "r") as zip_ref:
             zip_ref.extractall(local_dir)
         pkg_file.unlink()
@@ -482,6 +478,9 @@ class WorkingDirManager:
         Args:
             job_config (JobConfig): The job config of driver.
         """
+        default_logger.info(
+            f"upload_runtime_env_package_if_needed: job_config - {job_config.runtime_env}"
+        )
         if logger is None:
             logger = default_logger
 
@@ -489,6 +488,10 @@ class WorkingDirManager:
         if len(pkg_uris) == 0:
             return  # Return early to avoid internal kv check in this case.
         for pkg_uri in pkg_uris:
+            if urlparse(pkg_uri).scheme in {"s3"}:
+                # Remote URIs are not uploaded
+                continue
+
             if not package_exists(pkg_uri):
                 file_path = self._get_local_path(pkg_uri)
                 pkg_file = Path(file_path)
@@ -526,14 +529,14 @@ class WorkingDirManager:
             Working directory is returned if the pkg_uris is not empty,
             otherwise, None is returned.
         """
+        default_logger.info("setup_local_working_dir")
         pkg_dir = None
         for pkg_uri in pkg_uris:
             # For each node, the package will only be downloaded one time
             # Locking to avoid multiple process download concurrently
             pkg_file = Path(self._get_local_path(pkg_uri))
             with FileLock(str(pkg_file) + ".lock"):
-                open_fn = self._get_smart_open(logger)
-                pkg_dir = self.fetch_package(pkg_uri, open_fn, logger=logger)
+                pkg_dir = self.fetch_package(pkg_uri, logger=logger)
             sys.path.insert(0, str(pkg_dir))
 
         # Right now, multiple pkg_uris are not supported correctly.
@@ -551,8 +554,12 @@ class WorkingDirManager:
         Returns:
             True if the URI was successfully deleted, else False.
         """
+        default_logger.info("delete_uri")
         if logger is None:
             logger = default_logger
+
+        if urlparse(uri).scheme in {"s3"}:
+            return True
 
         deleted = False
         path = Path(self._get_local_path(uri))
@@ -574,6 +581,8 @@ class WorkingDirManager:
               runtime_env: dict,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
+        default_logger.info(f"Calling setup with runtime_env: {runtime_env}")
+
         if not runtime_env.get("uris"):
             return
 
