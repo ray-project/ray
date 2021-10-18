@@ -393,8 +393,8 @@ def run(
         scheduler = create_scheduler(scheduler)
     scheduler = scheduler or FIFOScheduler()
 
-    if scheduler.supports_buffered_results:
-        # Result buffering with a Hyperband scheduler is a bad idea, as
+    if not scheduler.supports_buffered_results:
+        # Result buffering with e.g. a Hyperband scheduler is a bad idea, as
         # hyperband tries to stop trials when processing brackets. With result
         # buffering, we might trigger this multiple times when evaluating
         # a single trial, which leads to unexpected behavior.
