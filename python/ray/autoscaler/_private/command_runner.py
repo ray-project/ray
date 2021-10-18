@@ -428,12 +428,17 @@ class SSHCommandRunner(CommandRunnerInterface):
                     process_runner=self.process_runner,
                     silent=silent,
                     use_login_shells=is_using_login_shells())
-            if with_output:
-                return self.process_runner.check_output(final_cmd)
             else:
-                return self.process_runner.check_call(final_cmd)
-        except subprocess.CalledProcessError as e:
+                out = self.process_runner.check_output(final_cmd)
 
+                # Do our best to flush output to terminal.
+                # See https://github.com/ray-project/ray/pull/19473.
+                sys.stderr.flush()
+
+                return out
+        except subprocess.CalledProcessError as e:
+            # Do our best to flush output to terminal.
+            # See https://github.com/ray-project/ray/pull/19473.
             sys.stdout.flush()
             sys.stderr.flush()
 

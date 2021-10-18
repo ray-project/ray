@@ -341,6 +341,8 @@ def run_cmd_redirected(cmd,
             stderr_file=sys.stderr,
             use_login_shells=use_login_shells)
 
+        # Do our best to flush output to terminal.
+        # See https://github.com/ray-project/ray/pull/19473.
         sys.stdout.flush()
         sys.stderr.flush()
 
