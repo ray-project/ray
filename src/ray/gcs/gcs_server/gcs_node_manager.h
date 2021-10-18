@@ -24,6 +24,8 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -118,6 +120,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::string DebugString() const;
 
   /// Drain the given node.
+  /// Idempotent.
   void DrainNode(const NodeID &node_id);
 
  private:

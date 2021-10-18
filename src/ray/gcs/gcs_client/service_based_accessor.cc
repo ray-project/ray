@@ -435,8 +435,7 @@ Status ServiceBasedNodeInfoAccessor::DrainSelf() {
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::DrainNodeRequest request;
   auto draining_request = request.add_drain_node_data();
-  draining_request.set_node_id(local_node_info_.node_id());
-  draining_request.set_kill_node(false);
+  draining_request->set_node_id(local_node_info_.node_id());
   client_impl_->GetGcsRpcClient().DrainNode(
       request, [this, node_id](const Status &status, const rpc::DrainNodeReply &reply) {
         if (status.ok()) {
@@ -476,17 +475,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_
 Status ServiceBasedNodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
                                                     const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
-  // rpc::DrainNodeRequest request;
-  // request.set_node_id(node_id.Binary());
-  // client_impl_->GetGcsRpcClient().DrainNode(
-  //     request,
-  //     [node_id, callback](const Status &status, const rpc::DrainNodeReply &reply) {
-  //       if (callback) {
-  //         callback(status);
-  //       }
-  //       RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
-  //                      << ", node id = " << node_id;
-  //     });
+  RAY_CHECK(false) << "[AsyncDrainNode] Not implemented.";
   return Status::OK();
 }
 

@@ -555,8 +555,6 @@ below). */
 message DrainNodeData {
   // The id of the node to drain. 
   bytes node_id = 1;
-  // Whether or not killing the drained node.
-  bool kill_node = 2;
 }
 
 message DrainNodeRequest {
@@ -567,11 +565,11 @@ message DrainNodeRequest {
 message DrainNodeStatus {
   // Whether or not draining has succeeded.
   bytes node_id = 1;
-  bool success = 2;
 }
 
 message DrainNodeReply {
-  repeated DrainNodeStatus drain_node_status = 1;
+  GcsStatus status = 1;
+  repeated DrainNodeStatus drain_node_status = 2;
 }
 
 message InternalKVGetRequest {

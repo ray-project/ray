@@ -1701,12 +1701,11 @@ void NodeManager::HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request
   RAY_LOG(INFO)
       << "Shutdown RPC has received. Shutdown will happen after the RPC is replied.";
   auto graceful = request.graceful();
-  // Exit right away if it is not graceful.
-  if (!graceful) {
-    std::_Exit(EXIT_SUCCESS);
-  }
-
   auto shutdown_after_reply = [graceful]() {
+    // Exit right away if it is not graceful.
+    if (!graceful) {
+      std::_Exit(EXIT_SUCCESS);
+    }
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. When raylet is shutdown by ray stop, the CLI sends a sigterm. Raylet
     // knows how to gracefully shutdown when it receives a sigterm. Here, we raise a

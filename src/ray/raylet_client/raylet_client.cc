@@ -157,7 +157,8 @@ Status raylet::RayletClient::Disconnect(
   // Just create logs and prevent it from crash.
   if (!status.ok()) {
     RAY_LOG(ERROR) << status.ToString()
-                   << " [RayletClient] Failed to disconnect from raylet.";
+                   << " [RayletClient] Failed to disconnect from raylet. This means the "
+                      "raylet the worker is connected is probably already dead.";
   }
   return Status::OK();
 }
@@ -435,6 +436,14 @@ void raylet::RayletClient::PinObjectIDs(
     callback(status, reply);
   };
   grpc_client_->PinObjectIDs(request, rpc_callback);
+}
+
+void raylet::RayletClient::ShutdownRaylet(
+    const NodeID &node_id, bool graceful,
+    const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) {
+  rpc::ShutdownRayletRequest request;
+  request.set_graceful(graceful);
+  grpc_client_->ShutdownRaylet(request, callback);
 }
 
 void raylet::RayletClient::GlobalGC(
