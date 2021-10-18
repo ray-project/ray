@@ -102,7 +102,7 @@ pbt_scheduler = PopulationBasedTraining(
     mode="min",
     perturbation_interval=1,
     hyperparam_mutations={
-        # distribution for resampling
+        # distribution for resamplingy
         "lr": lambda: np.random.uniform(0.001, 1),
         # allow perturbations within this set of categorical values
         "momentum": [0.8, 0.9, 0.99],
@@ -129,7 +129,6 @@ analysis = tune.run(
         FailureInjectorCallback(time_between_checks=90),
         ProgressCallback()
     ],
-    queue_trials=True,
     stop={"training_iteration": 1} if args.smoke_test else None)
 
 print(analysis.get_best_config(metric="val_loss", mode="min"))

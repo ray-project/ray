@@ -100,7 +100,6 @@ def run(
         restore: Optional[str] = None,
         server_port: Optional[int] = None,
         resume: bool = False,
-        queue_trials: bool = False,
         reuse_actors: bool = False,
         trial_executor: Optional[RayTrialExecutor] = None,
         raise_on_failed_trial: bool = True,
@@ -261,10 +260,6 @@ def run(
             ERRORED trials upon resume - previous trial artifacts will
             be left untouched.  If resume is set but checkpoint does not exist,
             ValueError will be thrown.
-        queue_trials (bool): Whether to queue trials when the cluster does
-            not currently have enough resources to launch one. This should
-            be set to True when running on an autoscaling cluster to enable
-            automatic scale-up.
         reuse_actors (bool): Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
@@ -410,7 +405,6 @@ def run(
 
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors,
-        queue_trials=queue_trials,
         result_buffer_length=result_buffer_length)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
@@ -653,7 +647,6 @@ def run_experiments(
         verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
         progress_reporter: Optional[ProgressReporter] = None,
         resume: bool = False,
-        queue_trials: bool = False,
         reuse_actors: bool = False,
         trial_executor: Optional[RayTrialExecutor] = None,
         raise_on_failed_trial: bool = True,
@@ -696,7 +689,6 @@ def run_experiments(
                 verbose,
                 progress_reporter,
                 resume,
-                queue_trials,
                 reuse_actors,
                 trial_executor,
                 raise_on_failed_trial,
@@ -716,7 +708,6 @@ def run_experiments(
             verbose=verbose,
             progress_reporter=progress_reporter,
             resume=resume,
-            queue_trials=queue_trials,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
@@ -731,7 +722,6 @@ def run_experiments(
                 verbose=verbose,
                 progress_reporter=progress_reporter,
                 resume=resume,
-                queue_trials=queue_trials,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,
