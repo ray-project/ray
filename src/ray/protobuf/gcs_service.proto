@@ -164,15 +164,6 @@ message RegisterNodeReply {
   GcsStatus status = 1;
 }
 
-message DrainNodeRequest {
-  // The ID of node.
-  bytes node_id = 1;
-}
-
-message DrainNodeReply {
-  GcsStatus status = 1;
-}
-
 message GetAllNodeInfoRequest {
 }
 
@@ -202,18 +193,6 @@ message GetInternalConfigRequest {
 message GetInternalConfigReply {
   GcsStatus status = 1;
   string config = 2;
-}
-
-// Service for node info access.
-service NodeInfoGcsService {
-  // Register a node to GCS Service.
-  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
-  // Drain a node from GCS Service. Drained node is not guaranteed to be killed, but it will become invisible to other nodes eventually.
-  rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
-  // Get information of all nodes from GCS Service.
-  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
-  // Get cluster internal config.
-  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 
 message GetResourcesRequest {
@@ -573,6 +552,28 @@ autoscaler in a separate pod, if the user upgrades the ray version on the head
 pod autoscaler can crash (if the newer version of ray modified the messages
 below). */
 
+message DrainNodeData {
+  // The id of the node to drain. 
+  bytes node_id = 1;
+  // Whether or not killing the drained node.
+  bool kill_node = 2;
+}
+
+message DrainNodeRequest {
+  // Batched information of nodes to drain.
+  repeated DrainNodeData drain_node_data = 1;
+}
+
+message DrainNodeStatus {
+  // Whether or not draining has succeeded.
+  bytes node_id = 1;
+  bool success = 2;
+}
+
+message DrainNodeReply {
+  repeated DrainNodeStatus drain_node_status = 1;
+}
+
 message InternalKVGetRequest {
   bytes key = 1;
 }
@@ -657,5 +658,17 @@ service NodeResourceInfoGcsService {
 message GcsStatus {
   int32 code = 1;
   string message = 2;
+}
+
+// Service for node info access.
+service NodeInfoGcsService {
+  // Register a node to GCS Service.
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
+  // Drain a node from GCS Service. Drained node is not guaranteed to be killed, but it will become invisible to other nodes eventually.
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
+  // Get information of all nodes from GCS Service.
+  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
+  // Get cluster internal config.
+  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 ///////////////////////////////////////////////////////////////////////////////

@@ -39,7 +39,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsNodeManager(std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -116,6 +117,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   std::string DebugString() const;
 
+  /// Drain the given node.
+  void DrainNode(const NodeID &node_id);
+
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
@@ -140,11 +144,13 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// Raylet client pool.
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 
   // Debug info.
   enum CountType {
     REGISTER_NODE_REQUEST = 0,
-    UNREGISTER_NODE_REQUEST = 1,
+    DRAIN_NODE_REQUEST = 1,
     GET_ALL_NODE_INFO_REQUEST = 2,
     GET_INTERNAL_CONFIG_REQUEST = 3,
     CountType_MAX = 4,
