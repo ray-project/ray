@@ -131,7 +131,7 @@ void AgentManager::CreateRuntimeEnv(
     const std::string &serialized_allocated_resource_instances,
     CreateRuntimeEnvCallback callback) {
   if (!should_start_agent_) {
-    RAY_LOG(ERROR) << "Not all required Ray dependencies for the Runtime Environments "
+    RAY_LOG(ERROR) << "Not all required Ray dependencies for the runtime_env "
                       "feature were found. To install the required dependencies, "
                    << "please run `pip install 'ray[default]'`.";
     // Execute the callback after the currently executing callback finishes.  Otherwise
