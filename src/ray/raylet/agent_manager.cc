@@ -135,8 +135,9 @@ void AgentManager::CreateRuntimeEnv(
                       "feature were found. To install the required dependencies, "
                    << "please run `pip install 'ray[default]'`.";
     // Execute the callback after the currently executing callback finishes.  Otherwise
-    // the task may be erased from the dispatch queue during the queue iteration in 
-    // DispatchScheduledTasksToWorkers(), invalidating the iterator and causing a segfault.
+    // the task may be erased from the dispatch queue during the queue iteration in
+    // ClusterTaskManager::DispatchScheduledTasksToWorkers(), invalidating the iterator
+    // and causing a segfault.
     delay_executor_([callback] { callback(false, ""); }, 0);
     RAY_LOG(ERROR) << "Made it past the print...";
     return;
