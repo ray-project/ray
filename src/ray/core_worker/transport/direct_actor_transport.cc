@@ -524,6 +524,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
           return_object->add_nested_inlined_refs()->CopyFrom(nested_ref);
         }
       }
+
       if (task_spec.IsActorCreationTask()) {
         /// The default max concurrency for creating PoolManager should
         /// be 0 if this is an asyncio actor.

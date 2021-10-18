@@ -329,19 +329,20 @@ cdef c_vector[CFunctionDescriptor] prepare_function_descriptors(pyfd_list):
 
 
 cdef int prepare_concurrency_groups(
-    dict concurrency_groups_dict,
-    c_vector[CConcurrencyGroup] *concurrency_groups):
+        dict concurrency_groups_dict,
+        c_vector[CConcurrencyGroup] *concurrency_groups):
 
     cdef:
         CConcurrencyGroup cg
         c_vector[CFunctionDescriptor] c_fd_list
- 
+
     if concurrency_groups_dict is None:
         raise ValueError("Must provide it...")
 
     for key, value in concurrency_groups_dict.items():
         c_fd_list = prepare_function_descriptors(value["function_descriptors"])
-        cg = CConcurrencyGroup(key.encode("ascii"), value["max_concurrency"], c_fd_list)
+        cg = CConcurrencyGroup(
+            key.encode("ascii"), value["max_concurrency"], c_fd_list)
         concurrency_groups.push_back(cg)
     return 1
 
@@ -488,12 +489,12 @@ cdef execute_task(
             # defined in the constructor).
             print("{}{}".format(
                 ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
-        
+
         # Initial eventloops for asyncio for this actor.
         if core_worker.current_actor_is_asyncio():
             core_worker.initial_eventloops_for_concurrency_group(
                 c_defined_concurrency_groups)
-        
+
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
         execution_info = manager.get_execution_info(
@@ -505,8 +506,8 @@ cdef execute_task(
                   b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
     task_name = name.decode("utf-8")
-    name_of_concurrency_group_to_execute = c_name_of_concurrency_group_to_execute.decode(
-        "ascii")
+    name_of_concurrency_group_to_execute =
+        c_name_of_concurrency_group_to_execute.decode("ascii")
     title = f"ray::{task_name}"
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
@@ -551,7 +552,7 @@ cdef execute_task(
                     async_function = sync_to_async(function)
 
                 return core_worker.run_async_func_in_event_loop(
-                    async_function, function_descriptor, 
+                    async_function, function_descriptor,
                     name_of_concurrency_group_to_execute, actor,
                     *arguments, **kwarguments)
 
@@ -734,7 +735,8 @@ cdef CRayStatus task_execution_handler(
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_refs, c_return_ids,
                              debugger_breakpoint, returns,
-                             is_application_level_error, defined_concurrency_groups,
+                             is_application_level_error,
+                             defined_concurrency_groups,
                              name_of_concurrency_group_to_execute)
             except Exception as e:
                 sys_exit = SystemExit()
@@ -1472,7 +1474,8 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
-            prepare_concurrency_groups(concurrency_groups_dict, &c_concurrency_groups)
+            prepare_concurrency_groups(
+                concurrency_groups_dict, &c_concurrency_groups)
 
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
@@ -1857,19 +1860,22 @@ cdef class CoreWorker:
                         return_id, returns[0][i]))
 
     cdef c_function_descriptors_to_python(
-        self, const c_vector[CFunctionDescriptor] &c_function_descriptors):
+        self,
+        const c_vector[CFunctionDescriptor] &c_function_descriptors):
 
         ret = []
         for i in range(c_function_descriptors.size()):
             ret.append(CFunctionDescriptorToPython(c_function_descriptors[i]))
         return ret
 
-    cdef initial_eventloops_for_concurrency_group(self,
+    cdef initial_eventloops_for_concurrency_group(
+            self,
             const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups):
+
         cdef:
             CConcurrencyGroup c_concurrency_group
             c_vector[CFunctionDescriptor] c_function_descriptors
-        
+
         self.cgname_to_eventloop_dict = {}
         self.fd_to_cgname_dict = {}
 
@@ -1883,9 +1889,8 @@ cdef class CoreWorker:
         self.thread_for_default_cg.daemon = True
         self.thread_for_default_cg.start()
 
-
         for i in range(c_defined_concurrency_groups.size()):
-            c_concurrency_group = c_defined_concurrency_groups[i];
+            c_concurrency_group = c_defined_concurrency_groups[i]
             cg_name = c_concurrency_group.GetName().decode("ascii")
             function_descriptors = self.c_function_descriptors_to_python(
                 c_concurrency_group.GetFunctionDescriptors())
@@ -1911,31 +1916,34 @@ cdef class CoreWorker:
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
         if function_descriptor.function_name == "__init__":
-            return self.eventloop_for_default_cg, self.thread_for_default_cg 
+            return self.eventloop_for_default_cg, self.thread_for_default_cg
 
         if specified_cgname is not None:
             if specified_cgname in self.cgname_to_eventloop_dict:
-                return (self.cgname_to_eventloop_dict[specified_cgname]["eventloop"],
-                        self.cgname_to_eventloop_dict[specified_cgname]["thread"])
+                return (
+                    self.cgname_to_eventloop_dict[specified_cgname]["eventloop"],
+                    self.cgname_to_eventloop_dict[specified_cgname]["thread"])
 
         if function_descriptor in self.fd_to_cgname_dict:
             curr_cgname = self.fd_to_cgname_dict[function_descriptor]
             if curr_cgname in self.cgname_to_eventloop_dict:
-                return (self.cgname_to_eventloop_dict[curr_cgname]["eventloop"],
-                        self.cgname_to_eventloop_dict[curr_cgname]["thread"])
+                return (
+                    self.cgname_to_eventloop_dict[curr_cgname]["eventloop"],
+                    self.cgname_to_eventloop_dict[curr_cgname]["thread"])
             else:
-                raise ValueError(
-                    "The function {} is defined to be executed in the concurrency group {} . But there is no this group.".format(
-                        function_descriptor, curr_cgname))
+                raise ValueError("The function {} is defined to be executed "
+                "in the concurrency group {} . But there is no this group."
+                .format(function_descriptor, curr_cgname))
 
-        return self.eventloop_for_default_cg, self.thread_for_default_cg 
+        return self.eventloop_for_default_cg, self.thread_for_default_cg
 
     def run_async_func_in_event_loop(
-        self, func, function_descriptor, specified_cgname, *args, **kwargs):
+          self, func, function_descriptor, specified_cgname, *args, **kwargs):
 
         cdef:
             CFiberEvent event
-        eventloop, async_thread = self.get_event_loop(function_descriptor, specified_cgname)
+        eventloop, async_thread = self.get_event_loop(
+            function_descriptor, specified_cgname)
         coroutine = func(*args, **kwargs)
         if threading.get_ident() == async_thread.ident:
             future = asyncio.ensure_future(coroutine, eventloop)

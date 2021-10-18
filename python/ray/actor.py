@@ -63,6 +63,7 @@ def method(*args, **kwargs):
         if "concurrency_group" in kwargs:
             method.__ray_concurrency_group__ = kwargs["concurrency_group"]
         return method
+
     return annotate_method
 
 
@@ -140,7 +141,11 @@ class ActorMethod:
         return FuncWrapper()
 
     @_tracing_actor_method_invocation
-    def _remote(self, args=None, kwargs=None, name="", num_returns=None,
+    def _remote(self,
+                args=None,
+                kwargs=None,
+                name="",
+                num_returns=None,
                 concurrency_group=None):
         # TODO(qwang): Handle concurrency_group
         if num_returns is None:
@@ -295,8 +300,8 @@ class ActorClassMetadata:
     def __init__(self, language, modified_class,
                  actor_creation_function_descriptor, class_id, max_restarts,
                  max_task_retries, num_cpus, num_gpus, memory,
-                 object_store_memory, resources, accelerator_type,
-                 runtime_env, concurrency_groups):
+                 object_store_memory, resources, accelerator_type, runtime_env,
+                 concurrency_groups):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -369,10 +374,10 @@ class ActorClass:
                         f"use '{self.__ray_metadata__.class_name}.remote()'.")
 
     @classmethod
-    def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
-                                 max_task_retries, num_cpus, num_gpus, memory,
-                                 object_store_memory, resources,
-                                 accelerator_type, runtime_env, concurrency_groups):
+    def _ray_from_modified_class(
+            cls, modified_class, class_id, max_restarts, max_task_retries,
+            num_cpus, num_gpus, memory, object_store_memory, resources,
+            accelerator_type, runtime_env, concurrency_groups):
         for attribute in [
                 "remote",
                 "_remote",
@@ -764,16 +769,16 @@ class ActorClass:
                 "function_descriptors": [],
             }
 
-        # Update methods        
+        # Update methods
         for method_name in meta.method_meta.concurrency_group_for_methods:
-            cg_name = meta.method_meta.concurrency_group_for_methods[method_name]
+            cg_name = meta.method_meta.concurrency_group_for_methods[
+                method_name]
             assert cg_name in concurrency_groups_dict
-            
+
             module_name = meta.actor_creation_function_descriptor.module_name
             class_name = meta.actor_creation_function_descriptor.class_name
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
-                PythonFunctionDescriptor(
-                    module_name, method_name, class_name))
+                PythonFunctionDescriptor(module_name, method_name, class_name))
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
@@ -1105,6 +1110,8 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
         max_restarts = 0
     if max_task_retries is None:
         max_task_retries = 0
+    if concurrency_groups is None:
+        concurrency_groups = []
 
     infinite_restart = max_restarts == -1
     if not infinite_restart:

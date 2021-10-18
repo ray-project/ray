@@ -8,7 +8,6 @@ import ray
 
 # This tests the methods are executed in the correct eventloop.
 def test_basic():
-
     @ray.remote(concurrency_groups={"io": 2, "compute": 4})
     class AsyncActor:
         def __init__(self):
@@ -84,7 +83,7 @@ def test_async_methods_in_concurrency_group():
         def __init__(self):
             self.batch = []
             self.event = None
-        
+
         @ray.method(concurrency_group="async")
         def init_event(self):
             self.event = asyncio.Event()

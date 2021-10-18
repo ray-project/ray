@@ -303,7 +303,7 @@ class FiberStateManager final {
       name_to_fiber_index_[name] = fiber;
     }
     /// Create default fiber state for default concurrency group.
-    if (default_group_max_concurrency > 1) {
+    if (default_group_max_concurrency >= 1) {
       default_fiber_ = std::make_shared<FiberState>(default_group_max_concurrency);
     }
   }
@@ -563,7 +563,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
         is_asyncio_(is_asyncio) {
     if (is_asyncio_) {
       // TODO: LOG
-      RAY_LOG(INFO) << "Setting actor as async with max_concurrency="
+      RAY_LOG(INFO) << "Setting actor as asyncio with max_concurrency="
                     << fiber_max_concurrency << ", creating new fiber thread.";
       fiber_state_manager_ =
           std::make_unique<FiberStateManager>(concurrency_groups, fiber_max_concurrency);
@@ -892,6 +892,10 @@ class CoreWorkerDirectTaskReceiver {
 
   bool CancelQueuedNormalTask(TaskID task_id);
 
+ protected:
+   /// Cache the concurrency groups of actors.
+  std::unordered_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
+
  private:
   // Worker context.
   WorkerContext &worker_context_;
@@ -925,9 +929,6 @@ class CoreWorkerDirectTaskReceiver {
   /// Set the max concurrency for fiber actor.
   /// This should be called once for the actor creation task.
   void SetMaxActorConcurrency(bool is_asyncio, int fiber_max_concurrency);
-
-  /// Cache the concurrency groups of actors.
-  std::unordered_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 };
 
 }  // namespace core

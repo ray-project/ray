@@ -1932,7 +1932,7 @@ def make_decorator(num_returns=None,
                    placement_group="default",
                    worker=None,
                    retry_exceptions=None,
-                   concurrency_groups=[]):
+                   concurrency_groups=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1987,11 +1987,10 @@ def make_decorator(num_returns=None,
                 raise ValueError(
                     "The keyword 'max_task_retries' only accepts -1, 0 or a"
                     " positive integer")
-            return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
-                                        memory, object_store_memory, resources,
-                                        accelerator_type, max_restarts,
-                                        max_task_retries, runtime_env,
-                                        concurrency_groups)
+            return ray.actor.make_actor(
+                function_or_class, num_cpus, num_gpus, memory,
+                object_store_memory, resources, accelerator_type, max_restarts,
+                max_task_retries, runtime_env, concurrency_groups)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2110,10 +2109,21 @@ def remote(*args, **kwargs):
 
     # Parse the keyword arguments from the decorator.
     valid_kwargs = [
-        "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
-        "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions",
-        "placement_group", "concurrency_groups",
+        "num_returns",
+        "num_cpus",
+        "num_gpus",
+        "memory",
+        "object_store_memory",
+        "resources",
+        "accelerator_type",
+        "max_calls",
+        "max_restarts",
+        "max_task_retries",
+        "max_retries",
+        "runtime_env",
+        "retry_exceptions",
+        "placement_group",
+        "concurrency_groups",
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
