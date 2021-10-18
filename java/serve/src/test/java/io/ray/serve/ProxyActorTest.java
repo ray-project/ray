@@ -5,8 +5,7 @@ import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.generated.BackendVersion;
+import io.ray.serve.generated.BackendLanguage;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
@@ -34,7 +33,7 @@ public class ProxyActorTest {
       String controllerName =
           CommonUtil.formatActorName(
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
-      String backendTag = prefix;
+      String deploymentName = prefix;
       String replicaTag = prefix;
       String endpointName = prefix;
       String route = "/route";
@@ -50,26 +49,24 @@ public class ProxyActorTest {
       controller.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       // Replica
-      DeploymentInfo deploymentInfo = new DeploymentInfo();
-      deploymentInfo.setBackendConfig(BackendConfig.newBuilder().build().toByteArray());
-      deploymentInfo.setBackendVersion(
-          BackendVersion.newBuilder().setCodeVersion(version).build().toByteArray());
-      deploymentInfo.setReplicaConfig(
-          new ReplicaConfig(DummyBackendReplica.class.getName(), null, new HashMap<>()));
+      DeploymentInfo deploymentInfo =
+          new DeploymentInfo()
+              .setName(deploymentName)
+              .setBackendConfig(
+                  new BackendConfig().setBackendLanguage(BackendLanguage.JAVA.getNumber()))
+              .setBackendVersion(new BackendVersion().setCodeVersion(version))
+              .setBackendDef(DummyBackendReplica.class.getName());
 
       ActorHandle<RayServeWrappedReplica> replica =
-          Ray.actor(
-                  RayServeWrappedReplica::new,
-                  backendTag,
-                  replicaTag,
-                  deploymentInfo,
-                  controllerName)
+          Ray.actor(RayServeWrappedReplica::new, deploymentInfo, replicaTag, controllerName)
               .setName(replicaTag)
               .remote();
-      replica.task(RayServeWrappedReplica::ready).remote();
+      Assert.assertTrue(replica.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ProxyActor
       ProxyActor proxyActor = new ProxyActor(controllerName, null);
+      Assert.assertTrue(proxyActor.ready());
+
       proxyActor.getProxyRouter().updateRoutes(endpointInfos);
       proxyActor
           .getProxyRouter()

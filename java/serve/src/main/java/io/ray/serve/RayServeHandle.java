@@ -58,7 +58,7 @@ public class RayServeHandle {
     requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
     requestMetadata.setEndpoint(endpointName);
     requestMetadata.setCallMethod(
-        handleOptions != null ? handleOptions.getMethodName() : Constants.DEFAULT_CALL_METHOD);
+        handleOptions != null ? handleOptions.getMethodName() : Constants.CALL_METHOD);
     return router.assignRequest(requestMetadata.build(), parameters);
   }
 

@@ -1,15 +1,15 @@
 package io.ray.serve.util;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.gson.Gson;
+import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.BackendConfig;
+import io.ray.serve.BackendVersion;
 import io.ray.serve.Constants;
 import io.ray.serve.RayServeException;
-import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.BackendVersion;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.generated.LongPollResult;
@@ -27,70 +27,66 @@ public class ServeProtoUtil {
 
   public static BackendConfig parseBackendConfig(byte[] backendConfigBytes) {
 
-    // Get a builder from BackendConfig(bytes) or create a new one.
-    BackendConfig.Builder builder = null;
+    BackendConfig backendConfig = new BackendConfig();
     if (backendConfigBytes == null) {
-      builder = BackendConfig.newBuilder();
-    } else {
-      BackendConfig backendConfig = null;
-      try {
-        backendConfig = BackendConfig.parseFrom(backendConfigBytes);
-      } catch (InvalidProtocolBufferException e) {
-        throw new RayServeException("Failed to parse BackendConfig from protobuf bytes.", e);
-      }
-      if (backendConfig == null) {
-        builder = BackendConfig.newBuilder();
-      } else {
-        builder = BackendConfig.newBuilder(backendConfig);
-      }
+      return backendConfig;
     }
 
-    // Set default values.
-    if (builder.getNumReplicas() == 0) {
-      builder.setNumReplicas(1);
+    io.ray.serve.generated.BackendConfig pbBackendConfig = null;
+    try {
+      pbBackendConfig = io.ray.serve.generated.BackendConfig.parseFrom(backendConfigBytes);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RayServeException("Failed to parse BackendConfig from protobuf bytes.", e);
     }
 
-    Preconditions.checkArgument(
-        builder.getMaxConcurrentQueries() >= 0, "max_concurrent_queries must be >= 0");
-    if (builder.getMaxConcurrentQueries() == 0) {
-      builder.setMaxConcurrentQueries(100);
+    if (pbBackendConfig == null) {
+      return backendConfig;
     }
 
-    if (builder.getGracefulShutdownWaitLoopS() == 0) {
-      builder.setGracefulShutdownWaitLoopS(2);
+    if (pbBackendConfig.getNumReplicas() != 0) {
+      backendConfig.setNumReplicas(pbBackendConfig.getNumReplicas());
     }
-
-    if (builder.getGracefulShutdownTimeoutS() == 0) {
-      builder.setGracefulShutdownTimeoutS(20);
+    if (pbBackendConfig.getMaxConcurrentQueries() != 0) {
+      backendConfig.setMaxConcurrentQueries(pbBackendConfig.getMaxConcurrentQueries());
     }
-
-    if (builder.getBackendLanguage() == BackendLanguage.UNRECOGNIZED) {
+    if (pbBackendConfig.getGracefulShutdownWaitLoopS() != 0) {
+      backendConfig.setGracefulShutdownWaitLoopS(pbBackendConfig.getGracefulShutdownWaitLoopS());
+    }
+    if (pbBackendConfig.getGracefulShutdownTimeoutS() != 0) {
+      backendConfig.setGracefulShutdownTimeoutS(pbBackendConfig.getGracefulShutdownTimeoutS());
+    }
+    backendConfig.setCrossLanguage(pbBackendConfig.getIsCrossLanguage());
+    if (pbBackendConfig.getBackendLanguage() == BackendLanguage.UNRECOGNIZED) {
       throw new RayServeException(
           LogUtil.format(
               "Unrecognized backend language {}. Backend language must be in {}.",
-              builder.getBackendLanguageValue(),
+              pbBackendConfig.getBackendLanguageValue(),
               Lists.newArrayList(BackendLanguage.values())));
     }
-
-    return builder.build();
-  }
-
-  public static Object parseUserConfig(BackendConfig backendConfig) {
-    if (backendConfig.getUserConfig() == null || backendConfig.getUserConfig().size() == 0) {
-      return null;
+    backendConfig.setBackendLanguage(pbBackendConfig.getBackendLanguageValue());
+    if (pbBackendConfig.getUserConfig() != null && pbBackendConfig.getUserConfig().size() != 0) {
+      backendConfig.setUserConfig(
+          new Object[] {
+            MessagePackSerializer.decode(
+                pbBackendConfig.getUserConfig().toByteArray(), Object.class)
+          });
     }
-    return MessagePackSerializer.decode(backendConfig.getUserConfig().toByteArray(), Object.class);
+    return backendConfig;
   }
 
-  public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes)
-      throws InvalidProtocolBufferException {
+  public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes) {
 
     // Get a builder from RequestMetadata(bytes) or create a new one.
     RequestMetadata.Builder builder = null;
     if (requestMetadataBytes == null) {
       builder = RequestMetadata.newBuilder();
     } else {
-      RequestMetadata requestMetadata = RequestMetadata.parseFrom(requestMetadataBytes);
+      RequestMetadata requestMetadata = null;
+      try {
+        requestMetadata = RequestMetadata.parseFrom(requestMetadataBytes);
+      } catch (InvalidProtocolBufferException e) {
+        throw new RayServeException("Failed to parse RequestMetadata from protobuf bytes.", e);
+      }
       if (requestMetadata == null) {
         builder = RequestMetadata.newBuilder();
       } else {
@@ -100,21 +96,25 @@ public class ServeProtoUtil {
 
     // Set default values.
     if (StringUtils.isBlank(builder.getCallMethod())) {
-      builder.setCallMethod(Constants.DEFAULT_CALL_METHOD);
+      builder.setCallMethod(Constants.CALL_METHOD);
     }
 
     return builder.build();
   }
 
-  public static RequestWrapper parseRequestWrapper(byte[] httpRequestWrapperBytes)
-      throws InvalidProtocolBufferException {
+  public static RequestWrapper parseRequestWrapper(byte[] httpRequestWrapperBytes) {
 
     // Get a builder from HTTPRequestWrapper(bytes) or create a new one.
     RequestWrapper.Builder builder = null;
     if (httpRequestWrapperBytes == null) {
       builder = RequestWrapper.newBuilder();
     } else {
-      RequestWrapper requestWrapper = RequestWrapper.parseFrom(httpRequestWrapperBytes);
+      RequestWrapper requestWrapper = null;
+      try {
+        requestWrapper = RequestWrapper.parseFrom(httpRequestWrapperBytes);
+      } catch (InvalidProtocolBufferException e) {
+        throw new RayServeException("Failed to parse RequestWrapper from protobuf bytes.", e);
+      }
       if (requestWrapper == null) {
         builder = RequestWrapper.newBuilder();
       } else {
@@ -158,13 +158,50 @@ public class ServeProtoUtil {
   }
 
   public static BackendVersion parseBackendVersion(byte[] backendVersionBytes) {
+    BackendVersion backendVersion = new BackendVersion();
     if (backendVersionBytes == null) {
-      return null;
+      return backendVersion;
     }
+
+    io.ray.serve.generated.BackendVersion pbBackendVersion = null;
     try {
-      return BackendVersion.parseFrom(backendVersionBytes);
+      pbBackendVersion = io.ray.serve.generated.BackendVersion.parseFrom(backendVersionBytes);
     } catch (InvalidProtocolBufferException e) {
       throw new RayServeException("Failed to parse BackendVersion from protobuf bytes.", e);
     }
+
+    if (pbBackendVersion == null) {
+      return backendVersion;
+    }
+
+    if (StringUtils.isNotBlank(pbBackendVersion.getCodeVersion())) {
+      backendVersion.setCodeVersion(pbBackendVersion.getCodeVersion());
+    }
+    if (pbBackendVersion.getUserConfig() != null && pbBackendVersion.getUserConfig().size() != 0) {
+      backendVersion.setUserConfig(
+          new Object[] {
+            MessagePackSerializer.decode(
+                pbBackendVersion.getUserConfig().toByteArray(), Object.class)
+          });
+    }
+    return backendVersion;
+  }
+
+  public static io.ray.serve.generated.BackendVersion toProtobuf(BackendVersion backendVersion) {
+    io.ray.serve.generated.BackendVersion.Builder pbBackendVersion =
+        io.ray.serve.generated.BackendVersion.newBuilder();
+    if (backendVersion == null) {
+      return pbBackendVersion.build();
+    }
+
+    if (StringUtils.isNotBlank(backendVersion.getCodeVersion())) {
+      pbBackendVersion.setCodeVersion(backendVersion.getCodeVersion());
+    }
+    if (backendVersion.getUserConfig() != null) {
+      pbBackendVersion.setUserConfig(
+          ByteString.copyFrom(
+              MessagePackSerializer.encode(backendVersion.getUserConfig()).getLeft()));
+    }
+    return pbBackendVersion.build();
   }
 }

@@ -3,13 +3,10 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.BackendVersion;
 import io.ray.serve.generated.RequestMetadata;
-import java.util.HashMap;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -33,30 +30,23 @@ public class RouterTest {
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
       // Replica
-      BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();
-      backendConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);
-      byte[] backendConfigBytes = backendConfigBuilder.build().toByteArray();
+      BackendConfig backendConfig =
+          new BackendConfig().setBackendLanguage(BackendLanguage.JAVA.getNumber());
 
       Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
-      byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
-      DeploymentInfo deploymentInfo = new DeploymentInfo();
-      deploymentInfo.setBackendConfig(backendConfigBytes);
-      deploymentInfo.setBackendVersion(
-          BackendVersion.newBuilder().setCodeVersion(version).build().toByteArray());
-      deploymentInfo.setReplicaConfig(
-          new ReplicaConfig("io.ray.serve.ReplicaContext", initArgsBytes, new HashMap<>()));
+      DeploymentInfo deploymentInfo =
+          new DeploymentInfo()
+              .setBackendConfig(backendConfig)
+              .setBackendVersion(new BackendVersion().setCodeVersion(version))
+              .setBackendDef("io.ray.serve.ReplicaContext")
+              .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
-          Ray.actor(
-                  RayServeWrappedReplica::new,
-                  backendTag,
-                  replicaTag,
-                  deploymentInfo,
-                  controllerName)
+          Ray.actor(RayServeWrappedReplica::new, deploymentInfo, replicaTag, controllerName)
               .setName(actorName)
               .remote();
-      replicaHandle.task(RayServeWrappedReplica::ready).remote();
+      Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // Router
       Router router = new Router(controllerHandle, backendTag);
@@ -75,6 +65,7 @@ public class RouterTest {
       if (!inited) {
         Ray.shutdown();
       }
+      Serve.setInternalReplicaContext(null);
     }
   }
 }

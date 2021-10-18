@@ -3,14 +3,11 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.BackendVersion;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
 import java.io.IOException;
-import java.util.HashMap;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -32,30 +29,22 @@ public class RayServeReplicaTest {
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
-      BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();
-      backendConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);
-      byte[] backendConfigBytes = backendConfigBuilder.build().toByteArray();
+      BackendConfig backendConfig =
+          new BackendConfig().setBackendLanguage(BackendLanguage.JAVA.getNumber());
       Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
-      byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
-
-      DeploymentInfo deploymentInfo = new DeploymentInfo();
-      deploymentInfo.setBackendConfig(backendConfigBytes);
-      deploymentInfo.setBackendVersion(
-          BackendVersion.newBuilder().setCodeVersion(version).build().toByteArray());
-      deploymentInfo.setReplicaConfig(
-          new ReplicaConfig("io.ray.serve.ReplicaContext", initArgsBytes, new HashMap<>()));
+      DeploymentInfo deploymentInfo =
+          new DeploymentInfo()
+              .setBackendConfig(backendConfig)
+              .setBackendVersion(new BackendVersion().setCodeVersion(version))
+              .setBackendDef("io.ray.serve.ReplicaContext")
+              .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> backendHandle =
-          Ray.actor(
-                  RayServeWrappedReplica::new,
-                  backendTag,
-                  replicaTag,
-                  deploymentInfo,
-                  controllerName)
+          Ray.actor(RayServeWrappedReplica::new, deploymentInfo, replicaTag, controllerName)
               .remote();
 
       // ready
-      backendHandle.task(RayServeWrappedReplica::ready).remote();
+      Assert.assertTrue(backendHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // handle request
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
@@ -73,13 +62,13 @@ public class RayServeReplicaTest {
       Assert.assertEquals((String) resultRef.get(), backendTag);
 
       // reconfigure
-      ObjectRef<byte[]> versionRef =
+      ObjectRef<Object> versionRef =
           backendHandle.task(RayServeWrappedReplica::reconfigure, (Object) null).remote();
-      Assert.assertEquals(BackendVersion.parseFrom(versionRef.get()).getCodeVersion(), version);
+      Assert.assertEquals(((BackendVersion) versionRef.get()).getCodeVersion(), version);
 
       // get version
       versionRef = backendHandle.task(RayServeWrappedReplica::getVersion).remote();
-      Assert.assertEquals(BackendVersion.parseFrom(versionRef.get()).getCodeVersion(), version);
+      Assert.assertEquals(((BackendVersion) versionRef.get()).getCodeVersion(), version);
 
       // prepare for shutdown
       ObjectRef<Boolean> shutdownRef =
@@ -90,6 +79,7 @@ public class RayServeReplicaTest {
       if (!inited) {
         Ray.shutdown();
       }
+      Serve.setInternalReplicaContext(null);
     }
   }
 }

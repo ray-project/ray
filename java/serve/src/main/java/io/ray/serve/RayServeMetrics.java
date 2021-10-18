@@ -45,8 +45,10 @@ public enum RayServeMetrics {
 
   public static final String TAG_REPLICA = "replica";
 
-  private static final boolean isMetricsEnabled =
+  private static final boolean canBeUsed =
       Ray.isInitialized() && !Ray.getRuntimeContext().isSingleProcess();
+
+  private static volatile boolean enabled = true;
 
   private String name;
 
@@ -58,7 +60,7 @@ public enum RayServeMetrics {
   }
 
   public static void execute(Runnable runnable) {
-    if (!isMetricsEnabled) {
+    if (!enabled || !canBeUsed) {
       return;
     }
     runnable.run();
@@ -70,5 +72,13 @@ public enum RayServeMetrics {
 
   public String getDescription() {
     return description;
+  }
+
+  public static void enable() {
+    enabled = true;
+  }
+
+  public static void disable() {
+    enabled = false;
   }
 }
