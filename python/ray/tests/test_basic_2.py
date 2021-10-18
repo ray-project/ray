@@ -378,6 +378,7 @@ def test_get_multiple(ray_start_regular_shared):
     results = ray.get([object_refs[i] for i in indices])
     assert results == indices
 
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_get_with_timeout(ray_start_regular_shared):
     SignalActor = create_remote_signal_actor(ray)
