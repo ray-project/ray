@@ -75,8 +75,9 @@ def test_delete(workflow_start_regular):
     with pytest.raises(ValueError):
         ouput = workflow.get_output("never_finishes")
 
-    with pytest.raises(ValueError):
-        workflow.resume("never_finishes")
+    # TODO(Alex): Uncomment after https://github.com/ray-project/ray/issues/19481.
+    # with pytest.raises(WorkflowNotFoundError):
+    #     workflow.resume("never_finishes")
 
     with pytest.raises(WorkflowNotFoundError):
         workflow.delete(workflow_id="never_finishes")
@@ -96,8 +97,9 @@ def test_delete(workflow_start_regular):
     with pytest.raises(ValueError):
         ouput = workflow.get_output("finishes")
 
-    with pytest.raises(ValueError):
-        workflow.resume("finishes")
+    # TODO(Alex): Uncomment after https://github.com/ray-project/ray/issues/19481.
+    # with pytest.raises(ValueError):
+    #     workflow.resume("finishes")
 
     with pytest.raises(WorkflowNotFoundError):
         workflow.delete(workflow_id="finishes")

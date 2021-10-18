@@ -482,6 +482,7 @@ class WorkflowStorage:
     async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         prefix = self._storage.make_key("")
         workflow_ids = await self._storage.scan_prefix(prefix)
+        print("PREFIX IS: ", prefix, "workflows:", workflow_ids)
         metadata = await asyncio.gather(*[
             self._get([workflow_id, WORKFLOW_META], True)
             for workflow_id in workflow_ids
@@ -540,6 +541,12 @@ class WorkflowStorage:
 
         if not scan:
             raise WorkflowNotFoundError(self._workflow_id)
+
+        print("workflow prefix", asyncio_run(self._storage.scan_prefix(prefix)))
+        prefix = self._storage.make_key("")
+        workflow_ids = self._storage.scan_prefix(prefix)
+        print("root prefix", asyncio_run(workflow_ids))
+
 
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> str:
