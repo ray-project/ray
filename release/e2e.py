@@ -372,6 +372,17 @@ def wheel_exists(ray_version, git_branch, git_commit):
     return requests.head(url).status_code == 200
 
 
+def commit_or_url(commit_or_url: str) -> str:
+    if commit_or_url.startswith("http"):
+        # Assume URL
+        return commit_or_url
+
+    # Else, assume commit
+    os.environ["RAY_COMMIT"] = commit_or_url
+    return wheel_url(GLOBAL_CONFIG["RAY_VERSION"], GLOBAL_CONFIG["RAY_BRANCH"],
+                     commit_or_url)
+
+
 def get_latest_commits(repo: str, branch: str = "master") -> List[str]:
     cur = os.getcwd()
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1962,11 +1973,16 @@ if __name__ == "__main__":
         raise RuntimeError(
             "You have to set the ANYSCALE_PROJECT environment variable!")
 
+    ray_wheels = args.ray_wheels or os.environ.get("RAY_WHEELS", "")
+
     maybe_fetch_api_token()
-    if args.ray_wheels:
-        os.environ["RAY_WHEELS"] = str(args.ray_wheels)
-        url = str(args.ray_wheels)
-    elif not args.check and not os.environ.get("RAY_WHEELS"):
+    if ray_wheels:
+        logger.info(f"Using Ray wheels provided from URL/commit: "
+                    f"{ray_wheels}")
+        url = commit_or_url(str(ray_wheels))
+        # Overwrite with actual URL
+        os.environ["RAY_WHEELS"] = url
+    elif not args.check:
         url = find_ray_wheels(
             GLOBAL_CONFIG["RAY_REPO"],
             GLOBAL_CONFIG["RAY_BRANCH"],
@@ -1977,12 +1993,7 @@ if __name__ == "__main__":
                                f"Ray {GLOBAL_CONFIG['RAY_VERSION']}, "
                                f"branch {GLOBAL_CONFIG['RAY_BRANCH']}")
 
-        # RAY_COMMIT is set by find_ray_wheels
-    elif os.environ.get("RAY_WHEELS"):
-        logger.info(f"Using Ray wheels provided from URL: "
-                    f"{os.environ.get('RAY_WHEELS')}")
-        url = os.environ.get("RAY_WHEELS")
-
+    # RAY_COMMIT is set by commit_or_url and find_ray_wheels
     populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
