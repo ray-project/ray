@@ -366,9 +366,9 @@ def push_package(pkg_uri: str, pkg_path: str) -> int:
     """
     protocol, _ = _parse_uri(pkg_uri)
     data = Path(pkg_path).read_bytes()
-    if protocol in (Protocol.GCS, Protocol.PIN_GCS):
+    if protocol in {Protocol.GCS, Protocol.PIN_GCS}:
         return _store_package_in_gcs(pkg_uri, data)
-    elif protocol in (Protocol.S3):
+    elif protocol == Protocol.S3:
         raise RuntimeError("push_pacakge should not be called with s3 path.")
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
@@ -386,7 +386,7 @@ def package_exists(pkg_uri: str) -> bool:
     protocol, _ = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         return _internal_kv_exists(pkg_uri)
-    elif protocol in (Protocol.S3):
+    elif protocol == Protocol.S3:
         # Mark s3 path as true to skip packing & uploading on user laptop
         return True
     else:
@@ -475,6 +475,8 @@ class WorkingDirManager:
         directory and modules defined in job config. The package will be
         uploaded to the cluster after this.
 
+        If pkg_uri is a s3 remote url, we will skip uploading and pushing.
+
         Args:
             job_config (JobConfig): The job config of driver.
         """
@@ -488,8 +490,10 @@ class WorkingDirManager:
         if len(pkg_uris) == 0:
             return  # Return early to avoid internal kv check in this case.
         for pkg_uri in pkg_uris:
-            if urlparse(pkg_uri).scheme in {"s3"}:
-                # Remote URIs are not uploaded
+            if urlparse(pkg_uri).scheme in {Protocol.S3.value}:
+                logger.info(
+                    "Skipping package creation and uploading for remote "
+                    f"package uri: {pkg_uri}")
                 continue
 
             if not package_exists(pkg_uri):
@@ -581,13 +585,14 @@ class WorkingDirManager:
               runtime_env: dict,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
-        default_logger.info(f"Calling setup with runtime_env: {runtime_env}")
+        logger.info(f"Calling setup with runtime_env: {runtime_env}")
 
         if not runtime_env.get("uris"):
             return
 
         working_dir = self.setup_local_working_dir(
             runtime_env["uris"], logger=logger)
+        logger.info(f"After setup working_dir: {working_dir}")
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is

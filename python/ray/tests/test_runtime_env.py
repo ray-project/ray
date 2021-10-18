@@ -288,19 +288,24 @@ def test_single_node(ray_start_cluster_head, working_dir):
     #     uri_mock.return_value = f"{working_dir}/test_module/s3_package.zip"
     cluster = ray_start_cluster_head
     address, env, runtime_env_dir = start_client_server(cluster, False)
+
     # Setup runtime env here
     # if use_local_working_dir:
-    #     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    print(f">>>> Test working_dir: {working_dir}")
+    print(f">>>> env: {env}, runtime_env_dir: {runtime_env_dir}")
     # else:
     runtime_env = f"""{{  "working_dir": "s3://runtime-env-test/remote_runtime_env.zip" }}"""
+    working_dir = runtime_env_dir
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
 
     out = run_string_as_driver(script, env)
+    print(working_dir)
     print(os.listdir(working_dir))
-    print(os.listdir(f"{working_dir}/test_module"))
-    with open(f"{working_dir}/test_module/test.py", "r") as file:
+    print(os.listdir(f"{working_dir}/remote_runtime_env/test_module"))
+    with open(f"{working_dir}/remote_runtime_env/test_module/test.py", "r") as file:
         print(file.read())
     # if use_local_working_dir:
     #     assert out.strip().split()[-1] == "1000"
