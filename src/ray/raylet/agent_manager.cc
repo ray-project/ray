@@ -122,8 +122,9 @@ void AgentManager::StartAgent() {
     RAY_EVENT(ERROR, EL_RAY_AGENT_EXIT)
             .WithField("ip", agent_ip_address_)
             .WithField("pid", agent_pid_)
-        << "Agent process with pid " << child.GetId() << " exit, return value "
-        << exit_code;
+        << "Ray agent process with pid " << child.GetId() << " crashed with code "
+        << exit_code
+        << " and will be restarted. Check dashboard_agent.log for more information.";
     if (agent_restart_count_ < RayConfig::instance().agent_max_restart_count()) {
       RAY_UNUSED(delay_executor_(
           [this] {
@@ -134,11 +135,10 @@ void AgentManager::StartAgent() {
           RayConfig::instance().agent_restart_interval_ms() *
               std::pow(2, (agent_restart_count_ + 1))));
     } else {
-      RAY_LOG(INFO) << "Agent has failed "
+      RAY_LOG(INFO) << "The Ray agent process has crashed "
                     << RayConfig::instance().agent_max_restart_count()
-                    << " times in a row without registering the agent. This is highly "
-                       "likely there's a bug in the dashboard agent. Please check out "
-                       "the dashboard_agent.log file.";
+                    << " times in a row and will not be restarted. Check "
+                       "dashboard_agent.log for more information.";
     }
   });
   monitor_thread.detach();
