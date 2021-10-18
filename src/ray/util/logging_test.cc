@@ -13,7 +13,11 @@
 // limitations under the License.
 
 #include "ray/util/logging.h"
-
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <execinfo.h>
+#endif
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
