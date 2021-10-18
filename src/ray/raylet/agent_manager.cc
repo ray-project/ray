@@ -138,7 +138,11 @@ void AgentManager::CreateRuntimeEnv(
     // the task may be erased from the dispatch queue during the queue iteration in
     // ClusterTaskManager::DispatchScheduledTasksToWorkers(), invalidating the iterator
     // and causing a segfault.
-    delay_executor_([callback] { callback(false, ""); }, 0);
+    delay_executor_(
+        [callback] {
+          callback(/*successful=*/false, /*serialized_runtime_env_context=*/"");
+        },
+        0);
     return;
   }
   if (runtime_env_agent_client_ == nullptr) {
