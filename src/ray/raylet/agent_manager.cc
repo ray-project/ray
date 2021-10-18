@@ -139,7 +139,6 @@ void AgentManager::CreateRuntimeEnv(
     // ClusterTaskManager::DispatchScheduledTasksToWorkers(), invalidating the iterator
     // and causing a segfault.
     delay_executor_([callback] { callback(false, ""); }, 0);
-    RAY_LOG(ERROR) << "Made it past the print...";
     return;
   }
   if (runtime_env_agent_client_ == nullptr) {
