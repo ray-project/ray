@@ -215,9 +215,9 @@ class ResultThread(threading.Thread):
                         self._got_error = True
                         if self._error_callback is not None:
                             self._error_callback(result)
-                            break
-            if not self._got_error:
-                aggregated_batch_results.extend(batch)
+                        break
+                    else:
+                        aggregated_batch_results.append(result)
 
             self._num_ready += 1
             self._results[self._indices[ready_id]] = batch
