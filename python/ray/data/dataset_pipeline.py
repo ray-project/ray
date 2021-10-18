@@ -238,11 +238,13 @@ class DatasetPipeline(Generic[T]):
             # Disable progress bars for the split readers since they would
             # overwhelm the console.
             DatasetPipeline(
-                SplitIterator(idx, coordinator), progress_bars=False)
-            for idx in range(n)
+                SplitIterator(idx, coordinator),
+                length=self._length,
+                progress_bars=False) for idx in range(n)
         ]
 
-    def rewindow(self, *, blocks_per_window: int) -> "DatasetPipeline[T]":
+    def rewindow(self, *, blocks_per_window: int,
+                 preserve_epoch: bool = True) -> "DatasetPipeline[T]":
         """Change the windowing (blocks per dataset) of this pipeline.
 
         Changes the windowing of this pipeline to the specified size. For
@@ -254,6 +256,8 @@ class DatasetPipeline(Generic[T]):
 
         Args:
             blocks_per_window: The new target blocks per window.
+            preserve_epoch: Whether to preserve epoch boundaries. If set to
+                False, then windows can contain data from two adjacent epochs.
         """
 
         class WindowIterator:
@@ -267,8 +271,14 @@ class DatasetPipeline(Generic[T]):
                     if self._buffer is None:
                         self._buffer = next(self._original_iter)
                     while self._buffer.num_blocks() < blocks_per_window:
-                        self._buffer = self._buffer.union(
-                            next(self._original_iter))
+                        next_ds = next(self._original_iter)
+                        if (preserve_epoch and self._buffer._get_epoch() !=
+                                next_ds._get_epoch()):
+                            partial_window = self._buffer
+                            self._buffer = next_ds
+                            return lambda: partial_window
+                        else:
+                            self._buffer = self._buffer.union(next_ds)
                     # Slice off the left-most chunk and return it.
                     res, self._buffer = self._buffer._divide(blocks_per_window)
                     assert res.num_blocks() <= blocks_per_window, res
@@ -292,8 +302,13 @@ class DatasetPipeline(Generic[T]):
             def __iter__(self):
                 return WindowIterator(self._original_iter)
 
+        if self._length == float("inf"):
+            length = float("inf")
+        else:
+            length = None
+
         return DatasetPipeline(
-            WindowIterable(self.iter_datasets()), length=None)
+            WindowIterable(self.iter_datasets()), length=length)
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
@@ -392,6 +407,9 @@ class DatasetPipeline(Generic[T]):
         Returns:
             The number of records in the dataset pipeline.
         """
+        if self._length == float("inf"):
+            raise ValueError("Cannot count a pipeline of infinite length.")
+
         pipe = self.map_batches(lambda batch: [len(batch)])
         total = 0
         for elem in pipe.iter_rows():
@@ -408,6 +426,9 @@ class DatasetPipeline(Generic[T]):
         Returns:
             The sum of the records in the dataset pipeline.
         """
+        if self._length == float("inf"):
+            raise ValueError("Cannot sum a pipeline of infinite length.")
+
         pipe = self.map_batches(
             lambda batch: [batch.sum()[0]], batch_format="pandas")
         total = 0

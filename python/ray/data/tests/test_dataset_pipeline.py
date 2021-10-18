@@ -53,6 +53,17 @@ def test_epoch(ray_start_regular_shared):
     assert results == [[0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
                        [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
 
+    # Test preserve_epoch=True.
+    pipe = ray.data.range(5).repeat(2).rewindow(blocks_per_window=2)
+    results = [p.take() for p in pipe.iter_epochs()]
+    assert results == [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
+
+    # Test preserve_epoch=False.
+    pipe = ray.data.range(5).repeat(2).rewindow(
+        blocks_per_window=2, preserve_epoch=False)
+    results = [p.take() for p in pipe.iter_epochs()]
+    assert results == [[0, 1, 2, 3], [4, 0, 1, 2, 3, 4]]
+
 
 def test_cannot_read_twice(ray_start_regular_shared):
     ds = ray.data.range(10)
@@ -252,6 +263,45 @@ def test_parquet_write(ray_start_regular_shared, tmp_path):
     path2 = os.path.join(path, "data_000001_000000.parquet")
     dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
     assert df.equals(dfds)
+
+
+def test_infinity_of_pipeline(ray_start_regular_shared):
+    ds = ray.data.range(3)
+    pipe = ds.repeat()
+    assert float("inf") == pipe._length
+    pipe = ds.window(blocks_per_window=2)
+    assert float("inf") != pipe._length
+    pipe = ds.repeat(3)
+    assert float("inf") != pipe._length
+    assert float("inf") == pipe.repeat()._length
+
+    # ensure infinite length is transitive
+    pipe = ds.repeat().rewindow(blocks_per_window=2)
+    assert float("inf") == pipe._length
+    pipe = ds.repeat().split(2)[0]
+    assert float("inf") == pipe._length
+    pipe = ds.repeat().foreach_window(lambda x: x)
+    assert float("inf") == pipe._length
+
+
+def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
+    ds = ray.data.range(3)
+
+    pipe = ds.repeat()
+    assert float("inf") == pipe._length
+    with pytest.raises(ValueError):
+        pipe.count()
+
+    pipe = ds.repeat()
+    assert float("inf") == pipe._length
+    with pytest.raises(ValueError):
+        pipe.sum()
+
+    pipe = ds.repeat(3)
+    assert 9 == pipe.count()
+
+    pipe = ds.repeat(3)
+    assert 9 == pipe.sum()
 
 
 if __name__ == "__main__":

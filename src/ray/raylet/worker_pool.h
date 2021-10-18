@@ -21,6 +21,7 @@
 #include <boost/functional/hash.hpp>
 #include <queue>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -205,12 +206,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
   /// \param[in] worker_shim_pid The PID of the process for setup worker runtime env.
+  /// \param[in] worker_startup_token The startup token of the process assigned to
+  /// it during startup as a command line argument.
   /// \param[in] send_reply_callback The callback to invoke after registration is
   /// finished/failed.
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
-                        pid_t worker_shim_pid,
+                        pid_t worker_shim_pid, StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback);
 
   /// To be invoked when a worker is started. This method should be called when the worker
@@ -371,6 +374,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void TryKillingIdleWorkers();
 
  protected:
+  void update_worker_startup_token_counter();
+
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register N workers, then add them to the pool.
@@ -418,6 +423,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                                  std::shared_ptr<WorkerInterface> worker,
                                  PopWorkerStatus status);
 
+  /// Gloabl startup token variable. Incremented once assigned
+  /// to a worker process and is added to
+  /// state.starting_worker_processes.
+  StartupToken worker_startup_token_counter_;
+
   struct IOWorkerState {
     /// The pool of idle I/O workers.
     std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
@@ -438,6 +448,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_workers;
     /// The type of the worker.
     rpc::WorkerType worker_type;
+    /// The worker process instance.
+    Process proc;
   };
 
   struct TaskWaitingForWorkerInfo {
@@ -470,10 +482,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// All workers that have registered but is about to disconnect. They shouldn't be
     /// popped anymore.
     std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
-    /// A map from the pids of this shim processes to the extra information of
-    /// the process. The shim process PID is the same with worker process PID, except
-    /// starting worker process in container.
-    absl::flat_hash_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
+    /// A map from the startup tokens of worker processes, assigned by the raylet, to
+    /// the extra information of the process. Note that the shim process PID is the
+    /// same with worker process PID, except starting worker process in container.
+    absl::flat_hash_map<StartupToken, StartingWorkerProcessInfo>
+        starting_worker_processes;
     /// A map for looking up the task by the pid of starting worker process.
     absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
     /// A map for looking up the task with dynamic options by the pid of
@@ -508,7 +521,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// (due to worker process crash or any other reasons), remove them
   /// from `starting_worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
-  void MonitorStartingWorkerProcess(const Process &proc, const Language &language,
+  void MonitorStartingWorkerProcess(const Process &proc, StartupToken proc_startup_token,
+                                    const Language &language,
                                     const rpc::WorkerType worker_type);
 
   /// Get the next unallocated port in the free ports list. If a port range isn't

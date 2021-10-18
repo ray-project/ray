@@ -21,4 +21,4 @@ available_node_types:
 head_node_type: 16_cpu_node
 
 setup_commands:
-    - pip install -U jupyter ray[tune] xgboost_ray[default] dask pandas
+    - pip install -U jupyter ray[tune] xgboost_ray dask pandas

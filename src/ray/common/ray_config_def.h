@@ -477,7 +477,11 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, true)
 
-/// Whether to use log reporter in event framework
+/// Whether to enable register actor async.
+/// If it is false, the actor registration to GCS becomes synchronous, i.e.,
+/// core worker is blocked until GCS registers the actor and replies to it.
+/// If it is true, the actor registration is async, but actor handles cannot
+/// be passed to other worker until it is registered to GCS.
 RAY_CONFIG(bool, actor_register_async, true)
 
 /// Event severity threshold value
