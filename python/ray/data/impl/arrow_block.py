@@ -169,6 +169,13 @@ class ArrowBlockAccessor(BlockAccessor):
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
+            # TODO(Clark): Find a better method to ensure a copy. This Pandas
+            # roundtrip isn't ideal because:
+            #  1. It may break for nested schemas.
+            #  2. Future optimizations of zero-copy roundtrip with Pandas could
+            #     break this copy guarantee.
+            #  3. It creates two full memory copies,
+            #     Arrow --> Pandas --> Arrow, instead of just one.
             return pyarrow.Table.from_pandas(
                 view.to_pandas(), schema=view.schema)
         else:

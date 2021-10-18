@@ -310,6 +310,7 @@ def test_arrow_block_slice_copy():
     # Test with copy.
     table2 = block_accessor.slice(a, b, True)
     assert table2.equals(expected_slice)
+    assert table2.schema == table.schema
     chunk = table2.column(0).chunk(0)
     assert chunk.offset == 0
     assert len(chunk) == b - a
@@ -320,6 +321,7 @@ def test_arrow_block_slice_copy():
     # Test without copy.
     table2 = block_accessor.slice(a, b, False)
     assert table2.equals(expected_slice)
+    assert table2.schema == table.schema
     chunk = table2.column(0).chunk(0)
     assert chunk.offset == a
     assert len(chunk) == b - a
