@@ -11,6 +11,8 @@ public class ReplicaContext {
 
   private Object servableObject;
 
+  private RayServeConfig rayServeConfig;
+
   public ReplicaContext(
       String backendTag, String replicaTag, String controllerName, Object servableObject) {
     this.backendTag = backendTag;
@@ -49,5 +51,13 @@ public class ReplicaContext {
 
   public void setServableObject(Object servableObject) {
     this.servableObject = servableObject;
+  }
+
+  public RayServeConfig getRayServeConfig() {
+    return rayServeConfig;
+  }
+
+  public void setRayServeConfig(RayServeConfig rayServeConfig) {
+    this.rayServeConfig = rayServeConfig;
   }
 }

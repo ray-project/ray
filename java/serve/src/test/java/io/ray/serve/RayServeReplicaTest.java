@@ -41,7 +41,12 @@ public class RayServeReplicaTest {
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> backendHandle =
-          Ray.actor(RayServeWrappedReplica::new, deploymentInfo, replicaTag, controllerName)
+          Ray.actor(
+                  RayServeWrappedReplica::new,
+                  deploymentInfo,
+                  replicaTag,
+                  controllerName,
+                  (RayServeConfig) null)
               .remote();
 
       // ready

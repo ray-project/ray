@@ -58,7 +58,12 @@ public class ProxyActorTest {
               .setBackendDef(DummyBackendReplica.class.getName());
 
       ActorHandle<RayServeWrappedReplica> replica =
-          Ray.actor(RayServeWrappedReplica::new, deploymentInfo, replicaTag, controllerName)
+          Ray.actor(
+                  RayServeWrappedReplica::new,
+                  deploymentInfo,
+                  replicaTag,
+                  controllerName,
+                  (RayServeConfig) null)
               .setName(replicaTag)
               .remote();
       Assert.assertTrue(replica.task(RayServeWrappedReplica::checkHealth).remote().get());

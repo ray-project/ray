@@ -60,20 +60,29 @@ public class RayServeWrappedReplica implements RayServeReplica {
             .setBackendDef(backendDef)
             .setInitArgs(initArgs),
         replicaTag,
-        controllerName);
+        controllerName,
+        null);
   }
 
   public RayServeWrappedReplica(
-      DeploymentInfo deploymentInfo, String replicaTag, String controllerName) {
-    init(deploymentInfo, replicaTag, controllerName);
+      DeploymentInfo deploymentInfo,
+      String replicaTag,
+      String controllerName,
+      RayServeConfig rayServeConfig) {
+    init(deploymentInfo, replicaTag, controllerName, rayServeConfig);
   }
 
   @SuppressWarnings("rawtypes")
-  private void init(DeploymentInfo deploymentInfo, String replicaTag, String controllerName) {
+  private void init(
+      DeploymentInfo deploymentInfo,
+      String replicaTag,
+      String controllerName,
+      RayServeConfig rayServeConfig) {
     try {
       // Set the controller name so that Serve.connect() in the user's backend code will connect to
       // the instance that this backend is running in.
       Serve.setInternalReplicaContext(deploymentInfo.getName(), replicaTag, controllerName, null);
+      Serve.getReplicaContext().setRayServeConfig(rayServeConfig);
 
       // Instantiate the object defined by backendDef.
       Class backendClass = Class.forName(deploymentInfo.getBackendDef());
@@ -136,7 +145,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
     } else {
       // If the construction request is from Java API, deserialize initArgsbytes to Object[]
       // directly.
-      return MessagePackSerializer.decode(initArgsbytes, Object[].class); // TODO hession
+      return MessagePackSerializer.decode(initArgsbytes, Object[].class);
     }
   }
 

@@ -70,7 +70,12 @@ public class ReplicaSetTest {
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
-          Ray.actor(RayServeWrappedReplica::new, deploymentInfo, replicaTag, controllerName)
+          Ray.actor(
+                  RayServeWrappedReplica::new,
+                  deploymentInfo,
+                  replicaTag,
+                  controllerName,
+                  (RayServeConfig) null)
               .setName(actorName)
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
