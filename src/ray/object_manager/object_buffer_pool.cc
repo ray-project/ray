@@ -31,8 +31,8 @@ ObjectBufferPool::~ObjectBufferPool() {
   auto inflight_ops = create_buffer_ops_;
   pool_mutex_.Unlock();
 
-  for (const auto &[id, cond_var] : inflight_ops) {
-    cond_var->SignalAll();
+  for (auto &itr : inflight_ops) {
+    itr.second->SignalAll();
   }
   auto no_inflight = [this]() {
     pool_mutex_.AssertReaderHeld();
