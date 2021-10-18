@@ -277,8 +277,9 @@ Papers
    :caption: Ray Data
 
    data/dataset.rst
-   data/dataset-tensor-support.rst
    data/dataset-pipeline.rst
+   data/examples/big_data_ingestion
+   data/dataset-tensor-support.rst
    data/package-ref.rst
    data/dask-on-ray.rst
    data/mars-on-ray.rst
@@ -366,10 +367,11 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Contributing
+   :caption: Contributor Guide
 
    getting-involved.rst
    development.rst
+   fake-autoscaler.rst
    whitepaper.rst
    debugging.rst
    profiling.rst

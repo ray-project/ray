@@ -4,11 +4,18 @@ import logging
 import socket
 from pathlib import Path
 from threading import Thread
-from typing import Tuple, Dict, List, Any
+
+from typing import Tuple, Dict, List, Any, TYPE_CHECKING, Union
 
 import ray
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
+    from ray.data.dataset_pipeline import DatasetPipeline
+
+RayDataset = Union["Dataset", "DatasetPipeline"]
 
 logger = logging.getLogger(__name__)
 

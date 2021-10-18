@@ -186,6 +186,12 @@ struct CoreWorkerOptions {
   int runtime_env_hash;
   /// The PID of the process for setup worker runtime env.
   pid_t worker_shim_pid;
+  /// The startup token of the process assigned to it
+  /// during startup via command line arguments.
+  /// This is needed because the actual core worker process
+  /// may not have the same pid as the process the worker pool
+  /// starts (due to shim processes).
+  StartupToken startup_token{0};
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -293,6 +299,9 @@ class CoreWorkerProcess {
   static void HandleAtExit();
 
   void InitializeSystemConfig();
+
+  /// Check that if the global worker should be created on construction.
+  bool ShouldCreateGlobalWorkerOnConstruction() const;
 
   /// Get the `CoreWorker` instance by worker ID.
   ///
@@ -441,22 +450,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
-
-  /// Put an object into plasma. It's a version of Put that directly put the
-  /// object into plasma and also pin the object.
-  ///
-  /// \param[in] The ray object.
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  void PutObjectIntoPlasma(const RayObject &object, const ObjectID &object_id);
-
-  /// Promote an object to plasma. If the
-  /// object already exists locally, it will be put into the plasma store. If
-  /// it doesn't yet exist, it will be spilled to plasma once available.
-  ///
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  void PromoteObjectToPlasma(const ObjectID &object_id);
 
   /// Get the RPC address of this worker.
   ///
@@ -1053,6 +1046,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
+  void BuildCommonTaskSpec(
+      TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
+      const std::string &name, const TaskID &current_task_id, uint64_t task_index,
+      const TaskID &caller_id, const rpc::Address &address, const RayFunction &function,
+      const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::unordered_map<std::string, double> &required_placement_resources,
+      const BundleID &bundle_id, bool placement_group_capture_child_tasks,
+      const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
+      const std::vector<std::string> &runtime_env_uris,
+      const std::string &concurrency_group_name = "");
   void SetCurrentTaskId(const TaskID &task_id);
 
   void SetActorId(const ActorID &actor_id);

@@ -3,7 +3,7 @@ import logging
 import pickle
 import traceback
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 import time
 
 import starlette.responses
@@ -15,12 +15,11 @@ from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
 from ray.serve.common import BackendTag, ReplicaTag
+from ray.serve.config import BackendConfig
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
-from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
@@ -32,7 +31,7 @@ from ray.exceptions import RayTaskError
 logger = _get_logger()
 
 
-def create_backend_replica(name: str, serialized_backend_def: bytes):
+def create_replica_wrapper(name: str, serialized_backend_def: bytes):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
@@ -43,7 +42,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
-                           backend_config_proto_bytes: bytes,
+                           init_kwargs, backend_config_proto_bytes: bytes,
                            version: BackendVersion, controller_name: str,
                            detached: bool):
             backend = cloudpickle.loads(serialized_backend_def)
@@ -72,7 +71,8 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                 # This allows backends to define an async __init__ method
                 # (required for FastAPI backend definition).
                 _callable = backend.__new__(backend)
-                await sync_to_async(_callable.__init__)(*init_args)
+                await sync_to_async(_callable.__init__)(*init_args,
+                                                        **init_kwargs)
             # Setting the context again to update the servable_object.
             ray.serve.api._set_internal_replica_context(
                 backend_tag,
@@ -108,11 +108,15 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
-        async def reconfigure(self, user_config: Optional[Any] = None) -> None:
-            await self.backend.reconfigure(user_config)
+        async def reconfigure(self, user_config: Optional[Any] = None
+                              ) -> Tuple[BackendConfig, BackendVersion]:
+            if user_config is not None:
+                await self.backend.reconfigure(user_config)
 
-        def get_version(self) -> BackendVersion:
-            return self.backend.version
+            return self.get_metadata()
+
+        def get_metadata(self) -> Tuple[BackendConfig, BackendVersion]:
+            return self.backend.backend_config, self.backend.version
 
         async def prepare_for_shutdown(self):
             self.shutdown_event.set()
@@ -145,12 +149,11 @@ class RayServeReplica:
                  replica_tag: ReplicaTag, backend_config: BackendConfig,
                  user_config: Any, version: BackendVersion, is_function: bool,
                  controller_handle: ActorHandle) -> None:
+        self.backend_config = backend_config
         self.backend_tag = backend_tag
         self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
-
-        self.backend_config = backend_config
         self.user_config = user_config
         self.version = version
 
@@ -165,16 +168,6 @@ class RayServeReplica:
             "deployment": self.backend_tag,
             "replica": self.replica_tag
         })
-
-        self.loop = asyncio.get_event_loop()
-        self.long_poll_client = LongPollClient(
-            controller_handle,
-            {
-                (LongPollNamespace.BACKEND_CONFIGS, self.backend_tag): self.
-                _update_backend_configs,
-            },
-            call_in_event_loop=self.loop,
-        )
 
         self.error_counter = metrics.Counter(
             "serve_deployment_error_counter",
@@ -216,6 +209,9 @@ class RayServeReplica:
         })
 
         self.restart_counter.inc()
+
+        self._shutdown_wait_loop_s = (
+            backend_config.graceful_shutdown_wait_loop_s)
 
         if backend_config.autoscaling_config:
             config = backend_config.autoscaling_config
@@ -301,25 +297,19 @@ class RayServeReplica:
 
         return result
 
-    async def reconfigure(self,
-                          user_config: Optional[Any] = None) -> BackendVersion:
-        if user_config:
-            self.user_config = user_config
-            self.version = BackendVersion(
-                self.version.code_version, user_config=user_config)
-            if self.is_function:
-                raise ValueError(
-                    "backend_def must be a class to use user_config")
-            elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
-                raise RayServeException("user_config specified but backend " +
-                                        self.backend_tag + " missing " +
-                                        BACKEND_RECONFIGURE_METHOD + " method")
-            reconfigure_method = sync_to_async(
-                getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
-            await reconfigure_method(user_config)
-
-    def _update_backend_configs(self, new_config_bytes: bytes) -> None:
-        self.backend_config = BackendConfig.from_proto_bytes(new_config_bytes)
+    async def reconfigure(self, user_config: Any):
+        self.user_config = user_config
+        self.version = BackendVersion(
+            self.version.code_version, user_config=user_config)
+        if self.is_function:
+            raise ValueError("backend_def must be a class to use user_config")
+        elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
+            raise RayServeException("user_config specified but backend " +
+                                    self.backend_tag + " missing " +
+                                    BACKEND_RECONFIGURE_METHOD + " method")
+        reconfigure_method = sync_to_async(
+            getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
+        await reconfigure_method(user_config)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()
@@ -350,18 +340,17 @@ class RayServeReplica:
         Trigger a graceful shutdown protocol that will wait for all the queued
         tasks to be completed and return to the controller.
         """
-        sleep_time = self.backend_config.experimental_graceful_shutdown_wait_loop_s  # noqa: E501
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
-            await asyncio.sleep(sleep_time)
+            await asyncio.sleep(self._shutdown_wait_loop_s)
             if self.num_ongoing_requests == 0:
                 break
             else:
                 logger.info(
-                    f"Waiting for an additional {sleep_time}s to shut down "
-                    f"because there are {self.num_ongoing_requests} "
-                    "ongoing requests.")
+                    "Waiting for an additional "
+                    f"{self._shutdown_wait_loop_s}s to shut down because "
+                    f"there are {self.num_ongoing_requests} ongoing requests.")
 
         # Explicitly call the del method to trigger clean up.
         # We set the del method to noop after succssifully calling it so the
@@ -369,7 +358,9 @@ class RayServeReplica:
         try:
             if hasattr(self.callable, "__del__"):
                 self.callable.__del__()
-        except Exception:
-            logger.exception("Exception during graceful shutdown of replica.")
+        except Exception as e:
+            logger.exception(
+                f"Exception during graceful shutdown of replica: {e}")
         finally:
-            self.callable.__del__ = lambda _self: None
+            if hasattr(self.callable, "__del__"):
+                del self.callable.__del__

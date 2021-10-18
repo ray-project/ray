@@ -210,7 +210,7 @@
     #   --test_tag_filters=flaky
     #   -- //:all -rllib/... -core_worker_test
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,flaky
+      --test_tag_filters=-kubernetes,flaky
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -222,7 +222,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-flaky,-post_wheel_build,-worker-container
+      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-flaky,-post_wheel_build,-worker-container
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -230,7 +230,7 @@
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,client_tests,-flaky
+      --test_tag_filters=-kubernetes,client_tests,-flaky
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
       python/ray/tests/...
 - label: ":python: (Medium A-J)"
@@ -238,14 +238,14 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky
       python/ray/tests/...
 - label: ":python: (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky
       python/ray/tests/...
 - label: ":core: Debug Test"
   commands:
@@ -253,7 +253,7 @@
     - pip uninstall -y ray
     - RAY_DEBUG_BUILD=debug ./ci/travis/ci.sh build
     - bazel test --config=ci-debug $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,debug_tests,-flaky
+      --test_tag_filters=-kubernetes,debug_tests,-flaky
       python/ray/tests/...
 - label: ":core: (ASAN tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -262,7 +262,7 @@
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
       --config=asan-buildkite
-      --test_tag_filters=-kubernetes,-jenkins_only,asan_tests,-flaky
+      --test_tag_filters=-kubernetes,asan_tests,-flaky
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -464,7 +464,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-example,-flaky,-py37,-soft_imports,-gpu_only python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-example,-flaky,-py37,-soft_imports,-gpu_only python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only python/ray/tune/...
 
 - label: ":octopus: Tune tests and examples {2/2}"
