@@ -402,8 +402,7 @@ def create_test_step(
         test_file: str,
         test_name: ReleaseTest,
 ):
-    if ray_wheels:
-        ray_wheels_str = f" ({ray_wheels}) "
+    ray_wheels_str = f" ({ray_wheels}) " if ray_wheels else ""
 
     logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
     cmd = str(f"RAY_REPO=\"{ray_repo}\" "
