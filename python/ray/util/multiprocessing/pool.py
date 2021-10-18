@@ -271,10 +271,8 @@ class AsyncResult:
                  error_callback=None,
                  single_result=False):
         self._single_result = single_result
-        self._result_thread = ResultThread(chunk_object_refs,
-                                           single_result,
-                                           callback,
-                                           error_callback)
+        self._result_thread = ResultThread(chunk_object_refs, single_result,
+                                           callback, error_callback)
         self._result_thread.start()
 
     def wait(self, timeout=None):
@@ -595,8 +593,8 @@ class Pool:
                     func,
                     args=None,
                     kwargs=None,
-                    callback: Callable[[Any], None]=None,
-                    error_callback: Callable[[Exception], None]=None):
+                    callback: Callable[[Any], None] = None,
+                    error_callback: Callable[[Exception], None] = None):
         """Run the given function on a random actor process and return an
         asynchronous interface to the result.
 
@@ -738,8 +736,8 @@ class Pool:
                   func,
                   iterable,
                   chunksize=None,
-                  callback: Callable[[List], None]=None,
-                  error_callback: Callable[[Exception], None]=None):
+                  callback: Callable[[List], None] = None,
+                  error_callback: Callable[[Exception], None] = None):
         """Run the given function on each element in the iterable round-robin
         on the actor processes and return an asynchronous interface to the
         results.
@@ -780,8 +778,8 @@ class Pool:
     def starmap_async(self,
                       func,
                       iterable,
-                      callback: Callable[[List], None]=None,
-                      error_callback: Callable[[Exception], None]=None):
+                      callback: Callable[[List], None] = None,
+                      error_callback: Callable[[Exception], None] = None):
         """Same as `map_async`, but unpacks each element of the iterable as the
         arguments to func like: [func(*args) for args in iterable].
         """
