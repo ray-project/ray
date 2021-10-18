@@ -66,7 +66,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
                        const WorkerCommandMap &worker_commands,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external, const std::function<double()> get_time)
-    : io_service_(&io_service),
+    : worker_startup_token_counter_(0),
+      io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
       num_workers_soft_limit_(num_workers_soft_limit),
@@ -133,7 +134,7 @@ WorkerPool::~WorkerPool() {
     }
     // Kill all the workers that have been started but not registered.
     for (const auto &starting_worker : entry.second.starting_worker_processes) {
-      procs_to_kill.insert(starting_worker.first);
+      procs_to_kill.insert(starting_worker.second.proc);
     }
   }
   for (Process proc : procs_to_kill) {
@@ -170,6 +171,10 @@ void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
     // The invalid worker not used, restore it to worker pool.
     PushWorker(worker);
   }
+}
+
+void WorkerPool::update_worker_startup_token_counter() {
+  worker_startup_token_counter_ += 1;
 }
 
 Process WorkerPool::StartWorkerProcess(
@@ -259,6 +264,12 @@ Process WorkerPool::StartWorkerProcess(
   if (language == Language::JAVA) {
     options.push_back("-Dray.job.num-java-workers-per-process=" +
                       std::to_string(workers_to_start));
+  }
+
+  // Append startup-token for JAVA here
+  if (language == Language::JAVA) {
+    options.push_back("-Dray.raylet.startup-token=" +
+                      std::to_string(worker_startup_token_counter_));
   }
 
   // Append user-defined per-process options here
@@ -360,6 +371,14 @@ Process WorkerPool::StartWorkerProcess(
     env.insert({"SPT_NOENV", "1"});
   }
 
+  if (language == Language::PYTHON) {
+    worker_command_args.push_back("--startup-token=" +
+                                  std::to_string(worker_startup_token_counter_));
+  } else if (language == Language::CPP) {
+    worker_command_args.push_back("--startup_token=" +
+                                  std::to_string(worker_startup_token_counter_));
+  }
+
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
   Process proc = StartProcess(worker_command_args, env);
@@ -369,9 +388,12 @@ Process WorkerPool::StartWorkerProcess(
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process of " << workers_to_start
                 << " worker(s) with pid " << proc.GetId();
-  MonitorStartingWorkerProcess(proc, language, worker_type);
+  MonitorStartingWorkerProcess(proc, worker_startup_token_counter_, language,
+                               worker_type);
   state.starting_worker_processes.emplace(
-      proc, StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type});
+      worker_startup_token_counter_,
+      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc});
+  update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -380,19 +402,20 @@ Process WorkerPool::StartWorkerProcess(
 }
 
 void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
+                                              StartupToken proc_startup_token,
                                               const Language &language,
                                               const rpc::WorkerType worker_type) {
   auto timer = std::make_shared<boost::asio::deadline_timer>(
       *io_service_, boost::posix_time::seconds(
                         RayConfig::instance().worker_register_timeout_seconds()));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
-  timer->async_wait([timer, language, proc, worker_type,
+  timer->async_wait([timer, language, proc, proc_startup_token, worker_type,
                      this](const boost::system::error_code e) {
     // check the error code.
     auto &state = this->GetStateForLanguage(language);
     // Since this process times out to start, remove it from starting_worker_processes
     // to avoid the zombie worker.
-    auto it = state.starting_worker_processes.find(proc);
+    auto it = state.starting_worker_processes.find(proc_startup_token);
     if (it != state.starting_worker_processes.end()) {
       RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
                     << ") have not registered to raylet within timeout.";
@@ -520,19 +543,20 @@ boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                                   pid_t pid, pid_t worker_shim_pid,
+                                  StartupToken worker_startup_token,
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
-
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto shim_process = Process::FromPid(worker_shim_pid);
-  worker->SetShimProcess(shim_process);
-  if (state.starting_worker_processes.count(shim_process) == 0) {
-    RAY_LOG(WARNING) << "Received a register request from an unknown worker shim process:"
-                     << shim_process.GetId();
+  if (state.starting_worker_processes.count(worker_startup_token) == 0) {
+    RAY_LOG(WARNING)
+        << "Received a register request from an unknown worker shim process: "
+        << worker_shim_pid;
     Status status = Status::Invalid("Unknown worker");
     send_reply_callback(status, /*port=*/0);
     return status;
   }
+  auto shim_process = Process::FromPid(worker_shim_pid);
+  worker->SetShimProcess(shim_process);
   auto process = Process::FromPid(pid);
   worker->SetProcess(process);
 
@@ -559,9 +583,10 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const auto &shim_process = worker->GetShimProcess();
+  const StartupToken worker_startup_token = worker->GetStartupToken();
   RAY_CHECK(shim_process.IsValid());
 
-  auto it = state.starting_worker_processes.find(shim_process);
+  auto it = state.starting_worker_processes.find(worker_startup_token);
   if (it != state.starting_worker_processes.end()) {
     it->second.num_starting_workers--;
     if (it->second.num_starting_workers == 0) {
@@ -737,7 +762,7 @@ void WorkerPool::PopDeleteWorker(
 }
 
 void WorkerPool::InvokePopWorkerCallbackForProcess(
-    std::unordered_map<Process, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
+    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
     const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
     const PopWorkerStatus &status, bool *found, bool *worker_used, TaskID *task_id) {
   *found = false;
@@ -829,9 +854,10 @@ void WorkerPool::TryKillingIdleWorkers() {
       continue;
     }
     auto shim_process = idle_worker->GetShimProcess();
+    auto worker_startup_token = idle_worker->GetStartupToken();
     auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
 
-    if (worker_state.starting_worker_processes.count(shim_process) > 0) {
+    if (worker_state.starting_worker_processes.count(worker_startup_token) > 0) {
       // A Java worker process may hold multiple workers.
       // Some workers of this process are pending registration. Skip killing this worker.
       continue;

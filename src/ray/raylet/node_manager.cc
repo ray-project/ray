@@ -84,7 +84,7 @@ namespace raylet {
 
 // A helper function to print the leased workers.
 std::string LeasedWorkersSring(
-    const std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>>
+    const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
         &leased_workers) {
   std::stringstream buffer;
   buffer << "  @leased_workers: (";
@@ -498,7 +498,7 @@ ray::Status NodeManager::RegisterGcs() {
 
 void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 #ifdef _WIN32
-  // TODO(mehrdadn): implement graceful process termination mechanism
+// TODO(mehrdadn): implement graceful process termination mechanism
 #else
   // If we're just cleaning up a single worker, allow it some time to clean
   // up its state before force killing. The client socket will be closed
@@ -1046,6 +1046,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
   pid_t worker_shim_pid = message->worker_shim_pid();
+  StartupToken worker_startup_token = message->startup_token();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
@@ -1056,9 +1057,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   } else {
     RAY_CHECK(job_id.IsNil());
   }
-  auto worker = std::dynamic_pointer_cast<WorkerInterface>(
-      std::make_shared<Worker>(job_id, runtime_env_hash, worker_id, language, worker_type,
-                               worker_ip_address, client, client_call_manager_));
+  auto worker = std::dynamic_pointer_cast<WorkerInterface>(std::make_shared<Worker>(
+      job_id, runtime_env_hash, worker_id, language, worker_type, worker_ip_address,
+      client, client_call_manager_, worker_startup_token));
 
   auto send_reply_callback = [this, client, job_id](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
@@ -1084,8 +1085,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       worker_type == rpc::WorkerType::SPILL_WORKER ||
       worker_type == rpc::WorkerType::RESTORE_WORKER) {
     // Register the new worker.
-    auto status =
-        worker_pool_.RegisterWorker(worker, pid, worker_shim_pid, send_reply_callback);
+    auto status = worker_pool_.RegisterWorker(worker, pid, worker_shim_pid,
+                                              worker_startup_token, send_reply_callback);
     if (!status.ok()) {
       // If the worker failed to register to Raylet, trigger task dispatching here to
       // allow new worker processes to be started (if capped by
@@ -1102,12 +1103,21 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     worker->AssignTaskId(driver_task_id);
     rpc::JobConfig job_config;
     job_config.ParseFromString(message->serialized_job_config()->str());
-    Status status = worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
-    if (status.ok()) {
-      auto job_data_ptr = gcs::CreateJobTableData(job_id, /*is_dead*/ false,
-                                                  worker_ip_address, pid, job_config);
-      RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
-    }
+
+    // Send the reply callback only after registration fully completes at the GCS.
+    auto cb = [this, worker_ip_address, pid, job_id, job_config,
+               send_reply_callback = std::move(send_reply_callback)](const Status &status,
+                                                                     int assigned_port) {
+      if (status.ok()) {
+        auto job_data_ptr = gcs::CreateJobTableData(job_id, /*is_dead*/ false,
+                                                    worker_ip_address, pid, job_config);
+        RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
+            job_data_ptr,
+            [send_reply_callback = std::move(send_reply_callback), assigned_port](
+                Status status) { send_reply_callback(status, assigned_port); }));
+      }
+    };
+    RAY_UNUSED(worker_pool_.RegisterDriver(worker, job_config, std::move(cb)));
   }
 }
 

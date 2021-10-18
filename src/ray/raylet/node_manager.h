@@ -673,7 +673,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       remote_node_manager_addresses_;
 
   /// Map of workers leased out to direct call clients.
-  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   /// Map from owner worker ID to a list of worker IDs that the owner has a
   /// lease on.

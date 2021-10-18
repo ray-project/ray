@@ -410,7 +410,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.runtime_env_hash,
       options_.language, options_.node_ip_address, &raylet_client_status,
-      &local_raylet_id, &assigned_port, &serialized_job_config, options_.worker_shim_pid);
+      &local_raylet_id, &assigned_port, &serialized_job_config, options_.worker_shim_pid,
+      options_.startup_token);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -1799,6 +1800,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
           },
           "ActorCreator.AsyncRegisterActor");
     } else {
+      // For named actor, we still go through the sync way because for
+      // functions like list actors these actors need to be there, especially
+      // for local driver. But the current code all go through the gcs right now.
       auto status = actor_creator_->RegisterActor(task_spec);
       if (!status.ok()) {
         return status;
@@ -2254,12 +2258,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
   std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
-
   status = options_.task_execution_callback(
       task_type, task_spec.GetName(), func,
-      task_spec.GetRequiredResources().GetResourceMap(), args, arg_refs, return_ids,
-      task_spec.GetDebuggerBreakpoint(), return_objects, creation_task_exception_pb_bytes,
-      is_application_level_error);
+      task_spec.GetRequiredResources().GetResourceUnorderedMap(), args, arg_refs,
+      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
+      creation_task_exception_pb_bytes, is_application_level_error);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to

@@ -61,7 +61,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
             BlockAccessor.for_block(block).get_metadata(input_files=None))
         i += block_size
 
-    return Dataset(BlockList(blocks, metadata))
+    return Dataset(BlockList(blocks, metadata), 0)
 
 
 @PublicAPI(stability="beta")
@@ -202,7 +202,7 @@ def read_datasource(datasource: Datasource[T],
                 input_files=metadata[0].input_files,
             ))
 
-    return Dataset(block_list)
+    return Dataset(block_list, 0)
 
 
 @PublicAPI(stability="beta")
@@ -500,7 +500,7 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
 
     partitions = df.to_delayed()
     persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
-    return from_pandas(
+    return from_pandas_refs(
         [next(iter(part.dask.values())) for part in persisted_partitions])
 
 
@@ -563,7 +563,7 @@ def from_pandas_refs(
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+    return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
 
 
 def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
@@ -579,7 +579,7 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+    return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
 
 
 @PublicAPI(stability="beta")
@@ -611,7 +611,7 @@ def from_arrow_refs(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]]
     """
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
-    return Dataset(BlockList(tables, ray.get(metadata)))
+    return Dataset(BlockList(tables, ray.get(metadata)), 0)
 
 
 @PublicAPI(stability="beta")
