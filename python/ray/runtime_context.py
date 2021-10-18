@@ -26,13 +26,8 @@ class RuntimeContext(object):
             "node_id": self.node_id,
             "namespace": self.namespace,
             "node_ip_address": self.node_ip_address,
-            "raylet_ip_address": self.raylet_ip_address,
-            "redis_address": self.redis_address,
-            "object_store_address": self.object_store_address,
-            "raylet_socket_name": self.raylet_socket_name,
             "webui_url": self.webui_url,
             "session_dir": self.session_dir,
-            "metrics_export_port": self.metrics_export_port,
         }
         if self.worker.mode == ray.worker.WORKER_MODE:
             if self.task_id is not None:
@@ -131,32 +126,12 @@ class RuntimeContext(object):
         return self.address_info["node_ip_address"]
 
     @property
-    def raylet_ip_address(self):
-        return self.address_info["raylet_ip_address"]
-
-    @property
-    def redis_address(self):
-        return self.address_info["redis_address"]
-
-    @property
-    def object_store_address(self):
-        return self.address_info["object_store_address"]
-
-    @property
-    def raylet_socket_name(self):
-        return self.address_info["raylet_socket_name"]
-
-    @property
     def webui_url(self):
         return self.address_info["webui_url"]
 
     @property
     def session_dir(self):
         return self.address_info["session_dir"]
-
-    @property
-    def metrics_export_port(self):
-        return self.address_info["metrics_export_port"]
 
     @property
     def was_current_actor_reconstructed(self):

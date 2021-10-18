@@ -1,9 +1,11 @@
 import os
 import sys
+import tempfile
 
 import logging
 import pytest
 import redis
+import json
 import unittest.mock
 import ray
 import ray._private.services
@@ -298,6 +300,24 @@ def test_auto_init_client(call_ray_start, function):
         res = function()
         # Ensure this is a client connection.
         assert isinstance(res, ClientObjectRef)
+
+
+def test_init_with_ray_job_config_json():
+    config = {
+        "num_java_workers_per_process": 2,
+        "jvm_options": ["test"],
+        "code_search_path": sys.path,
+        "runtime_env": {
+            "test": "test"
+        },
+        "client_job": True
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        job_config_json_path = os.path.join(tmpdir, "config.json")
+        with open(job_config_json_path, "w") as file:
+            json.dump(config, file)
+        os.environ["RAY_JOB_CONFIG_JSON"] = job_config_json_path
+        ray.init()
 
 
 if __name__ == "__main__":

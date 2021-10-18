@@ -14,7 +14,7 @@ def test_was_current_actor_reconstructed(shutdown_only):
     class A(object):
         def __init__(self):
             self._was_reconstructed = ray.get_runtime_context(
-            ).was_current_actor_reconstructe
+            ).was_current_actor_reconstructed
 
         def get_was_reconstructed(self):
             return self._was_reconstructed
@@ -222,11 +222,7 @@ def test_actor_stats_async_actor(ray_start_regular):
 
 def test_compare_with_init_context(ray_start_regular):
     runtime_ctx = ray.get_runtime_context().get()
-    targets = [
-        "node_ip_address", "raylet_ip_address", "redis_address",
-        "object_store_address", "raylet_socket_name", "webui_url",
-        "session_dir", "metrics_export_port"
-    ]
+    targets = ["node_ip_address", "webui_url", "session_dir"]
     for target in targets:
         assert ray_start_regular[target] == runtime_ctx[target]
 
@@ -234,17 +230,8 @@ def test_compare_with_init_context(ray_start_regular):
 def test_compare_with_init_context_using_property(ray_start_regular):
     runtime_ctx = ray.get_runtime_context()
     assert runtime_ctx.node_ip_address == ray_start_regular["node_ip_address"]
-    assert runtime_ctx.raylet_ip_address == ray_start_regular[
-        "raylet_ip_address"]
-    assert runtime_ctx.redis_address == ray_start_regular["redis_address"]
-    assert runtime_ctx.object_store_address == ray_start_regular[
-        "object_store_address"]
-    assert runtime_ctx.raylet_socket_name == ray_start_regular[
-        "raylet_socket_name"]
     assert runtime_ctx.webui_url == ray_start_regular["webui_url"]
     assert runtime_ctx.session_dir == ray_start_regular["session_dir"]
-    assert runtime_ctx.metrics_export_port == ray_start_regular[
-        "metrics_export_port"]
 
 
 # get_runtime_context() can be called outside of Ray so it should not start
