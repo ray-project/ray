@@ -120,9 +120,9 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       // so leaving it unspecified as nullptr. This could make symbolization of crash
       // traces fail in some circumstances.
       //
-      // Also, chain the crash handler installed by the language worker, e.g. Python
+      // Also, call the previous crash handler, e.g. the one installed by the Python
       // worker.
-      RayLog::InstallFailureSignalHandler(nullptr, /*chain=*/true);
+      RayLog::InstallFailureSignalHandler(nullptr, /*call_previous_handler=*/true);
     }
   } else {
     RAY_CHECK(options_.log_dir.empty())

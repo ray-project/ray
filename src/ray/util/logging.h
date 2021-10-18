@@ -251,11 +251,13 @@ class RayLog : public RayLogBase {
   /// to locate the object file containing debug symbols for ELF format executables. If
   /// this is left as nullptr, symbolization can fail in some cases. More details in:
   /// https://github.com/abseil/abseil-cpp/blob/master/absl/debugging/symbolize_elf.inc
-  /// \parem chain Whether to call the previous signal handler. See important caveats:
+  /// \parem call_previous_handler Whether to call the previous signal handler. See
+  /// important caveats:
   /// https://github.com/abseil/abseil-cpp/blob/7e446075d4aff4601c1e7627c7c0be2c4833a53a/absl/debugging/failure_signal_handler.h#L76-L88
-  /// This is currently used to enable signal handler from both Python worker and core
+  /// This is currently used to enable signal handler from both Python and C++ in Python
   /// worker.
-  static void InstallFailureSignalHandler(const char *argv0, bool chain = false);
+  static void InstallFailureSignalHandler(const char *argv0,
+                                          bool call_previous_handler = false);
 
   /// To check failure signal handler enabled or not.
   static bool IsFailureSignalHandlerEnabled();
