@@ -506,7 +506,7 @@ cdef execute_task(
                   b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
     task_name = name.decode("utf-8")
-    name_of_concurrency_group_to_execute =
+    name_of_concurrency_group_to_execute = \
         c_name_of_concurrency_group_to_execute.decode("ascii")
     title = f"ray::{task_name}"
 
