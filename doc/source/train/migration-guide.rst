@@ -42,7 +42,7 @@ There are 3 primary API differences between Ray SGD v1 and Ray Train.
                 optimizer.step()
                 print(f"epoch: {epoch}, loss: {loss.item()}")
 
-        from ray.train.dl import Trainer
+        from ray.train import Trainer
 
         trainer = Trainer(backend="torch", num_workers=4)
         trainer.start()
@@ -105,7 +105,7 @@ you would do
 
     from ray.util.sgd import TrainingOperator
     from ray import train
-    from ray.train.dl import Trainer
+    from ray.train import Trainer
 
     class MyTrainingOperator(TrainingOperator):
        ...
@@ -158,7 +158,7 @@ The API for ``TFTrainer`` uses creator functions instead of a ``TrainingOperator
     from tensorflow.distribute import MultiWorkerMirroredStrategy
 
     from ray import train
-    from ray.train.dl import Trainer
+    from ray.train import Trainer
 
     def train_func(config):
        train_dataset, val_dataset = data_creator(config)
@@ -220,7 +220,7 @@ For example, to get the final model:
 
 .. code-block:: python
 
-    from ray.train.dl import Trainer
+    from ray.train import Trainer
 
     def train_func():
        model = Net()
@@ -261,8 +261,7 @@ If you want to access any values *during* the training process, you can do so vi
 .. code-block:: python
 
    from ray import train
-   from ray.train import TrainingCallback
-   from ray.train.dl Trainer
+   from ray.train import Trainer, TrainingCallback
    from typing import List, Dict
 
    class PrintingCallback(TrainingCallback):
@@ -316,7 +315,7 @@ For example, in order to save checkpoints after every epoch:
 .. code-block:: python
 
     from ray import train
-    from ray.train.dl import Trainer
+    from ray.train import Trainer
 
     def train_func():
        model = Net()
@@ -374,7 +373,7 @@ There is a 1:1 mapping between rank 0 worker's ``train.report()``\ , ``train.sav
 .. code-block:: python
 
    from ray import train, tune
-   from ray.train.dl import Trainer
+   from ray.train import Trainer
 
    def train_func(config)
        # In this example, nothing is expected to change over epochs,

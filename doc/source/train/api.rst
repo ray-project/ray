@@ -4,18 +4,12 @@
 Ray Train API
 =============
 
-.. note:: You may notice that the source code and parameter types come from
-    ``ray.util.sgd.v2`` and not ``ray.train``. ``ray.train`` is the public API
-    that should be used, and is currently linked to ``ray.util.sgd.v2`` for
-    backwards compatibility. In the future, all code will be moved directly to
-    ``ray.train``.
-
 .. _train-api-trainer:
 
 Trainer
 -------
 
-.. autoclass:: ray.train.dl.Trainer
+.. autoclass:: ray.train.Trainer
     :members:
 
 .. _train-api-iterator:
@@ -23,7 +17,7 @@ Trainer
 TrainingIterator
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.train.dl.TrainingIterator
+.. autoclass:: ray.train.TrainingIterator
     :members:
 
 .. _train-api-backend-config:
@@ -36,21 +30,21 @@ Backend Configurations
 TorchConfig
 ~~~~~~~~~~~
 
-.. autoclass:: ray.train.dl.TorchConfig
+.. autoclass:: ray.train.TorchConfig
 
 .. _train-api-tensorflow-config:
 
 TensorflowConfig
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.train.dl.TensorflowConfig
+.. autoclass:: ray.train.TensorflowConfig
 
 .. _train-api-horovod-config:
 
 HorovodConfig
 ~~~~~~~~~~~~~
 
-.. autoclass:: ray.train.dl.HorovodConfig
+.. autoclass:: ray.train.HorovodConfig
 
 
 Callbacks

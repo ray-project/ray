@@ -147,7 +147,7 @@ system. Let's take following simple examples:
 
     .. code-block:: python
 
-        from ray.train.dl import Trainer
+        from ray.train import Trainer
 
         trainer = Trainer(backend="torch", num_workers=4)
         trainer.start()
@@ -247,7 +247,7 @@ system. Let's take following simple examples:
 
     .. code-block:: python
 
-        from ray.train.dl import Trainer
+        from ray.train import Trainer
 
         trainer = Trainer(backend="tensorflow", num_workers=4)
         trainer.start()

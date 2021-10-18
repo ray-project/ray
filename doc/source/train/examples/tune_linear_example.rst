@@ -3,4 +3,4 @@
 tune_linear_example
 ===================
 
-.. literalinclude:: /../../python/ray/util/sgd/v2/examples/tune_linear_example.py
+.. literalinclude:: /../../python/ray/train/examples/tune_linear_example.py

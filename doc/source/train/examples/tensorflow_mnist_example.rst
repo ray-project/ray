@@ -3,4 +3,4 @@
 tensorflow_mnist_example
 ========================
 
-.. literalinclude:: /../../python/ray/util/sgd/v2/examples/tensorflow_mnist_example.py
+.. literalinclude:: /../../python/ray/train/examples/tensorflow_mnist_example.py

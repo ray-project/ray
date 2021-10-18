@@ -3,4 +3,4 @@
 mlflow_fashion_mnist_example
 ============================
 
-.. literalinclude:: /../../python/ray/util/sgd/v2/examples/mlflow_fashion_mnist_example.py
+.. literalinclude:: /../../python/ray/train/examples/mlflow_fashion_mnist_example.py

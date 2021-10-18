@@ -4,7 +4,7 @@ Ray Train Examples
 ==================
 
 .. Example .rst files should be organized in the same manner as the
-   .py files in ray/python/ray/util/sgd/v2/examples.
+   .py files in ray/python/ray/train/examples.
 
 Below are examples for using Ray Train with a variety of models, frameworks, 
 and use cases.
