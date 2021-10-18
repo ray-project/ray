@@ -553,7 +553,7 @@ pod autoscaler can crash (if the newer version of ray modified the messages
 below). */
 
 message DrainNodeData {
-  // The id of the node to drain. 
+  // The id of the node to drain.
   bytes node_id = 1;
 }
 
@@ -662,7 +662,11 @@ message GcsStatus {
 service NodeInfoGcsService {
   // Register a node to GCS Service.
   rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
-  // Drain a node from GCS Service. Drained node is not guaranteed to be killed, but it will become invisible to other nodes eventually.
+  // Drain a node from GCS Service.
+  // When the RPC is replied,
+  // - It is guaranteed that the requested nodes are going to be drained eventually.
+  // - It is guaranteed that GCS has persisted the draining states.
+  // - It is **not** guarateed that nodes receive the drain requests from GCS.
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);

@@ -75,7 +75,6 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   auto node = RemoveNode(node_id, /* is_intended = */ true);
   if (!node) {
     RAY_LOG(INFO) << "Node " << node_id << " is already removed";
-    // This means the node has already removed.
     return;
   }
 

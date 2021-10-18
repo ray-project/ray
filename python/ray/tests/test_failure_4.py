@@ -303,7 +303,11 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
     # parent process (the pytest script) hasn't called wait syscall.
     # For normal scenarios where raylet is created by
     # ray start, this issue won't exist.
-    wait_for_condition(lambda: len(search_raylet(cluster)) == 1)
+    try:
+        wait_for_condition(lambda: len(search_raylet(cluster)) == 1)
+    except Exception:
+        print("More than one raylets are detected.")
+        print(search_raylet(cluster))
     """
     Kill the second worker gracefully.
     """
@@ -322,7 +326,11 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
         p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5)
     # Error messages shouldn't be published.
     assert len(errors) == 0
-    wait_for_condition(lambda: len(search_raylet(cluster)) == 1)
+    try:
+        wait_for_condition(lambda: len(search_raylet(cluster)) == 1)
+    except Exception:
+        print("More than one raylets are detected.")
+        print(search_raylet(cluster))
     """
     Make sure head node is not dead.
     """

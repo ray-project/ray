@@ -120,8 +120,7 @@ message ShutdownRayletRequest {
   bool graceful = 1;
 }
 
-message ShutdownRayletReply {
-}
+message ShutdownRayletReply {}
 
 message CancelWorkerLeaseRequest {
   // The task to cancel.
@@ -292,8 +291,7 @@ service NodeManagerService {
   rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
       returns (ReleaseUnusedWorkersReply);
   /// Shutdown the raylet (node manager) gracefully.
-  rpc ShutdownRaylet(ShutdownRayletRequest)
-      returns (ShutdownRayletReply);
+  rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
   // Request a raylet to lock resources for a bundle.
   // This is the first phase of 2PC protocol for atomic placement group creation.
   rpc PrepareBundleResources(PrepareBundleResourcesRequest)
