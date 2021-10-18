@@ -2,7 +2,7 @@ import random
 import sys
 import heapq
 from typing import Callable, Iterator, List, Tuple, Union, Any, Optional, \
-    Iterable, TYPE_CHECKING
+    Iterable, TypeVar, TYPE_CHECKING
 
 import numpy as np
 
@@ -13,8 +13,11 @@ if TYPE_CHECKING:
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, K
 
+S = TypeVar("S")
+
 # A simple block can be sorted by value (None) or a lambda function (Callable).
 SortKeyT = Union[None, Callable[[T], Any]]
+
 
 class SimpleBlockBuilder(BlockBuilder[T]):
     def __init__(self):
@@ -127,6 +130,38 @@ class SimpleBlockAccessor(BlockAccessor):
         ret.append(items[prev_i:])
         return ret
 
+    def combine(self, key: Callable[[T], K], init: Callable[[K], S],
+                accumulate: Callable[[K, S, T], S]) -> Block[Tuple[K, S]]:
+        """This assumes the block is already sorted by key in ascending order
+        """
+        iter = self.iter_rows()
+        next_element = None
+        ret = []
+        while True:
+            try:
+                if next_element is None:
+                    next_element = next(iter)
+                next_key = key(next_element)
+
+                def gen():
+                    nonlocal iter
+                    nonlocal next_element
+                    while key(next_element) == next_key:
+                        yield next_element
+                        try:
+                            next_element = next(iter)
+                        except StopIteration:
+                            next_element = None
+                            break
+
+                state = init(next_key)
+                for e in gen():
+                    state = accumulate(next_key, state, e)
+                ret.append((next_key, state))
+            except StopIteration:
+                break
+        return ret
+
     @staticmethod
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
@@ -136,10 +171,16 @@ class SimpleBlockAccessor(BlockAccessor):
         return ret, SimpleBlockAccessor(ret).get_metadata(None)
 
     @staticmethod
-    def group_and_aggregate_sorted_blocks(
-        blocks: List[Block[T]], key: Callable[[T], K],
-        agg_func: Callable[[K, Iterable[T]], U]) -> Tuple[Block[Tuple[K, U]], BlockMetadata]:
-        iter = heapq.merge(*[SimpleBlockAccessor(block).iter_rows() for block in blocks], key=key)
+    def aggregate_combined_blocks(
+            blocks: List[Block[Tuple[K, S]]], merge: Callable[[K, S, S], S],
+            finalize: Callable[[K, S], U]
+    ) -> Tuple[Block[Tuple[K, U]], BlockMetadata]:
+        """This assumes blocks are already sorted by key in ascending order
+        """
+        key = lambda x: x[0]
+        iter = heapq.merge(
+            *[SimpleBlockAccessor(block).iter_rows() for block in blocks],
+            key=key)
         next_element = None
         ret = []
         while True:
@@ -147,9 +188,9 @@ class SimpleBlockAccessor(BlockAccessor):
                 if next_element is None:
                     next_element = next(iter)
                 next_key = key(next_element)
+
                 def gen():
                     nonlocal iter
-                    nonlocal next_key
                     nonlocal next_element
                     while key(next_element) == next_key:
                         yield next_element
@@ -158,7 +199,16 @@ class SimpleBlockAccessor(BlockAccessor):
                         except StopIteration:
                             next_element = None
                             break
-                ret.append((next_key, agg_func(next_key, gen())))
+
+                first = True
+                state = None
+                for e in gen():
+                    if first:
+                        state = e[1]
+                        first = False
+                    else:
+                        state = merge(next_key, state, e[1])
+                ret.append((next_key, finalize(next_key, state)))
             except StopIteration:
                 break
 

@@ -154,6 +154,9 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
+    def combine(self, key, init, accumulate):
+        raise NotImplementedError
+
     @staticmethod
     def merge_sorted_blocks(
             blocks: List["Block[T]"], key: Any,
@@ -162,7 +165,6 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     @staticmethod
-    def group_and_aggregate_sorted_blocks(
-        blocks: List["Block[T]"], key, agg_func):
-        """Return a grouped and aggregated block from a list of sorted blocks."""
+    def aggregate_combined_blocks(blocks, merge, finalize):
+        """Return an aggregated block from a list of combined and sorted blocks."""
         raise NotImplementedError

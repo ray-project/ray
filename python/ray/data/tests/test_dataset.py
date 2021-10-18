@@ -2538,6 +2538,33 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
+def test_groupby_simple(ray_start_regular_shared):
+    parallelism = 3
+    xs = [("A", 2), ("A", 4), ("A", 9), ("B", 10), ("B", 20), ("C", 3),
+          ("C", 5), ("C", 8), ("C", 12)]
+    random.shuffle(xs)
+    ds = ray.data.from_items(xs, parallelism=parallelism)
+    # Mean aggregation
+    agg_ds = ds.groupby(lambda x: x[0]).aggregate(
+        init=lambda key: (0, 0),
+        accumulate=lambda key, s, e: (s[0] + e[1], s[1] + 1),
+        merge=lambda key, s1, s2: (s1[0] + s2[0], s1[1] + s2[1]),
+        finalize=lambda key, s: s[0] / s[1])
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda x: x[0]).take(3) == [("A", 5), ("B", 15),
+                                                       ("C", 7)]
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    agg_ds = ds.groupby(lambda x: x[0]).aggregate(
+        init=lambda key: 1 / 0,  # should never reach here
+        accumulate=lambda key, s, e: 1 / 0,
+        merge=lambda key, s1, s2: 1 / 0,
+        finalize=lambda key, s: 1 / 0)
+    assert agg_ds.count() == 0
+    assert agg_ds == ds
+
+
 def test_sort_simple(ray_start_regular_shared):
     num_items = 100
     parallelism = 4

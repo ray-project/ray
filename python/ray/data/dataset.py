@@ -757,7 +757,7 @@ class Dataset(Generic[T]):
                 _epoch_warned = True
         return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
 
-    def groupBy(self, key: Callable[[T], Any]) -> "GroupedDataset[T]":
+    def groupby(self, key: Callable[[T], Any]) -> "GroupedDataset[T]":
         from ray.data.grouped_dataset import GroupedDataset
         return GroupedDataset(self, key)
 
