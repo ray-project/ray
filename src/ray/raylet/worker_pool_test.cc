@@ -1212,10 +1212,10 @@ TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
   const auto actor_creation_task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id, {"XXX=YYY"},
-      TaskID::ForFakeTask(JobID::Nil()), "{\"uris\": \"XXX\"}");
+      TaskID::ForFakeTask(JobID::Nil()), R"({"uris": "XXX"})");
   const auto normal_task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {"XXX=YYY"},
-      TaskID::ForFakeTask(JobID::Nil()), "{\"uris\": \"XXX\"}");
+      TaskID::ForFakeTask(JobID::Nil()), R"({"uris": "XXX"})");
   const auto normal_task_spec_without_runtime_env =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {});
   // Pop worker for actor creation task again.
@@ -1414,7 +1414,7 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   // Create a task with available runtime env.
   const auto task_spec_with_runtime_env = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(), {"XXX=YYY"},
-      TaskID::ForFakeTask(JobID::Nil()), "{\"uris\": \"XXX\"}");
+      TaskID::ForFakeTask(JobID::Nil()), R"({"uris": "XXX"})");
   popped_worker = worker_pool_->PopWorkerSync(task_spec_with_runtime_env, true, &status);
   // PopWorker success.
   ASSERT_NE(popped_worker, nullptr);
