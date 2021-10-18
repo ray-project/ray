@@ -241,7 +241,6 @@ cc_test(
     linkstatic = True,
     deps = [
         "ray_api",
-        "@com_github_gflags_gflags//:gflags",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -256,7 +255,6 @@ cc_binary(
     linkstatic = True,
     deps = [
         "ray_api",
-        "@com_github_gflags_gflags//:gflags",
         "@com_google_googletest//:gtest_main",
     ],
 )
