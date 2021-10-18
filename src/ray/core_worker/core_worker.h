@@ -186,6 +186,12 @@ struct CoreWorkerOptions {
   int runtime_env_hash;
   /// The PID of the process for setup worker runtime env.
   pid_t worker_shim_pid;
+  /// The startup token of the process assigned to it
+  /// during startup via command line arguments.
+  /// This is needed because the actual core worker process
+  /// may not have the same pid as the process the worker pool
+  /// starts (due to shim processes).
+  StartupToken startup_token{0};
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -294,23 +300,29 @@ class CoreWorkerProcess {
 
   void InitializeSystemConfig();
 
+  /// Check that if the global worker should be created on construction.
+  bool ShouldCreateGlobalWorkerOnConstruction() const;
+
   /// Get the `CoreWorker` instance by worker ID.
   ///
   /// \param[in] workerId The worker ID.
   /// \return The `CoreWorker` instance.
   std::shared_ptr<CoreWorker> GetWorker(const WorkerID &worker_id) const
-      LOCKS_EXCLUDED(worker_map_mutex_);
+      LOCKS_EXCLUDED(mutex_);
 
   /// Create a new `CoreWorker` instance.
   ///
   /// \return The newly created `CoreWorker` instance.
-  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(worker_map_mutex_);
+  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(mutex_);
 
   /// Remove an existing `CoreWorker` instance.
   ///
   /// \param[in] The existing `CoreWorker` instance.
   /// \return Void.
-  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
+  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(mutex_);
+
+  /// Get the `GlobalWorker` instance, if the number of workers is 1.
+  std::shared_ptr<CoreWorker> GetGlobalWorker() LOCKS_EXCLUDED(mutex_);
 
   /// The various options.
   const CoreWorkerOptions options_;
@@ -320,17 +332,16 @@ class CoreWorkerProcess {
   static thread_local std::weak_ptr<CoreWorker> current_core_worker_;
 
   /// The only core worker instance, if the number of workers is 1.
-  std::shared_ptr<CoreWorker> global_worker_;
+  std::shared_ptr<CoreWorker> global_worker_ GUARDED_BY(mutex_);
 
   /// The worker ID of the global worker, if the number of workers is 1.
   const WorkerID global_worker_id_;
 
   /// Map from worker ID to worker.
-  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_
-      GUARDED_BY(worker_map_mutex_);
+  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_ GUARDED_BY(mutex_);
 
-  /// To protect accessing the `workers_` map.
-  mutable absl::Mutex worker_map_mutex_;
+  /// To protect access to workers_ and global_worker_
+  mutable absl::Mutex mutex_;
 };
 
 /// The root class that contains all the core and language-independent functionalities
@@ -439,22 +450,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
-
-  /// Put an object into plasma. It's a version of Put that directly put the
-  /// object into plasma and also pin the object.
-  ///
-  /// \param[in] The ray object.
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  void PutObjectIntoPlasma(const RayObject &object, const ObjectID &object_id);
-
-  /// Promote an object to plasma. If the
-  /// object already exists locally, it will be put into the plasma store. If
-  /// it doesn't yet exist, it will be spilled to plasma once available.
-  ///
-  /// \param[in] object_id The object ID to serialize.
-  /// appended to the serialized object ID.
-  void PromoteObjectToPlasma(const ObjectID &object_id);
 
   /// Get the RPC address of this worker.
   ///
@@ -1051,6 +1046,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
+  void BuildCommonTaskSpec(
+      TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
+      const std::string &name, const TaskID &current_task_id, uint64_t task_index,
+      const TaskID &caller_id, const rpc::Address &address, const RayFunction &function,
+      const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::unordered_map<std::string, double> &required_placement_resources,
+      const BundleID &bundle_id, bool placement_group_capture_child_tasks,
+      const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
+      const std::vector<std::string> &runtime_env_uris,
+      const std::string &concurrency_group_name = "");
   void SetCurrentTaskId(const TaskID &task_id);
 
   void SetActorId(const ActorID &actor_id);

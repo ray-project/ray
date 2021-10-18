@@ -15,6 +15,7 @@ build:linux --cxxopt="-std=c++17"
 build:macos --cxxopt="-std=c++17"
 build:clang-cl --cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"
+build:windows --cxxopt="/std:c++17"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --force_pic
 build:macos --force_pic
@@ -177,6 +178,7 @@ build:debug --strip="never"
 # Undefined Behavior Sanitizer
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
+build:ubsan --copt -fno-sanitize=vptr
 build:ubsan --copt -fno-sanitize-recover=all
 build:ubsan --copt -g
 build:ubsan --linkopt -fsanitize=undefined

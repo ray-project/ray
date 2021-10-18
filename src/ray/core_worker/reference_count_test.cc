@@ -16,9 +16,9 @@
 
 #include <vector>
 
+#include "absl/functional/bind_front.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
@@ -270,7 +270,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
 
     auto borrower_callback = [=]() {
       auto ref_removed_callback =
-          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1);
+          absl::bind_front(&ReferenceCounter::HandleRefRemoved, &rc_);
       rc_.SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                 ref_removed_callback);
     };
@@ -656,7 +656,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   auto subscriber = std::make_shared<mock_pubsub::MockSubscriber>();
   auto rc = std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
       rpc::WorkerAddress(rpc::Address()), publisher.get(), subscriber.get()));
-  CoreWorkerMemoryStore store(nullptr, rc);
+  CoreWorkerMemoryStore store(rc);
 
   // Tests putting an object with no references is ignored.
   RAY_CHECK(store.Put(buffer, id2));

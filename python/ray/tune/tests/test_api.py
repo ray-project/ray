@@ -226,6 +226,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
         self.assertRaises(TypeError, lambda: Experiment("foo", A))
 
+    def testRegisterDurableTrainableTwice(self):
+        def train(config, reporter):
+            pass
+
+        register_trainable("foo", train)
+        register_trainable("foo", tune.durable("foo"))
+        register_trainable("foo", tune.durable("foo"))
+
     def testTrainableCallable(self):
         def dummy_fn(config, reporter, steps):
             reporter(timesteps_total=steps, done=True)
@@ -1655,7 +1663,8 @@ class ApiTestFast(unittest.TestCase):
                          checkpoint_period=None,
                          trial_executor=None,
                          callbacks=None,
-                         metric=None):
+                         metric=None,
+                         driver_sync_trial_checkpoints=True):
                 # should be converted from strings at this case
                 # and not None
                 capture["search_alg"] = search_alg
@@ -1673,7 +1682,8 @@ class ApiTestFast(unittest.TestCase):
                     checkpoint_period=checkpoint_period,
                     trial_executor=trial_executor,
                     callbacks=callbacks,
-                    metric=metric)
+                    metric=metric,
+                    driver_sync_trial_checkpoints=True)
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
             tune.run(
@@ -1725,7 +1735,8 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                          checkpoint_period=None,
                          trial_executor=None,
                          callbacks=None,
-                         metric=None):
+                         metric=None,
+                         driver_sync_trial_checkpoints=True):
                 capture["search_alg"] = search_alg
                 capture["scheduler"] = scheduler
                 super().__init__(
@@ -1741,7 +1752,9 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     checkpoint_period=checkpoint_period,
                     trial_executor=trial_executor,
                     callbacks=callbacks,
-                    metric=metric)
+                    metric=metric,
+                    driver_sync_trial_checkpoints=driver_sync_trial_checkpoints
+                )
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
             tune.run(

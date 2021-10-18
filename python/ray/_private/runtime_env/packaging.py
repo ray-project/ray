@@ -100,7 +100,7 @@ def _hash_directory(
     It'll go through all the files in the directory and xor
     hash(file_name, file_content) to create a hash value.
     """
-    hash_val = None
+    hash_val = b"0"
     BUF_SIZE = 4096 * 1024
 
     def handler(path: Path):
@@ -132,7 +132,6 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
 
     def match(p: Path):
         path_str = str(p.absolute().relative_to(path))
-        path_str += "/"
         return pathspec.match_file(path_str)
 
     return match
@@ -147,8 +146,6 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
 
         def match(p: Path):
             path_str = str(p.absolute().relative_to(path))
-            if p.is_dir():
-                path_str += "/"
             return pathspec.match_file(path_str)
 
         return match
@@ -177,7 +174,7 @@ def _create_package_from_directory(
         excludes: List[str],
         output_path: str,
         logger: Optional[logging.Logger] = default_logger) -> None:
-    """Create a pckage that will be used by workers.
+    """Create a package that will be used by workers.
 
     This function is used to create a package file based on working
     directory and python local modules.
@@ -200,13 +197,13 @@ def _create_package_from_directory(
 
 
 def _push_package(pkg_uri: str, pkg_path: str) -> int:
-    """Push a package to uri.
+    """Push a package to a given URI.
 
-    This function is to push a local file to remote uri. Right now, only
+    This function is to push a local file to remote URI. Right now, only
     storing in the GCS is supported.
 
     Args:
-        pkg_uri (str): The uri of the package to upload to.
+        pkg_uri (str): The URI of the package to upload to.
         pkg_path (str): Path of the local file.
 
     Returns:
@@ -221,7 +218,7 @@ def _push_package(pkg_uri: str, pkg_path: str) -> int:
 
 
 def _package_exists(pkg_uri: str) -> bool:
-    """Check whether the package with given uri exists or not.
+    """Check whether the package with given URI exists or not.
 
     Args:
         pkg_uri (str): The uri of the package
@@ -333,6 +330,7 @@ def download_and_unpack_package(
                 raise NotImplementedError(
                     f"Protocol {protocol} is not supported")
 
+            os.mkdir(local_dir)
             logger.debug(f"Unpacking {pkg_file} to {local_dir}")
             with ZipFile(str(pkg_file), "r") as zip_ref:
                 zip_ref.extractall(local_dir)
