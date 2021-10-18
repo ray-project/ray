@@ -17,6 +17,7 @@ from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.utils import construct_path, check_for_failure
 from ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.sgd.v2.utils import RayDataset
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -253,6 +254,7 @@ class BackendExecutor:
             self.checkpoint_manager = CheckpointManager()
 
         self.worker_group = InactiveWorkerGroup()
+        self.dataset_shards = None
 
         self.checkpoint_manager.on_init()
 
@@ -368,10 +370,35 @@ class BackendExecutor:
             ip_dict[node_ip] += 1
         return rank_mapping
 
+    def _get_dataset_shards(self, dataset_or_dict):
+
+        if dataset_or_dict is None:
+            # Return None for each shard.
+            return [None] * len(self.worker_group)
+
+        def split_dataset(dataset_or_pipeline):
+            actors = [worker.actor for worker in self.worker_group.workers]
+            return dataset_or_pipeline.split(
+                len(self.worker_group), equal=True, locality_hints=actors)
+
+        if isinstance(dataset_or_dict, dict):
+            # Return a smaller dict for each shard.
+            dataset_shards = [{} for _ in range(len(self.worker_group))]
+            for key, dataset in dataset_or_dict.items():
+                split_datasets = split_dataset(dataset)
+                assert len(split_datasets) == len(self.worker_group)
+                for i in range(len(split_datasets)):
+                    dataset_shards[i][key] = split_datasets[i]
+            return dataset_shards
+        else:
+            # return a smaller RayDataset for each shard.
+            return split_dataset(dataset_or_dict)
+
     def start_training(
             self,
             train_func: Callable[[], T],
             run_dir: Path,
+            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None,
             latest_checkpoint_id: Optional[int] = None,
@@ -383,6 +410,15 @@ class BackendExecutor:
         Args:
             train_func (Callable): The training function to run on each worker.
             run_dir (Path): The directory to use for this run.
+            dataset (Optional[Union[Dataset, DatasetPipeline]])
+                Distributed Ray Dataset or DatasetPipeline to pass into
+                worker, which can be accessed from the training function via
+                ``sgd.get_dataset_shard()``. Sharding will automatically be
+                handled by the Trainer. Multiple Datasets can be passed in as
+                a ``Dict`` that maps each name key to a Dataset value,
+                and each Dataset can be accessed from the training function
+                by passing in a `dataset_name` argument to
+                ``sgd.get_dataset_shard()``.
             checkpoint (Optional[Dict|str|Path]): The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``sgd.load_checkpoint()``. If this is a
@@ -403,12 +439,14 @@ class BackendExecutor:
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
 
         # First initialize the session.
-        def initialize_session(world_rank, local_rank, train_func, checkpoint):
+        def initialize_session(train_func, world_rank, local_rank, checkpoint,
+                               dataset_shard):
             try:
                 init_session(
                     training_func=train_func,
                     world_rank=world_rank,
                     local_rank=local_rank,
+                    dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics
                 )
@@ -419,19 +457,23 @@ class BackendExecutor:
                     "You must call `finish_training` before "
                     "calling `start_training` again.")
 
+        if self.dataset_shards is None:
+            self.dataset_shards = self._get_dataset_shards(dataset)
+
         checkpoint_dict = self.checkpoint_manager._load_checkpoint(checkpoint)
 
         local_rank_map = self._create_local_rank_map()
 
         futures = []
-        for world_rank in range(len(self.worker_group)):
+        for index in range(len(self.worker_group)):
             futures.append(
                 self.worker_group.execute_single_async(
-                    world_rank,
+                    index,
                     initialize_session,
-                    world_rank=world_rank,
-                    local_rank=local_rank_map[world_rank],
+                    world_rank=index,
+                    local_rank=local_rank_map[index],
                     train_func=train_func,
+                    dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint_dict))
 
         self.get_with_failure_handling(futures)
@@ -639,6 +681,7 @@ class BackendExecutor:
                            "expected if one of the workers has crashed.")
         self.worker_group.shutdown()
         self.worker_group = InactiveWorkerGroup()
+        self.dataset_shards = None
 
     @property
     def is_started(self):

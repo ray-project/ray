@@ -14,9 +14,15 @@ class TrialScheduler:
 
     _metric = None
 
+    _supports_buffered_results = True
+
     @property
     def metric(self):
         return self._metric
+
+    @property
+    def supports_buffered_results(self):
+        return self._supports_buffered_results
 
     def set_search_properties(self, metric: Optional[str],
                               mode: Optional[str]) -> bool:

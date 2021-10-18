@@ -957,7 +957,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, runtime_env_hash,
-                  worker_shim_pid):
+                  worker_shim_pid, startup_token):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1007,6 +1007,7 @@ cdef class CoreWorker:
         options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
         options.worker_shim_pid = worker_shim_pid
+        options.startup_token = startup_token
         CCoreWorkerProcess.Initialize(options)
 
     def shutdown(self):

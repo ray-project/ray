@@ -52,5 +52,8 @@ constexpr int kMessagePackOffset = 9;
 /// Should be kept in sync with SETUP_WORKER_FILENAME in ray.ray_constants.
 constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 
+/// The version of Ray
+constexpr char kRayVersion[] = "2.0.0.dev0";
+
 /// The dashboard agent address key prefix.
 constexpr char kDashboardAgentAddressPrefix[] = "DASHBOARD_AGENT_ADDR";

@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO, /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string redis_address = FLAGS_redis_address;
@@ -77,8 +77,7 @@ int main(int argc, char *argv[]) {
         storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
     boost::asio::io_service::work work(service);
     service.run();
-  })
-      .detach();
+  }).detach();
   promise->get_future().get();
 
   // Initialize event framework.
