@@ -9,6 +9,8 @@ import yaml
 
 # RAY_REPO          Repo to use for finding the wheel
 # RAY_BRANCH        Branch to find the wheel
+# RAY_VERSION       Version to find the wheel
+# RAY_WHEELS        Direct Ray wheel URL
 # RAY_TEST_REPO     Repo to use for test scripts
 # RAY_TEST_BRANCH   Branch for test scripts
 # FILTER_FILE       File filter
@@ -99,6 +101,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
+        "pg_autoscaling_regression_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -153,6 +156,7 @@ NIGHTLY_TESTS = {
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
         "serve_micro_benchmark",
+        "serve_cluster_fault_tolerance",
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
         "rte_many_tasks_actors",
@@ -250,6 +254,7 @@ def ask_configuration():
     RAY_REPO = os.environ.get("RAY_REPO",
                               "https://github.com/ray-project/ray.git")
     RAY_VERSION = os.environ.get("RAY_VERSION", "")
+    RAY_WHEELS = os.environ.get("RAY_WHEELS", "")
 
     RAY_TEST_BRANCH = os.environ.get("RAY_TEST_BRANCH", RAY_BRANCH)
     RAY_TEST_REPO = os.environ.get("RAY_TEST_REPO", RAY_REPO)
@@ -262,7 +267,7 @@ def ask_configuration():
         "input": "Input required: Please specify tests to run",
         "fields": [
             {
-                "text": ("Please specify the Ray repository used "
+                "text": ("RAY_REPO: Please specify the Ray repository used "
                          "to find the wheel."),
                 "hint": ("Repository from which to fetch the latest "
                          "commits to find the Ray wheels. Usually you don't "
@@ -271,14 +276,14 @@ def ask_configuration():
                 "key": "ray_repo"
             },
             {
-                "text": ("Please specify the Ray branch used "
+                "text": ("RAY_BRANCH: Please specify the Ray branch used "
                          "to find the wheel."),
                 "hint": "For releases, this will be e.g. `releases/1.x.0`",
                 "default": RAY_BRANCH,
                 "key": "ray_branch"
             },
             {
-                "text": ("Please specify the Ray version used "
+                "text": ("RAY_VERSION: Please specify the Ray version used "
                          "to find the wheel."),
                 "hint": ("Leave empty for latest master. For releases, "
                          "specify the release version."),
@@ -287,15 +292,25 @@ def ask_configuration():
                 "key": "ray_version"
             },
             {
-                "text": ("Please specify the Ray repository used "
-                         "to find the tests you would like to run."),
+                "text": "RAY_WHEELS: Please specify the Ray wheel URL.",
+                "hint": ("ATTENTION: If you provide this, RAY_REPO, "
+                         "RAY_BRANCH and RAY_VERSION will be ignored! "
+                         "Please also make sure to provide the wheels URL "
+                         "for Python 3.7 on Linux."),
+                "required": False,
+                "default": RAY_WHEELS,
+                "key": "ray_wheels"
+            },
+            {
+                "text": ("RAY_TEST_REPO: Please specify the Ray repository "
+                         "used to find the tests you would like to run."),
                 "hint": ("If you're developing a new release test, this "
                          "will most likely be your GitHub fork."),
                 "default": RAY_TEST_REPO,
                 "key": "ray_test_repo"
             },
             {
-                "text": ("Please specify the Ray branch used "
+                "text": ("RAY_TEST_BRANCH: Please specify the Ray branch used "
                          "to find the tests you would like to run."),
                 "hint": ("If you're developing a new release test, this "
                          "will most likely be a branch living on your "
@@ -304,8 +319,9 @@ def ask_configuration():
                 "key": "ray_test_branch"
             },
             {
-                "select": ("Please specify the release test suite containing "
-                           "the tests you would like to run."),
+                "select": ("RELEASE_TEST_SUITE: Please specify the release "
+                           "test suite containing the tests you would like "
+                           "to run."),
                 "hint": ("Check in the `build_pipeline.py` if you're "
                          "unsure which suite contains your tests."),
                 "required": True,
@@ -314,8 +330,8 @@ def ask_configuration():
                 "key": "release_test_suite"
             },
             {
-                "text": ("Please specify a filter for the test files "
-                         "that should be included in this build."),
+                "text": ("FILTER_FILE: Please specify a filter for the "
+                         "test files that should be included in this build."),
                 "hint": ("Only test files (e.g. xgboost_tests.yml) that "
                          "match this string will be included in the test"),
                 "default": FILTER_FILE,
@@ -323,8 +339,8 @@ def ask_configuration():
                 "key": "filter_file"
             },
             {
-                "text": ("Please specify a filter for the test names "
-                         "that should be included in this build."),
+                "text": ("FILTER_TEST: Please specify a filter for the "
+                         "test names that should be included in this build."),
                 "hint": ("Only test names (e.g. tune_4x32) that match "
                          "this string will be included in the test"),
                 "default": FILTER_TEST,
@@ -342,6 +358,7 @@ def ask_configuration():
                 "ray_branch": "RAY_BRANCH",
                 "ray_repo": "RAY_REPO",
                 "ray_version": "RAY_VERSION",
+                "ray_wheels": "RAY_WHEELS",
                 "ray_test_branch": "RAY_TEST_BRANCH",
                 "ray_test_repo": "RAY_TEST_REPO",
                 "release_test_suite": "RELEASE_TEST_SUITE",
@@ -351,6 +368,7 @@ def ask_configuration():
         ] + [
             "export AUTOMATIC=1",
             "python3 -m pip install --user pyyaml",
+            "rm -rf ~/ray || true",
             "git clone -b $${RAY_TEST_BRANCH} $${RAY_TEST_REPO} ~/ray",
             ("python3 ~/ray/release/.buildkite/build_pipeline.py "
              "| buildkite-agent pipeline upload"),
@@ -376,6 +394,7 @@ def build_pipeline(steps):
     RAY_REPO = os.environ.get("RAY_REPO",
                               "https://github.com/ray-project/ray.git")
     RAY_VERSION = os.environ.get("RAY_VERSION", "")
+    RAY_WHEELS = os.environ.get("RAY_WHEELS", "")
 
     RAY_TEST_BRANCH = os.environ.get("RAY_TEST_BRANCH", RAY_BRANCH)
     RAY_TEST_REPO = os.environ.get("RAY_TEST_REPO", RAY_REPO)
@@ -389,6 +408,7 @@ def build_pipeline(steps):
         f" RAY_REPO   = {RAY_REPO}\n"
         f" RAY_BRANCH = {RAY_BRANCH}\n\n"
         f" RAY_VERSION = {RAY_VERSION}\n\n"
+        f" RAY_WHEELS = {RAY_WHEELS}\n\n"
         f"Ray repo/branch containing the test configurations and scripts:"
         f" RAY_TEST_REPO   = {RAY_TEST_REPO}\n"
         f" RAY_TEST_BRANCH = {RAY_TEST_BRANCH}\n\n"
@@ -413,6 +433,7 @@ def build_pipeline(steps):
             cmd = str(f"RAY_REPO=\"{RAY_REPO}\" "
                       f"RAY_BRANCH=\"{RAY_BRANCH}\" "
                       f"RAY_VERSION=\"{RAY_VERSION}\" "
+                      f"RAY_WHEELS=\"{RAY_WHEELS}\" "
                       f"RELEASE_RESULTS_DIR=/tmp/artifacts "
                       f"python release/e2e.py "
                       f"--category {RAY_BRANCH} "

@@ -23,10 +23,11 @@ import urllib.request
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
-SUPPORTED_BAZEL = (3, 4, 1)
+SUPPORTED_BAZEL = (4, 2, 1)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
@@ -184,15 +185,20 @@ ray_files += [
 # in this directory
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
+        "data": [
+            "pandas",
+            "pyarrow>=4.0.1",
+            "fsspec",
+        ],
         "default": [
-            "aiohttp",
+            "aiohttp >= 3.7",
             "aiohttp_cors",
             "aioredis < 2",
             "colorful",
             "py-spy >= 0.2.0",
             "jsonschema",
             "requests",
-            "gpustat",
+            "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
             "prometheus_client >= 0.7.1",
         ],
@@ -534,8 +540,24 @@ def copy_file(target_dir, filename, rootdir):
     return 0
 
 
+def add_system_dlls(dlls, target_dir):
+    """
+    Copy any required dlls required by the c-extension module and not already
+    provided by python. They will end up in the wheel next to the c-extension
+    module which will guarentee they are available at runtime.
+    """
+    for dll in dlls:
+        # Installing Visual Studio will copy the runtime dlls to system32
+        src = os.path.join(r"c:\Windows\system32", dll)
+        assert os.path.exists(src)
+        shutil.copy(src, target_dir)
+
+
 def pip_run(build_ext):
-    build(True, BUILD_JAVA, True)
+    if SKIP_BAZEL_BUILD:
+        build(False, False, False)
+    else:
+        build(True, BUILD_JAVA, True)
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
@@ -558,6 +580,13 @@ def pip_run(build_ext):
     copied_files = 0
     for filename in setup_spec.files_to_include:
         copied_files += copy_file(build_ext.build_lib, filename, ROOT_DIR)
+    if sys.platform == "win32":
+        # _raylet.pyd links to some MSVC runtime DLLS, this one may not be
+        # present on a user's machine. While vcruntime140.dll and
+        # vcruntime140_1.dll are also required, they are provided by CPython.
+        runtime_dlls = ["msvcp140.dll"]
+        add_system_dlls(runtime_dlls, os.path.join(build_ext.build_lib, "ray"))
+        copied_files += len(runtime_dlls)
     print("# of files copied to {}: {}".format(build_ext.build_lib,
                                                copied_files))
 
