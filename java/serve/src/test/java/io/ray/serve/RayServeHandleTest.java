@@ -35,6 +35,7 @@ public class RayServeHandleTest {
 
       DeploymentInfo deploymentInfo =
           new DeploymentInfo()
+              .setName(backendTag)
               .setBackendConfig(backendConfig)
               .setBackendVersion(new BackendVersion().setCodeVersion(version))
               .setBackendDef("io.ray.serve.ReplicaContext")

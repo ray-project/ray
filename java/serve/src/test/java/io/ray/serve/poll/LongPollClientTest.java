@@ -1,7 +1,7 @@
 package io.ray.serve.poll;
 
 import com.google.protobuf.ByteString;
-import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.BackendConfig;
 import io.ray.serve.generated.UpdatedObject;
 import java.util.HashMap;
 import java.util.Map;
@@ -25,7 +25,8 @@ public class LongPollClientTest {
     LongPollClient longPollClient = new LongPollClient(null, keyListeners);
 
     // Construct updated object.
-    BackendConfig.Builder backendConfig = BackendConfig.newBuilder();
+    io.ray.serve.generated.BackendConfig.Builder backendConfig =
+        io.ray.serve.generated.BackendConfig.newBuilder();
     backendConfig.setNumReplicas(20);
     int snapshotId = 10;
     UpdatedObject.Builder updatedObject = UpdatedObject.newBuilder();
