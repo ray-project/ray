@@ -74,8 +74,10 @@ class ActorReplicaWrapper:
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
 
-        # Populated in self.start().
+        # Populated in either self.start() or self.recover()
+        self._initialized_obj_ref: ObjectRef = None
         self._ready_obj_ref: ObjectRef = None
+
         self._actor_resources: Dict[str, float] = None
         self._max_concurrent_queries: int = None
         self._graceful_shutdown_timeout_s: float = 0.0
@@ -211,6 +213,10 @@ class ActorReplicaWrapper:
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.get_placement_group(
                 self._placement_group_name)
+
+        # Re-fetch initialization proof
+        self._initialized_obj_ref = self._actor_handle \
+            .initialization_check.remote()
 
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
