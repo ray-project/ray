@@ -191,12 +191,7 @@ class DashboardHead:
         self.aiogrpc_gcs_channel = aiogrpc.insecure_channel(
             gcs_address, options=GRPC_CHANNEL_OPTIONS)
 
-<<<<<<< HEAD
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
-=======
-        self.health_check_thread = GCSHealthCheckThread(
-            self.redis_address, self.redis_password)
->>>>>>> 9742abb7499d72e3960e9a77fd361c0871bd9eab
         self.health_check_thread.start()
 
         # Start a grpc asyncio server.
