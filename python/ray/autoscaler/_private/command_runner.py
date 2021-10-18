@@ -407,8 +407,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                 Full command to run. Should include SSH options and other
                 processing that we do.
             with_output (bool):
-                If `with_output` is `True`, command stdout and stderr
-                will be captured and returned.
+                If `with_output` is `True`, command stdout will be captured and
+                returned.
             exit_on_fail (bool):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
@@ -434,7 +434,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                 # Do our best to flush output to terminal.
                 # See https://github.com/ray-project/ray/pull/19473.
                 sys.stderr.flush()
-                # We don't need to flush stdout, as it's captured in the output
+                # We don't need to flush stdout, as stdout is captured in the output
                 # of `check_output`.
 
                 return out
