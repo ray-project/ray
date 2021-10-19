@@ -89,8 +89,6 @@ class GrpcServer {
     }
   }
 
-  /// Read a file
-  std::string ReadFile(std::string filename);
 
   /// Get the port of this gRPC server.
   int GetPort() const { return port_; }
