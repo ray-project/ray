@@ -54,7 +54,7 @@ class JobConfig:
         from ray._private.runtime_env.validation import ParsedRuntimeEnv
         self._parsed_runtime_env = ParsedRuntimeEnv(runtime_env or {})
         self.runtime_env = runtime_env or dict()
-        eager_install = False
+        eager_install = True
         if runtime_env and "eager_install" in runtime_env:
             eager_install = runtime_env["eager_install"]
         self.runtime_env_eager_install = eager_install
