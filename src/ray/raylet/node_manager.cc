@@ -183,7 +183,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           config.num_workers_soft_limit, config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
           config.max_worker_port, config.worker_ports, gcs_client_,
-          config.worker_commands,
+          config.worker_commands, config.native_library_path,
           /*starting_worker_timeout_callback=*/
           [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
           config.ray_debugger_external,
