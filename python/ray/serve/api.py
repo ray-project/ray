@@ -205,12 +205,9 @@ class Client:
         curr_job_env = ray.get_runtime_context().runtime_env
         if "runtime_env" in ray_actor_options:
             ray_actor_options["runtime_env"].setdefault(
-                "uris", curr_job_env.get("uris"))
+                "working_dir", curr_job_env.get("working_dir"))
         else:
             ray_actor_options["runtime_env"] = curr_job_env
-
-        if "working_dir" in ray_actor_options["runtime_env"]:
-            del ray_actor_options["runtime_env"]["working_dir"]
 
         replica_config = ReplicaConfig(
             backend_def,

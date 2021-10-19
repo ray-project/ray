@@ -1388,6 +1388,8 @@ def connect(node,
             excludes = job_config.runtime_env.get("excludes") or []
             working_dir_uri = get_uri_for_directory(working_dir, excludes)
             job_config.runtime_env["working_dir"] = working_dir_uri
+            # XXX: make this more sane!
+            job_config.set_runtime_env(job_config.runtime_env)
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(

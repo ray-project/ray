@@ -762,7 +762,7 @@ class ActorClass:
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
             serialized_runtime_env=parsed_runtime_env.serialize(),
-            runtime_env_uris=parsed_runtime_env.get("uris") or [])
+            runtime_env_uris=[parsed_runtime_env.get("working_dir")] or [])
 
         actor_handle = ActorHandle(
             meta.language,

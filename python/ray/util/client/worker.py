@@ -692,6 +692,7 @@ class Worker:
                         working_dir_uri = get_uri_for_directory(
                             working_dir, excludes)
                         job_config.runtime_env["working_dir"] = working_dir_uri
+                        job_config.set_runtime_env(job_config.runtime_env)
                         upload_package_if_needed(working_dir_uri, tmp_dir,
                                                  working_dir, excludes)
 

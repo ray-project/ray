@@ -27,23 +27,15 @@ def parse_and_validate_working_dir(working_dir: str,
                                    is_task_or_actor: bool = False) -> str:
     """Parses and validates a user-provided 'working_dir' option.
 
-    The working_dir may not be specified per-task or per-actor.
-
-    Otherwise, it should be a valid path to a local directory.
+    This should be a URI.
     """
     assert working_dir is not None
 
-    if is_task_or_actor:
-        raise NotImplementedError(
-            "Overriding working_dir for tasks and actors isn't supported. "
-            "Please use ray.init(runtime_env={'working_dir': ...}) "
-            "to configure the environment per-job instead.")
-    elif not isinstance(working_dir, str):
+    if not isinstance(working_dir, str):
         raise TypeError("`working_dir` must be a string, got "
                         f"{type(working_dir)}.")
-    elif not Path(working_dir).is_dir():
-        raise ValueError(
-            f"working_dir {working_dir} is not a valid directory.")
+
+    # TODO(edoakes): validate that this is a URI!
 
     return working_dir
 
@@ -124,16 +116,6 @@ def parse_and_validate_pip(pip: Union[str, List[str]],
     return result
 
 
-def parse_and_validate_uris(uris: List[str],
-                            is_task_or_actor: bool = False) -> List[str]:
-    """Parses and validates a user-provided 'uris' option.
-
-    These are passed through without validation (for now).
-    """
-    assert uris is not None
-    return uris
-
-
 def parse_and_validate_container(container: List[str],
                                  is_task_or_actor: bool = False) -> List[str]:
     """Parses and validates a user-provided 'container' option.
@@ -194,7 +176,6 @@ OPTION_TO_VALIDATION_FN = {
     "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,
     "pip": parse_and_validate_pip,
-    "uris": parse_and_validate_uris,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
 }
@@ -214,7 +195,6 @@ class ParsedRuntimeEnv(dict):
             Examples:
                 "."  # cwd
                 "local_project.zip"  # archive is unpacked into directory
-        uris (List[str]): A list of URIs that define the working_dir.
         pip (List[str] | str): Either a list of pip packages, or a string
             containing the path to a pip requirements.txt file.
         conda (dict | str): Either the conda YAML config, the name of a
@@ -247,9 +227,8 @@ class ParsedRuntimeEnv(dict):
     """
 
     known_fields: Set[str] = {
-        "working_dir", "conda", "pip", "uris", "containers", "excludes",
-        "env_vars", "_ray_release", "_ray_commit", "_inject_current_ray",
-        "plugins"
+        "working_dir", "conda", "pip", "containers", "excludes", "env_vars",
+        "_ray_release", "_ray_commit", "_inject_current_ray", "plugins"
     }
 
     def __init__(self,
@@ -351,7 +330,6 @@ def override_task_or_actor_runtime_env(
 
     By default, the child runtime env inherits non-specified options from the
     parent. There are two exceptions to this:
-        - working_dir is not inherited (only URIs).
         - The env_vars dictionaries are merged, so environment variables
           not specified by the child are still inherited from the parent.
 
@@ -371,8 +349,6 @@ def override_task_or_actor_runtime_env(
     result.update(child_runtime_env)
     if len(result_env_vars) > 0:
         result["env_vars"] = result_env_vars
-    if "working_dir" in result:
-        del result["working_dir"]  # working_dir should not be in child env.
 
     # NOTE(architkulkarni): This allows worker caching code in C++ to
     # check if a runtime env is empty without deserializing it.

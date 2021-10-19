@@ -330,7 +330,7 @@ class RemoteFunction:
                 placement_group.id, placement_group_bundle_index,
                 placement_group_capture_child_tasks,
                 worker.debugger_breakpoint, parsed_runtime_env.serialize(),
-                parsed_runtime_env.get("uris") or [])
+                [parsed_runtime_env.get("working_dir")] or [])
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""
