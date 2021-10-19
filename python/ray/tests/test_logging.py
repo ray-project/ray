@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from collections import defaultdict, Counter
 from pathlib import Path
+import pytest
 
 import ray
 from ray import ray_constants
@@ -252,8 +253,25 @@ def test_log_redirect_to_stdout(shutdown_only):
             assert component not in filename
 
 
+def test_segfault_stack_trace(ray_start_cluster, capsys):
+    @ray.remote
+    def f():
+        import ctypes
+        ctypes.string_at(0)
+
+    with pytest.raises(
+            ray.exceptions.WorkerCrashedError,
+            match="The worker died unexpectedly"):
+        ray.get(f.remote())
+
+    stderr = capsys.readouterr().err
+    assert "*** SIGSEGV received at" in stderr, \
+        f"C++ stack trace not found in stderr: {stderr}"
+    assert "Fatal Python error: Segmentation fault" in stderr, \
+        f"Python stack trace not found in stderr: {stderr}"
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

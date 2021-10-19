@@ -115,7 +115,14 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     }
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
     if (options_.install_failure_signal_handler) {
-      RayLog::InstallFailureSignalHandler();
+      // Core worker is loaded as a dynamic library from Python or other languages.
+      // We are not sure if the default argv[0] would be suitable for loading symbols
+      // so leaving it unspecified as nullptr. This could make symbolization of crash
+      // traces fail in some circumstances.
+      //
+      // Also, call the previous crash handler, e.g. the one installed by the Python
+      // worker.
+      RayLog::InstallFailureSignalHandler(nullptr, /*call_previous_handler=*/true);
     }
   } else {
     RAY_CHECK(options_.log_dir.empty())
@@ -410,7 +417,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.runtime_env_hash,
       options_.language, options_.node_ip_address, &raylet_client_status,
-      &local_raylet_id, &assigned_port, &serialized_job_config, options_.worker_shim_pid);
+      &local_raylet_id, &assigned_port, &serialized_job_config, options_.worker_shim_pid,
+      options_.startup_token);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -1799,6 +1807,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
           },
           "ActorCreator.AsyncRegisterActor");
     } else {
+      // For named actor, we still go through the sync way because for
+      // functions like list actors these actors need to be there, especially
+      // for local driver. But the current code all go through the gcs right now.
       auto status = actor_creator_->RegisterActor(task_spec);
       if (!status.ok()) {
         return status;

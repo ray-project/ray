@@ -9,6 +9,8 @@ import yaml
 
 # RAY_REPO          Repo to use for finding the wheel
 # RAY_BRANCH        Branch to find the wheel
+# RAY_VERSION       Version to find the wheel
+# RAY_WHEELS        Direct Ray wheel URL
 # RAY_TEST_REPO     Repo to use for test scripts
 # RAY_TEST_BRANCH   Branch for test scripts
 # FILTER_FILE       File filter
@@ -65,6 +67,7 @@ CORE_NIGHTLY_TESTS = {
         # as it hits the scalability limit.
         # "non_streaming_shuffle_1tb_5000_partitions",
         "decision_tree_autoscaling",
+        "decision_tree_autoscaling_20_runs",
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
@@ -252,6 +255,7 @@ def ask_configuration():
     RAY_REPO = os.environ.get("RAY_REPO",
                               "https://github.com/ray-project/ray.git")
     RAY_VERSION = os.environ.get("RAY_VERSION", "")
+    RAY_WHEELS = os.environ.get("RAY_WHEELS", "")
 
     RAY_TEST_BRANCH = os.environ.get("RAY_TEST_BRANCH", RAY_BRANCH)
     RAY_TEST_REPO = os.environ.get("RAY_TEST_REPO", RAY_REPO)
@@ -264,7 +268,7 @@ def ask_configuration():
         "input": "Input required: Please specify tests to run",
         "fields": [
             {
-                "text": ("Please specify the Ray repository used "
+                "text": ("RAY_REPO: Please specify the Ray repository used "
                          "to find the wheel."),
                 "hint": ("Repository from which to fetch the latest "
                          "commits to find the Ray wheels. Usually you don't "
@@ -273,14 +277,14 @@ def ask_configuration():
                 "key": "ray_repo"
             },
             {
-                "text": ("Please specify the Ray branch used "
+                "text": ("RAY_BRANCH: Please specify the Ray branch used "
                          "to find the wheel."),
                 "hint": "For releases, this will be e.g. `releases/1.x.0`",
                 "default": RAY_BRANCH,
                 "key": "ray_branch"
             },
             {
-                "text": ("Please specify the Ray version used "
+                "text": ("RAY_VERSION: Please specify the Ray version used "
                          "to find the wheel."),
                 "hint": ("Leave empty for latest master. For releases, "
                          "specify the release version."),
@@ -289,15 +293,30 @@ def ask_configuration():
                 "key": "ray_version"
             },
             {
-                "text": ("Please specify the Ray repository used "
-                         "to find the tests you would like to run."),
+                "text": "RAY_WHEELS: Please specify the Ray wheel URL.",
+                "hint": ("ATTENTION: If you provide this, RAY_REPO, "
+                         "RAY_BRANCH and RAY_VERSION will be ignored! "
+                         "Please also make sure to provide the wheels URL "
+                         "for Python 3.7 on Linux.\n"
+                         "You can also insert a commit hash here instead "
+                         "of a full URL.\n"
+                         "NOTE: You can specify multiple commits or URLs "
+                         "for easy bisection (one per line) - this will "
+                         "run each test on each of the specified wheels."),
+                "required": False,
+                "default": RAY_WHEELS,
+                "key": "ray_wheels"
+            },
+            {
+                "text": ("RAY_TEST_REPO: Please specify the Ray repository "
+                         "used to find the tests you would like to run."),
                 "hint": ("If you're developing a new release test, this "
                          "will most likely be your GitHub fork."),
                 "default": RAY_TEST_REPO,
                 "key": "ray_test_repo"
             },
             {
-                "text": ("Please specify the Ray branch used "
+                "text": ("RAY_TEST_BRANCH: Please specify the Ray branch used "
                          "to find the tests you would like to run."),
                 "hint": ("If you're developing a new release test, this "
                          "will most likely be a branch living on your "
@@ -306,8 +325,9 @@ def ask_configuration():
                 "key": "ray_test_branch"
             },
             {
-                "select": ("Please specify the release test suite containing "
-                           "the tests you would like to run."),
+                "select": ("RELEASE_TEST_SUITE: Please specify the release "
+                           "test suite containing the tests you would like "
+                           "to run."),
                 "hint": ("Check in the `build_pipeline.py` if you're "
                          "unsure which suite contains your tests."),
                 "required": True,
@@ -316,8 +336,8 @@ def ask_configuration():
                 "key": "release_test_suite"
             },
             {
-                "text": ("Please specify a filter for the test files "
-                         "that should be included in this build."),
+                "text": ("FILTER_FILE: Please specify a filter for the "
+                         "test files that should be included in this build."),
                 "hint": ("Only test files (e.g. xgboost_tests.yml) that "
                          "match this string will be included in the test"),
                 "default": FILTER_FILE,
@@ -325,8 +345,8 @@ def ask_configuration():
                 "key": "filter_file"
             },
             {
-                "text": ("Please specify a filter for the test names "
-                         "that should be included in this build."),
+                "text": ("FILTER_TEST: Please specify a filter for the "
+                         "test names that should be included in this build."),
                 "hint": ("Only test names (e.g. tune_4x32) that match "
                          "this string will be included in the test"),
                 "default": FILTER_TEST,
@@ -344,6 +364,7 @@ def ask_configuration():
                 "ray_branch": "RAY_BRANCH",
                 "ray_repo": "RAY_REPO",
                 "ray_version": "RAY_VERSION",
+                "ray_wheels": "RAY_WHEELS",
                 "ray_test_branch": "RAY_TEST_BRANCH",
                 "ray_test_repo": "RAY_TEST_REPO",
                 "release_test_suite": "RELEASE_TEST_SUITE",
@@ -353,6 +374,7 @@ def ask_configuration():
         ] + [
             "export AUTOMATIC=1",
             "python3 -m pip install --user pyyaml",
+            "rm -rf ~/ray || true",
             "git clone -b $${RAY_TEST_BRANCH} $${RAY_TEST_REPO} ~/ray",
             ("python3 ~/ray/release/.buildkite/build_pipeline.py "
              "| buildkite-agent pipeline upload"),
@@ -371,6 +393,59 @@ def ask_configuration():
     ]
 
 
+def create_test_step(
+        ray_repo: str,
+        ray_branch: str,
+        ray_version: str,
+        ray_wheels: str,
+        ray_test_repo: str,
+        ray_test_branch: str,
+        test_file: str,
+        test_name: ReleaseTest,
+):
+    ray_wheels_str = f" ({ray_wheels}) " if ray_wheels else ""
+
+    logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
+    cmd = str(f"RAY_REPO=\"{ray_repo}\" "
+              f"RAY_BRANCH=\"{ray_branch}\" "
+              f"RAY_VERSION=\"{ray_version}\" "
+              f"RAY_WHEELS=\"{ray_wheels}\" "
+              f"RELEASE_RESULTS_DIR=/tmp/artifacts "
+              f"python release/e2e.py "
+              f"--category {ray_branch} "
+              f"--test-config {test_file} "
+              f"--test-name {test_name} "
+              f"--keep-results-dir")
+
+    if test_name.smoke_test:
+        logging.info("This test will run as a smoke test.")
+        cmd += " --smoke-test"
+
+    step_conf = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
+
+    if test_name.retry:
+        logging.info(f"This test will be retried up to "
+                     f"{test_name.retry} times.")
+        step_conf["retry"] = {
+            "automatic": [{
+                "exit_status": "*",
+                "limit": test_name.retry
+            }]
+        }
+
+    step_conf["commands"] = [
+        "pip install -q -r release/requirements.txt",
+        "pip install -U boto3 botocore",
+        f"git clone -b {ray_test_branch} {ray_test_repo} ~/ray", cmd,
+        "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
+        "|| true"
+    ]
+
+    step_conf["label"] = f"{ray_wheels_str}{test_name} ({ray_branch}) - " \
+                         f"{ray_test_branch}/{ray_test_repo}"
+    return step_conf
+
+
 def build_pipeline(steps):
     all_steps = []
 
@@ -378,6 +453,7 @@ def build_pipeline(steps):
     RAY_REPO = os.environ.get("RAY_REPO",
                               "https://github.com/ray-project/ray.git")
     RAY_VERSION = os.environ.get("RAY_VERSION", "")
+    RAY_WHEELS = os.environ.get("RAY_WHEELS", "")
 
     RAY_TEST_BRANCH = os.environ.get("RAY_TEST_BRANCH", RAY_BRANCH)
     RAY_TEST_REPO = os.environ.get("RAY_TEST_REPO", RAY_REPO)
@@ -385,12 +461,21 @@ def build_pipeline(steps):
     FILTER_FILE = os.environ.get("FILTER_FILE", "")
     FILTER_TEST = os.environ.get("FILTER_TEST", "")
 
+    ray_wheels_list = [""]
+    if RAY_WHEELS:
+        ray_wheels_list = RAY_WHEELS.split("\n")
+
+    if len(ray_wheels_list) > 1:
+        logging.info(f"This will run a bisec on the following URLs/commits: "
+                     f"{ray_wheels_list}")
+
     logging.info(
         f"Building pipeline \n"
         f"Ray repo/branch to test:\n"
         f" RAY_REPO   = {RAY_REPO}\n"
         f" RAY_BRANCH = {RAY_BRANCH}\n\n"
         f" RAY_VERSION = {RAY_VERSION}\n\n"
+        f" RAY_WHEELS = {RAY_WHEELS}\n\n"
         f"Ray repo/branch containing the test configurations and scripts:"
         f" RAY_TEST_REPO   = {RAY_TEST_REPO}\n"
         f" RAY_TEST_BRANCH = {RAY_TEST_BRANCH}\n\n"
@@ -412,43 +497,18 @@ def build_pipeline(steps):
 
             logging.info(f"Adding test: {test_base}/{test_name}")
 
-            cmd = str(f"RAY_REPO=\"{RAY_REPO}\" "
-                      f"RAY_BRANCH=\"{RAY_BRANCH}\" "
-                      f"RAY_VERSION=\"{RAY_VERSION}\" "
-                      f"RELEASE_RESULTS_DIR=/tmp/artifacts "
-                      f"python release/e2e.py "
-                      f"--category {RAY_BRANCH} "
-                      f"--test-config {test_file} "
-                      f"--test-name {test_name} "
-                      f"--keep-results-dir")
+            for ray_wheels in ray_wheels_list:
+                step_conf = create_test_step(
+                    ray_repo=RAY_REPO,
+                    ray_branch=RAY_BRANCH,
+                    ray_version=RAY_VERSION,
+                    ray_wheels=ray_wheels,
+                    ray_test_repo=RAY_TEST_REPO,
+                    ray_test_branch=RAY_TEST_BRANCH,
+                    test_file=test_file,
+                    test_name=test_name)
 
-            if test_name.smoke_test:
-                logging.info("This test will run as a smoke test.")
-                cmd += " --smoke-test"
-
-            step_conf = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
-
-            if test_name.retry:
-                logging.info(f"This test will be retried up to "
-                             f"{test_name.retry} times.")
-                step_conf["retry"] = {
-                    "automatic": [{
-                        "exit_status": "*",
-                        "limit": test_name.retry
-                    }]
-                }
-
-            step_conf["commands"] = [
-                "pip install -q -r release/requirements.txt",
-                "pip install -U boto3 botocore",
-                f"git clone -b {RAY_TEST_BRANCH} {RAY_TEST_REPO} ~/ray", cmd,
-                "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
-                "|| true"
-            ]
-
-            step_conf["label"] = f"{test_name} ({RAY_BRANCH}) - " \
-                                 f"{RAY_TEST_BRANCH}/{test_base}"
-            all_steps.append(step_conf)
+                all_steps.append(step_conf)
 
     return all_steps
 
