@@ -54,7 +54,7 @@ class MLflowLoggerCallback(LoggerCallback):
         from ray.tune.integration.mlflow import MLflowLoggerCallback
 
         tags = { "user_name" : "John",
-                 "git_commit_hash" : abc123
+                 "git_commit_hash" : "abc123"
         }
 
         tune.run(
