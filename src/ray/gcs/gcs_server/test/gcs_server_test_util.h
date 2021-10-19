@@ -279,6 +279,11 @@ struct GcsServerMocker {
       RAY_CHECK(false) << "Unused";
     };
 
+    /// ShutdownRaylet
+    void ShutdownRaylet(
+        const NodeID &node_id, bool graceful,
+        const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
+
     ~MockRayletClient() {}
 
     int num_workers_requested = 0;

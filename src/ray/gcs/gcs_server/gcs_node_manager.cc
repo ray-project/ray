@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 
+#include <utility>
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
@@ -92,8 +94,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   auto on_put_done = [this, remote_address = std::move(remote_address), node_id,
-                      node_info_delta =
-                          std::move(node_info_delta)](const Status &status) {
+                      node_info_delta = node_info_delta](const Status &status) {
     auto on_resource_update_done =
         [this, remote_address = std::move(remote_address), node_id,
          node_info_delta = std::move(node_info_delta)](const Status &status) {
@@ -103,7 +104,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
           // proper "drain" behavior is implemented.
           raylet_client->ShutdownRaylet(
               node_id, /*graceful*/ true,
-              [this, node_id, node_info_delta = std::move(node_info_delta)](
+              [this, node_id, node_info_delta = node_info_delta](
                   const Status &status, const rpc::ShutdownRayletReply &reply) {
                 RAY_LOG(INFO) << "Raylet " << node_id << " is drained. Status " << status
                               << ". The information will be published to the cluster.";

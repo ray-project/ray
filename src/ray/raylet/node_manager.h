@@ -751,6 +751,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
+
+  /// Whether or not if the node draining process has already received.
+  bool is_node_drained_ = false;
 };
 
 }  // namespace raylet
