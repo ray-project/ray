@@ -516,6 +516,21 @@ if __name__ == "__main__":
 
     image_types = list(BASE_IMAGES.keys())
 
+    # Make sure the python images and cuda versions we build here are
+    # consistent with the ones used with fix-latest-docker.sh script.
+    py_version_file = os.path.join(_get_root_dir(), "docker",
+                                   "python_versions.txt")
+    with open(py_version_file) as f:
+        py_file_versions = f.readlines()
+        assert set(PY_MATRIX.keys()) == set(py_file_versions)
+
+    cuda_version_file = os.path.join(_get_root_dir(), "docker",
+                                     "cuda_versions.txt")
+
+    with open(cuda_version_file) as f:
+        cuda_file_versions = f.readlines()
+        assert set(BASE_IMAGES.keys()) == set(cuda_file_versions + ["cpu"])
+
     print("Building the following python versions: ",
           [PY_MATRIX[py_version] for py_version in py_versions])
     print("Building images for the following devices: ", image_types)
