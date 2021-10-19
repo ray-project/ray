@@ -434,8 +434,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                 # Do our best to flush output to terminal.
                 # See https://github.com/ray-project/ray/pull/19473.
                 sys.stderr.flush()
-                # We don't need to flush stdout, as stdout is captured in the output
-                # of `check_output`.
+                # We don't need to flush stdout, as stdout is captured in the
+                # output of `check_output`.
 
                 return out
         except subprocess.CalledProcessError as e:
