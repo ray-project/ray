@@ -617,7 +617,7 @@ Status RemotePlasmaClient::CreateAndSpillIfNeeded(
     if (!SendCreateRetryRequest(store_conn_, object_id, retry_with_request_id).ok()) {
       continue;
     }
-    HandleCreateReply(object_id, metadata, &retry_with_request_id, data);
+    RAY_UNUSED(HandleCreateReply(object_id, metadata, &retry_with_request_id, data));
   }
 
   return status;
@@ -707,7 +707,8 @@ Status RemotePlasmaClient::Seal(const ObjectID &object_id) {
 }
 
 Status RemotePlasmaClient::Delete(const ObjectID &object_id) {
-  return Delete({object_id});
+  std::vector<ObjectID> object_ids{object_id};
+  return Delete(object_ids);
 }
 
 Status RemotePlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
@@ -783,7 +784,7 @@ Status RemotePlasmaClient::HandleCreateReply(const ObjectID &object_id,
     RAY_CHECK(unused == 0);
   }
 
-  impl_->HandleCreateReply(object_id, metadata, data, object);
+  RAY_UNUSED(impl_->HandleCreateReply(object_id, metadata, data, object));
   return Status::OK();
 }
 
@@ -849,7 +850,7 @@ Status PlasmaClient::TryCreateImmediately(
   });
   PlasmaObject &object = result.first;
 
-  impl_->HandleCreateReply(object_id, metadata, data, object);
+  RAY_UNUSED(impl_->HandleCreateReply(object_id, metadata, data, object));
   return Status::OK();
 }
 
@@ -907,7 +908,10 @@ Status PlasmaClient::Seal(const ObjectID &object_id) {
   });
 }
 
-Status PlasmaClient::Delete(const ObjectID &object_id) { return Delete({object_id}); }
+Status PlasmaClient::Delete(const ObjectID &object_id) {
+  std::vector<ObjectID> object_ids{object_id};
+  return Delete(object_ids);
+}
 
 Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
   return impl_->Delete(object_ids, [&](std::vector<ObjectID> &not_in_use_ids) {
@@ -921,7 +925,7 @@ Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
 Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
   return impl_->Evict(num_bytes, num_bytes_evicted, [&]() {
     return plasma_store_.ExecuteInStoreThread([&]() {
-      num_bytes_evicted = plasma_store_.EvictObject({num_bytes});
+      num_bytes_evicted = plasma_store_.EvictObject(num_bytes);
       return Status::OK();
     });
   });
