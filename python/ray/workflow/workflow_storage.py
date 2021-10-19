@@ -541,7 +541,6 @@ class WorkflowStorage:
         if not scan:
             raise WorkflowNotFoundError(self._workflow_id)
 
-
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> str:
         """
