@@ -1,3 +1,7 @@
+import asyncio
+
+
+import asyncio
 import os
 from filelock import logger
 import pytest
@@ -6,10 +10,7 @@ import random
 import tempfile
 import time
 import requests
-
-from unittest.mock import patch
 from pathlib import Path
-from zipfile import ZipFile
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -20,21 +21,15 @@ from ray._private.runtime_env import working_dir as working_dir_pkg
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
+
 driver_script = """
 import logging
 import os
 import sys
 import time
 
-sys.path.insert(0, "{working_dir}")
-
 import ray
 import ray.util
-
-try:
-    import test_module
-except:
-    pass
 
 try:
     job_config = ray.job_config.JobConfig(
@@ -53,11 +48,11 @@ try:
                  logging_level=logging.DEBUG,
                  namespace="default_test_namespace"
         )
-except ValueError:
-    print("ValueError")
+except ValueError as value_e:
+    print("ValueError: ", str(value_e))
     sys.exit(0)
-except TypeError:
-    print("TypeError")
+except TypeError as type_e:
+    print("TypeError: ", str(type_e))
     sys.exit(0)
 except Exception as e:
     print("ERROR:", str(e))
@@ -66,6 +61,23 @@ except Exception as e:
 
 if os.environ.get("EXIT_AFTER_INIT"):
     sys.exit(0)
+
+# Schedule a dummy task to kick off runtime env agent's working_dir setup()
+@ray.remote
+def dummy_task():
+    return "dummy task scheduled"
+
+print(ray.get([dummy_task.remote()]))
+print(os.getcwd())
+print(os.listdir())
+print("{working_dir}")
+
+sys.path.insert(0, "{working_dir}")
+
+try:
+    import test_module
+except:
+    pass
 
 @ray.remote
 def run_test():
@@ -91,7 +103,6 @@ if os.environ.get("USE_RAY_CLIENT"):
     ray.util.disconnect()
 else:
     ray.shutdown()
-time.sleep(10)
 """
 
 
@@ -280,40 +291,37 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env).strip().split()[-1]
     assert out == "ValueError"
 
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_single_node(ray_start_cluster_head, working_dir):
-    # print(f">>>> use_local_working_dir: {use_local_working_dir}")
-    # if not use_local_working_dir:
-    #     uri_mock.return_value = f"{working_dir}/test_module/s3_package.zip"
+@pytest.mark.parametrize("use_local_working_dir", [True, False])
+@pytest.mark.parametrize("client_mode", [True, False])
+def test_single_node(ray_start_cluster_head, working_dir, client_mode, use_local_working_dir):
     cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, False)
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
 
+    print(f">>>> runtime_env_dir: {runtime_env_dir}")
     # Setup runtime env here
-    # if use_local_working_dir:
-    # runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    print(f">>>> Test working_dir: {working_dir}")
-    print(f">>>> env: {env}, runtime_env_dir: {runtime_env_dir}")
-    # else:
-    runtime_env = f"""{{  "working_dir": "s3://runtime-env-test/remote_runtime_env.zip" }}"""
-    working_dir = runtime_env_dir
+    if use_local_working_dir:
+        runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    else:
+        remote_pkg_uri = "s3://runtime-env-test/remote_runtime_env.zip"
+        runtime_env = f"""{{  "working_dir": "{remote_pkg_uri}" }}"""
+        _, pkg_name = working_dir_pkg.parse_uri(remote_pkg_uri)
+        working_dir = Path(os.path.join(runtime_env_dir, pkg_name)).with_suffix("")
+        print(f">>>> working_dir: {working_dir}")
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
-
     out = run_string_as_driver(script, env)
-    print(working_dir)
-    print(os.listdir(working_dir))
-    print(os.listdir(f"{working_dir}/remote_runtime_env/test_module"))
-    with open(f"{working_dir}/remote_runtime_env/test_module/test.py", "r") as file:
-        print(file.read())
-    # if use_local_working_dir:
-    #     assert out.strip().split()[-1] == "1000"
-    # else:
     print(out)
-    assert out.strip().split()[-1] == "2000"
-    # assert len(list(Path(runtime_env_dir).iterdir())) == 1
-    # assert len(kv._internal_kv_list("gcs://")) == 0
+    if use_local_working_dir:
+        assert out.strip().split()[-1] == "1000"
+        assert len(list(Path(runtime_env_dir).iterdir())) == 1
+    else:
+        assert out.strip().split()[-1] == "2000"
+        print(list(Path(working_dir).iterdir()))
+        assert len(list(Path(working_dir).iterdir())) == 1
+
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

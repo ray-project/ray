@@ -124,7 +124,7 @@ def _hash_modules(
     return hash_val
 
 
-def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
+def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
     Parse resource uri into protocol and package name based on its format.
 
@@ -364,7 +364,7 @@ def push_package(pkg_uri: str, pkg_path: str) -> int:
     Returns:
         The number of bytes uploaded.
     """
-    protocol, _ = _parse_uri(pkg_uri)
+    protocol, _ = parse_uri(pkg_uri)
     data = Path(pkg_path).read_bytes()
     if protocol in {Protocol.GCS, Protocol.PIN_GCS}:
         return _store_package_in_gcs(pkg_uri, data)
@@ -383,7 +383,7 @@ def package_exists(pkg_uri: str) -> bool:
     Return:
         True for package existing and False for not.
     """
-    protocol, _ = _parse_uri(pkg_uri)
+    protocol, _ = parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         return _internal_kv_exists(pkg_uri)
     elif protocol == Protocol.S3:
@@ -401,7 +401,7 @@ class WorkingDirManager:
 
     def _get_local_path(self, pkg_uri: str) -> str:
         default_logger.info("_get_local_path")
-        _, pkg_name = _parse_uri(pkg_uri)
+        _, pkg_name = parse_uri(pkg_uri)
         return os.path.join(self._resources_dir, pkg_name)
 
     def fetch_package(self,
@@ -432,7 +432,7 @@ class WorkingDirManager:
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
             return local_dir
 
-        protocol, _ = _parse_uri(pkg_uri)
+        protocol, _ = parse_uri(pkg_uri)
         if protocol in (Protocol.GCS, Protocol.PIN_GCS):
             # Download package file from GCS.
             code = _internal_kv_get(pkg_uri)
