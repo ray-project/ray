@@ -67,6 +67,7 @@ class MockWorker : public WorkerInterface {
   bool IsBlocked() const { return blocked_; }
 
   Process GetProcess() const { return Process::CreateNewDummy(); }
+  StartupToken GetStartupToken() const { return 0; }
   void SetProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
 
   Process GetShimProcess() const { return Process::CreateNewDummy(); }
@@ -185,6 +186,11 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }
+
+ protected:
+  void SetStartupToken(StartupToken startup_token) {
+    RAY_CHECK(false) << "Method unused";
+  };
 
  private:
   WorkerID worker_id_;
