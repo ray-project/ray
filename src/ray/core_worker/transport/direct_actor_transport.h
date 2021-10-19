@@ -893,7 +893,7 @@ class CoreWorkerDirectTaskReceiver {
   bool CancelQueuedNormalTask(TaskID task_id);
 
  protected:
-   /// Cache the concurrency groups of actors.
+  /// Cache the concurrency groups of actors.
   std::unordered_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
