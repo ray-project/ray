@@ -587,11 +587,13 @@ if __name__ == "__main__":
             # Build Ray Docker images.
             build_for_all_versions("ray", py_versions, image_types)
 
-            # Build Ray ML Docker images.
-            prep_ray_ml()
-            # Only build ML Docker for the ML_CUDA_VERSION
-            build_for_all_versions(
-                "ray-ml", py_versions, image_types=[ML_CUDA_VERSION])
+            if ML_CUDA_VERSION in image_types:
+                # Build Ray ML Docker images only if ML_CUDA_VERSION is
+                # specified.
+                prep_ray_ml()
+                # Only build ML Docker for the ML_CUDA_VERSION
+                build_for_all_versions(
+                    "ray-ml", py_versions, image_types=[ML_CUDA_VERSION])
 
             if build_type in {MERGE, PR}:
                 valid_branch = _valid_branch()
