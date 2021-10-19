@@ -19,15 +19,17 @@ public class RayServeConfig implements Serializable {
     return name;
   }
 
-  public void setName(String name) {
+  public RayServeConfig setName(String name) {
     this.name = name;
+    return this;
   }
 
   public Map<String, String> getConfig() {
     return config;
   }
 
-  public void setConfig(Map<String, String> config) {
+  public RayServeConfig setConfig(Map<String, String> config) {
     this.config = config;
+    return this;
   }
 }
