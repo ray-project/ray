@@ -2,7 +2,7 @@ HuggingFace Transformers Glue Fine-tuning Example
 =================================================
 
 We've ported the ``huggingface/transformers/examples/pytorch/text-classification/run_glue_no_trainer.py`` example to
-RaySGD. This example enables fine-tuning the library models for sequence classification on the GLUE benchmark: General Language Understanding Evaluation.
+Ray Train. This example enables fine-tuning the library models for sequence classification on the GLUE benchmark: General Language Understanding Evaluation.
 
 This script can fine-tune the following models:
  CoLA, SST-2, MRPC, STS-B, QQP, MNLI, QNLI, RTE, WNLI.
