@@ -233,7 +233,8 @@ def _package_exists(pkg_uri: str) -> bool:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def get_uri_for_directory(directory: str, excludes: List[str]) -> str:
+def get_uri_for_directory(directory: str,
+                          excludes: Optional[List[str]] = None) -> str:
     """Get the name of the package by working dir.
 
     This function will generate the name of the package by the directory.
@@ -256,11 +257,15 @@ def get_uri_for_directory(directory: str, excludes: List[str]) -> str:
     Returns:
         Package name as a string.
     """
+    if excludes is None:
+        excludes = []
+
     directory = Path(directory).absolute()
     if not directory.exists() or not directory.is_dir():
         raise ValueError(f"directory {directory} must be an existing"
                          " directory")
 
+    hash_val = b"0"
     hash_val = _xor_bytes(
         hash_val,
         _hash_directory(directory, directory, _get_excludes(
@@ -270,12 +275,12 @@ def get_uri_for_directory(directory: str, excludes: List[str]) -> str:
         protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex())
 
 
-def upload_package_if_needed(
-        pkg_uri: str,
-        base_directory: str,
-        directory: str,
-        excludes: List[str],
-        logger: Optional[logging.Logger] = default_logger):
+def upload_package_if_needed(pkg_uri: str,
+                             base_directory: str,
+                             directory: str,
+                             excludes: Optional[List[str]] = None,
+                             logger: Optional[logging.Logger] = default_logger
+                             ) -> Tuple[bool, bool]:
     """XXX: TODO
 
     It'll check whether the runtime environment exists in the cluster or
@@ -286,19 +291,26 @@ def upload_package_if_needed(
     Args:
         job_config (JobConfig): The job config of driver.
     """
+    if excludes is None:
+        excludes = []
+
     if logger is None:
         logger = default_logger
 
+    created, uploaded = False, False
     if not _package_exists(pkg_uri):
-        file_path = Path(_get_local_path(base_directory, pkg_uri))
-        pkg_file = Path(file_path)
-        logger.info(f"Creating a new package for directory {directory}.")
+        pkg_file = Path(_get_local_path(base_directory, pkg_uri))
         if not pkg_file.exists():
+            created = True
+            logger.info(f"Creating a new package for directory {directory}.")
             _create_package_from_directory(
-                directory, excludes, file_path, logger=logger)
+                directory, excludes, pkg_file, logger=logger)
         # Push the data to remote storage
         pkg_size = _push_package(pkg_uri, pkg_file)
-        logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
+        logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes.")
+        uploaded = True
+
+    return created, uploaded
 
 
 def download_and_unpack_package(

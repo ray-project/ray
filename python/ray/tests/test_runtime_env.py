@@ -1,7 +1,6 @@
 import os
 import pytest
 import sys
-import random
 import tempfile
 import time
 import requests
@@ -12,7 +11,7 @@ from ray.exceptions import RuntimeEnvSetupError
 import ray.experimental.internal_kv as kv
 from ray._private.test_utils import (
     run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
-from ray._private.runtime_env import working_dir as working_dir_pkg
+from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
@@ -134,69 +133,6 @@ def start_client_server(cluster, client_mode):
     runtime_env_dir = ray.worker._global_node.get_runtime_env_dir_path()
 
     return address, env, runtime_env_dir
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_travel():
-    import uuid
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        dir_paths = set()
-        file_paths = set()
-        item_num = 0
-        excludes = []
-        root = Path(tmp_dir) / "test"
-
-        def construct(path, excluded=False, depth=0):
-            nonlocal item_num
-            path.mkdir(parents=True)
-            if not excluded:
-                dir_paths.add(str(path))
-            if depth > 8:
-                return
-            if item_num > 500:
-                return
-            dir_num = random.randint(0, 10)
-            file_num = random.randint(0, 10)
-            for _ in range(dir_num):
-                uid = str(uuid.uuid4()).split("-")[0]
-                dir_path = path / uid
-                exclud_sub = random.randint(0, 5) == 0
-                if not excluded and exclud_sub:
-                    excludes.append(str(dir_path.relative_to(root)))
-                if not excluded:
-                    construct(dir_path, exclud_sub or excluded, depth + 1)
-                item_num += 1
-            if item_num > 1000:
-                return
-
-            for _ in range(file_num):
-                uid = str(uuid.uuid4()).split("-")[0]
-                with (path / uid).open("w") as f:
-                    v = random.randint(0, 1000)
-                    f.write(str(v))
-                    if not excluded:
-                        if random.randint(0, 5) == 0:
-                            excludes.append(
-                                str((path / uid).relative_to(root)))
-                        else:
-                            file_paths.add((str(path / uid), str(v)))
-                item_num += 1
-
-        construct(root)
-        exclude_spec = working_dir_pkg._get_excludes(root, excludes)
-        visited_dir_paths = set()
-        visited_file_paths = set()
-
-        def handler(path):
-            if path.is_dir():
-                visited_dir_paths.add(str(path))
-            else:
-                with open(path) as f:
-                    visited_file_paths.add((str(path), f.read()))
-
-        working_dir_pkg._dir_travel(root, [exclude_spec], handler)
-        assert file_paths == visited_file_paths
-        assert dir_paths == visited_dir_paths
 
 
 """
@@ -480,16 +416,9 @@ print(ray.get_runtime_context().runtime_env["working_dir"])
 def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
-        pkg_name = working_dir_pkg.get_project_package_name(
-            working_dir, [], [])
-        pkg_uri = working_dir_pkg.Protocol.PIN_GCS.value + "://" + pkg_name
-        working_dir_pkg.create_project_package(working_dir, [], [],
-                                               tmp_file.name)
-        working_dir_pkg.push_package(pkg_uri, tmp_file.name)
-        runtime_env = f"""{{ "uris": ["{pkg_uri}"] }}"""
-        # Execute the following cmd in driver with runtime_env
-        execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
+    runtime_env = f"""{{ "working_dir": ["{working_dir}"] }}"""
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
@@ -911,7 +840,7 @@ def test_large_file_boundary(shutdown_only):
         os.chdir(tmp_dir)
 
         # Check that packages just under the max size work as expected.
-        size = working_dir_pkg.GCS_STORAGE_MAX_SIZE - 1024 * 1024
+        size = GCS_STORAGE_MAX_SIZE - 1024 * 1024
         with open("test_file", "wb") as f:
             f.write(os.urandom(size))
 
@@ -936,7 +865,7 @@ def test_large_file_error(shutdown_only):
 
         # Write to two separate files, each of which is below the threshold to
         # make sure the error is for the full package size.
-        size = working_dir_pkg.GCS_STORAGE_MAX_SIZE // 2 + 1
+        size = GCS_STORAGE_MAX_SIZE // 2 + 1
         with open("test_file_1", "wb") as f:
             f.write(os.urandom(size))
 

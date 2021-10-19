@@ -1380,6 +1380,7 @@ def connect(node,
 
     worker.ray_debugger_external = ray_debugger_external
 
+    working_dir_uri = None
     if mode == SCRIPT_MODE:
         if job_config.runtime_env and "working_dir" in job_config.runtime_env:
             # XXX: comment!
@@ -1402,9 +1403,10 @@ def connect(node,
     # environment here. If it's ray client, the environment will be prepared
     # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
-        upload_package_if_needed(working_dir_uri,
-                                 worker.node.get_runtime_env_dir_path(),
-                                 working_dir, excludes)
+        if working_dir_uri is not None:
+            upload_package_if_needed(working_dir_uri,
+                                     worker.node.get_runtime_env_dir_path(),
+                                     working_dir, excludes)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

@@ -3,8 +3,9 @@ import os
 from typing import Optional
 
 from ray.experimental.internal_kv import _internal_kv_initialized
-from ray._private.runtime_env import RuntimeEnvContext
-from ray._private.packaging import download_and_unpack_package, delete_package
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.packaging import (download_and_unpack_package,
+                                                delete_package)
 
 default_logger = logging.getLogger(__name__)
 
