@@ -310,6 +310,10 @@ class ParsedRuntimeEnv(dict):
         if all(val is None for val in self.values()):
             self.clear()
 
+    def get_uris(self) -> List[str]:
+        # TODO(edoakes): this should be extended with other resource URIs.
+        return [self["working_dir"]] if "working_dir" in self else []
+
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
         return cls(json.loads(serialized), _validate=False)

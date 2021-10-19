@@ -1381,7 +1381,7 @@ def connect(node,
     worker.ray_debugger_external = ray_debugger_external
 
     working_dir_uri = None
-    if mode == SCRIPT_MODE:
+    if mode == SCRIPT_MODE and not job_config.client_job:
         if job_config.runtime_env and "working_dir" in job_config.runtime_env:
             # XXX: comment!
             working_dir = job_config.runtime_env["working_dir"]

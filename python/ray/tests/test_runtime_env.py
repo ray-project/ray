@@ -9,8 +9,7 @@ from pathlib import Path
 import ray
 from ray.exceptions import RuntimeEnvSetupError
 import ray.experimental.internal_kv as kv
-from ray._private.test_utils import (
-    run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
+from ray._private.test_utils import (run_string_as_driver, wait_for_condition)
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
@@ -152,7 +151,24 @@ def test_empty_working_dir(ray_start_cluster_head, client_mode):
     env["EXIT_AFTER_INIT"] = "1"
     with tempfile.TemporaryDirectory() as working_dir:
         runtime_env = f"""{{
-    "working_dir": r"{working_dir}",
+    "working_dir": r"{working_dir}"
+}}"""
+        # Execute the following cmd in driver with runtime_env
+        execute_statement = "sys.exit(0)"
+        script = driver_script.format(**locals())
+        out = run_string_as_driver(script, env)
+        assert not out.startswith("ERROR:")
+
+
+@pytest.mark.skip("py_modules not supported yet.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
+def test_empty_py_modules(ray_start_cluster_head, client_mode):
+    cluster = ray_start_cluster_head
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
+    env["EXIT_AFTER_INIT"] = "1"
+    with tempfile.TemporaryDirectory() as working_dir:
+        runtime_env = f"""{{
     "py_modules": [r"{working_dir}"]
 }}"""
         # Execute the following cmd in driver with runtime_env
@@ -176,19 +192,28 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env).strip().split()[-1]
     assert out == "TypeError"
 
-    runtime_env = "{ 'py_modules': [10] }"
-    # Execute the following cmd in driver with runtime_env
-    execute_statement = ""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out == "TypeError"
-
     runtime_env = f"{{ 'working_dir': os.path.join(r'{working_dir}', 'na') }}"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env).strip().split()[-1]
     assert out == "ValueError"
+
+
+@pytest.mark.skip("py_modules not supported yet.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
+def test_invalid_py_modules(ray_start_cluster_head, working_dir, client_mode):
+    cluster = ray_start_cluster_head
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
+    env["EXIT_AFTER_INIT"] = "1"
+
+    runtime_env = "{ 'py_modules': [10] }"
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = ""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env).strip().split()[-1]
+    assert out == "TypeError"
 
     runtime_env = f"{{ 'py_modules': [os.path.join(r'{working_dir}', 'na')] }}"
     # Execute the following cmd in driver with runtime_env
@@ -231,6 +256,7 @@ def test_two_node(two_node_cluster, working_dir, client_mode):
     assert len(kv._internal_kv_list("gcs://")) == 0
 
 
+@pytest.mark.skip("py_modules not supported yet.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node_module(two_node_cluster, working_dir, client_mode):
@@ -471,83 +497,6 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     time.sleep(5)
     assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_jobconfig_compatible_1(ray_start_cluster_head, working_dir):
-    # start job_config=None
-    # start job_config=something
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, True)
-    runtime_env = None
-    # To make the first one hanging there
-    execute_statement = """
-time.sleep(600)
-"""
-    script = driver_script.format(**locals())
-    # Have one running with job config = None
-    proc = run_string_as_driver_nonblocking(script, env)
-    # waiting it to be up
-    time.sleep(5)
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    # Execute the second one which should work because Ray Client servers.
-    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
-    proc.kill()
-    proc.wait()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_jobconfig_compatible_2(ray_start_cluster_head, working_dir):
-    # start job_config=something
-    # start job_config=None
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, True)
-    runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
-    # To make the first one hanging there
-    execute_statement = """
-time.sleep(600)
-"""
-    script = driver_script.format(**locals())
-    proc = run_string_as_driver_nonblocking(script, env)
-    time.sleep(5)
-    runtime_env = None
-    # Execute the following in the second one which should
-    # succeed
-    execute_statement = "print('OK')"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "OK", out
-    proc.kill()
-    proc.wait()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_jobconfig_compatible_3(ray_start_cluster_head, working_dir):
-    # start job_config=something
-    # start job_config=something else
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, True)
-    runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
-    # To make the first one hanging ther
-    execute_statement = """
-time.sleep(600)
-"""
-    script = driver_script.format(**locals())
-    proc = run_string_as_driver_nonblocking(script, env)
-    time.sleep(5)
-    runtime_env = f"""
-{{  "working_dir": test_module.__path__[0] }}"""  # noqa: F541
-    # Execute the following cmd in the second one and ensure that
-    # it is able to run.
-    execute_statement = "print('OK')"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    proc.kill()
-    proc.wait()
-    assert out.strip().split()[-1] == "OK"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
