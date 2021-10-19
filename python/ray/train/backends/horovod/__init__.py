@@ -1,16 +1,17 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional, Set
+from typing import Optional, Set, TypeVar
 
 import ray
 from ray.train.backends.backend import BackendConfig, Backend
 from ray.train.utils import update_env_vars
-from ray.train.worker_group import WorkerGroup
+from ray.train.worker_group import WorkerGroup, Worker
 
 try:
     from horovod.ray.runner import Coordinator
     from horovod.ray.utils import detect_nics, nics_to_env_var
+    from horovod.runner.common.util import secret, timeout
 except ImportError:
     Coordinator = None
     detect_nics = None
@@ -19,12 +20,13 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+T = TypeVar("T")
+
+
 @dataclass
 class HorovodConfig(BackendConfig):
     """Configurations for Horovod setup.
-
     See https://github.com/horovod/horovod/blob/master/horovod/runner/common/util/settings.py # noqa: E501
-
     Args:
         nics (Optional[Set[str]): Network interfaces that can be used for
             communication.
@@ -32,12 +34,35 @@ class HorovodConfig(BackendConfig):
     """
     nics: Optional[Set[str]] = None
     verbose: int = 1
+    key: Optional[str] = None
+    ssh_port: Optional[int] = None
+    ssh_identity_file: Optional[str] = None
+    ssh_str: Optional[str] = None
+    timeout_s: int = 300
+    placement_group_timeout_s: int = 100
+
+    @property
+    def start_timeout(self):
+        return timeout.Timeout(
+            self.timeout_s,
+            message="Timed out waiting for {activity}. Please "
+                    "check connectivity between servers. You "
+                    "may need to increase the --start-timeout "
+                    "parameter if you have too many servers.")
 
     def __post_init__(self):
         if Coordinator is None:
             raise ValueError(
                 "`horovod[ray]` is not installed. "
                 "Please install 'horovod[ray]' to use this backend.")
+
+        if self.ssh_str and not os.path.exists(self.ssh_identity_file):
+            with open(self.ssh_identity_file, "w") as f:
+                os.chmod(self.ssh_identity_file, 0o600)
+                f.write(self.ssh_str)
+
+        if self.key is None:
+            self.key = secret.make_secret_key()
 
     @property
     def backend_cls(self):
@@ -49,6 +74,22 @@ def init_env_vars(world_rank: int, world_size: int, node_id: str):
     os.environ["HOROVOD_HOSTNAME"] = node_id
     os.environ["HOROVOD_RANK"] = str(world_rank)
     os.environ["HOROVOD_SIZE"] = str(world_size)
+
+
+@dataclass
+class HorovodWorkerWrapper:
+    w: Worker
+
+    @property
+    def execute(self):
+        w = self.w
+
+        class ExecuteHandle:
+            def remote(self, func, *args, **kwargs):
+                _ = None
+                return w.actor._BaseWorkerMixin__execute.remote(func, _, *args, **kwargs)
+
+        return ExecuteHandle()
 
 
 class HorovodBackend(Backend):
@@ -90,11 +131,12 @@ class HorovodBackend(Backend):
         ray.get(setup_futures)
 
         coordinator_envs = self.coordinator.establish_rendezvous()
+        node_workers = [HorovodWorkerWrapper(w) for w in worker_group.workers]
 
         nics = detect_nics(
             backend_config,
             all_host_names=list(self.coordinator.hostnames),
-            node_workers=worker_group.workers)
+            node_workers=node_workers)
         coordinator_envs.update(nics_to_env_var(nics))
 
         worker_group.execute(update_env_vars, coordinator_envs)
