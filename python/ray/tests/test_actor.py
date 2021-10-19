@@ -913,6 +913,8 @@ def test_named_actor_cache(ray_start_regular_shared):
 
     get_after_restart = Counter.options(name="hi").remote()
     assert ray.get(get_after_restart.inc_and_get.remote()) == 1
+    get_by_name = ray.get_actor("hi")
+    assert ray.get(get_by_name.inc_and_get.remote()) == 2
 
 
 def test_wrapped_actor_handle(ray_start_regular_shared):
