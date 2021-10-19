@@ -491,6 +491,15 @@ def _load_config(local_dir: str, config_file: Optional[str]) -> Optional[Dict]:
     return yaml.safe_load(content)
 
 
+def _wrap_app_config_pip_installs(app_config: Dict[Any, Any]):
+    """Wrap pip package install in quotation marks"""
+    if app_config.get("python", {}).get("pip_packages"):
+        new_pip_packages = []
+        for pip_package in app_config["python"]["pip_packages"]:
+            new_pip_packages.append(f"\"{pip_package}\"")
+        app_config["python"]["pip_packages"] = new_pip_packages
+
+
 def has_errored(result: Dict[Any, Any]) -> bool:
     return result.get("status", "invalid") != "finished"
 
@@ -1154,6 +1163,7 @@ def run_test_config(
 
     app_config_rel_path = test_config["cluster"].get("app_config", None)
     app_config = _load_config(local_dir, app_config_rel_path)
+    _wrap_app_config_pip_installs(app_config)
 
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
