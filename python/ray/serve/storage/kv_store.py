@@ -186,7 +186,7 @@ class RayS3KVStore(KVStoreBase):
     ):
         self._namespace = namepsace
         self._bucket = bucket
-        self._prefix = prefix + "/" if prefix else ""
+        self._prefix = prefix
         if not boto3:
             raise ImportError(
                 "You tried to use S3KVstore client without boto3 installed."
@@ -199,7 +199,7 @@ class RayS3KVStore(KVStoreBase):
             aws_session_token=aws_session_token)
 
     def get_storage_key(self, key: str) -> str:
-        return f"{self._prefix}{self._namespace}-{key}"
+        return f"{self._prefix}/{self._namespace}-{key}"
 
     def put(self, key: str, val: bytes) -> bool:
         """Put the key-value pair into the store.

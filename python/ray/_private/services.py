@@ -51,8 +51,11 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
 # Location of the cpp default worker executables.
-DEFAULT_WORKER_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
+DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
+                                         "cpp/default_worker" + EXE_SUFFIX)
+
+# Location of the native libraries.
+DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
 
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
@@ -399,8 +402,8 @@ def node_ip_address_from_perspective(address):
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray.worker._global_node is not None:
         return ray.worker._global_node.node_ip_address
-    if sys.platform == "darwin":
-        # Due to the mac osx firewall,
+    if sys.platform == "darwin" or sys.platform == "win32":
+        # Due to the mac osx/windows firewall,
         # we use loopback ip as the ip address
         # to prevent security popups.
         return "127.0.0.1"
@@ -1181,7 +1184,10 @@ def start_dashboard(require_dashboard,
                 port_test_socket.bind((host, port))
                 port_test_socket.close()
             except socket.error as e:
-                if e.errno in {48, 98}:  # address already in use.
+                # 10013 on windows is a bit more broad than just
+                # "address in use": it can also indicate "permission denied".
+                # TODO: improve the error message?
+                if e.errno in {48, 98, 10013}:  # address already in use.
                     raise ValueError(
                         f"Failed to bind to {host}:{port} because it's "
                         "already occupied. You can use `ray start "
@@ -1361,7 +1367,8 @@ def start_raylet(redis_address,
                  start_initial_python_workers_for_first_job=False,
                  max_bytes=0,
                  backup_count=0,
-                 ray_debugger_external=False):
+                 ray_debugger_external=False,
+                 env_updates=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1407,6 +1414,8 @@ def start_raylet(redis_address,
             RotatingFileHandler's backupCount.
         ray_debugger_external (bool): True if the Ray debugger should be made
             available externally to this node.
+        env_updates (dict): Environment variable overrides.
+
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1515,7 +1524,7 @@ def start_raylet(redis_address,
         agent_command = [
             sys.executable,
             "-u",
-            os.path.join(RAY_PATH, "dashboard/agent.py"),
+            os.path.join(RAY_PATH, "dashboard", "agent.py"),
             f"--node-ip-address={node_ip_address}",
             f"--redis-address={redis_address}",
             f"--metrics-export-port={metrics_export_port}",
@@ -1551,6 +1560,7 @@ def start_raylet(redis_address,
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -1582,7 +1592,8 @@ def start_raylet(redis_address,
         use_perftools_profiler=("RAYLET_PERFTOOLS_PATH" in os.environ),
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+        env_updates=env_updates)
 
     return process_info
 

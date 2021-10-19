@@ -449,6 +449,15 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     assert out.strip().split("\n")[-1] == \
         "Test,FAILED,Test,FAILED,FAILED,Test,FAILED,FAILED"
+    # Test excluding all files using gitignore pattern matching syntax
+    runtime_env = f"""{{
+        "working_dir": r"{working_dir}",
+        "excludes": ["*"]
+    }}"""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().split("\n")[-1] == \
+        "FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

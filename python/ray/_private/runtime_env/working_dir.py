@@ -163,7 +163,6 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
 
     def match(p: Path):
         path_str = str(p.absolute().relative_to(path))
-        path_str += "/"
         return pathspec.match_file(path_str)
 
     return match
@@ -178,8 +177,6 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
 
         def match(p: Path):
             path_str = str(p.absolute().relative_to(path))
-            if p.is_dir():
-                path_str += "/"
             return pathspec.match_file(path_str)
 
         return match
@@ -242,7 +239,7 @@ def get_project_package_name(
         Package name as a string.
     """
     RAY_PKG_PREFIX = "_ray_pkg_"
-    hash_val = None
+    hash_val = b"0"
     if working_dir:
         if not isinstance(working_dir, str):
             raise TypeError("`working_dir` must be a string.")
@@ -273,8 +270,7 @@ def get_project_package_name(
         hash_val = _xor_bytes(
             hash_val,
             _hash_modules(module_dir, module_dir.parent, None, logger=logger))
-    return (RAY_PKG_PREFIX + hash_val.hex() + ".zip"
-            if hash_val else None, Protocol.GCS)
+    return RAY_PKG_PREFIX + hash_val.hex() + ".zip"
 
 
 def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
@@ -407,16 +403,16 @@ class WorkingDirManager:
                       pkg_uri: str,
                       logger: Optional[logging.Logger] = default_logger
                       ) -> int:
-        """Fetch a package from a given uri if not exists locally.
+        """Fetch a package from a given URI if it doesn't exist locally.
 
         This function is used to fetch a package from the given uri and unpack
         it into local working directory.
 
         Args:
-            pkg_uri (str): The uri of the package to download.
+            pkg_uri (str): The URI of the package to download.
 
         Returns:
-            The directory containing this package
+            The directory containing this package.
         """
         if logger is None:
             logger = default_logger
@@ -456,6 +452,7 @@ class WorkingDirManager:
         else:
             raise NotImplementedError(f"Protocol {protocol} is not supported")
 
+        os.mkdir(local_dir)
         logger.info(f"Unpacking {pkg_file} to {local_dir}")
         with ZipFile(str(pkg_file), "r") as zip_ref:
             zip_ref.extractall(local_dir)
@@ -587,6 +584,8 @@ class WorkingDirManager:
         working_dir = self.setup_local_working_dir(
             runtime_env["uris"], logger=logger)
         logger.info(f"Local working_dir after setting up: {working_dir}")
+        if working_dir is None:
+            return
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is

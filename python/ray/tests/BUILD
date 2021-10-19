@@ -91,6 +91,7 @@ py_test_module_list(
     "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
+    "test_threaded_actor.py",
     "test_ray_debugger.py",
   ],
   size = "medium",
@@ -101,6 +102,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
