@@ -33,68 +33,42 @@ using SubscriberID = UniqueID;
 
 namespace pub_internal {
 
-// Interface to type erase the templated SubscriptionIndex class.
-class SubscriptionIndexInterface {
- public:
-  virtual ~SubscriptionIndexInterface() = default;
-
-  /// Adds a new entry to the index.
-  /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
-  virtual bool AddEntry(const std::string &key_id_binary,
-                        const SubscriberID &subscriber_id) = 0;
-
-  /// Returns the set of subscriber ids that are subscribing to the given object ids.
-  virtual absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
-  GetSubscriberIdsByKeyId(const std::string &key_id_binary) const = 0;
-
-  /// Erases the subscriber from the index.
-  /// Returns whether the subscriber exists before the call.
-  virtual bool EraseSubscriber(const SubscriberID &subscriber_id) = 0;
-
-  /// Erases the object id and subscriber id from the index.
-  virtual bool EraseEntry(const std::string &key_id_binary,
-                          const SubscriberID &subscriber_id) = 0;
-
-  /// Returns true if the object id exists in the index.
-  virtual bool HasKeyId(const std::string &key_id_binary) const = 0;
-
-  /// Returns true if object id or subscriber id exists in the index.
-  virtual bool HasSubscriber(const SubscriberID &subscriber_id) const = 0;
-
-  /// Returns true if there's no metadata remained in the private attribute.
-  virtual bool CheckNoLeaks() const = 0;
-};
-
-/// Index for object ids and node ids of subscribers, keyed by KeyIdType.
-template <typename KeyIdType>
-class SubscriptionIndex : public SubscriptionIndexInterface {
+/// Index for subscribers, keyed by IDs.
+class SubscriptionIndex {
  public:
   SubscriptionIndex() = default;
   ~SubscriptionIndex() = default;
 
-  bool AddEntry(const std::string &key_id_binary,
-                const SubscriberID &subscriber_id) final;
+  /// Adds a new entry to the index.
+  /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
+  bool AddEntry(const std::string &key_id, const SubscriberID &subscriber_id);
 
+  /// Returns the set of subscriber ids that are subscribing to the given object ids.
   absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
-  GetSubscriberIdsByKeyId(const std::string &key_id_binary) const final;
+  GetSubscriberIdsByKeyId(const std::string &key_id) const;
 
-  bool EraseSubscriber(const SubscriberID &subscriber_id) final;
+  /// Erases the subscriber from the index.
+  /// Returns whether the subscriber exists before the call.
+  bool EraseSubscriber(const SubscriberID &subscriber_id);
 
-  bool EraseEntry(const std::string &key_id_binary,
-                  const SubscriberID &subscriber_id) final;
+  /// Erases the object id and subscriber id from the index.
+  bool EraseEntry(const std::string &key_id, const SubscriberID &subscriber_id);
 
-  bool HasKeyId(const std::string &key_id_binary) const final;
+  /// Returns true if the object id exists in the index.
+  bool HasKeyId(const std::string &key_id) const;
 
-  bool HasSubscriber(const SubscriberID &subscriber_id) const final;
+  /// Returns true if object id or subscriber id exists in the index.
+  bool HasSubscriber(const SubscriberID &subscriber_id) const;
 
-  bool CheckNoLeaks() const final;
+  /// Returns true if there's no metadata remained in the private attribute.
+  bool CheckNoLeaks() const;
 
  private:
   // Mapping from message id -> subscribers.
-  absl::flat_hash_map<KeyIdType, absl::flat_hash_set<SubscriberID>>
+  absl::flat_hash_map<std::string, absl::flat_hash_set<SubscriberID>>
       key_id_to_subscribers_;
   // Mapping from subscribers -> message ids. Reverse index of key_id_to_subscribers_.
-  absl::flat_hash_map<SubscriberID, absl::flat_hash_set<KeyIdType>>
+  absl::flat_hash_map<SubscriberID, absl::flat_hash_set<std::string>>
       subscribers_to_key_id_;
 };
 
@@ -190,12 +164,9 @@ class PublisherInterface {
 
   /// Publish the given object id to subscribers.
   ///
-  /// \param channel_type The type of the channel.
   /// \param pub_message The message to publish.
-  /// \param key_id_binary The message id to publish.
-  virtual void Publish(const rpc::ChannelType channel_type,
-                       const rpc::PubMessage &pub_message,
-                       const std::string &key_id_binary) = 0;
+  /// Required to contain channel_type and key_id fields.
+  virtual void Publish(const rpc::PubMessage &pub_message) = 0;
 
   /// Publish to the subscriber that the given key id is not available anymore.
   /// It will invoke the failure callback on the subscriber side.
@@ -230,8 +201,6 @@ class PublisherInterface {
 ///
 /// - Update pubsub.proto.
 /// - Add a new channel type -> index to subscription_index_map_.
-/// - If your SubscriptionIndex requires different id types, make sure to add template
-/// definition to the publisher.cc file.
 ///
 class Publisher : public PublisherInterface {
  public:
@@ -255,25 +224,7 @@ class Publisher : public PublisherInterface {
         publish_batch_size_(publish_batch_size) {
     // Insert index map for each channel.
     for (auto type : channels) {
-      switch (type) {
-      case rpc::ChannelType::WORKER_OBJECT_EVICTION:
-        subscription_index_map_.emplace(
-            rpc::ChannelType::WORKER_OBJECT_EVICTION,
-            std::make_unique<pub_internal::SubscriptionIndex<ObjectID>>());
-        break;
-      case rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL:
-        subscription_index_map_.emplace(
-            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-            std::make_unique<pub_internal::SubscriptionIndex<ObjectID>>());
-        break;
-      case rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL:
-        subscription_index_map_.emplace(
-            rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-            std::make_unique<pub_internal::SubscriptionIndex<ObjectID>>());
-        break;
-      default:
-        RAY_LOG(FATAL) << "Unknown channel type " << rpc::ChannelType_Name(type);
-      }
+      subscription_index_map_.emplace(type, pub_internal::SubscriptionIndex());
     }
 
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
@@ -303,11 +254,9 @@ class Publisher : public PublisherInterface {
 
   /// Publish the given object id to subscribers.
   ///
-  /// \param channel_type The type of the channel.
   /// \param pub_message The message to publish.
-  /// \param key_id_binary The message id to publish.
-  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
-               const std::string &key_id_binary) override;
+  /// Required to contain channel_type and key_id fields.
+  void Publish(const rpc::PubMessage &pub_message) override;
 
   /// Publish to the subscriber that the given key id is not available anymore.
   /// It will invoke the failure callback on the subscriber side.
@@ -401,8 +350,7 @@ class Publisher : public PublisherInterface {
       subscribers_ GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of messages <-> subscribers.
-  absl::flat_hash_map<rpc::ChannelType,
-                      std::unique_ptr<pub_internal::SubscriptionIndexInterface>>
+  absl::flat_hash_map<rpc::ChannelType, pub_internal::SubscriptionIndex>
       subscription_index_map_ GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.

@@ -65,7 +65,6 @@ void GcsServer::Start() {
 
   if (config_.grpc_pubsub_enabled) {
     // Init grpc based pubsub
-    // TODO(before merging): Make these constants configurable.
     grpc_pubsub_publisher_ = std::make_shared<pubsub::Publisher>(
         /*channels=*/std::vector<
             rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
