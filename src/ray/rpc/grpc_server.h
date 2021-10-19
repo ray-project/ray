@@ -89,7 +89,6 @@ class GrpcServer {
     }
   }
 
-
   /// Get the port of this gRPC server.
   int GetPort() const { return port_; }
 
