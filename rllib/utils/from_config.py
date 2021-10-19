@@ -5,6 +5,7 @@ import json
 import os
 import re
 import yaml
+import pickle
 
 from ray.rllib.utils import force_list, merge_dicts
 
@@ -186,6 +187,12 @@ def from_config(cls, config=None, **kwargs):
     if not constructor:
         raise TypeError(
             "Invalid type '{}'. Cannot create `from_config`.".format(type_))
+
+    # check if the constructor is binary
+    if isinstance(constructor, bytes):
+        # Convert the returned value from type_registry to the proper object
+        # format.
+        constructor = pickle.loads(constructor)
 
     # Create object with inferred constructor.
     try:

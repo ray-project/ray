@@ -9,6 +9,8 @@ from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.typing import LocalOptimizer, TrainerConfigDict
 
+from ray.tune.registry import RLLIB_EXPLORATION, _global_registry
+
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
     from ray.rllib.utils import try_import_tf
@@ -25,6 +27,9 @@ class Exploration:
     the agent and computes an action to apply to the environment using an
     implemented exploration schema.
     """
+
+    __type_registry__: Dict[
+        str, "Exploration"] = _global_registry.get_category(RLLIB_EXPLORATION)
 
     def __init__(self, action_space: Space, *, framework: str,
                  policy_config: TrainerConfigDict, model: ModelV2,
@@ -209,3 +214,23 @@ class Exploration:
     @Deprecated(new="get_state", error=False)
     def get_info(self, sess: Optional["tf.Session"] = None):
         return self.get_state(sess)
+
+    @staticmethod
+    @DeveloperAPI
+    def register_custom_exploration(exploration_name: str,
+                                    exploration_class: "Exploration") -> None:
+        """Register custom exploration algorithm. 
+
+        Args:
+            exploration_name (str): The identifier of the exploration
+                algorithm.
+            exploration_class (Exploration): Class inheritied from this
+                Exploration API.
+        """
+        # adds exploration to gloabl registry
+        _global_registry.register(RLLIB_EXPLORATION, exploration_name,
+                                  exploration_class)
+        # adds exploration again for the parent process to find it.
+        Exploration.__type_registry__.update({
+            exploration_name: exploration_class
+        })

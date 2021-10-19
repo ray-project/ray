@@ -180,6 +180,34 @@ class TestExplorations(unittest.TestCase):
             expected_mean_action=0.0)
 
 
+class TestCustomExplorations(unittest.TestCase):
+    """
+    Tests all Exploration components and the deterministic flag for
+    compute_action calls.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=4)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def test_custom_exploration(self):
+        from ray.rllib.utils.exploration import Exploration, Random
+        Exploration.register_custom_exploration("RandomNew", Random)
+        config = ppo.DEFAULT_CONFIG.copy()
+        config["exploration_config"]["type"] = "RandomNew"
+        do_test_explorations(
+            ppo.PPOTrainer,
+            "Pendulum-v0",
+            config,
+            np.array([0.0, 0.1, 0.0]),
+            prev_a=np.array([0.0]),
+            expected_mean_action=0.0)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

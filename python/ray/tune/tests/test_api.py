@@ -16,7 +16,8 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper, run)
-from ray.tune import register_env, register_trainable, run_experiments
+from ray.tune import (register_env, register_trainable, register_exploration,
+                      run_experiments)
 from ray.tune.callback import Callback
 from ray.tune.durable_trainable import durable
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
@@ -233,6 +234,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("foo", train)
         register_trainable("foo", tune.durable("foo"))
         register_trainable("foo", tune.durable("foo"))
+
+    def testRegisterExploration(self):
+        class A:
+            pass
+
+        class B(ray.rllib.utils.exploration.Exploration):
+            pass
+
+        register_exploration("B", B)
+        self.assertRaises(TypeError, lambda: register_exploration("A", A))
 
     def testTrainableCallable(self):
         def dummy_fn(config, reporter, steps):

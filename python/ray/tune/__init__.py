@@ -4,7 +4,8 @@ from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Experiment
 from ray.tune.analysis import ExperimentAnalysis, Analysis
 from ray.tune.stopper import Stopper
-from ray.tune.registry import register_env, register_trainable
+from ray.tune.registry import (register_env, register_trainable,
+                               register_exploration)
 from ray.tune.trainable import Trainable
 from ray.tune.durable_trainable import DurableTrainable, durable
 from ray.tune.callback import Callback
@@ -33,5 +34,5 @@ __all__ = [
     "get_trial_name", "get_trial_id", "get_trial_resources",
     "make_checkpoint_dir", "save_checkpoint", "is_session_enabled",
     "checkpoint_dir", "SyncConfig", "create_searcher", "create_scheduler",
-    "PlacementGroupFactory"
+    "PlacementGroupFactory", "register_exploration"
 ]

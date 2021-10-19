@@ -7,7 +7,7 @@ from typing import Optional
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_initialized, \
-    _internal_kv_get, _internal_kv_put
+    _internal_kv_get, _internal_kv_put, _internal_kv_list
 from ray.tune.error import TuneError
 from typing import Callable
 
@@ -16,11 +16,12 @@ ENV_CREATOR = "env_creator"
 RLLIB_MODEL = "rllib_model"
 RLLIB_PREPROCESSOR = "rllib_preprocessor"
 RLLIB_ACTION_DIST = "rllib_action_dist"
+RLLIB_EXPLORATION = "rllib_exploration"
 RLLIB_INPUT = "rllib_input"
 TEST = "__test__"
 KNOWN_CATEGORIES = [
     TRAINABLE_CLASS, ENV_CREATOR, RLLIB_MODEL, RLLIB_PREPROCESSOR,
-    RLLIB_ACTION_DIST, RLLIB_INPUT, TEST
+    RLLIB_ACTION_DIST, RLLIB_INPUT, TEST, RLLIB_EXPLORATION
 ]
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,22 @@ def register_trainable(name, trainable, warn=True):
         raise TypeError("Second argument must be convertable to Trainable",
                         trainable)
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
+
+
+def register_exploration(name, exploration):
+    """Register a custom exploration algorithm.
+
+    Args:
+        name (str): Name of the exploration algorithm.
+        exploration (Exploration): Class inherited from the rllib
+            Exploration API.
+    """
+    from ray.rllib.utils.exploration.exploration import Exploration
+
+    if not issubclass(exploration, Exploration):
+        raise TypeError("Second argument must be convertable to Exploration",
+                        exploration)
+    _global_registry.register(RLLIB_EXPLORATION, name, exploration)
 
 
 def register_env(name, env_creator):
@@ -174,6 +191,20 @@ class _Registry:
             _internal_kv_put(
                 _make_key(self._prefix, category, key), value, overwrite=True)
         self._to_flush.clear()
+
+    def get_category(self, category):
+        category_infos = {}
+        if _internal_kv_initialized():
+            all_keys = _internal_kv_list(_make_key(self._prefix, category, ""))
+            for key in all_keys:
+                value = _internal_kv_get(key)
+                sub_key = key.decode("ascii").split("/")[-1]
+                category_infos[sub_key] = value
+        else:
+            for key, value in self._to_flush.items():
+                if key[0] == category:
+                    category_infos[key[1]] = value
+        return category_infos
 
 
 _global_registry = _Registry(prefix="global")
