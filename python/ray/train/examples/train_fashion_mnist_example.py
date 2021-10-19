@@ -120,7 +120,7 @@ def train_func(config: Dict):
     return loss_results
 
 
-def train_fashion_mnist(num_workers=1, use_gpu=False):
+def train_fashion_mnist(num_workers=2, use_gpu=False):
     trainer = Trainer(
         backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     trainer.start()
@@ -131,7 +131,7 @@ def train_fashion_mnist(num_workers=1, use_gpu=False):
             "batch_size": 64,
             "epochs": 4
         },
-        callbacks=[JsonLoggerCallback("./train_results")])
+        callbacks=[JsonLoggerCallback()])
     trainer.shutdown()
     print(f"Loss results: {result}")
 
@@ -147,15 +147,13 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=1,
+        default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
         default=False,
         help="Enables GPU training")
-    parser.add_argument(
-        "--tune", action="store_true", default=False, help="Tune training")
     parser.add_argument(
         "--smoke-test",
         action="store_true",

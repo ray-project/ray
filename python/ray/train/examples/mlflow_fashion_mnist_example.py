@@ -6,7 +6,7 @@ from ray.train import Trainer
 from ray.train.examples.train_fashion_mnist_example import train_func
 
 
-def main(num_workers=1, use_gpu=False):
+def main(num_workers=2, use_gpu=False):
     mlflow.set_experiment("train_torch_fashion_mnist")
 
     trainer = Trainer(
@@ -38,7 +38,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=1,
+        default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--use-gpu",
