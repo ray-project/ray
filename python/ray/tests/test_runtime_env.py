@@ -652,7 +652,7 @@ def test_container_option_serialize():
 def test_working_dir_override_failure(shutdown_only):
     ray.init()
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
 
         @ray.remote(runtime_env={"working_dir": "."})
         def f():
@@ -662,10 +662,10 @@ def test_working_dir_override_failure(shutdown_only):
     def g():
         pass
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         g.options(runtime_env={"working_dir": "."})
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
 
         @ray.remote(runtime_env={"working_dir": "."})
         class A:
@@ -675,7 +675,7 @@ def test_working_dir_override_failure(shutdown_only):
     class B:
         pass
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         B.options(runtime_env={"working_dir": "."})
 
 

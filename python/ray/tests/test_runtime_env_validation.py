@@ -47,47 +47,13 @@ def test_key_with_value_none():
 
 
 class TestValidateWorkingDir:
-    @pytest.mark.parametrize("absolute_path", [True, False])
-    def test_validate_working_dir_valid_path(self, test_directory,
-                                             absolute_path):
-        subdir, _, _, _ = test_directory
+    def test_validate_working_dir_bad_uri(self):
+        with pytest.raises(ValueError, match="must be a valid URI"):
+            parse_and_validate_working_dir("unknown://abc")
 
-        rel1 = "."
-        assert parse_and_validate_working_dir(
-            rel1, is_task_or_actor=False) == rel1
-
-        if absolute_path:
-            subdir = subdir.resolve()
-
-        rel2 = str(subdir)
-        assert parse_and_validate_working_dir(
-            rel2, is_task_or_actor=False) == rel2
-
-    def test_validate_working_dir_absolute_path(self, test_directory):
-        subdir, _, _, _ = test_directory
-
-        abspath = str(subdir.resolve())
-        assert parse_and_validate_working_dir(
-            abspath, is_task_or_actor=False) == abspath
-
-    def test_validate_working_dir_invalid_path(self):
-        with pytest.raises(ValueError):
-            parse_and_validate_working_dir("fake_path", is_task_or_actor=False)
-
-    def test_validate_working_dir_invalid_types(self):
+    def test_validate_working_dir_invalid_type(self):
         with pytest.raises(TypeError):
-            parse_and_validate_working_dir(
-                {
-                    "working_dir": 1
-                }, is_task_or_actor=False)
-
-    def test_validate_working_dir_reject_task_or_actor(self):
-        # Can't pass working_dir for tasks/actors.
-        with pytest.raises(NotImplementedError):
-            parse_and_validate_working_dir(
-                {
-                    "working_dir": "."
-                }, is_task_or_actor=True)
+            parse_and_validate_working_dir(1)
 
 
 class TestValidateExcludes:
@@ -288,36 +254,25 @@ class TestOverrideRuntimeEnvs:
             assert override_task_or_actor_runtime_env(
                 child, parent) == expected, f"TEST_INDEX:{idx}"
 
-    def test_uri_inherit(self):
+    def test_working_dir_inherit(self):
         child_env = {}
-        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+        parent_env = {"working_dir": "uri://abc"}
         result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"uris": ["a", "b"]}
+        assert result_env == {"working_dir": "uri://abc"}
 
         # The dicts passed in should not be mutated.
         assert child_env == {}
-        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
+        assert parent_env == {"working_dir": "uri://abc"}
 
-    def test_uri_override(self):
-        child_env = {"uris": ["c", "d"]}
-        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
+    def test_working_dir_override(self):
+        child_env = {"working_dir": "uri://abc"}
+        parent_env = {"working_dir": "uri://def"}
         result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env["uris"] == ["c", "d"]
-        assert result_env.get("working_dir") is None
+        assert result_env == {"working_dir": "uri://abc"}
 
         # The dicts passed in should not be mutated.
-        assert child_env == {"uris": ["c", "d"]}
-        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
-
-    def test_no_mutate(self):
-        child_env = {}
-        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"uris": ["a", "b"]}
-
-        # The dicts passed in should not be mutated.
-        assert child_env == {}
-        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
+        assert child_env == {"working_dir": "uri://abc"}
+        assert parent_env == {"working_dir": "uri://def"}
 
     def test_inherit_conda(self):
         child_env = {"uris": ["a"]}

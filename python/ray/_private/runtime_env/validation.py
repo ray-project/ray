@@ -33,7 +33,9 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
 
     if uri is None:
         raise ValueError(
-            f"working_dir must be a valid URI, got {working_dir}.")
+            f"working_dir must be a valid URI, got {working_dir}. Passing "
+            "directories to be dynamically uploaded is only supported at "
+            "the job level (i.e., passed to `ray.init`).")
 
     return working_dir
 
