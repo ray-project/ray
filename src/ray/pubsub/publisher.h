@@ -110,12 +110,12 @@ struct LongPollConnection {
 /// Abstraction to each subscriber.
 class Subscriber {
  public:
-  Subscriber(const std::function<double()> &get_time_ms, uint64_t connection_timeout_ms,
+  Subscriber(std::function<double()> get_time_ms, uint64_t connection_timeout_ms,
              const int publish_batch_size)
-      : get_time_ms_(get_time_ms),
+      : get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
-        last_connection_update_time_ms_(get_time_ms()) {}
+        last_connection_update_time_ms_(get_time_ms_()) {}
 
   ~Subscriber() = default;
 
@@ -247,10 +247,10 @@ class Publisher : public PublisherInterface {
   /// \param publish_batch_size The batch size of published messages.
   Publisher(const std::vector<rpc::ChannelType> &channels,
             PeriodicalRunner *const periodical_runner,
-            const std::function<double()> get_time_ms,
-            const uint64_t subscriber_timeout_ms, const int publish_batch_size)
+            std::function<double()> get_time_ms, const uint64_t subscriber_timeout_ms,
+            const int publish_batch_size)
       : periodical_runner_(periodical_runner),
-        get_time_ms_(get_time_ms),
+        get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
         publish_batch_size_(publish_batch_size) {
     // Insert index map for each channel.
