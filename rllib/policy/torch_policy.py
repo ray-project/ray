@@ -1159,14 +1159,13 @@ class ValueNetworkMixin:
                 # [0] = remove the batch dim.
                 return self.model.value_function()[0].item()
 
-        # When not using a critic, we do not require the value function's output.
+        # When not using a critic, we don't require a value function's output
         else:
 
             def value(*args, **kwargs):
                 return 0.0
 
         self._value = value
-
 
 
 @DeveloperAPI

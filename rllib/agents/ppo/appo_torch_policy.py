@@ -24,7 +24,8 @@ from ray.rllib.models.torch.torch_action_dist import \
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import LearningRateSchedule, ValueNetworkMixin
+from ray.rllib.policy.torch_policy import LearningRateSchedule, \
+    ValueNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance,\
     global_norm, sequence_mask
