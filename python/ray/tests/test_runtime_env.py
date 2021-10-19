@@ -16,6 +16,8 @@ from ray._private.runtime_env import working_dir as working_dir_pkg
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
+S3_PACKAGE_URI = "s3://runtime-env-test/remote_runtime_env.zip"
+
 driver_script = """
 import logging
 import os
@@ -106,7 +108,7 @@ def create_file(p):
 
 
 @pytest.fixture(scope="function")
-def working_dir():
+def local_working_dir():
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
         module_path = path / "test_module"
@@ -132,8 +134,36 @@ from test_module.test import one
 
         old_dir = os.getcwd()
         os.chdir(tmp_dir)
-        yield tmp_dir
+        runtime_env = f"""{{  "working_dir": "{tmp_dir}" }}"""
+        # local working_dir's one() return 1 for each call
+        yield (tmp_dir, runtime_env, "1000")
         os.chdir(old_dir)
+
+
+@pytest.fixture(scope="function")
+def s3_working_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+
+        runtime_env = f"""{{  "working_dir": "{S3_PACKAGE_URI}" }}"""
+        _, pkg_name = working_dir_pkg.parse_uri(S3_PACKAGE_URI)
+        runtime_env_dir = ray.worker._global_node.get_runtime_env_dir_path()
+        working_dir = Path(os.path.join(runtime_env_dir,
+                                        pkg_name)).with_suffix("")
+        # s3 working_dir's one() return 2 for each call
+        yield (working_dir, runtime_env, "2000")
+        os.chdir(old_dir)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        pytest.lazy_fixture("local_working_dir"),
+        pytest.lazy_fixture("s3_working_dir")
+    ])
+def working_dir(request):
+    return request.param
 
 
 def start_client_server(cluster, client_mode):
@@ -285,23 +315,14 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("use_local_working_dir", [False, True])
 @pytest.mark.parametrize("client_mode", [False, True])
-def test_single_node(ray_start_cluster_head, working_dir, client_mode,
-                     use_local_working_dir):
+def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
 
-    # Setup runtime env here
-    if use_local_working_dir:
-        runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    else:
-        remote_pkg_uri = "s3://runtime-env-test/remote_runtime_env.zip"
-        runtime_env = f"""{{  "working_dir": "{remote_pkg_uri}" }}"""
-        _, pkg_name = working_dir_pkg.parse_uri(remote_pkg_uri)
-        working_dir = Path(os.path.join(runtime_env_dir,
-                                        pkg_name)).with_suffix("")
-
+    # Unpack lazy fixture tuple to override "working_dir" to fill up
+    # execute_statement locals()
+    working_dir, runtime_env, expected = working_dir
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
@@ -309,16 +330,9 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode,
         # Execute driver script in brand new, empty directory
         os.chdir(tmp_dir)
         out = run_string_as_driver(script, env)
-        if use_local_working_dir:
-            assert out.strip().split()[-1] == "1000"
-            assert len(list(Path(runtime_env_dir).iterdir())) == 1
-        else:
-            assert out.strip().split()[-1] == "2000"
-            print(list(Path(working_dir).iterdir()))
-            assert len(list(Path(working_dir).iterdir())) == 1
-
+        assert out.strip().split()[-1] == expected
+        assert len(list(Path(working_dir).iterdir())) == 1
         assert len(kv._internal_kv_list("gcs://")) == 0
-
         # working_dir fixture will take care of going back to original test
         # folder
 

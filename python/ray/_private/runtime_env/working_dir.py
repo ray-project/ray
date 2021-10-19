@@ -553,6 +553,7 @@ class WorkingDirManager:
         Returns:
             True if the URI was successfully deleted, else False.
         """
+        logger.info(f">>>>>>>>>>> delete uri: {uri}")
         if logger is None:
             logger = default_logger
 
