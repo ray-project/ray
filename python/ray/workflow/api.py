@@ -13,8 +13,8 @@ from ray.workflow.step_function import WorkflowStepFunction
 from ray.workflow import virtual_actor_class
 from ray.workflow import storage as storage_base
 from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized,
-                                 Workflow, Event,
-                                 WorkflowRunningError, WorkflowNotFoundError)
+                                 Workflow, Event, WorkflowRunningError,
+                                 WorkflowNotFoundError)
 from ray.workflow import serialization
 from ray.workflow.event_listener import (EventListener, EventListenerType,
                                          TimerListener)
