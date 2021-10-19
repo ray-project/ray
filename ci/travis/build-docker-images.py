@@ -359,7 +359,7 @@ def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
             image=f"{full_image_name}:{old_tag}",
             repository=full_image_name,
             tag=new_tag)
-    if merge_build:
+    if not merge_build:
         print("This is a PR Build! On a merge build, we would normally push"
               f"to: {full_image_name}:{new_tag}")
     else:
