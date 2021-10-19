@@ -25,8 +25,7 @@ shift
 done
 
 echo "You must be logged into a user with push privileges to do this."
-# for REPO in "ray" "ray-ml" "autoscaler" "ray-deps" "base-deps"
-for REPO in "ray" "ray-ml" "autoscaler"
+for REPO in "ray" "ray-ml"
 do
     for PYVERSION in "py36" "py37" "py38" "py39"
     do
@@ -46,7 +45,7 @@ do
 done
 
 
-for REPO in "ray" "ray-ml" "autoscaler" "ray-deps" "base-deps"
+for REPO in "ray" "ray-ml" "ray-deps" "base-deps"
 do
     docker pull rayproject/"$REPO":"$IMAGE"
     docker tag rayproject/"$REPO":"$IMAGE" rayproject/"$REPO":"$DEST"

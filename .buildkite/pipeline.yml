@@ -81,7 +81,7 @@
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/travis/build-docker-images.py --py-versions PY36 --build-type BUILDKITE --build-base
+    - python ./ci/travis/build-docker-images.py --py-versions py36 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py37"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -89,7 +89,7 @@
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/travis/build-docker-images.py --py-versions PY37 --build-type BUILDKITE --build-base
+    - python ./ci/travis/build-docker-images.py --py-versions py37 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py38"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -97,7 +97,7 @@
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/travis/build-docker-images.py --py-versions PY38 --build-type BUILDKITE --build-base
+    - python ./ci/travis/build-docker-images.py --py-versions py38 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py39"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -105,7 +105,7 @@
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/travis/build-docker-images.py --py-versions PY39 --build-type BUILDKITE --build-base
+    - python ./ci/travis/build-docker-images.py --py-versions py39 --build-type BUILDKITE --build-base
 
 - label: ":book: Lint"
   commands:
