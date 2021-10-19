@@ -550,9 +550,10 @@ void WorkerPool::MarkPortAsFree(int port) {
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
   all_jobs_[job_id] = job_config;
-  if (job_config.runtime_env().runtime_env_eager_install() &&
-      job_config.has_runtime_env()) {
-    auto const &runtime_env = job_config.runtime_env().serialized_runtime_env();
+  if (job_config.serialized_runtime_env().runtime_env_eager_install() &&
+      job_config.has_serialized_runtime_env()) {
+    auto const &runtime_env =
+        job_config.serialized_runtime_env().serialized_runtime_env();
     RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
                   << ". The runtime environment was " << runtime_env << ".";
     CreateRuntimeEnv(
@@ -1067,12 +1068,12 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
         CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
+            task_spec.SerializedRuntimeEnvString(), task_spec.JobId(),
             [start_worker_process_fn, callback, &state, task_spec, dynamic_options](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (successful) {
                 start_worker_process_fn(task_spec, state, dynamic_options, true,
-                                        task_spec.SerializedRuntimeEnv(),
+                                        task_spec.SerializedRuntimeEnvString(),
                                         serialized_runtime_env_context, callback);
               } else {
                 callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
@@ -1125,12 +1126,12 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
         CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
+            task_spec.SerializedRuntimeEnvString(), task_spec.JobId(),
             [start_worker_process_fn, callback, &state, task_spec](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (successful) {
                 start_worker_process_fn(task_spec, state, {}, false,
-                                        task_spec.SerializedRuntimeEnv(),
+                                        task_spec.SerializedRuntimeEnvString(),
                                         serialized_runtime_env_context, callback);
               } else {
                 callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);

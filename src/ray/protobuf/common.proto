@@ -153,9 +153,85 @@ message RayException {
   string formatted_exception_string = 3;
 }
 
+/// The pip type runtime env.
+message PipRuntimeEnv {
+  /// A list of pip packages, such as ["redis >= 3.5.0", "numpy"].
+  repeated string config = 1;
+  /// The path to a pip requirements.txt file.
+  string config_file_path = 2;
+  /// The name of a local virtual env.
+  string virtual_env_name = 3;
+}
+
+/// The conda type runtime env.
+message CondaRuntimeEnv {
+  /// The conda YAML config.
+  string config = 1;
+  /// The path to a conda environment.yaml file.
+  string config_file_path = 2;
+  /// The name of a local conda env.
+  string conda_env_name = 3;
+}
+
+/// The container type runtime env.
+message ContainerRuntimeEnv {
+  /// The container image.
+  string image = 1;
+  /// The default worker path in the container.
+  string worker_path = 2;
+  /// A list of docker run options. Refer to https://docs.docker.com/engine/reference/run/.
+  repeated string run_options = 3;
+}
+
+/// The custom runtime env.
+message CustomRuntimeEnv {
+  /// The runtime env type which is defined in runtime env plugin.
+  string type = 1;
+  /// The custom attributes in the runtime env plugin.
+  map<string, string> attributes = 2;
+}
+
+/// The jars type runtime env.
+message JarsRuntimeEnv {
+  /// TODO(SongGuyang)
+}
+
+/// The maven type runtime env.
+message MavenRuntimeEnv {
+  /// TODO(SongGuyang)
+}
+
 /// The runtime environment describes all the runtime packages needed to
 /// run some task or actor.
 message RuntimeEnv {
+  /// Specifies the working directory of the worker.
+  string working_dir = 1;
+  /// A list of URIs that define the working_dir.
+  repeated string uris = 2;
+  /// Environment variables to set.
+  map<string, string> env_vars = 3;
+  /// One of typed runtime env of python
+  oneof python_runtime_env {
+    /// pip runtime env
+    PipRuntimeEnv pip_runtime_env = 4;
+    /// conda runtime env
+    CondaRuntimeEnv conda_runtime_env = 5;
+    /// container runtime env
+    ContainerRuntimeEnv py_container_runtime_env = 6;
+  }
+  /// One of typed runtime env of java
+  oneof java_runtime_env {
+    /// jars runtime env
+    JarsRuntimeEnv jars_runtime_env = 7;
+    /// maven runtime env
+    MavenRuntimeEnv maven_runtime_env = 8;
+    /// container runtime env
+    ContainerRuntimeEnv java_container_runtime_env = 9;
+  }
+}
+
+/// The serialized runtime env which is transfered between ray core processes.
+message SerializedRuntimeEnv {
   /// The serialized runtime env passed from the user.
   string serialized_runtime_env = 1;
   /// URIs used in this runtime env. These will be used for reference counting.
@@ -219,8 +295,8 @@ message TaskSpec {
   // Breakpoint if this task should drop into the debugger when it starts executing
   // and "" if the task should not drop into the debugger.
   bytes debugger_breakpoint = 22;
-  // Runtime environment for this task.
-  RuntimeEnv runtime_env = 23;
+  // Serialized Runtime environment for this task.
+  SerializedRuntimeEnv serialized_runtime_env = 23;
   // The concurrency group name in which this task will be performed.
   string concurrency_group_name = 24;
   // Whether application-level errors (exceptions) should be retried.

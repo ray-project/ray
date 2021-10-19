@@ -197,7 +197,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     // TODO(architkulkarni): Once workers are cached by runtime env, we should
     // only set runtime_env_ once and then RAY_CHECK that we
     // never see a new one.
-    runtime_env_ = task_spec.RuntimeEnv();
+    runtime_env_ = task_spec.SerializedRuntimeEnv();
   } else if (task_spec.IsActorCreationTask()) {
     if (!current_actor_id_.IsNil()) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
@@ -209,7 +209,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     is_detached_actor_ = task_spec.IsDetachedActor();
     current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
-    runtime_env_ = task_spec.RuntimeEnv();
+    runtime_env_ = task_spec.SerializedRuntimeEnv();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {

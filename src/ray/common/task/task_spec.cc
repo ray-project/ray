@@ -132,14 +132,16 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
-rpc::RuntimeEnv TaskSpecification::RuntimeEnv() const { return message_->runtime_env(); }
+rpc::SerializedRuntimeEnv TaskSpecification::SerializedRuntimeEnv() const {
+  return message_->serialized_runtime_env();
+}
 
-std::string TaskSpecification::SerializedRuntimeEnv() const {
-  return message_->runtime_env().serialized_runtime_env();
+std::string TaskSpecification::SerializedRuntimeEnvString() const {
+  return message_->serialized_runtime_env().serialized_runtime_env();
 }
 
 bool TaskSpecification::HasRuntimeEnv() const {
-  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
+  return !(SerializedRuntimeEnvString() == "{}" || SerializedRuntimeEnvString() == "");
 }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
@@ -147,7 +149,7 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {SerializedRuntimeEnv(), required_resource};
+  WorkerCacheKey env = {SerializedRuntimeEnvString(), required_resource};
   return env.IntHash();
 }
 

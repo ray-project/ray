@@ -1648,7 +1648,7 @@ void CoreWorker::BuildCommonTaskSpec(
       // If runtime env is not provided, use job config. Only for Java and C++ because it
       // has been set in Python by `prepare_runtime_env`.
       (serialized_runtime_env.empty() || serialized_runtime_env == "{}")
-          ? job_config_->runtime_env().serialized_runtime_env()
+          ? job_config_->serialized_runtime_env().serialized_runtime_env()
           : serialized_runtime_env,
       runtime_env_uris, concurrency_group_name);
   // Set task arguments.
