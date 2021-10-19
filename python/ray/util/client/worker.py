@@ -688,9 +688,11 @@ class Worker:
                     with tempfile.TemporaryDirectory() as tmp_dir:
                         # XXX: comment!
                         working_dir = job_config.runtime_env["working_dir"]
-                        excludes = job_config.runtime_env.get("excludes") or []
+                        excludes = job_config.runtime_env.get("excludes")
+                        if "excludes" in job_config.runtime_env:
+                            del job_config.runtime_env["excludes"]
                         working_dir_uri = get_uri_for_directory(
-                            working_dir, excludes)
+                            working_dir, excludes=excludes)
                         job_config.runtime_env["working_dir"] = working_dir_uri
                         job_config.set_runtime_env(job_config.runtime_env)
                         upload_package_if_needed(working_dir_uri, tmp_dir,

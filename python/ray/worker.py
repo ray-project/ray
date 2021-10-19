@@ -1385,8 +1385,11 @@ def connect(node,
         if job_config.runtime_env and "working_dir" in job_config.runtime_env:
             # XXX: comment!
             working_dir = job_config.runtime_env["working_dir"]
-            excludes = job_config.runtime_env.get("excludes") or []
-            working_dir_uri = get_uri_for_directory(working_dir, excludes)
+            excludes = job_config.runtime_env.get("excludes")
+            working_dir_uri = get_uri_for_directory(
+                working_dir, excludes=excludes)
+            if "excludes" in job_config.runtime_env:
+                del job_config.runtime_env["excludes"]
             job_config.runtime_env["working_dir"] = working_dir_uri
             # XXX: make this more sane!
             job_config.set_runtime_env(job_config.runtime_env)
