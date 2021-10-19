@@ -57,7 +57,7 @@ async def get_gcs_address_with_retry(redis_client) -> str:
 
 class GCSHealthCheckThread(threading.Thread):
     def __init__(self, gcs_address: str):
-        self.grpc_gcs_channel = grpc.insecure_channel(
+        self.grpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, options=GRPC_CHANNEL_OPTIONS)
         self.gcs_heartbeat_info_stub = (
             gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(

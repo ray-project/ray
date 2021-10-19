@@ -119,7 +119,7 @@ class ProxyManager():
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
 
-        self._runtime_env_channel = grpc.insecure_channel(
+        self._runtime_env_channel = ray._private.utils.init_grpc_channel(
             f"localhost:{runtime_env_agent_port}")
         self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
             self._runtime_env_channel)
