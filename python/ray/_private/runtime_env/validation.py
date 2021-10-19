@@ -325,11 +325,11 @@ class ParsedRuntimeEnv(dict):
                 f"will be ignored: {unknown_fields}. If you intended to use "
                 "them as plugins, they must be nested in the `plugins` field.")
 
-        # TODO(architkulkarni) This is to make it easy for the worker caching
-        # code in C++ to check if the env is empty without deserializing and
-        # parsing it.  We should use a less confusing approach here.
+        # NOTE(architkulkarni): This allows worker caching code in C++ to check
+        # if a runtime env is empty without deserializing it.  This is a catch-
+        # all; for validated inputs we won't set the key if the value is None.
         if all(val is None for val in self.values()):
-            self._dict = {}
+            self.clear()
 
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":

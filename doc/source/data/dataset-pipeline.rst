@@ -79,7 +79,8 @@ It's common in ML training to want to divide data ingest into epochs, or repetit
 .. code-block:: python
 
     pipe = ray.data.from_items([0, 1, 2, 3, 4]) \
-        .repeat(3).random_shuffle_each_window()
+        .repeat(3) \
+        .random_shuffle_each_window()
     for i, epoch in enumerate(pipe.iter_epochs()):
         print("Epoch {}", i)
         for row in epoch.iter_rows():
@@ -115,7 +116,9 @@ While most Dataset operations are per-row (e.g., map, filter), some operations a
 
     # Example of randomly shuffling each window of a pipeline.
     ray.data.from_items([0, 1, 2, 3, 4]) \
-        .repeat(2).random_shuffle_each_window().show_windows()
+        .repeat(2) \
+        .random_shuffle_each_window() \
+        .show_windows()
     # -> 
     # ----- Epoch 0 ------
     # === Window 0 ===
@@ -138,7 +141,9 @@ You can also apply arbitrary transformations to each window using ``DatasetPipel
 
     # Equivalent transformation using .foreach_window() 
     ray.data.from_items([0, 1, 2, 3, 4]) \
-        .repeat(2).foreach_window(lambda w: w.random_shuffle()).show_windows()
+        .repeat(2) \
+        .foreach_window(lambda w: w.random_shuffle()) \
+        .show_windows()
     # -> 
     # ----- Epoch 0 ------
     # === Window 0 ===
@@ -339,7 +344,7 @@ See :ref:`the SGD User Guide <sgd-dataset-pipeline>` for more details.
 Changing Pipeline Structure
 ---------------------------
 
-Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``. The latter may produce windows that span multiple copies of the same original data:
+Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``. The latter may produce windows that span multiple copies of the same original data if ``preserve_epoch=False`` is set:
 
 .. code-block:: python
 
@@ -368,12 +373,12 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # === Window 5 ===
     # 4
 
-    # Repeat followed by window. Note that epoch 1 contains some leftover
-    # data from the tail end of epoch 0, since re-windowing can merge windows
-    # across epochs.
+    # Repeat followed by window. Since preserve_epoch=True, at epoch boundaries
+    # windows may be smaller than the target size. If it was set to False, all
+    # windows except the last would be the target size.
     ray.data.from_items([0, 1, 2, 3, 4]) \
         .repeat(2) \
-        .rewindow(blocks_per_window=2) \
+        .rewindow(blocks_per_window=2, preserve_epoch=True) \
         .show_windows()
     # ->
     # ------ Epoch 0 ------
@@ -383,13 +388,14 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # === Window 1 ===
     # 2
     # 3
-    # ------ Epoch 1 ------
     # === Window 2 ===
     # 4
-    # 0
+    # ------ Epoch 1 ------
     # === Window 3 ===
+    # 0
     # 1
-    # 2
     # === Window 4 ===
+    # 2
     # 3
+    # === Window 5 ===
     # 4
