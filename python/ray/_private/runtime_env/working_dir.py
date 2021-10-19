@@ -152,7 +152,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     if protocol == Protocol.S3:
-        return (protocol, uri.path.lstrip("/"))
+        return (protocol, uri.path.split("/")[-1])
     else:
         return (protocol, uri.netloc)
 
@@ -215,7 +215,7 @@ def get_project_package_name(
     Right now, only the modules given will be included. The dependencies
     are not included automatically.
 
-    For remote s3 working_dir, the final pacakge name is simply the zip file
+    For remote s3 working_dir, the final package name is simply the zip file
     name, such as my_package.zip
 
     Examples:
@@ -227,7 +227,10 @@ def get_project_package_name(
 
     .. code-block:: python
         >>> get_project_package_name("s3://bucket/my_package.zip")
-        .... (my_pacakge.zip, "s3")
+        .... (my_package.zip, "s3")
+
+        >>> get_project_package_name("s3://bucket/folder/my_package.zip")
+        .... (my_package.zip, "s3")
 
  e.g., _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
     Args:
@@ -243,10 +246,10 @@ def get_project_package_name(
     if working_dir:
         if not isinstance(working_dir, str):
             raise TypeError("`working_dir` must be a string.")
-        # No need to compute new pacakge hash for given s3 path, just use
+        # No need to compute new package hash for given s3 path, just use
         # original zip file name.
-        if urlparse(working_dir).scheme in {"s3"}:
-            return (urlparse(working_dir).path.lstrip("/"), Protocol.S3)
+        if urlparse(working_dir).scheme in {Protocol.S3.value}:
+            return (urlparse(working_dir).path.split("/")[-1], Protocol.S3)
         else:
             # Work with local working dir.
             working_dir = Path(working_dir).absolute()
@@ -367,7 +370,7 @@ def push_package(pkg_uri: str, pkg_path: str) -> int:
     if protocol in {Protocol.GCS, Protocol.PIN_GCS}:
         return _store_package_in_gcs(pkg_uri, data)
     elif protocol == Protocol.S3:
-        raise RuntimeError("push_pacakge should not be called with s3 path.")
+        raise RuntimeError("push_package should not be called with s3 path.")
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -406,7 +409,7 @@ class WorkingDirManager:
                       ) -> int:
         """Fetch a package from a given uri if not exists locally.
 
-        This function is used to fetch a pacakge from the given uri and unpack
+        This function is used to fetch a package from the given uri and unpack
         it into local working directory.
 
         Args:
@@ -437,7 +440,7 @@ class WorkingDirManager:
             code = code or b""
             pkg_file.write_bytes(code)
         elif protocol == Protocol.S3:
-            # Download pacakge file from S3.
+            # Download package file from S3.
             try:
                 from smart_open import open
                 import boto3
