@@ -290,27 +290,27 @@ def build_or_pull_base_images(py_versions: List[str],
                               image_types: List[str],
                               rebuild_base_images: bool = True) -> bool:
     """Returns images to tag and build."""
-    if rebuild_base_images or _release_build():
+    repositories = ["rayproject/base-deps", "rayproject/ray-deps"]
+    tags = [
+        f"nightly-{py_version}-{image_type}"
+        for py_version, image_type in itertools.product(
+            py_versions, image_types)
+    ]
+
+    is_stale = check_staleness(repositories[0], tags[0])
+
+    # We still pull even if we have to rebuild the base images to help with
+    # caching.
+    for repository in repositories:
+        for tag in tags:
+            DOCKER_CLIENT.api.pull(repository=repository, tag=tag)
+
+    if rebuild_base_images or _release_build() or is_stale:
         build_base_images(py_versions, image_types)
         return True
     else:
-        repositories = ["rayproject/base-deps", "rayproject/ray-deps"]
-        tags = [
-            f"nightly-{py_version}-{image_type}"
-            for py_version, image_type in itertools.product(
-                py_versions, image_types)
-        ]
-
-        is_stale = check_staleness(repositories[0], tags[0])
-        if is_stale:
-            build_base_images(py_versions, image_types)
-            return True
-        else:
-            print("Just pulling images!")
-            for repository in repositories:
-                for tag in tags:
-                    DOCKER_CLIENT.api.pull(repository=repository, tag=tag)
-            return False
+        print("Just pulling images!")
+        return False
 
 
 def prep_ray_ml():
@@ -427,6 +427,9 @@ def push_and_tag_images(py_versions: List[str],
                 "nightly", date_tag if "-deps" in image_name else sha_tag)
             tag_mapping[old_tag].append(new_tag)
 
+        print("These tags will be created for the following images: ",
+              tag_mapping)
+
         # Tag and push all images.
         for old_tag in tag_mapping.keys():
             for new_tag in tag_mapping[old_tag]:
@@ -491,6 +494,13 @@ if __name__ == "__main__":
         help="Which python versions to build. "
         "Must be in (py36, py37, py38, py39)")
     parser.add_argument(
+        "--device-types",
+        choices=list(BASE_IMAGES.keys()),
+        default=None,
+        nargs="*",
+        help="Which device types (CPU/CUDA versions) to build images for. "
+        "If not specified, images will be built for all device types.")
+    parser.add_argument(
         "--build-type",
         choices=BUILD_TYPES,
         required=True,
@@ -514,14 +524,15 @@ if __name__ == "__main__":
     py_versions = py_versions if isinstance(py_versions,
                                             list) else [py_versions]
 
-    image_types = list(BASE_IMAGES.keys())
+    image_types = args.device_types if args.device_types else list(
+        BASE_IMAGES.keys())
 
     # Make sure the python images and cuda versions we build here are
     # consistent with the ones used with fix-latest-docker.sh script.
     py_version_file = os.path.join(_get_root_dir(), "docker",
                                    "python_versions.txt")
     with open(py_version_file) as f:
-        py_file_versions = f.readlines()
+        py_file_versions = f.read().splitlines()
         assert set(PY_MATRIX.keys()) == set(py_file_versions), \
             (PY_MATRIX.keys(), py_file_versions)
 
@@ -529,7 +540,7 @@ if __name__ == "__main__":
                                      "cuda_versions.txt")
 
     with open(cuda_version_file) as f:
-        cuda_file_versions = f.readlines()
+        cuda_file_versions = f.read().splitlines()
         assert set(BASE_IMAGES.keys()) == set(cuda_file_versions + ["cpu"]),\
             (BASE_IMAGES.keys(), cuda_file_versions + ["cpu"])
 
@@ -561,7 +572,8 @@ if __name__ == "__main__":
             username, password = _get_docker_creds()
             DOCKER_CLIENT.api.login(username=username, password=password)
         copy_wheels(build_type == HUMAN)
-        is_base_images_built = build_or_pull_base_images(args.base)
+        is_base_images_built = build_or_pull_base_images(
+            py_versions, image_types, args.base)
 
         if args.only_build_worker_container:
             build_for_all_versions("ray-worker-container", py_versions,
