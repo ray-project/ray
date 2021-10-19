@@ -79,7 +79,7 @@ public class ServeProtoUtilTest {
   @Test
   public void toBackendVersionProtobufTest() {
     String codeVersion = "toBackendVersionProtobufTest";
-    BackendVersion backendVersion = new BackendVersion().setCodeVersion(codeVersion);
+    BackendVersion backendVersion = new BackendVersion(codeVersion);
     io.ray.serve.generated.BackendVersion pbBackendVersion =
         ServeProtoUtil.toProtobuf(backendVersion);
 

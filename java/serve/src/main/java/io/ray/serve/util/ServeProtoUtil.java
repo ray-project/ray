@@ -158,9 +158,8 @@ public class ServeProtoUtil {
   }
 
   public static BackendVersion parseBackendVersion(byte[] backendVersionBytes) {
-    BackendVersion backendVersion = new BackendVersion();
     if (backendVersionBytes == null) {
-      return backendVersion;
+      return new BackendVersion();
     }
 
     io.ray.serve.generated.BackendVersion pbBackendVersion = null;
@@ -169,22 +168,17 @@ public class ServeProtoUtil {
     } catch (InvalidProtocolBufferException e) {
       throw new RayServeException("Failed to parse BackendVersion from protobuf bytes.", e);
     }
-
     if (pbBackendVersion == null) {
-      return backendVersion;
+      return new BackendVersion();
     }
-
-    if (StringUtils.isNotBlank(pbBackendVersion.getCodeVersion())) {
-      backendVersion.setCodeVersion(pbBackendVersion.getCodeVersion());
-    }
-    if (pbBackendVersion.getUserConfig() != null && pbBackendVersion.getUserConfig().size() != 0) {
-      backendVersion.setUserConfig(
-          new Object[] {
-            MessagePackSerializer.decode(
-                pbBackendVersion.getUserConfig().toByteArray(), Object.class)
-          });
-    }
-    return backendVersion;
+    return new BackendVersion(
+        pbBackendVersion.getCodeVersion(),
+        pbBackendVersion.getUserConfig() != null && pbBackendVersion.getUserConfig().size() != 0
+            ? new Object[] {
+              MessagePackSerializer.decode(
+                  pbBackendVersion.getUserConfig().toByteArray(), Object.class)
+            }
+            : null);
   }
 
   public static io.ray.serve.generated.BackendVersion toProtobuf(BackendVersion backendVersion) {

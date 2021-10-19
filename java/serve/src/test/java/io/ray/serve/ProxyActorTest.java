@@ -54,7 +54,7 @@ public class ProxyActorTest {
               .setName(deploymentName)
               .setBackendConfig(
                   new BackendConfig().setBackendLanguage(BackendLanguage.JAVA.getNumber()))
-              .setBackendVersion(new BackendVersion().setCodeVersion(version))
+              .setBackendVersion(new BackendVersion(version))
               .setBackendDef(DummyBackendReplica.class.getName());
 
       ActorHandle<RayServeWrappedReplica> replica =

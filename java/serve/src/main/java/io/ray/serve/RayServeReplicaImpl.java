@@ -304,9 +304,9 @@ public class RayServeReplicaImpl implements RayServeReplica {
    */
   @Override
   public BackendVersion reconfigure(Object userConfig) {
-    BackendVersion backendVersion = new BackendVersion().setCodeVersion(version.getCodeVersion());
+    BackendVersion backendVersion = new BackendVersion(version.getCodeVersion(), userConfig);
+    version = backendVersion;
     if (userConfig == null) {
-      version = backendVersion;
       return backendVersion;
     }
 
@@ -315,9 +315,6 @@ public class RayServeReplicaImpl implements RayServeReplica {
         replicaTag,
         backendTag,
         userConfig);
-    backendVersion.setUserConfig(userConfig);
-    version = backendVersion;
-
     try {
       ReflectUtil.getMethod(callable.getClass(), Constants.RECONFIGURE_METHOD, userConfig)
           .invoke(callable, userConfig);
