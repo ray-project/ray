@@ -111,7 +111,9 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Status SetClientOptions(const std::string &client_name, int64_t output_memory_quota);
 
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                const ray::rpc::Address &owner_address, int64_t data_size,
+                                const ray::rpc::Address &owner_address,
+                                const ray::Priority &priority,
+                                int64_t data_size,
                                 const uint8_t *metadata, int64_t metadata_size,
                                 std::shared_ptr<Buffer> *data, fb::ObjectSource source,
                                 int device_num = 0);
@@ -334,7 +336,8 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
 }
 
 Status PlasmaClient::Impl::CreateAndSpillIfNeeded(
-    const ObjectID &object_id, const ray::rpc::Address &owner_address, int64_t data_size,
+    const ObjectID &object_id, const ray::rpc::Address &owner_address,
+    const ray::Priority &priority, int64_t data_size,
     const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
     fb::ObjectSource source, int device_num) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
@@ -342,7 +345,7 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
                  << data_size << " and metadata size " << metadata_size;
-  RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
+  RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, priority, data_size,
                                       metadata_size, source, device_num,
                                       /*try_immediately=*/false));
   Status status = HandleCreateReply(object_id, metadata, &retry_with_request_id, data);
@@ -379,7 +382,7 @@ Status PlasmaClient::Impl::TryCreateImmediately(
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
                  << data_size << " and metadata size " << metadata_size;
-  RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
+  RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, ray::Priority(), data_size,
                                       metadata_size, source, device_num,
                                       /*try_immediately=*/true));
   return HandleCreateReply(object_id, metadata, nullptr, data);
@@ -726,11 +729,12 @@ Status PlasmaClient::Connect(const std::string &store_socket_name,
 
 Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             const ray::rpc::Address &owner_address,
+                                            const ray::Priority &priority,
                                             int64_t data_size, const uint8_t *metadata,
                                             int64_t metadata_size,
                                             std::shared_ptr<Buffer> *data,
                                             fb::ObjectSource source, int device_num) {
-  return impl_->CreateAndSpillIfNeeded(object_id, owner_address, data_size, metadata,
+  return impl_->CreateAndSpillIfNeeded(object_id, owner_address, priority, data_size, metadata,
                                        metadata_size, data, source, device_num);
 }
 

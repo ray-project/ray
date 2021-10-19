@@ -85,7 +85,7 @@ ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
     // Release the buffer pool lock during the blocking create call.
     lock.unlock();
     Status s = store_client_.CreateAndSpillIfNeeded(
-        object_id, owner_address, object_size, nullptr, metadata_size, &data,
+        object_id, owner_address, Priority(), object_size, nullptr, metadata_size, &data,
         plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
     lock.lock();
 

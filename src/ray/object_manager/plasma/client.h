@@ -24,6 +24,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task_priority.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -92,7 +93,9 @@ class PlasmaClient {
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                const ray::rpc::Address &owner_address, int64_t data_size,
+                                const ray::rpc::Address &owner_address,
+                                const ray::Priority &priority,
+                                int64_t data_size,
                                 const uint8_t *metadata, int64_t metadata_size,
                                 std::shared_ptr<Buffer> *data,
                                 plasma::flatbuf::ObjectSource source, int device_num = 0);

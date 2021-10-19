@@ -117,7 +117,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, const rpc::Address &owner_address,
+                const ObjectID &object_id, const rpc::Address &owner_address, const Priority &priority,
                 std::shared_ptr<Buffer> *data, bool created_by_worker);
 
   /// Seal an object buffer created with Create().

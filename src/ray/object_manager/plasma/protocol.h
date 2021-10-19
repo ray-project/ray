@@ -24,6 +24,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task_priority.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/plasma.h"
@@ -80,7 +81,9 @@ Status SendCreateRetryRequest(const std::shared_ptr<StoreConn> &store_conn,
                               ObjectID object_id, uint64_t request_id);
 
 Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
-                         const ray::rpc::Address &owner_address, int64_t data_size,
+                         const ray::rpc::Address &owner_address,
+                         const ray::Priority &priority,
+                         int64_t data_size,
                          int64_t metadata_size, flatbuf::ObjectSource source,
                          int device_num, bool try_immediately);
 

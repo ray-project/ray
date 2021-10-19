@@ -351,6 +351,13 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const auto &request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
     const size_t object_size = request->data_size() + request->metadata_size();
 
+    ray::Priority priority;
+    priority.score.clear();
+    for (size_t i = 0; i < request->priority()->size(); i++) {
+      priority.score.push_back(request->priority()->Get(i));
+    }
+    ray::TaskKey key(priority, ObjectID::FromRandom().TaskId());
+
     // absl failed analyze mutex safety for lambda
     auto handle_create = [this, client, message](
                              bool fallback_allocator, PlasmaObject *result,

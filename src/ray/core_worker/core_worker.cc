@@ -1209,7 +1209,9 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
   } else {
     if (status.ok()) {
       status = plasma_store_provider_->Create(metadata, data_size, *object_id,
-                                              /* owner_address = */ rpc_address_, data,
+                                              /* owner_address = */ rpc_address_,
+                                              Priority(),
+                                              data,
                                               created_by_worker);
     }
     if (!status.ok() || !data) {
@@ -1234,8 +1236,13 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
         "Creating an object with a pre-existing ObjectID is not supported in local "
         "mode");
   } else {
+    Priority priority;
+    {
+      absl::MutexLock lock(&mutex_);
+      priority = current_task_.GetPriority();
+    }
     return plasma_store_provider_->Create(metadata, data_size, object_id, owner_address,
-                                          data, created_by_worker);
+                                          priority, data, created_by_worker);
   }
 }
 
