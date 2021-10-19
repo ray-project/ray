@@ -13,12 +13,14 @@ from ray.workflow.step_function import WorkflowStepFunction
 from ray.workflow import virtual_actor_class
 from ray.workflow import storage as storage_base
 from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized,
-                                 Workflow, Event)
+                                 Workflow, Event,
+                                 WorkflowRunningError, WorkflowNotFoundError)
 from ray.workflow import serialization
 from ray.workflow.event_listener import (EventListener, EventListenerType,
                                          TimerListener)
 from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
+from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -104,6 +106,9 @@ def step(*args, **kwargs):
     name = kwargs.pop("name", None)
     if name is not None:
         step_options["name"] = name
+    metadata = kwargs.pop("metadata", None)
+    if metadata is not None:
+        step_options["metadata"] = metadata
     if len(kwargs) != 0:
         step_options["ray_options"] = kwargs
     return make_step_decorator(step_options)
@@ -363,7 +368,8 @@ def sleep(duration: float) -> Workflow[Event]:
 
 @PublicAPI(stability="beta")
 def cancel(workflow_id: str) -> None:
-    """Cancel a workflow.
+    """Cancel a workflow. Workflow checkpoints will still be saved in storage. To
+       clean up saved checkpoints, see `workflow.delete()`.
 
     Args:
         workflow_id: The workflow to cancel.
@@ -376,11 +382,46 @@ def cancel(workflow_id: str) -> None:
 
     Returns:
         None
+
     """
     ensure_ray_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.cancel(workflow_id)
+
+
+@PublicAPI(stability="beta")
+def delete(workflow_id: str) -> None:
+    """Delete a workflow, its checkpoints, and other information it may have
+       persisted to storage. To stop a running workflow, see
+       `workflow.cancel()`.
+
+        NOTE: The caller should ensure that the workflow is not currently
+        running before deleting it.
+
+    Args:
+        workflow_id: The workflow to delete.
+
+    Examples:
+        >>> workflow_step = some_job.step()
+        >>> output = workflow_step.run_async(workflow_id="some_job")
+        >>> workflow.delete(workflow_id="some_job")
+        >>> assert [] == workflow.list_all()
+
+    Returns:
+        None
+
+    """
+
+    try:
+        status = get_status(workflow_id)
+        if status == WorkflowStatus.RUNNING:
+            raise WorkflowRunningError("DELETE", workflow_id)
+    except ValueError:
+        raise WorkflowNotFoundError(workflow_id)
+
+    wf_storage = get_workflow_storage(workflow_id)
+    wf_storage.delete_workflow()
 
 
 __all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor",

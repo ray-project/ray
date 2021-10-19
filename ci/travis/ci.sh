@@ -504,7 +504,8 @@ _lint() {
     pushd "${WORKSPACE_DIR}"
       "${ROOT_DIR}"/install-llvm-binaries.sh
     popd
-    "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+    # Disable clang-tidy until ergonomic issues are resolved.
+    # "${ROOT_DIR}"/check-git-clang-tidy-output.sh
   else
     { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
   fi

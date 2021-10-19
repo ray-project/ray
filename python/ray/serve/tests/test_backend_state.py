@@ -1,3 +1,5 @@
+import os
+import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import patch, Mock
@@ -25,101 +27,6 @@ from ray.serve.backend_state import (
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.storage.kv_store import RayLocalKVStore
 from ray.serve.utils import get_random_letters
-
-
-class TestUserConfigHash:
-    def test_validation(self):
-        # Code version must be a string.
-        with pytest.raises(TypeError):
-            BackendVersion(123, None)
-
-        # Can't pass unhashable type as user config.
-        with pytest.raises(TypeError):
-            BackendVersion(123, set())
-
-        # Can't pass nested unhashable type as user config.
-        with pytest.raises(TypeError):
-            BackendVersion(123, {"set": set()})
-
-    def test_code_version(self):
-        v1 = BackendVersion("1", None)
-        v2 = BackendVersion("1", None)
-        v3 = BackendVersion("2", None)
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_basic(self):
-        v1 = BackendVersion("1", "1")
-        v2 = BackendVersion("1", "1")
-        v3 = BackendVersion("1", "2")
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_hashable(self):
-        v1 = BackendVersion("1", ("1", "2"))
-        v2 = BackendVersion("1", ("1", "2"))
-        v3 = BackendVersion("1", ("1", "3"))
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_list(self):
-        v1 = BackendVersion("1", ["1", "2"])
-        v2 = BackendVersion("1", ["1", "2"])
-        v3 = BackendVersion("1", ["1", "3"])
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_dict_keys(self):
-        v1 = BackendVersion("1", {"1": "1"})
-        v2 = BackendVersion("1", {"1": "1"})
-        v3 = BackendVersion("1", {"2": "1"})
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_dict_vals(self):
-        v1 = BackendVersion("1", {"1": "1"})
-        v2 = BackendVersion("1", {"1": "1"})
-        v3 = BackendVersion("1", {"1": "2"})
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_nested(self):
-        v1 = BackendVersion("1", [{"1": "2"}, {"1": "2"}])
-        v2 = BackendVersion("1", [{"1": "2"}, {"1": "2"}])
-        v3 = BackendVersion("1", [{"1": "2"}, {"1": "3"}])
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_nested_in_hashable(self):
-        v1 = BackendVersion("1", ([{"1": "2"}, {"1": "2"}], ))
-        v2 = BackendVersion("1", ([{"1": "2"}, {"1": "2"}], ))
-        v3 = BackendVersion("1", ([{"1": "2"}, {"1": "3"}], ))
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
 
 
 class MockReplicaActorWrapper:
@@ -162,6 +69,10 @@ class MockReplicaActorWrapper:
     def actor_handle(self) -> ActorHandle:
         return None
 
+    @property
+    def max_concurrent_queries(self) -> int:
+        return 100
+
     def set_ready(self):
         self.ready = ReplicaStartupStatus.SUCCEEDED
 
@@ -175,12 +86,13 @@ class MockReplicaActorWrapper:
         self.healthy = False
 
     def set_starting_version(self, version: BackendVersion):
-        """Mocked replica returns the version from reconfigure()."""
+        """Mocked backend_worker return version from reconfigure()"""
         self.starting_version = version
 
     def start(self, backend_info: BackendInfo, version: BackendVersion):
         self.started = True
         self.version = version
+        self.backend_info = backend_info
 
     def update_user_config(self, user_config: Any):
         self.started = True
@@ -218,6 +130,7 @@ class MockReplicaActorWrapper:
     def graceful_stop(self) -> None:
         assert self.started
         self.stopped = True
+        return self.backend_info.backend_config.graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:
         return self.done_stopping
@@ -526,9 +439,6 @@ def test_create_delete_single_replica(mock_backend_state):
     # Now the replica should be marked running.
     backend_state.update()
     check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
-
-    # TODO(edoakes): can we remove this extra update period for completing it?
-    backend_state.update()
     assert goal_manager.check_complete(create_goal)
 
     # Removing the replica should transition it to stopping.
@@ -542,12 +452,9 @@ def test_create_delete_single_replica(mock_backend_state):
     # Once it's done stopping, replica should be removed.
     replica = backend_state._replicas.get()[0]
     replica._actor.set_done_stopping()
-    backend_state.update()
-    check_counts(backend_state, total=0)
-
-    # TODO(edoakes): can we remove this extra update period for completing it?
     deleted = backend_state.update()
     assert deleted
+    check_counts(backend_state, total=0)
     assert goal_manager.check_complete(delete_goal)
     assert replica._actor.cleaned_up
 
@@ -557,7 +464,7 @@ def test_force_kill(mock_backend_state):
 
     grace_period_s = 10
     b_info_1, b_version_1 = backend_info(
-        experimental_graceful_shutdown_timeout_s=grace_period_s)
+        graceful_shutdown_timeout_s=grace_period_s)
 
     # Create and delete the backend.
     backend_state.deploy(b_info_1)
@@ -571,8 +478,8 @@ def test_force_kill(mock_backend_state):
     check_counts(backend_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert backend_state._replicas.get()[0]._actor.stopped
 
-    backend_state.update()
-    backend_state.update()
+    for _ in range(10):
+        backend_state.update()
 
     # force_stop shouldn't be called until after the timer.
     assert not backend_state._replicas.get()[0]._actor.force_stopped_counter
@@ -597,12 +504,9 @@ def test_force_kill(mock_backend_state):
     # Once the replica is done stopping, it should be removed.
     replica = backend_state._replicas.get()[0]
     replica._actor.set_done_stopping()
-    backend_state.update()
-    check_counts(backend_state, total=0)
-
-    # TODO(edoakes): can we remove this extra update period for completing it?
     deleted = backend_state.update()
     assert deleted
+    check_counts(backend_state, total=0)
     assert goal_manager.check_complete(delete_goal)
     assert replica._actor.cleaned_up
 
@@ -644,8 +548,6 @@ def test_redeploy_same_version(mock_backend_state):
         version=b_version_1,
         total=1,
         by_state=[(ReplicaState.RUNNING, 1)])
-
-    backend_state.update()
     assert goal_manager.check_complete(goal_1)
 
     # Test redeploying after the initial deployment has finished.
@@ -727,12 +629,10 @@ def test_redeploy_no_version(mock_backend_state):
         states=[ReplicaState.STARTING])[0]._actor.set_ready()
     check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
 
-    backend_state.update()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
-
     deleted = backend_state.update()
-    assert goal_manager.check_complete(goal_3)
     assert not deleted
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+    assert goal_manager.check_complete(goal_3)
 
 
 def test_redeploy_new_version(mock_backend_state):
@@ -826,16 +726,14 @@ def test_redeploy_new_version(mock_backend_state):
         total=1,
         by_state=[(ReplicaState.STARTING, 1)])
 
-    backend_state.update()
+    deleted = backend_state.update()
+    assert not deleted
     check_counts(
         backend_state,
         version=b_version_3,
         total=1,
         by_state=[(ReplicaState.RUNNING, 1)])
-
-    deleted = backend_state.update()
     assert goal_manager.check_complete(goal_3)
-    assert not deleted
 
 
 def test_deploy_new_config_same_version(mock_backend_state):
@@ -855,7 +753,6 @@ def test_deploy_new_config_same_version(mock_backend_state):
         version=b_version_1,
         total=1,
         by_state=[(ReplicaState.RUNNING, 1)])
-    backend_state.update()
     assert goal_manager.check_complete(goal_id)
 
     # Update to a new config without changing the version.
@@ -886,8 +783,6 @@ def test_deploy_new_config_same_version(mock_backend_state):
         version=b_version_2,
         total=1,
         by_state=[(ReplicaState.RUNNING, 1)])
-
-    backend_state.update()
     assert goal_manager.check_complete(goal_id)
 
 
@@ -907,7 +802,6 @@ def test_deploy_new_config_new_version(mock_backend_state):
         version=b_version_1,
         total=1,
         by_state=[(ReplicaState.RUNNING, 1)])
-    backend_state.update()
     assert goal_manager.check_complete(create_goal)
 
     # Update to a new config and a new version.
@@ -945,8 +839,6 @@ def test_deploy_new_config_new_version(mock_backend_state):
         version=b_version_2,
         total=1,
         by_state=[(ReplicaState.RUNNING, 1)])
-
-    backend_state.update()
     assert goal_manager.check_complete(update_goal)
 
 
@@ -965,8 +857,6 @@ def test_initial_deploy_no_throttling(mock_backend_state):
 
     for replica in backend_state._replicas.get():
         replica._actor.set_ready()
-
-    backend_state.update()
 
     # Check that the new replicas have started.
     backend_state.update()
@@ -993,8 +883,6 @@ def test_new_version_deploy_throttling(mock_backend_state):
 
     for replica in backend_state._replicas.get():
         replica._actor.set_ready()
-
-    backend_state.update()
 
     # Check that the new replicas have started.
     backend_state.update()
@@ -1236,8 +1124,6 @@ def test_new_version_deploy_throttling(mock_backend_state):
         version=b_version_2,
         total=10,
         by_state=[(ReplicaState.RUNNING, 10)])
-
-    backend_state.update()
     assert goal_manager.check_complete(goal_2)
 
 
@@ -1257,8 +1143,6 @@ def test_reconfigure_throttling(mock_backend_state):
 
     for replica in backend_state._replicas.get():
         replica._actor.set_ready()
-
-    backend_state.update()
 
     # Check that the new replicas have started.
     backend_state.update()
@@ -1318,8 +1202,6 @@ def test_reconfigure_throttling(mock_backend_state):
         version=b_version_2,
         total=2,
         by_state=[(ReplicaState.RUNNING, 2)])
-
-    backend_state.update()
     assert goal_manager.check_complete(goal_1)
 
 
@@ -1340,8 +1222,6 @@ def test_new_version_and_scale_down(mock_backend_state):
 
     for replica in backend_state._replicas.get():
         replica._actor.set_ready()
-
-    backend_state.update()
 
     # Check that the new replicas have started.
     backend_state.update()
@@ -1479,8 +1359,6 @@ def test_new_version_and_scale_down(mock_backend_state):
         version=b_version_2,
         total=2,
         by_state=[(ReplicaState.RUNNING, 2)])
-
-    backend_state.update()
     assert goal_manager.check_complete(goal_2)
 
 
@@ -1500,8 +1378,6 @@ def test_new_version_and_scale_up(mock_backend_state):
 
     for replica in backend_state._replicas.get():
         replica._actor.set_ready()
-
-    backend_state.update()
 
     # Check that the new replicas have started.
     backend_state.update()
@@ -1610,8 +1486,6 @@ def test_health_check(mock_backend_state):
     # Check that the new replicas have started.
     backend_state.update()
     check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
-
-    backend_state.update()
     assert goal_manager.check_complete(goal_1)
 
     backend_state.update()
@@ -1859,6 +1733,9 @@ def mock_backend_state_manager(
         yield backend_state_manager, timer, goal_manager
         # Clear checkpoint at the end of each test
         kv_store.delete(CHECKPOINT_KEY)
+        if sys.platform != "win32":
+            # This line fails on windows with a PermissionError.
+            os.remove("test_kv_store.db")
 
 
 def test_shutdown(mock_backend_state_manager):
@@ -1870,7 +1747,9 @@ def test_shutdown(mock_backend_state_manager):
 
     tag = "test"
 
-    b_info_1, b_version_1 = backend_info()
+    grace_period_s = 10
+    b_info_1, b_version_1 = backend_info(
+        graceful_shutdown_timeout_s=grace_period_s)
     create_goal, updating = backend_state_manager.deploy_backend(tag, b_info_1)
 
     backend_state = backend_state_manager._backend_states[tag]
@@ -1889,25 +1768,21 @@ def test_shutdown(mock_backend_state_manager):
 
     shutdown_goal = backend_state_manager.shutdown()[0]
 
+    timer.advance(grace_period_s + 0.1)
     backend_state_manager.update()
 
     check_counts(backend_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert backend_state._replicas.get()[0]._actor.stopped
-    assert backend_state._replicas.get()[0]._actor.force_stopped_counter == 1
     assert not backend_state._replicas.get()[0]._actor.cleaned_up
     assert not goal_manager.check_complete(shutdown_goal)
 
     # Once it's done stopping, replica should be removed.
     replica = backend_state._replicas.get()[0]
     replica._actor.set_done_stopping()
-    backend_state.update()
-    check_counts(backend_state, total=0)
-
-    # TODO(edoakes): can we remove this extra update period for completing it?
     backend_state_manager.update()
+    check_counts(backend_state, total=0)
     assert goal_manager.check_complete(shutdown_goal)
     assert replica._actor.cleaned_up
-
     assert len(backend_state_manager._backend_states) == 0
 
 
@@ -1974,5 +1849,4 @@ def test_resume_backend_state_from_replica_tags(mock_backend_state_manager):
 
 
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))

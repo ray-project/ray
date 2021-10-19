@@ -16,12 +16,12 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendInfo, GoalId
+from ray.serve.common import BackendInfo, GoalId, ReplicaTag
 from ray.serve.config import (AutoscalingConfig, BackendConfig, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, HTTP_PROXY_TIMEOUT,
                                  SERVE_CONTROLLER_NAME)
-from ray.serve.controller import ReplicaTag, ServeController
+from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
@@ -793,22 +793,23 @@ class Deployment:
             self._name, missing_ok=True, sync=sync)
 
     @PublicAPI
-    def options(
-            self,
-            func_or_class: Optional[Callable] = None,
-            name: Optional[str] = None,
-            version: Optional[str] = None,
-            prev_version: Optional[str] = None,
-            init_args: Optional[Tuple[Any]] = None,
-            init_kwargs: Optional[Dict[Any, Any]] = None,
-            route_prefix: Optional[str] = None,
-            num_replicas: Optional[int] = None,
-            ray_actor_options: Optional[Dict] = None,
-            user_config: Optional[Any] = None,
-            max_concurrent_queries: Optional[int] = None,
-            _autoscaling_config: Optional[Union[Dict,
-                                                AutoscalingConfig]] = None,
-    ) -> "Deployment":
+    def options(self,
+                func_or_class: Optional[Callable] = None,
+                name: Optional[str] = None,
+                version: Optional[str] = None,
+                prev_version: Optional[str] = None,
+                init_args: Optional[Tuple[Any]] = None,
+                init_kwargs: Optional[Dict[Any, Any]] = None,
+                route_prefix: Optional[str] = None,
+                num_replicas: Optional[int] = None,
+                ray_actor_options: Optional[Dict] = None,
+                user_config: Optional[Any] = None,
+                max_concurrent_queries: Optional[int] = None,
+                _autoscaling_config: Optional[Union[Dict,
+                                                    AutoscalingConfig]] = None,
+                _graceful_shutdown_wait_loop_s: Optional[float] = None,
+                _graceful_shutdown_timeout_s: Optional[float] = None
+                ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
         Only those options passed in will be updated, all others will remain
@@ -848,6 +849,14 @@ class Deployment:
 
         if _autoscaling_config is None:
             new_config.autoscaling_config = _autoscaling_config
+
+        if _graceful_shutdown_wait_loop_s is not None:
+            new_config.graceful_shutdown_wait_loop_s = (
+                _graceful_shutdown_wait_loop_s)
+
+        if _graceful_shutdown_timeout_s is not None:
+            new_config.graceful_shutdown_timeout_s = (
+                _graceful_shutdown_timeout_s)
 
         return Deployment(
             func_or_class,
@@ -902,7 +911,9 @@ def deployment(
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None
+        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+        _graceful_shutdown_wait_loop_s: Optional[float] = None,
+        _graceful_shutdown_timeout_s: Optional[float] = None
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -921,6 +932,8 @@ def deployment(
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
         _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+        _graceful_shutdown_wait_loop_s: Optional[float] = None,
+        _graceful_shutdown_timeout_s: Optional[float] = None
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -990,6 +1003,12 @@ def deployment(
 
     if _autoscaling_config is not None:
         config.autoscaling_config = _autoscaling_config
+
+    if _graceful_shutdown_wait_loop_s is not None:
+        config.graceful_shutdown_wait_loop_s = _graceful_shutdown_wait_loop_s
+
+    if _graceful_shutdown_timeout_s is not None:
+        config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
 
     def decorator(_func_or_class):
         return Deployment(

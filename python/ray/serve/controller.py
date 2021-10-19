@@ -17,7 +17,7 @@ from ray.serve.common import (
     EndpointInfo,
     GoalId,
     NodeId,
-    ReplicaTag,
+    RunningReplicaInfo,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
@@ -242,10 +242,10 @@ class ServeController:
             val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
-    def _all_replica_handles(
-            self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
+    def _all_running_replicas(
+            self) -> Dict[BackendTag, List[RunningReplicaInfo]]:
         """Used for testing."""
-        return self.backend_state_manager.get_running_replica_handles()
+        return self.backend_state_manager.get_running_replica_infos()
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
@@ -319,8 +319,7 @@ class ServeController:
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
-        return self.backend_state_manager.delete_backend(
-            name, force_kill=False)
+        return self.backend_state_manager.delete_backend(name)
 
     def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
         """Get the current information about a deployment.

@@ -1,15 +1,15 @@
 import asyncio
+import json
 import logging
 import time
-from typing import Set, List, Tuple, Optional, TYPE_CHECKING
+from typing import Set, List, Tuple, Optional, TYPE_CHECKING, Dict
 import uuid
 
 import ray
-
 from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
 from ray.workflow.common import (Workflow, WorkflowStatus, WorkflowMetaData,
-                                 StepType)
+                                 StepType, WorkflowNotFoundError)
 from ray.workflow.step_executor import commit_step
 from ray.workflow.storage import get_global_storage
 from ray.workflow.workflow_access import (flatten_workflow_output,
@@ -23,9 +23,22 @@ logger = logging.getLogger(__name__)
 
 
 def run(entry_workflow: Workflow,
-        workflow_id: Optional[str] = None) -> ray.ObjectRef:
+        workflow_id: Optional[str] = None,
+        metadata: Optional[Dict] = None) -> ray.ObjectRef:
     """Run a workflow asynchronously.
     """
+    if metadata is not None:
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dict.")
+        for k, v in metadata.items():
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError("metadata values must be JSON serializable, "
+                                 "however '{}' has a value whose {}.".format(
+                                     k, e))
+    metadata = metadata or {}
+
     store = get_global_storage()
     assert ray.is_initialized()
     if workflow_id is None:
@@ -40,6 +53,7 @@ def run(entry_workflow: Workflow,
                                                 store.storage_url):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
+        ws.save_workflow_user_metadata(metadata)
 
         wf_exists = True
         try:
@@ -125,7 +139,9 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     store = workflow_storage.get_workflow_storage(workflow_id)
     meta = store.load_workflow_meta()
     if meta is None:
-        raise ValueError(f"No such workflow_id {workflow_id}")
+        raise WorkflowNotFoundError(workflow_id)
+    if meta.status == WorkflowStatus.RUNNING:
+        return WorkflowStatus.RESUMABLE
     return meta.status
 
 

@@ -15,8 +15,7 @@ class LongPollNamespace(Enum):
     def __repr__(self):
         return f"{self.__class__.__name__}.{self.name}"
 
-    REPLICA_HANDLES = auto()
-    BACKEND_CONFIGS = auto()
+    RUNNING_REPLICAS = auto()
     ROUTE_TABLE = auto()
 
 
@@ -101,6 +100,10 @@ class LongPollClient:
             # exit.
             logger.debug("LongPollClient failed to connect to host. "
                          "Shutting down.")
+            return
+
+        if isinstance(updates, ConnectionError):
+            logger.warning("LongPollClient connection failed, shutting down.")
             return
 
         if isinstance(updates, (ray.exceptions.RayTaskError)):
