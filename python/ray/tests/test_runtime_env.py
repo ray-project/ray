@@ -316,7 +316,8 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [False, True])
-def test_single_node(ray_start_cluster_head, working_dir_parametrized, client_mode):
+def test_single_node(ray_start_cluster_head, working_dir_parametrized,
+                     client_mode):
     cluster = ray_start_cluster_head
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
 
