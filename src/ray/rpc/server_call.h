@@ -153,7 +153,7 @@ class ServerCallImpl : public ServerCall {
     STATS_grpc_server_req_new.Record(1.0, call_name_);
   }
 
-  ~ServerCallImpl() override {}
+  ~ServerCallImpl() override = default;
 
   ServerCallState GetState() const override { return state_; }
 
