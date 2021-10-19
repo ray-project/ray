@@ -98,7 +98,7 @@ public class ReplicaSet {
         () ->
             numQueuedQueriesGauge.update(
                 numQueuedQueries.get(),
-                TagKey.tagsFromMap(ImmutableMap.of(RayServeMetrics.TAG_ENDPOINT, endpoint))));
+                ImmutableMap.of(new TagKey(RayServeMetrics.TAG_ENDPOINT), endpoint)));
     ObjectRef<Object> assignedRef =
         tryAssignReplica(query); // TODO controll concurrency using maxConcurrentQueries
     numQueuedQueries.decrementAndGet();
@@ -106,7 +106,7 @@ public class ReplicaSet {
         () ->
             numQueuedQueriesGauge.update(
                 numQueuedQueries.get(),
-                TagKey.tagsFromMap(ImmutableMap.of(RayServeMetrics.TAG_ENDPOINT, endpoint))));
+                ImmutableMap.of(new TagKey(RayServeMetrics.TAG_ENDPOINT), endpoint)));
     return assignedRef;
   }
 
