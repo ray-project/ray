@@ -258,7 +258,7 @@ py_test(
     name = "test_autoscaling_policy",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["team:serve"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
