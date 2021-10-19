@@ -504,7 +504,8 @@ _lint() {
     pushd "${WORKSPACE_DIR}"
       "${ROOT_DIR}"/install-llvm-binaries.sh
     popd
-    "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+    # Disable clang-tidy until ergonomic issues are resolved.
+    # "${ROOT_DIR}"/check-git-clang-tidy-output.sh
   else
     { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
   fi
@@ -554,7 +555,7 @@ _check_job_triggers() {
 
   local variable_definitions
   # shellcheck disable=SC2031
-  variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+  variable_definitions=($(python3 "${ROOT_DIR}"/determine_tests_to_run.py))
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
     if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)

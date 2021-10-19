@@ -198,8 +198,8 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.")
 def test_job_eager_install(shutdown_only):
-    # Test enable eager install
-    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": True}
+    # Test enable eager install. This flag is set to True by default.
+    runtime_env = {"conda": {"dependencies": ["toolz"]}}
     env_count = len(get_conda_env_list())
     ray.init(runtime_env=runtime_env)
     wait_for_condition(
