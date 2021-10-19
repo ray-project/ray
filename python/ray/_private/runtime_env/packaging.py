@@ -23,7 +23,7 @@ RAY_PKG_PREFIX = "_ray_pkg_"
 
 
 class Protocol(Enum):
-    """A enum for supported backend storage."""
+    """A enum for supported storage backends."""
 
     # For docstring
     def __new__(cls, value, doc=None):
@@ -33,7 +33,7 @@ class Protocol(Enum):
             self.__doc__ = doc
         return self
 
-    GCS = "gcs", "For packages created and managed by the system."
+    GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -48,9 +48,15 @@ def _dir_travel(
         handler: Callable,
         logger: Optional[logging.Logger] = default_logger,
 ):
+    """Travels the path recursively, calling the handler on each subpath.
+
+    Respects excludes, which will be called to check if this path is skipped.
+    """
     e = _get_gitignore(path)
+
     if e is not None:
         excludes.append(e)
+
     skip = any(e(path) for e in excludes)
     if not skip:
         try:
@@ -61,6 +67,7 @@ def _dir_travel(
         if path.is_dir():
             for sub_path in path.iterdir():
                 _dir_travel(sub_path, excludes, handler, logger=logger)
+
     if e is not None:
         excludes.pop()
 
@@ -70,7 +77,7 @@ def _zip_module(root: Path,
                 excludes: Optional[Callable],
                 zip_handler: ZipFile,
                 logger: Optional[logging.Logger] = default_logger) -> None:
-    """Go through all files and zip them into a zip file"""
+    """Go through all files and zip them into a zip file."""
 
     def handler(path: Path):
         # Pack this path if it's an empty directory or it's a file.
@@ -120,6 +127,10 @@ def _hash_directory(
 
 
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
+    """Parse the URI into the protocol and value.
+
+    Raises ValueError on invalid URIs.
+    """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     return (protocol, uri.netloc)
@@ -168,20 +179,16 @@ def _get_local_path(base_directory: str, pkg_uri: str) -> str:
     return os.path.join(base_directory, pkg_name)
 
 
-def _create_package_from_directory(
-        directory: str,
-        excludes: List[str],
-        output_path: str,
-        logger: Optional[logging.Logger] = default_logger) -> None:
-    """Create a package that will be used by workers.
-
-    This function is used to create a package file based on working
-    directory and python local modules.
+def _zip_directory(directory: str,
+                   excludes: List[str],
+                   output_path: str,
+                   logger: Optional[logging.Logger] = default_logger) -> None:
+    """Zip the target directory and write it to the output_path.
 
     Args:
-        directory (str): The working directory.
+        directory (str): The directory to zip.
         excludes (List(str)): The directories or file to be excluded.
-        output_path (str): The path of file to be created.
+        output_path (str): The output path for the zip file.
     """
     pkg_file = Path(output_path).absolute()
     with ZipFile(pkg_file, "w") as zip_handler:
@@ -234,7 +241,7 @@ def _package_exists(pkg_uri: str) -> bool:
 
 def get_uri_for_directory(directory: str,
                           excludes: Optional[List[str]] = None) -> str:
-    """Get the name of the package by working dir.
+    """Get a content-addressable URI from a directory's contents.
 
     This function will generate the name of the package by the directory.
     It'll go through all the files in the directory and hash the contents
@@ -245,8 +252,7 @@ def get_uri_for_directory(directory: str,
     Examples:
 
     .. code-block:: python
-        >>> import any_module
-        >>> get_directory_package_name("/my_directory")
+        >>> get_uri_for_directory("/my_directory")
         .... _ray_pkg_af2734982a741.zip
 
     Args:
@@ -254,7 +260,10 @@ def get_uri_for_directory(directory: str,
         excludes (list[str]): The dir or files that should be excluded.
 
     Returns:
-        Package name as a string.
+        URI (str)
+
+    Raises:
+        ValueError if the directory doesn't exist.
     """
     if excludes is None:
         excludes = []
@@ -277,15 +286,12 @@ def upload_package_if_needed(pkg_uri: str,
                              excludes: Optional[List[str]] = None,
                              logger: Optional[logging.Logger] = default_logger
                              ) -> Tuple[bool, bool]:
-    """XXX: TODO
+    """Upload the contents of the directory under the given URI.
 
-    It'll check whether the runtime environment exists in the cluster or
-    not. If it doesn't, a package will be created based on the working
-    directory and modules defined in job config. The package will be
-    uploaded to the cluster after this.
+    This will first create a temporary zip file under the passed
+    base_directory.
 
-    Args:
-        job_config (JobConfig): The job config of driver.
+    If the package already exists in storage, this is a no-op.
     """
     if excludes is None:
         excludes = []
@@ -299,8 +305,7 @@ def upload_package_if_needed(pkg_uri: str,
         if not pkg_file.exists():
             created = True
             logger.info(f"Creating a new package for directory {directory}.")
-            _create_package_from_directory(
-                directory, excludes, pkg_file, logger=logger)
+            _zip_directory(directory, excludes, pkg_file, logger=logger)
         # Push the data to remote storage
         pkg_size = _push_package(pkg_uri, pkg_file)
         logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes.")
@@ -314,7 +319,10 @@ def download_and_unpack_package(
         base_directory: str,
         logger: Optional[logging.Logger] = default_logger,
 ) -> Optional[str]:
-    """XXX"""
+    """Download the package corresponding to this URI and unpack it.
+
+    Will be written to a directory named {base_directory}/{uri}.
+    """
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     with FileLock(str(pkg_file) + ".lock"):
         if logger is None:
