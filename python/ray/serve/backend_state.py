@@ -726,7 +726,18 @@ class BackendState:
 
         if backend_info is not None:
             self._target_info = backend_info
-            self._target_replicas = backend_info.backend_config.num_replicas
+            target_replicas = backend_info.backend_config.num_replicas
+
+            # make sure that autoscaling config bounds are respected
+            autoscaling_config = backend_info.backend_config.autoscaling_config
+            if autoscaling_config is not None:
+                target_replicas = max(target_replicas,
+                                      autoscaling_config.min_replicas)
+                target_replicas = min(target_replicas,
+                                      autoscaling_config.max_replicas)
+
+            self._target_replicas = target_replicas
+
             self._target_version = BackendVersion(
                 backend_info.version,
                 user_config=backend_info.backend_config.user_config)
