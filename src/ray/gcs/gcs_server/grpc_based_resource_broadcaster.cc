@@ -134,7 +134,7 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
                         const Status &status,
                         const rpc::UpdateResourceUsageReply &reply) {
       double end_time = absl::GetCurrentTimeNanos();
-      double lapsed_time_ms = (end_time - start_time) * 1e6;
+      double lapsed_time_ms = static_cast<double>(end_time - start_time) / 1e6;
       ray::stats::GcsUpdateResourceUsageTime.Record(lapsed_time_ms);
 
       absl::MutexLock guard(&mutex_);

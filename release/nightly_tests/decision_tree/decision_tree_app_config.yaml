@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py38"
+base_image: "anyscale/ray-ml:pinned-nightly-py37"
 env_vars: {"RAY_grpc_based_resource_broadcast": "true"}
 debian_packages: ["pssh"]
 
@@ -7,6 +7,6 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y ray
-  - pip3 install ray[all]@https://yic-data.s3.us-west-2.amazonaws.com/ray-2.0.0.dev0-cp38-cp38-linux_x86_64.whl
+  # - pip uninstall -y ray
+  # - pip3 install ray[all]@https://ray-wheels.s3.us-west-2.amazonaws.com/upstream/test_wheels/grpc-broadcast/5da79856b0b2d28bcdccab27a3f4519decd4fea8/ray-2.0.0.dev0%2Bdbg-cp37-cp37m-manylinux2014_x86_64.whl
   - pip3 install sklearn
