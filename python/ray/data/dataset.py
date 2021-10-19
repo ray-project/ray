@@ -1,5 +1,5 @@
 import logging
-from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
+from typing import List, Any, Callable, Iterator, Iterable, Generic, \
     Dict, Optional, Union, TYPE_CHECKING, Tuple
 from uuid import uuid4
 
@@ -758,6 +758,24 @@ class Dataset(Generic[T]):
         return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
 
     def groupby(self, key: Callable[[T], Any]) -> "GroupedDataset[T]":
+        """Group the dataset by the specified key function.
+        (experimental support)
+
+        This is a lazy operation.
+        Currently only simple block dataset is supported.
+
+        Examples:
+            >>> # Group by a key function
+            >>> ds.groupby(lambda record: record[0])
+
+        Time complexity: O(dataset size * log(dataset size / parallelism))
+
+        Args:
+            key: A key function.
+
+        Returns:
+            A lazy GroupedDataset that can be aggregated later.
+        """
         from ray.data.grouped_dataset import GroupedDataset
         return GroupedDataset(self, key)
 

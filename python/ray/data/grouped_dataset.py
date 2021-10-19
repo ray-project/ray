@@ -1,33 +1,66 @@
-from typing import Any, Callable, Generic
+from typing import Callable, Generic, Tuple, List
 import numpy as np
 import ray
 from ray.util.annotations import PublicAPI
-from ray.data.dataset import Dataset, T
+from ray.data.dataset import Dataset
 from ray.data.impl import sort
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor, BlockMetadata, T, K, U, A
 
 
 @PublicAPI(stability="beta")
 class GroupedDataset(Generic[T]):
-    def __init__(self, dataset: Dataset[T], key: Callable[[T], Any]):
+    """Implements a lazy dataset grouped by key. (experimental support)
+
+    The actual groupby is deferred until an aggregation is applied.
+    """
+
+    def __init__(self, dataset: Dataset[T], key: Callable[[T], K]):
+        """Construct a dataset grouped by key (internal API).
+
+        The constructor is not part of the GroupedDataset API.
+        Use the ``Dataset.groupby()`` method to construct one.
+        """
         self._dataset = dataset
         self._key = key
 
-    def aggregate(self, init, accumulate, merge, finalize):
-        """ Implement the accumulator-based aggregation interface
-            (https://www.sigops.org/s/conferences/sosp/2009/papers/yu-sosp09.pdf)
-            Current implementation is based on sort but can be changed to hash based
-            if needed without modifying the API.
+    def aggregate(self,
+                  init: Callable[[K], A],
+                  accumulate: Callable[[K, A, T], A],
+                  merge: Callable[[K, A, A], A],
+                  finalize: Callable[[K, A], U] = lambda k, a: a
+                  ) -> Dataset[Tuple[K, U]]:
+        """Implements the accumulator-based aggregation.
 
-            init: This is called once for each key to return the initialized aggregation state.
-            accumulate: This is called for each row of the same key.
-                        This causes the row to be accumulated into the aggregation state.
-            merge: This may be called multiple times, each time to combine two partial aggregation states.
-            finalize: This is called once to compute the final aggregation result
-                      from the fully merged aggregation state.
+        This is a blocking operation.
+        See https://www.sigops.org/s/conferences/sosp/2009/papers/yu-sosp09.pdf
+        for more details about accumulator-based aggregation.
+
+        Examples:
+            >>> grouped_ds.aggregate(
+            ...     init=lambda k: [],
+            ...     accumulate=lambda k, a, r: a.append(r),
+            ...     merge=lambda k, a1, a2: a1 + a2,
+            ...     finalize=lambda k, a: a
+            ... )
+
+        Args:
+            init: This is called once for each key
+                to return the empty accumulator.
+                For example, an empty accumulator for a sum would be 0.
+            accumulate: This is called once per row of the same key.
+                This combines the accumulator and the row,
+                returns the updated accumulator.
+            merge: This may be called multiple times, each time to merge
+                two accumulators into one.
+            finalize: This is called once to compute the final aggregation
+                result from the fully merged accumulator.
+
+        Returns:
+            A new dataset of (k, v) pairs where k is the groupby key
+            and v is the corresponding aggregation result.
         """
         # Handle empty dataset.
         if self._dataset.num_blocks() == 0:
@@ -65,7 +98,13 @@ class GroupedDataset(Generic[T]):
         return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
 
 
-def _partition_and_combine_block(block, boundaries, key, init, accumulate):
+def _partition_and_combine_block(
+        block: Block[T], boundaries: List[K], key: Callable[[T], K],
+        init: Callable[[K], A],
+        accumulate: Callable[[K, A, T], A]) -> List[Block[Tuple[K, A]]]:
+    """Partition the block and combine rows with the same key
+    into the accumulator.
+    """
     partitions = BlockAccessor.for_block(block).sort_and_partition(
         boundaries, key, descending=False)
     return [
@@ -74,8 +113,14 @@ def _partition_and_combine_block(block, boundaries, key, init, accumulate):
     ]
 
 
-def _aggregate_combined_blocks(merge, finalize, *blocks):
+def _aggregate_combined_blocks(merge: Callable[[K, A, A], A],
+                               finalize: Callable[[K, A], U],
+                               *blocks: Tuple[Block[Tuple[K, A]], ...]
+                               ) -> Tuple[Block[Tuple[K, U]], BlockMetadata]:
+    """Aggregate sorted and partially combined blocks
+    with the same key range.
+    """
     if len(blocks) == 1:
-        blocks = blocks[0]  # Python weirdness
+        blocks = blocks[0]  # Ray weirdness
     return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
         list(blocks), merge, finalize)

@@ -2545,22 +2545,36 @@ def test_groupby_simple(ray_start_regular_shared):
     random.shuffle(xs)
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Mean aggregation
-    agg_ds = ds.groupby(lambda x: x[0]).aggregate(
+    agg_ds = ds.groupby(lambda r: r[0]).aggregate(
         init=lambda key: (0, 0),
-        accumulate=lambda key, s, e: (s[0] + e[1], s[1] + 1),
-        merge=lambda key, s1, s2: (s1[0] + s2[0], s1[1] + s2[1]),
-        finalize=lambda key, s: s[0] / s[1])
+        accumulate=lambda key, a, r: (a[0] + r[1], a[1] + 1),
+        merge=lambda key, a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
+        finalize=lambda key, a: a[0] / a[1])
     assert agg_ds.count() == 3
-    assert agg_ds.sort(key=lambda x: x[0]).take(3) == [("A", 5), ("B", 15),
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [("A", 5), ("B", 15),
                                                        ("C", 7)]
+
+    # Test None row
+    parallelism = 2
+    xs = ["A", "A", "A", None, None, None, "B"]
+    random.shuffle(xs)
+    ds = ray.data.from_items(xs, parallelism=parallelism)
+    # Count aggregation
+    agg_ds = ds.groupby(lambda r: str(r)).aggregate(
+        init=lambda key: 0,
+        accumulate=lambda key, a, r: a + 1,
+        merge=lambda key, a1, a2: a1 + a2)
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: str(r)).take(3) == [("A", 3), ("B", 1),
+                                                         ("None", 3)]
 
     # Test empty dataset.
     ds = ray.data.from_items([])
-    agg_ds = ds.groupby(lambda x: x[0]).aggregate(
+    agg_ds = ds.groupby(lambda r: r[0]).aggregate(
         init=lambda key: 1 / 0,  # should never reach here
-        accumulate=lambda key, s, e: 1 / 0,
-        merge=lambda key, s1, s2: 1 / 0,
-        finalize=lambda key, s: 1 / 0)
+        accumulate=lambda key, a, r: 1 / 0,
+        merge=lambda key, a1, a2: 1 / 0,
+        finalize=lambda key, a: 1 / 0)
     assert agg_ds.count() == 0
     assert agg_ds == ds
 

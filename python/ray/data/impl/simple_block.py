@@ -2,7 +2,7 @@ import random
 import sys
 import heapq
 from typing import Callable, Iterator, List, Tuple, Union, Any, Optional, \
-    Iterable, TypeVar, TYPE_CHECKING
+    TYPE_CHECKING
 
 import numpy as np
 
@@ -11,9 +11,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.impl.block_builder import BlockBuilder
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, K
-
-S = TypeVar("S")
+from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, K, A
 
 # A simple block can be sorted by value (None) or a lambda function (Callable).
 SortKeyT = Union[None, Callable[[T], Any]]
@@ -130,34 +128,57 @@ class SimpleBlockAccessor(BlockAccessor):
         ret.append(items[prev_i:])
         return ret
 
-    def combine(self, key: Callable[[T], K], init: Callable[[K], S],
-                accumulate: Callable[[K, S, T], S]) -> Block[Tuple[K, S]]:
-        """This assumes the block is already sorted by key in ascending order
+    def combine(self, key: Callable[[T], K], init: Callable[[K], A],
+                accumulate: Callable[[K, A, T], A]) -> Block[Tuple[K, A]]:
+        """Combine rows with the same key into an accumulator.
+
+        This assumes the block is already sorted by key in ascending order.
+
+        Args:
+            key: The key function that returns the key from the row.
+            init: This is called once for each key to
+                return the empty accumulator. For example, an empty accumulator
+                for a sum would be 0.
+            accumulate: This is called once per row of the same key.
+                This combines the accumulator and the row,
+                returns the updated accumulator.
+
+        Returns:
+            A sorted block of (k, v) pairs where k is the groupby key
+            and v is the partially combined accumulator.
         """
         iter = self.iter_rows()
-        next_element = None
+        next_row = None
+        # Use a bool to indicate if next_row is valid
+        # instead of checking if next_row is None
+        # since a row can have None value.
+        has_next_row = False
         ret = []
         while True:
             try:
-                if next_element is None:
-                    next_element = next(iter)
-                next_key = key(next_element)
+                if not has_next_row:
+                    next_row = next(iter)
+                    has_next_row = True
+                next_key = key(next_row)
 
                 def gen():
                     nonlocal iter
-                    nonlocal next_element
-                    while key(next_element) == next_key:
-                        yield next_element
+                    nonlocal next_row
+                    nonlocal has_next_row
+                    assert has_next_row
+                    while key(next_row) == next_key:
+                        yield next_row
                         try:
-                            next_element = next(iter)
+                            next_row = next(iter)
                         except StopIteration:
-                            next_element = None
+                            has_next_row = False
+                            next_row = None
                             break
 
-                state = init(next_key)
-                for e in gen():
-                    state = accumulate(next_key, state, e)
-                ret.append((next_key, state))
+                aggregator = init(next_key)
+                for r in gen():
+                    aggregator = accumulate(next_key, aggregator, r)
+                ret.append((next_key, aggregator))
             except StopIteration:
                 break
         return ret
@@ -172,43 +193,65 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[Tuple[K, S]]], merge: Callable[[K, S, S], S],
-            finalize: Callable[[K, S], U]
+            blocks: List[Block[Tuple[K, A]]], merge: Callable[[K, A, A], A],
+            finalize: Callable[[K, A], U]
     ) -> Tuple[Block[Tuple[K, U]], BlockMetadata]:
-        """This assumes blocks are already sorted by key in ascending order
+        """Aggregate sorted, partially combined blocks with the same key range.
+
+        This assumes blocks are already sorted by key in ascending order,
+        so we can do merge sort to get all the rows with the same key.
+
+        Args:
+            blocks: A list of partially combined and sorted blocks.
+            merge: This may be called multiple times, each time to merge
+                two accumulators into one.
+            finalize: This is called once to compute the final
+                aggregation result from the fully merged accumulator.
+
+        Returns:
+            A block of (k, v) pairs and its metadata where k is the groupby key
+            and v is the corresponding aggregation result.
         """
-        key = lambda x: x[0]
+
+        def key(r):
+            return r[0]
+
         iter = heapq.merge(
             *[SimpleBlockAccessor(block).iter_rows() for block in blocks],
             key=key)
-        next_element = None
+        next_row = None
+        has_next_row = False
         ret = []
         while True:
             try:
-                if next_element is None:
-                    next_element = next(iter)
-                next_key = key(next_element)
+                if not has_next_row:
+                    next_row = next(iter)
+                    has_next_row = True
+                next_key = key(next_row)
 
                 def gen():
                     nonlocal iter
-                    nonlocal next_element
-                    while key(next_element) == next_key:
-                        yield next_element
+                    nonlocal next_row
+                    nonlocal has_next_row
+                    assert has_next_row
+                    while key(next_row) == next_key:
+                        yield next_row
                         try:
-                            next_element = next(iter)
+                            next_row = next(iter)
                         except StopIteration:
-                            next_element = None
+                            has_next_row = False
+                            next_row = None
                             break
 
                 first = True
-                state = None
-                for e in gen():
+                aggregator = None
+                for r in gen():
                     if first:
-                        state = e[1]
+                        aggregator = r[1]
                         first = False
                     else:
-                        state = merge(next_key, state, e[1])
-                ret.append((next_key, finalize(next_key, state)))
+                        aggregator = merge(next_key, aggregator, r[1])
+                ret.append((next_key, finalize(next_key, aggregator)))
             except StopIteration:
                 break
 

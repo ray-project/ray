@@ -1,5 +1,5 @@
 from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
-    Optional, TYPE_CHECKING
+    Optional, Callable, TYPE_CHECKING
 
 import numpy as np
 
@@ -14,6 +14,7 @@ from ray.data.impl.util import _check_pyarrow_version
 T = TypeVar("T")
 U = TypeVar("U")
 K = TypeVar("K")
+A = TypeVar("A")
 
 # Represents a batch of records to be stored in the Ray object store.
 #
@@ -53,7 +54,7 @@ class BlockAccessor(Generic[T]):
     this is needed if we want to support storing ``pyarrow.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
 
-    There are three types of block accessors: ``SimpleBlockAccessor``, which
+    There are two types of block accessors: ``SimpleBlockAccessor``, which
     operates over a plain Python list, and ``ArrowBlockAccessor`` for
     ``pyarrow.Table`` type blocks.
     """
@@ -154,7 +155,9 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key, init, accumulate):
+    def combine(self, key: Callable[[T], K], init: Callable[[K], A],
+                accumulate: Callable[[K, A, T], A]) -> Block[Tuple[K, A]]:
+        """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
     @staticmethod
@@ -165,6 +168,9 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     @staticmethod
-    def aggregate_combined_blocks(blocks, merge, finalize):
-        """Return an aggregated block from a list of combined and sorted blocks."""
+    def aggregate_combined_blocks(
+            blocks: List[Block[Tuple[K, A]]], merge: Callable[[K, A, A], A],
+            finalize: Callable[[K, A], U]
+    ) -> Tuple[Block[Tuple[K, U]], BlockMetadata]:
+        """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
