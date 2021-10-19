@@ -170,6 +170,11 @@ class WorkflowManagementActor:
             raise RuntimeError(f"The output of workflow[id={workflow_id}] "
                                "already exists.")
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        # meta = wf_store.load_workflow_meta()
+        # if meta is None:
+        #     raise common.WorkflowNotFoundError(workflow_id)
+        # else:
+        #     print("metadata!!!", meta)
         workflow_prerun_metadata = {"start_time": time.time()}
         wf_store.save_workflow_prerun_metadata(workflow_prerun_metadata)
         step_id = wf_store.get_entrypoint_step_id()
