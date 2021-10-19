@@ -134,6 +134,7 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
           // TODO (Alex): This callback is always posted onto the main thread. Since most
           // of the work is in the callback we should move this callback's execution to
           // the polling thread. We will need to implement locking once we switch threads.
+          RAY_LOG(INFO) << "wangtao receive report " << reply.DebugString();
           handle_resource_report_(reply.resources());
         } else if (status.IsInvalid()) {
           RAY_LOG(DEBUG) << "Resource of raylet " << state->node_id << " unchanged.";

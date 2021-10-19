@@ -1501,6 +1501,7 @@ void NodeManager::HandleRequestResourceReport(
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
   // When gcs server restarts, it requires all nodes' initial report.
   if (request.initial_report()) {
+    RAY_LOG(INFO) << "wangtao Request initial report";
     last_resource_usage_->SetAvailableResources(ResourceSet());
     last_resource_usage_->SetTotalResources(ResourceSet());
     last_resource_usage_->SetLoadResources(ResourceSet());
@@ -1517,7 +1518,10 @@ void NodeManager::HandleRequestResourceReport(
     resources_data->set_cluster_full_of_actors_detected_changed(false);
   }
 
+  RAY_LOG(INFO) << "wangtao last report " << last_resource_usage_->DebugString();
+  RAY_LOG(INFO) << "wangtao resources " << resources_data->DebugString();
   if (ResourcesDataChanged(*resources_data)) {
+    RAY_LOG(INFO) << "wangtao report";
     if (resources_data->resources_available_changed()) {
       last_resource_usage_->SetAvailableResources(
           ResourceSet(MapFromProtobuf(resources_data->resources_available())));
@@ -1535,6 +1539,7 @@ void NodeManager::HandleRequestResourceReport(
     }
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
+    RAY_LOG(INFO) << "wangtao not report";
     resources_data->Clear();
     send_reply_callback(Status::Invalid("Resources not changed"), nullptr, nullptr);
   }
@@ -1577,6 +1582,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   metrics_num_task_scheduled_ += 1;
 
   if (is_actor_creation_task) {
+    RAY_LOG(INFO) << "wangtao receive actor creation task " << actor_id;
     actor_id = task.GetTaskSpecification().ActorCreationId();
 
     // Save the actor creation task spec to GCS, which is needed to
@@ -1616,7 +1622,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     // If the reqiured resource and normal task resource exceed available resource,
     // reject it.
     ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
-    RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
+    RAY_LOG(INFO) << "Reject leasing as the raylet has no enough resources."//wangtao debug to info
                    << " actor_id = " << actor_id
                    << ", normal_task_resources = " << normal_task_resources.ToString()
                    << ", local_resoruce_view = "

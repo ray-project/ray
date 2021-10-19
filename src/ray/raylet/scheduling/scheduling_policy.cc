@@ -105,7 +105,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
     }
     bool is_available = node.GetLocalView().IsAvailable(resource_request,
                                                         ignore_pull_manager_at_capacity);
-    RAY_LOG(DEBUG) << "Node " << node_id << " is "
+    RAY_LOG(INFO) << "Node " << node_id << " is " // wangtao debug to info
                    << (is_available ? "available" : "not available");
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();

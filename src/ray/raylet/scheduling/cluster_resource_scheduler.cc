@@ -324,7 +324,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
       int idx = distribution(gen_);
       best_node = std::next(nodes_.begin(), idx)->first;
     }
-    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
+    RAY_LOG(INFO) << "GetBestSchedulableNode, best_node = " << best_node// wangtao debug to info
                    << ", # nodes = " << nodes_.size()
                    << ", resource_request = " << resource_request.DebugString();
     return best_node;
@@ -347,7 +347,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     *total_violations = 0;
   }
 
-  RAY_LOG(DEBUG) << "Scheduling decision. "
+  RAY_LOG(INFO) << "Scheduling decision. " // wangtao debug to info
                  << "forcing spillback: " << force_spillback
                  << ". Best node: " << best_node_id
                  << ", is infeasible: " << *is_infeasible;
