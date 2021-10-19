@@ -22,7 +22,6 @@ from ray.serve.config import (AutoscalingConfig, BackendConfig, HTTPOptions,
 from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, HTTP_PROXY_TIMEOUT,
                                  SERVE_CONTROLLER_NAME, MAX_CACHED_HANDLES,
                                  CONTROLLER_MAX_CONCURRENCY)
-from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
