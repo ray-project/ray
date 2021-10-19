@@ -631,8 +631,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::string native_library_path_;
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
-  /// The callback that will be triggered when a runtime_env setup for a task fails.
-  std::function<void(const TaskID &)> runtime_env_setup_failed_callback_;
   /// If 1, expose Ray debuggers started by the workers externally (to this node).
   int ray_debugger_external;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);

@@ -402,8 +402,8 @@ def node_ip_address_from_perspective(address):
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray.worker._global_node is not None:
         return ray.worker._global_node.node_ip_address
-    if sys.platform == "darwin":
-        # Due to the mac osx firewall,
+    if sys.platform == "darwin" or sys.platform == "win32":
+        # Due to the mac osx/windows firewall,
         # we use loopback ip as the ip address
         # to prevent security popups.
         return "127.0.0.1"
@@ -1505,19 +1505,7 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
-    # Check to see if we should start the dashboard agent or not based on the
-    # Ray installation version the user has installed (ray vs. ray[default]).
-    # Unfortunately there doesn't seem to be a cleaner way to detect this other
-    # than just blindly importing the relevant packages.
-    def check_should_start_agent():
-        try:
-            import ray.dashboard.optional_deps  # noqa: F401
-
-            return True
-        except ImportError:
-            return False
-
-    if not check_should_start_agent():
+    if not ray._private.utils.check_dashboard_dependencies_installed():
         # An empty agent command will cause the raylet not to start it.
         agent_command = []
     else:
