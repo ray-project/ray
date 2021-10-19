@@ -36,4 +36,4 @@ git+git://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray[default]
 git+git://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
 git+https://github.com/ray-project/ray_lightning#ray_lightning
 scikit-optimize
-sphinx-sitemap
+sphinx-sitemap==2.2.0
