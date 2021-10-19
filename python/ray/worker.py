@@ -1381,18 +1381,24 @@ def connect(node,
     worker.ray_debugger_external = ray_debugger_external
 
     working_dir_uri = None
+    # If it's a driver and it's not coming from ray client, we'll prepare the
+    # environment here. If it's ray client, the environment will be prepared
+    # at the server side.
     if mode == SCRIPT_MODE and not job_config.client_job:
-        if job_config.runtime_env and "working_dir" in job_config.runtime_env:
-            # XXX: comment!
-            working_dir = job_config.runtime_env["working_dir"]
-            excludes = job_config.runtime_env.get("excludes")
-            working_dir_uri = get_uri_for_directory(
-                working_dir, excludes=excludes)
-            if "excludes" in job_config.runtime_env:
-                del job_config.runtime_env["excludes"]
-            job_config.runtime_env["working_dir"] = working_dir_uri
-            # XXX: make this more sane!
-            job_config.set_runtime_env(job_config.runtime_env)
+        if job_config.runtime_env:
+            runtime_env = job_config.runtime_env
+            if "working_dir" in runtime_env:
+                working_dir = runtime_env["working_dir"]
+                excludes = runtime_env.pop("excludes", None)
+
+                working_dir_uri = get_uri_for_directory(
+                    working_dir, excludes=excludes)
+                upload_package_if_needed(
+                    working_dir_uri, worker.node.get_runtime_env_dir_path(),
+                    working_dir, excludes)
+                runtime_env["working_dir"] = working_dir_uri
+
+            job_config.set_runtime_env(runtime_env)
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
@@ -1403,15 +1409,6 @@ def connect(node,
         serialized_job_config, node.metrics_agent_port, runtime_env_hash,
         worker_shim_pid, startup_token)
     worker.gcs_client = worker.core_worker.get_gcs_client()
-
-    # If it's a driver and it's not coming from ray client, we'll prepare the
-    # environment here. If it's ray client, the environment will be prepared
-    # at the server side.
-    if mode == SCRIPT_MODE and not job_config.client_job:
-        if working_dir_uri is not None:
-            upload_package_if_needed(working_dir_uri,
-                                     worker.node.get_runtime_env_dir_path(),
-                                     working_dir, excludes)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

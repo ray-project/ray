@@ -434,24 +434,9 @@ print(ray.get_runtime_context().runtime_env["working_dir"])
 """
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == working_dir
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("client_mode", [True, False])
-def test_two_node_uri(two_node_cluster, working_dir, client_mode):
-    cluster, _ = two_node_cluster
-    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    runtime_env = f"""{{ "working_dir": ["{working_dir}"] }}"""
-    # Execute the following cmd in driver with runtime_env
-    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(runtime_env_dir).iterdir())) == 1
-    # pinned uri will not be deleted
-    print(list(kv._internal_kv_list("")))
-    assert len(kv._internal_kv_list("pingcs://")) == 1
+    working_dir_uri = out.strip().split()[-1]
+    assert working_dir_uri.startswith("gcs://_ray_pkg_")
+    assert working_dir_uri.endswith(".zip")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

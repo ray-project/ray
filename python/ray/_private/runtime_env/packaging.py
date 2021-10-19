@@ -34,7 +34,6 @@ class Protocol(Enum):
         return self
 
     GCS = "gcs", "For packages created and managed by the system."
-    PIN_GCS = "pingcs", "For packages created and managed by the users."
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -120,7 +119,7 @@ def _hash_directory(
     return hash_val
 
 
-def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
+def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     return (protocol, uri.netloc)
@@ -165,7 +164,7 @@ def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
 
 
 def _get_local_path(base_directory: str, pkg_uri: str) -> str:
-    _, pkg_name = _parse_uri(pkg_uri)
+    _, pkg_name = parse_uri(pkg_uri)
     return os.path.join(base_directory, pkg_name)
 
 
@@ -209,9 +208,9 @@ def _push_package(pkg_uri: str, pkg_path: str) -> int:
     Returns:
         The number of bytes uploaded.
     """
-    protocol, pkg_name = _parse_uri(pkg_uri)
+    protocol, pkg_name = parse_uri(pkg_uri)
     data = Path(pkg_path).read_bytes()
-    if protocol in (Protocol.GCS, Protocol.PIN_GCS):
+    if protocol == Protocol.GCS:
         return _store_package_in_gcs(pkg_uri, data)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
@@ -226,8 +225,8 @@ def _package_exists(pkg_uri: str) -> bool:
     Return:
         True for package existing and False for not.
     """
-    protocol, pkg_name = _parse_uri(pkg_uri)
-    if protocol in (Protocol.GCS, Protocol.PIN_GCS):
+    protocol, pkg_name = parse_uri(pkg_uri)
+    if protocol == Protocol.GCS:
         return _internal_kv_exists(pkg_uri)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
@@ -265,11 +264,8 @@ def get_uri_for_directory(directory: str,
         raise ValueError(f"directory {directory} must be an existing"
                          " directory")
 
-    hash_val = b"0"
-    hash_val = _xor_bytes(
-        hash_val,
-        _hash_directory(directory, directory, _get_excludes(
-            directory, excludes)))
+    hash_val = _hash_directory(directory, directory,
+                               _get_excludes(directory, excludes))
 
     return "{protocol}://{pkg_name}.zip".format(
         protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex())
@@ -324,18 +320,18 @@ def download_and_unpack_package(
         if logger is None:
             logger = default_logger
 
-        logger.debug(f"Fetching package for uri: {pkg_uri}")
+        logger.debug(f"Fetching package for URI: {pkg_uri}")
 
         local_dir = pkg_file.with_suffix("")
         assert local_dir != pkg_file, "Invalid pkg_file!"
         if local_dir.exists():
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
         else:
-            protocol, pkg_name = _parse_uri(pkg_uri)
-            if protocol in (Protocol.GCS, Protocol.PIN_GCS):
+            protocol, pkg_name = parse_uri(pkg_uri)
+            if protocol == Protocol.GCS:
                 code = _internal_kv_get(pkg_uri)
                 if code is None:
-                    raise IOError("Fetch uri failed")
+                    raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
                 pkg_file.write_bytes(code)
             else:

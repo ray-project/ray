@@ -681,22 +681,21 @@ class Worker:
             if job_config is None:
                 serialized_job_config = None
             else:
+                runtime_env = job_config.runtime_env or {}
                 # Generate and upload URIs for the working directory. This
                 # uses internal_kv to upload to the GCS.
-                if (job_config.runtime_env
-                        and "working_dir" in job_config.runtime_env):
+                if "working_dir" in runtime_env:
                     with tempfile.TemporaryDirectory() as tmp_dir:
-                        # XXX: comment!
-                        working_dir = job_config.runtime_env["working_dir"]
-                        excludes = job_config.runtime_env.get("excludes")
-                        if "excludes" in job_config.runtime_env:
-                            del job_config.runtime_env["excludes"]
+                        working_dir = runtime_env["working_dir"]
+                        excludes = runtime_env.pop("excludes", None)
+
                         working_dir_uri = get_uri_for_directory(
                             working_dir, excludes=excludes)
-                        job_config.runtime_env["working_dir"] = working_dir_uri
-                        job_config.set_runtime_env(job_config.runtime_env)
                         upload_package_if_needed(working_dir_uri, tmp_dir,
                                                  working_dir, excludes)
+                        runtime_env["working_dir"] = working_dir_uri
+
+                job_config.set_runtime_env(runtime_env)
 
                 serialized_job_config = pickle.dumps(job_config)
 
