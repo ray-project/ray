@@ -7,10 +7,10 @@ import platform
 import sys
 import socket
 import json
-import time
 import traceback
 
 from grpc.experimental import aio as aiogrpc
+from distutils.version import LooseVersion
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -143,8 +143,12 @@ class DashboardAgent(object):
             sys.exit(-1)
 
         # Create a http session for all modules.
-        self.http_session = aiohttp.ClientSession(
-            loop=asyncio.get_event_loop())
+        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
+        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
+            self.http_session = aiohttp.ClientSession(
+                loop=asyncio.get_event_loop())
+        else:
+            self.http_session = aiohttp.ClientSession()
 
         # Start a grpc asyncio server.
         await self.server.start()
@@ -332,16 +336,6 @@ if __name__ == "__main__":
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count)
         setup_component_logger(**logging_params)
-
-        # The dashboard is currently broken on Windows.
-        # https://github.com/ray-project/ray/issues/14026.
-        if sys.platform == "win32":
-            logger.warning(
-                "The dashboard is currently disabled on windows."
-                "See https://github.com/ray-project/ray/issues/14026"
-                "for more details")
-            while True:
-                time.sleep(999)
 
         agent = DashboardAgent(
             args.node_ip_address,

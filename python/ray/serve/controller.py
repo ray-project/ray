@@ -10,7 +10,6 @@ from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.autoscaling_policy import calculate_desired_num_replicas
 from ray.serve.backend_state import ReplicaState, BackendStateManager
-from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
     BackendTag,
@@ -18,12 +17,13 @@ from ray.serve.common import (
     EndpointInfo,
     GoalId,
     NodeId,
-    ReplicaTag,
+    RunningReplicaInfo,
 )
-from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
-from ray.serve.constants import (CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY)
+from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
+from ray.serve.replica import create_replica_wrapper
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
@@ -242,10 +242,10 @@ class ServeController:
             val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
-    def _all_replica_handles(
-            self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
+    def _all_running_replicas(
+            self) -> Dict[BackendTag, List[RunningReplicaInfo]]:
         """Used for testing."""
-        return self.backend_state_manager.get_running_replica_handles()
+        return self.backend_state_manager.get_running_replica_infos()
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
@@ -299,7 +299,7 @@ class ServeController:
                                  f"version '{existing_backend_info.version}'.")
         backend_info = BackendInfo(
             actor_def=ray.remote(
-                create_backend_replica(name,
+                create_replica_wrapper(name,
                                        replica_config.serialized_backend_def)),
             version=version,
             backend_config=backend_config,
@@ -319,8 +319,7 @@ class ServeController:
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
-        return self.backend_state_manager.delete_backend(
-            name, force_kill=False)
+        return self.backend_state_manager.delete_backend(name)
 
     def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
         """Get the current information about a deployment.

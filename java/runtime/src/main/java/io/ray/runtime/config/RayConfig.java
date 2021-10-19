@@ -47,6 +47,8 @@ public class RayConfig {
   // Listening port for node manager.
   public int nodeManagerPort;
 
+  public int startupToken;
+
   public static class LoggerConf {
     public final String loggerName;
     public final String fileName;
@@ -170,6 +172,8 @@ public class RayConfig {
 
     numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 
+    startupToken = config.getInt("ray.raylet.startup-token");
+
     {
       loggers = new ArrayList<>();
       List<Config> loggerConfigs = (List<Config>) config.getConfigList("ray.logging.loggers");
@@ -213,6 +217,10 @@ public class RayConfig {
     return nodeManagerPort;
   }
 
+  public int getStartupToken() {
+    return startupToken;
+  }
+
   public void setSessionDir(String sessionDir) {
     updateSessionDir(sessionDir);
   }
@@ -232,6 +240,7 @@ public class RayConfig {
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
     dynamic.put("ray.address", redisAddress);
+    dynamic.put("ray.raylet.startup-token", startupToken);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());
   }

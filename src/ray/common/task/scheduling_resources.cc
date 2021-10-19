@@ -23,14 +23,14 @@
 namespace ray {
 ResourceSet::ResourceSet() {}
 
-ResourceSet::ResourceSet(const std::unordered_map<std::string, FixedPoint> &resource_map)
+ResourceSet::ResourceSet(const absl::flat_hash_map<std::string, FixedPoint> &resource_map)
     : resource_capacity_(resource_map) {
   for (auto const &resource_pair : resource_map) {
     RAY_CHECK(resource_pair.second > 0);
   }
 }
 
-ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
+ResourceSet::ResourceSet(const absl::flat_hash_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
     RAY_CHECK(resource_pair.second > 0);
     resource_capacity_[resource_pair.first] = FixedPoint(resource_pair.second);
@@ -139,7 +139,7 @@ void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
 // capacity from the total_resource set
 void ResourceSet::AddResourcesCapacityConstrained(const ResourceSet &other,
                                                   const ResourceSet &total_resources) {
-  const std::unordered_map<std::string, FixedPoint> &total_resource_map =
+  const absl::flat_hash_map<std::string, FixedPoint> &total_resource_map =
       total_resources.GetResourceAmountMap();
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
     const std::string &to_add_resource_label = resource_pair.first;
@@ -225,15 +225,23 @@ const std::string ResourceSet::ToString() const {
   }
 }
 
-const std::unordered_map<std::string, double> ResourceSet::GetResourceMap() const {
+std::unordered_map<std::string, double> ResourceSet::GetResourceUnorderedMap() const {
   std::unordered_map<std::string, double> result;
-  for (const auto &resource_pair : resource_capacity_) {
-    result[resource_pair.first] = resource_pair.second.Double();
+  for (const auto &[name, quantity] : resource_capacity_) {
+    result[name] = quantity.Double();
   }
   return result;
 };
 
-const std::unordered_map<std::string, FixedPoint> &ResourceSet::GetResourceAmountMap()
+absl::flat_hash_map<std::string, double> ResourceSet::GetResourceMap() const {
+  absl::flat_hash_map<std::string, double> result;
+  for (const auto &[name, quantity] : resource_capacity_) {
+    result[name] = quantity.Double();
+  }
+  return result;
+};
+
+const absl::flat_hash_map<std::string, FixedPoint> &ResourceSet::GetResourceAmountMap()
     const {
   return resource_capacity_;
 };
@@ -492,7 +500,7 @@ ResourceIdSet::ResourceIdSet(const ResourceSet &resource_set) {
 }
 
 ResourceIdSet::ResourceIdSet(
-    const std::unordered_map<std::string, ResourceIds> &available_resources)
+    const absl::flat_hash_map<std::string, ResourceIds> &available_resources)
     : available_resources_(available_resources) {}
 
 bool ResourceIdSet::Contains(const ResourceSet &resource_set) const {
@@ -513,8 +521,7 @@ bool ResourceIdSet::Contains(const ResourceSet &resource_set) const {
 }
 
 ResourceIdSet ResourceIdSet::Acquire(const ResourceSet &resource_set) {
-  std::unordered_map<std::string, ResourceIds> acquired_resources;
-
+  absl::flat_hash_map<std::string, ResourceIds> acquired_resources;
   for (auto const &resource_pair : resource_set.GetResourceAmountMap()) {
     auto const &resource_name = resource_pair.first;
     const FixedPoint &resource_quantity = resource_pair.second;
@@ -590,13 +597,13 @@ void ResourceIdSet::DeleteResource(const std::string &resource_name) {
   }
 }
 
-const std::unordered_map<std::string, ResourceIds> &ResourceIdSet::AvailableResources()
+const absl::flat_hash_map<std::string, ResourceIds> &ResourceIdSet::AvailableResources()
     const {
   return available_resources_;
 }
 
 ResourceIdSet ResourceIdSet::GetCpuResources() const {
-  std::unordered_map<std::string, ResourceIds> cpu_resources;
+  absl::flat_hash_map<std::string, ResourceIds> cpu_resources;
 
   auto it = available_resources_.find(kCPU_ResourceLabel);
   if (it != available_resources_.end()) {
@@ -606,7 +613,7 @@ ResourceIdSet ResourceIdSet::GetCpuResources() const {
 }
 
 ResourceSet ResourceIdSet::ToResourceSet() const {
-  std::unordered_map<std::string, FixedPoint> resource_set;
+  absl::flat_hash_map<std::string, FixedPoint> resource_set;
   for (auto const &resource_pair : available_resources_) {
     resource_set[resource_pair.first] = resource_pair.second.TotalQuantity();
   }

@@ -1,9 +1,7 @@
-.. _lightgbm-ray:
-
 ..
   This part of the docs is generated from the LightGBM-Ray readme using m2r
   To update:
-  - run `m2r /path/to/_lightgbm_ray/README.md`
+  - run `m2r /path/to/lightgbm_ray/README.md`
   - copy the contents of README.rst here
   - Get rid of the badges in the top
   - Get rid of the references section at the bottom
@@ -11,6 +9,8 @@
   - Adjust some link targets (e.g. for "Ray Tune") to anonymous references
     by adding a second underscore (use `target <link>`__)
   - Search for `\ **` and delete this from the links (bold links are not supported)
+
+.. _lightgbm-ray:
 
 Distributed LightGBM on Ray
 ===========================

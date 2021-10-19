@@ -439,8 +439,6 @@ class NCCLGroup(BaseGroup):
                 with nccl_util.Device(device):
                     events[i].record(cupy.cuda.get_current_stream())
                     streams[i].wait_event(events[i])
-        else:
-            cupy.cuda.Stream.null.synchronize()
 
     def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank,
                                    peer_gpu_idx):
