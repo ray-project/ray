@@ -117,7 +117,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(const std::s
 RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
                    int num_args = 0, std::vector<ObjectID> args = {},
                    const std::string &serialized_runtime_env = "{}",
-                   const std::vector<std::string> &runtime_env_uris = {}) {
+                   const std::vector<std::string> &runtime_env_uris = {},
+                   Priority priority = Priority()) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -140,9 +141,12 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
     }
   }
 
+  TaskSpecification spec(spec_builder.Build());
+  spec.SetPriority(priority);
+
   rpc::TaskExecutionSpec execution_spec_message;
   execution_spec_message.set_num_forwards(1);
-  return RayTask(spec_builder.Build(),
+  return RayTask(spec,
                  TaskExecutionSpecification(execution_spec_message));
 }
 
@@ -263,7 +267,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     int count = 0;
     for (const auto &pair : task_manager_.tasks_to_dispatch_) {
       for (const auto &work : pair.second) {
-        if (work->status == WorkStatus::WAITING_FOR_WORKER) {
+        if (work.second->status == WorkStatus::WAITING_FOR_WORKER) {
           count++;
         }
       }
@@ -1578,6 +1582,98 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
     ASSERT_EQ(demand.shape().size(), 1);
     ASSERT_EQ(demand.shape().at("CPU"), 1);
   }
+}
+
+TEST_F(ClusterTaskManagerTest, FIFOTest) {
+  /*
+    Test basic scheduler functionality:
+    1. Queue and attempt to schedule/dispatch atest with no workers available
+    2. A worker becomes available, dispatch again.
+   */
+  RayTask task1 = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply1;
+  bool callback_occurred1 = false;
+  auto callback1 = [&](Status, std::function<void()>, std::function<void()>) {
+    callback_occurred1 = true;
+  };
+
+  rpc::RequestWorkerLeaseReply reply2;
+  bool callback_occurred2 = false;
+  auto callback2 = [&](Status, std::function<void()>, std::function<void()>) {
+    callback_occurred2 = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(task1, &reply1, callback1);
+  task_manager_.QueueAndScheduleTask(task2, &reply2, callback2);
+  pool_.TriggerCallbacks();
+  ASSERT_FALSE(callback_occurred1);
+  ASSERT_FALSE(callback_occurred2);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.TriggerCallbacks();
+
+  ASSERT_TRUE(callback_occurred1);
+  ASSERT_FALSE(callback_occurred2);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(node_info_calls_, 0);
+
+  RayTask finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task1.GetTaskSpecification().TaskId());
+  //AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, PriorityTest) {
+  /*
+    Test basic scheduler functionality:
+    1. Queue and attempt to schedule/dispatch atest with no workers available
+    2. A worker becomes available, dispatch again.
+   */
+  RayTask task1 = CreateTask({{ray::kCPU_ResourceLabel, 4}}, 0, {}, "{}", {}, Priority({1, 2}));
+  RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}}, 0, {}, "{}", {}, Priority({0, 3}));
+  rpc::RequestWorkerLeaseReply reply1;
+  bool callback_occurred1 = false;
+  auto callback1 = [&](Status, std::function<void()>, std::function<void()>) {
+    callback_occurred1 = true;
+  };
+
+  rpc::RequestWorkerLeaseReply reply2;
+  bool callback_occurred2 = false;
+  auto callback2 = [&](Status, std::function<void()>, std::function<void()>) {
+    callback_occurred2 = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(task1, &reply1, callback1);
+  task_manager_.QueueAndScheduleTask(task2, &reply2, callback2);
+  pool_.TriggerCallbacks();
+  ASSERT_FALSE(callback_occurred1);
+  ASSERT_FALSE(callback_occurred2);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.TriggerCallbacks();
+
+  ASSERT_FALSE(callback_occurred2);
+  ASSERT_TRUE(callback_occurred1);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(node_info_calls_, 0);
+
+  RayTask finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task1.GetTaskSpecification().TaskId());
+  //AssertNoLeaks();
 }
 
 int main(int argc, char **argv) {
