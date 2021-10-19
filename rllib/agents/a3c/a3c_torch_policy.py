@@ -83,8 +83,7 @@ def actor_critic_loss(policy: Policy, model: ModelV2,
     return total_loss
 
 
-def stats(policy: Policy,
-          train_batch: SampleBatch) -> Dict[str, TensorType]:
+def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
 
     return {
         "cur_lr": policy.cur_lr,
@@ -121,7 +120,8 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"], config["entropy_coeff_schedule"])
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
 

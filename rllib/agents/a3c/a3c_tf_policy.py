@@ -85,8 +85,7 @@ def actor_critic_loss(policy: Policy, model: ModelV2,
                           train_batch[Postprocessing.ADVANTAGES],
                           train_batch[Postprocessing.VALUE_TARGETS],
                           model.value_function(), mask,
-                          policy.config["vf_loss_coeff"],
-                          policy.entropy_coeff,
+                          policy.config["vf_loss_coeff"], policy.entropy_coeff,
                           policy.config.get("use_critic", True))
     return policy.loss.total_loss
 
@@ -134,6 +133,7 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
                                   config["entropy_coeff_schedule"])
+
 
 A3CTFPolicy = build_tf_policy(
     name="A3CTFPolicy",
