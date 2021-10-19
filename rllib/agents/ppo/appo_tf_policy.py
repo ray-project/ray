@@ -301,6 +301,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         "total_loss": policy._total_loss,
         "policy_loss": policy._mean_policy_loss,
         "entropy": policy._mean_entropy,
+        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
         "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
