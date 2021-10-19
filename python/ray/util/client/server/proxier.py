@@ -6,6 +6,7 @@ import logging
 from itertools import chain
 import json
 import socket
+import os
 import sys
 from threading import Event, Lock, Thread, RLock
 import time
@@ -109,12 +110,14 @@ class ProxyManager():
                  redis_address: Optional[str],
                  *,
                  session_dir: Optional[str] = None,
-                 redis_password: Optional[str] = None):
+                 redis_password: Optional[str] = None,
+                 head_node_id: Optional[str] = None):
 
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
         self._redis_address = redis_address
         self._redis_password = redis_password
+        self._head_node_id = head_node_id
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
         self._reset_agent_connection()
@@ -127,9 +130,13 @@ class ProxyManager():
         atexit.register(self._cleanup)
 
     def _reset_agent_connection(self):
-        # TODO(ekl) discover the port
+        serialized = ray.experimental.internal_kv._internal_kv_get(
+            "DASHBOARD_AGENT_ADDR:{}".format(self._head_node_id))
+        addr = agent_manager_pb2.RegisterAgentRequest()
+        addr.ParseFromString(serialized=serialized)
+        logger.info("Discovered runtime agent address:\n{}".format(addr))
         self._runtime_env_channel = grpc.insecure_channel(
-            f"localhost:{runtime_env_agent_port}")
+            f"localhost:{addr.agent_port}")
         self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
             self._runtime_env_channel)
 
@@ -739,10 +746,19 @@ def serve_proxier(connection_str: str,
     # before calling ray.init within the RayletServicers.
     # NOTE(edoakes): redis_address and redis_password should only be None in
     # tests.
+    head_node_id = None
     if redis_address is not None and redis_password is not None:
         ip, port = redis_address.split(":")
         gcs_client = connect_to_gcs(ip, int(port), redis_password)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+        ray.state.state._initialize_global_state(
+            redis_address, redis_password=redis_password)
+        nodes = ray.state.nodes()
+        for node in nodes:
+            if os.path.exists(node["ObjectStoreSocketName"]):
+                head_node_id = node["NodeID"]
+        if head_node_id is None:
+            raise RuntimeError("Could not find head node in {}".format(nodes))
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
@@ -750,7 +766,8 @@ def serve_proxier(connection_str: str,
     proxy_manager = ProxyManager(
         redis_address,
         session_dir=session_dir,
-        redis_password=redis_password)
+        redis_password=redis_password,
+        head_node_id=head_node_id)
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)
     logs_servicer = LogstreamServicerProxy(proxy_manager)
