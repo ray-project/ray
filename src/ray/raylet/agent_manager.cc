@@ -33,7 +33,7 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   auto serialized_register_agent = request.SerializeAsString();
   put_agent_address_(
       serialized_register_agent,
-      [this, request, reply, send_reply_callback](ray::Status status,
+      [this, request, reply, send_reply_callback](const ray::Status status,
                                                   const boost::optional<int> &result) {
         RAY_UNUSED(result);
         if (status.ok()) {
@@ -60,9 +60,10 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
 void AgentManager::StartAgent() {
   if (options_.agent_commands.empty()) {
     RAY_LOG(INFO) << "Not starting agent, the agent command is empty.";
-    mark_agent_disabled_([](ray::Status status, const boost::optional<int> &result) {
-      RAY_LOG(INFO) << "The agent is disabled, " << status;
-    });
+    mark_agent_disabled_(
+        [](const ray::Status status, const boost::optional<int> &result) {
+          RAY_LOG(INFO) << "The agent is disabled, " << status;
+        });
     return;
   }
 

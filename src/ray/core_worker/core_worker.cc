@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/core_worker.h"
 
+#include <utility>
+
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
@@ -149,7 +151,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       options_.raylet_ip_address, options_.node_manager_port,
       [this](std::string ip, int port) {
         absl::MutexLock lock(&gcs_server_address_mutex_);
-        gcs_server_address_.first = ip;
+        gcs_server_address_.first = std::move(ip);
         gcs_server_address_.second = port;
       });
 
@@ -217,7 +219,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     sigemptyset(&mask);
     sigaddset(&mask, SIGINT);
     sigaddset(&mask, SIGTERM);
-    pthread_sigmask(SIG_BLOCK, &mask, NULL);
+    pthread_sigmask(SIG_BLOCK, &mask, nullptr);
 #endif
     SetThreadName("worker_process.io");
     io_service_.run();

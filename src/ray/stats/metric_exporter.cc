@@ -15,6 +15,7 @@
 #include "ray/stats/metric_exporter.h"
 
 #include <future>
+#include <utility>
 
 namespace ray {
 namespace stats {
@@ -106,7 +107,7 @@ void MetricPointExporter::ExportViewData(
 }
 
 OpenCensusProtoExporter::OpenCensusProtoExporter(
-    GetMetricsAgentClientFn get_metrics_agent_client)
+    const GetMetricsAgentClientFn get_metrics_agent_client)
     : enabled_(true), get_metrics_agent_client_(get_metrics_agent_client) {
   get_metrics_agent_client(
       [this](const Status &status, std::shared_ptr<rpc::MetricsAgentClient> client) {
@@ -117,14 +118,16 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(
         }
         // This the gcs_server io thread.
         absl::MutexLock lock(&client_mutex_);
-        client_ = client;
+        client_ = std::move(client);
       });
 };
 
 void OpenCensusProtoExporter::ExportViewData(
     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                 opencensus::stats::ViewData>> &data) {
-  if (!enabled_) return;
+  if (!enabled_) {
+    return;
+  }
   // Start converting opencensus data into their protobuf format.
   // The format can be found here
   // https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto
@@ -214,7 +217,8 @@ void OpenCensusProtoExporter::ExportViewData(
   auto client = client_;
   client_mutex_.Unlock();
 
-  auto report = [this, request_proto](std::shared_ptr<rpc::MetricsAgentClient> client) {
+  auto report = [this,
+                 request_proto](const std::shared_ptr<rpc::MetricsAgentClient> client) {
     client->ReportOCMetrics(
         request_proto,
         [this](const Status &status, const rpc::ReportOCMetricsReply &reply) {
@@ -233,7 +237,7 @@ void OpenCensusProtoExporter::ExportViewData(
   if (client == nullptr) {
     get_metrics_agent_client_(
         [this, report](const Status &status,
-                       std::shared_ptr<rpc::MetricsAgentClient> client) {
+                       const std::shared_ptr<rpc::MetricsAgentClient> client) {
           if (status.IsAgentDisabled()) {
             RAY_LOG(INFO) << "Disable OpenCensusProtoExporter.";
             enabled_ = false;

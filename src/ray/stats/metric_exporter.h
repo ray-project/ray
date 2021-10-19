@@ -28,9 +28,9 @@
 namespace ray {
 namespace stats {
 
-typedef std::function<void(const Status &, std::shared_ptr<rpc::MetricsAgentClient>)>
-    GetMetricsAgentClientCallback;
-typedef std::function<void(GetMetricsAgentClientCallback)> GetMetricsAgentClientFn;
+using GetMetricsAgentClientCallback =
+    std::function<void(const Status &, std::shared_ptr<rpc::MetricsAgentClient>)>;
+using GetMetricsAgentClientFn = std::function<void(GetMetricsAgentClientCallback)>;
 
 /// Main function of metric exporter is collecting indicator information from
 /// opencensus data view, and sends it to the remote (for example
@@ -94,11 +94,11 @@ class MetricPointExporter final : public opencensus::stats::StatsExporter::Handl
 
 class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::Handler {
  public:
-  OpenCensusProtoExporter(GetMetricsAgentClientFn get_metrics_agent_client);
+  explicit OpenCensusProtoExporter(GetMetricsAgentClientFn get_metrics_agent_client);
 
   ~OpenCensusProtoExporter() = default;
 
-  static void Register(GetMetricsAgentClientFn get_metrics_agent_client) {
+  static void Register(const GetMetricsAgentClientFn get_metrics_agent_client) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
         absl::make_unique<OpenCensusProtoExporter>(get_metrics_agent_client));
   }

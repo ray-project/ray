@@ -42,12 +42,11 @@ typedef std::function<void(bool successful,
 
 typedef std::function<void(bool successful)> DeleteURIsCallback;
 
-typedef std::function<void(ray::Status status, const boost::optional<int> &result)>
-    PutAgentAddressCallback;
-typedef std::function<void(const std::string &value,
-                           const PutAgentAddressCallback &callback)>
-    PutAgentAddressFn;
-typedef std::function<void(const PutAgentAddressCallback &callback)> MarkAgentDisabledFn;
+using PutAgentAddressCallback =
+    std::function<void(ray::Status, const boost::optional<int> &)>;
+using PutAgentAddressFn =
+    std::function<void(const std::string &, const PutAgentAddressCallback &)>;
+using MarkAgentDisabledFn = std::function<void(const PutAgentAddressCallback &)>;
 
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:
@@ -64,8 +63,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
         runtime_env_agent_client_factory_(std::move(runtime_env_agent_client_factory)),
-        put_agent_address_(put_agent_address),
-        mark_agent_disabled_(mark_agent_disabled) {
+        put_agent_address_(std::move(put_agent_address)),
+        mark_agent_disabled_(std::move(mark_agent_disabled)) {
     if (start_agent) {
       StartAgent();
     }

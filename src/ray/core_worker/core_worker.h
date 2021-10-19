@@ -1301,7 +1301,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool connected_ = false;
 
   std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
-      std::make_pair<std::string, int>("", 0);
+      std::make_pair("", 0);
   /// To protect accessing the `gcs_server_address_`.
   absl::Mutex gcs_server_address_mutex_;
   std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
