@@ -205,8 +205,7 @@ def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
         assert "workers" in node
         assert "logCount" in node
         # Two lines printed by ActorWithObjs
-        # One line printed by autoscaler: monitor.py:118 -- Monitor: Started
-        assert node["logCount"] > 2
+        assert node["logCount"] >= 2
         print(node["workers"])
         assert len(node["workers"]) == 2
         assert node["workers"][0]["logCount"] == 1
