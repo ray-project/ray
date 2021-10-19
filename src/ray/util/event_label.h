@@ -30,4 +30,6 @@ namespace ray {
 
 #define EL_RAY_CPP_TASK_FAILED "RAY_CPP_TASK_FAILED"
 
+#define EL_RAY_HEARTBEAT_DELAYED "RAY_HEARTBEAT_DELAYED"
+
 }  // namespace ray
