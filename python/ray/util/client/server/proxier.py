@@ -107,12 +107,13 @@ def _match_running_client_server(command: List[str]) -> bool:
 
 class ProxyManager():
     def __init__(self,
-                 redis_address: Optional[str],
+                 redis_address: str,
                  *,
                  session_dir: Optional[str] = None,
                  redis_password: Optional[str] = None,
                  head_node_id: Optional[str] = None):
 
+        assert redis_address is not None
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
         self._redis_address = redis_address
@@ -130,13 +131,18 @@ class ProxyManager():
         atexit.register(self._cleanup)
 
     def _reset_agent_connection(self):
-        serialized = ray.experimental.internal_kv._internal_kv_get(
-            "DASHBOARD_AGENT_ADDR:{}".format(self._head_node_id))
-        addr = agent_manager_pb2.RegisterAgentRequest()
-        addr.ParseFromString(serialized=serialized)
-        logger.info("Discovered runtime agent address:\n{}".format(addr))
+        if self._head_node_id is None:
+            # NOTE(ekl): this should only be the case for unit tests
+            agent_port = 0
+        else:
+            serialized = ray.experimental.internal_kv._internal_kv_get(
+                "DASHBOARD_AGENT_ADDR:{}".format(self._head_node_id))
+            addr = agent_manager_pb2.RegisterAgentRequest()
+            addr.ParseFromString(serialized=serialized)
+            logger.info("Discovered runtime agent address:\n{}".format(addr))
+            agent_port = addr.agent_port
         self._runtime_env_channel = grpc.insecure_channel(
-            f"localhost:{addr.agent_port}")
+            f"localhost:{agent_port}")
         self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
             self._runtime_env_channel)
 
@@ -738,27 +744,25 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
 
 def serve_proxier(connection_str: str,
-                  redis_address: Optional[str],
+                  redis_address: str,
                   *,
                   redis_password: Optional[str] = None,
                   session_dir: Optional[str] = None):
     # Initialize internal KV to be used to upload and download working_dir
     # before calling ray.init within the RayletServicers.
-    # NOTE(edoakes): redis_address and redis_password should only be None in
-    # tests.
+    assert redis_address is not None
+    ip, port = redis_address.split(":")
+    gcs_client = connect_to_gcs(ip, int(port), redis_password)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    ray.state.state._initialize_global_state(
+        redis_address, redis_password=redis_password)
+    nodes = ray.state.nodes()
     head_node_id = None
-    if redis_address is not None and redis_password is not None:
-        ip, port = redis_address.split(":")
-        gcs_client = connect_to_gcs(ip, int(port), redis_password)
-        ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-        ray.state.state._initialize_global_state(
-            redis_address, redis_password=redis_password)
-        nodes = ray.state.nodes()
-        for node in nodes:
-            if os.path.exists(node["ObjectStoreSocketName"]):
-                head_node_id = node["NodeID"]
-        if head_node_id is None:
-            raise RuntimeError("Could not find head node in {}".format(nodes))
+    for node in nodes:
+        if os.path.exists(node["ObjectStoreSocketName"]):
+            head_node_id = node["NodeID"]
+    if head_node_id is None:
+        raise RuntimeError("Could not find head node in {}".format(nodes))
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),

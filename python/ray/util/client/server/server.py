@@ -803,9 +803,7 @@ def main():
     logger.info(f"Starting Ray Client server on {hostport}")
     if args.mode == "proxy":
         server = serve_proxier(
-            hostport,
-            args.redis_address,
-            redis_password=args.redis_password)
+            hostport, args.redis_address, redis_password=args.redis_password)
     else:
         server = serve(hostport, ray_connect_handler)
 
