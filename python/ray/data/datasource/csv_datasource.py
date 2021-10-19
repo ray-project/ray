@@ -1,11 +1,11 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Callable
 
 if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import (FileBasedDatasource,
-                                                       _WriteOptionsWrapper)
+                                                       _resolve_kwargs)
 
 
 class CSVDatasource(FileBasedDatasource):
@@ -24,13 +24,15 @@ class CSVDatasource(FileBasedDatasource):
             "read_options", csv.ReadOptions(use_threads=False))
         return csv.read_csv(f, read_options=read_options, **reader_args)
 
-    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+    def _write_block(self,
+                     f: "pyarrow.NativeFile",
+                     block: BlockAccessor,
+                     writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
                      **writer_args):
         from pyarrow import csv
 
+        writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         write_options = writer_args.pop("write_options", None)
-        if isinstance(write_options, _WriteOptionsWrapper):
-            write_options = write_options.unwrap()
         csv.write_csv(block.to_arrow(), f, write_options, **writer_args)
 
     def _file_format(self):

@@ -122,6 +122,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  try_create_dir: bool = True,
                  open_stream_args: Optional[Dict[str, Any]] = None,
+                 write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
                  _block_udf: Optional[Callable[[Block], Block]] = None,
                  **write_args) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
@@ -136,10 +137,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         if open_stream_args is None:
             open_stream_args = {}
 
-        write_options = write_args.get("write_options")
-        write_options = _wrap_csv_write_options_workaround(write_options)
-        write_args["write_options"] = write_options
-
         def write_block(write_path: str, block: Block):
             logger.debug(f"Writing {write_path} file.")
             fs = filesystem
@@ -149,8 +146,11 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block = _block_udf(block)
 
             with fs.open_output_stream(write_path, **open_stream_args) as f:
-                _write_block_to_file(f, BlockAccessor.for_block(block),
-                                     **write_args)
+                _write_block_to_file(
+                    f,
+                    BlockAccessor.for_block(block),
+                    writer_args_fn=write_args_fn,
+                    **write_args)
 
         write_block = cached_remote_fn(write_block)
 
@@ -164,7 +164,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         return write_tasks
 
-    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+    def _write_block(self,
+                     f: "pyarrow.NativeFile",
+                     block: BlockAccessor,
+                     writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
                      **writer_args):
         """Writes a block to a single file, passing all kwargs to the writer.
 
@@ -379,30 +382,10 @@ class _S3FileSystemWrapper:
         return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
 
 
-class _WriteOptionsWrapper:
-    def __init__(self, write_options: "pyarrow.csv.WriteOptions"):
-        self.include_header = write_options.include_header
-        self.batch_size = write_options.batch_size
+def _resolve_kwargs(kwargs_fn: Callable[[], Dict[str, Any]],
+                    **kwargs) -> Dict[str, Any]:
 
-    def unwrap(self) -> "pyarrow.csv.WriteOptions":
-        from pyarrow import csv
-        return csv.WriteOptions(
-            include_header=self.include_header, batch_size=self.batch_size)
-
-    def __getstate__(self):
-        return (self.include_header, self.batch_size)
-
-    def __setstate__(self, state):
-        (self.include_header, self.batch_size) = state
-
-
-def _wrap_csv_write_options_workaround(
-    write_options: Optional["pyarrow.csv.WriteOptions"]) \
-    -> _WriteOptionsWrapper:
-    # This is needed because the PyArrow 4.0.1 csv.WriteOptions class cannot
-    # be pickled due to not implementing __getstate__ and __setstate__. This
-    # workaround should be removed if they're implemented in a future version.
-    from pyarrow import csv
-    if isinstance(write_options, csv.WriteOptions):
-        return _WriteOptionsWrapper(write_options)
-    return write_options
+    if kwargs_fn:
+        kwarg_overrides = kwargs_fn()
+        kwargs.update(kwarg_overrides)
+    return kwargs

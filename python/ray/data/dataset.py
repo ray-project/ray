@@ -778,7 +778,7 @@ class Dataset(Generic[T]):
             >>> ds.sort(lambda record: record["field1"] % 100)
 
             >>> # Sort by multiple columns (not yet supported).
-            >>> ds.sort([("field1", "ascending"), ("field2", "descending)])
+            >>> ds.sort([("field1", "ascending"), ("field2", "descending")])
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -991,13 +991,15 @@ class Dataset(Generic[T]):
                 files.add(f)
         return list(files)
 
-    def write_parquet(self,
-                      path: str,
-                      *,
-                      filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                      try_create_dir: bool = True,
-                      arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-                      **arrow_parquet_args) -> None:
+    def write_parquet(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            try_create_dir: bool = True,
+            arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+            arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+            **arrow_parquet_args) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1019,6 +1021,12 @@ class Dataset(Generic[T]):
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
+            arrow_parquet_args_fn: Callable that returns a dictionary of write
+                arguments to use when writing each block to a file. Overrides
+                any duplicate keys from arrow_parquet_args. This should be used
+                instead of arrow_parquet_args if any of your write arguments
+                cannot be pickled, or if you'd like to lazily resolve the write
+                arguments for each dataset block.
             arrow_parquet_args: Options to pass to
                 pyarrow.parquet.write_table(), which is used to write out each
                 block to a file.
@@ -1030,15 +1038,18 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            write_args_fn=arrow_parquet_args_fn,
             **arrow_parquet_args)
 
-    def write_json(self,
-                   path: str,
-                   *,
-                   filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                   try_create_dir: bool = True,
-                   arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-                   **pandas_json_args) -> None:
+    def write_json(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            try_create_dir: bool = True,
+            arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+            pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+            **pandas_json_args) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1060,6 +1071,12 @@ class Dataset(Generic[T]):
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
+            pandas_json_args_fn: Callable that returns a dictionary of write
+                arguments to use when writing each block to a file. Overrides
+                any duplicate keys from pandas_json_args. This should be used
+                instead of pandas_json_args if any of your write arguments
+                cannot be pickled, or if you'd like to lazily resolve the write
+                arguments for each dataset block.
             pandas_json_args: These args will be passed to
                 pandas.DataFrame.to_json(), which we use under the hood to
                 write out each Datasets block. These
@@ -1072,6 +1089,7 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            write_args_fn=pandas_json_args_fn,
             **pandas_json_args)
 
     def write_csv(self,
@@ -1080,6 +1098,7 @@ class Dataset(Generic[T]):
                   filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                   try_create_dir: bool = True,
                   arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+                  arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
                   **arrow_csv_args) -> None:
         """Write the dataset to csv.
 
@@ -1102,6 +1121,12 @@ class Dataset(Generic[T]):
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
+            arrow_csv_args_fn: Callable that returns a dictionary of write
+                arguments to use when writing each block to a file. Overrides
+                any duplicate keys from arrow_csv_args. This should be used
+                instead of arrow_csv_args if any of your write arguments
+                cannot be pickled, or if you'd like to lazily resolve the write
+                arguments for each dataset block.
             arrow_csv_args: Other CSV write options to pass to pyarrow.
         """
         self.write_datasource(
@@ -1111,6 +1136,7 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            write_args_fn=arrow_csv_args_fn,
             **arrow_csv_args)
 
     def write_numpy(
