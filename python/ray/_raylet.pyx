@@ -210,7 +210,7 @@ def compute_task_id(ObjectRef object_ref):
 
 def retrieve_arg_info(is_actor_task, function_descriptor, args, kwargs):
     """Retrieve the arg information from the function descriptor.
-    
+
     Returns:
         A dictionary of arg info. If it fails to parse
         arg info due to any internal error, it will return an empty dict.
@@ -222,10 +222,6 @@ def retrieve_arg_info(is_actor_task, function_descriptor, args, kwargs):
         # The first element of args_name of
         # actor creation / actor tasks is "self", so we pop it.
         args_name.pop(0)
-
-    print(args_name)
-    print(args)
-    print(kwargs)
 
     assert len(args_name) <= len(args) + len(kwargs)
     last_named_arg_index = 0
@@ -680,7 +676,7 @@ cdef execute_task(
             if args_resolved:
                 is_actor_task = (
                     <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK
-                        or <int>task_type == <int>TASK_TYPE_ACTOR_TASK)
+                    or <int>task_type == <int>TASK_TYPE_ACTOR_TASK)
                 args_info = retrieve_arg_info(
                     is_actor_task, function_descriptor, args, kwargs)
 

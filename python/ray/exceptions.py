@@ -9,7 +9,6 @@ from ray._raylet import WorkerID
 import colorama
 import setproctitle
 
-
 MAX_ARGS_TO_PRINT = 15
 
 
@@ -200,7 +199,7 @@ class RayTaskError(RayError):
             else:
                 out.append(line)
         return "\n".join(out)
-    
+
     def _parse_arg_info(self):
         if not self.args_info:
             return []

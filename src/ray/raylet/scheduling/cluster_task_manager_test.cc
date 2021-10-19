@@ -123,12 +123,12 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
   JobID job_id = RandomJobId();
   rpc::Address address;
 
-  spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
-                                 FunctionDescriptorBuilder::BuildPython("", "", "", "", ""),
-                                 job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
-                                 required_resources, {},
-                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "",
-                                 serialized_runtime_env, runtime_env_uris);
+  spec_builder.SetCommonTaskSpec(
+      id, "dummy_task", Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("", "", "", "", ""), job_id, TaskID::Nil(),
+      0, TaskID::Nil(), address, 0, required_resources, {},
+      std::make_pair(PlacementGroupID::Nil(), -1), true, "", serialized_runtime_env,
+      runtime_env_uris);
 
   if (!args.empty()) {
     for (auto &arg : args) {
