@@ -7,17 +7,18 @@ from ray.data.impl import sort
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T, K, U, A
+from ray.data.block import Block, BlockAccessor, BlockMetadata, \
+    T, U, KeyType, AggType
 
 
 @PublicAPI(stability="beta")
 class GroupedDataset(Generic[T]):
-    """Implements a lazy dataset grouped by key. (experimental support)
+    """Implements a lazy dataset grouped by key (Experimental).
 
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, dataset: Dataset[T], key: Callable[[T], K]):
+    def __init__(self, dataset: Dataset[T], key: Callable[[T], KeyType]):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedDataset API.
@@ -27,11 +28,11 @@ class GroupedDataset(Generic[T]):
         self._key = key
 
     def aggregate(self,
-                  init: Callable[[K], A],
-                  accumulate: Callable[[K, A, T], A],
-                  merge: Callable[[K, A, A], A],
-                  finalize: Callable[[K, A], U] = lambda k, a: a
-                  ) -> Dataset[Tuple[K, U]]:
+                  init: Callable[[KeyType], AggType],
+                  accumulate: Callable[[KeyType, AggType, T], AggType],
+                  merge: Callable[[KeyType, AggType, AggType], AggType],
+                  finalize: Callable[[KeyType, AggType], U] = lambda k, a: a
+                  ) -> Dataset[Tuple[KeyType, U]]:
         """Implements the accumulator-based aggregation.
 
         This is a blocking operation.
@@ -72,7 +73,7 @@ class GroupedDataset(Generic[T]):
                                             num_reducers)
 
         partition_and_combine_block = cached_remote_fn(
-            _partition_and_combine_block, num_returns=num_reducers)
+            _partition_and_combine_block).options(num_returns=num_reducers)
         aggregate_combined_blocks = cached_remote_fn(
             _aggregate_combined_blocks, num_returns=2)
 
@@ -97,14 +98,99 @@ class GroupedDataset(Generic[T]):
         metadata = ray.get([m for _, m in reduce_results])
         return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
 
+    def count(self) -> Dataset[Tuple[KeyType, int]]:
+        """Compute count of each group.
+
+        This is a blocking operation.
+
+        Example:
+            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
+
+        Returns:
+            A new dataset of (k, v) pairs where k is the groupby key
+            and v is the number of rows with that key.
+        """
+        return self.aggregate(
+            init=lambda k: 0,
+            accumulate=lambda k, a, r: a + 1,
+            merge=lambda k, a1, a2: a1 + a2)
+
+    def sum(self) -> Dataset[Tuple[KeyType, T]]:
+        """Compute sum of each group.
+
+        This is a blocking operation.
+
+        Example:
+            >>> ray.data.range(100).groupby(lambda x: x % 3).sum()
+
+        Returns:
+            A new dataset of (k, v) pairs where k is the groupby key
+            and v is the sum of the group.
+        """
+        return self.aggregate(
+            init=lambda k: 0,
+            accumulate=lambda k, a, r: a + r,
+            merge=lambda k, a1, a2: a1 + a2)
+
+    def min(self) -> Dataset[Tuple[KeyType, T]]:
+        """Compute min of each group.
+
+        This is a blocking operation.
+
+        Example:
+            >>> ray.data.range(100).groupby(lambda x: x % 3).min()
+
+        Returns:
+            A new dataset of (k, v) pairs where k is the groupby key
+            and v is the min of the group.
+        """
+        return self.aggregate(
+            init=lambda k: None,
+            accumulate=lambda k, a, r: r if a is None else min(a, r),
+            merge=lambda k, a1, a2: min(a1, a2))
+
+    def max(self) -> Dataset[Tuple[KeyType, T]]:
+        """Compute max of each group.
+
+        This is a blocking operation.
+
+        Example:
+            >>> ray.data.range(100).groupby(lambda x: x % 3).max()
+
+        Returns:
+            A new dataset of (k, v) pairs where k is the groupby key
+            and v is the max of the group.
+        """
+        return self.aggregate(
+            init=lambda k: None,
+            accumulate=lambda k, a, r: r if a is None else max(a, r),
+            merge=lambda k, a1, a2: max(a1, a2))
+
+    def mean(self) -> Dataset[Tuple[KeyType, U]]:
+        """Compute mean of each group.
+
+        This is a blocking operation.
+
+        Example:
+            >>> ray.data.range(100).groupby(lambda x: x % 3).mean()
+
+        Returns:
+            A new dataset of (k, v) pairs where k is the groupby key
+            and v is the mean of the group.
+        """
+        return self.aggregate(
+            init=lambda k: (0, 0),
+            accumulate=lambda k, a, r: (a[0] + r, a[1] + 1),
+            merge=lambda k, a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
+            finalize=lambda k, a: a[0] / a[1])
+
 
 def _partition_and_combine_block(
-        block: Block[T], boundaries: List[K], key: Callable[[T], K],
-        init: Callable[[K], A],
-        accumulate: Callable[[K, A, T], A]) -> List[Block[Tuple[K, A]]]:
-    """Partition the block and combine rows with the same key
-    into the accumulator.
-    """
+        block: Block[T], boundaries: List[KeyType],
+        key: Callable[[T], KeyType], init: Callable[[KeyType], AggType],
+        accumulate: Callable[[KeyType, AggType, T], AggType]
+) -> List[Block[Tuple[KeyType, AggType]]]:
+    """Partition the block and combine rows with the same key."""
     partitions = BlockAccessor.for_block(block).sort_and_partition(
         boundaries, key, descending=False)
     return [
@@ -113,13 +199,12 @@ def _partition_and_combine_block(
     ]
 
 
-def _aggregate_combined_blocks(merge: Callable[[K, A, A], A],
-                               finalize: Callable[[K, A], U],
-                               *blocks: Tuple[Block[Tuple[K, A]], ...]
-                               ) -> Tuple[Block[Tuple[K, U]], BlockMetadata]:
-    """Aggregate sorted and partially combined blocks
-    with the same key range.
-    """
+def _aggregate_combined_blocks(
+        merge: Callable[[KeyType, AggType, AggType], AggType],
+        finalize: Callable[[KeyType, AggType], U],
+        *blocks: Tuple[Block[Tuple[KeyType, AggType]], ...]
+) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
+    """Aggregate sorted and partially combined blocks."""
     if len(blocks) == 1:
         blocks = blocks[0]  # Ray weirdness
     return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(

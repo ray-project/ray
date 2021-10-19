@@ -758,15 +758,14 @@ class Dataset(Generic[T]):
         return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
 
     def groupby(self, key: Callable[[T], Any]) -> "GroupedDataset[T]":
-        """Group the dataset by the specified key function.
-        (experimental support)
+        """Group the dataset by the specified key function (Experimental).
 
         This is a lazy operation.
-        Currently only simple block dataset is supported.
+        Currently only simple block datasets are supported.
 
         Examples:
-            >>> # Group by a key function
-            >>> ds.groupby(lambda record: record[0])
+            >>> # Group by a key function and aggregate.
+            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 

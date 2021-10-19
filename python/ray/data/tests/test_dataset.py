@@ -2654,8 +2654,8 @@ def test_groupby_simple(ray_start_regular_shared):
         accumulate=lambda key, a, r: a + 1,
         merge=lambda key, a1, a2: a1 + a2)
     assert agg_ds.count() == 3
-    assert agg_ds.sort(key=lambda r: str(r)).take(3) == [("A", 3), ("B", 1),
-                                                         ("None", 3)]
+    assert agg_ds.sort(key=lambda r: str(r[0])).take(3) == [("A", 3), ("B", 1),
+                                                            ("None", 3)]
 
     # Test empty dataset.
     ds = ray.data.from_items([])
@@ -2666,6 +2666,45 @@ def test_groupby_simple(ray_start_regular_shared):
         finalize=lambda key, a: 1 / 0)
     assert agg_ds.count() == 0
     assert agg_ds == ds
+
+    # Test built-in count aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).count()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2,
+                                                                          33)]
+
+    # Test built-in sum aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).sum()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617),
+                                                       (2, 1650)]
+
+    # Test built-in min aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).min()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
+
+    # Test built-in max aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).max()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2,
+                                                                          98)]
+
+    # Test built-in mean aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).mean()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5), (1, 49.0),
+                                                       (2, 50.0)]
 
 
 def test_sort_simple(ray_start_regular_shared):

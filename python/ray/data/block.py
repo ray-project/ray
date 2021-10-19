@@ -13,8 +13,8 @@ from ray.data.impl.util import _check_pyarrow_version
 
 T = TypeVar("T")
 U = TypeVar("U")
-K = TypeVar("K")
-A = TypeVar("A")
+KeyType = TypeVar("KeyType")
+AggType = TypeVar("AggType")
 
 # Represents a batch of records to be stored in the Ray object store.
 #
@@ -155,8 +155,10 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: Callable[[T], K], init: Callable[[K], A],
-                accumulate: Callable[[K, A, T], A]) -> Block[Tuple[K, A]]:
+    def combine(self, key: Callable[[T], KeyType],
+                init: Callable[[KeyType], AggType],
+                accumulate: Callable[[KeyType, AggType, T], AggType]
+                ) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -169,8 +171,9 @@ class BlockAccessor(Generic[T]):
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[Tuple[K, A]]], merge: Callable[[K, A, A], A],
-            finalize: Callable[[K, A], U]
-    ) -> Tuple[Block[Tuple[K, U]], BlockMetadata]:
+            blocks: List[Block[Tuple[KeyType, AggType]]],
+            merge: Callable[[KeyType, AggType, AggType], AggType],
+            finalize: Callable[[KeyType, AggType], U]
+    ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

@@ -11,7 +11,8 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.impl.block_builder import BlockBuilder
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, K, A
+from ray.data.block import Block, BlockAccessor, BlockMetadata, \
+    T, U, KeyType, AggType
 
 # A simple block can be sorted by value (None) or a lambda function (Callable).
 SortKeyT = Union[None, Callable[[T], Any]]
@@ -128,8 +129,10 @@ class SimpleBlockAccessor(BlockAccessor):
         ret.append(items[prev_i:])
         return ret
 
-    def combine(self, key: Callable[[T], K], init: Callable[[K], A],
-                accumulate: Callable[[K, A, T], A]) -> Block[Tuple[K, A]]:
+    def combine(self, key: Callable[[T], KeyType],
+                init: Callable[[KeyType], AggType],
+                accumulate: Callable[[KeyType, AggType, T], AggType]
+                ) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -193,9 +196,10 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[Tuple[K, A]]], merge: Callable[[K, A, A], A],
-            finalize: Callable[[K, A], U]
-    ) -> Tuple[Block[Tuple[K, U]], BlockMetadata]:
+            blocks: List[Block[Tuple[KeyType, AggType]]],
+            merge: Callable[[KeyType, AggType, AggType], AggType],
+            finalize: Callable[[KeyType, AggType], U]
+    ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,
