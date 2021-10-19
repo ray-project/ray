@@ -485,7 +485,8 @@ class TestSuiteFactory {
 class StreamingWorker {
  public:
   StreamingWorker(const std::string &store_socket, const std::string &raylet_socket,
-                  int node_manager_port, const gcs::GcsClientOptions &gcs_options)
+                  int node_manager_port, const gcs::GcsClientOptions &gcs_options,
+                  StartupToken startup_token)
       : test_suite_(nullptr), peer_actor_handle_(nullptr) {
     // You must keep it same with `src/ray/core_worker/core_worker.h:CoreWorkerOptions`
     CoreWorkerOptions options;
@@ -503,6 +504,7 @@ class StreamingWorker {
                                                 _2, _3, _4, _5, _6, _7, _8, _9);
     options.num_workers = 1;
     options.metrics_agent_port = -1;
+    options.startup_token = startup_token;
     CoreWorkerProcess::Initialize(options);
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }
@@ -639,14 +641,18 @@ class StreamingWorker {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc >= 4);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
   auto node_manager_port = std::stoi(std::string(argv[3]));
+  // auto runtime_env_hash = std::string(argv[4]); // Unused in this test
+  auto startup_token_str = std::string(argv[4]);
+  auto start = startup_token_str.find(std::string("=")) + 1;
+  auto startup_token = std::stoi(startup_token_str.substr(start));
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::streaming::StreamingWorker worker(store_socket, raylet_socket, node_manager_port,
-                                         gcs_options);
+                                         gcs_options, startup_token);
   worker.RunTaskExecutionLoop();
   return 0;
 }

@@ -31,7 +31,8 @@ logger = logging.getLogger(__name__)
 
 def framework_iterator(config=None,
                        frameworks=("tf2", "tf", "tfe", "torch"),
-                       session=False):
+                       session=False,
+                       with_eager_tracing=False):
     """An generator that allows for looping through n frameworks for testing.
 
     Provides the correct config entries ("framework") as well
@@ -46,6 +47,8 @@ def framework_iterator(config=None,
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
+        with_eager_tracing: Include `eager_tracing=True` in the returned
+            configs, when framework=[tfe|tf2].
 
     Yields:
         str: If enter_session is False:
@@ -105,7 +108,15 @@ def framework_iterator(config=None,
         elif fw == "tf":
             assert not tf1.executing_eagerly()
 
-        yield fw if session is False else (fw, sess)
+        # Additionally loop through eager_tracing=True + False, if necessary.
+        if fw in ["tf2", "tfe"] and with_eager_tracing:
+            for tracing in [True, False]:
+                config["eager_tracing"] = tracing
+                yield fw if session is False else (fw, sess)
+                config["eager_tracing"] = False
+        # Yield current framework + tf-session (if necessary).
+        else:
+            yield fw if session is False else (fw, sess)
 
         # Exit any context we may have entered.
         if eager_ctx:
@@ -509,6 +520,8 @@ def check_train_results(train_results):
             f"train_results['infos']['learner'] ({learner_info})!"
 
     for pid, policy_stats in learner_info.items():
+        if pid == "batch_count":
+            continue
         # Expect td-errors to be per batch-item.
         if "td_error" in policy_stats:
             configured_b = train_results["config"]["train_batch_size"]
@@ -563,7 +576,7 @@ def run_learning_tests_from_yaml(
     # Loop through all collected files and gather experiments.
     # Augment all by `torch` framework.
     for yaml_file in yaml_files:
-        tf_experiments = yaml.load(open(yaml_file).read())
+        tf_experiments = yaml.safe_load(open(yaml_file).read())
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():

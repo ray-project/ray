@@ -251,7 +251,7 @@ def main():
     start_workers(max_task_count, run_tidy, task_queue, lock, args.timeout)
 
     # Form the common args list.
-    common_clang_tidy_args = ["--use-color"]
+    common_clang_tidy_args = []
     if args.fix:
         common_clang_tidy_args.append("-fix")
     if args.checks != "":

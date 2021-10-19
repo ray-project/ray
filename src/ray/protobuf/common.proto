@@ -160,6 +160,8 @@ message RuntimeEnv {
   string serialized_runtime_env = 1;
   /// URIs used in this runtime env. These will be used for reference counting.
   repeated string uris = 2;
+  /// Indicates whether to install runtime env eagerly before the workers are leased.
+  bool runtime_env_eager_install = 3;
 }
 
 /// The task specification encapsulates all immutable information about the

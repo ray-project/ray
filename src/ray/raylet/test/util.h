@@ -20,7 +20,7 @@ namespace raylet {
 
 class MockWorker : public WorkerInterface {
  public:
-  MockWorker(WorkerID worker_id, int port, RuntimeEnvHash runtime_env_hash = 0)
+  MockWorker(WorkerID worker_id, int port, int runtime_env_hash = 0)
       : worker_id_(worker_id),
         port_(port),
         is_detached_actor_(false),
@@ -67,6 +67,7 @@ class MockWorker : public WorkerInterface {
   bool IsBlocked() const { return blocked_; }
 
   Process GetProcess() const { return Process::CreateNewDummy(); }
+  StartupToken GetStartupToken() const { return 0; }
   void SetProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
 
   Process GetShimProcess() const { return Process::CreateNewDummy(); }
@@ -109,10 +110,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return JobID::Nil();
   }
-  RuntimeEnvHash GetRuntimeEnvHash() const { return runtime_env_hash_; }
-  void SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) {
-    runtime_env_hash_ = runtime_env_hash;
-  }
+  int GetRuntimeEnvHash() const { return runtime_env_hash_; }
   void AssignActorId(const ActorID &actor_id) { RAY_CHECK(false) << "Method unused"; }
   const ActorID &GetActorId() const {
     RAY_CHECK(false) << "Method unused";
@@ -189,6 +187,11 @@ class MockWorker : public WorkerInterface {
     return nullptr;
   }
 
+ protected:
+  void SetStartupToken(StartupToken startup_token) {
+    RAY_CHECK(false) << "Method unused";
+  };
+
  private:
   WorkerID worker_id_;
   int port_;
@@ -200,7 +203,7 @@ class MockWorker : public WorkerInterface {
   BundleID bundle_id_;
   bool blocked_ = false;
   RayTask task_;
-  RuntimeEnvHash runtime_env_hash_;
+  int runtime_env_hash_;
 };
 
 }  // namespace raylet

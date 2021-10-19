@@ -6,7 +6,6 @@ import gym
 from gym.spaces import Box, Discrete
 from functools import partial
 import logging
-import numpy as np
 from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
@@ -53,9 +52,6 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
             target model will be created in this function and assigned to
             `policy.target_model`.
     """
-    # With separate state-preprocessor (before obs+action concat).
-    num_outputs = int(np.product(obs_space.shape))
-
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"
     # settings.
@@ -70,7 +66,7 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
     model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
-        num_outputs=num_outputs,
+        num_outputs=None,
         model_config=config["model"],
         framework=config["framework"],
         default_model=default_model_cls,
@@ -90,7 +86,7 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
-        num_outputs=num_outputs,
+        num_outputs=None,
         model_config=config["model"],
         framework=config["framework"],
         default_model=default_model_cls,
