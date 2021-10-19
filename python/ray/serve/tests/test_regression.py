@@ -143,6 +143,7 @@ def test_nested_actors(serve_instance):
 
 def test_handle_cache_out_of_scope(serve_instance):
     # https://github.com/ray-project/ray/issues/18980
+    initial_num_cached = len(_get_global_client().handle_cache)
 
     @serve.deployment(name="f")
     def f():
@@ -152,7 +153,7 @@ def test_handle_cache_out_of_scope(serve_instance):
     handle = serve.get_deployment("f").get_handle()
 
     handle_cache = _get_global_client().handle_cache
-    assert len(handle_cache) == 1
+    assert len(handle_cache) == initial_num_cached + 1
 
     def sender_where_handle_goes_out_of_scope():
         f = serve.get_deployment("f").get_handle()
@@ -160,7 +161,7 @@ def test_handle_cache_out_of_scope(serve_instance):
         assert ray.get(f.remote()) == "hi"
 
     [sender_where_handle_goes_out_of_scope() for _ in range(30)]
-    assert len(handle_cache) == 1
+    assert len(handle_cache) == initial_num_cached + 1
 
 
 if __name__ == "__main__":
