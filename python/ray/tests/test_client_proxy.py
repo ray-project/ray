@@ -20,9 +20,7 @@ from ray._private.test_utils import run_string_as_driver
 def start_ray_and_proxy_manager(n_ports=2):
     ray_instance = ray.init(_redis_password="test")
     pm = proxier.ProxyManager(
-        ray_instance["redis_address"],
-        session_dir=ray_instance["session_dir"],
-        redis_password="test")
+        ray_instance["redis_address"], redis_password="test")
     free_ports = random.choices(range(45000, 45100), k=n_ports)
     pm._free_ports = free_ports.copy()
 
@@ -159,11 +157,11 @@ def test_delay_in_rewriting_environment(shutdown_only):
     """
     proxier.LOGSTREAM_RETRIES = 3
     proxier.LOGSTREAM_RETRY_INTERVAL_SEC = 1
-    ray_instance = ray.init()
+    ray_instance = ray.init(_redis_password="test")
     server = proxier.serve_proxier(
         "localhost:25010",
         ray_instance["redis_address"],
-        session_dir=ray_instance["session_dir"])
+        redis_password="test")
 
     def delay_in_rewrite(_input: JobConfig):
         time.sleep(6)
@@ -196,11 +194,11 @@ def test_startup_error_yields_clean_result(shutdown_only):
     Check that an error while preparing the environment yields an actionable,
     clear error on the *client side*.
     """
-    ray_instance = ray.init()
+    ray_instance = ray.init(_redis_password="test")
     server = proxier.serve_proxier(
         "localhost:25030",
         ray_instance["redis_address"],
-        session_dir=ray_instance["session_dir"])
+        redis_password="test")
 
     def raise_not_rewrite(input: JobConfig):
         raise RuntimeError("WEIRD_ERROR")
