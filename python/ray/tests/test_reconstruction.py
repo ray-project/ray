@@ -460,7 +460,6 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
         assert "ObjectLostError" in exc
 
 
-@pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     config = {
@@ -537,7 +536,6 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
                 ray.get(obj)
 
 
-@pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     config = {
@@ -589,7 +587,6 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
             ray.get(obj)
 
 
-@pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_reconstruction_stress(ray_start_cluster):
     config = {
