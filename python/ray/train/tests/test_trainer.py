@@ -592,10 +592,10 @@ def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
 
 def test_init_failure(ray_start_2_cpus):
     with pytest.raises(TypeError):
-        Trainer(5)
+        Trainer(5, num_workers=2)
 
     with pytest.raises(ValueError):
-        Trainer("invalid")
+        Trainer("invalid", num_workers=2)
 
 
 def test_start_failure(ray_start_2_cpus):
