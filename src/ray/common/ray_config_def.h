@@ -494,20 +494,9 @@ RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
 
 /// Whether or not use TLS.
-RAY_CONFIG(bool, USE_TLS,
-           std::getenv("RAY_USE_TLS") != nullptr &&
-               (std::getenv("RAY_USE_TLS") == std::string("true") ||
-                std::getenv("RAY_USE_TLS") == std::string("1")))
+RAY_CONFIG(bool, USE_TLS, false)
 
 /// Location of TLS credentials
-RAY_CONFIG(std::string, TLS_SERVER_CERT,
-           std::getenv("RAY_TLS_SERVER_CERT") != nullptr
-               ? std::getenv("RAY_TLS_SERVER_CERT")
-               : "")
-RAY_CONFIG(std::string, TLS_SERVER_KEY,
-           std::getenv("RAY_TLS_SERVER_KEY") != nullptr
-               ? std::getenv("RAY_TLS_SERVER_KEY")
-               : "")
-RAY_CONFIG(std::string, TLS_CA_CERT,
-           std::getenv("RAY_TLS_CA_CERT") != nullptr ? std::getenv("RAY_TLS_CA_CERT")
-                                                     : "")
+RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
+RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
+RAY_CONFIG(std::string, TLS_CA_CERT, "")
