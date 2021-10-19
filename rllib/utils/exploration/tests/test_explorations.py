@@ -181,10 +181,7 @@ class TestExplorations(unittest.TestCase):
 
 
 class TestCustomExplorations(unittest.TestCase):
-    """
-    Tests all Exploration components and the deterministic flag for
-    compute_action calls.
-    """
+    """Tests custom exploration algorithm registration."""
 
     @classmethod
     def setUpClass(cls):
