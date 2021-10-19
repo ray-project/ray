@@ -312,6 +312,14 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_runtime_env_ray_minimal",
+    size = "small",
+    srcs = SRCS + ["test_runtime_env_ray_minimal.py"],
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"],
+)
+
 # TODO(ekl) we can't currently support tagging these as flaky since there's
 # no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
