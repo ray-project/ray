@@ -118,15 +118,14 @@ def test_client_connect_to_tls_server(use_tls, call_ray_start):
     without_tls_env = {}
 
     # Attempt to connect without TLS
-    try:
-        out = run_string_as_driver(
+    with pytest.raises(subprocess.CalledProcessError) as exc_info:
+        run_string_as_driver(
             """
 from ray.util.client import ray as ray_client
 ray_client.connect("localhost:10001")
      """,
             env=without_tls_env)
-    except subprocess.CalledProcessError as e:
-        assert "ConnectionError" in e.output.decode("utf-8")
+    assert "ConnectionError" in exc_info.value.output.decode("utf-8")
 
     # Attempt to connect with TLS
     out = run_string_as_driver(
