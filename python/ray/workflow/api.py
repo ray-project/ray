@@ -374,7 +374,7 @@ def delete(workflow_id: str) -> None:
         raise WorkflowNotFoundError(workflow_id)
 
     wf_storage = get_workflow_storage(workflow_id)
-    wf_storage.delete_workflow(workflow_id)
+    wf_storage.delete_workflow()
 
 
 __all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor",
