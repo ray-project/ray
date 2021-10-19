@@ -277,8 +277,9 @@ Papers
    :caption: Ray Data
 
    data/dataset.rst
-   data/dataset-tensor-support.rst
    data/dataset-pipeline.rst
+   data/examples/big_data_ingestion
+   data/dataset-tensor-support.rst
    data/package-ref.rst
    data/dask-on-ray.rst
    data/mars-on-ray.rst
@@ -331,13 +332,14 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray SGD
+   :caption: Ray Train
 
-   raysgd/v2/raysgd.rst
-   raysgd/v2/user_guide.rst
-   raysgd/v2/examples.rst
-   raysgd/v2/architecture.rst
-   raysgd/v2/api.rst
+   train/train.rst
+   train/user_guide.rst
+   train/examples.rst
+   train/architecture.rst
+   train/api.rst
+   train/migration-guide.rst
    RaySGD v1: Distributed Training Wrappers <raysgd/raysgd.rst>
 
 .. toctree::
@@ -365,10 +367,11 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Contributing
+   :caption: Contributor Guide
 
    getting-involved.rst
    development.rst
+   fake-autoscaler.rst
    whitepaper.rst
    debugging.rst
    profiling.rst
