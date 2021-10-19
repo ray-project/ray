@@ -16,7 +16,6 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 
@@ -33,11 +32,15 @@ class PublisherTest : public ::testing::Test {
   ~PublisherTest() {}
 
   void SetUp() {
-    object_status_publisher_ = std::shared_ptr<Publisher>(new Publisher(
+    object_status_publisher_ = std::make_shared<Publisher>(
+        /*channels=*/std::vector<
+            rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                              rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*periodic_runner=*/periodic_runner_.get(),
         /*get_time_ms=*/[this]() { return current_time_; },
         /*subscriber_timeout_ms=*/subscriber_timeout_ms_,
-        /*batch_size*/ 100));
+        /*batch_size*/ 100);
     current_time_ = 0;
   }
 

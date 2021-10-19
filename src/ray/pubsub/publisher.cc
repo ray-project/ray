@@ -193,7 +193,8 @@ bool Subscriber::IsActiveConnectionTimedOut() const {
          get_time_ms_() - last_connection_update_time_ms_ >= connection_timeout_ms_;
 }
 
-// We need to define this in order for the compiler to find the definition.
+// We need to instantiate the template in order for the compiler to find the definition.
+// Alternatively, we can move Publisher definition to the header.
 template class pub_internal::SubscriptionIndex<ObjectID>;
 
 }  // namespace pub_internal
@@ -232,19 +233,21 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
   }
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.AddEntry(key_id_binary, subscriber_id);
+  return subscription_index_it->second->AddEntry(key_id_binary, subscriber_id);
 }
 
 void Publisher::Publish(const rpc::ChannelType channel_type,
                         const rpc::PubMessage &pub_message,
                         const std::string &key_id_binary) {
+  RAY_CHECK(pub_message.channel_type() == channel_type);
+  RAY_CHECK(pub_message.key_id() == key_id_binary);
   absl::MutexLock lock(&mutex_);
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
   auto maybe_subscribers =
-      subscription_index_it->second.GetSubscriberIdsByKeyId(key_id_binary);
+      subscription_index_it->second->GetSubscriberIdsByKeyId(key_id_binary);
   if (!maybe_subscribers.has_value()) {
     return;
   }
@@ -274,7 +277,7 @@ bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
   absl::MutexLock lock(&mutex_);
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.EraseEntry(key_id_binary, subscriber_id);
+  return subscription_index_it->second->EraseEntry(key_id_binary, subscriber_id);
 }
 
 bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
@@ -282,10 +285,10 @@ bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
   return UnregisterSubscriberInternal(subscriber_id);
 }
 
-bool Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
+int Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
   int erased = 0;
   for (auto &index : subscription_index_map_) {
-    if (index.second.EraseSubscriber(subscriber_id)) {
+    if (index.second->EraseSubscriber(subscriber_id)) {
       erased += 1;
     }
   }
@@ -334,7 +337,7 @@ bool Publisher::CheckNoLeaks() const {
   }
 
   for (const auto &index : subscription_index_map_) {
-    if (!index.second.CheckNoLeaks()) {
+    if (!index.second->CheckNoLeaks()) {
       return false;
     }
   }

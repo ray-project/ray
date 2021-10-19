@@ -15,10 +15,10 @@
 #pragma once
 
 #include <gtest/gtest_prod.h>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/rpc/server_call.h"
@@ -33,39 +33,64 @@ using SubscriberID = UniqueID;
 
 namespace pub_internal {
 
-/// Index for object ids and node ids of subscribers.
-template <typename KeyIdType>
-class SubscriptionIndex {
+// Interface to type erase the templated SubscriptionIndex class.
+class SubscriptionIndexInterface {
  public:
-  explicit SubscriptionIndex() {}
-  ~SubscriptionIndex() = default;
+  virtual ~SubscriptionIndexInterface() = default;
 
-  /// Add a new entry to the index.
+  /// Adds a new entry to the index.
   /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
-  bool AddEntry(const std::string &key_id_binary, const SubscriberID &subscriber_id);
+  virtual bool AddEntry(const std::string &key_id_binary,
+                        const SubscriberID &subscriber_id) = 0;
 
-  /// Return the set of subscriber ids that are subscribing to the given object ids.
-  absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
-  GetSubscriberIdsByKeyId(const std::string &key_id_binary) const;
+  /// Returns the set of subscriber ids that are subscribing to the given object ids.
+  virtual absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
+  GetSubscriberIdsByKeyId(const std::string &key_id_binary) const = 0;
 
-  /// Erase the subscriber from the index. Returns the number of erased subscribers.
-  /// NOTE: It cannot erase subscribers that were never added.
-  bool EraseSubscriber(const SubscriberID &subscriber_id);
+  /// Erases the subscriber from the index.
+  /// Returns whether the subscriber exists before the call.
+  virtual bool EraseSubscriber(const SubscriberID &subscriber_id) = 0;
 
-  /// Erase the object id and subscriber id from the index.
-  bool EraseEntry(const std::string &key_id_binary, const SubscriberID &subscriber_id);
+  /// Erases the object id and subscriber id from the index.
+  virtual bool EraseEntry(const std::string &key_id_binary,
+                          const SubscriberID &subscriber_id) = 0;
 
-  /// Return true if the object id exists in the index.
-  bool HasKeyId(const std::string &key_id_binary) const;
+  /// Returns true if the object id exists in the index.
+  virtual bool HasKeyId(const std::string &key_id_binary) const = 0;
 
   /// Returns true if object id or subscriber id exists in the index.
-  bool HasSubscriber(const SubscriberID &subscriber_id) const;
+  virtual bool HasSubscriber(const SubscriberID &subscriber_id) const = 0;
 
-  /// Return true if there's no metadata remained in the private attribute.
-  bool CheckNoLeaks() const;
+  /// Returns true if there's no metadata remained in the private attribute.
+  virtual bool CheckNoLeaks() const = 0;
+};
+
+/// Index for object ids and node ids of subscribers, keyed by KeyIdType.
+template <typename KeyIdType>
+class SubscriptionIndex : public SubscriptionIndexInterface {
+ public:
+  SubscriptionIndex() = default;
+  ~SubscriptionIndex() = default;
+
+  bool AddEntry(const std::string &key_id_binary,
+                const SubscriberID &subscriber_id) final;
+
+  absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
+  GetSubscriberIdsByKeyId(const std::string &key_id_binary) const final;
+
+  bool EraseSubscriber(const SubscriberID &subscriber_id) final;
+
+  bool EraseEntry(const std::string &key_id_binary,
+                  const SubscriberID &subscriber_id) final;
+
+  bool HasKeyId(const std::string &key_id_binary) const final;
+
+  bool HasSubscriber(const SubscriberID &subscriber_id) const final;
+
+  bool CheckNoLeaks() const final;
 
  private:
-  /// Mapping from message id -> subscribers.
+  // Mapping from message id -> subscribers.
   absl::flat_hash_map<KeyIdType, absl::flat_hash_set<SubscriberID>>
       key_id_to_subscribers_;
   // Mapping from subscribers -> message ids. Reverse index of key_id_to_subscribers_.
@@ -85,8 +110,8 @@ struct LongPollConnection {
 /// Abstraction to each subscriber.
 class Subscriber {
  public:
-  explicit Subscriber(const std::function<double()> &get_time_ms,
-                      uint64_t connection_timeout_ms, const int publish_batch_size)
+  Subscriber(const std::function<double()> &get_time_ms, uint64_t connection_timeout_ms,
+             const int publish_batch_size)
       : get_time_ms_(get_time_ms),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
@@ -148,10 +173,10 @@ class Subscriber {
 }  // namespace pub_internal
 
 /// Publisher interface. Note that message ids are passed as a string to avoid templated
-/// definition which doesn't go well with virutal methods.
+/// definition which doesn't go well with virtual methods.
 class PublisherInterface {
  public:
-  virtual ~PublisherInterface() {}
+  virtual ~PublisherInterface() = default;
 
   /// Register the subscription.
   ///
@@ -212,6 +237,7 @@ class Publisher : public PublisherInterface {
  public:
   /// Pubsub coordinator constructor.
   ///
+  /// \param channels Channels where publishing and subscribing are accepted.
   /// \param periodical_runner Periodic runner. Used to periodically run
   /// CheckDeadSubscribers.
   /// \param get_time_ms A callback to get the current time in
@@ -219,25 +245,42 @@ class Publisher : public PublisherInterface {
   /// \param subscriber_timeout_ms The subscriber timeout in milliseconds.
   /// Check out CheckDeadSubscribers for more details.
   /// \param publish_batch_size The batch size of published messages.
-  explicit Publisher(PeriodicalRunner *periodical_runner,
-                     const std::function<double()> get_time_ms,
-                     const uint64_t subscriber_timeout_ms, const int publish_batch_size)
+  Publisher(const std::vector<rpc::ChannelType> &channels,
+            PeriodicalRunner *const periodical_runner,
+            const std::function<double()> get_time_ms,
+            const uint64_t subscriber_timeout_ms, const int publish_batch_size)
       : periodical_runner_(periodical_runner),
         get_time_ms_(get_time_ms),
         subscriber_timeout_ms_(subscriber_timeout_ms),
         publish_batch_size_(publish_batch_size) {
+    // Insert index map for each channel.
+    for (auto type : channels) {
+      switch (type) {
+      case rpc::ChannelType::WORKER_OBJECT_EVICTION:
+        subscription_index_map_.emplace(
+            rpc::ChannelType::WORKER_OBJECT_EVICTION,
+            std::make_unique<pub_internal::SubscriptionIndex<ObjectID>>());
+        break;
+      case rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL:
+        subscription_index_map_.emplace(
+            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+            std::make_unique<pub_internal::SubscriptionIndex<ObjectID>>());
+        break;
+      case rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL:
+        subscription_index_map_.emplace(
+            rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+            std::make_unique<pub_internal::SubscriptionIndex<ObjectID>>());
+        break;
+      default:
+        RAY_LOG(FATAL) << "Unknown channel type " << rpc::ChannelType_Name(type);
+      }
+    }
+
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
                                           subscriber_timeout_ms);
-    // Insert index map for each channel.
-    subscription_index_map_.emplace(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                    pub_internal::SubscriptionIndex<ObjectID>());
-    subscription_index_map_.emplace(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                    pub_internal::SubscriptionIndex<ObjectID>());
-    subscription_index_map_.emplace(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                    pub_internal::SubscriptionIndex<ObjectID>());
   }
 
-  ~Publisher() = default;
+  ~Publisher() override = default;
 
   /// Cache the subscriber's long polling request's information.
   ///
@@ -337,7 +380,7 @@ class Publisher : public PublisherInterface {
   /// Private fields
   ///
 
-  bool UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
+  int UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Periodic runner to invoke CheckDeadSubscribers.
@@ -358,13 +401,14 @@ class Publisher : public PublisherInterface {
       subscribers_ GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of messages <-> subscribers.
-  absl::flat_hash_map<rpc::ChannelType, pub_internal::SubscriptionIndex<ObjectID>>
+  absl::flat_hash_map<rpc::ChannelType,
+                      std::unique_ptr<pub_internal::SubscriptionIndexInterface>>
       subscription_index_map_ GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
   const int publish_batch_size_;
 
-  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_;
+  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
 };
 
 }  // namespace pubsub

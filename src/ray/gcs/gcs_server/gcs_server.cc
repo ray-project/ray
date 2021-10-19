@@ -66,11 +66,15 @@ void GcsServer::Start() {
   if (config_.grpc_pubsub_enabled) {
     // Init grpc based pubsub
     // TODO(before merging): Make these constants configurable.
-    grpc_pubsub_publisher_.reset(new pubsub::Publisher(
+    grpc_pubsub_publisher_ = std::make_shared<pubsub::Publisher>(
+        /*channels=*/std::vector<
+            rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                              rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*periodical_runner=*/&pubsub_periodical_runner_,
         /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size()));
+        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
   }
 
   // Init gcs table storage.
