@@ -941,17 +941,23 @@ def test_runtime_env_inheritance_regression(shutdown_only):
             def f(self):
                 return open("hello").read()
 
+        # Not passing the working_dir through should work.
         env1 = ray.get_runtime_context().runtime_env
         del env1["working_dir"]
-        print("Using env:", env1)
         t = Test.options(runtime_env=env1).remote()
         assert ray.get(t.f.remote()) == "world"
 
-        # Using working_dir is not supported
+        # Passing working_dir URI through directly should work.
         env2 = ray.get_runtime_context().runtime_env
         assert "working_dir" in env2
-        with pytest.raises(NotImplementedError):
-            t = Test.options(runtime_env=env2).remote()
+        t = Test.options(runtime_env=env2).remote()
+        assert ray.get(t.f.remote()) == "world"
+
+        # Passing a local directory should not work.
+        env3 = ray.get_runtime_context().runtime_env
+        env3["working_dir"] = "."
+        with pytest.raises(ValueError):
+            t = Test.options(runtime_env=env3).remote()
 
 
 @pytest.mark.skipif(
