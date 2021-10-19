@@ -14,6 +14,7 @@ from ray.tune.utils import force_on_current_node
 from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import override
+from ray._private.test_utils import is_anyscale_connect
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
 
@@ -198,7 +199,7 @@ if __name__ == "__main__":
 
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "torch_tune_serve_test")
-    if addr is not None and addr.startswith("anyscale://"):
+    if is_anyscale_connect(addr):
         client = ray.init(address=addr, job_name=job_name)
     else:
         client = ray.init(address="auto")
