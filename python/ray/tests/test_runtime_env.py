@@ -6,6 +6,7 @@ import tempfile
 import time
 import requests
 from pathlib import Path
+from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -198,8 +199,8 @@ def s3_working_dir():
 @pytest.fixture(
     scope="function",
     params=[
-        pytest.lazy_fixture("local_working_dir"),
-        pytest.lazy_fixture("s3_working_dir")
+        lazy_fixture("local_working_dir"),
+        lazy_fixture("s3_working_dir")
     ])
 def working_dir_parametrized(request):
     return request.param
