@@ -24,6 +24,8 @@ from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
 
+from rllib.policy.tf_policy import ValueNetworkMixin
+
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
@@ -259,46 +261,6 @@ class KLCoeffMixin:
             self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
         # Return the current KL value.
         return self.kl_coeff_val
-
-
-class ValueNetworkMixin:
-    """Assigns the `_value()` method to the PPOPolicy.
-
-    This way, Policy can call `_value()` to get the current VF estimate on a
-    single(!) observation (as done in `postprocess_trajectory_fn`).
-    Note: When doing this, an actual forward pass is being performed.
-    This is different from only calling `model.value_function()`, where
-    the result of the most recent forward pass is being used to return an
-    already calculated tensor.
-    """
-
-    def __init__(self, obs_space, action_space, config):
-        # When doing GAE, we need the value function estimate on the
-        # observation.
-        if config["use_critic"]:
-
-            # Input dict is provided to us automatically via the Model's
-            # requirements. It's a single-timestep (last one in trajectory)
-            # input_dict.
-            @make_tf_callable(self.get_session())
-            def value(**input_dict):
-                input_dict = SampleBatch(input_dict)
-                if isinstance(self.model, tf.keras.Model):
-                    _, _, extra_outs = self.model(input_dict)
-                    return extra_outs[SampleBatch.VF_PREDS][0]
-                else:
-                    model_out, _ = self.model(input_dict)
-                    # [0] = remove the batch dim.
-                    return self.model.value_function()[0]
-
-        # When not doing GAE, we do not require the value function's output.
-        else:
-
-            @make_tf_callable(self.get_session())
-            def value(*args, **kwargs):
-                return tf.constant(0.0)
-
-        self._value = value
 
 
 def setup_config(policy: Policy, obs_space: gym.spaces.Space,

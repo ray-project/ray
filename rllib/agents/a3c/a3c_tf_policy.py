@@ -3,7 +3,6 @@ from typing import Optional, Dict
 import gym
 
 import ray
-from ray.rllib.policy.torch_policy import ValueNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
@@ -18,6 +17,8 @@ from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.evaluation import MultiAgentEpisode
+
+from rllib.policy.tf_policy import ValueNetworkMixin
 
 tf1, tf, tfv = try_import_tf()
 

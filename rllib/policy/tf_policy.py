@@ -1,19 +1,18 @@
 import errno
-import gym
 import logging
 import math
-import numpy as np
 import os
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
+import gym
+import numpy as np
 import ray
 import ray.experimental.tf_utils
-from ray.util.debug import log_once
+import tree  # pip install dm_tree
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
@@ -23,9 +22,11 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_ops import get_gpu_devices
+from ray.rllib.utils.tf_ops import make_tf_callable
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import MultiAgentEpisode
@@ -1143,6 +1144,46 @@ class TFPolicy(Policy):
             feed_dict[self._seq_lens] = train_batch[SampleBatch.SEQ_LENS]
 
         return feed_dict
+
+
+class ValueNetworkMixin:
+    """Assigns the `_value()` method to the PPOPolicy.
+
+    This way, Policy can call `_value()` to get the current VF estimate on a
+    single(!) observation (as done in `postprocess_trajectory_fn`).
+    Note: When doing this, an actual forward pass is being performed.
+    This is different from only calling `model.value_function()`, where
+    the result of the most recent forward pass is being used to return an
+    already calculated tensor.
+    """
+
+    def __init__(self, obs_space, action_space, config):
+        # When doing GAE, we need the value function estimate on the
+        # observation.
+        if config["use_critic"]:
+
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
+            @make_tf_callable(self.get_session())
+            def value(**input_dict):
+                input_dict = SampleBatch(input_dict)
+                if isinstance(self.model, tf.keras.Model):
+                    _, _, extra_outs = self.model(input_dict)
+                    return extra_outs[SampleBatch.VF_PREDS][0]
+                else:
+                    model_out, _ = self.model(input_dict)
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
+
+        # When not doing GAE, we do not require the value function's output.
+        else:
+
+            @make_tf_callable(self.get_session())
+            def value(*args, **kwargs):
+                return tf.constant(0.0)
+
+        self._value = value
 
 
 @DeveloperAPI
