@@ -344,7 +344,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         bool did_spill = TrySpillback(work, is_infeasible);
         if (!did_spill) {
           // There must not be any other available nodes in the cluster, so the task
-          // should stay on this node. We can skip the reest of the shape because the
+          // should stay on this node. We can skip the rest of the shape because the
           // scheduler will make the same decision.
           break;
         }
