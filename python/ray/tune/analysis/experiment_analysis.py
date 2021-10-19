@@ -1,10 +1,14 @@
 import json
 import logging
 import os
+import warnings
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
+from ray.util.debug import log_once
 from ray.tune.utils import flatten_dict
+from ray.tune.utils.serialization import TuneFunctionDecoder
+from ray.tune.utils.util import is_nan_or_inf
 
 try:
     import pandas as pd
@@ -14,14 +18,20 @@ except ImportError:
     DataFrame = None
 
 from ray.tune.error import TuneError
-from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
-    CONFIG_PREFIX, TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC, EXPR_PROGRESS_FILE, \
+    EXPR_RESULT_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.util import unflattened_lookup
+
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_FILE_TYPE = "csv"
 
+
+@PublicAPI(stability="beta")
 class Analysis:
     """Analyze all results from a directory of experiments.
 
@@ -31,16 +41,20 @@ class Analysis:
         experiment_dir (str): Directory of the experiment to load.
         default_metric (str): Default metric for comparing results. Can be
             overwritten with the ``metric`` parameter in the respective
-            functions.
+            functions. If None but a mode was passed, the anonymous metric
+            `ray.tune.result.DEFAULT_METRIC` will be used per default.
         default_mode (str): Default mode for comparing results. Has to be one
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
+        file_type (str): Read results from json or csv files. Has to be one
+            of [None, json, csv]. Defaults to csv.
     """
 
     def __init__(self,
                  experiment_dir: str,
                  default_metric: Optional[str] = None,
-                 default_mode: Optional[str] = None):
+                 default_mode: Optional[str] = None,
+                 file_type: Optional[str] = None):
         experiment_dir = os.path.expanduser(experiment_dir)
         if not os.path.isdir(experiment_dir):
             raise ValueError(
@@ -54,6 +68,11 @@ class Analysis:
             raise ValueError(
                 "`default_mode` has to be None or one of [min, max]")
         self.default_mode = default_mode
+        self._file_type = self._validate_filetype(file_type)
+
+        if self.default_metric is None and self.default_mode:
+            # If only a mode was passed, use anonymous metric
+            self.default_metric = DEFAULT_METRIC
 
         if not pd:
             logger.warning(
@@ -61,6 +80,23 @@ class Analysis:
                 "Analysis utilities.")
         else:
             self.fetch_trial_dataframes()
+
+    def _validate_filetype(self, file_type: Optional[str] = None):
+        if file_type not in {None, "json", "csv"}:
+            raise ValueError(
+                "`file_type` has to be None or one of [json, csv].")
+        return file_type or DEFAULT_FILE_TYPE
+
+    def set_filetype(self, file_type: Optional[str] = None):
+        """Overrides the existing file type.
+
+        Args:
+            file_type (str): Read results from json or csv files. Has to be one
+                of [None, json, csv]. Defaults to csv.
+        """
+        self._file_type = self._validate_filetype(file_type)
+        self.fetch_trial_dataframes()
+        return True
 
     def _validate_metric(self, metric: str) -> str:
         if not metric and not self.default_metric:
@@ -83,19 +119,31 @@ class Analysis:
                   mode: Optional[str] = None) -> DataFrame:
         """Returns a pandas.DataFrame object constructed from the trials.
 
+        This function will look through all observed results of each trial
+        and return the one corresponding to the passed ``metric`` and
+        ``mode``: If ``mode=min``, it returns the result with the lowest
+        *ever* observed ``metric`` for this trial (this is not necessarily
+        the last)! For ``mode=max``, it's the highest, respectively. If
+        ``metric=None`` or ``mode=None``, the last result will be returned.
+
         Args:
             metric (str): Key for trial info to order on.
                 If None, uses last result.
-            mode (str): One of [min, max].
+            mode (None|str): One of [None, "min", "max"].
 
         Returns:
             pd.DataFrame: Constructed from a result dict of each trial.
         """
-        # Allow None values here.
-        if metric or self.default_metric:
-            metric = self._validate_metric(metric)
-        if mode or self.default_mode:
-            mode = self._validate_mode(mode)
+        # Do not validate metric/mode here or set from default metric/mode!
+        # Otherwise we will get confusing results as the lowest ever observed
+        # result may not be the last result.
+        if mode and mode not in ["min", "max"]:
+            raise ValueError("If set, `mode` has to be one of [min, max]")
+
+        if mode and not metric:
+            raise ValueError(
+                "If a `mode` is passed to `Analysis.dataframe(), you'll "
+                "also have to pass a `metric`!")
 
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs(prefix=True)
@@ -161,11 +209,24 @@ class Analysis:
             return None
 
     def fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
+        """Fetches trial dataframes from files.
+
+        Returns:
+            A dictionary containing "trial dir" to Dataframe.
+        """
         fail_count = 0
+        force_dtype = {"trial_id": str}  # Never convert trial_id to float.
         for path in self._get_trial_paths():
             try:
-                self.trial_dataframes[path] = pd.read_csv(
-                    os.path.join(path, EXPR_PROGRESS_FILE))
+                if self._file_type == "json":
+                    with open(os.path.join(path, EXPR_RESULT_FILE), "r") as f:
+                        json_list = [json.loads(line) for line in f if line]
+                    df = pd.json_normalize(json_list, sep="/")
+                elif self._file_type == "csv":
+                    df = pd.read_csv(
+                        os.path.join(path, EXPR_PROGRESS_FILE),
+                        dtype=force_dtype)
+                self.trial_dataframes[path] = df
             except Exception:
                 fail_count += 1
 
@@ -231,7 +292,10 @@ class Analysis:
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
             checkpoints = trial.checkpoint_manager.best_checkpoints()
-            return [(c.value, c.result[metric]) for c in checkpoints]
+            # Support metrics given as paths, e.g.
+            # "info/learner/default_policy/policy_loss".
+            return [(c.value, unflattened_lookup(metric, c.result))
+                    for c in checkpoints]
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 
@@ -263,10 +327,37 @@ class Analysis:
         else:
             return min(checkpoint_paths, key=lambda x: x[1])[0]
 
+    def get_last_checkpoint(self,
+                            trial=None,
+                            metric="training_iteration",
+                            mode="max"):
+        """Helper function that wraps Analysis.get_best_checkpoint().
+        Gets the last persistent checkpoint path of the provided trial,
+        i.e., with the highest "training_iteration".
+        If no trial is specified, it loads the best trial according to the
+        provided metric and mode (defaults to max. training iteration).
+
+        Args:
+            trial (Trial): The log directory or an instance of a trial.
+            If None, load the latest trial automatically.
+            metric (str): If no trial is specified, use this metric to identify
+            the best trial and load the last checkpoint from this trial.
+            mode (str): If no trial is specified, use the metric and this mode
+            to identify the best trial and load the last checkpoint from it.
+
+        Returns:
+            Path for last checkpoint of trial
+        """
+        if trial is None:
+            trial = self.get_best_logdir(metric, mode)
+
+        return self.get_best_checkpoint(trial, "training_iteration", "max")
+
     def _retrieve_rows(self,
                        metric: Optional[str] = None,
                        mode: Optional[str] = None) -> Dict[str, Any]:
         assert mode is None or mode in ["max", "min"]
+        assert not mode or metric
         rows = {}
         for path, df in self.trial_dataframes.items():
             if mode == "max":
@@ -288,7 +379,10 @@ class Analysis:
     def _get_trial_paths(self) -> List[str]:
         _trial_paths = []
         for trial_path, _, files in os.walk(self._experiment_dir):
-            if EXPR_PROGRESS_FILE in files:
+            if (self._file_type == "json"
+                and EXPR_RESULT_FILE in files) \
+                    or (self._file_type == "csv"
+                        and EXPR_PROGRESS_FILE in files):
                 _trial_paths += [trial_path]
 
         if not _trial_paths:
@@ -302,6 +396,7 @@ class Analysis:
         return self._trial_dataframes
 
 
+@PublicAPI(stability="beta")
 class ExperimentAnalysis(Analysis):
     """Analyze results from a Tune experiment.
 
@@ -337,12 +432,16 @@ class ExperimentAnalysis(Analysis):
             raise ValueError(
                 "{} is not a valid file.".format(experiment_checkpoint_path))
         with open(experiment_checkpoint_path) as f:
-            _experiment_state = json.load(f)
+            _experiment_state = json.load(f, cls=TuneFunctionDecoder)
             self._experiment_state = _experiment_state
 
         if "checkpoints" not in _experiment_state:
             raise TuneError("Experiment state invalid; no checkpoints found.")
-        self._checkpoints = _experiment_state["checkpoints"]
+        self._checkpoints = [
+            json.loads(cp, cls=TuneFunctionDecoder)
+            if isinstance(cp, str) else cp
+            for cp in _experiment_state["checkpoints"]
+        ]
         self.trials = trials
 
         super(ExperimentAnalysis, self).__init__(
@@ -459,6 +558,17 @@ class ExperimentAnalysis(Analysis):
                 "the metric and mode explicitly and fetch the last result.")
         return self.best_trial.last_result
 
+    def _delimiter(self):
+        # Deprecate: 1.9  (default should become `/`)
+        delimiter = os.environ.get("TUNE_RESULT_DELIM", ".")
+        if delimiter == "." and log_once("delimiter_deprecation"):
+            warnings.warn(
+                "Dataframes will use '/' instead of '.' to delimit "
+                "nested result keys in future versions of Ray. For forward "
+                "compatibility, set the environment variable "
+                "TUNE_RESULT_DELIM='/'")
+        return delimiter
+
     @property
     def best_result_df(self) -> DataFrame:
         """Get the best result of the experiment as a pandas dataframe.
@@ -472,7 +582,9 @@ class ExperimentAnalysis(Analysis):
         if not pd:
             raise ValueError("`best_result_df` requires pandas. Install with "
                              "`pip install pandas`.")
-        best_result = flatten_dict(self.best_result, delimiter=".")
+
+        best_result = flatten_dict(
+            self.best_result, delimiter=self._delimiter())
         return pd.DataFrame.from_records([best_result], index="trial_id")
 
     @property
@@ -482,12 +594,13 @@ class ExperimentAnalysis(Analysis):
 
     @property
     def results_df(self) -> DataFrame:
+        """Get all the last results as a pandas dataframe."""
         if not pd:
-            raise ValueError("`best_result_df` requires pandas. Install with "
+            raise ValueError("`results_df` requires pandas. Install with "
                              "`pip install pandas`.")
         return pd.DataFrame.from_records(
             [
-                flatten_dict(trial.last_result, delimiter=".")
+                flatten_dict(trial.last_result, delimiter=self._delimiter())
                 for trial in self.trials
             ],
             index="trial_id")
@@ -495,7 +608,8 @@ class ExperimentAnalysis(Analysis):
     def get_best_trial(self,
                        metric: Optional[str] = None,
                        mode: Optional[str] = None,
-                       scope: str = "last") -> Optional[Trial]:
+                       scope: str = "last",
+                       filter_nan_and_inf: bool = True) -> Optional[Trial]:
         """Retrieve the best trial object.
 
         Compares all trials' scores on ``metric``.
@@ -518,6 +632,9 @@ class ExperimentAnalysis(Analysis):
                 `metric` and compare across trials based on `mode=[min,max]`.
                 If `scope=all`, find each trial's min/max score for `metric`
                 based on `mode`, and compare trials based on `mode=[min,max]`.
+            filter_nan_and_inf (bool): If True (default), NaN or infinite
+                values are disregarded and these trials are never selected as
+                the best trial.
         """
         metric = self._validate_metric(metric)
         mode = self._validate_mode(mode)
@@ -541,6 +658,9 @@ class ExperimentAnalysis(Analysis):
             else:
                 metric_score = trial.metric_analysis[metric][mode]
 
+            if filter_nan_and_inf and is_nan_or_inf(metric_score):
+                continue
+
             if best_metric_score is None:
                 best_metric_score = metric_score
                 best_trial = trial
@@ -555,7 +675,7 @@ class ExperimentAnalysis(Analysis):
 
         if not best_trial:
             logger.warning(
-                "Could not find best trial. Did you pass the correct `metric`"
+                "Could not find best trial. Did you pass the correct `metric` "
                 "parameter?")
         return best_trial
 

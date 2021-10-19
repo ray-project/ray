@@ -1,31 +1,29 @@
 Serve API Reference
 ===================
 
-Start or Connect to a Cluster
------------------------------
+Core APIs
+---------
 .. autofunction:: ray.serve.start
-.. autofunction:: ray.serve.connect
+.. autofunction:: ray.serve.deployment
+.. autofunction:: ray.serve.list_deployments
+.. autofunction:: ray.serve.get_deployment
+.. autofunction:: ray.serve.shutdown
 
-Client API
-----------
-.. autoclass:: ray.serve.api.Client
-    :members: create_backend, list_backends, delete_backend, get_backend_config, update_backend_config, create_endpoint, list_endpoints, delete_endpoint, set_traffic, shadow_traffic, get_handle, shutdown
+.. _`deployment-api`:
 
-Backend Configuration
----------------------
-.. autoclass:: ray.serve.BackendConfig
+Deployment API
+--------------
 
-Handle API
-----------
+.. autoclass:: ray.serve.api.Deployment
+    :members: deploy, delete, options, get_handle
+
+.. _`servehandle-api`:
+
+ServeHandle API
+---------------
 .. autoclass:: ray.serve.handle.RayServeHandle
     :members: remote, options
 
-When calling from Python, the backend implementation will receive ``ServeRequest``
-objects instead of Flask requests.
-
-.. autoclass:: ray.serve.utils.ServeRequest
-    :members:
-
 Batching Requests
 -----------------
-.. autofunction:: ray.serve.accept_batch
+.. autofunction:: ray.serve.batch(max_batch_size=10, batch_wait_timeout_s=0.0)

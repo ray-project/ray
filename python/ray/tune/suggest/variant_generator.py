@@ -1,6 +1,7 @@
 import copy
 import logging
-from typing import Any, Dict, Generator, List, Tuple
+from collections.abc import Mapping
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import numpy
 import random
@@ -11,8 +12,9 @@ from ray.tune.sample import Categorical, Domain, Function
 logger = logging.getLogger(__name__)
 
 
-def generate_variants(
-        unresolved_spec: Dict) -> Generator[Tuple[Dict, Dict], None, None]:
+def generate_variants(unresolved_spec: Dict,
+                      constant_grid_search: bool = False
+                      ) -> Generator[Tuple[Dict, Dict], None, None]:
     """Generates variants from a spec (dict) with unresolved values.
 
     There are two types of unresolved values:
@@ -43,7 +45,8 @@ def generate_variants(
     Yields:
         (Dict of resolved variables, Spec object)
     """
-    for resolved_vars, spec in _generate_variants(unresolved_spec):
+    for resolved_vars, spec in _generate_variants(
+            unresolved_spec, constant_grid_search=constant_grid_search):
         assert not _unresolved_values(spec)
         yield resolved_vars, spec
 
@@ -138,16 +141,43 @@ def parse_spec_vars(spec: Dict) -> Tuple[List[Tuple[Tuple, Any]], List[Tuple[
     return resolved_vars, domain_vars, grid_vars
 
 
-def count_variants(spec: Dict) -> int:
-    spec = copy.deepcopy(spec)
+def count_spec_samples(spec: Dict, num_samples=1) -> int:
+    """Count samples for a specific spec"""
     _, domain_vars, grid_vars = parse_spec_vars(spec)
     grid_count = 1
     for path, domain in grid_vars:
         grid_count *= len(domain.categories)
-    return spec.get("num_samples", 1) * grid_count
+    return num_samples * grid_count
 
 
-def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:
+def count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
+    # Helper function: Deep update dictionary
+    def deep_update(d, u):
+        for k, v in u.items():
+            if isinstance(v, Mapping):
+                d[k] = deep_update(d.get(k, {}), v)
+            else:
+                d[k] = v
+        return d
+
+    total_samples = 0
+    total_num_samples = spec.get("num_samples", 1)
+    # For each preset, overwrite the spec and count the samples generated
+    # for this preset
+    for preset in presets:
+        preset_spec = copy.deepcopy(spec)
+        deep_update(preset_spec["config"], preset)
+        total_samples += count_spec_samples(preset_spec, 1)
+        total_num_samples -= 1
+
+    # Add the remaining samples
+    if total_num_samples > 0:
+        total_samples += count_spec_samples(spec, total_num_samples)
+    return total_samples
+
+
+def _generate_variants(
+        spec: Dict, constant_grid_search: bool = False) -> Tuple[Dict, Dict]:
     spec = copy.deepcopy(spec)
     _, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -155,10 +185,29 @@ def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:
         yield {}, spec
         return
 
+    # Variables to resolve
+    to_resolve = domain_vars
+
+    all_resolved = True
+    if constant_grid_search:
+        # In this path, we first sample random variables and keep them constant
+        # for grid search.
+        # `_resolve_domain_vars` will alter `spec` directly
+        all_resolved, resolved_vars = _resolve_domain_vars(
+            spec, domain_vars, allow_fail=True)
+        if not all_resolved:
+            # Not all variables have been resolved, but remove those that have
+            # from the `to_resolve` list.
+            to_resolve = [(r, d) for r, d in to_resolve
+                          if r not in resolved_vars]
     grid_search = _grid_search_generator(spec, grid_vars)
     for resolved_spec in grid_search:
-        resolved_vars = _resolve_domain_vars(resolved_spec, domain_vars)
-        for resolved, spec in _generate_variants(resolved_spec):
+        if not constant_grid_search or not all_resolved:
+            # In this path, we sample the remaining random variables
+            _, resolved_vars = _resolve_domain_vars(resolved_spec, to_resolve)
+
+        for resolved, spec in _generate_variants(
+                resolved_spec, constant_grid_search=constant_grid_search):
             for path, value in grid_vars:
                 resolved_vars[path] = _get_value(spec, path)
             for k, v in resolved.items():
@@ -170,6 +219,55 @@ def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:
                         "your configuration.".format(k))
                 resolved_vars[k] = v
             yield resolved_vars, spec
+
+
+def get_preset_variants(spec: Dict,
+                        config: Dict,
+                        constant_grid_search: bool = False):
+    """Get variants according to a spec, initialized with a config.
+
+    Variables from the spec are overwritten by the variables in the config.
+    Thus, we may end up with less sampled parameters.
+
+    This function also checks if values used to overwrite search space
+    parameters are valid, and logs a warning if not.
+    """
+    spec = copy.deepcopy(spec)
+
+    resolved, _, _ = parse_spec_vars(config)
+
+    for path, val in resolved:
+        try:
+            domain = _get_value(spec["config"], path)
+            if isinstance(domain, dict):
+                if "grid_search" in domain:
+                    domain = Categorical(domain["grid_search"])
+                else:
+                    # If users want to overwrite an entire subdict,
+                    # let them do it.
+                    domain = None
+        except IndexError as exc:
+            raise ValueError(
+                f"Pre-set config key `{'/'.join(path)}` does not correspond "
+                f"to a valid key in the search space definition. Please add "
+                f"this path to the `config` variable passed to `tune.run()`."
+            ) from exc
+
+        if domain:
+            if isinstance(domain, Domain):
+                if not domain.is_valid(val):
+                    logger.warning(
+                        f"Pre-set value `{val}` is not within valid values of "
+                        f"parameter `{'/'.join(path)}`: {domain.domain_str}")
+            else:
+                # domain is actually a fixed value
+                if domain != val:
+                    logger.warning(
+                        f"Pre-set value `{val}` is not equal to the value of "
+                        f"parameter `{'/'.join(path)}`: {domain}")
+        assign_value(spec["config"], path, val)
+
+    return _generate_variants(spec, constant_grid_search=constant_grid_search)
 
 
 def assign_value(spec: Dict, path: Tuple, value: Any):
@@ -185,7 +283,8 @@ def _get_value(spec: Dict, path: Tuple) -> Any:
 
 
 def _resolve_domain_vars(spec: Dict,
-                         domain_vars: List[Tuple[Tuple, Domain]]) -> Dict:
+                         domain_vars: List[Tuple[Tuple, Domain]],
+                         allow_fail: bool = False) -> Tuple[bool, Dict]:
     resolved = {}
     error = True
     num_passes = 0
@@ -207,8 +306,11 @@ def _resolve_domain_vars(spec: Dict,
                 assign_value(spec, path, value)
                 resolved[path] = value
     if error:
-        raise error
-    return resolved
+        if not allow_fail:
+            raise error
+        else:
+            return False, resolved
+    return True, resolved
 
 
 def _grid_search_generator(unresolved_spec: Dict,

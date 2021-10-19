@@ -1,0 +1,48 @@
+auth:
+    ssh_user: ubuntu
+cluster_name: test-cli
+docker:
+    image: rayproject/ray:1.0.0
+    container_name: raydocker
+    pull_before_run: True
+    run_options: []
+file_mounts:
+    ~/tests: .
+available_node_types:
+    head_node:
+        resources: {}
+        max_workers: 0
+        node_config:
+            ImageId: latest_dlami
+            InstanceType: t1.micro
+    worker_nodes:
+        resources: {}
+        max_workers: 2
+        min_workers: 1
+        node_config:
+            ImageId: latest_dlami
+            InstanceType: t1.micro
+head_node_type: head_node
+head_setup_commands:
+    - echo head
+head_start_ray_commands:
+    - ray stop
+    - ray start --head --autoscaling-config=~/ray_bootstrap_config.yaml
+idle_timeout_minutes: 5
+initialization_commands:
+    - echo init
+provider:
+    availability_zone: us-west-2a
+    key_pair:
+        key_name: __test-cli
+    region: us-west-2
+    type: aws
+setup_commands:
+    - echo a
+    - echo b
+    - echo ${echo hi}
+worker_setup_commands:
+    - echo worker
+worker_start_ray_commands:
+    - ray stop
+    - ray start --address=$RAY_HEAD_IP

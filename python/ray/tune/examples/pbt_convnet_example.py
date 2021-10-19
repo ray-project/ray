@@ -86,8 +86,6 @@ if __name__ == "__main__":
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
         perturbation_interval=5,
         hyperparam_mutations={
             # distribution for resampling
@@ -118,6 +116,8 @@ if __name__ == "__main__":
         name="pbt_test",
         scheduler=scheduler,
         reuse_actors=True,
+        metric="mean_accuracy",
+        mode="max",
         verbose=1,
         stop=stopper,
         export_formats=[ExportFormat.MODEL],
@@ -131,9 +131,8 @@ if __name__ == "__main__":
         })
     # __tune_end__
 
-    best_trial = analysis.get_best_trial("mean_accuracy", "max")
-    best_checkpoint = analysis.get_best_checkpoint(
-        best_trial, metric="mean_accuracy", mode="max")
+    best_trial = analysis.best_trial
+    best_checkpoint = analysis.best_checkpoint
     restored_trainable = PytorchTrainable()
     restored_trainable.restore(best_checkpoint)
     best_model = restored_trainable.model

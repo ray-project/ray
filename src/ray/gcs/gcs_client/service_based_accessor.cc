@@ -19,6 +19,8 @@
 namespace ray {
 namespace gcs {
 
+using namespace ray::rpc;
+
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -80,7 +82,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       JobTableData job_data;
       job_data.ParseFromString(data);
-      subscribe(JobID::FromBinary(id), job_data);
+      subscribe(JobID::FromHex(id), job_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
   };
@@ -90,17 +92,23 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for job info.";
+  auto fetch_all_done = [](const Status &status) {
+    RAY_LOG(INFO) << "Finished fetching all job information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
+  };
+
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   if (is_pubsub_server_restarted) {
     if (subscribe_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_operation_(
-          [this](const Status &status) { fetch_all_data_operation_(nullptr); }));
+      RAY_CHECK_OK(subscribe_operation_([this, fetch_all_done](const Status &status) {
+        fetch_all_data_operation_(fetch_all_done);
+      }));
     }
   } else {
     if (fetch_all_data_operation_ != nullptr) {
-      fetch_all_data_operation_(nullptr);
+      fetch_all_data_operation_(fetch_all_done);
     }
   }
 }
@@ -119,14 +127,23 @@ Status ServiceBasedJobInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
+Status ServiceBasedJobInfoAccessor::AsyncGetNextJobID(
+    const ItemCallback<JobID> &callback) {
+  RAY_LOG(DEBUG) << "Getting next job id";
+  rpc::GetNextJobIDRequest request;
+  client_impl_->GetGcsRpcClient().GetNextJobID(
+      request, [callback](const Status &status, const rpc::GetNextJobIDReply &reply) {
+        RAY_CHECK_OK(status);
+        auto job_id = JobID::FromInt(reply.job_id());
+        callback(job_id);
+        RAY_LOG(DEBUG) << "Finished getting next job id = " << job_id;
+      });
+  return Status::OK();
+}
+
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
-
-Status ServiceBasedActorInfoAccessor::GetAll(
-    std::vector<ActorTableData> *actor_table_data_list) {
-  return Status::Invalid("Not implemented");
-}
 
 Status ServiceBasedActorInfoAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<rpc::ActorTableData> &callback) {
@@ -163,10 +180,12 @@ Status ServiceBasedActorInfoAccessor::AsyncGetAll(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncGetByName(
-    const std::string &name, const OptionalItemCallback<rpc::ActorTableData> &callback) {
+    const std::string &name, const std::string &ray_namespace,
+    const OptionalItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
   rpc::GetNamedActorInfoRequest request;
   request.set_name(name);
+  request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().GetNamedActorInfo(
       request,
       [name, callback](const Status &status, const rpc::GetNamedActorInfoReply &reply) {
@@ -177,6 +196,21 @@ Status ServiceBasedActorInfoAccessor::AsyncGetByName(
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", name = " << name;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncListNamedActors(
+    bool all_namespaces, const std::string &ray_namespace,
+    const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) {
+  RAY_LOG(DEBUG) << "Listing actors";
+  rpc::ListNamedActorsRequest request;
+  request.set_all_namespaces(all_namespaces);
+  request.set_ray_namespace(ray_namespace);
+  client_impl_->GetGcsRpcClient().ListNamedActors(
+      request, [callback](const Status &status, const rpc::ListNamedActorsReply &reply) {
+        callback(VectorFromProtobuf(reply.named_actors_list()));
+        RAY_LOG(DEBUG) << "Finished getting named actor names, status = " << status;
       });
   return Status::OK();
 }
@@ -197,8 +231,29 @@ Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
   return Status::OK();
 }
 
+Status ServiceBasedActorInfoAccessor::AsyncKillActor(
+    const ActorID &actor_id, bool force_kill, bool no_restart,
+    const ray::gcs::StatusCallback &callback) {
+  rpc::KillActorViaGcsRequest request;
+  request.set_actor_id(actor_id.Binary());
+  request.set_force_kill(force_kill);
+  request.set_no_restart(no_restart);
+  client_impl_->GetGcsRpcClient().KillActorViaGcs(
+      request, [callback](const Status &, const rpc::KillActorViaGcsReply &reply) {
+        if (callback) {
+          auto status =
+              reply.status().code() == (int)StatusCode::OK
+                  ? Status()
+                  : Status(StatusCode(reply.status().code()), reply.status().message());
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
-    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+    const ray::TaskSpecification &task_spec,
+    const rpc::ClientCallback<rpc::CreateActorReply> &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
   rpc::CreateActorRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
@@ -208,7 +263,7 @@ Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
                 : Status(StatusCode(reply.status().code()), reply.status().message());
-        callback(status);
+        callback(status, reply);
       });
   return Status::OK();
 }
@@ -272,7 +327,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       ActorTableData actor_data;
       actor_data.ParseFromString(data);
-      subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
+      subscribe(ActorID::FromHex(id), actor_data);
     };
     return client_impl_->GetGcsPubSub().Subscribe(ACTOR_CHANNEL, actor_id.Hex(),
                                                   on_subscribe, subscribe_done);
@@ -299,93 +354,22 @@ Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) 
   return status;
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
-    const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
-    const StatusCallback &callback) {
-  ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-  ActorCheckpointID checkpoint_id =
-      ActorCheckpointID::FromBinary(data_ptr->checkpoint_id());
-  RAY_LOG(DEBUG) << "Adding actor checkpoint, actor id = " << actor_id
-                 << ", checkpoint id = " << checkpoint_id
-                 << ", job id = " << actor_id.JobId();
-  rpc::AddActorCheckpointRequest request;
-  request.mutable_checkpoint_data()->CopyFrom(*data_ptr);
-
-  auto operation = [this, request, actor_id, checkpoint_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().AddActorCheckpoint(
-        request, [actor_id, checkpoint_id, callback, done_callback](
-                     const Status &status, const rpc::AddActorCheckpointReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished adding actor checkpoint, status = " << status
-                         << ", actor id = " << actor_id
-                         << ", checkpoint id = " << checkpoint_id
-                         << ", job id = " << actor_id.JobId();
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(actor_id, operation);
-  return Status::OK();
-}
-
-Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
-    const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-    const OptionalItemCallback<rpc::ActorCheckpointData> &callback) {
-  RAY_LOG(DEBUG) << "Getting actor checkpoint, checkpoint id = " << checkpoint_id
-                 << ", job id = " << actor_id.JobId();
-  rpc::GetActorCheckpointRequest request;
-  request.set_actor_id(actor_id.Binary());
-  request.set_checkpoint_id(checkpoint_id.Binary());
-  client_impl_->GetGcsRpcClient().GetActorCheckpoint(
-      request, [checkpoint_id, actor_id, callback](
-                   const Status &status, const rpc::GetActorCheckpointReply &reply) {
-        if (reply.has_checkpoint_data()) {
-          callback(status, reply.checkpoint_data());
-        } else {
-          callback(status, boost::none);
-        }
-        RAY_LOG(DEBUG) << "Finished getting actor checkpoint, status = " << status
-                       << ", checkpoint id = " << checkpoint_id
-                       << ", job id = " << actor_id.JobId();
-      });
-  return Status::OK();
-}
-
-Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
-    const ActorID &actor_id,
-    const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) {
-  RAY_LOG(DEBUG) << "Getting actor checkpoint id, actor id = " << actor_id
-                 << ", job id = " << actor_id.JobId();
-  rpc::GetActorCheckpointIDRequest request;
-  request.set_actor_id(actor_id.Binary());
-  client_impl_->GetGcsRpcClient().GetActorCheckpointID(
-      request, [actor_id, callback](const Status &status,
-                                    const rpc::GetActorCheckpointIDReply &reply) {
-        if (reply.has_checkpoint_id_data()) {
-          callback(status, reply.checkpoint_id_data());
-        } else {
-          callback(status, boost::none);
-        }
-        RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, status = " << status
-                       << ", actor id = " << actor_id
-                       << ", job id = " << actor_id.JobId();
-      });
-  return Status::OK();
-}
-
 void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
+  auto fetch_all_done = [](const Status &status) {
+    RAY_LOG(INFO) << "Finished fetching all actor information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
+  };
+
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   absl::MutexLock lock(&mutex_);
   if (is_pubsub_server_restarted) {
     if (subscribe_all_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_all_operation_(
-          [this](const Status &status) { fetch_all_data_operation_(nullptr); }));
+      RAY_CHECK_OK(subscribe_all_operation_([this, fetch_all_done](const Status &status) {
+        fetch_all_data_operation_(fetch_all_done);
+      }));
     }
     for (auto &item : subscribe_operations_) {
       auto &actor_id = item.first;
@@ -402,7 +386,7 @@ void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_resta
     }
   } else {
     if (fetch_all_data_operation_ != nullptr) {
-      fetch_all_data_operation_(nullptr);
+      fetch_all_data_operation_(fetch_all_done);
     }
     for (auto &item : fetch_data_operations_) {
       item.second(nullptr);
@@ -418,7 +402,8 @@ ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
+Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
+                                                  const StatusCallback &callback) {
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id
                  << ", address is = " << local_node_info.node_manager_address();
@@ -427,22 +412,20 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(local_node_info);
 
-  auto operation = [this, request, local_node_info,
-                    node_id](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().RegisterNode(
-        request, [this, node_id, local_node_info, done_callback](
-                     const Status &status, const rpc::RegisterNodeReply &reply) {
-          if (status.ok()) {
-            local_node_info_.CopyFrom(local_node_info);
-            local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
-          }
-          RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
-                         << ", node id = " << node_id;
-          done_callback();
-        });
-  };
+  client_impl_->GetGcsRpcClient().RegisterNode(
+      request, [this, node_id, local_node_info, callback](
+                   const Status &status, const rpc::RegisterNodeReply &reply) {
+        if (status.ok()) {
+          local_node_info_.CopyFrom(local_node_info);
+          local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
+        }
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
+                       << ", node id = " << node_id;
+      });
 
-  sequencer_.Post(node_id, operation);
   return Status::OK();
 }
 
@@ -557,14 +540,17 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   });
 }
 
-boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
-    const NodeID &node_id) const {
+absl::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
+    const NodeID &node_id, bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
+    if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
+      return absl::nullopt;
+    }
     return entry->second;
   }
-  return boost::none;
+  return absl::nullopt;
 }
 
 const std::unordered_map<NodeID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
@@ -576,7 +562,118 @@ bool ServiceBasedNodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
   return removed_nodes_.count(node_id) == 1;
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
+Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
+    const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+    const StatusCallback &callback) {
+  rpc::ReportHeartbeatRequest request;
+  request.mutable_heartbeat()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportHeartbeat(
+      request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
+void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
+  NodeID node_id = NodeID::FromBinary(node_info.node_id());
+  bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
+  auto entry = node_cache_.find(node_id);
+  bool is_notif_new;
+  if (entry == node_cache_.end()) {
+    // If the entry is not in the cache, then the notification is new.
+    is_notif_new = true;
+  } else {
+    // If the entry is in the cache, then the notification is new if the node
+    // was alive and is now dead or resources have been updated.
+    bool was_alive = (entry->second.state() == GcsNodeInfo::ALIVE);
+    is_notif_new = was_alive && !is_alive;
+
+    // Once a node with a given ID has been removed, it should never be added
+    // again. If the entry was in the cache and the node was deleted, we should check
+    // that this new notification is not an insertion.
+    // However, when a new node(node-B) registers with GCS, it subscribes to all node
+    // information. It will subscribe to redis and then get all node information from GCS
+    // through RPC. If node-A fails after GCS replies to node-B, GCS will send another
+    // message(node-A is dead) to node-B through redis publish. Because RPC and redis
+    // subscribe are two different sessions, node-B may process node-A dead message first
+    // and then node-A alive message. So we use `RAY_LOG` instead of `RAY_CHECK ` as a
+    // workaround.
+    if (!was_alive && is_alive) {
+      RAY_LOG(INFO) << "Notification for addition of a node that was already removed:"
+                    << node_id;
+      return;
+    }
+  }
+
+  // Add the notification to our cache.
+  RAY_LOG(INFO) << "Received notification for node id = " << node_id
+                << ", IsAlive = " << is_alive;
+  if (is_alive) {
+    node_cache_[node_id] = node_info;
+  } else {
+    node_cache_[node_id].set_state(rpc::GcsNodeInfo::DEAD);
+    node_cache_[node_id].set_timestamp(node_info.timestamp());
+  }
+
+  // If the notification is new, call registered callback.
+  if (is_notif_new) {
+    if (is_alive) {
+      RAY_CHECK(removed_nodes_.find(node_id) == removed_nodes_.end());
+    } else {
+      removed_nodes_.insert(node_id);
+    }
+    GcsNodeInfo &cache_data = node_cache_[node_id];
+    node_change_callback_(node_id, cache_data);
+  }
+}
+
+void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
+  RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
+  auto fetch_all_done = [](const Status &status) {
+    RAY_LOG(INFO) << "Finished fetching all node information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
+  };
+
+  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
+  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
+  // server first, then fetch data from the GCS server.
+  if (is_pubsub_server_restarted) {
+    if (subscribe_node_operation_ != nullptr) {
+      RAY_CHECK_OK(
+          subscribe_node_operation_([this, fetch_all_done](const Status &status) {
+            fetch_node_data_operation_(fetch_all_done);
+          }));
+    }
+  } else {
+    if (fetch_node_data_operation_ != nullptr) {
+      fetch_node_data_operation_(fetch_all_done);
+    }
+  }
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
+    const OptionalItemCallback<std::string> &callback) {
+  rpc::GetInternalConfigRequest request;
+  client_impl_->GetGcsRpcClient().GetInternalConfig(
+      request,
+      [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
+        if (status.ok()) {
+          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config();
+        } else {
+          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
+        }
+        callback(status, reply.config());
+      });
+  return Status::OK();
+}
+
+ServiceBasedNodeResourceInfoAccessor::ServiceBasedNodeResourceInfoAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status ServiceBasedNodeResourceInfoAccessor::AsyncGetResources(
     const NodeID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
   RAY_LOG(DEBUG) << "Getting node resources, node id = " << node_id;
   rpc::GetResourcesRequest request;
@@ -596,7 +693,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
   return Status::OK();
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncGetAllAvailableResources(
+Status ServiceBasedNodeResourceInfoAccessor::AsyncGetAllAvailableResources(
     const MultiItemCallback<rpc::AvailableResources> &callback) {
   rpc::GetAllAvailableResourcesRequest request;
   client_impl_->GetGcsRpcClient().GetAllAvailableResources(
@@ -611,7 +708,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetAllAvailableResources(
   return Status::OK();
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
+Status ServiceBasedNodeResourceInfoAccessor::AsyncUpdateResources(
     const NodeID &node_id, const ResourceMap &resources, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Updating node resources, node id = " << node_id;
   rpc::UpdateResourcesRequest request;
@@ -634,11 +731,87 @@ Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
         });
   };
 
-  sequencer_.Post(node_id, operation);
+  sequencer_.Post(node_id, std::move(operation));
   return Status::OK();
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
+Status ServiceBasedNodeResourceInfoAccessor::AsyncReportResourceUsage(
+    const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
+  absl::MutexLock lock(&mutex_);
+  last_resource_usage_->SetAvailableResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resources_available())));
+  last_resource_usage_->SetTotalResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resources_total())));
+  last_resource_usage_->SetLoadResources(
+      ResourceSet(MapFromProtobuf(data_ptr->resource_load())));
+  cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportResourceUsage(
+      cached_resource_usage_,
+      [callback](const Status &status, const rpc::ReportResourceUsageReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
+void ServiceBasedNodeResourceInfoAccessor::AsyncReReportResourceUsage() {
+  absl::MutexLock lock(&mutex_);
+  if (cached_resource_usage_.has_resources()) {
+    RAY_LOG(INFO) << "Rereport resource usage.";
+    FillResourceUsageRequest(cached_resource_usage_);
+    client_impl_->GetGcsRpcClient().ReportResourceUsage(
+        cached_resource_usage_,
+        [](const Status &status, const rpc::ReportResourceUsageReply &reply) {});
+  }
+}
+
+void ServiceBasedNodeResourceInfoAccessor::FillResourceUsageRequest(
+    rpc::ReportResourceUsageRequest &resources) {
+  SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
+
+  auto resources_data = resources.mutable_resources();
+  resources_data->clear_resources_total();
+  for (const auto &resource_pair :
+       cached_resources.GetTotalResources().GetResourceMap()) {
+    (*resources_data->mutable_resources_total())[resource_pair.first] =
+        resource_pair.second;
+  }
+
+  resources_data->clear_resources_available();
+  resources_data->set_resources_available_changed(true);
+  for (const auto &resource_pair :
+       cached_resources.GetAvailableResources().GetResourceMap()) {
+    (*resources_data->mutable_resources_available())[resource_pair.first] =
+        resource_pair.second;
+  }
+
+  resources_data->clear_resource_load();
+  resources_data->set_resource_load_changed(true);
+  for (const auto &resource_pair : cached_resources.GetLoadResources().GetResourceMap()) {
+    (*resources_data->mutable_resource_load())[resource_pair.first] =
+        resource_pair.second;
+  }
+}
+
+Status ServiceBasedNodeResourceInfoAccessor::AsyncSubscribeBatchedResourceUsage(
+    const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  subscribe_batch_resource_usage_operation_ = [this,
+                                               subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      rpc::ResourceUsageBatchData resources_batch_data;
+      resources_batch_data.ParseFromString(data);
+      subscribe(resources_batch_data);
+    };
+    return client_impl_->GetGcsPubSub().Subscribe(RESOURCES_BATCH_CHANNEL, "",
+                                                  on_subscribe, done);
+  };
+  return subscribe_batch_resource_usage_operation_(done);
+}
+
+Status ServiceBasedNodeResourceInfoAccessor::AsyncDeleteResources(
     const NodeID &node_id, const std::vector<std::string> &resource_names,
     const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
@@ -666,7 +839,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
   return Status::OK();
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
+Status ServiceBasedNodeResourceInfoAccessor::AsyncSubscribeToResources(
     const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   subscribe_resource_operation_ = [this, subscribe](const StatusCallback &done) {
@@ -681,160 +854,30 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
   return subscribe_resource_operation_(done);
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
-    const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-    const StatusCallback &callback) {
-  absl::MutexLock lock(&mutex_);
-  cached_heartbeat_.mutable_heartbeat()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportHeartbeat(
-      cached_heartbeat_,
-      [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-      });
-  return Status::OK();
-}
-
-void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
-  absl::MutexLock lock(&mutex_);
-  if (cached_heartbeat_.has_heartbeat()) {
-    RAY_LOG(INFO) << "Rereport heartbeat.";
-    client_impl_->GetGcsRpcClient().ReportHeartbeat(
-        cached_heartbeat_,
-        [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
-  }
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
-    const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
-    const StatusCallback &done) {
-  const std::string error_msg =
-      "Unsupported method of AsyncSubscribeHeartbeat in ServiceBasedNodeInfoAccessor.";
-  RAY_LOG(FATAL) << error_msg;
-  return Status::Invalid(error_msg);
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
-    const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-    const StatusCallback &callback) {
-  const std::string error_msg =
-      "Unsupported method of AsyncReportBatchHeartbeat in ServiceBasedNodeInfoAccessor.";
-  RAY_LOG(FATAL) << error_msg;
-  return Status::Invalid(error_msg);
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
-    const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  subscribe_batch_heartbeat_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      rpc::HeartbeatBatchTableData heartbeat_batch_table_data;
-      heartbeat_batch_table_data.ParseFromString(data);
-      subscribe(heartbeat_batch_table_data);
-    };
-    return client_impl_->GetGcsPubSub().Subscribe(HEARTBEAT_BATCH_CHANNEL, "",
-                                                  on_subscribe, done);
-  };
-  return subscribe_batch_heartbeat_operation_(done);
-}
-
-void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
-  NodeID node_id = NodeID::FromBinary(node_info.node_id());
-  bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
-  auto entry = node_cache_.find(node_id);
-  bool is_notif_new;
-  if (entry == node_cache_.end()) {
-    // If the entry is not in the cache, then the notification is new.
-    is_notif_new = true;
-  } else {
-    // If the entry is in the cache, then the notification is new if the node
-    // was alive and is now dead or resources have been updated.
-    bool was_alive = (entry->second.state() == GcsNodeInfo::ALIVE);
-    is_notif_new = was_alive && !is_alive;
-    // Once a node with a given ID has been removed, it should never be added
-    // again. If the entry was in the cache and the node was deleted, check
-    // that this new notification is not an insertion.
-    if (!was_alive) {
-      RAY_CHECK(!is_alive)
-          << "Notification for addition of a node that was already removed:" << node_id;
-    }
-  }
-
-  // Add the notification to our cache.
-  RAY_LOG(INFO) << "Received notification for node id = " << node_id
-                << ", IsAlive = " << is_alive;
-  node_cache_[node_id] = node_info;
-
-  // If the notification is new, call registered callback.
-  if (is_notif_new) {
-    if (is_alive) {
-      RAY_CHECK(removed_nodes_.find(node_id) == removed_nodes_.end());
-    } else {
-      removed_nodes_.insert(node_id);
-    }
-    GcsNodeInfo &cache_data = node_cache_[node_id];
-    node_change_callback_(node_id, cache_data);
-  }
-}
-
-void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
-  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
+void ServiceBasedNodeResourceInfoAccessor::AsyncResubscribe(
+    bool is_pubsub_server_restarted) {
+  RAY_LOG(DEBUG) << "Reestablishing subscription for node resource info.";
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
-  // server first, then fetch data from the GCS server.
+  // server.
   if (is_pubsub_server_restarted) {
-    if (subscribe_node_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_node_operation_(
-          [this](const Status &status) { fetch_node_data_operation_(nullptr); }));
-    }
     if (subscribe_resource_operation_ != nullptr) {
       RAY_CHECK_OK(subscribe_resource_operation_(nullptr));
     }
-    if (subscribe_batch_heartbeat_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_batch_heartbeat_operation_(nullptr));
-    }
-  } else {
-    if (fetch_node_data_operation_ != nullptr) {
-      fetch_node_data_operation_(nullptr);
+    if (subscribe_batch_resource_usage_operation_ != nullptr) {
+      RAY_CHECK_OK(subscribe_batch_resource_usage_operation_(nullptr));
     }
   }
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncSetInternalConfig(
-    std::unordered_map<std::string, std::string> &config) {
-  rpc::SetInternalConfigRequest request;
-  request.mutable_config()->mutable_config()->insert(config.begin(), config.end());
-
-  client_impl_->GetGcsRpcClient().SetInternalConfig(
-      request, [](const Status &status, const rpc::SetInternalConfigReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to set internal config: " << status.message();
-        }
-      });
-  return Status::OK();
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
-    const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback) {
-  rpc::GetInternalConfigRequest request;
-  client_impl_->GetGcsRpcClient().GetInternalConfig(
+Status ServiceBasedNodeResourceInfoAccessor::AsyncGetAllResourceUsage(
+    const ItemCallback<rpc::ResourceUsageBatchData> &callback) {
+  rpc::GetAllResourceUsageRequest request;
+  client_impl_->GetGcsRpcClient().GetAllResourceUsage(
       request,
-      [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
-        boost::optional<std::unordered_map<std::string, std::string>> config;
-        if (status.ok()) {
-          if (reply.has_config()) {
-            RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config().DebugString();
-            config = std::unordered_map<std::string, std::string>(
-                reply.config().config().begin(), reply.config().config().end());
-          } else {
-            RAY_LOG(DEBUG) << "No internal config was stored.";
-          }
-        } else {
-          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
-        }
-        callback(status, config);
+      [callback](const Status &status, const rpc::GetAllResourceUsageReply &reply) {
+        callback(reply.resource_usage_data());
+        RAY_LOG(DEBUG) << "Finished getting resource usage of all nodes, status = "
+                       << status;
       });
   return Status::OK();
 }
@@ -879,75 +922,6 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
                        << ", task id = " << task_id << ", job id = " << task_id.JobId();
       });
   return Status::OK();
-}
-
-Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
-                                                 const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Deleting tasks, task id list size = " << task_ids.size();
-  rpc::DeleteTasksRequest request;
-  for (auto &task_id : task_ids) {
-    request.add_task_id_list(task_id.Binary());
-  }
-  client_impl_->GetGcsRpcClient().DeleteTasks(
-      request,
-      [task_ids, callback](const Status &status, const rpc::DeleteTasksReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished deleting tasks, status = " << status
-                       << ", task id list size = " << task_ids.size();
-      });
-  return Status::OK();
-}
-
-Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
-    const TaskID &task_id, const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id
-                                  << ", job id = " << task_id.JobId();
-
-  auto fetch_data_operation = [this, task_id,
-                               subscribe](const StatusCallback &fetch_done) {
-    auto callback = [task_id, subscribe, fetch_done](
-                        const Status &status,
-                        const boost::optional<rpc::TaskTableData> &result) {
-      if (result) {
-        subscribe(task_id, *result);
-      }
-      if (fetch_done) {
-        fetch_done(status);
-      }
-    };
-    RAY_CHECK_OK(AsyncGet(task_id, callback));
-  };
-
-  auto subscribe_operation = [this, task_id,
-                              subscribe](const StatusCallback &subscribe_done) {
-    auto on_subscribe = [task_id, subscribe](const std::string &id,
-                                             const std::string &data) {
-      TaskTableData task_data;
-      task_data.ParseFromString(data);
-      subscribe(task_id, task_data);
-    };
-    return client_impl_->GetGcsPubSub().Subscribe(TASK_CHANNEL, task_id.Hex(),
-                                                  on_subscribe, subscribe_done);
-  };
-
-  subscribe_task_operations_[task_id] = subscribe_operation;
-  fetch_task_data_operations_[task_id] = fetch_data_operation;
-  return subscribe_operation(
-      [fetch_data_operation, done](const Status &status) { fetch_data_operation(done); });
-}
-
-Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "Unsubscribing task, task id = " << task_id
-                 << ", job id = " << task_id.JobId();
-  auto status = client_impl_->GetGcsPubSub().Unsubscribe(TASK_CHANNEL, task_id.Hex());
-  subscribe_task_operations_.erase(task_id);
-  fetch_task_data_operations_.erase(task_id);
-  RAY_LOG(DEBUG) << "Finished unsubscribing task, task id = " << task_id
-                 << ", job id = " << task_id.JobId();
-  return status;
 }
 
 Status ServiceBasedTaskInfoAccessor::AsyncAddTaskLease(
@@ -1074,12 +1048,6 @@ void ServiceBasedTaskInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restar
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   if (is_pubsub_server_restarted) {
-    for (auto &item : subscribe_task_operations_) {
-      auto &task_id = item.first;
-      RAY_CHECK_OK(item.second([this, task_id](const Status &status) {
-        fetch_task_data_operations_[task_id](nullptr);
-      }));
-    }
     for (auto &item : subscribe_task_lease_operations_) {
       auto &task_id = item.first;
       RAY_CHECK_OK(item.second([this, task_id](const Status &status) {
@@ -1087,17 +1055,10 @@ void ServiceBasedTaskInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restar
       }));
     }
   } else {
-    for (auto &item : fetch_task_data_operations_) {
-      item.second(nullptr);
-    }
     for (auto &item : fetch_task_lease_data_operations_) {
       item.second(nullptr);
     }
   }
-}
-
-bool ServiceBasedTaskInfoAccessor::IsTaskUnsubscribed(const TaskID &task_id) {
-  return client_impl_->GetGcsPubSub().IsUnsubscribed(TASK_CHANNEL, task_id.Hex());
 }
 
 bool ServiceBasedTaskInfoAccessor::IsTaskLeaseUnsubscribed(const TaskID &task_id) {
@@ -1146,6 +1107,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncGetAll(
 
 Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_id,
                                                         const NodeID &node_id,
+                                                        size_t object_size,
                                                         const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Adding object location, object id = " << object_id
                  << ", node id = " << node_id
@@ -1153,6 +1115,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
   rpc::AddObjectLocationRequest request;
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
+  request.set_size(object_size);
 
   auto operation = [this, request, object_id, node_id,
                     callback](const SequencerDoneCallback &done_callback) {
@@ -1176,13 +1139,15 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
 
 Status ServiceBasedObjectInfoAccessor::AsyncAddSpilledUrl(
     const ObjectID &object_id, const std::string &spilled_url,
-    const StatusCallback &callback) {
+    const NodeID &spilled_node_id, size_t object_size, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id
                  << ", spilled_url = " << spilled_url
                  << ", job id = " << object_id.TaskId().JobId();
   rpc::AddObjectLocationRequest request;
   request.set_object_id(object_id.Binary());
   request.set_spilled_url(spilled_url);
+  request.set_spilled_node_id(spilled_node_id.Binary());
+  request.set_size(object_size);
 
   auto operation = [this, request, callback](const SequencerDoneCallback &done_callback) {
     client_impl_->GetGcsRpcClient().AddObjectLocation(
@@ -1247,11 +1212,14 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
           rpc::ObjectLocationChange update;
           update.set_is_add(true);
           update.set_node_id(loc.manager());
+          update.set_size(result->size());
           notification.push_back(update);
         }
         if (!result->spilled_url().empty()) {
           rpc::ObjectLocationChange update;
           update.set_spilled_url(result->spilled_url());
+          update.set_spilled_node_id(result->spilled_node_id());
+          update.set_size(result->size());
           notification.push_back(update);
         }
         subscribe(object_id, notification);
@@ -1376,10 +1344,17 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
     const StatusCallback &callback) {
   auto job_id = JobID::FromBinary(data_ptr->job_id());
   RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
-  Status status = client_impl_->GetGcsPubSub().Publish(
-      ERROR_INFO_CHANNEL, job_id.Hex(), data_ptr->SerializeAsString(), callback);
-  RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
-  return status;
+  rpc::ReportJobErrorRequest request;
+  request.mutable_job_error()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportJobError(
+      request,
+      [job_id, callback](const Status &status, const rpc::ReportJobErrorReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
+      });
+  return Status::OK();
 }
 
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
@@ -1387,14 +1362,13 @@ ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
-    const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
-    const StatusCallback &done) {
+    const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      rpc::WorkerTableData worker_failure_data;
+      rpc::WorkerDeltaData worker_failure_data;
       worker_failure_data.ParseFromString(data);
-      subscribe(WorkerID::FromBinary(id), worker_failure_data);
+      subscribe(worker_failure_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(WORKER_CHANNEL, on_subscribe, done);
   };
@@ -1479,12 +1453,13 @@ ServiceBasedPlacementGroupInfoAccessor::ServiceBasedPlacementGroupInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
-    const ray::PlacementGroupSpecification &placement_group_spec) {
+    const ray::PlacementGroupSpecification &placement_group_spec,
+    const StatusCallback &callback) {
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreatePlacementGroup(
-      request, [placement_group_spec](const Status &,
-                                      const rpc::CreatePlacementGroupReply &reply) {
+      request, [placement_group_spec, callback](
+                   const Status &, const rpc::CreatePlacementGroupReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
@@ -1496,6 +1471,9 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
           RAY_LOG(ERROR) << "Placement group id = "
                          << placement_group_spec.PlacementGroupId()
                          << " failed to be registered. " << status;
+        }
+        if (callback) {
+          callback(status);
         }
       });
   return Status::OK();
@@ -1532,6 +1510,130 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
                        << placement_group_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetByName(
+    const std::string &name, const std::string &ray_namespace,
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
+  rpc::GetNamedPlacementGroupRequest request;
+  request.set_name(name);
+  request.set_ray_namespace(ray_namespace);
+  client_impl_->GetGcsRpcClient().GetNamedPlacementGroup(
+      request, [name, callback](const Status &status,
+                                const rpc::GetNamedPlacementGroupReply &reply) {
+        if (reply.has_placement_group_table_data()) {
+          callback(status, reply.placement_group_table_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting named placement group info, status = "
+                       << status << ", name = " << name;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting all placement group info.";
+  rpc::GetAllPlacementGroupRequest request;
+  client_impl_->GetGcsRpcClient().GetAllPlacementGroup(
+      request,
+      [callback](const Status &status, const rpc::GetAllPlacementGroupReply &reply) {
+        callback(status, VectorFromProtobuf(reply.placement_group_table_data()));
+        RAY_LOG(DEBUG) << "Finished getting all placement group info, status = "
+                       << status;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncWaitUntilReady(
+    const PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+  RAY_LOG(DEBUG) << "Waiting for placement group until ready, placement group id = "
+                 << placement_group_id;
+  rpc::WaitPlacementGroupUntilReadyRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  client_impl_->GetGcsRpcClient().WaitPlacementGroupUntilReady(
+      request,
+      [placement_group_id, callback](
+          const Status &status, const rpc::WaitPlacementGroupUntilReadyReply &reply) {
+        callback(status);
+        RAY_LOG(DEBUG)
+            << "Finished waiting placement group until ready, placement group id = "
+            << placement_group_id;
+      });
+  return Status::OK();
+}
+
+ServiceBasedInternalKVAccessor::ServiceBasedInternalKVAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVGet(
+    const std::string &key, const OptionalItemCallback<std::string> &callback) {
+  rpc::InternalKVGetRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().InternalKVGet(
+      req, [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
+        if (reply.status().code() == (int)StatusCode::NotFound) {
+          callback(status, boost::none);
+        } else {
+          callback(status, reply.value());
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVPut(
+    const std::string &key, const std::string &value, bool overwrite,
+    const OptionalItemCallback<int> &callback) {
+  rpc::InternalKVPutRequest req;
+  req.set_key(key);
+  req.set_value(value);
+  req.set_overwrite(overwrite);
+  client_impl_->GetGcsRpcClient().InternalKVPut(
+      req, [callback](const Status &status, const rpc::InternalKVPutReply &reply) {
+        callback(status, reply.added_num());
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVExists(
+    const std::string &key, const OptionalItemCallback<bool> &callback) {
+  rpc::InternalKVExistsRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().InternalKVExists(
+      req, [callback](const Status &status, const rpc::InternalKVExistsReply &reply) {
+        callback(status, reply.exists());
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVDel(
+    const std::string &key, const StatusCallback &callback) {
+  rpc::InternalKVDelRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().InternalKVDel(
+      req, [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVKeys(
+    const std::string &prefix,
+    const OptionalItemCallback<std::vector<std::string>> &callback) {
+  rpc::InternalKVKeysRequest req;
+  req.set_prefix(prefix);
+  client_impl_->GetGcsRpcClient().InternalKVKeys(
+      req, [callback](const Status &status, const rpc::InternalKVKeysReply &reply) {
+        if (!status.ok()) {
+          callback(status, boost::none);
+        } else {
+          callback(status, VectorFromProtobuf(reply.results()));
+        }
       });
   return Status::OK();
 }

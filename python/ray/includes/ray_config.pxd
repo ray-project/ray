@@ -13,9 +13,7 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t handler_warning_timeout_ms() const
 
-        int64_t raylet_heartbeat_timeout_milliseconds() const
-
-        c_bool light_heartbeat_enabled() const
+        int64_t raylet_heartbeat_period_milliseconds() const
 
         int64_t debug_dump_period_milliseconds() const
 
@@ -49,13 +47,7 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int object_manager_push_timeout_ms() const
 
-        int object_manager_repeated_push_delay_ms() const
-
         uint64_t object_manager_default_chunk_size() const
-
-        int num_workers_per_process_python() const
-
-        int num_workers_per_process_java() const
 
         uint32_t maximum_gcs_deletion_batch_size() const
 
@@ -63,8 +55,14 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         c_bool put_small_object_in_memory_store() const
 
+        int64_t task_rpc_inlined_bytes_limit() const
+
         uint32_t max_tasks_in_flight_per_worker() const
 
         uint64_t metrics_report_interval_ms() const
 
         c_bool enable_timeline() const
+
+        uint32_t max_grpc_message_size() const
+
+        c_bool record_ref_creation_sites() const

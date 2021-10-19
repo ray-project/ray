@@ -52,15 +52,8 @@ class StringIdMap {
   /// \return The integer ID associated with string ID string_id.
   int64_t Insert(const std::string &string_id, uint8_t num_ids = 0);
 
-  /// Delete an ID identified by its string format.
-  ///
-  /// \param ID to be deleted.
-  void Remove(const std::string &string_id);
-
-  /// Delete an ID identified by its integer format.
-  ///
-  /// \param ID to be deleted.
-  void Remove(int64_t id);
+  /// Removing an ID is unsupported, because it is prone to erroneously
+  /// deleting an ID still in use.
 
   /// Get number of identifiers.
   int64_t Count();

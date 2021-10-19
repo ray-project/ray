@@ -10,14 +10,16 @@ import time
 from typing import Union, Optional
 
 import ray.cloudpickle as pickle
-from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv
+from ray.rllib.env.external_env import ExternalEnv
+from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.typing import MultiAgentDict, EnvInfoDict, EnvObsType, \
     EnvActionType
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")  # TODO(ekl) seems to be needed for cartpole_client.py
 
 try:
     import requests  # `requests` is not part of stdlib.
@@ -31,6 +33,10 @@ except ImportError:
 @PublicAPI
 class PolicyClient:
     """REST client to interact with a RLlib policy server."""
+
+    # Generic commands (for both modes).
+    ACTION_SPACE = "ACTION_SPACE"
+    OBSERVATION_SPACE = "OBSERVATION_SPACE"
 
     # Commands for local inference mode.
     GET_WORKER_ARGS = "GET_WORKER_ARGS"
@@ -60,7 +66,7 @@ class PolicyClient:
                 or None for manual control via client.
         """
         self.address = address
-        self.env = None
+        self.env: ExternalEnv = None
         if inference_mode == "local":
             self.local = True
             self._setup_local_rollout_worker(update_interval)
@@ -269,7 +275,8 @@ class _LocalInferenceThread(threading.Thread):
                 if isinstance(samples, MultiAgentBatch):
                     logger.info(
                         "Sending batch of {} env steps ({} agent steps) to "
-                        "server.".format(samples.count, samples.total()))
+                        "server.".format(samples.env_steps(),
+                                         samples.agent_steps()))
                 else:
                     logger.info(
                         "Sending batch of {} steps back to server.".format(
@@ -332,12 +339,36 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     # input config to the default, which runs env rollouts.
     kwargs = kwargs.copy()
     del kwargs["input_creator"]
-    logger.info("Creating rollout worker with kwargs={}".format(kwargs))
-    real_env_creator = kwargs["env_creator"]
-    kwargs["env_creator"] = _auto_wrap_external(real_env_creator)
 
+    # Since the server also acts as an output writer, we might have to reset
+    # the output config to the default, i.e. "output": None, otherwise a
+    # local rollout worker might write to an unknown output directory
+    del kwargs["output_creator"]
+
+    # If server has no env (which is the expected case):
+    # Generate a dummy ExternalEnv here using RandomEnv and the
+    # given observation/action spaces.
+    if kwargs["policy_config"].get("env") is None:
+        from ray.rllib.examples.env.random_env import RandomEnv, \
+            RandomMultiAgentEnv
+        config = {
+            "action_space": kwargs["policy_config"]["action_space"],
+            "observation_space": kwargs["policy_config"]["observation_space"],
+        }
+        _, is_ma = check_multi_agent(kwargs["policy_config"])
+        kwargs["env_creator"] = _auto_wrap_external(
+            lambda _: (RandomMultiAgentEnv if is_ma else RandomEnv)(config))
+        kwargs["policy_config"]["env"] = True
+    # Otherwise, use the env specified by the server args.
+    else:
+        real_env_creator = kwargs["env_creator"]
+        kwargs["env_creator"] = _auto_wrap_external(real_env_creator)
+
+    logger.info("Creating rollout worker with kwargs={}".format(kwargs))
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
     rollout_worker = RolloutWorker(**kwargs)
+
     inference_thread = _LocalInferenceThread(rollout_worker, send_fn)
     inference_thread.start()
+
     return rollout_worker, inference_thread

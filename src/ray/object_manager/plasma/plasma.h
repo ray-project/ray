@@ -16,6 +16,7 @@
 // under the License.
 
 #pragma once
+#include <stddef.h>
 
 #include <memory>
 #include <string>
@@ -23,12 +24,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/compat.h"
-
-#ifdef PLASMA_CUDA
-using arrow::cuda::CudaIpcMemHandle;
-#endif
 
 namespace plasma {
 
@@ -37,10 +33,6 @@ constexpr int64_t kBlockSize = 64;
 
 // TODO(pcm): Replace this by the flatbuffers message PlasmaObjectSpec.
 struct PlasmaObject {
-#ifdef PLASMA_CUDA
-  // IPC handle for Cuda.
-  std::shared_ptr<CudaIpcMemHandle> ipc_handle;
-#endif
   /// The file descriptor of the memory mapped file in the store. It is used as
   /// a unique identifier of the file in the client to look up the corresponding
   /// file descriptor on the client's side.
@@ -55,15 +47,14 @@ struct PlasmaObject {
   int64_t metadata_size;
   /// Device number object is on.
   int device_num;
+  /// Set if device_num is equal to 0.
+  int64_t mmap_size;
 
-  bool operator==(const PlasmaObject& other) const {
-    return (
-#ifdef PLASMA_CUDA
-        (ipc_handle == other.ipc_handle) &&
-#endif
-        (store_fd == other.store_fd) && (data_offset == other.data_offset) &&
-        (metadata_offset == other.metadata_offset) && (data_size == other.data_size) &&
-        (metadata_size == other.metadata_size) && (device_num == other.device_num));
+  bool operator==(const PlasmaObject &other) const {
+    return ((store_fd == other.store_fd) && (data_offset == other.data_offset) &&
+            (metadata_offset == other.metadata_offset) &&
+            (data_size == other.data_size) && (metadata_size == other.metadata_size) &&
+            (device_num == other.device_num));
   }
 };
 
@@ -73,31 +64,4 @@ enum class ObjectStatus : int {
   /// The object was found.
   OBJECT_FOUND = 1
 };
-
-/// The plasma store information that is exposed to the eviction policy.
-struct PlasmaStoreInfo {
-  /// Objects that are in the Plasma store.
-  ObjectTable objects;
-  /// Boolean flag indicating whether to start the object store with hugepages
-  /// support enabled. Huge pages are substantially larger than normal memory
-  /// pages (e.g. 2MB or 1GB instead of 4KB) and using them can reduce
-  /// bookkeeping overhead from the OS.
-  bool hugepages_enabled;
-  /// A (platform-dependent) directory where to create the memory-backed file.
-  std::string directory;
-};
-
-/// Get an entry from the object table and return NULL if the object_id
-/// is not present.
-///
-/// \param store_info The PlasmaStoreInfo that contains the object table.
-/// \param object_id The object_id of the entry we are looking for.
-/// \return The entry associated with the object_id or NULL if the object_id
-///         is not present.
-ObjectTableEntry* GetObjectTableEntry(PlasmaStoreInfo* store_info,
-                                      const ObjectID& object_id);
-
-/// Globally accessible reference to plasma store configuration.
-extern const PlasmaStoreInfo* plasma_config;
-
 }  // namespace plasma

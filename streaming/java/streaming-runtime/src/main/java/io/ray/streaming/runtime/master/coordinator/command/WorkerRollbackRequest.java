@@ -23,10 +23,7 @@ public final class WorkerRollbackRequest extends BaseWorkerCmd {
   }
 
   public WorkerRollbackRequest(
-      ExecutionVertex executionVertex,
-      String hostname,
-      String msg,
-      boolean isForcedRollback) {
+      ExecutionVertex executionVertex, String hostname, String msg, boolean isForcedRollback) {
 
     super(executionVertex.getWorkerActorId());
 
@@ -56,8 +53,6 @@ public final class WorkerRollbackRequest extends BaseWorkerCmd {
 
   @Override
   public String toString() {
-    return MoreObjects.toStringHelper(this)
-        .add("fromActorId", fromActorId)
-        .toString();
+    return MoreObjects.toStringHelper(this).add("fromActorId", fromActorId).toString();
   }
 }

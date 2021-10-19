@@ -18,7 +18,6 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 # Training parameters
-dataroot = ray.utils.get_user_temp_dir() + os.sep
 workers = 2
 batch_size = 64
 image_size = 32
@@ -44,9 +43,9 @@ train_iterations_per_step = 5
 MODEL_PATH = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
 
 
-def get_data_loader():
+def get_data_loader(data_dir="~/data"):
     dataset = dset.MNIST(
-        root=dataroot,
+        root=data_dir,
         download=True,
         transform=transforms.Compose([
             transforms.Resize(image_size),
@@ -185,7 +184,8 @@ def train(netD, netG, optimG, optimD, criterion, dataloader, iteration, device,
         netD.zero_grad()
         real_cpu = data[0].to(device)
         b_size = real_cpu.size(0)
-        label = torch.full((b_size, ), real_label, device=device)
+        label = torch.full(
+            (b_size, ), real_label, dtype=torch.float, device=device)
         output = netD(real_cpu).view(-1)
         errD_real = criterion(output, label)
         errD_real.backward()

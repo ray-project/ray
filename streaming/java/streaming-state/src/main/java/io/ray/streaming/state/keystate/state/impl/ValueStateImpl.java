@@ -22,9 +22,7 @@ import io.ray.streaming.state.backend.KeyStateBackend;
 import io.ray.streaming.state.keystate.desc.ValueStateDescriptor;
 import io.ray.streaming.state.keystate.state.ValueState;
 
-/**
- * ValueState implementation.
- */
+/** ValueState implementation. */
 public class ValueStateImpl<T> implements ValueState<T> {
 
   private final StateHelper<T> helper;
@@ -48,9 +46,7 @@ public class ValueStateImpl<T> implements ValueState<T> {
     }
   }
 
-  /**
-   * set current key of the state
-   */
+  /** set current key of the state */
   @Override
   public void setCurrentKey(Object currentKey) {
     helper.setCurrentKey(currentKey);

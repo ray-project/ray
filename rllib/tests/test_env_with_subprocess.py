@@ -7,7 +7,7 @@ import ray
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.env_with_subprocess import EnvWithSubprocess
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def leaked_processes():
@@ -56,11 +56,10 @@ if __name__ == "__main__":
             },
         },
     })
-    # Check whether processes are still running or Env has not cleaned up
-    # the given tmp files.
+
+    ray.shutdown()
+
+    # Check whether processes are still running.
     wait_for_condition(lambda: not leaked_processes(), timeout=30)
-    wait_for_condition(lambda: not os.path.exists(tmp1), timeout=30)
-    wait_for_condition(lambda: not os.path.exists(tmp2), timeout=30)
-    wait_for_condition(lambda: not os.path.exists(tmp3), timeout=30)
-    wait_for_condition(lambda: not os.path.exists(tmp4), timeout=30)
+
     print("OK")

@@ -1,4 +1,5 @@
 import {
+  Button,
   createStyles,
   makeStyles,
   Tab,
@@ -8,6 +9,7 @@ import {
 } from "@material-ui/core";
 import React, { useCallback, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useHistory } from "react-router-dom";
 import { getActorGroups, getNodeInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
@@ -18,13 +20,8 @@ import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
 import Tune from "./tune/Tune";
 
-const {
-  setNodeInfo,
-  setTuneAvailability,
-  setActorGroups,
-  setError,
-  setTab,
-} = dashboardActions;
+const { setNodeInfo, setTuneAvailability, setActorGroups, setError, setTab } =
+  dashboardActions;
 const useDashboardStyles = makeStyles((theme: Theme) =>
   createStyles({
     root: {
@@ -33,6 +30,7 @@ const useDashboardStyles = makeStyles((theme: Theme) =>
       "& > :not(:first-child)": {
         marginTop: theme.spacing(4),
       },
+      position: "relative",
     },
     tabs: {
       borderBottomColor: theme.palette.divider,
@@ -59,6 +57,7 @@ const Dashboard: React.FC = () => {
   const tuneAvailability = useSelector(tuneAvailabilitySelector);
   const tab = useSelector(tabSelector);
   const classes = useDashboardStyles();
+  const history = useHistory();
 
   // Polling Function
   const refreshInfo = useCallback(async () => {
@@ -103,6 +102,15 @@ const Dashboard: React.FC = () => {
   return (
     <div className={classes.root}>
       <Typography variant="h5">Ray Dashboard</Typography>
+      <Button
+        style={{ position: "absolute", right: 16, top: 16 }}
+        variant="contained"
+        size="small"
+        color="primary"
+        onClick={() => history.push("/node")}
+      >
+        Try Experimental Dashboard
+      </Button>
       <Tabs
         className={classes.tabs}
         indicatorColor="primary"

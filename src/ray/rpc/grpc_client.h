@@ -30,7 +30,8 @@ namespace rpc {
 // to make it easier to implement a new RPC client.
 #define INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client) \
   (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(              \
-      &SERVICE::Stub::PrepareAsync##METHOD, request, callback))
+      &SERVICE::Stub::PrepareAsync##METHOD, request, callback,          \
+      #SERVICE ".grpc_client." #METHOD))
 
 // Define a void RPC client method.
 #define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)   \
@@ -48,8 +49,8 @@ class GrpcClient {
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
     // this configurable, or selectively set it for known local connections only.
     argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);
@@ -64,8 +65,8 @@ class GrpcClient {
     grpc::ChannelArguments argument;
     argument.SetResourceQuota(quota);
     argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);
@@ -86,9 +87,10 @@ class GrpcClient {
   template <class Request, class Reply>
   void CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
-      const Request &request, const ClientCallback<Reply> &callback) {
+      const Request &request, const ClientCallback<Reply> &callback,
+      std::string call_name = "UNKNOWN_RPC") {
     auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
-        *stub_, prepare_async_function, request, callback);
+        *stub_, prepare_async_function, request, callback, std::move(call_name));
     RAY_CHECK(call != nullptr);
   }
 

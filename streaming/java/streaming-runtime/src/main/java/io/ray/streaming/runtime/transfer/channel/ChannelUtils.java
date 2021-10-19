@@ -43,7 +43,7 @@ public class ChannelUtils {
       builder.setEmptyMessageInterval(emptyMsgInterval);
     }
 
-    //flow control type
+    // flow control type
     int flowControlType = workerConfig.transferConfig.flowControlType();
     if (flowControlType != -1) {
       builder.setFlowControlType(Streaming.FlowControlType.forNumber(flowControlType));
@@ -55,7 +55,7 @@ public class ChannelUtils {
       builder.setWriterConsumedStep(writerConsumedStep);
     }
 
-    //reader consumed step
+    // reader consumed step
     int readerConsumedStep = workerConfig.transferConfig.readerConsumedStep();
     if (readerConsumedStep != -1) {
       builder.setReaderConsumedStep(readerConsumedStep);
@@ -65,5 +65,4 @@ public class ChannelUtils {
     LOGGER.info("Streaming native conf {}", streamingConf.toString());
     return streamingConf.toByteArray();
   }
-
 }

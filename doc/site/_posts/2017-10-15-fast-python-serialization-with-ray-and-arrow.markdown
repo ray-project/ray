@@ -271,7 +271,7 @@ for i in range(len(test_objects)):
     plot(*benchmark_object(test_objects[i]), titles[i], i)
 ```
 
-[1]: http://docs.ray.io/en/latest/index.html
+[1]: http://docs.ray.io/en/master/index.html
 [2]: https://arrow.apache.org/
 [3]: https://en.wikipedia.org/wiki/Serialization
 [4]: https://github.com/cloudpipe/cloudpickle/

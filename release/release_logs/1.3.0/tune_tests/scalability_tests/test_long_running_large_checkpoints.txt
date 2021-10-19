@@ -1,0 +1,32 @@
+== Status ==
+Memory usage on this node: 3.4/123.1 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 0/32 CPUs, 0/0 GPUs, 0.0/76.58 GiB heap, 0.0/36.81 GiB objects
+Result logdir: /home/ray/ray_results/function_trainable_2021-04-06_00-48-11
+Number of trials: 16/16 (16 TERMINATED)
++--------------------------------+------------+-------+-----------+--------+------------------+---------+
+| Trial name                     | status     | loc   |     score |   iter |   total time (s) |   score |
+|--------------------------------+------------+-------+-----------+--------+------------------+---------|
+| function_trainable_6fcc8_00000 | TERMINATED |       | 0.579711  |   1440 |          88874.5 | 1439.58 |
+| function_trainable_6fcc8_00001 | TERMINATED |       | 0.0229354 |   1440 |          88099.5 | 1439.02 |
+| function_trainable_6fcc8_00002 | TERMINATED |       | 0.73754   |   1440 |          88080.4 | 1439.74 |
+| function_trainable_6fcc8_00003 | TERMINATED |       | 0.250762  |   1440 |          88978.9 | 1439.25 |
+| function_trainable_6fcc8_00004 | TERMINATED |       | 0.552658  |   1440 |          88755   | 1439.55 |
+| function_trainable_6fcc8_00005 | TERMINATED |       | 0.700542  |   1440 |          88247.4 | 1439.7  |
+| function_trainable_6fcc8_00006 | TERMINATED |       | 0.593315  |   1440 |          88936.5 | 1439.59 |
+| function_trainable_6fcc8_00007 | TERMINATED |       | 0.078047  |   1440 |          88642.1 | 1439.08 |
+| function_trainable_6fcc8_00008 | TERMINATED |       | 0.196008  |   1440 |          88830.8 | 1439.2  |
+| function_trainable_6fcc8_00009 | TERMINATED |       | 0.114978  |   1440 |          88515.2 | 1439.11 |
+| function_trainable_6fcc8_00010 | TERMINATED |       | 0.136566  |   1440 |          88532.2 | 1439.14 |
+| function_trainable_6fcc8_00011 | TERMINATED |       | 0.570846  |   1440 |          88125.4 | 1439.57 |
+| function_trainable_6fcc8_00012 | TERMINATED |       | 0.0276995 |   1440 |          88653.2 | 1439.03 |
+| function_trainable_6fcc8_00013 | TERMINATED |       | 0.283965  |   1440 |          88259.4 | 1439.28 |
+| function_trainable_6fcc8_00014 | TERMINATED |       | 0.198422  |   1440 |          89021.9 | 1439.2  |
+| function_trainable_6fcc8_00015 | TERMINATED |       | 0.0232406 |   1440 |          88861.6 | 1439.02 |
++--------------------------------+------------+-------+-----------+--------+------------------+---------+
+
+
+2021-04-07 01:32:55,372 INFO tune.py:549 -- Total run time: 89083.60 seconds (89083.05 seconds for the tuning loop).
+The long running large checkpoints test took 89083.84 seconds, which is below the budget of 90000.00 seconds. Test successful.
+
+--- PASSED: LONG RUNNING LARGE CHECKPOINTS ::: 89083.84 <= 90000.00 ---

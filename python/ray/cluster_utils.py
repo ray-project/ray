@@ -1,10 +1,80 @@
 import logging
+import json
+import yaml
+import os
+import subprocess
+import tempfile
 import time
 
 import ray
+import ray._private.services
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
+
+
+class AutoscalingCluster:
+    """Create a local autoscaling cluster for testing.
+
+    See test_autoscaler_fake_multinode.py for an end-to-end example.
+    """
+
+    def __init__(self, head_resources: dict, worker_node_types: dict):
+        """Create the cluster.
+
+        Args:
+            head_resources: resources of the head node, including CPU.
+            worker_node_types: autoscaler node types config for worker nodes.
+        """
+        base_config = yaml.safe_load(
+            open(
+                os.path.join(
+                    os.path.dirname(ray.__file__),
+                    "autoscaler/_private/fake_multi_node/example.yaml")))
+        base_config["available_node_types"] = worker_node_types
+        base_config["available_node_types"]["ray.head.default"] = {
+            "resources": head_resources,
+            "node_config": {},
+            "max_workers": 0,
+        }
+        self._head_resources = head_resources
+        self._config = base_config
+        self._process = None
+
+    def start(self):
+        """Start the cluster.
+
+        After this call returns, you can connect to the cluster with
+        ray.init("auto").
+        """
+        subprocess.check_call(["ray", "stop", "--force"])
+        fake_config = tempfile.mktemp()
+        with open(fake_config, "w") as f:
+            f.write(json.dumps(self._config))
+        cmd = [
+            "ray", "start", "--autoscaling-config={}".format(fake_config),
+            "--head", "--block"
+        ]
+        if "CPU" in self._head_resources:
+            cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
+        if "GPU" in self._head_resources:
+            cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
+        if self._head_resources:
+            cmd.append("--resources='{}'".format(
+                json.dumps(self._head_resources)))
+        env = os.environ.copy()
+        env.update({
+            "AUTOSCALER_UPDATE_INTERVAL_S": "1",
+            "RAY_FAKE_CLUSTER": "1"
+        })
+        self._process = subprocess.Popen(cmd, env=env)
+        time.sleep(5)  # TODO(ekl) wait for it properly
+
+    def shutdown(self):
+        """Terminate the cluster."""
+        if self._process:
+            self._process.kill()
+        subprocess.check_call(["ray", "stop", "--force"])
 
 
 class Cluster:
@@ -46,18 +116,19 @@ class Cluster:
     def address(self):
         return self.redis_address
 
-    def connect(self):
+    def connect(self, namespace=None):
         """Connect the driver to the cluster."""
         assert self.redis_address is not None
         assert not self.connected
         output_info = ray.init(
+            namespace=namespace,
             ignore_reinit_error=True,
             address=self.redis_address,
             _redis_password=self.redis_password)
         logger.info(output_info)
         self.connected = True
 
-    def add_node(self, **node_args):
+    def add_node(self, wait=True, **node_args):
         """Adds a node to the local Ray Cluster.
 
         All nodes are by default started with the following settings:
@@ -66,6 +137,7 @@ class Cluster:
             object_store_memory=150 * 1024 * 1024  # 150 MiB
 
         Args:
+            wait (bool): Whether to wait until the node is alive.
             node_args: Keyword arguments used in `start_ray_head` and
                 `start_ray_node`. Overrides defaults.
 
@@ -78,8 +150,9 @@ class Cluster:
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
             "min_worker_port": 0,
             "max_worker_port": 0,
+            "dashboard_port": None,
         }
-        ray_params = ray.parameter.RayParams(**node_args)
+        ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
         if self.head_node is None:
             node = ray.node.Node(
@@ -100,7 +173,7 @@ class Cluster:
             # We only need one log monitor per physical node.
             ray_params.update_if_absent(include_log_monitor=False)
             # Let grpc pick a port.
-            ray_params.update(node_manager_port=0)
+            ray_params.update_if_absent(node_manager_port=0)
             node = ray.node.Node(
                 ray_params,
                 head=False,
@@ -108,12 +181,13 @@ class Cluster:
                 spawn_reaper=self._shutdown_at_exit)
             self.worker_nodes.add(node)
 
-        # Wait for the node to appear in the client table. We do this so that
-        # the nodes appears in the client table in the order that the
-        # corresponding calls to add_node were made. We do this because in the
-        # tests we assume that the driver is connected to the first node that
-        # is added.
-        self._wait_for_node(node)
+        if wait:
+            # Wait for the node to appear in the client table. We do this so
+            # that the nodes appears in the client table in the order that the
+            # corresponding calls to add_node were made. We do this because in
+            # the tests we assume that the driver is connected to the first
+            # node that is added.
+            self._wait_for_node(node)
 
         return node
 
@@ -159,17 +233,9 @@ class Cluster:
             TimeoutError: An exception is raised if the timeout expires before
                 the node appears in the client table.
         """
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            clients = self.global_state.node_table()
-            object_store_socket_names = [
-                client["ObjectStoreSocketName"] for client in clients
-            ]
-            if node.plasma_store_socket_name in object_store_socket_names:
-                return
-            else:
-                time.sleep(0.1)
-        raise TimeoutError("Timed out while waiting for nodes to join.")
+        ray._private.services.wait_for_node(self.redis_address,
+                                            node.plasma_store_socket_name,
+                                            self.redis_password, timeout)
 
     def wait_for_nodes(self, timeout=30):
         """Waits for correct number of nodes to be registered.

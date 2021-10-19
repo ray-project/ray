@@ -18,20 +18,13 @@
 
 package io.ray.streaming.state.backend;
 
-/**
- * This class describe State Saving Model.
- */
+/** This class describe State Saving Model. */
 public enum StateStrategy {
-  /**
-   * save two version together in case of rollback.
-   */
+  /** save two version together in case of rollback. */
   DUAL_VERSION,
 
-  /**
-   * for storage supporting mvcc, we save only current version.
-   */
+  /** for storage supporting mvcc, we save only current version. */
   SINGLE_VERSION;
-
 
   public static StateStrategy getEnum(String value) {
     for (StateStrategy v : values()) {

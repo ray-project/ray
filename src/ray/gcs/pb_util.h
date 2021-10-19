@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -33,13 +34,11 @@ namespace gcs {
 /// \param driver_pid Process ID of the driver running this job.
 /// \return The job table data created by this method.
 inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
-    const ray::JobID &job_id, bool is_dead, int64_t timestamp,
-    const std::string &driver_ip_address, int64_t driver_pid,
-    const ray::rpc::JobConfig &job_config = {}) {
+    const ray::JobID &job_id, bool is_dead, const std::string &driver_ip_address,
+    int64_t driver_pid, const ray::rpc::JobConfig &job_config = {}) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
-  job_info_ptr->set_timestamp(timestamp);
   job_info_ptr->set_driver_ip_address(driver_ip_address);
   job_info_ptr->set_driver_pid(driver_pid);
   *job_info_ptr->mutable_config() = job_config;
@@ -50,9 +49,18 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
     const std::string &error_type, const std::string &error_msg, double timestamp,
     const JobID &job_id = JobID::Nil()) {
+  uint32_t max_error_msg_size_bytes = RayConfig::instance().max_error_msg_size_bytes();
   auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
   error_info_ptr->set_type(error_type);
-  error_info_ptr->set_error_message(error_msg);
+  if (error_msg.length() > max_error_msg_size_bytes) {
+    std::ostringstream stream;
+    stream << "The message size exceeds " << std::to_string(max_error_msg_size_bytes)
+           << " bytes. Find the full log from the log files. Here is abstract: "
+           << error_msg.substr(0, max_error_msg_size_bytes);
+    error_info_ptr->set_error_message(stream.str());
+  } else {
+    error_info_ptr->set_error_message(error_msg);
+  }
   error_info_ptr->set_timestamp(timestamp);
   error_info_ptr->set_job_id(job_id.Binary());
   return error_info_ptr;
@@ -86,15 +94,20 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const NodeID &raylet_id, const WorkerID &worker_id, const std::string &address,
-    int32_t port, int64_t timestamp = std::time(nullptr),
-    bool intentional_disconnect = false) {
+    int32_t port, int64_t timestamp, rpc::WorkerExitType disconnect_type,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_ip_address(address);
   worker_failure_info_ptr->mutable_worker_address()->set_port(port);
   worker_failure_info_ptr->set_timestamp(timestamp);
-  worker_failure_info_ptr->set_intentional_disconnect(intentional_disconnect);
+  worker_failure_info_ptr->set_exit_type(disconnect_type);
+  if (creation_task_exception != nullptr) {
+    // this pointer will be freed by protobuf internal codes
+    auto copied_data = new rpc::RayException(*creation_task_exception);
+    worker_failure_info_ptr->set_allocated_creation_task_exception(copied_data);
+  }
   return worker_failure_info_ptr;
 }
 

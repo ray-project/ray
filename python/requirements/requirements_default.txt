@@ -1,0 +1,6 @@
+aiohttp>=3.7
+aiohttp_cors
+aioredis<2
+colorful
+opencensus
+prometheus_client>=0.7.1

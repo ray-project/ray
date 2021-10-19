@@ -10,16 +10,18 @@ import uuid
 from functools import partial
 from numbers import Number
 
-from ray.tune.registry import parameter_registry
+from typing import Any, Callable, Optional
+
 from six.moves import queue
 
 from ray.util.debug import log_once
 from ray.tune import TuneError, session
 from ray.tune.trainable import Trainable, TrainableUtil
-from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
+                             RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.utils import (detect_checkpoint_function, detect_config_single,
                             detect_reporter)
+from ray.tune.utils.trainable import with_parameters  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +126,8 @@ class StatusReporter:
                  end_event,
                  trial_name=None,
                  trial_id=None,
-                 logdir=None):
+                 logdir=None,
+                 trial_resources=None):
         self._queue = result_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
@@ -134,13 +137,19 @@ class StatusReporter:
         self._logdir = logdir
         self._last_checkpoint = None
         self._fresh_checkpoint = False
+        self._trial_resources = trial_resources
 
-    def reset(self, trial_name=None, trial_id=None, logdir=None):
+    def reset(self,
+              trial_name=None,
+              trial_id=None,
+              logdir=None,
+              trial_resources=None):
         self._trial_name = trial_name
         self._trial_id = trial_id
         self._logdir = logdir
         self._last_checkpoint = None
         self._fresh_checkpoint = False
+        self._trial_resources = trial_resources
 
     def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
@@ -164,7 +173,7 @@ class StatusReporter:
             "report __call__ is made to ensure correct runtime metrics.")
 
         if _metric:
-            kwargs["_metric"] = _metric
+            kwargs[DEFAULT_METRIC] = _metric
 
         # time per iteration is recorded directly in the reporter to ensure
         # any delays in logging results aren't counted
@@ -233,6 +242,11 @@ class StatusReporter:
         """Trial id for the corresponding trial of this Trainable."""
         return self._trial_id
 
+    @property
+    def trial_resources(self):
+        """Resources assigned to the trial of this Trainable."""
+        return self._trial_resources
+
 
 class _RunnerThread(threading.Thread):
     """Supervisor thread that runs your script."""
@@ -297,7 +311,8 @@ class FunctionRunner(Trainable):
             self._end_event,
             trial_name=self.trial_name,
             trial_id=self.trial_id,
-            logdir=self.logdir)
+            logdir=self.logdir,
+            trial_resources=self.trial_resources)
         self._last_result = {}
 
         session.init(self._status_reporter)
@@ -501,7 +516,8 @@ class FunctionRunner(Trainable):
         self._status_reporter.reset(
             trial_name=self.trial_name,
             trial_id=self.trial_id,
-            logdir=self.logdir)
+            logdir=self.logdir,
+            trial_resources=self.trial_resources)
 
         return True
 
@@ -509,17 +525,25 @@ class FunctionRunner(Trainable):
         try:
             err_tb_str = self._error_queue.get(
                 block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise TuneError(("Trial raised an exception. Traceback:\n{}"
-                             .format(err_tb_str)))
+            raise TuneError(
+                ("Trial raised an exception. Traceback:\n{}".format(err_tb_str)
+                 ))
         except queue.Empty:
             pass
 
 
-def wrap_function(train_func, warn=True):
+def wrap_function(train_func: Callable[[Any], Any],
+                  durable: bool = False,
+                  warn: bool = True,
+                  name: Optional[str] = None):
+    inherit_from = (FunctionRunner, )
+
     if hasattr(train_func, "__mixins__"):
-        inherit_from = train_func.__mixins__ + (FunctionRunner, )
-    else:
-        inherit_from = (FunctionRunner, )
+        inherit_from = train_func.__mixins__ + inherit_from
+
+    if durable:
+        from ray.tune import DurableTrainable
+        inherit_from = (DurableTrainable, ) + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
     use_checkpoint = detect_checkpoint_function(train_func)
@@ -543,8 +567,8 @@ def wrap_function(train_func, warn=True):
                 "arguments to be `func(config, checkpoint_dir=None)`.")
 
     class ImplicitFunc(*inherit_from):
-        _name = train_func.__name__ if hasattr(train_func, "__name__") \
-            else "func"
+        _name = name or (train_func.__name__
+                         if hasattr(train_func, "__name__") else "func")
 
         def _trainable_func(self, config, reporter, checkpoint_dir):
             if not use_checkpoint and not use_reporter:
@@ -582,66 +606,3 @@ def wrap_function(train_func, warn=True):
             return output
 
     return ImplicitFunc
-
-
-def with_parameters(fn, **kwargs):
-    """Wrapper for function trainables to pass arbitrary large data objects.
-
-    This wrapper function will store all passed parameters in the Ray
-    object store and retrieve them when calling the function. It can thus
-    be used to pass arbitrary data, even datasets, to Tune trainable functions.
-
-    This can also be used as an alternative to `functools.partial` to pass
-    default arguments to trainables.
-
-    Args:
-        fn: function to wrap
-        **kwargs: parameters to store in object store.
-
-
-    .. code-block:: python
-
-        from ray import tune
-
-        def train(config, data=None):
-            for sample in data:
-                # ...
-                tune.report(loss=loss)
-
-        data = HugeDataset(download=True)
-
-        tune.run(
-            tune.with_parameters(train, data=data),
-            #...
-        )
-
-    """
-    prefix = f"{str(fn)}_"
-    for k, v in kwargs.items():
-        parameter_registry.put(prefix + k, v)
-
-    use_checkpoint = detect_checkpoint_function(fn)
-
-    def inner(config, checkpoint_dir=None):
-        fn_kwargs = {}
-        if use_checkpoint:
-            default = checkpoint_dir
-            sig = inspect.signature(fn)
-            if "checkpoint_dir" in sig.parameters:
-                default = sig.parameters["checkpoint_dir"].default \
-                          or default
-            fn_kwargs["checkpoint_dir"] = default
-
-        for k in kwargs:
-            fn_kwargs[k] = parameter_registry.get(prefix + k)
-        fn(config, **fn_kwargs)
-
-    # Use correct function signature if no `checkpoint_dir` parameter is set
-    if not use_checkpoint:
-
-        def _inner(config):
-            inner(config, checkpoint_dir=None)
-
-        return _inner
-
-    return inner

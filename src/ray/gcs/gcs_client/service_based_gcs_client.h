@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/redis_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 namespace ray {
@@ -23,17 +26,19 @@ namespace gcs {
 
 class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
  public:
-  explicit ServiceBasedGcsClient(const GcsClientOptions &options);
+  explicit ServiceBasedGcsClient(const GcsClientOptions &options,
+                                 std::function<bool(std::pair<std::string, int> *)>
+                                     get_gcs_server_address_func = {});
 
-  Status Connect(boost::asio::io_service &io_service) override;
+  Status Connect(instrumented_io_context &io_service) override;
 
   void Disconnect() override;
 
   GcsPubSub &GetGcsPubSub() { return *gcs_pub_sub_; }
 
-  RedisGcsClient &GetRedisGcsClient() { return *redis_gcs_client_; }
-
   rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
+
+  std::pair<std::string, int> GetGcsServerAddress() override;
 
  private:
   /// Get gcs server address from redis.
@@ -59,7 +64,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   /// Reconnect to GCS RPC server.
   void ReconnectGcsServer();
 
-  std::unique_ptr<RedisGcsClient> redis_gcs_client_;
+  std::shared_ptr<RedisClient> redis_client_;
 
   std::unique_ptr<GcsPubSub> gcs_pub_sub_;
 
@@ -67,11 +72,13 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
-  // A timer used to check if gcs server address changed.
-  std::unique_ptr<boost::asio::deadline_timer> detect_timer_;
+  // The runner to run function periodically.
+  std::unique_ptr<PeriodicalRunner> periodical_runner_;
   std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
   std::function<void(bool)> resubscribe_func_;
   std::pair<std::string, int> current_gcs_server_address_;
+  int64_t last_reconnect_timestamp_ms_;
+  std::pair<std::string, int> last_reconnect_address_;
 };
 
 }  // namespace gcs

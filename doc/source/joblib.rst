@@ -55,7 +55,7 @@ Run on a Cluster
 ----------------
 
 This section assumes that you have a running Ray cluster. To start a Ray cluster,
-please refer to the `cluster setup <cluster-index.html>`__ instructions.
+please refer to the `cluster setup <cluster/index.html>`__ instructions.
 
 To connect a scikit-learn to a running Ray cluster, you have to specify the address of the
 head node by setting the ``RAY_ADDRESS`` environment variable.

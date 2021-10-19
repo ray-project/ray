@@ -181,7 +181,9 @@ deploy_jars() {
     )
     (
       cd "$WORKSPACE_DIR/streaming/java"
-      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease -Dgpg.skip="${GPG_SKIP:-true}"
+      # We now skip the javadoc plugin to avoid the issue https://github.com/ray-project/ray/issues/18199
+      # We should enable it once the issue gets addressed.
+      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease -Dgpg.skip="${GPG_SKIP:-true}" -Dmaven.javadoc.skip=true
     )
     echo "Finished deploying jars"
   else
@@ -189,7 +191,9 @@ deploy_jars() {
   fi
 }
 
-check_java_version
+if [ -z "${BUILDKITE-}" ]; then
+  check_java_version
+fi
 
 case "$1" in
 linux) # build jars that only contains Linux binaries.

@@ -19,11 +19,11 @@ class MockDurableTrainable(DurableTrainable):
     def __init__(self, remote_checkpoint_dir, *args, **kwargs):
         # Mock the path as a local path.
         local_dir_suffix = remote_checkpoint_dir.split("://")[1]
-        remote_checkpoint_dir = os.path.join(ray.utils.get_user_temp_dir(),
-                                             local_dir_suffix)
+        remote_checkpoint_dir = os.path.join(
+            ray._private.utils.get_user_temp_dir(), local_dir_suffix)
         # Disallow malformed relative paths for delete safety.
         assert os.path.abspath(remote_checkpoint_dir).startswith(
-            ray.utils.get_user_temp_dir())
+            ray._private.utils.get_user_temp_dir())
         logger.info("Using %s as the mocked remote checkpoint directory.",
                     self.remote_checkpoint_dir)
         super(MockDurableTrainable, self).__init__(remote_checkpoint_dir,

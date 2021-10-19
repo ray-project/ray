@@ -12,9 +12,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Job client: to submit job from api to runtime.
- */
+/** Job client: to submit job from api to runtime. */
 public class JobClientImpl implements JobClient {
 
   public static final Logger LOG = LoggerFactory.getLogger(JobClientImpl.class);
@@ -23,8 +21,11 @@ public class JobClientImpl implements JobClient {
 
   @Override
   public void submit(JobGraph jobGraph, Map<String, String> jobConfig) {
-    LOG.info("Submitting job [{}] with job graph [{}] and job config [{}].",
-        jobGraph.getJobName(), jobGraph, jobConfig);
+    LOG.info(
+        "Submitting job [{}] with job graph [{}] and job config [{}].",
+        jobGraph.getJobName(),
+        jobGraph,
+        jobConfig);
     Map<String, Double> resources = new HashMap<>();
 
     // set job name and id at start
@@ -34,20 +35,21 @@ public class JobClientImpl implements JobClient {
     jobGraph.getJobConfig().putAll(jobConfig);
 
     // create job master actor
-    this.jobMasterActor = Ray.actor(JobMaster::new, jobConfig)
-        .setResources(resources)
-        .setMaxRestarts(-1)
-        .remote();
+    this.jobMasterActor =
+        Ray.actor(JobMaster::new, jobConfig).setResources(resources).setMaxRestarts(-1).remote();
 
     try {
-      ObjectRef<Boolean> submitResult = jobMasterActor.task(JobMaster::submitJob,
-          jobMasterActor, jobGraph).remote();
+      ObjectRef<Boolean> submitResult =
+          jobMasterActor.task(JobMaster::submitJob, jobMasterActor, jobGraph).remote();
 
       if (submitResult.get()) {
         LOG.info("Finish submitting job: {}.", jobGraph.getJobName());
+      } else {
+        throw new RuntimeException("submitting job failed");
       }
     } catch (Exception e) {
       LOG.error("Failed to submit job: {}.", jobGraph.getJobName(), e);
+      throw new RuntimeException("submitting job failed", e);
     }
   }
 }

@@ -3,12 +3,12 @@
 
 import gym
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
@@ -74,7 +74,8 @@ def before_init(policy, observation_space, action_space, config):
 
         def _add_noise(single_action, single_action_space):
             single_action = single_action.detach().cpu().numpy()
-            if add_noise and isinstance(single_action_space, gym.spaces.Box):
+            if add_noise and isinstance(single_action_space, gym.spaces.Box) \
+                    and single_action_space.dtype.name.startswith("float"):
                 single_action += np.random.randn(*single_action.shape) * \
                                  policy.action_noise_std
             return single_action
@@ -126,8 +127,9 @@ def make_model_and_action_dist(policy, observation_space, action_space,
     return model, dist_class
 
 
-ESTorchPolicy = build_torch_policy(
+ESTorchPolicy = build_policy_class(
     name="ESTorchPolicy",
+    framework="torch",
     loss_fn=None,
     get_default_config=lambda: ray.rllib.agents.es.es.DEFAULT_CONFIG,
     before_init=before_init,

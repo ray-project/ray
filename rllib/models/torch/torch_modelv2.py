@@ -1,5 +1,5 @@
 import gym
-from typing import List
+from typing import Dict, List, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -46,15 +46,25 @@ class TorchModelV2(ModelV2):
             name,
             framework="torch")
 
+        # Dict to store per multi-gpu tower stats into.
+        # In PyTorch multi-GPU, we use a single TorchPolicy and copy
+        # it's Model(s) n times (1 copy for each GPU). When computing the loss
+        # on each tower, we cannot store the stats (e.g. `entropy`) inside the
+        # policy object as this would lead to race conditions between the
+        # different towers all accessing the same property at the same time.
+        self.tower_stats = {}
+
     @override(ModelV2)
-    def variables(self, as_dict: bool = False) -> List[TensorType]:
+    def variables(self, as_dict: bool = False) -> \
+            Union[List[TensorType], Dict[str, TensorType]]:
         p = list(self.parameters())
         if as_dict:
             return {k: p[i] for i, k in enumerate(self.state_dict().keys())}
         return p
 
     @override(ModelV2)
-    def trainable_variables(self, as_dict: bool = False) -> List[TensorType]:
+    def trainable_variables(self, as_dict: bool = False) -> \
+            Union[List[TensorType], Dict[str, TensorType]]:
         if as_dict:
             return {
                 k: v

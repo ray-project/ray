@@ -1,13 +1,18 @@
 import os
-import pytest
-import tempfile
-import numpy as np
 import shutil
+import tempfile
 
+import numpy as np
+import pytest
+
+import ray
+import ray.util.data as ml_data
+import ray.util.iter as parallel_it
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
+from ray.util.data.examples.mlp_identity_tf import (model_creator,
+                                                    make_data_creator)
 from ray.util.sgd.tf import TFTrainer, TFTrainable
-
 from ray.util.sgd.tf.examples.tensorflow_train_example import (simple_model,
                                                                simple_dataset)
 
@@ -20,6 +25,14 @@ SIMPLE_CONFIG = {
         "steps": 3,
     }
 }
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 @pytest.mark.parametrize(  # noqa: F811
@@ -97,6 +110,35 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     model1.optimizer.get_weights()
     model2.optimizer.get_weights()
+
+
+@pytest.mark.parametrize(  # noqa: F811
+    "num_replicas", [1, 2])
+def test_tf_dataset(ray_start_4_cpus):  # noqa: F811
+    num_points = 32 * 100 * 2
+    data = [i * (1 / num_points) for i in range(num_points)]
+    it = parallel_it.from_items(data, 2, False).for_each(lambda x: [x, x])
+    # this will create MLDataset with column RangeIndex(range(2))
+    ds = ml_data.from_parallel_iter(it, True, batch_size=32, repeated=False)
+    tf_ds = ds.to_tf(feature_columns=[0], label_column=1)
+    trainer = TFTrainer(
+        model_creator=model_creator,
+        data_creator=make_data_creator(tf_ds),
+        num_replicas=2,
+        config={
+            "batch_size": 32,
+            "fit_config": {
+                "steps_per_epoch": 100,
+            }
+        })
+
+    for _ in range(10):
+        trainer.train()
+
+    model = trainer.get_model()
+    prediction = model.predict([0.5])[0][0]
+    assert 0.4 <= prediction <= 0.6
+    trainer.shutdown()
 
 
 def _compare(d1, d2, skip_keys=None):

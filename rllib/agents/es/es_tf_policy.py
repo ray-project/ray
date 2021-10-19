@@ -3,7 +3,7 @@
 
 import gym
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 
 import ray
 import ray.experimental.tf_utils
@@ -47,7 +47,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
         ac, _, _ = policy.compute_actions(
-            observation, add_noise=add_noise, update=True)
+            [observation], add_noise=add_noise, update=True)
         ac = ac[0]
         observation, r, done, _ = env.step(ac)
         if offset != 0.0:
@@ -79,12 +79,25 @@ class ESTFPolicy(Policy):
         self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
             self.sess = make_session(single_threaded=self.single_threaded)
+
+            # Set graph-level seed.
+            if config.get("seed") is not None:
+                with self.sess.as_default():
+                    tf1.set_random_seed(config["seed"])
+
             self.inputs = tf1.placeholder(
                 tf.float32, [None] + list(self.preprocessor.shape))
         else:
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
             self.sess = self.inputs = None
+            if config.get("seed") is not None:
+                # Tf2.x.
+                if config.get("framework") == "tf2":
+                    tf.random.set_seed(config["seed"])
+                # Tf-eager.
+                elif tf1 and config.get("framework") == "tfe":
+                    tf1.set_random_seed(config["seed"])
 
         # Policy network.
         self.dist_class, dist_dim = ModelCatalog.get_action_dist(
@@ -118,9 +131,9 @@ class ESTFPolicy(Policy):
                         add_noise=False,
                         update=True,
                         **kwargs):
-        # Batch is given as list of one.
-        if isinstance(observation, list) and len(observation) == 1:
-            observation = observation[0]
+        # Squeeze batch dimension (we always calculate actions for only a
+        # single obs).
+        observation = observation[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         # `actions` is a list of (component) batches.
@@ -153,7 +166,8 @@ class ESTFPolicy(Policy):
         return action[0], state_outs, extra_fetches
 
     def _add_noise(self, single_action, single_action_space):
-        if isinstance(single_action_space, gym.spaces.Box):
+        if isinstance(single_action_space, gym.spaces.Box) and \
+                single_action_space.dtype.name.startswith("float"):
             single_action += np.random.randn(*single_action.shape) * \
                 self.action_noise_std
         return single_action

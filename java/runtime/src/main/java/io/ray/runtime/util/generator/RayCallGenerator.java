@@ -13,9 +13,7 @@ import org.apache.commons.io.FileUtils;
  */
 public class RayCallGenerator extends BaseGenerator {
 
-  /**
-   * @return Whole file content of `RayCall.java`.
-   */
+  /** Returns Whole file content of `RayCall.java`. */
   private String generateRayCallDotJava() {
     sb = new StringBuilder();
 
@@ -70,9 +68,7 @@ public class RayCallGenerator extends BaseGenerator {
     return sb.toString();
   }
 
-  /**
-   * @return Whole file content of `ActorCall.java`.
-   */
+  /** Returns Whole file content of `ActorCall.java`. */
   private String generateActorCallDotJava() {
     sb = new StringBuilder();
 
@@ -102,9 +98,7 @@ public class RayCallGenerator extends BaseGenerator {
     return sb.toString();
   }
 
-  /**
-   * @return Whole file content of `PyActorCall.java`.
-   */
+  /** Returns Whole file content of `PyActorCall.java`. */
   private String generatePyActorCallDotJava() {
     sb = new StringBuilder();
 
@@ -128,16 +122,16 @@ public class RayCallGenerator extends BaseGenerator {
   }
 
   /**
-   * Build `Ray.call`, `Ray.createActor` and `actor.call` methods with
-   * the given number of parameters.
+   * Build `Ray.call`, `Ray.createActor` and `actor.call` methods with the given number of
+   * parameters.
    *
    * @param numParameters the number of parameters
    * @param forActor Build `actor.call` when true, otherwise build `Ray.call`.
    * @param hasReturn if true, Build api for functions with return.
    * @param forActorCreation Build `Ray.createActor` when true, otherwise build `Ray.call`.
    */
-  private void buildCalls(int numParameters, boolean forActor,
-                          boolean forActorCreation, boolean hasReturn) {
+  private void buildCalls(
+      int numParameters, boolean forActor, boolean forActorCreation, boolean hasReturn) {
     // Template of the generated function:
     // [modifiers] [genericTypes] [returnType] [callFunc]([argsDeclaration]) {
     //   Objects[] args = new Object[]{[args]};
@@ -186,10 +180,12 @@ public class RayCallGenerator extends BaseGenerator {
         rayFuncGenericTypes = rayFuncGenericTypes.replace("<", "<A, ");
       }
     }
-    String argsDeclarationPrefix = String.format("RayFunc%s%d%s f, ",
-        hasReturn ? "" : "Void",
-        !forActor ? numParameters : numParameters + 1,
-        rayFuncGenericTypes);
+    String argsDeclarationPrefix =
+        String.format(
+            "RayFunc%s%d%s f, ",
+            hasReturn ? "" : "Void",
+            !forActor ? numParameters : numParameters + 1,
+            rayFuncGenericTypes);
 
     String callFunc = forActorCreation ? "actor" : "task";
     String caller;
@@ -209,10 +205,15 @@ public class RayCallGenerator extends BaseGenerator {
       // Trim trailing ", ";
       argsDeclaration = argsDeclaration.substring(0, argsDeclaration.length() - 2);
       // Print the first line (method signature).
-      newLine(1, String.format(
-          "%s%s %s %s(%s) {", modifiers,
-          genericTypes.isEmpty() ? "" : " " + genericTypes, returnType, callFunc, argsDeclaration
-      ));
+      newLine(
+          1,
+          String.format(
+              "%s%s %s %s(%s) {",
+              modifiers,
+              genericTypes.isEmpty() ? "" : " " + genericTypes,
+              returnType,
+              callFunc,
+              argsDeclaration));
 
       // 4) Construct the `args` part.
       String args = "";
@@ -240,15 +241,14 @@ public class RayCallGenerator extends BaseGenerator {
   }
 
   /**
-   * Build `Ray.call`, `Ray.createActor` and `actor.call` methods with
-   * the given number of parameters.
+   * Build `Ray.call`, `Ray.createActor` and `actor.call` methods with the given number of
+   * parameters.
    *
    * @param numParameters the number of parameters
    * @param forActor Build `actor.call` when true, otherwise build `Ray.call`.
    * @param forActorCreation Build `Ray.createActor` when true, otherwise build `Ray.call`.
    */
-  private void buildPyCalls(int numParameters, boolean forActor,
-                            boolean forActorCreation) {
+  private void buildPyCalls(int numParameters, boolean forActor, boolean forActorCreation) {
     String modifiers = forActor ? "default" : "public static";
 
     String argList = "";
@@ -281,23 +281,23 @@ public class RayCallGenerator extends BaseGenerator {
     }
 
     String genericType = forActorCreation ? "" : " <R>";
-    String returnType = forActorCreation ? "PyActorCreator" :
-        forActor ? "PyActorTaskCaller<R>" : "PyTaskCaller<R>";
+    String returnType =
+        forActorCreation ? "PyActorCreator" : forActor ? "PyActorTaskCaller<R>" : "PyTaskCaller<R>";
 
     String funcName = forActorCreation ? "actor" : "task";
-    String caller = forActorCreation ? "PyActorCreator" :
-        forActor ? "PyActorTaskCaller<>" : "PyTaskCaller<>";
+    String caller =
+        forActorCreation ? "PyActorCreator" : forActor ? "PyActorTaskCaller<>" : "PyTaskCaller<>";
     funcArgs += ", args";
     // Method signature.
-    newLine(1, String.format(
-        "%s%s %s %s(%s) {", modifiers, genericType,
-        returnType, funcName, paramPrefix + paramList
-    ));
+    newLine(
+        1,
+        String.format(
+            "%s%s %s %s(%s) {",
+            modifiers, genericType, returnType, funcName, paramPrefix + paramList));
     // Method body.
     newLine(2, String.format("Object[] args = new Object[]{%s};", argList));
     if (forActor) {
-      newLine(2, String.format("return new %s((PyActorHandle)this, %s);",
-          caller, funcArgs));
+      newLine(2, String.format("return new %s((PyActorHandle)this, %s);", caller, funcArgs));
     } else {
       newLine(2, String.format("return new %s(%s);", caller, funcArgs));
     }
@@ -323,17 +323,18 @@ public class RayCallGenerator extends BaseGenerator {
   }
 
   public static void main(String[] args) throws IOException {
-    String path = System.getProperty("user.dir")
-        + "/api/src/main/java/io/ray/api/RayCall.java";
-    FileUtils.write(new File(path), new RayCallGenerator().generateRayCallDotJava(),
+    String path = System.getProperty("user.dir") + "/api/src/main/java/io/ray/api/RayCall.java";
+    FileUtils.write(
+        new File(path), new RayCallGenerator().generateRayCallDotJava(), Charset.defaultCharset());
+    path = System.getProperty("user.dir") + "/api/src/main/java/io/ray/api/ActorCall.java";
+    FileUtils.write(
+        new File(path),
+        new RayCallGenerator().generateActorCallDotJava(),
         Charset.defaultCharset());
-    path = System.getProperty("user.dir")
-        + "/api/src/main/java/io/ray/api/ActorCall.java";
-    FileUtils.write(new File(path), new RayCallGenerator().generateActorCallDotJava(),
-        Charset.defaultCharset());
-    path = System.getProperty("user.dir")
-        + "/api/src/main/java/io/ray/api/PyActorCall.java";
-    FileUtils.write(new File(path), new RayCallGenerator().generatePyActorCallDotJava(),
+    path = System.getProperty("user.dir") + "/api/src/main/java/io/ray/api/PyActorCall.java";
+    FileUtils.write(
+        new File(path),
+        new RayCallGenerator().generatePyActorCallDotJava(),
         Charset.defaultCharset());
   }
 }

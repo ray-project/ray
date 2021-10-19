@@ -1,3 +1,7 @@
+.. important:: The RLlib team at `Anyscale Inc. <https://anyscale.com>`__, the company behind Ray, is hiring interns and full-time **reinforcement learning engineers** to help advance and maintain RLlib.
+ If you have a background in ML/RL and are interested in making RLlib **the** industry-leading open-source RL library, `apply here today <https://jobs.lever.co/anyscale/186d9b8d-3fee-4e07-bb8e-49e85cf33d6b>`__.
+ We'd be thrilled to welcome you on the team!
+
 .. _rllib-index:
 
 RLlib: Scalable Reinforcement Learning
@@ -8,8 +12,6 @@ RLlib is an open-source library for reinforcement learning that offers both high
 .. image:: rllib-stack.svg
 
 To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-toc.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
-
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray/RLlib!
 
 RLlib in 60 seconds
 -------------------
@@ -23,15 +25,15 @@ RLlib has extra dependencies on top of ``ray``. First, you'll need to install ei
 
 .. code-block:: bash
 
-  pip install 'ray[rllib]'  # also recommended: ray[debug]
+  pip install 'ray[rllib]'
 
 Then, you can try out training in the following equivalent ways:
 
 .. code-block:: bash
 
   rllib train --run=PPO --env=CartPole-v0  # -v [-vv] for verbose,
-                                           # --eager [--trace] for eager execution,
-                                           # --torch to use PyTorch
+                                           # --config='{"framework": "tf2", "eager_tracing": true}' for eager,
+                                           # --torch to use PyTorch OR --config='{"framework": "torch"}'
 
 .. code-block:: python
 
@@ -110,7 +112,12 @@ Beyond environments defined in Python, RLlib supports batch training on `offline
 Customization
 ~~~~~~~~~~~~~
 
-RLlib provides ways to customize almost all aspects of training, including the `environment <rllib-env.html#configuring-environments>`__, `neural network model <rllib-models.html#tensorflow-models>`__, `action distribution <rllib-models.html#custom-action-distributions>`__, and `policy definitions <rllib-concepts.html#policies>`__:
+RLlib provides ways to customize almost all aspects of training, including
+`neural network models <rllib-models.html#tensorflow-models>`__,
+`action distributions <rllib-models.html#custom-action-distributions>`__,
+`policy definitions <rllib-concepts.html#policies>`__:
+the `environment <rllib-env.html#configuring-environments>`__,
+and the `sample collection process <rllib-sample-collection.html>`__
 
 .. image:: rllib-components.svg
 

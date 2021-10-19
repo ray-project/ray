@@ -29,4 +29,5 @@ atari-ddppo:
         entropy_coeff: 0.01
         batch_mode: truncate_episodes
         observation_filter: NoFilter
-        vf_share_layers: true
+        model:
+            vf_share_layers: true

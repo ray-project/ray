@@ -4,23 +4,36 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
+import io.ray.runtime.task.ArgumentsBuilder;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * Test Ray.call API
- */
+/** Test Ray.call API */
 public class RayCallTest extends BaseTest {
+
+  private static byte[] LARGE_RAW_DATA = null;
+
+  private static byte[] getLargeRawData() {
+    if (LARGE_RAW_DATA == null) {
+      LARGE_RAW_DATA = new byte[(int) ArgumentsBuilder.LARGEST_SIZE_PASS_BY_VALUE + 100];
+    }
+    return LARGE_RAW_DATA;
+  }
 
   private static int testInt(int val) {
     return val;
   }
 
   private static byte testByte(byte val) {
+    return val;
+  }
+
+  private static byte[] testBytes(byte[] val) {
     return val;
   }
 
@@ -69,9 +82,7 @@ public class RayCallTest extends BaseTest {
     return buffer;
   }
 
-  /**
-   * Test calling and returning different types.
-   */
+  /** Test calling and returning different types. */
   @Test
   public void testType() {
     Assert.assertEquals(1, (int) Ray.task(RayCallTest::testInt, 1).remote().get());
@@ -100,6 +111,12 @@ public class RayCallTest extends BaseTest {
     // ObjectId randomObjectId = ObjectId.fromRandom();
     // Ray.task(RayCallTest::testNoReturn, randomObjectId).remote();
     // Assert.assertEquals(((int) Ray.get(randomObjectId, Integer.class)), 1);
+  }
+
+  @Test
+  public void testBytesType() {
+    Assert.assertEquals(
+        "123".getBytes(), Ray.task(RayCallTest::testBytes, "123".getBytes()).remote().get());
   }
 
   private static int testNoParam() {
@@ -134,16 +151,21 @@ public class RayCallTest extends BaseTest {
   public void testNumberOfParameters() {
     Assert.assertEquals(0, (int) Ray.task(RayCallTest::testNoParam).remote().get());
     Assert.assertEquals(1, (int) Ray.task(RayCallTest::testOneParam, 1).remote().get());
-    Assert.assertEquals(2, (int) Ray.task(
-        RayCallTest::testTwoParams, 1, 1).remote().get());
-    Assert.assertEquals(3, (int) Ray.task(
-        RayCallTest::testThreeParams, 1, 1, 1).remote().get());
-    Assert.assertEquals(4, (int) Ray.task(
-        RayCallTest::testFourParams, 1, 1, 1, 1).remote().get());
-    Assert.assertEquals(5, (int) Ray.task(
-        RayCallTest::testFiveParams, 1, 1, 1, 1, 1).remote().get());
-    Assert.assertEquals(6, (int) Ray.task(
-        RayCallTest::testSixParams, 1, 1, 1, 1, 1, 1).remote().get());
+    Assert.assertEquals(2, (int) Ray.task(RayCallTest::testTwoParams, 1, 1).remote().get());
+    Assert.assertEquals(3, (int) Ray.task(RayCallTest::testThreeParams, 1, 1, 1).remote().get());
+    Assert.assertEquals(4, (int) Ray.task(RayCallTest::testFourParams, 1, 1, 1, 1).remote().get());
+    Assert.assertEquals(
+        5, (int) Ray.task(RayCallTest::testFiveParams, 1, 1, 1, 1, 1).remote().get());
+    Assert.assertEquals(
+        6, (int) Ray.task(RayCallTest::testSixParams, 1, 1, 1, 1, 1, 1).remote().get());
   }
 
+  private static Boolean testLargeRawData(byte[] data) {
+    return Arrays.equals(data, getLargeRawData());
+  }
+
+  @Test
+  public void testLargeRawDataArgument() {
+    Assert.assertTrue(Ray.task(RayCallTest::testLargeRawData, getLargeRawData()).remote().get());
+  }
 }

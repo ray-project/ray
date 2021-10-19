@@ -4,8 +4,8 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop-iters", type=int, default=200)
@@ -20,8 +20,8 @@ def policy_gradient_loss(policy, model, dist_class, train_batch):
 
 
 # <class 'ray.rllib.policy.torch_policy_template.MyTorchPolicy'>
-MyTorchPolicy = build_torch_policy(
-    name="MyTorchPolicy", loss_fn=policy_gradient_loss)
+MyTorchPolicy = build_policy_class(
+    name="MyTorchPolicy", framework="torch", loss_fn=policy_gradient_loss)
 
 # <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>
 MyTrainer = build_trainer(

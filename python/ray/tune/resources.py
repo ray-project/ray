@@ -3,9 +3,11 @@ import logging
 import json
 from numbers import Number
 # For compatibility under py2 to consider unicode as str
+from typing import Optional
+
 from six import string_types
 
-import ray
+from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune import TuneError
 
 logger = logging.getLogger(__name__)
@@ -15,7 +17,7 @@ class Resources(
         namedtuple("Resources", [
             "cpu", "gpu", "memory", "object_store_memory", "extra_cpu",
             "extra_gpu", "extra_memory", "extra_object_store_memory",
-            "custom_resources", "extra_custom_resources"
+            "custom_resources", "extra_custom_resources", "has_placement_group"
         ])):
     """Ray resources required to schedule a trial.
 
@@ -38,6 +40,8 @@ class Resources(
         extra_custom_resources (dict): Extra custom resources to reserve in
             case the trial needs to launch additional Ray actors that use
             any of these custom resources.
+        has_placement_group (bool): Bool indicating if the trial also
+            has an associated placement group.
 
     """
 
@@ -53,7 +57,8 @@ class Resources(
                 extra_memory=0,
                 extra_object_store_memory=0,
                 custom_resources=None,
-                extra_custom_resources=None):
+                extra_custom_resources=None,
+                has_placement_group=False):
         custom_resources = custom_resources or {}
         extra_custom_resources = extra_custom_resources or {}
         leftovers = set(custom_resources) ^ set(extra_custom_resources)
@@ -92,7 +97,7 @@ class Resources(
         return super(Resources, cls).__new__(
             cls, cpu, gpu, memory, object_store_memory, extra_cpu, extra_gpu,
             extra_memory, extra_object_store_memory, custom_resources,
-            extra_custom_resources)
+            extra_custom_resources, has_placement_group)
 
     def summary_string(self):
         summary = "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
@@ -108,7 +113,7 @@ class Resources(
         custom_summary = ", ".join([
             "{} {}".format(self.get_res_total(res), res)
             for res in self.custom_resources
-            if not res.startswith(ray.resource_spec.NODE_ID_PREFIX)
+            if not res.startswith(NODE_ID_PREFIX)
         ])
         if custom_summary:
             summary += " ({})".format(custom_summary)
@@ -171,11 +176,12 @@ class Resources(
         return resources_to_json(self)
 
 
-def json_to_resources(data):
+def json_to_resources(data: Optional[str]):
     if data is None or data == "null":
         return None
     if isinstance(data, string_types):
         data = json.loads(data)
+
     for k in data:
         if k in ["driver_cpu_limit", "driver_gpu_limit"]:
             raise TuneError(
@@ -193,7 +199,7 @@ def json_to_resources(data):
         data.get("extra_custom_resources"))
 
 
-def resources_to_json(resources):
+def resources_to_json(resources: Optional[Resources]):
     if resources is None:
         return None
     return {

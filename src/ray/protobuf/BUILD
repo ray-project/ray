@@ -40,7 +40,10 @@ python_grpc_compile(
 proto_library(
     name = "node_manager_proto",
     srcs = ["node_manager.proto"],
-    deps = [":common_proto"],
+    deps = [
+      ":common_proto",
+      ":gcs_proto",
+    ],
 )
 
 cc_proto_library(
@@ -92,6 +95,25 @@ python_grpc_compile(
 )
 
 proto_library(
+    name = "test_service_proto",
+    srcs = ["test_service.proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "test_service_cc_proto",
+    deps = [":test_service_proto"],
+)
+
+python_grpc_compile(
+    name = "test_service_py_proto",
+    deps = [":test_service_proto"],
+)
+
+proto_library(
     name = "object_manager_proto",
     srcs = ["object_manager.proto"],
     deps = [":common_proto"],
@@ -105,7 +127,11 @@ cc_proto_library(
 proto_library(
     name = "core_worker_proto",
     srcs = ["core_worker.proto"],
-    deps = [":common_proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_service_proto",
+        ":pubsub_proto",
+    ],
 )
 
 python_grpc_compile(
@@ -138,6 +164,23 @@ cc_proto_library(
     deps = [":event_proto"],
 )
 
+python_grpc_compile(
+    name = "event_py_proto",
+    deps = [":event_proto"],
+)
+
+# Job agent.
+proto_library(
+    name = "job_agent_proto",
+    srcs = ["job_agent.proto"],
+    deps = [":agent_manager_proto"],
+)
+
+python_grpc_compile(
+    name = "job_agent_py_proto",
+    deps = [":job_agent_proto"],
+)
+
 # Agent manager gRPC lib.
 proto_library(
     name = "agent_manager_proto",
@@ -155,3 +198,61 @@ cc_proto_library(
     deps = [":agent_manager_proto"],
 )
 
+# Ray Client gRPC lib
+proto_library(
+    name = "ray_client_proto",
+    srcs = ["ray_client.proto"],
+    deps = [":common_proto"],
+)
+
+python_grpc_compile(
+    name = "ray_client_py_proto",
+    deps = [":ray_client_proto"],
+)
+
+# Pubsub
+proto_library(
+    name = "pubsub_proto",
+    srcs = ["pubsub.proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+        ":gcs_service_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "pubsub_cc_proto",
+    deps = [":pubsub_proto"],
+)
+
+# runtime env agent gRPC lib.
+proto_library(
+    name = "runtime_env_agent_proto",
+    srcs = ["runtime_env_agent.proto"],
+    deps = [
+        ":common_proto",
+        ":agent_manager_proto",
+    ],
+)
+
+python_grpc_compile(
+    name = "runtime_env_agent_py_proto",
+    deps = [":runtime_env_agent_proto"],
+)
+
+cc_proto_library(
+    name = "runtime_env_agent_cc_proto",
+    deps = [":runtime_env_agent_proto"],
+)
+
+proto_library(
+    name = "serve_proto",
+    srcs = ["serve.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+python_grpc_compile(
+    name = "serve_py_proto",
+    deps = [":serve_proto"],
+)

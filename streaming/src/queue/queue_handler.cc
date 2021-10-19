@@ -155,8 +155,8 @@ std::shared_ptr<WriterQueue> UpstreamQueueMessageHandler::CreateUpstreamQueue(
     return queue;
   }
 
-  queue = std::unique_ptr<streaming::WriterQueue>(new streaming::WriterQueue(
-      queue_id, actor_id_, peer_actor_id, size, GetOutTransport(queue_id)));
+  queue = std::make_unique<streaming::WriterQueue>(queue_id, actor_id_, peer_actor_id,
+                                                   size, GetOutTransport(queue_id));
   upstream_queues_[queue_id] = queue;
 
   return queue;
@@ -321,8 +321,8 @@ std::shared_ptr<ReaderQueue> DownstreamQueueMessageHandler::CreateDownstreamQueu
   }
 
   std::shared_ptr<streaming::ReaderQueue> queue =
-      std::unique_ptr<streaming::ReaderQueue>(new streaming::ReaderQueue(
-          queue_id, actor_id_, peer_actor_id, GetOutTransport(queue_id)));
+      std::make_unique<streaming::ReaderQueue>(queue_id, actor_id_, peer_actor_id,
+                                               GetOutTransport(queue_id));
   downstream_queues_[queue_id] = queue;
   return queue;
 }

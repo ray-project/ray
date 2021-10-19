@@ -5,7 +5,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. tip::
 
-    Not all environments work with all algorithms. Check out the algorithm `feature compatibility matrix <rllib-algorithms.html#feature-compatibility-matrix>`__ for more information.
+    Not all environments work with all algorithms. Check out the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
 
 .. image:: rllib-envs.svg
 
@@ -217,11 +217,11 @@ PettingZoo Multi-Agent Environments
 
     from ray.tune.registry import register_env
     # import the pettingzoo environment
-    from pettingzoo.butterfly import prison_v1
+    from pettingzoo.butterfly import prison_v2
     # import rllib pettingzoo interface
     from ray.rllib.env import PettingZooEnv
     # define how to make the environment. This way takes an optional environment config, num_floors
-    env_creator = lambda config: prison_v1.env(num_floors=config.get("num_floors", 4))
+    env_creator = lambda config: prison_v2.env(num_floors=config.get("num_floors", 4))
     # register that way to make the environment under an rllib name
     register_env('prison', lambda config: PettingZooEnv(env_creator(config)))
     # now you can use `prison` as an environment
@@ -342,7 +342,18 @@ In many situations, it does not make sense for an environment to be "stepped" by
 
     A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
 
-RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ class for this purpose. Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
+RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ class for this purpose.
+Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
+This can be done for multiple concurrent episodes as well.
+
+Take a look at the examples here for a `simple "CartPole-v0" server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__
+and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__
+scripts, in which we setup an RLlib policy server that listens on one or more ports for client connections
+and connect several clients to this server to learn the env.
+
+Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/unity3d_server.py>`__ shows,
+how to run a similar setup against a Unity3D external game engine.
+
 
 Logging off-policy actions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

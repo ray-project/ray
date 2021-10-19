@@ -16,8 +16,8 @@ public class RayException extends RuntimeException {
   }
 
   public byte[] toBytes() {
-    String formattedException = org.apache.commons.lang3.exception.ExceptionUtils
-        .getStackTrace(this);
+    String formattedException =
+        org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace(this);
     io.ray.runtime.generated.Common.RayException.Builder builder =
         io.ray.runtime.generated.Common.RayException.newBuilder();
     builder.setLanguage(Language.JAVA);
@@ -26,13 +26,12 @@ public class RayException extends RuntimeException {
     return builder.build().toByteArray();
   }
 
-  public static RayException fromBytes(byte[] serialized)
-      throws InvalidProtocolBufferException {
+  public static RayException fromBytes(byte[] serialized) throws InvalidProtocolBufferException {
     io.ray.runtime.generated.Common.RayException exception =
         io.ray.runtime.generated.Common.RayException.parseFrom(serialized);
     if (exception.getLanguage() == Language.JAVA) {
-      return Serializer
-          .decode(exception.getSerializedException().toByteArray(), RayException.class);
+      return Serializer.decode(
+          exception.getSerializedException().toByteArray(), RayException.class);
     } else {
       return new CrossLanguageException(exception);
     }

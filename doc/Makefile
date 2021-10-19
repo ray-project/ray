@@ -6,7 +6,7 @@ SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
 PAPER         =
 BUILDDIR      = _build
-AUTOGALLERYDIR= source/auto_examples source/tune/tutorials source/tune/generated_guides
+AUTOGALLERYDIR= source/auto_examples source/tune/tutorials source/tune/generated_guides source/data/examples
 
 # User-friendly check for sphinx-build
 ifeq ($(shell which $(SPHINXBUILD) >/dev/null 2>&1; echo $$?), 1)
@@ -54,7 +54,7 @@ clean:
 	rm -rf site/_site site/Gemfile.lock site/.sass-cache
 
 html:
-	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+	$(SPHINXBUILD) -W -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 

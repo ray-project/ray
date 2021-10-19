@@ -15,8 +15,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 @Test(groups = {"cluster"})
@@ -26,16 +24,6 @@ public class MultiDriverTest extends BaseTest {
   private static final int NORMAL_TASK_COUNT_PER_DRIVER = 100;
   private static final int ACTOR_COUNT_PER_DRIVER = 10;
   private static final String PID_LIST_PREFIX = "PID: ";
-
-  @BeforeClass
-  public void setUpClass() {
-    System.setProperty("ray.raylet.config.enable_multi_tenancy", "true");
-  }
-
-  @AfterClass
-  public void tearDownClass() {
-    System.clearProperty("ray.raylet.config.enable_multi_tenancy");
-  }
 
   static int getPid() {
     return SystemUtil.pid();
@@ -85,22 +73,23 @@ public class MultiDriverTest extends BaseTest {
     // Wait for drivers to finish.
     for (Process driver : drivers) {
       driver.waitFor();
-      Assert.assertEquals(driver.exitValue(), 0,
-          "The driver exited with code " + driver.exitValue());
+      Assert.assertEquals(
+          driver.exitValue(), 0, "The driver exited with code " + driver.exitValue());
     }
 
     // Read driver outputs and check for any PID overlap.
     Set<Integer> pids = new HashSet<>();
     for (Process driver : drivers) {
-      try (BufferedReader reader = new BufferedReader(
-          new InputStreamReader(driver.getInputStream()))) {
+      try (BufferedReader reader =
+          new BufferedReader(new InputStreamReader(driver.getInputStream()))) {
         String line;
         int previousSize = pids.size();
         while ((line = reader.readLine()) != null) {
           if (line.startsWith(PID_LIST_PREFIX)) {
             for (String pidString : line.substring(PID_LIST_PREFIX.length()).split(",")) {
               // Make sure the PIDs don't overlap.
-              Assert.assertTrue(pids.add(Integer.valueOf(pidString)),
+              Assert.assertTrue(
+                  pids.add(Integer.valueOf(pidString)),
                   "Worker process with PID " + line + " is shared by multiple drivers.");
             }
             break;
@@ -115,15 +104,16 @@ public class MultiDriverTest extends BaseTest {
   private Process startDriver() throws IOException {
     RayConfig rayConfig = TestUtils.getRuntime().getRayConfig();
 
-    ProcessBuilder builder = new ProcessBuilder(
-        "java",
-        "-cp",
-        System.getProperty("java.class.path"),
-        "-Dray.address=" + rayConfig.getRedisAddress(),
-        "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
-        "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
-        "-Dray.raylet.node-manager-port=" + String.valueOf(rayConfig.getNodeManagerPort()),
-        MultiDriverTest.class.getName());
+    ProcessBuilder builder =
+        new ProcessBuilder(
+            "java",
+            "-cp",
+            System.getProperty("java.class.path"),
+            "-Dray.address=" + rayConfig.getRedisAddress(),
+            "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
+            "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
+            "-Dray.raylet.node-manager-port=" + String.valueOf(rayConfig.getNodeManagerPort()),
+            MultiDriverTest.class.getName());
     builder.redirectError(Redirect.INHERIT);
     return builder.start();
   }

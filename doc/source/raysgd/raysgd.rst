@@ -4,7 +4,9 @@
 RaySGD: Distributed Training Wrappers
 =====================================
 
-.. _`issue on GitHub`: https://github.com/ray-project/ray/issues
+
+.. warning:: This is an older version of Ray SGD. A newer, more light-weight version of Ray SGD (named Ray Train) is in alpha as of Ray 1.7.
+         See the documentation :ref:`here <train-docs>`. To migrate from v1 to v2 you can follow the :ref:`migration guide <sgd-migration>`.
 
 RaySGD is a lightweight library for distributed deep learning, providing thin wrappers around PyTorch and TensorFlow native modules for data parallel training.
 
@@ -13,8 +15,6 @@ The main features are:
   - **Ease of use**: Scale PyTorch's native ``DistributedDataParallel`` and TensorFlow's ``tf.distribute.MirroredStrategy`` without needing to monitor individual nodes.
   - **Composability**: RaySGD is built on top of the Ray Actor API, enabling seamless integration with existing Ray applications such as RLlib, Tune, and Ray.Serve.
   - **Scale up and down**: Start on single CPU. Scale up to multi-node, multi-CPU, or multi-GPU clusters by changing 2 lines of code.
-
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 
 Getting Started
@@ -70,4 +70,12 @@ You can start a ``TorchTrainer`` with the following:
     trainer1.shutdown()
     print("success!")
 
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+
+
+.. toctree::
+   :hidden:
+
+   raysgd_pytorch.rst
+   raysgd_tensorflow.rst
+   raysgd_tune.rst
+   raysgd_ref.rst

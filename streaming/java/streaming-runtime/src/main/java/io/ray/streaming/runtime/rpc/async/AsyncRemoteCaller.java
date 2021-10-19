@@ -34,8 +34,7 @@ public class AsyncRemoteCaller {
    * @param onException callback function on exception
    */
   public void checkIfNeedRollbackAsync(
-      BaseActorHandle actor, Callback<Boolean> callback,
-      ExceptionHandler<Throwable> onException) {
+      BaseActorHandle actor, Callback<Boolean> callback, ExceptionHandler<Throwable> onException) {
     if (actor instanceof PyActorHandle) {
       // python
       remoteCallPool.bindCallback(
@@ -43,12 +42,16 @@ public class AsyncRemoteCaller {
           (obj) -> {
             byte[] res = (byte[]) obj;
             callback.handle(PbResultParser.parseBoolResult(res));
-          }, onException);
+          },
+          onException);
     } else {
       // java
       remoteCallPool.bindCallback(
-          ((ActorHandle<JobWorker>) actor).task(JobWorker::checkIfNeedRollback,
-              System.currentTimeMillis()).remote(), callback, onException);
+          ((ActorHandle<JobWorker>) actor)
+              .task(JobWorker::checkIfNeedRollback, System.currentTimeMillis())
+              .remote(),
+          callback,
+          onException);
     }
   }
 
@@ -66,21 +69,29 @@ public class AsyncRemoteCaller {
       ExceptionHandler<Throwable> onException) {
     // python
     if (actor instanceof PyActorHandle) {
-      RemoteCall.CheckpointId checkpointIdPb = RemoteCall.CheckpointId.newBuilder()
-          .setCheckpointId(checkpointId)
-          .build();
-      ObjectRef call = ((PyActorHandle) actor).task(PyActorMethod.of("rollback"),
-          checkpointIdPb.toByteArray()).remote();
-      remoteCallPool.bindCallback(call, obj ->
-          callback.handle(PbResultParser.parseRollbackResult((byte[]) obj)), onException);
+      RemoteCall.CheckpointId checkpointIdPb =
+          RemoteCall.CheckpointId.newBuilder().setCheckpointId(checkpointId).build();
+      ObjectRef call =
+          ((PyActorHandle) actor)
+              .task(PyActorMethod.of("rollback"), checkpointIdPb.toByteArray())
+              .remote();
+      remoteCallPool.bindCallback(
+          call,
+          obj -> callback.handle(PbResultParser.parseRollbackResult((byte[]) obj)),
+          onException);
     } else {
       // java
-      ObjectRef call = ((ActorHandle<JobWorker>) actor).task(
-          JobWorker::rollback, checkpointId, System.currentTimeMillis()).remote();
-      remoteCallPool.bindCallback(call, obj -> {
-        CallResult<ChannelRecoverInfo> res = (CallResult<ChannelRecoverInfo>) obj;
-        callback.handle(res);
-      }, onException);
+      ObjectRef call =
+          ((ActorHandle<JobWorker>) actor)
+              .task(JobWorker::rollback, checkpointId, System.currentTimeMillis())
+              .remote();
+      remoteCallPool.bindCallback(
+          call,
+          obj -> {
+            CallResult<ChannelRecoverInfo> res = (CallResult<ChannelRecoverInfo>) obj;
+            callback.handle(res);
+          },
+          onException);
     }
   }
 
@@ -92,7 +103,8 @@ public class AsyncRemoteCaller {
    * @param onException callback function on exception
    */
   public void batchRollback(
-      List<BaseActorHandle> actors, final Long checkpointId,
+      List<BaseActorHandle> actors,
+      final Long checkpointId,
       Collection<String> abnormalQueues,
       Callback<List<CallResult<ChannelRecoverInfo>>> callback,
       ExceptionHandler<Throwable> onException) {
@@ -103,29 +115,35 @@ public class AsyncRemoteCaller {
       ObjectRef call;
       if (actor instanceof PyActorHandle) {
         isPyActor.put(i, true);
-        RemoteCall.CheckpointId checkpointIdPb = RemoteCall.CheckpointId.newBuilder()
-            .setCheckpointId(checkpointId)
-            .build();
-        call = ((PyActorHandle) actor).task(PyActorMethod.of("rollback"),
-            checkpointIdPb.toByteArray()).remote();
+        RemoteCall.CheckpointId checkpointIdPb =
+            RemoteCall.CheckpointId.newBuilder().setCheckpointId(checkpointId).build();
+        call =
+            ((PyActorHandle) actor)
+                .task(PyActorMethod.of("rollback"), checkpointIdPb.toByteArray())
+                .remote();
       } else {
         // java
-        call = ((ActorHandle<JobWorker>) actor).task(JobWorker::rollback, checkpointId,
-            System.currentTimeMillis()).remote();
+        call =
+            ((ActorHandle<JobWorker>) actor)
+                .task(JobWorker::rollback, checkpointId, System.currentTimeMillis())
+                .remote();
       }
       rayCallList.add(call);
     }
-    remoteCallPool.bindCallback(rayCallList, objList -> {
-      List<CallResult<ChannelRecoverInfo>> results = new ArrayList<>();
-      for (int i = 0; i < objList.size(); ++i) {
-        Object obj = objList.get(i);
-        if (isPyActor.getOrDefault(i, false)) {
-          results.add(PbResultParser.parseRollbackResult((byte[]) obj));
-        } else {
-          results.add((CallResult<ChannelRecoverInfo>) obj);
-        }
-      }
-      callback.handle(results);
-    }, onException);
+    remoteCallPool.bindCallback(
+        rayCallList,
+        objList -> {
+          List<CallResult<ChannelRecoverInfo>> results = new ArrayList<>();
+          for (int i = 0; i < objList.size(); ++i) {
+            Object obj = objList.get(i);
+            if (isPyActor.getOrDefault(i, false)) {
+              results.add(PbResultParser.parseRollbackResult((byte[]) obj));
+            } else {
+              results.add((CallResult<ChannelRecoverInfo>) obj);
+            }
+          }
+          callback.handle(results);
+        },
+        onException);
   }
 }

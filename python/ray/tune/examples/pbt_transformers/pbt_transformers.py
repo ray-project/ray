@@ -15,11 +15,7 @@ from transformers import glue_tasks_num_labels, AutoConfig, \
     GlueDataTrainingArguments, TrainingArguments
 
 
-def tune_transformer(num_samples=8,
-                     gpus_per_trial=0,
-                     smoke_test=False,
-                     ray_address=None):
-    ray.init(ray_address, log_to_driver=True)
+def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
     data_dir_name = "./data" if not smoke_test else "./test_data"
     data_dir = os.path.abspath(os.path.join(os.getcwd(), data_dir_name))
     if not os.path.exists(data_dir):
@@ -70,11 +66,10 @@ def tune_transformer(num_samples=8,
         learning_rate=1e-5,  # config
         do_train=True,
         do_eval=True,
-        evaluate_during_training=True,
-        eval_steps=(len(train_dataset) // 16) + 1
-        if not smoke_test else 1,  # config
-        save_steps=(len(train_dataset) // 16) + 1
-        if not smoke_test else 1,  # config,
+        no_cuda=gpus_per_trial <= 0,
+        evaluation_strategy="epoch",
+        save_strategy="epoch",
+        load_best_model_at_end=True,
         num_train_epochs=2,  # config
         max_steps=-1,
         per_device_train_batch_size=16,  # config
@@ -82,7 +77,8 @@ def tune_transformer(num_samples=8,
         warmup_steps=0,
         weight_decay=0.1,  # config
         logging_dir="./logs",
-    )
+        skip_memory_metrics=True,
+        report_to="none")
 
     trainer = Trainer(
         model_init=get_model,
@@ -92,11 +88,8 @@ def tune_transformer(num_samples=8,
         compute_metrics=build_compute_metrics_fn(task_name))
 
     tune_config = {
+        "per_device_train_batch_size": 32,
         "per_device_eval_batch_size": 32,
-        "eval_steps": tune.sample_from(
-            lambda spec: len(train_dataset) // spec.config["per_device_train_batch_size"] + 1  # noqa: E501
-        ) if not smoke_test else 1,
-        "save_steps": tune.sample_from(lambda spec: spec.config["eval_steps"]),
         "num_train_epochs": tune.choice([2, 3, 4, 5]),
         "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
     }
@@ -117,7 +110,7 @@ def tune_transformer(num_samples=8,
             "weight_decay": "w_decay",
             "learning_rate": "lr",
             "per_device_train_batch_size": "train_bs/gpu",
-            "num_epochs": "num_epochs"
+            "num_train_epochs": "num_epochs"
         },
         metric_columns=[
             "eval_acc", "eval_loss", "epoch", "training_iteration"
@@ -132,7 +125,7 @@ def tune_transformer(num_samples=8,
             "gpu": gpus_per_trial
         },
         scheduler=scheduler,
-        keep_checkpoints_num=3,
+        keep_checkpoints_num=1,
         checkpoint_score_attr="training_iteration",
         stop={"training_iteration": 1} if smoke_test else None,
         progress_reporter=reporter,
@@ -154,15 +147,25 @@ if __name__ == "__main__":
         help="Address to use for Ray. "
         "Use \"auto\" for cluster. "
         "Defaults to None for local.")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
+
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_transformer(
-            num_samples=1,
-            gpus_per_trial=0,
-            smoke_test=True,
-            ray_address=args.ray_address)
+        ray.init()
+    elif args.server_address:
+        ray.init(f"ray://{args.server_address}")
+    else:
+        ray.init(args.ray_address)
+
+    if args.smoke_test:
+        tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True)
     else:
         # You can change the number of GPUs here:
-        tune_transformer(
-            num_samples=8, gpus_per_trial=1, ray_address=args.ray_address)
+        tune_transformer(num_samples=8, gpus_per_trial=1)

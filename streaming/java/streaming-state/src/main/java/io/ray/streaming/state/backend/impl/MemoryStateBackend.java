@@ -26,9 +26,7 @@ import io.ray.streaming.state.store.impl.MemoryKeyMapStore;
 import io.ray.streaming.state.store.impl.MemoryKeyValueStore;
 import java.util.Map;
 
-/**
- * MemoryStateBackend. Supporting memory store.
- */
+/** MemoryStateBackend. Supporting memory store. */
 public class MemoryStateBackend extends AbstractStateBackend {
 
   public MemoryStateBackend(Map<String, String> config) {
@@ -50,5 +48,4 @@ public class MemoryStateBackend extends AbstractStateBackend {
       String tableName, KeyMapStoreSerializer keyMapStoreSerializer) {
     return new MemoryKeyMapStore<>();
   }
-
 }

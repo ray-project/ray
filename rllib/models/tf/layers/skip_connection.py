@@ -1,4 +1,7 @@
+from typing import Optional, Any
+
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -10,7 +13,10 @@ class SkipConnection(tf.keras.layers.Layer if tf else object):
     input as hidden state input to a given fan_in_layer.
     """
 
-    def __init__(self, layer, fan_in_layer=None, add_memory=False, **kwargs):
+    def __init__(self,
+                 layer: Any,
+                 fan_in_layer: Optional[Any] = None,
+                 **kwargs):
         """Initializes a SkipConnection keras layer object.
 
         Args:
@@ -23,7 +29,7 @@ class SkipConnection(tf.keras.layers.Layer if tf else object):
         self._layer = layer
         self._fan_in_layer = fan_in_layer
 
-    def call(self, inputs, **kwargs):
+    def call(self, inputs: TensorType, **kwargs) -> TensorType:
         # del kwargs
         outputs = self._layer(inputs, **kwargs)
         # Residual case, just add inputs to outputs.

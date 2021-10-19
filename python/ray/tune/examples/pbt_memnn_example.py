@@ -263,14 +263,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
-    ray.init(num_cpus=2)
-    read_data()
+
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    elif args.server_address:
+        ray.init(f"ray://{args.server_address}")
 
     pbt = PopulationBasedTraining(
-        time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
         perturbation_interval=2,
         hyperparam_mutations={
             "dropout": lambda: np.random.uniform(0, 1),
@@ -282,6 +289,8 @@ if __name__ == "__main__":
         MemNNModel,
         name="pbt_babi_memnn",
         scheduler=pbt,
+        metric="mean_accuracy",
+        mode="max",
         stop={"training_iteration": 4 if args.smoke_test else 100},
         num_samples=2,
         config={

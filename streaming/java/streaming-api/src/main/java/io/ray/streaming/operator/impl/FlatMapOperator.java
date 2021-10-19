@@ -9,8 +9,8 @@ import io.ray.streaming.operator.OneInputOperator;
 import io.ray.streaming.operator.StreamOperator;
 import java.util.List;
 
-public class FlatMapOperator<T, R> extends StreamOperator<FlatMapFunction<T, R>> implements
-    OneInputOperator<T> {
+public class FlatMapOperator<T, R> extends StreamOperator<FlatMapFunction<T, R>>
+    implements OneInputOperator<T> {
 
   private CollectionCollector collectionCollector;
 

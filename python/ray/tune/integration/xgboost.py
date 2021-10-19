@@ -1,14 +1,29 @@
 from typing import Dict, List, Union
+from collections import OrderedDict
 from ray import tune
 
 import os
 
+from ray.tune.utils import flatten_dict
+from xgboost.core import Booster
 
-class TuneCallback:
+try:
+    from xgboost.callback import TrainingCallback
+except ImportError:
+
+    class TrainingCallback:
+        pass
+
+
+class TuneCallback(TrainingCallback):
     """Base class for Tune's XGBoost callbacks."""
-    pass
 
     def __call__(self, env):
+        """Compatibility with xgboost<1.3"""
+        return self.after_iteration(env.model, env.iteration,
+                                    env.evaluation_result_list)
+
+    def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
         raise NotImplementedError
 
 
@@ -54,8 +69,15 @@ class TuneReportCallback(TuneCallback):
             metrics = [metrics]
         self._metrics = metrics
 
-    def __call__(self, env):
-        result_dict = dict(env.evaluation_result_list)
+    def _get_report_dict(self, evals_log):
+        if isinstance(evals_log, OrderedDict):
+            # xgboost>=1.3
+            result_dict = flatten_dict(evals_log, delimiter="-")
+            for k in list(result_dict):
+                result_dict[k] = result_dict[k][-1]
+        else:
+            # xgboost<1.3
+            result_dict = dict(evals_log)
         if not self._metrics:
             report_dict = result_dict
         else:
@@ -66,6 +88,11 @@ class TuneReportCallback(TuneCallback):
                 else:
                     metric = key
                 report_dict[key] = result_dict[metric]
+        return report_dict
+
+    def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+
+        report_dict = self._get_report_dict(evals_log)
         tune.report(**report_dict)
 
 
@@ -81,15 +108,25 @@ class _TuneCheckpointCallback(TuneCallback):
     Args:
         filename (str): Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
+        frequency (int): How often to save checkpoints. Per default, a
+            checkpoint is saved every five iterations.
 
     """
 
-    def __init__(self, filename: str = "checkpoint"):
+    def __init__(self, filename: str = "checkpoint", frequency: int = 5):
         self._filename = filename
+        self._frequency = frequency
 
-    def __call__(self, env):
-        with tune.checkpoint_dir(step=env.iteration) as checkpoint_dir:
-            env.model.save_model(os.path.join(checkpoint_dir, self._filename))
+    @staticmethod
+    def _create_checkpoint(model: Booster, epoch: int, filename: str,
+                           frequency: int):
+        if epoch % frequency > 0:
+            return
+        with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
+            model.save_model(os.path.join(checkpoint_dir, filename))
+
+    def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+        self._create_checkpoint(model, epoch, self._filename, self._frequency)
 
 
 class TuneReportCheckpointCallback(TuneCallback):
@@ -108,6 +145,8 @@ class TuneReportCheckpointCallback(TuneCallback):
             directory. Defaults to "checkpoint". If this is None,
             all metrics will be reported to Tune under their default names as
             obtained from XGBoost.
+        frequency (int): How often to save checkpoints. Per default, a
+            checkpoint is saved every five iterations.
 
     Example:
 
@@ -132,13 +171,16 @@ class TuneReportCheckpointCallback(TuneCallback):
                 {"loss": "eval-logloss"}, "xgboost.mdl)])
 
     """
+    _checkpoint_callback_cls = _TuneCheckpointCallback
+    _report_callbacks_cls = TuneReportCallback
 
     def __init__(self,
                  metrics: Union[None, str, List[str], Dict[str, str]] = None,
-                 filename: str = "checkpoint"):
-        self._checkpoint = _TuneCheckpointCallback(filename)
-        self._report = TuneReportCallback(metrics)
+                 filename: str = "checkpoint",
+                 frequency: int = 5):
+        self._checkpoint = self._checkpoint_callback_cls(filename, frequency)
+        self._report = self._report_callbacks_cls(metrics)
 
-    def __call__(self, env):
-        self._checkpoint(env)
-        self._report(env)
+    def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+        self._checkpoint.after_iteration(model, epoch, evals_log)
+        self._report.after_iteration(model, epoch, evals_log)

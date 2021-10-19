@@ -7,9 +7,7 @@ import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonFunction.FunctionInterface;
 import io.ray.streaming.python.PythonOperator;
 
-/**
- * Represents a source of the PythonStream.
- */
+/** Represents a source of the PythonStream. */
 public class PythonStreamSource extends PythonDataStream implements StreamSource {
 
   private PythonStreamSource(StreamingContext streamingContext, PythonFunction sourceFunction) {
@@ -18,10 +16,8 @@ public class PythonStreamSource extends PythonDataStream implements StreamSource
   }
 
   public static PythonStreamSource from(
-      StreamingContext streamingContext,
-      PythonFunction sourceFunction) {
+      StreamingContext streamingContext, PythonFunction sourceFunction) {
     sourceFunction.setFunctionInterface(FunctionInterface.SOURCE_FUNCTION);
     return new PythonStreamSource(streamingContext, sourceFunction);
   }
-
 }

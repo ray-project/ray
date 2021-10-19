@@ -14,7 +14,7 @@ class ObservationFunction:
     in multi-agent scenarios.
 
     Observation functions can be specified in the multi-agent config by
-    specifying ``{"observation_function": your_obs_func}``. Note that
+    specifying ``{"observation_fn": your_obs_func}``. Note that
     ``your_obs_func`` can be a plain Python function.
 
     This API is **experimental**.
@@ -41,7 +41,8 @@ class ObservationFunction:
                 returns this dict.
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
+                env objects can be retrieved by calling
+                base_env.get_unwrapped().
             policies (dict): Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default" policy.
             episode (MultiAgentEpisode): Episode state object.

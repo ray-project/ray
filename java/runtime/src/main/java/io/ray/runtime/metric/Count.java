@@ -1,24 +1,30 @@
 package io.ray.runtime.metric;
 
 import com.google.common.base.Preconditions;
-
 import java.util.Map;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.stream.Collectors;
 
-/**
- * Count measurement is mapped to count object in stats and counts the number.
- */
+/** Count measurement is mapped to count object in stats and counts the number. */
 public class Count extends Metric {
 
   private DoubleAdder count;
 
+  @Deprecated
   public Count(String name, String description, String unit, Map<TagKey, String> tags) {
     super(name, tags);
     count = new DoubleAdder();
-    metricNativePointer = NativeMetric.registerCountNative(name, description, unit,
-        tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
+    metricNativePointer =
+        NativeMetric.registerCountNative(
+            name,
+            description,
+            unit,
+            tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
     Preconditions.checkState(metricNativePointer != 0, "Count native pointer must not be 0.");
+  }
+
+  public Count(String name, String description, Map<String, String> tags) {
+    this(name, description, "", TagKey.tagsFromMap(tags));
   }
 
   @Override

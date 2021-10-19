@@ -31,5 +31,4 @@ public class PyActorTaskCaller<R> {
   public ObjectRef<R> remote() {
     return Ray.internal().callActor(actor, method, args);
   }
-
 }

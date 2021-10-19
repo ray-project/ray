@@ -1,8 +1,9 @@
+from collections import defaultdict
 import os
 import pickle
-import unittest
 import sys
-from collections import defaultdict
+import time
+import unittest
 
 import ray
 from ray import tune, logger
@@ -24,6 +25,7 @@ def create_resettable_class():
             self.num_resets = 0
             self.iter = 0
             self.msg = config.get("message", "No message")
+            self.sleep = int(config.get("sleep", 0))
 
         def step(self):
             self.iter += 1
@@ -31,6 +33,9 @@ def create_resettable_class():
             print("PRINT_STDOUT: {}".format(self.msg))
             print("PRINT_STDERR: {}".format(self.msg), file=sys.stderr)
             logger.info("LOG_STDERR: {}".format(self.msg))
+
+            if self.sleep:
+                time.sleep(self.sleep)
 
             return {
                 "id": self.config["id"],
@@ -49,6 +54,7 @@ def create_resettable_class():
             if "fake_reset_not_supported" in self.config:
                 return False
             self.num_resets += 1
+            self.iter = 0
             self.msg = new_config.get("message", "No message")
             return True
 
@@ -87,6 +93,7 @@ def create_resettable_function(num_resets: defaultdict):
 class ActorReuseTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=1, num_gpus=0)
+        os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
 
     def tearDown(self):
         ray.shutdown()
@@ -130,7 +137,7 @@ class ActorReuseTest(unittest.TestCase):
         self.assertEqual([t.last_result["id"] for t in trials], [0, 1, 2, 3])
         self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
         self.assertEqual([t.last_result["num_resets"] for t in trials],
-                         [1, 2, 3, 4])
+                         [4, 5, 6, 7])
 
     def testTrialReuseEnabledFunction(self):
         num_resets = defaultdict(lambda: 0)
@@ -175,7 +182,7 @@ class ActorReuseTest(unittest.TestCase):
             reuse_actors=True).trials
 
         # Check trial 1
-        self.assertEqual(trial1.last_result["num_resets"], 1)
+        self.assertEqual(trial1.last_result["num_resets"], 2)
         self.assertTrue(os.path.exists(os.path.join(trial1.logdir, "stdout")))
         self.assertTrue(os.path.exists(os.path.join(trial1.logdir, "stderr")))
         with open(os.path.join(trial1.logdir, "stdout"), "rt") as fp:
@@ -190,7 +197,7 @@ class ActorReuseTest(unittest.TestCase):
             self.assertNotIn("LOG_STDERR: Second", content)
 
         # Check trial 2
-        self.assertEqual(trial2.last_result["num_resets"], 2)
+        self.assertEqual(trial2.last_result["num_resets"], 3)
         self.assertTrue(os.path.exists(os.path.join(trial2.logdir, "stdout")))
         self.assertTrue(os.path.exists(os.path.join(trial2.logdir, "stderr")))
         with open(os.path.join(trial2.logdir, "stdout"), "rt") as fp:
@@ -203,6 +210,36 @@ class ActorReuseTest(unittest.TestCase):
             self.assertIn("LOG_STDERR: Second", content)
             self.assertNotIn("PRINT_STDERR: First", content)
             self.assertNotIn("LOG_STDERR: First", content)
+
+
+class ActorReuseMultiTest(unittest.TestCase):
+    def setUp(self):
+        ray.init(num_cpus=2, num_gpus=0)
+        os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "2"
+
+    def tearDown(self):
+        ray.shutdown()
+
+    def testMultiTrialReuse(self):
+        register_trainable("foo2", create_resettable_class())
+
+        # We sleep here for one second so that the third actor
+        # does not finish training before the fourth can be scheduled.
+        # This helps ensure that both remote runners are re-used and
+        # not just one.
+        [trial1, trial2, trial3, trial4] = tune.run(
+            "foo2",
+            config={
+                "message": tune.grid_search(
+                    ["First", "Second", "Third", "Fourth"]),
+                "id": -1,
+                "sleep": 1,
+            },
+            reuse_actors=True).trials
+
+        self.assertEqual(trial3.last_result["num_resets"], 1)
+        self.assertEqual(trial4.last_result["num_resets"], 1)
 
 
 if __name__ == "__main__":

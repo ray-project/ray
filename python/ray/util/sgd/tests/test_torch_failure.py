@@ -1,11 +1,14 @@
 from unittest.mock import patch
 import pytest
 import time
+
+import torch
 import torch.nn as nn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.worker_group import RemoteWorkerGroup
 from ray.util.sgd.torch.training_operator import TrainingOperator
@@ -59,12 +62,12 @@ start_workers = TorchTrainer._start_workers
 
 def gen_start_with_fail(num_fails):
     def start_with_fail(self, *args, **kwargs):
-        start_workers(self, *args, **kwargs)
+        success = start_workers(self, *args, **kwargs)
         fail = self._num_failures < num_fails
-        if self.use_local:
-            self.worker_group.remote_worker_group.should_fail = fail
-        else:
-            self.worker_group.should_fail = fail
+        fail_worker_group = self.worker_group.remote_worker_group if \
+            self.use_local else self.worker_group
+        fail_worker_group.should_fail = fail
+        return success
 
     return start_with_fail
 
@@ -93,14 +96,31 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
             use_local=use_local,
             num_workers=2)
 
-        @ray.remote
-        def try_test():
-            import time
-            time.sleep(100)
+        # we use placement_group to occupy resources
+        bundle = {
+            "CPU": 1,
+        }
+        bundles = [bundle]
+        dummy_pg = ray.util.placement_group(bundles, strategy="SPREAD")
 
-        try_test.remote()
         trainer1.train(max_retries=1)
         assert trainer1.worker_group.num_workers == 1
+        assert trainer1._num_failures == 1
+
+        ray.util.remove_placement_group(dummy_pg)
+
+        def is_placement_group_removed():
+            table = ray.util.placement_group_table(dummy_pg)
+            if "state" not in table:
+                return False
+            return table["state"] == "REMOVED"
+
+        # wait for free resource
+        wait_for_condition(is_placement_group_removed)
+
+        # trigger scale up
+        trainer1.train()
+        assert trainer1.worker_group.num_workers == 2
 
         trainer1.shutdown(force=True)
 
@@ -132,6 +152,8 @@ def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
 
         # MAX RETRIES SHOULD BE ON BY DEFAULT
         trainer1.train()
+        assert trainer1._num_failures == 2
+        assert trainer1.worker_group.num_workers == 2
         trainer1.shutdown(force=True)
 
 
@@ -166,6 +188,112 @@ def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
             trainer1.train(max_retries=1)
 
         trainer1.shutdown(force=True)
+
+
+@patch.object(RemoteWorkerGroup, "_train", remote_worker_train_with_fail)
+def test_fail_state(ray_start_2_cpus):  # noqa: F811
+    """Tests if state of training with failure is same as training without."""
+    if not dist.is_available():
+        return
+
+    torch.manual_seed(0)
+
+    def single_loader(config):
+        dataset = LinearDataset(2, 5, size=1000000)
+        return DataLoader(dataset, batch_size=config.get("batch_size", 32))
+
+    TestOperator = TrainingOperator.from_creators(
+        model_creator,
+        optimizer_creator,
+        single_loader,
+        loss_creator=lambda config: nn.MSELoss())
+
+    def init_hook():
+        torch.manual_seed(0)
+
+    trainer1 = TorchTrainer(
+        training_operator_cls=TestOperator,
+        config={"batch_size": 100000},
+        timeout_s=5,
+        initialization_hook=init_hook,
+        num_workers=2)
+    initial_state = trainer1.state_dict()
+    trainer1.train()
+    trainer1_state = trainer1.state_dict()
+    assert trainer1_state != initial_state
+    trainer1.shutdown()
+
+    trainer2 = TorchTrainer(
+        training_operator_cls=TestOperator,
+        config={"batch_size": 100000},
+        timeout_s=5,
+        initialization_hook=init_hook,
+        num_workers=2)
+    trainer2.load_state_dict(initial_state)
+    trainer2.train()
+    assert trainer2.state_dict() == trainer1_state
+    trainer2.shutdown()
+
+    start_with_fail = gen_start_with_fail(1)
+    with patch.object(TorchTrainer, "_start_workers", start_with_fail):
+        trainer3 = TorchTrainer(
+            training_operator_cls=TestOperator,
+            config={"batch_size": 100000},
+            timeout_s=5,
+            initialization_hook=init_hook,
+            num_workers=2)
+        trainer3.load_state_dict(initial_state)
+        trainer3.train()
+        assert trainer3.state_dict() == trainer1_state
+        trainer3.shutdown()
+
+
+def gen_start_with_startup_fail(num_fails):
+    fail_start = gen_start_with_fail(num_fails)
+
+    def start_with_fail(self, *args, **kwargs):
+        if hasattr(self, "worker_group"):
+            # Fail during worker start just during the first training attempt.
+            def _raise():
+                import sys
+                sys.exit(1)
+
+            if not self.initialization_hook:
+                self.initialization_hook = _raise
+            else:
+                self.initialization_hook = None
+        return fail_start(self, *args, **kwargs)
+
+    return start_with_fail
+
+
+@patch.object(RemoteWorkerGroup, "_train", remote_worker_train_with_fail)
+def test_failure_during_resize(ray_start_2_cpus):  # noqa: F811
+    """Tests if training succeeds even with failures during worker resizing."""
+    if not dist.is_available():
+        return
+
+    def single_loader(config):
+        dataset = LinearDataset(2, 5, size=1000000)
+        return DataLoader(dataset, batch_size=config.get("batch_size", 32))
+
+    TestOperator = TrainingOperator.from_creators(
+        model_creator,
+        optimizer_creator,
+        single_loader,
+        loss_creator=lambda config: nn.MSELoss())
+
+    start_with_fail = gen_start_with_startup_fail(1)
+    with patch.object(TorchTrainer, "_start_workers", start_with_fail):
+        trainer1 = TorchTrainer(
+            training_operator_cls=TestOperator,
+            config={"batch_size": 100000},
+            timeout_s=5,
+            use_local=False,
+            num_workers=2)
+        trainer1.train()
+
+    trainer1.shutdown()
 
 
 if __name__ == "__main__":

@@ -20,29 +20,29 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+namespace core {
 
 class ActorHandle {
  public:
-  ActorHandle(ray::rpc::ActorHandle inner)
+  ActorHandle(rpc::ActorHandle inner)
       : inner_(inner), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id, const TaskID &owner_id,
               const rpc::Address &owner_address, const JobID &job_id,
               const ObjectID &initial_cursor, const Language actor_language,
-              const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
+              const FunctionDescriptor &actor_creation_task_function_descriptor,
               const std::string &extension_data, int64_t max_task_retries);
 
   /// Constructs an ActorHandle from a serialized string.
-  ActorHandle(const std::string &serialized);
+  explicit ActorHandle(const std::string &serialized);
 
   /// Constructs an ActorHandle from a gcs::ActorTableData message.
-  ActorHandle(const gcs::ActorTableData &actor_table_data);
+  ActorHandle(const rpc::ActorTableData &actor_table_data);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 
@@ -56,8 +56,8 @@ class ActorHandle {
 
   Language ActorLanguage() const { return inner_.actor_language(); };
 
-  ray::FunctionDescriptor ActorCreationTaskFunctionDescriptor() const {
-    return ray::FunctionDescriptorBuilder::FromProto(
+  FunctionDescriptor ActorCreationTaskFunctionDescriptor() const {
+    return FunctionDescriptorBuilder::FromProto(
         inner_.actor_creation_task_function_descriptor());
   };
 
@@ -85,7 +85,7 @@ class ActorHandle {
 
  private:
   // Protobuf-defined persistent state of the actor handle.
-  const ray::rpc::ActorHandle inner_;
+  const rpc::ActorHandle inner_;
 
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter
@@ -101,4 +101,5 @@ class ActorHandle {
   FRIEND_TEST(ZeroNodeTest, TestActorHandle);
 };
 
+}  // namespace core
 }  // namespace ray

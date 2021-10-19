@@ -10,7 +10,7 @@ import numpy as np
 import logging
 from typing import Type
 
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
+from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.agents.impala.vtrace_torch_policy import make_time_major, \
     choose_optimizer
@@ -23,12 +23,12 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import \
     TorchDistributionWrapper, TorchCategorical
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import explained_variance, global_norm, \
-    sequence_mask
+from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance,\
+    global_norm, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -46,13 +46,15 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     Args:
         policy (Policy): The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
-        dist_class (Type[ActionDistribution]: The action distr. class.
+        dist_class (Type[ActionDistribution]): The action distr. class.
         train_batch (SampleBatch): The training data.
 
     Returns:
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
+    target_model = policy.target_models[model]
+
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
 
@@ -67,32 +69,30 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         is_multidiscrete = False
         output_hidden_shape = 1
 
-    def _make_time_major(*args, **kw):
-        return make_time_major(policy, train_batch.get("seq_lens"), *args,
-                               **kw)
+    def _make_time_major(*args, **kwargs):
+        return make_time_major(policy, train_batch.get(SampleBatch.SEQ_LENS),
+                               *args, **kwargs)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
-    target_model_out, _ = policy.target_model.from_batch(train_batch)
+    target_model_out, _ = target_model.from_batch(train_batch)
 
-    prev_action_dist = dist_class(behaviour_logits, policy.model)
-    values = policy.model.value_function()
+    prev_action_dist = dist_class(behaviour_logits, model)
+    values = model.value_function()
     values_time_major = _make_time_major(values)
 
-    policy.model_vars = policy.model.variables()
-    policy.target_model_vars = policy.target_model.variables()
-
     if policy.is_recurrent():
-        max_seq_len = torch.max(train_batch["seq_lens"]) - 1
-        mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
+        mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = torch.reshape(mask, [-1])
+        mask = _make_time_major(mask, drop_last=policy.config["vtrace"])
         num_valid = torch.sum(mask)
 
         def reduce_mean_valid(t):
-            return torch.sum(t * mask) / num_valid
+            return torch.sum(t[mask]) / num_valid
 
     else:
         reduce_mean_valid = torch.mean
@@ -114,11 +114,11 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
             unpacked_old_policy_behaviour_logits = torch.chunk(
                 old_policy_behaviour_logits, output_hidden_shape, dim=1)
 
-        # Prepare actions for loss
+        # Prepare actions for loss.
         loss_actions = actions if is_multidiscrete else torch.unsqueeze(
             actions, dim=1)
 
-        # Prepare KL for Loss
+        # Prepare KL for loss.
         action_kl = _make_time_major(
             old_policy_action_dist.kl(action_dist), drop_last=True)
 
@@ -152,19 +152,19 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         logp_ratio = is_ratio * torch.exp(actions_logp - prev_actions_logp)
         policy._is_ratio = is_ratio
 
-        advantages = vtrace_returns.pg_advantages
+        advantages = vtrace_returns.pg_advantages.to(logp_ratio.device)
         surrogate_loss = torch.min(
             advantages * logp_ratio,
             advantages *
             torch.clamp(logp_ratio, 1 - policy.config["clip_param"],
                         1 + policy.config["clip_param"]))
 
-        mean_kl = reduce_mean_valid(action_kl)
+        mean_kl_loss = reduce_mean_valid(action_kl)
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
-        delta = values_time_major[:-1] - vtrace_returns.vs
-        value_targets = vtrace_returns.vs
+        value_targets = vtrace_returns.vs.to(values_time_major.device)
+        delta = values_time_major[:-1] - value_targets
         mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
         # The entropy loss.
@@ -188,7 +188,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
             torch.clamp(logp_ratio, 1 - policy.config["clip_param"],
                         1 + policy.config["clip_param"]))
 
-        mean_kl = reduce_mean_valid(action_kl)
+        mean_kl_loss = reduce_mean_valid(action_kl)
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
@@ -208,14 +208,22 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
 
     # Optional additional KL Loss
     if policy.config["use_kl_loss"]:
-        total_loss += policy.kl_coeff * mean_kl
+        total_loss += policy.kl_coeff * mean_kl_loss
 
-    policy._total_loss = total_loss
-    policy._mean_policy_loss = mean_policy_loss
-    policy._mean_kl = mean_kl
-    policy._mean_vf_loss = mean_vf_loss
-    policy._mean_entropy = mean_entropy
-    policy._value_targets = value_targets
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["total_loss"] = total_loss
+    model.tower_stats["mean_policy_loss"] = mean_policy_loss
+    model.tower_stats["mean_kl_loss"] = mean_kl_loss
+    model.tower_stats["mean_vf_loss"] = mean_vf_loss
+    model.tower_stats["mean_entropy"] = mean_entropy
+    model.tower_stats["value_targets"] = value_targets
+    model.tower_stats["vf_explained_var"] = explained_variance(
+        torch.reshape(value_targets, [-1]),
+        torch.reshape(
+            values_time_major[:-1]
+            if policy.config["vtrace"] else values_time_major, [-1]),
+    )
 
     return total_loss
 
@@ -230,60 +238,38 @@ def stats(policy: Policy, train_batch: SampleBatch):
     Returns:
         Dict[str, TensorType]: The stats dict.
     """
-    values_batched = make_time_major(
-        policy,
-        train_batch.get("seq_lens"),
-        policy.model.value_function(),
-        drop_last=policy.config["vtrace"])
-
     stats_dict = {
         "cur_lr": policy.cur_lr,
-        "policy_loss": policy._mean_policy_loss,
-        "entropy": policy._mean_entropy,
+        "total_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("total_loss"))),
+        "policy_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_policy_loss"))),
+        "entropy": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_entropy"))),
         "var_gnorm": global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy._mean_vf_loss,
-        "vf_explained_var": explained_variance(
-            torch.reshape(policy._value_targets, [-1]),
-            torch.reshape(values_batched, [-1])),
+        "vf_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_vf_loss"))),
+        "vf_explained_var": torch.mean(
+            torch.stack(policy.get_tower_stats("vf_explained_var"))),
     }
 
     if policy.config["vtrace"]:
         is_stat_mean = torch.mean(policy._is_ratio, [0, 1])
         is_stat_var = torch.var(policy._is_ratio, [0, 1])
-        stats_dict.update({"mean_IS": is_stat_mean})
-        stats_dict.update({"var_IS": is_stat_var})
+        stats_dict["mean_IS"] = is_stat_mean
+        stats_dict["var_IS"] = is_stat_var
 
     if policy.config["use_kl_loss"]:
-        stats_dict.update({"kl": policy._mean_kl})
-        stats_dict.update({"KL_Coeff": policy.kl_coeff})
+        stats_dict["kl"] = policy.get_tower_stats("mean_kl_loss")
+        stats_dict["KL_Coeff"] = policy.kl_coeff
 
     return stats_dict
-
-
-class TargetNetworkMixin:
-    """Target NN is updated by master learner via the `update_target` method.
-
-    Updates happen every `trainer.update_target_frequency` steps. All worker
-    batches are importance sampled wrt the target network to ensure a more
-    stable pi_old in PPO.
-    """
-
-    def __init__(self, obs_space, action_space, config):
-        def do_update():
-            # Update_target_fn will be called periodically to copy Q network to
-            # target Q network.
-            assert len(self.model_variables) == \
-                len(self.target_model_variables), \
-                (self.model_variables, self.target_model_variables)
-            self.target_model.load_state_dict(self.model.state_dict())
-
-        self.update_target = do_update
 
 
 def add_values(policy, input_dict, state_batches, model, action_dist):
     out = {}
     if not policy.config["vtrace"]:
-        out[SampleBatch.VF_PREDS] = policy.model.value_function()
+        out[SampleBatch.VF_PREDS] = model.value_function()
     return out
 
 
@@ -314,13 +300,14 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     """
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 # Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
-AsyncPPOTorchPolicy = build_torch_policy(
+AsyncPPOTorchPolicy = build_policy_class(
     name="AsyncPPOTorchPolicy",
+    framework="torch",
     loss_fn=appo_surrogate_loss,
     stats_fn=stats,
     postprocess_fn=postprocess_trajectory,
@@ -328,7 +315,7 @@ AsyncPPOTorchPolicy = build_torch_policy(
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=choose_optimizer,
     before_init=setup_early_mixins,
-    after_init=setup_late_mixins,
+    before_loss_init=setup_late_mixins,
     make_model=make_appo_model,
     mixins=[
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,

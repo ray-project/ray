@@ -12,7 +12,9 @@ exports_files([
 all_modules = [
     "api",
     "runtime",
+    "serve",
     "test",
+    "performance_test",
 ]
 
 java_import(
@@ -39,11 +41,14 @@ define_java_module(
     name = "api",
     visibility = ["//visibility:public"],
     deps = [
+        "@maven//:com_lmax_disruptor",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
         "@maven//:javax_xml_bind_jaxb_api",
-        "@maven//:log4j_log4j",
-        "@maven//:org_slf4j_slf4j_log4j12",
+        "@maven//:org_apache_logging_log4j_log4j_api",
+        "@maven//:org_apache_logging_log4j_log4j_core",
+        "@maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@maven//:org_slf4j_slf4j_api",
     ],
 )
 
@@ -70,20 +75,23 @@ define_java_module(
     visibility = ["//visibility:public"],
     deps = [
         ":io_ray_ray_api",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:com_lmax_disruptor",
         "@maven//:com_typesafe_config",
         "@maven//:commons_io_commons_io",
         "@maven//:de_ruedigermoeller_fst",
-        "@maven//:log4j_log4j",
         "@maven//:net_java_dev_jna_jna",
         "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_logging_log4j_log4j_api",
+        "@maven//:org_apache_logging_log4j_log4j_core",
+        "@maven//:org_apache_logging_log4j_log4j_slf4j_impl",
         "@maven//:org_msgpack_msgpack_core",
         "@maven//:org_ow2_asm_asm",
         "@maven//:org_slf4j_slf4j_api",
-        "@maven//:org_slf4j_slf4j_log4j12",
         "@maven//:org_testng_testng",
-        "@maven//:redis_clients_jedis",
+        "@maven//:org_yaml_snakeyaml",
     ],
 )
 
@@ -95,13 +103,69 @@ define_java_module(
         "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:com_lmax_disruptor",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
         "@maven//:commons_io_commons_io",
         "@maven//:javax_xml_bind_jaxb_api",
         "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_logging_log4j_log4j_api",
+        "@maven//:org_apache_logging_log4j_log4j_core",
+        "@maven//:org_apache_logging_log4j_log4j_slf4j_impl",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
+    ],
+)
+
+define_java_module(
+    name = "performance_test",
+    deps = [
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
+        "@maven//:com_google_code_gson_gson",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_lmax_disruptor",
+        "@maven//:commons_io_commons_io",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_logging_log4j_log4j_api",
+        "@maven//:org_apache_logging_log4j_log4j_core",
+        "@maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@maven//:org_slf4j_slf4j_api",
+    ],
+)
+
+define_java_module(
+    name = "serve",
+    additional_srcs = [
+        ":serve_java_proto",
+    ],
+    define_test_lib = True,
+    exclude_srcs = [
+        "serve/src/main/java/io/ray/serve/generated/*.java",
+    ],
+    test_deps = [
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
+        ":io_ray_ray_serve",
+        "@maven//:com_google_code_gson_gson",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_httpcomponents_client5_httpclient5",
+        "@maven//:org_apache_httpcomponents_core5_httpcore5",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_testng_testng",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
+        "@maven//:com_google_code_gson_gson",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_httpcomponents_core5_httpcore5",
+        "@maven//:org_slf4j_slf4j_api",
     ],
 )
 
@@ -111,7 +175,9 @@ java_binary(
     data = ["testng.xml"],
     main_class = "org.testng.TestNG",
     runtime_deps = [
+        ":io_ray_ray_performance_test",
         ":io_ray_ray_runtime_test",
+        ":io_ray_ray_serve_test",
         ":io_ray_ray_test",
     ],
 )
@@ -126,6 +192,11 @@ java_proto_compile(
     deps = ["@//src/ray/protobuf:gcs_proto"],
 )
 
+java_proto_compile(
+    name = "serve_java_proto",
+    deps = ["@//src/ray/protobuf:serve_proto"],
+)
+
 filegroup(
     name = "all_java_proto",
     srcs = [
@@ -134,27 +205,12 @@ filegroup(
     ],
 )
 
-native_java_binary("runtime", "raylet", "//:raylet")
-
-native_java_binary("runtime", "plasma_store_server", "//:plasma_store_server")
-
-native_java_binary("runtime", "redis-server", "//:redis-server")
-
-native_java_binary("runtime", "gcs_server", "//:gcs_server")
-
-native_java_binary("runtime", "libray_redis_module.so", "//:libray_redis_module.so")
-
 native_java_library("runtime", "core_worker_library_java", "//:libcore_worker_library_java.so")
 
 filegroup(
     name = "java_native_deps",
     srcs = [
         ":core_worker_library_java",
-        ":gcs_server",
-        ":libray_redis_module.so",
-        ":plasma_store_server",
-        ":raylet",
-        ":redis-server",
     ],
 )
 
@@ -164,6 +220,7 @@ genrule(
     srcs = [
         ":all_java_proto",
         ":copy_pom_file",
+        ":serve_java_proto",
     ],
     outs = ["cp_java_generated.out"],
     cmd = """
@@ -172,6 +229,10 @@ genrule(
         rm -rf "$$WORK_DIR/java/runtime/src/main/java/io/ray/runtime/generated"
         for f in $(locations //java:all_java_proto); do
             unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
+        done
+        rm -rf "$$WORK_DIR/java/serve/src/main/java/io/ray/serve/generated"
+        for f in $(locations //java:serve_java_proto); do
+            unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/serve/src/main/java"
         done
         date > $@
     """,
@@ -221,6 +282,8 @@ genrule(
         cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
         cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
         cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
+        cp -f $(location //java:io_ray_ray_performance_test_pom) "$$WORK_DIR/java/performance_test/pom.xml"
+        cp -f $(location //java:io_ray_ray_serve_pom) "$$WORK_DIR/java/serve/pom.xml"
         date > $@
     """,
     local = 1,
@@ -235,6 +298,7 @@ java_binary(
     runtime_deps = [
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
+        "//java:io_ray_ray_serve",
         "//streaming/java:io_ray_ray_streaming-api",
         "//streaming/java:io_ray_ray_streaming-runtime",
     ],
@@ -252,13 +316,6 @@ genrule(
         WORK_DIR="$$(pwd)"
         rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars"
         cp -f $(location //java:ray_dist_deploy.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
-        chmod +w "$$WORK_DIR/python/ray/jars/ray_dist.jar"
-        zip -d "$$WORK_DIR/python/ray/jars/ray_dist.jar" \
-            native/*/gcs_server \
-            native/*/libray_redis_module.so \
-            native/*/plasma_store_server \
-            native/*/raylet \
-            native/*/redis-server
         date > $@
     """,
     local = 1,

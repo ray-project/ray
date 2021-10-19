@@ -1,25 +1,28 @@
+from ray.autoscaler._private.monitor import parse_resource_demands
+import ray._private.gcs_utils as gcs_utils
 import ray
-from ray.monitor import parse_resource_demands
+
+ray.experimental.internal_kv.redis = False
 
 
 def test_parse_resource_demands():
-    resource_load_by_shape = ray.gcs_utils.ResourceLoad(resource_demands=[
-        ray.gcs_utils.ResourceDemand(
+    resource_load_by_shape = gcs_utils.ResourceLoad(resource_demands=[
+        gcs_utils.ResourceDemand(
             shape={"CPU": 1},
             num_ready_requests_queued=1,
             num_infeasible_requests_queued=0,
             backlog_size=0),
-        ray.gcs_utils.ResourceDemand(
+        gcs_utils.ResourceDemand(
             shape={"CPU": 2},
             num_ready_requests_queued=1,
             num_infeasible_requests_queued=0,
             backlog_size=1),
-        ray.gcs_utils.ResourceDemand(
+        gcs_utils.ResourceDemand(
             shape={"CPU": 3},
             num_ready_requests_queued=0,
             num_infeasible_requests_queued=1,
             backlog_size=2),
-        ray.gcs_utils.ResourceDemand(
+        gcs_utils.ResourceDemand(
             shape={"CPU": 4},
             num_ready_requests_queued=1,
             num_infeasible_requests_queued=1,
@@ -37,3 +40,9 @@ def test_parse_resource_demands():
     # counted as infeasible or waiting, as long as it's accounted for and
     # doesn't cause an error.
     assert len(waiting + infeasible) == 10
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,3 +1,17 @@
+// Copyright 2020 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/util/util.h"
 
 #include <stdio.h>
@@ -325,5 +339,40 @@ std::string CreateCommandLine(const std::vector<std::string> &args,
     RAY_LOG(FATAL) << "invalid command line syntax";
     break;
   }
+  return result;
+}
+
+std::shared_ptr<std::unordered_map<std::string, std::string>> ParseURL(std::string url) {
+  auto result = std::make_shared<std::unordered_map<std::string, std::string>>();
+  std::string delimiter = "?";
+  size_t pos = 0;
+  pos = url.find(delimiter);
+  if (pos == std::string::npos) {
+    return result;
+  }
+
+  const std::string base_url = url.substr(0, pos);
+  result->emplace("url", base_url);
+  url.erase(0, pos + delimiter.length());
+  const std::string query_delimeter = "&";
+
+  auto parse_key_value_with_equal_delimter = [](std::string key_value) {
+    // Parse the query key value pair.
+    const std::string key_value_delimter = "=";
+    size_t key_value_pos = 0;
+    key_value_pos = key_value.find(key_value_delimter);
+    const std::string key = key_value.substr(0, key_value_pos);
+    return std::make_pair(key, key_value.substr(key.size() + 1));
+  };
+
+  while ((pos = url.find(query_delimeter)) != std::string::npos) {
+    std::string token = url.substr(0, pos);
+    auto key_value_pair = parse_key_value_with_equal_delimter(token);
+    result->emplace(key_value_pair.first, key_value_pair.second);
+    url.erase(0, pos + delimiter.length());
+  }
+  std::string token = url.substr(0, pos);
+  auto key_value_pair = parse_key_value_with_equal_delimter(token);
+  result->emplace(key_value_pair.first, key_value_pair.second);
   return result;
 }

@@ -7,9 +7,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Binary representation of a ray object. See `RayObject` class in C++ for details.
- */
+/** Binary representation of a ray object. See `RayObject` class in C++ for details. */
 public class NativeRayObject {
 
   public byte[] data;
@@ -43,4 +41,3 @@ public class NativeRayObject {
     return "<data>: " + bufferLength(data) + ", <metadata>: " + bufferLength(metadata);
   }
 }
-

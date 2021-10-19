@@ -5,12 +5,11 @@ Source: https://github.com/google-research/recsim
 """
 
 from collections import OrderedDict
-from typing import List
-
 import gym
-import numpy as np
 from gym import spaces
+import numpy as np
 from recsim.environments import interest_evolution
+from typing import List
 
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
@@ -55,17 +54,23 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
 
 
 class RecSimResetWrapper(gym.Wrapper):
-    """Fix RecSim environment's reset() function
+    """Fix RecSim environment's reset() and close() function
 
     RecSim's reset() function returns an observation without the "response"
     field, breaking RLlib's check. This wrapper fixes that by assigning a
     random "response".
+
+    RecSim's close() function raises NotImplementedError. We change the
+    behavior to doing nothing.
     """
 
     def reset(self):
         obs = super().reset()
         obs["response"] = self.env.observation_space["response"].sample()
         return obs
+
+    def close(self):
+        pass
 
 
 class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
@@ -108,7 +113,7 @@ def make_recsim_env(config):
     env = interest_evolution.create_environment(env_config)
     env = RecSimResetWrapper(env)
     env = RecSimObservationSpaceWrapper(env)
-    if config and config["convert_to_discrete_action_space"]:
+    if env_config and env_config["convert_to_discrete_action_space"]:
         env = MultiDiscreteToDiscreteActionWrapper(env)
     return env
 

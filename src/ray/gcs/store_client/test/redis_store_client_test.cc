@@ -33,7 +33,8 @@ class RedisStoreClientTest : public StoreClientTestBase {
   static void TearDownTestCase() { TestSetupUtil::ShutDownRedisServers(); }
 
   void InitStoreClient() override {
-    RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", true);
+    RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "",
+                               /*enable_sharding_conn=*/false);
     redis_client_ = std::make_shared<RedisClient>(options);
     RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
 
@@ -72,9 +73,8 @@ int main(int argc, char **argv) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
   ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

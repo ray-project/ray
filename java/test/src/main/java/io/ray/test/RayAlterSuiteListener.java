@@ -18,9 +18,6 @@ public class RayAlterSuiteListener implements IAlterSuiteListener {
     XmlGroups groups = new XmlGroups();
     XmlRun run = new XmlRun();
     run.onExclude(excludedGroup);
-    if (!"1".equals(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS"))) {
-      run.onExclude("multiLanguage");
-    }
     groups.setRun(run);
     suite.setGroups(groups);
   }

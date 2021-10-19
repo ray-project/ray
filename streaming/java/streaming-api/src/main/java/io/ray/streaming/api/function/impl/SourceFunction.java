@@ -18,6 +18,5 @@ public interface SourceFunction<T> extends Function {
   interface SourceContext<T> {
 
     void collect(T element) throws Exception;
-
   }
 }

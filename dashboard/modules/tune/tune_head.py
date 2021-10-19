@@ -4,18 +4,24 @@ import copy
 import os
 import aiohttp.web
 
-import ray.new_dashboard.modules.tune.tune_consts \
+import ray.dashboard.modules.tune.tune_consts \
     as tune_consts
-import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.utils import async_loop_forever, rest_response
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.utils import async_loop_forever, rest_response
+
+logger = logging.getLogger(__name__)
 
 try:
     from ray.tune import Analysis
     from tensorboard import program
-except ImportError:
+# The `pip install ray` will not install pandas,
+# so `from ray.tune import Analysis` may raises
+# `AttributeError: module 'pandas' has no attribute 'core'`
+# if the pandas version is incorrect.
+except (ImportError, AttributeError) as ex:
+    logger.warning("tune module is not available: %s", ex)
     Analysis = None
 
-logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
@@ -130,7 +136,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
 
         # search through all the sub_directories in log directory
         analysis = Analysis(str(self._logdir))
-        df = analysis.dataframe(metric="episode_reward_mean", mode="max")
+        df = analysis.dataframe(metric=None, mode=None)
 
         if len(df) == 0 or "trial_id" not in df.columns:
             return

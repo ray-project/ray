@@ -1,9 +1,12 @@
 from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
-import tree
+import os
+import tree  # pip install dm_tree
+import warnings
 
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import SMALL_NUMBER
 
 torch, nn = try_import_torch()
 
@@ -13,8 +16,47 @@ FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
 
 
+def apply_grad_clipping(policy, optimizer, loss):
+    """Applies gradient clipping to already computed grads inside `optimizer`.
+
+    Args:
+        policy (TorchPolicy): The TorchPolicy, which calculated `loss`.
+        optimizer (torch.optim.Optimizer): A local torch optimizer object.
+        loss (torch.Tensor): The torch loss tensor.
+    """
+    info = {}
+    if policy.config["grad_clip"]:
+        for param_group in optimizer.param_groups:
+            # Make sure we only pass params with grad != None into torch
+            # clip_grad_norm_. Would fail otherwise.
+            params = list(
+                filter(lambda p: p.grad is not None, param_group["params"]))
+            if params:
+                grad_gnorm = nn.utils.clip_grad_norm_(
+                    params, policy.config["grad_clip"])
+                if isinstance(grad_gnorm, torch.Tensor):
+                    grad_gnorm = grad_gnorm.cpu().numpy()
+                info["grad_gnorm"] = grad_gnorm
+    return info
+
+
 def atanh(x):
-    return 0.5 * torch.log((1 + x) / (1 - x))
+    return 0.5 * torch.log(
+        (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER))
+
+
+def concat_multi_gpu_td_errors(policy):
+    td_error = torch.cat(
+        [
+            t.tower_stats.get("td_error", torch.tensor([0.0])).to(
+                policy.device) for t in policy.model_gpu_towers
+        ],
+        dim=0)
+    policy.td_error = td_error
+    return {
+        "td_error": td_error,
+        "mean_td_error": torch.mean(td_error),
+    }
 
 
 def convert_to_non_torch_type(stats):
@@ -62,7 +104,22 @@ def convert_to_torch_tensor(x, device=None):
             return RepeatedValues(
                 tree.map_structure(mapping, item.values), item.lengths,
                 item.max_len)
-        tensor = torch.from_numpy(np.asarray(item))
+        # Numpy arrays.
+        if isinstance(item, np.ndarray):
+            # np.object_ type (e.g. info dicts in train batch): leave as-is.
+            if item.dtype == np.object_:
+                return item
+            # Non-writable numpy-arrays will cause PyTorch warning.
+            elif item.flags.writeable is False:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    tensor = torch.from_numpy(item)
+            # Already numpy: Wrap as torch tensor.
+            else:
+                tensor = torch.from_numpy(item)
+        # Everything else: Convert to numpy, then wrap as torch tensor.
+        else:
+            tensor = torch.from_numpy(np.asarray(item))
         # Floatify all float64 tensors.
         if tensor.dtype == torch.double:
             tensor = tensor.float()
@@ -75,7 +132,7 @@ def explained_variance(y, pred):
     y_var = torch.var(y, dim=[0])
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
-    return torch.max(min_, 1 - (diff_var / y_var))
+    return torch.max(min_, 1 - (diff_var / y_var))[0]
 
 
 def global_norm(tensors):
@@ -125,11 +182,11 @@ def minimize_and_clip(optimizer, clip_val=10):
 
 def one_hot(x, space):
     if isinstance(space, Discrete):
-        return nn.functional.one_hot(x, space.n)
+        return nn.functional.one_hot(x.long(), space.n)
     elif isinstance(space, MultiDiscrete):
         return torch.cat(
             [
-                nn.functional.one_hot(x[:, i], n)
+                nn.functional.one_hot(x[:, i].long(), n)
                 for i, n in enumerate(space.nvec)
             ],
             dim=-1)
@@ -161,6 +218,20 @@ def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
     mask.type(dtype or torch.bool)
 
     return mask
+
+
+def set_torch_seed(seed):
+    if seed is not None and torch:
+        torch.manual_seed(seed)
+        # See https://github.com/pytorch/pytorch/issues/47672.
+        cuda_version = torch.version.cuda
+        if cuda_version is not None and float(torch.version.cuda) >= 10.2:
+            os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
+        else:
+            # Not all Operations support this.
+            torch.use_deterministic_algorithms(True)
+        # This is only for Convolution no problem.
+        torch.backends.cudnn.deterministic = True
 
 
 def softmax_cross_entropy_with_logits(logits, labels):

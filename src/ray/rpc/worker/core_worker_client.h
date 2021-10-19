@@ -30,6 +30,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/hash/hash.h"
 #include "ray/common/status.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
@@ -54,7 +55,7 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
 }
 
 // Shared between direct actor and task submitters.
-class CoreWorkerClientInterface;
+/* class CoreWorkerClientInterface; */
 
 // TODO(swang): Remove and replace with rpc::Address.
 class WorkerAddress {
@@ -93,11 +94,8 @@ class WorkerAddress {
   const NodeID raylet_id;
 };
 
-typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
-    ClientFactoryFn;
-
 /// Abstract client interface for testing.
-class CoreWorkerClientInterface {
+class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
  public:
   virtual const rpc::Address &Addr() const {
     static const rpc::Address empty_addr_;
@@ -119,6 +117,9 @@ class CoreWorkerClientInterface {
   virtual void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
                               const ClientCallback<PushTaskReply> &callback) {}
 
+  virtual void StealTasks(std::unique_ptr<StealTasksRequest> request,
+                          const ClientCallback<StealTasksReply> &callback) {}
+
   /// Notify a wait has completed for direct actor call arguments.
   ///
   /// \param[in] request The request message.
@@ -137,18 +138,19 @@ class CoreWorkerClientInterface {
       const WaitForActorOutOfScopeRequest &request,
       const ClientCallback<WaitForActorOutOfScopeReply> &callback) {}
 
-  /// Notify the owner of an object that the object has been pinned.
-  virtual void WaitForObjectEviction(
-      const WaitForObjectEvictionRequest &request,
-      const ClientCallback<WaitForObjectEvictionReply> &callback) {}
+  /// Send a long polling request to a core worker for pubsub operations.
+  virtual void PubsubLongPolling(const PubsubLongPollingRequest &request,
+                                 const ClientCallback<PubsubLongPollingReply> &callback) {
+  }
 
-  virtual void AddObjectLocationOwner(
-      const AddObjectLocationOwnerRequest &request,
-      const ClientCallback<AddObjectLocationOwnerReply> &callback) {}
+  /// Send a pubsub command batch request to a core worker for pubsub operations.
+  virtual void PubsubCommandBatch(
+      const PubsubCommandBatchRequest &request,
+      const ClientCallback<PubsubCommandBatchReply> &callback) {}
 
-  virtual void RemoveObjectLocationOwner(
-      const RemoveObjectLocationOwnerRequest &request,
-      const ClientCallback<RemoveObjectLocationOwnerReply> &callback) {}
+  virtual void UpdateObjectLocationBatch(
+      const UpdateObjectLocationBatchRequest &request,
+      const ClientCallback<UpdateObjectLocationBatchReply> &callback) {}
 
   virtual void GetObjectLocationsOwner(
       const GetObjectLocationsOwnerRequest &request,
@@ -171,10 +173,6 @@ class CoreWorkerClientInterface {
   virtual void LocalGC(const LocalGCRequest &request,
                        const ClientCallback<LocalGCReply> &callback) {}
 
-  virtual void WaitForRefRemoved(const WaitForRefRemovedRequest &request,
-                                 const ClientCallback<WaitForRefRemovedReply> &callback) {
-  }
-
   virtual void SpillObjects(const SpillObjectsRequest &request,
                             const ClientCallback<SpillObjectsReply> &callback) {}
 
@@ -182,12 +180,26 @@ class CoreWorkerClientInterface {
       const RestoreSpilledObjectsRequest &request,
       const ClientCallback<RestoreSpilledObjectsReply> &callback) {}
 
+  virtual void DeleteSpilledObjects(
+      const DeleteSpilledObjectsRequest &request,
+      const ClientCallback<DeleteSpilledObjectsReply> &callback) {}
+
+  virtual void AddSpilledUrl(const AddSpilledUrlRequest &request,
+                             const ClientCallback<AddSpilledUrlReply> &callback) {}
+
   virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
                                  const ClientCallback<PlasmaObjectReadyReply> &callback) {
   }
 
   virtual void Exit(const ExitRequest &request,
                     const ClientCallback<ExitReply> &callback) {}
+
+  virtual void AssignObjectOwner(const AssignObjectOwnerRequest &request,
+                                 const ClientCallback<AssignObjectOwnerReply> &callback) {
+  }
+
+  /// Returns the max acked sequence number, useful for checking on progress.
+  virtual int64_t ClientProcessedUpToSeqno() { return -1; }
 
   virtual ~CoreWorkerClientInterface(){};
 };
@@ -203,9 +215,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager)
       : addr_(address) {
-    grpc_client_ =
-        std::unique_ptr<GrpcClient<CoreWorkerService>>(new GrpcClient<CoreWorkerService>(
-            addr_.ip_address(), addr_.port(), client_call_manager));
+    grpc_client_ = std::make_unique<GrpcClient<CoreWorkerService>>(
+        addr_.ip_address(), addr_.port(), client_call_manager);
   };
 
   const rpc::Address &Addr() const override { return addr_; }
@@ -224,12 +235,11 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubLongPolling, grpc_client_, override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_,
-                         override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, PubsubCommandBatch, grpc_client_, override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RemoveObjectLocationOwner, grpc_client_,
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, UpdateObjectLocationBatch, grpc_client_,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_,
@@ -239,15 +249,19 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, LocalGC, grpc_client_, override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForRefRemoved, grpc_client_, override)
-
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, SpillObjects, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, RestoreSpilledObjects, grpc_client_, override)
 
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, DeleteSpilledObjects, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddSpilledUrl, grpc_client_, override)
+
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, Exit, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, AssignObjectOwner, grpc_client_, override)
 
   void PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
                      const ClientCallback<PushTaskReply> &callback) override {
@@ -262,7 +276,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
     {
       absl::MutexLock lock(&mutex_);
-      send_queue_.push_back(std::make_pair(std::move(request), callback));
+      send_queue_.push_back(std::make_pair(
+          std::move(request),
+          std::move(const_cast<ClientCallback<PushTaskReply> &>(callback))));
     }
     SendRequests();
   }
@@ -272,6 +288,11 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
     INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_);
+  }
+
+  void StealTasks(std::unique_ptr<StealTasksRequest> request,
+                  const ClientCallback<StealTasksReply> &callback) override {
+    INVOKE_RPC_CALL(CoreWorkerService, StealTasks, *request, callback, grpc_client_);
   }
 
   /// Send as many pending tasks as possible. This method is thread-safe.
@@ -288,13 +309,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       send_queue_.pop_front();
 
       auto request = std::move(pair.first);
-      auto callback = pair.second;
       int64_t task_size = RequestSizeInBytes(*request);
       int64_t seq_no = request->sequence_number();
       request->set_client_processed_up_to(max_finished_seq_no_);
       rpc_bytes_in_flight_ += task_size;
 
-      auto rpc_callback = [this, this_ptr, seq_no, task_size, callback](
+      auto rpc_callback = [this, this_ptr, seq_no, task_size,
+                           callback = std::move(pair.second)](
                               Status status, const rpc::PushTaskReply &reply) {
         {
           absl::MutexLock lock(&mutex_);
@@ -308,13 +329,19 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         callback(status, reply);
       };
 
-      RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, rpc_callback,
-                                 grpc_client_));
+      RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request,
+                                 std::move(rpc_callback), grpc_client_));
     }
 
     if (!send_queue_.empty()) {
       RAY_LOG(DEBUG) << "client send queue size " << send_queue_.size();
     }
+  }
+
+  /// Returns the max acked sequence number, useful for checking on progress.
+  int64_t ClientProcessedUpToSeqno() override {
+    absl::MutexLock lock(&mutex_);
+    return max_finished_seq_no_;
   }
 
  private:
@@ -337,6 +364,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// The max sequence number we have processed responses for.
   int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
 };
+
+typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
+    ClientFactoryFn;
 
 }  // namespace rpc
 }  // namespace ray

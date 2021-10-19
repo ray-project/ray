@@ -6,8 +6,8 @@ import io.ray.streaming.message.Record;
 import io.ray.streaming.operator.OneInputOperator;
 import io.ray.streaming.operator.StreamOperator;
 
-public class KeyByOperator<T, K> extends StreamOperator<KeyFunction<T, K>> implements
-    OneInputOperator<T> {
+public class KeyByOperator<T, K> extends StreamOperator<KeyFunction<T, K>>
+    implements OneInputOperator<T> {
 
   public KeyByOperator(KeyFunction<T, K> keyFunction) {
     super(keyFunction);
@@ -19,4 +19,3 @@ public class KeyByOperator<T, K> extends StreamOperator<KeyFunction<T, K>> imple
     collect(new KeyRecord<>(key, record.getValue()));
   }
 }
-

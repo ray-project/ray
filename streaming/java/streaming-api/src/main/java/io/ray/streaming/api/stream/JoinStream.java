@@ -25,9 +25,7 @@ public class JoinStream<L, R, O> extends DataStream<L> {
     return rightStream;
   }
 
-  /**
-   * Apply key-by to the left join stream.
-   */
+  /** Apply key-by to the left join stream. */
   public <K> Where<K> where(KeyFunction<L, K> keyFunction) {
     return new Where<>(this, keyFunction);
   }
@@ -64,7 +62,8 @@ public class JoinStream<L, R, O> extends DataStream<L> {
     private KeyFunction<R, K> rightKeyByFunction;
 
     Equal(
-        JoinStream<L, R, O> joinStream, KeyFunction<L, K> leftKeyByFunction,
+        JoinStream<L, R, O> joinStream,
+        KeyFunction<L, K> leftKeyByFunction,
         KeyFunction<R, K> rightKeyByFunction) {
       this.joinStream = joinStream;
       this.leftKeyByFunction = leftKeyByFunction;
@@ -78,5 +77,4 @@ public class JoinStream<L, R, O> extends DataStream<L> {
       return (DataStream<O>) joinStream;
     }
   }
-
 }

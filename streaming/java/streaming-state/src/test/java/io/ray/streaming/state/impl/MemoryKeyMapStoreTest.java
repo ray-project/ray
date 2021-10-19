@@ -58,7 +58,6 @@ public class MemoryKeyMapStoreTest {
       Assert.assertNotEquals(IKeyMapStore.get("hello"), map);
       Assert.assertEquals(IKeyMapStore.get("hello"), map2);
 
-
     } catch (IOException e) {
       e.printStackTrace();
     }

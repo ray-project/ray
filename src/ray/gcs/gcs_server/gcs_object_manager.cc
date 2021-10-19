@@ -35,6 +35,7 @@ void GcsObjectManager::HandleGetObjectLocations(
   RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
                  << object_id.TaskId().JobId() << ", object id = " << object_id;
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_OBJECT_LOCATIONS_REQUEST];
 }
 
 void GcsObjectManager::HandleGetAllObjectLocations(
@@ -50,10 +51,12 @@ void GcsObjectManager::HandleGetAllObjectLocations(
       object_table_data.set_manager(node_id.Binary());
       object_location_info.add_locations()->CopyFrom(object_table_data);
     }
+    object_location_info.set_size(item.second.object_size);
     reply->add_object_location_info_list()->CopyFrom(object_location_info);
   }
   RAY_LOG(DEBUG) << "Finished getting all object locations.";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_OBJECT_LOCATIONS_REQUEST];
 }
 
 void GcsObjectManager::HandleAddObjectLocation(
@@ -63,6 +66,7 @@ void GcsObjectManager::HandleAddObjectLocation(
 
   NodeID node_id;
   std::string spilled_url;
+  NodeID spilled_node_id;
   if (!request.node_id().empty()) {
     node_id = NodeID::FromBinary(request.node_id());
     RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
@@ -70,11 +74,16 @@ void GcsObjectManager::HandleAddObjectLocation(
     AddObjectLocationInCache(object_id, node_id);
   } else {
     absl::MutexLock lock(&mutex_);
-    object_to_locations_[object_id].spilled_url = request.spilled_url();
+    RAY_CHECK(!request.spilled_url().empty());
+    spilled_url = request.spilled_url();
+    spilled_node_id = NodeID::FromBinary(request.spilled_node_id());
+    object_to_locations_[object_id].spilled_url = spilled_url;
+    object_to_locations_[object_id].spilled_node_id = spilled_node_id;
     RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id;
   }
 
-  auto on_done = [this, object_id, node_id, spilled_url, reply,
+  size_t size = request.size();
+  auto on_done = [this, object_id, node_id, spilled_url, size, spilled_node_id, reply,
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
       rpc::ObjectLocationChange notification;
@@ -84,12 +93,16 @@ void GcsObjectManager::HandleAddObjectLocation(
       }
       if (!spilled_url.empty()) {
         notification.set_spilled_url(spilled_url);
+        notification.set_spilled_node_id(spilled_node_id.Binary());
       }
+      notification.set_size(size);
       RAY_CHECK_OK(gcs_pub_sub_->Publish(OBJECT_CHANNEL, object_id.Hex(),
                                          notification.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
-                     << ", node id = " << node_id << ", task id = " << object_id.TaskId();
+                     << ", node id = " << node_id << ", task id = " << object_id.TaskId()
+                     << ", spilled_url = " << spilled_url
+                     << ", spilled_node_id = " << spilled_node_id;
     } else {
       RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
                      << ", job id = " << object_id.TaskId().JobId()
@@ -102,11 +115,13 @@ void GcsObjectManager::HandleAddObjectLocation(
   };
 
   absl::MutexLock lock(&mutex_);
+  object_to_locations_[object_id].object_size = size;
   const auto object_data = GenObjectLocationInfo(object_id);
   Status status = gcs_table_storage_->ObjectTable().Put(object_id, object_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
+  ++counts_[CountType::ADD_OBJECT_LOCATION_REQUEST];
 }
 
 void GcsObjectManager::HandleRemoveObjectLocation(
@@ -152,6 +167,7 @@ void GcsObjectManager::HandleRemoveObjectLocation(
   if (!status.ok()) {
     on_done(status);
   }
+  ++counts_[CountType::REMOVE_OBJECT_LOCATION_REQUEST];
 }
 
 void GcsObjectManager::AddObjectsLocation(
@@ -280,28 +296,38 @@ const ObjectLocationInfo GcsObjectManager::GenObjectLocationInfo(
       object_data.add_locations()->set_manager(node_id.Binary());
     }
     object_data.set_spilled_url(it->second.spilled_url);
+    object_data.set_spilled_node_id(it->second.spilled_node_id.Binary());
+    object_data.set_size(it->second.object_size);
   }
   return object_data;
 }
 
-void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
-  RAY_LOG(INFO) << "Loading initial data.";
-  auto callback = [this,
-                   done](const std::unordered_map<ObjectID, ObjectLocationInfo> &result) {
-    absl::flat_hash_map<NodeID, ObjectSet> node_to_objects;
-    for (auto &item : result) {
-      for (const auto &loc : item.second.locations()) {
-        node_to_objects[NodeID::FromBinary(loc.manager())].insert(item.first);
-      }
+void GcsObjectManager::Initialize(const GcsInitData &gcs_init_data) {
+  absl::flat_hash_map<NodeID, ObjectSet> node_to_objects;
+  for (const auto &item : gcs_init_data.Objects()) {
+    for (const auto &loc : item.second.locations()) {
+      node_to_objects[NodeID::FromBinary(loc.manager())].insert(item.first);
     }
+  }
 
-    for (auto &item : node_to_objects) {
-      AddObjectsLocation(item.first, item.second);
-    }
-    RAY_LOG(INFO) << "Finished loading initial data.";
-    done();
-  };
-  RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(callback));
+  for (auto &item : node_to_objects) {
+    AddObjectsLocation(item.first, item.second);
+  }
+}
+
+std::string GcsObjectManager::DebugString() const {
+  absl::MutexLock lock(&mutex_);
+  std::ostringstream stream;
+  stream << "GcsObjectManager: {GetObjectLocations request count: "
+         << counts_[CountType::GET_OBJECT_LOCATIONS_REQUEST]
+         << ", GetAllObjectLocations request count: "
+         << counts_[CountType::GET_ALL_OBJECT_LOCATIONS_REQUEST]
+         << ", AddObjectLocation request count: "
+         << counts_[CountType::ADD_OBJECT_LOCATION_REQUEST]
+         << ", RemoveObjectLocation request count: "
+         << counts_[CountType::REMOVE_OBJECT_LOCATION_REQUEST]
+         << ", Object count: " << object_to_locations_.size() << "}";
+  return stream.str();
 }
 
 }  // namespace gcs

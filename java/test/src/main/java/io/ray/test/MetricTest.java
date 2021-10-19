@@ -24,14 +24,14 @@ public class MetricTest extends BaseTest {
     return value <= other + 1e-5 && value >= other - 1e-5;
   }
 
-  private MetricConfig initRayMetrics(long timeIntervalMs,
-                                      int threadPoolSize,
-                                      long shutdownWaitTimeMs) {
-    MetricConfig config = MetricConfig.builder()
-        .timeIntervalMs(timeIntervalMs)
-        .threadPoolSize(threadPoolSize)
-        .shutdownWaitTimeMs(shutdownWaitTimeMs)
-        .create();
+  private MetricConfig initRayMetrics(
+      long timeIntervalMs, int threadPoolSize, long shutdownWaitTimeMs) {
+    MetricConfig config =
+        MetricConfig.builder()
+            .timeIntervalMs(timeIntervalMs)
+            .threadPoolSize(threadPoolSize)
+            .shutdownWaitTimeMs(shutdownWaitTimeMs)
+            .create();
     Metrics.init(config);
     return config;
   }
@@ -89,6 +89,17 @@ public class MetricTest extends BaseTest {
     gauge.unregister();
   }
 
+  public void testAddGaugeWithTagMap() {
+    Map<String, String> tags = new HashMap<>();
+    tags.put("tag1", "value1");
+
+    Gauge gauge = new Gauge("metric1", "", tags);
+    gauge.update(2);
+    gauge.record();
+    Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
+    gauge.unregister();
+  }
+
   public void testAddCount() {
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
@@ -121,8 +132,7 @@ public class MetricTest extends BaseTest {
     boundaries.add(10.0);
     boundaries.add(15.0);
     boundaries.add(12.0);
-    Histogram histogram = new Histogram("metric_histogram", "histogram", "1pc",
-        boundaries, tags);
+    Histogram histogram = new Histogram("metric_histogram", "histogram", "1pc", boundaries, tags);
     for (int i = 1; i <= 200; ++i) {
       histogram.update(i * 1.0d);
     }
@@ -229,5 +239,4 @@ public class MetricTest extends BaseTest {
     }
     Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
   }
-
 }

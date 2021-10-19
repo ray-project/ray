@@ -3,12 +3,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import json
 import os
+from pprint import pformat
+import py_dep_analysis as pda
 import re
 import subprocess
 import sys
-from pprint import pformat
 
 
 def list_changed_files(commit_range):
@@ -30,10 +32,48 @@ def list_changed_files(commit_range):
     return [s.strip() for s in out.decode().splitlines() if s is not None]
 
 
+def is_pull_request():
+    event_type = None
+
+    for key in ["GITHUB_EVENT_NAME", "TRAVIS_EVENT_TYPE"]:
+        event_type = os.getenv(key, event_type)
+
+    if (os.environ.get("BUILDKITE")
+            and os.environ.get("BUILDKITE_PULL_REQUEST") != "false"):
+        event_type = "pull_request"
+
+    return event_type == "pull_request"
+
+
+def get_commit_range():
+    commit_range = None
+
+    if os.environ.get("TRAVIS"):
+        commit_range = os.environ["TRAVIS_COMMIT_RANGE"]
+    elif os.environ.get("GITHUB_EVENT_PATH"):
+        with open(os.environ["GITHUB_EVENT_PATH"], "rb") as f:
+            event = json.loads(f.read())
+        base = event["pull_request"]["base"]["sha"]
+        commit_range = "{}...{}".format(base, event.get("after", ""))
+    elif os.environ.get("BUILDKITE"):
+        commit_range = "origin/{}...{}".format(
+            os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"],
+            os.environ["BUILDKITE_COMMIT"],
+        )
+
+    assert commit_range is not None
+    return commit_range
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--output", type=str, help="json or envvars", default="envvars")
+    args = parser.parse_args()
 
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_SGD_AFFECTED = 0
+    RAY_CI_TRAIN_AFFECTED = 0
     RAY_CI_ONLY_RLLIB_AFFECTED = 0  # Whether only RLlib is affected.
     RAY_CI_RLLIB_AFFECTED = 0  # Whether RLlib minimal tests should be run.
     RAY_CI_RLLIB_FULL_AFFECTED = 0  # Whether full RLlib tests should be run.
@@ -50,21 +90,32 @@ if __name__ == "__main__":
     RAY_CI_DOC_AFFECTED = 0
     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 0
 
-    event_type = None
-    for key in ["GITHUB_EVENT_NAME", "TRAVIS_EVENT_TYPE"]:
-        event_type = os.getenv(key, event_type)
-
-    if event_type == "pull_request":
-
-        commit_range = os.getenv("TRAVIS_COMMIT_RANGE")
-        if commit_range is None:
-            with open(os.environ["GITHUB_EVENT_PATH"], "rb") as f:
-                event = json.loads(f.read())
-            base = event["pull_request"]["base"]["sha"]
-            commit_range = "{}...{}".format(base, event.get("after", ""))
+    if is_pull_request():
+        commit_range = get_commit_range()
         files = list_changed_files(commit_range)
-
+        print(pformat(commit_range), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
+
+        # Dry run py_dep_analysis.py to see which tests we would have run.
+        try:
+            graph = pda.build_dep_graph()
+            rllib_tests = pda.list_rllib_tests()
+            print(
+                "Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
+
+            impacted = {}
+            for test in rllib_tests:
+                for file in files:
+                    if pda.test_depends_on_file(graph, test, file):
+                        impacted[test[0]] = True
+
+            print("RLlib tests impacted: ", len(impacted), file=sys.stderr)
+            for test in impacted.keys():
+                print("    ", test, file=sys.stderr)
+        except Exception as e:
+            print("Failed to dry run py_dep_analysis.py", file=sys.stderr)
+            print(e, file=sys.stderr)
+        # End of dry run.
 
         skip_prefix_list = [
             "doc/", "examples/", "dev/", "kubernetes/", "site/"
@@ -82,22 +133,34 @@ if __name__ == "__main__":
                 RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
+            elif changed_file.startswith("python/ray/train"):
+                RAY_CI_TRAIN_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif re.match("^(python/ray/)?rllib/", changed_file):
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_RLLIB_FULL_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/serve"):
+                RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/dashboard"):
                 RAY_CI_DASHBOARD_AFFECTED = 1
+                # https://github.com/ray-project/ray/pull/15981
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("dashboard"):
                 RAY_CI_DASHBOARD_AFFECTED = 1
+                # https://github.com/ray-project/ray/pull/15981
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
@@ -106,8 +169,11 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
+                # Python changes might impact cross language stack in Java.
+                # Java also depends on Python CLI to manage processes.
+                RAY_CI_JAVA_AFFECTED = 1
                 if changed_file.startswith("python/setup.py") or re.match(
-                        "requirements.*\.txt", changed_file):
+                        ".*requirements.*\.txt", changed_file):
                     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 1
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
@@ -123,9 +189,13 @@ if __name__ == "__main__":
                     for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass
+            elif changed_file.endswith("build-docker-images.py"):
+                RAY_CI_DOCKER_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
             elif changed_file.startswith("src/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
@@ -148,6 +218,7 @@ if __name__ == "__main__":
             else:
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
@@ -158,9 +229,11 @@ if __name__ == "__main__":
                 RAY_CI_STREAMING_CPP_AFFECTED = 1
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
+                RAY_CI_DASHBOARD_AFFECTED = 1
     else:
         RAY_CI_TUNE_AFFECTED = 1
         RAY_CI_SGD_AFFECTED = 1
+        RAY_CI_TRAIN_AFFECTED = 1
         RAY_CI_RLLIB_AFFECTED = 1
         RAY_CI_RLLIB_FULL_AFFECTED = 1
         RAY_CI_SERVE_AFFECTED = 1
@@ -172,19 +245,22 @@ if __name__ == "__main__":
         RAY_CI_STREAMING_CPP_AFFECTED = 1
         RAY_CI_STREAMING_PYTHON_AFFECTED = 1
         RAY_CI_STREAMING_JAVA_AFFECTED = 1
+        RAY_CI_DASHBOARD_AFFECTED = 1
 
     if not RAY_CI_TUNE_AFFECTED and not RAY_CI_SERVE_AFFECTED and \
             not RAY_CI_JAVA_AFFECTED and not RAY_CI_PYTHON_AFFECTED and not \
             RAY_CI_STREAMING_CPP_AFFECTED and \
             not RAY_CI_STREAMING_PYTHON_AFFECTED and \
             not RAY_CI_STREAMING_JAVA_AFFECTED and \
-            not RAY_CI_SGD_AFFECTED:
+            not RAY_CI_SGD_AFFECTED and\
+            not RAY_CI_TRAIN_AFFECTED:
         RAY_CI_ONLY_RLLIB_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
-    print(" ".join([
+    output_string = " ".join([
         "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
         "RAY_CI_SGD_AFFECTED={}".format(RAY_CI_SGD_AFFECTED),
+        "RAY_CI_TRAIN_AFFECTED={}".format(RAY_CI_TRAIN_AFFECTED),
         "RAY_CI_ONLY_RLLIB_AFFECTED={}".format(RAY_CI_ONLY_RLLIB_AFFECTED),
         "RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED),
         "RAY_CI_RLLIB_FULL_AFFECTED={}".format(RAY_CI_RLLIB_FULL_AFFECTED),
@@ -204,4 +280,15 @@ if __name__ == "__main__":
         "RAY_CI_DOCKER_AFFECTED={}".format(RAY_CI_DOCKER_AFFECTED),
         "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED={}".format(
             RAY_CI_PYTHON_DEPENDENCIES_AFFECTED),
-    ]))
+    ])
+
+    # Debug purpose
+    print(output_string, file=sys.stderr)
+
+    # Used by buildkite log format
+    if args.output.lower() == "json":
+        pairs = [item.split("=") for item in output_string.split(" ")]
+        affected_vars = [key for key, affected in pairs if affected == "1"]
+        print(json.dumps(affected_vars))
+    else:
+        print(output_string)

@@ -1,9 +1,9 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: minimal
+cluster_name: minimal # name with 'a-z' and '-'
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
-max_workers: 1
+max_workers: 5
 
 # Kubernetes resources that need to be configured for the autoscaler to be
 # able to manage the Ray cluster. If any of the provided resources don't
@@ -46,8 +46,8 @@ provider:
     #   - Kubernetes resources to create (like Persistent volume claim)
     #     on namespace creation
     # You can fork when you need to customize.
-    #   1. Fork github.com/open-datastudio/ray
-    #   2. Change .staroid/ directory to cutomize
+    #   1. Fork github.com/open-datastudio/ray-cluster
+    #   2. Change contents
     #   3. Connect forked repository (https://staroid.com/projects/settings)
     #   4. Release your customized branch
     #      4-1. Select project from 'My projects' menu
@@ -56,7 +56,7 @@ provider:
     #      4-4. Switch Launch permission to 'Public' if required
     #   5. Change 'project' field to point your 
     #      repository and branch in this file
-    project: "GITHUB/open-datastudio/ray:master-staroid"
+    project: "GITHUB/open-datastudio/ray-cluster:master"
 
     # 'spec.containers.image' field for ray-node and ray-worker will be
     # overrided by the image built from the 'project' field above.

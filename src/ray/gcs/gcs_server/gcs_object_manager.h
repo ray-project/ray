@@ -14,10 +14,10 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
@@ -53,16 +53,20 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                                   rpc::RemoveObjectLocationReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
-  /// \param done Callback that will be called when load is complete.
-  void LoadInitialData(const EmptyCallback &done);
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
+
+  std::string DebugString() const;
 
  protected:
   struct LocationSet {
     absl::flat_hash_set<NodeID> locations;
     std::string spilled_url = "";
+    NodeID spilled_node_id = NodeID::Nil();
+    size_t object_size = 0;
   };
 
   /// Add a location of objects.
@@ -138,6 +142,16 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
 
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+
+  // Debug info.
+  enum CountType {
+    GET_OBJECT_LOCATIONS_REQUEST = 0,
+    GET_ALL_OBJECT_LOCATIONS_REQUEST = 1,
+    ADD_OBJECT_LOCATION_REQUEST = 2,
+    REMOVE_OBJECT_LOCATION_REQUEST = 3,
+    CountType_MAX = 4,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs

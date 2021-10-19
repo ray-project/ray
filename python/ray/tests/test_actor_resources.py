@@ -9,7 +9,6 @@ import sys
 import time
 
 import ray
-import ray.test_utils
 import ray.cluster_utils
 
 
@@ -189,6 +188,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky.")
 def test_actor_different_numbers_of_gpus(ray_start_cluster):
     # Test that we can create actors on two nodes that have different
     # numbers of GPUs.
@@ -229,15 +229,16 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     cluster = ray_start_cluster
-    num_nodes = 5
-    num_gpus_per_raylet = 5
+    num_nodes = 3
+    num_gpus_per_raylet = 2
     for i in range(num_nodes):
         cluster.add_node(
-            num_cpus=10 * num_gpus_per_raylet,
+            num_cpus=4 * num_gpus_per_raylet,
             num_gpus=num_gpus_per_raylet,
-            _system_config={"num_heartbeats_timeout": 1000} if i == 0 else {})
+            _system_config={"num_heartbeats_timeout": 100} if i == 0 else {})
     ray.init(address=cluster.address)
 
     @ray.remote
@@ -536,6 +537,7 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky.")
 def test_lifetime_and_transient_resources(ray_start_regular):
     # This actor acquires resources only when running methods.
     @ray.remote
@@ -588,6 +590,7 @@ def test_custom_label_placement(ray_start_cluster):
         assert location == custom_resource2_node.unique_id
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky.")
 def test_creating_more_actors_than_resources(shutdown_only):
     ray.init(num_cpus=10, num_gpus=2, resources={"CustomResource1": 1})
 

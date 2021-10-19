@@ -122,7 +122,13 @@ class DQNTorchModel(TorchModelV2, nn.Module):
 
         # Value layer (nodes=1).
         if self.dueling:
-            value_module.add_module("V", SlimFC(ins, 1, activation_fn=None))
+            if use_noisy:
+                value_module.add_module(
+                    "V",
+                    NoisyLayer(ins, self.num_atoms, sigma0, activation=None))
+            elif q_hiddens:
+                value_module.add_module(
+                    "V", SlimFC(ins, self.num_atoms, activation_fn=None))
             self.value_module = value_module
 
     def get_q_value_distributions(self, model_out):
@@ -142,7 +148,9 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         if self.num_atoms > 1:
             # Distributional Q-learning uses a discrete support z
             # to represent the action value distribution
-            z = torch.range(0.0, self.num_atoms - 1, dtype=torch.float32)
+            z = torch.range(
+                0.0, self.num_atoms - 1,
+                dtype=torch.float32).to(action_scores.device)
             z = self.v_min + \
                 z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
 

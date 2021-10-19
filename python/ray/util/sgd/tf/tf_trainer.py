@@ -6,11 +6,13 @@ import ray
 
 from ray.tune import Trainable
 from ray.tune.resources import Resources
+from ray.util.annotations import PublicAPI
 from ray.util.sgd.tf.tf_runner import TFRunner
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 class TFTrainer:
     def __init__(self,
                  model_creator,

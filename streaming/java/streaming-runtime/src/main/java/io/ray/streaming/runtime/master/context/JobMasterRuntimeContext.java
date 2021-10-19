@@ -77,5 +77,4 @@ public class JobMasterRuntimeContext implements Serializable {
         .add("conf", conf.getMap())
         .toString();
   }
-
 }

@@ -64,12 +64,8 @@ void MetricPointExporter::ExportToPoints(
   points.push_back(std::move(mean_point));
   points.push_back(std::move(max_point));
   points.push_back(std::move(min_point));
-  RAY_LOG(DEBUG) << "Metric name " << metric_name << ", mean value : " << mean_point.value
-                 << " max value : " << max_point.value
-                 << "  min value : " << min_point.value;
 
   if (points.size() >= report_batch_size_) {
-    RAY_LOG(DEBUG) << "Point size : " << points.size();
     metric_exporter_client_->ReportMetrics(points);
     points.clear();
   }
@@ -106,12 +102,11 @@ void MetricPointExporter::ExportViewData(
       break;
     }
   }
-  RAY_LOG(DEBUG) << "Point size : " << points.size();
   metric_exporter_client_->ReportMetrics(points);
 }
 
 OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
-                                                 boost::asio::io_service &io_service,
+                                                 instrumented_io_context &io_service,
                                                  const std::string address)
     : client_call_manager_(io_service) {
   client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));

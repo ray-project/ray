@@ -18,13 +18,9 @@
 
 package io.ray.streaming.state.keystate.state;
 
-/**
- * State interface.
- */
+/** State interface. */
 public interface State {
 
-  /**
-   * set current key of the state
-   */
+  /** set current key of the state */
   void setCurrentKey(Object currentKey);
 }

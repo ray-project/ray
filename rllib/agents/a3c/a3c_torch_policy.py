@@ -1,137 +1,135 @@
 import gym
-from typing import Dict
+from typing import Optional, Dict
 
 import ray
-from ray.rllib.evaluation.postprocessing import compute_advantages, \
+from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin
+from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import apply_grad_clipping, sequence_mask
+from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
+    PolicyID, LocalOptimizer
 
 torch, nn = try_import_torch()
 
 
-def actor_critic_loss(policy, model, dist_class, train_batch):
+@Deprecated(
+    old="rllib.agents.a3c.a3c_torch_policy.add_advantages",
+    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
+    error=False)
+def add_advantages(
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
+        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+
+    return compute_gae_for_sample_batch(policy, sample_batch,
+                                        other_agent_batches, episode)
+
+
+def actor_critic_loss(policy: Policy, model: ModelV2,
+                      dist_class: ActionDistribution,
+                      train_batch: SampleBatch) -> TensorType:
     logits, _ = model.from_batch(train_batch)
     values = model.value_function()
+
+    if policy.is_recurrent():
+        B = len(train_batch[SampleBatch.SEQ_LENS])
+        max_seq_len = logits.shape[0] // B
+        mask_orig = sequence_mask(train_batch[SampleBatch.SEQ_LENS],
+                                  max_seq_len)
+        valid_mask = torch.reshape(mask_orig, [-1])
+    else:
+        valid_mask = torch.ones_like(values, dtype=torch.bool)
+
     dist = dist_class(logits, model)
-    log_probs = dist.logp(train_batch[SampleBatch.ACTIONS])
-    policy.entropy = dist.entropy().mean()
-    policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(
-        log_probs.reshape(-1))
-    policy.value_err = nn.functional.mse_loss(
-        values.reshape(-1), train_batch[Postprocessing.VALUE_TARGETS])
-    overall_err = sum([
-        policy.pi_err,
-        policy.config["vf_loss_coeff"] * policy.value_err,
-        -policy.config["entropy_coeff"] * policy.entropy,
-    ])
-    return overall_err
+    log_probs = dist.logp(train_batch[SampleBatch.ACTIONS]).reshape(-1)
+    pi_err = -torch.sum(
+        torch.masked_select(log_probs * train_batch[Postprocessing.ADVANTAGES],
+                            valid_mask))
+
+    # Compute a value function loss.
+    if policy.config["use_critic"]:
+        value_err = 0.5 * torch.sum(
+            torch.pow(
+                torch.masked_select(
+                    values.reshape(-1) -
+                    train_batch[Postprocessing.VALUE_TARGETS], valid_mask),
+                2.0))
+    # Ignore the value function.
+    else:
+        value_err = 0.0
+
+    entropy = torch.sum(torch.masked_select(dist.entropy(), valid_mask))
+
+    total_loss = (pi_err + value_err * policy.config["vf_loss_coeff"] -
+                  entropy * policy.config["entropy_coeff"])
+
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["entropy"] = entropy
+    model.tower_stats["pi_err"] = pi_err
+    model.tower_stats["value_err"] = value_err
+
+    return total_loss
 
 
-def loss_and_entropy_stats(policy, train_batch):
+def loss_and_entropy_stats(policy: Policy,
+                           train_batch: SampleBatch) -> Dict[str, TensorType]:
+
     return {
-        "policy_entropy": policy.entropy.item(),
-        "policy_loss": policy.pi_err.item(),
-        "vf_loss": policy.value_err.item(),
+        "policy_entropy": torch.mean(
+            torch.stack(policy.get_tower_stats("entropy"))),
+        "policy_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("pi_err"))),
+        "vf_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("value_err"))),
     }
 
 
-def add_advantages(policy,
-                   sample_batch,
-                   other_agent_batches=None,
-                   episode=None):
-
-    completed = sample_batch[SampleBatch.DONES][-1]
-    if completed:
-        last_r = 0.0
-    else:
-        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1])
-
-    return compute_advantages(
-        sample_batch, last_r, policy.config["gamma"], policy.config["lambda"],
-        policy.config["use_gae"], policy.config["use_critic"])
-
-
-def model_value_predictions(policy, input_dict, state_batches, model,
-                            action_dist):
+def model_value_predictions(
+        policy: Policy, input_dict: Dict[str, TensorType], state_batches,
+        model: ModelV2,
+        action_dist: ActionDistribution) -> Dict[str, TensorType]:
     return {SampleBatch.VF_PREDS: model.value_function()}
 
 
-def apply_grad_clipping(policy, optimizer, loss):
-    info = {}
-    if policy.config["grad_clip"]:
-        for param_group in optimizer.param_groups:
-            # Make sure we only pass params with grad != None into torch
-            # clip_grad_norm_. Would fail otherwise.
-            params = list(
-                filter(lambda p: p.grad is not None, param_group["params"]))
-            if params:
-                grad_gnorm = nn.utils.clip_grad_norm_(
-                    params, policy.config["grad_clip"])
-                if isinstance(grad_gnorm, torch.Tensor):
-                    grad_gnorm = grad_gnorm.cpu().numpy()
-                info["grad_gnorm"] = grad_gnorm
-    return info
-
-
-def torch_optimizer(policy, config):
+def torch_optimizer(policy: Policy,
+                    config: TrainerConfigDict) -> LocalOptimizer:
     return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
 
 
-class ValueNetworkMixin:
-    def _value(self, obs):
-        _ = self.model({"obs": torch.Tensor([obs]).to(self.device)}, [], [1])
-        return self.model.value_function()[0]
-
-
-def view_requirements_fn(policy: Policy) -> Dict[str, ViewRequirement]:
-    """Function defining the view requirements for training/postprocessing.
-
-    These go on top of the Policy's Model's own view requirements used for
-    the action computing forward passes.
+def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 config: TrainerConfigDict) -> None:
+    """Call all mixin classes' constructors before PPOPolicy initialization.
 
     Args:
-        policy (Policy): The Policy that requires the returned
-            ViewRequirements.
-
-    Returns:
-        Dict[str, ViewRequirement]: The Policy's view requirements.
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
     """
-    ret = {
-        # Next obs are needed for PPO postprocessing, but not in loss.
-        SampleBatch.NEXT_OBS: ViewRequirement(
-            SampleBatch.OBS, shift=1, used_for_training=False),
-        # Created during postprocessing.
-        Postprocessing.ADVANTAGES: ViewRequirement(shift=0),
-        Postprocessing.VALUE_TARGETS: ViewRequirement(shift=0),
-        # Needed for PPO's loss function.
-        SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(shift=0),
-        SampleBatch.ACTION_LOGP: ViewRequirement(shift=0),
-        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
-    }
-    # If policy is recurrent, have to add state_out for PPO postprocessing
-    # (calculating GAE from next-obs and last state-out).
-    if policy.is_recurrent():
-        init_state = policy.get_initial_state()
-        for i, s in enumerate(init_state):
-            ret["state_out_{}".format(i)] = ViewRequirement(
-                space=gym.spaces.Box(-1.0, 1.0, shape=(s.shape[0], )),
-                used_for_training=False)
-    return ret
+    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-A3CTorchPolicy = build_torch_policy(
+A3CTorchPolicy = build_policy_class(
     name="A3CTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
     loss_fn=actor_critic_loss,
     stats_fn=loss_and_entropy_stats,
-    postprocess_fn=add_advantages,
+    postprocess_fn=compute_gae_for_sample_batch,
     extra_action_out_fn=model_value_predictions,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=torch_optimizer,
+    before_loss_init=setup_mixins,
     mixins=[ValueNetworkMixin],
-    view_requirements_fn=view_requirements_fn,
 )

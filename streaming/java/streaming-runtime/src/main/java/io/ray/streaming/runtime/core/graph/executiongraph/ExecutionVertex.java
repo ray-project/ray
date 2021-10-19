@@ -18,34 +18,25 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-/**
- * Physical vertex, correspond to {@link ExecutionJobVertex}.
- */
+/** Physical vertex, correspond to {@link ExecutionJobVertex}. */
 public class ExecutionVertex implements Serializable {
 
-  /**
-   * Unique id for execution vertex.
-   */
+  /** Unique id for execution vertex. */
   private final int executionVertexId;
 
-  /**
-   * Immutable field inherited from {@link ExecutionJobVertex}.
-   */
+  /** Immutable field inherited from {@link ExecutionJobVertex}. */
   private final int executionJobVertexId;
+
   private final String executionJobVertexName;
   private final StreamOperator streamOperator;
   private final VertexType vertexType;
   private final Language language;
   private final long buildTime;
 
-  /**
-   * Resource used by ExecutionVertex.
-   */
+  /** Resource used by ExecutionVertex. */
   private final Map<String, Double> resource;
 
-  /**
-   * Parallelism of current vertex's operator.
-   */
+  /** Parallelism of current vertex's operator. */
   private int parallelism;
 
   /**
@@ -56,21 +47,15 @@ public class ExecutionVertex implements Serializable {
 
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
 
-  /**
-   * The id of the container which this vertex's worker actor belongs to.
-   */
+  /** The id of the container which this vertex's worker actor belongs to. */
   private ContainerId containerId;
 
   private String pid;
 
-  /**
-   * Worker actor handle.
-   */
+  /** Worker actor handle. */
   private BaseActorHandle workerActor;
 
-  /**
-   * Op config + job config.
-   */
+  /** Op config + job config. */
   private Map<String, String> workerConfig;
 
   private List<ExecutionEdge> inputEdges = new ArrayList<>();
@@ -82,7 +67,6 @@ public class ExecutionVertex implements Serializable {
   private transient List<BaseActorHandle> outputActorList;
   private transient List<BaseActorHandle> inputActorList;
   private Map<Integer, String> exeVertexChannelMap;
-
 
   public ExecutionVertex(
       int globalIndex,
@@ -182,8 +166,7 @@ public class ExecutionVertex implements Serializable {
     return inputEdges;
   }
 
-  public void setInputEdges(
-      List<ExecutionEdge> inputEdges) {
+  public void setInputEdges(List<ExecutionEdge> inputEdges) {
     this.inputEdges = inputEdges;
   }
 
@@ -191,8 +174,7 @@ public class ExecutionVertex implements Serializable {
     return outputEdges;
   }
 
-  public void setOutputEdges(
-      List<ExecutionEdge> outputEdges) {
+  public void setOutputEdges(List<ExecutionEdge> outputEdges) {
     this.outputEdges = outputEdges;
   }
 
@@ -279,14 +261,12 @@ public class ExecutionVertex implements Serializable {
     return inputActorList;
   }
 
-
   public String getChannelIdByPeerVertex(ExecutionVertex peerVertex) {
     if (exeVertexChannelMap == null) {
       generateActorChannelInfo();
     }
     return exeVertexChannelMap.get(peerVertex.getExecutionVertexId());
   }
-
 
   private void generateActorChannelInfo() {
     inputChannelIdList = new ArrayList<>();
@@ -297,10 +277,11 @@ public class ExecutionVertex implements Serializable {
 
     List<ExecutionEdge> inputEdges = getInputEdges();
     for (ExecutionEdge edge : inputEdges) {
-      String channelId = ChannelId.genIdStr(
-          edge.getSourceExecutionVertex().getExecutionVertexId(),
-          getExecutionVertexId(),
-          getBuildTime());
+      String channelId =
+          ChannelId.genIdStr(
+              edge.getSourceExecutionVertex().getExecutionVertexId(),
+              getExecutionVertexId(),
+              getBuildTime());
       inputChannelIdList.add(channelId);
       inputActorList.add(edge.getSourceExecutionVertex().getWorkerActor());
       exeVertexChannelMap.put(edge.getSourceExecutionVertex().getExecutionVertexId(), channelId);
@@ -308,16 +289,16 @@ public class ExecutionVertex implements Serializable {
 
     List<ExecutionEdge> outputEdges = getOutputEdges();
     for (ExecutionEdge edge : outputEdges) {
-      String channelId = ChannelId.genIdStr(
-          getExecutionVertexId(),
-          edge.getTargetExecutionVertex().getExecutionVertexId(),
-          getBuildTime());
+      String channelId =
+          ChannelId.genIdStr(
+              getExecutionVertexId(),
+              edge.getTargetExecutionVertex().getExecutionVertexId(),
+              getBuildTime());
       outputChannelIdList.add(channelId);
       outputActorList.add(edge.getTargetExecutionVertex().getWorkerActor());
       exeVertexChannelMap.put(edge.getTargetExecutionVertex().getExecutionVertexId(), channelId);
     }
   }
-
 
   private Map<String, Double> generateResources(ResourceConfig resourceConfig) {
     Map<String, Double> resourceMap = new HashMap<>();

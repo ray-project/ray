@@ -1,18 +1,29 @@
 import argparse
 
+# __import_begin__
+import os
+
+# Pytorch imports
 import torch
-from ray.util.sgd import TorchTrainer
-from ray.util.sgd.torch import TrainingOperator
-from torch.nn import functional as F
-from pytorch_lightning.core.lightning import LightningModule
 from torch.optim import Adam
 from torch.utils.data import DataLoader, random_split
-from torchvision.datasets import MNIST
-import os
+from torch.nn import functional as F
 from torchvision import transforms
+from torchvision.datasets import MNIST
+
+# Ray imports
+from ray.util.sgd import TorchTrainer
+from ray.util.sgd.torch import TrainingOperator
+
+# PTL imports
+from pytorch_lightning.core.lightning import LightningModule
+
+# __import_end__
 
 
+# __ptl_begin__
 class LitMNIST(LightningModule):
+    # We take in an additional config parameter here. But this is not required.
     def __init__(self, config):
         super().__init__()
 
@@ -49,7 +60,10 @@ class LitMNIST(LightningModule):
 
         # prepare transforms standard to MNIST
         mnist_train = MNIST(
-            os.getcwd(), train=True, download=True, transform=transform)
+            os.path.expanduser("~/data"),
+            train=True,
+            download=True,
+            transform=transform)
 
         self.mnist_train, self.mnist_val = random_split(
             mnist_train, [55000, 5000])
@@ -77,6 +91,10 @@ class LitMNIST(LightningModule):
         return {"val_loss": loss.item(), "val_acc": num_correct / num_samples}
 
 
+# __ptl_end__
+
+
+# __train_begin__
 def train_mnist(num_workers=1, use_gpu=False, num_epochs=5):
     Operator = TrainingOperator.from_ptl(LitMNIST)
     trainer = TorchTrainer(
@@ -101,6 +119,8 @@ def train_mnist(num_workers=1, use_gpu=False, num_epochs=5):
     print("success!")
 
 
+# __train_end__
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -108,6 +128,13 @@ if __name__ == "__main__":
         required=False,
         type=str,
         help="the address to use for Ray")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     parser.add_argument(
         "--num-workers",
         "-n",
@@ -137,6 +164,8 @@ if __name__ == "__main__":
     if args.smoke_test:
         ray.init(num_cpus=2)
         args.num_epochs = 1
+    elif args.server_address:
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(address=args.address)
     train_mnist(

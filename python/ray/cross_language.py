@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray import Language
+from ray.util.annotations import PublicAPI
 from ray._raylet import JavaFunctionDescriptor
 
 __all__ = [
@@ -55,6 +56,7 @@ def get_function_descriptor_for_actor_method(
                                   f"not support language {language}")
 
 
+@PublicAPI(stability="beta")
 def java_function(class_name, function_name):
     """Define a Java function.
 
@@ -75,13 +77,13 @@ def java_function(class_name, function_name):
         None,  # accelerator_type,
         None,  # num_returns,
         None,  # max_calls,
-        None,  # max_retries
-        placement_group=None,
-        # TODO(ekl) set default to -1 once we support -1 as "any index"
-        placement_group_bundle_index=0,
-        placement_group_capture_child_tasks=None)
+        None,  # max_retries,
+        None,  # retry_exceptions,
+        None,  # runtime_env
+        None)  # placement_group
 
 
+@PublicAPI(stability="beta")
 def java_actor_class(class_name):
     """Define a Java actor class.
 
@@ -100,4 +102,4 @@ def java_actor_class(class_name):
         object_store_memory=None,
         resources=None,
         accelerator_type=None,
-    )
+        runtime_env=None)

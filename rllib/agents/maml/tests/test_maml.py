@@ -3,7 +3,7 @@ import unittest
 import ray
 import ray.rllib.agents.maml as maml
 from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 
 class TestMAML(unittest.TestCase):
@@ -23,15 +23,23 @@ class TestMAML(unittest.TestCase):
         num_iterations = 1
 
         # Test for tf framework (torch not implemented yet).
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = maml.MAMLTrainer(
-                config=config,
-                env="ray.rllib.examples.env.pendulum_mass.PendulumMassEnv")
-            for i in range(num_iterations):
-                trainer.train()
-            check_compute_single_action(
-                trainer, include_prev_action_reward=True)
-            trainer.stop()
+        for fw in framework_iterator(config, frameworks=("tf", "torch")):
+            for env in [
+                    "pendulum_mass.PendulumMassEnv",
+                    "cartpole_mass.CartPoleMassEnv"
+            ]:
+                if fw == "tf" and env.startswith("cartpole"):
+                    continue
+                print("env={}".format(env))
+                env_ = "ray.rllib.examples.env.{}".format(env)
+                trainer = maml.MAMLTrainer(config=config, env=env_)
+                for i in range(num_iterations):
+                    results = trainer.train()
+                    check_train_results(results)
+                    print(results)
+                check_compute_single_action(
+                    trainer, include_prev_action_reward=True)
+                trainer.stop()
 
 
 if __name__ == "__main__":

@@ -5,12 +5,24 @@ Community Integrations
 
 This page lists libraries that have integrations with Ray for distributed execution. If you'd like to add your project to this list, feel free to file a pull request or open an issue on GitHub.
 
-Ray also comes packaged with several built-in machine learning libraries:
+Ray also comes packaged with several libraries solving problems in the machine learning space:
 
 - :doc:`../tune/index`
 - :ref:`rllib-index`
 - :ref:`sgd-index`
+- :ref:`datasets` (beta)
+
+As well as libraries for taking ML and distributed apps to production:
+
 - :ref:`rayserve`
+- :ref:`workflows` (alpha)
+
+Airflow |airflow|
+-----------------
+
+Airflow is a platform created by the community to programmatically author, schedule and monitor workflows. The Airflow/Ray integration allows Airflow users to keep all of their Ray code in Python functions and define task dependencies by moving data through python functions.
+
+[`Link to integration <https://registry.astronomer.io/providers/ray>`__] [`Link to announcement <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__]
 
 ClassyVision |classyvision|
 ---------------------------
@@ -46,7 +58,13 @@ Hugging Face Transformers |hugging|
 
 State-of-the-art Natural Language Processing for Pytorch and TensorFlow 2.0.
 
+It integrates with Ray for distributed hyperparameter tuning of transformer models:
+
 [`Link to integration <https://huggingface.co/transformers/master/main_classes/trainer.html#transformers.Trainer.hyperparameter_search>`__]
+
+As well as for distributed document retrieval for Retrieval Augmented Generation Models
+
+[`Link to integration <https://github.com/huggingface/transformers/tree/master/examples/research_projects/rag#document-retrieval>`__]
 
 Intel Analytics Zoo |zoo|
 -------------------------
@@ -60,6 +78,14 @@ John Snow Labs' NLU |NLU|
 The power of 350+ pre-trained NLP models, 100+ Word Embeddings, 50+ Sentence Embeddings, and 50+ Classifiers in 46 languages with 1 line of Python code.
 
 [`Link to integration <https://nlu.johnsnowlabs.com/docs/en/predict_api#modin-dataframe>`__]
+
+Ludwig AI |ludwig|
+------------------
+
+Ludwig is a toolbox that allows users to train and test deep learning models without the need to write code. With Ludwig, you can train a deep learning model on Ray in zero lines of code, automatically leveraging Dask on Ray for data preprocessing, Horovod on Ray for distributed training, and Ray Tune for hyperparameter optimization.
+
+[`Link to integration <https://medium.com/ludwig-ai/ludwig-ai-v0-4-introducing-declarative-mlops-with-ray-dask-tabnet-and-mlflow-integrations-6509c3875c2e>`__]
+
 
 MARS |mars|
 -----------
@@ -82,12 +108,26 @@ PyCaret is an open source low-code machine learning library in Python that aims 
 
 GitHub: `https://github.com/pycaret/pycaret <https://github.com/pycaret/pycaret>`_
 
+PyTorch Lightning |ptl|
+-----------------------
+
+PyTorch Lightning is a popular open-source library that provides a high level interface for PyTorch. The goal of PyTorch Lightning is to structure your PyTorch code to abstract the details of training, making AI research scalable and fast to iterate on.
+
+[`Link to integration <https://github.com/ray-project/ray_lightning_accelerators>`__]
+
 RayDP |raydp|
 -------------
 
 RayDP ("Spark on Ray") enables you to easily use Spark inside a Ray program. You can use Spark to read the input data, process the data using SQL, Spark DataFrame, or Pandas (via Koalas) API, extract and transform features using Spark MLLib, and use RayDP Estimator API for distributed training on the preprocessed dataset.
 
 GitHub: `https://github.com/Intel-bigdata/oap-raydp <https://github.com/Intel-bigdata/oap-raydp>`_
+
+Scikit Learn |scikit|
+---------------------
+
+Scikit-learn is a free software machine learning library for the Python programming language. It features various classification, regression and clustering algorithms including support vector machines, random forests, gradient boosting, k-means and DBSCAN, and is designed to interoperate with the Python numerical and scientific libraries NumPy and SciPy.
+
+[`Link to integration <https://docs.ray.io/en/master/joblib.html>`__]
 
 Seldon Alibi |seldon|
 ---------------------
@@ -101,6 +141,23 @@ Spacy |spacy|
 spaCy is a library for advanced Natural Language Processing in Python and Cython. It's built on the very latest research, and was designed from day one to be used in real products.
 
 [`Link to integration <https://pypi.org/project/spacy-ray/>`__]
+
+XGBoost |xgboost|
+-----------------
+XGBoost is a popular gradient boosting library for classification and regression. It is one of the most popular tools in data science and workhorse of many top-performing Kaggle kernels.
+
+[`Link to integration <https://github.com/ray-project/xgboost_ray>`__]
+
+LightGBM |lightgbm|
+-------------------
+LightGBM is a high-performance gradient boosting library for classification and regression. It is designed to be distributed and efficient.
+
+[`Link to integration <https://github.com/ray-project/lightgbm_ray>`__]
+
+
+.. |airflow| image:: images/airflow.png
+    :class: inline-figure
+    :height: 30
 
 .. |classyvision| image:: images/classyvision.png
     :class: inline-figure
@@ -126,6 +183,10 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :class: inline-figure
     :height: 30
 
+.. |ludwig| image:: images/ludwig.png
+    :class: inline-figure
+    :height: 30
+
 .. |hugging| image:: images/hugging.png
     :class: inline-figure
     :height: 30
@@ -138,7 +199,15 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :class: inline-figure
     :height: 30
 
+.. |ptl| image:: images/pytorch_lightning_small.png
+    :class: inline-figure
+    :height: 30
+
 .. |raydp| image:: images/intel.png
+    :class: inline-figure
+    :height: 30
+
+.. |scikit| image:: images/scikit.png
     :class: inline-figure
     :height: 30
 
@@ -147,6 +216,14 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :height: 30
 
 .. |spacy| image:: images/spacy.png
+    :class: inline-figure
+    :height: 30
+
+.. |xgboost| image:: images/xgboost_logo.png
+    :class: inline-figure
+    :height: 30
+
+.. |lightgbm| image:: images/lightgbm_logo.png
     :class: inline-figure
     :height: 30
 

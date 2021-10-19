@@ -3,7 +3,7 @@ import unittest
 
 import ray
 from ray.rllib import _register_all
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 
@@ -37,7 +37,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
 
     def _do_test_fault_recover(self, alg, config):
         register_env("fault_env", lambda c: FaultInjectEnv(c))
-        agent_cls = get_agent_class(alg)
+        agent_cls = get_trainer_class(alg)
 
         # Test fault handling
         config["num_workers"] = 2
@@ -51,7 +51,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
 
     def _do_test_fault_fatal(self, alg, config):
         register_env("fault_env", lambda c: FaultInjectEnv(c))
-        agent_cls = get_agent_class(alg)
+        agent_cls = get_trainer_class(alg)
         # Test raises real error when out of workers
         config["num_workers"] = 2
         config["ignore_worker_failures"] = True

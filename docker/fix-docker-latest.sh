@@ -1,66 +1,41 @@
 #!/bin/bash
-# This script is not for normal use and is used in the event that CI (or a user) overwrites the latest tag.
 
-IMAGE="1.0.0"
+IMAGE="1.7.0"
+
+if [ $# -eq 0 ]
+then
+echo "Please Specify the release tag (i.e. 1.7.0)"
+exit 1
+fi
 
 while [[ $# -gt 0 ]]
 do
 key="$1"
 case $key in
-    --latest-tag)
+    --release-tag)
     shift
     IMAGE=$1
     ;;
     *)
-    echo "Usage: fix-docker-latest.sh --latest-tag <TAG>"
+    echo "Usage: fix-docker-latest.sh --release-tag <TAG>"
     exit 1
 esac
 shift
 done
 
-echo "You must be logged into a user with push priviledges to do this."
+ASSUME_ROLE_CREDENTIALS=$(aws sts assume-role --role-arn arn:aws:iam::"$(aws sts get-caller-identity | jq -r .Account)":role/InvokeDockerTagLatest --role-session-name push_latest)
 
-docker pull rayproject/ray:"$IMAGE"
-docker tag rayproject/ray:"$IMAGE" rayproject/ray:latest
-docker tag rayproject/ray:"$IMAGE" rayproject/ray:latest-cpu
-docker pull rayproject/ray:"$IMAGE"-gpu
-docker tag rayproject/ray:"$IMAGE"-gpu rayproject/ray:latest-gpu
-docker push rayproject/ray:latest
-docker push rayproject/ray:latest-cpu
-docker push rayproject/ray:latest-gpu
+AWS_ACCESS_KEY_ID=$(echo "$ASSUME_ROLE_CREDENTIALS" | jq -r .Credentials.AccessKeyId)
+AWS_SECRET_ACCESS_KEY=$(echo "$ASSUME_ROLE_CREDENTIALS" | jq -r .Credentials.SecretAccessKey)
+AWS_SESSION_TOKEN=$(echo "$ASSUME_ROLE_CREDENTIALS" | jq -r .Credentials.SessionToken)
 
-docker pull rayproject/ray-deps:"$IMAGE"
-docker tag rayproject/ray-deps:"$IMAGE" rayproject/ray-deps:latest
-docker tag rayproject/ray-deps:"$IMAGE" rayproject/ray-deps:latest-cpu
-docker pull rayproject/ray-deps:"$IMAGE"-gpu
-docker tag rayproject/ray-deps:"$IMAGE"-gpu rayproject/ray-deps:latest-gpu
-docker push rayproject/ray-deps:latest
-docker push rayproject/ray-deps:latest-cpu
-docker push rayproject/ray-deps:latest-gpu
 
-docker pull rayproject/base-deps:"$IMAGE"
-docker tag rayproject/base-deps:"$IMAGE" rayproject/base-deps:latest
-docker tag rayproject/base-deps:"$IMAGE" rayproject/base-deps:latest-cpu
-docker pull rayproject/base-deps:"$IMAGE"-gpu
-docker tag rayproject/base-deps:"$IMAGE"-gpu rayproject/base-deps:latest-gpu
-docker push rayproject/base-deps:latest
-docker push rayproject/base-deps:latest-cpu
-docker push rayproject/base-deps:latest-gpu
 
-docker pull rayproject/ray-ml:"$IMAGE"
-docker tag rayproject/ray-ml:"$IMAGE" rayproject/ray-ml:latest
-docker tag rayproject/ray-ml:"$IMAGE" rayproject/ray-ml:latest-cpu
-docker pull rayproject/ray-ml:"$IMAGE"-gpu
-docker tag rayproject/ray-ml:"$IMAGE"-gpu rayproject/ray-ml:latest-gpu
-docker push rayproject/ray-ml:latest
-docker push rayproject/ray-ml:latest-cpu
-docker push rayproject/ray-ml:latest-gpu
+echo -e "Invoking this lambda!\nView logs at https://us-west-2.console.aws.amazon.com/cloudwatch/home?region=us-west-2#logsV2:log-groups"
+AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN AWS_SECURITY_TOKEN='' aws \
+lambda invoke --function-name DockerTagLatest \
+--cli-binary-format raw-in-base64-out \
+--cli-read-timeout 600 \
+--payload "{\"source_tag\" : \"$IMAGE\", \"destination_tag\" : \"latest\"}" /dev/stdout
 
-docker pull rayproject/autoscaler:"$IMAGE"
-docker tag rayproject/autoscaler:"$IMAGE" rayproject/autoscaler:latest
-docker tag rayproject/autoscaler:"$IMAGE" rayproject/autoscaler:latest-cpu
-docker pull rayproject/autoscaler:"$IMAGE"-gpu
-docker tag rayproject/autoscaler:"$IMAGE"-gpu rayproject/autoscaler:latest-gpu
-docker push rayproject/autoscaler:latest
-docker push rayproject/autoscaler:latest-cpu
-docker push rayproject/autoscaler:latest-gpu
+echo -e "Please check logs before rerunning!!!!\n\nAt the time of writing Ray-ML/Autoscaler Images are not built for Py39\nSo retagging errors for those images are expected!"

@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import shutil
 import tempfile
 import unittest
@@ -9,10 +10,12 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.logger import NoopLogger
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.function_runner import with_parameters, wrap_function, \
     FuncCheckpointUtil
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.schedulers import ResourceChangingScheduler
 
 
 def creator_generator(logdir):
@@ -228,7 +231,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
         new_trainable2 = wrapped(logger_creator=self.logger_creator)
         new_trainable2.restore(checkpoint)
         result = new_trainable2.train()
-        self.assertEquals(result[TRAINING_ITERATION], 1)
+        self.assertEqual(result[TRAINING_ITERATION], 1)
         checkpoint = new_trainable2.save()
         new_trainable2.stop()
 
@@ -403,14 +406,15 @@ class FunctionApiTest(unittest.TestCase):
     def testEnabled(self):
         def train(config, checkpoint_dir=None):
             is_active = tune.is_session_enabled()
+            result = {"active": is_active}
             if is_active:
-                tune.report(active=is_active)
-            return is_active
+                tune.report(**result)
+            return result
 
-        assert train({}) is False
+        assert train({})["active"] is False
         analysis = tune.run(train)
         t = analysis.trials[0]
-        assert t.last_result["active"]
+        assert t.last_result["active"], t.last_result
 
     def testBlankCheckpoint(self):
         def train(config, checkpoint_dir=None):
@@ -448,11 +452,12 @@ class FunctionApiTest(unittest.TestCase):
         trial_1, trial_2 = tune.run(
             with_parameters(train, data=data), num_samples=2).trials
 
-        self.assertEquals(data.data[101], 0)
-        self.assertEquals(trial_1.last_result["metric"], 500_000)
-        self.assertEquals(trial_1.last_result["hundred"], 1)
-        self.assertEquals(trial_2.last_result["metric"], 500_000)
-        self.assertEquals(trial_2.last_result["hundred"], 1)
+        self.assertEqual(data.data[101], 0)
+        self.assertEqual(trial_1.last_result["metric"], 500_000)
+        self.assertEqual(trial_1.last_result["hundred"], 1)
+        self.assertEqual(trial_2.last_result["metric"], 500_000)
+        self.assertEqual(trial_2.last_result["hundred"], 1)
+        self.assertTrue(str(trial_1).startswith("train_"))
 
         # With checkpoint dir parameter
         def train(config, checkpoint_dir="DIR", data=None):
@@ -462,13 +467,88 @@ class FunctionApiTest(unittest.TestCase):
         trial_1, trial_2 = tune.run(
             with_parameters(train, data=data), num_samples=2).trials
 
-        self.assertEquals(data.data[101], 0)
-        self.assertEquals(trial_1.last_result["metric"], 500_000)
-        self.assertEquals(trial_1.last_result["cp"], "DIR")
-        self.assertEquals(trial_2.last_result["metric"], 500_000)
-        self.assertEquals(trial_2.last_result["cp"], "DIR")
+        self.assertEqual(data.data[101], 0)
+        self.assertEqual(trial_1.last_result["metric"], 500_000)
+        self.assertEqual(trial_1.last_result["cp"], "DIR")
+        self.assertEqual(trial_2.last_result["metric"], 500_000)
+        self.assertEqual(trial_2.last_result["cp"], "DIR")
+        self.assertTrue(str(trial_1).startswith("train_"))
 
-    def test_return_anonymous(self):
+    def testWithParameters2(self):
+        class Data:
+            def __init__(self):
+                import numpy as np
+                self.data = np.random.rand((2 * 1024 * 1024))
+
+        def train(config, data=None):
+            tune.report(metric=len(data.data))
+
+        trainable = tune.with_parameters(train, data=Data())
+        # ray.cloudpickle will crash for some reason
+        import cloudpickle as cp
+        dumped = cp.dumps(trainable)
+        assert sys.getsizeof(dumped) < 100 * 1024
+
+    def testNewResources(self):
+        sched = ResourceChangingScheduler(
+            resources_allocation_function=(
+                lambda a, b, c, d: PlacementGroupFactory([{"CPU": 2}])
+            )
+        )
+
+        def train(config, checkpoint_dir=None):
+            tune.report(metric=1, resources=tune.get_trial_resources())
+
+        analysis = tune.run(
+            train,
+            scheduler=sched,
+            stop={"training_iteration": 2},
+            resources_per_trial=PlacementGroupFactory([{
+                "CPU": 1
+            }]),
+            num_samples=1)
+
+        results_list = list(analysis.results.values())
+        assert results_list[0]["resources"].head_cpus == 2.0
+
+    def testWithParametersTwoRuns1(self):
+        # Makes sure two runs in the same script but different ray sessions
+        # pass (https://github.com/ray-project/ray/issues/16609)
+        def train_fn(config, extra=4):
+            tune.report(metric=extra)
+
+        trainable = tune.with_parameters(train_fn, extra=8)
+        out = tune.run(trainable, metric="metric", mode="max")
+        self.assertEquals(out.best_result["metric"], 8)
+
+        self.tearDown()
+        self.setUp()
+
+        def train_fn_2(config, extra=5):
+            tune.report(metric=extra)
+
+        trainable = tune.with_parameters(train_fn_2, extra=9)
+        out = tune.run(trainable, metric="metric", mode="max")
+        self.assertEquals(out.best_result["metric"], 9)
+
+    def testWithParametersTwoRuns2(self):
+        # Makes sure two runs in the same script
+        # pass (https://github.com/ray-project/ray/issues/16609)
+        def train_fn(config, extra=4):
+            tune.report(metric=extra)
+
+        def train_fn_2(config, extra=5):
+            tune.report(metric=extra)
+
+        trainable1 = tune.with_parameters(train_fn, extra=8)
+        trainable2 = tune.with_parameters(train_fn_2, extra=9)
+
+        out1 = tune.run(trainable1, metric="metric", mode="max")
+        out2 = tune.run(trainable2, metric="metric", mode="max")
+        self.assertEquals(out1.best_result["metric"], 8)
+        self.assertEquals(out2.best_result["metric"], 9)
+
+    def testReturnAnonymous(self):
         def train(config):
             return config["a"]
 
@@ -477,10 +557,10 @@ class FunctionApiTest(unittest.TestCase):
                 "a": tune.grid_search([4, 8])
             }).trials
 
-        self.assertEquals(trial_1.last_result["_metric"], 4)
-        self.assertEquals(trial_2.last_result["_metric"], 8)
+        self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4)
+        self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8)
 
-    def test_return_specific(self):
+    def testReturnSpecific(self):
         def train(config):
             return {"m": config["a"]}
 
@@ -489,10 +569,10 @@ class FunctionApiTest(unittest.TestCase):
                 "a": tune.grid_search([4, 8])
             }).trials
 
-        self.assertEquals(trial_1.last_result["m"], 4)
-        self.assertEquals(trial_2.last_result["m"], 8)
+        self.assertEqual(trial_1.last_result["m"], 4)
+        self.assertEqual(trial_2.last_result["m"], 8)
 
-    def test_yield_anonymous(self):
+    def testYieldAnonymous(self):
         def train(config):
             for i in range(10):
                 yield config["a"] + i
@@ -502,10 +582,10 @@ class FunctionApiTest(unittest.TestCase):
                 "a": tune.grid_search([4, 8])
             }).trials
 
-        self.assertEquals(trial_1.last_result["_metric"], 4 + 9)
-        self.assertEquals(trial_2.last_result["_metric"], 8 + 9)
+        self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4 + 9)
+        self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8 + 9)
 
-    def test_yield_specific(self):
+    def testYieldSpecific(self):
         def train(config):
             for i in range(10):
                 yield {"m": config["a"] + i}
@@ -515,5 +595,10 @@ class FunctionApiTest(unittest.TestCase):
                 "a": tune.grid_search([4, 8])
             }).trials
 
-        self.assertEquals(trial_1.last_result["m"], 4 + 9)
-        self.assertEquals(trial_2.last_result["m"], 8 + 9)
+        self.assertEqual(trial_1.last_result["m"], 4 + 9)
+        self.assertEqual(trial_2.last_result["m"], 8 + 9)
+
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

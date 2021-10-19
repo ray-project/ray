@@ -44,5 +44,4 @@ public class PyActorClass {
   public static PyActorClass of(String moduleName, String className) {
     return new PyActorClass(moduleName, className);
   }
-
 }
