@@ -288,7 +288,9 @@ class Client:
         """
         cache_key = (endpoint_name, missing_ok, sync)
         if cache_key in self.handle_cache:
-            return self.handle_cache[cache_key]
+            cached_handle = self.handle_cache[cache_key]
+            if cached_handle.is_polling and cached_handle.is_same_loop:
+                return cached_handle
 
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
         if not missing_ok and endpoint_name not in all_endpoints:
