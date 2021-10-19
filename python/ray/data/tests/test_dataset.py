@@ -1003,6 +1003,12 @@ def test_from_pandas(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
 
+    # test from single pandas dataframe
+    ds = ray.data.from_pandas(df1)
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+
 
 def test_from_pandas_refs(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -1010,6 +1016,12 @@ def test_from_pandas_refs(ray_start_regular_shared):
     ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+    # test from single pandas dataframe ref
+    ds = ray.data.from_pandas_refs(ray.put(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
 
 
@@ -1034,6 +1046,12 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
 
+    # test from single pyarrow table
+    ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+
 
 def test_from_arrow_refs(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -1044,6 +1062,12 @@ def test_from_arrow_refs(ray_start_regular_shared):
     ])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+    # test from single pyarrow table ref
+    ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
 
 
