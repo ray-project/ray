@@ -522,14 +522,16 @@ if __name__ == "__main__":
                                    "python_versions.txt")
     with open(py_version_file) as f:
         py_file_versions = f.readlines()
-        assert set(PY_MATRIX.keys()) == set(py_file_versions)
+        assert set(PY_MATRIX.keys()) == set(py_file_versions), \
+            (PY_MATRIX.keys(), py_file_versions)
 
     cuda_version_file = os.path.join(_get_root_dir(), "docker",
                                      "cuda_versions.txt")
 
     with open(cuda_version_file) as f:
         cuda_file_versions = f.readlines()
-        assert set(BASE_IMAGES.keys()) == set(cuda_file_versions + ["cpu"])
+        assert set(BASE_IMAGES.keys()) == set(cuda_file_versions + ["cpu"]),\
+            (BASE_IMAGES.keys(), cuda_file_versions + ["cpu"])
 
     print("Building the following python versions: ",
           [PY_MATRIX[py_version] for py_version in py_versions])
