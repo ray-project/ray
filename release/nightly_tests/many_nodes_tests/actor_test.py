@@ -12,7 +12,9 @@ def test_max_actors_launch(cpus_per_actor, total_actors):
             pass
 
     print("Start launch actors")
-    actors = [Actor.remote() for _ in range(total_actors)]
+    actors = [
+        Actor.options(max_restarts=-1).remote() for _ in range(total_actors)
+    ]
     return actors
 
 
@@ -23,8 +25,8 @@ def test_actor_ready(actors):
 
 def parse_script_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cpus-per-actor", type=float, default=0.1)
-    parser.add_argument("--total-actors", type=int, default=20000)
+    parser.add_argument("--cpus-per-actor", type=float, default=0.2)
+    parser.add_argument("--total-actors", type=int, default=5000)
     parser.add_argument("--no-report", default=False, action="store_true")
     parser.add_argument("--fail", default=False, action="store_true")
     return parser.parse_known_args()

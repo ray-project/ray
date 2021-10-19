@@ -34,7 +34,8 @@ namespace core {
 class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket,
-             int node_manager_port, const gcs::GcsClientOptions &gcs_options) {
+             int node_manager_port, const gcs::GcsClientOptions &gcs_options,
+             StartupToken startup_token) {
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
@@ -50,6 +51,7 @@ class MockWorker {
         std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9);
     options.num_workers = 1;
     options.metrics_agent_port = -1;
+    options.startup_token = startup_token;
     CoreWorkerProcess::Initialize(options);
   }
 
@@ -149,10 +151,13 @@ int main(int argc, char **argv) {
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
   auto node_manager_port = std::stoi(std::string(argv[3]));
+  auto startup_token_str = std::string(argv[4]);
+  auto start = startup_token_str.find(std::string("=")) + 1;
+  auto startup_token = std::stoi(startup_token_str.substr(start));
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::core::MockWorker worker(store_socket, raylet_socket, node_manager_port,
-                               gcs_options);
+                               gcs_options, startup_token);
   worker.RunTaskExecutionLoop();
   return 0;
 }

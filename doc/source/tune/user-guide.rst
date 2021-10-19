@@ -50,7 +50,8 @@ the respective placement group. If not enough resources are available, this will
 If your trainable function starts more remote workers, you will need to pass placement groups
 factory objects to request these resources. See the
 :class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
-for further information.
+for further information. This also applies if you are using other libraries making use of Ray, such
+as Modin. Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
 
 Using GPUs
 ~~~~~~~~~~
@@ -870,6 +871,10 @@ These are the environment variables Ray Tune currently considers:
   Ctrl+C) to gracefully shutdown and do a final checkpoint. Setting this variable
   to ``1`` will disable signal handling and stop execution right away. Defaults to
   ``0``.
+* **TUNE_FORCE_TRIAL_CLEANUP_S**: By default, Ray Tune will gracefully terminate trials,
+  letting them finish the current training step and any user-defined cleanup. 
+  Setting this variable to a non-zero, positive integer will cause trials to be forcefully
+  terminated after a grace period of that many seconds. Defaults to ``0``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
   for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's

@@ -21,7 +21,9 @@ class VectorizedCoinGame(CoinGame):
     Vectorized Coin Game environment.
     """
 
-    def __init__(self, config={}):
+    def __init__(self, config=None):
+        if config is None:
+            config = {}
 
         super().__init__(config)
 
@@ -159,7 +161,10 @@ class VectorizedCoinGame(CoinGame):
 class AsymVectorizedCoinGame(VectorizedCoinGame):
     NAME = "AsymCoinGame"
 
-    def __init__(self, config={}):
+    def __init__(self, config=None):
+        if config is None:
+            config = {}
+
         if "asymmetric" in config:
             assert config["asymmetric"]
         else:
