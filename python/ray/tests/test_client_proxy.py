@@ -18,14 +18,11 @@ from ray._private.test_utils import run_string_as_driver
 
 
 def start_ray_and_proxy_manager(n_ports=2):
-    agent_port = random.choice(range(50000, 55000))
     ray_instance = ray.init(_redis_password="test")
-    agent_port = ray.worker.global_worker.node.metrics_agent_port
     pm = proxier.ProxyManager(
         ray_instance["redis_address"],
         session_dir=ray_instance["session_dir"],
-        redis_password="test",
-        runtime_env_agent_port=agent_port)
+        redis_password="test")
     free_ports = random.choices(range(45000, 45100), k=n_ports)
     pm._free_ports = free_ports.copy()
 

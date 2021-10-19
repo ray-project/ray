@@ -788,12 +788,6 @@ def main():
         type=int,
         default=0,
         help="The PID of the process for setup worker runtime env.")
-    parser.add_argument(
-        "--metrics-agent-port",
-        required=False,
-        type=int,
-        default=0,
-        help="The port to use for connecting to the runtime_env agent.")
     args, _ = parser.parse_known_args()
     logging.basicConfig(level="INFO")
 
@@ -811,8 +805,7 @@ def main():
         server = serve_proxier(
             hostport,
             args.redis_address,
-            redis_password=args.redis_password,
-            runtime_env_agent_port=args.metrics_agent_port)
+            redis_password=args.redis_password)
     else:
         server = serve(hostport, ray_connect_handler)
 

@@ -1911,7 +1911,6 @@ def start_ray_client_server(
         stderr_file=None,
         redis_password=None,
         fate_share=None,
-        metrics_agent_port=None,
         server_type: str = "proxy",
         serialized_runtime_env_context: Optional[str] = None):
     """Run the server process of the Ray client.
@@ -1950,8 +1949,6 @@ def start_ray_client_server(
         command.append(
             f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
         )
-    if metrics_agent_port:
-        command.append(f"--metrics-agent-port={metrics_agent_port}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
