@@ -297,13 +297,17 @@ def build_or_pull_base_images(py_versions: List[str],
             py_versions, image_types)
     ]
 
-    is_stale = check_staleness(repositories[0], tags[0])
+    try:
+        is_stale = check_staleness(repositories[0], tags[0])
 
-    # We still pull even if we have to rebuild the base images to help with
-    # caching.
-    for repository in repositories:
-        for tag in tags:
-            DOCKER_CLIENT.api.pull(repository=repository, tag=tag)
+        # We still pull even if we have to rebuild the base images to help with
+        # caching.
+        for repository in repositories:
+            for tag in tags:
+                DOCKER_CLIENT.api.pull(repository=repository, tag=tag)
+    except Exception as e:
+        print(e)
+        is_stale = True
 
     if rebuild_base_images or _release_build() or is_stale:
         build_base_images(py_versions, image_types)
