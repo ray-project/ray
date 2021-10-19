@@ -57,6 +57,7 @@ class CreateRequestQueue {
   /// \param create_callback A callback to attempt to create the object.
   /// \param object_size Object size in bytes.
   /// \return A request ID that can be used to get the result.
+  /// TODO(jae): Pass the TaskKey in addition to or instead of the object_id.
   uint64_t AddRequest(const ObjectID &object_id,
                       const std::shared_ptr<ClientInterface> &client,
                       const CreateObjectCallback &create_callback,

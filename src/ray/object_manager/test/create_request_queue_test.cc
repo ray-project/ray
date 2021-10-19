@@ -72,6 +72,7 @@ class CreateRequestQueueTest : public ::testing::Test {
   int num_global_gc_ = 0;
 };
 
+// TODO(jae): Add a test that checks for priority-based order.
 TEST_F(CreateRequestQueueTest, TestSimple) {
   auto request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;
