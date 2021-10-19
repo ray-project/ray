@@ -162,7 +162,7 @@ def s3_working_dir():
         pytest.lazy_fixture("local_working_dir"),
         pytest.lazy_fixture("s3_working_dir")
     ])
-def working_dir(request):
+def working_dir_parametrized(request):
     return request.param
 
 
@@ -316,13 +316,13 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [False, True])
-def test_single_node(ray_start_cluster_head, working_dir, client_mode):
+def test_single_node(ray_start_cluster_head, working_dir_parametrized, client_mode):
     cluster = ray_start_cluster_head
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
 
     # Unpack lazy fixture tuple to override "working_dir" to fill up
     # execute_statement locals()
-    working_dir, runtime_env, expected = working_dir
+    working_dir, runtime_env, expected = working_dir_parametrized
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
@@ -339,18 +339,24 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_two_node(two_node_cluster, working_dir, client_mode):
+def test_two_node(two_node_cluster, working_dir_parametrized, client_mode):
     cluster, _ = two_node_cluster
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    # Testing runtime env with working_dir
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Unpack lazy fixture tuple to override "working_dir" to fill up
+    # execute_statement locals()
+    working_dir, runtime_env, expected = working_dir_parametrized
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(runtime_env_dir).iterdir())) == 1
-    assert len(kv._internal_kv_list("gcs://")) == 0
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Execute driver script in brand new, empty directory
+        os.chdir(tmp_dir)
+        out = run_string_as_driver(script, env)
+        assert out.strip().split()[-1] == expected
+        assert len(list(Path(working_dir).iterdir())) == 1
+        assert len(kv._internal_kv_list("gcs://")) == 0
+        # working_dir fixture will take care of going back to original test
+        # folder
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
