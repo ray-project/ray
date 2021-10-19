@@ -1,9 +1,4 @@
-import asyncio
-
-
-import asyncio
 import os
-from filelock import logger
 import pytest
 import sys
 import random
@@ -20,7 +15,6 @@ from ray._private.test_utils import (
 from ray._private.runtime_env import working_dir as working_dir_pkg
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
-
 
 driver_script = """
 import logging
@@ -67,11 +61,9 @@ if os.environ.get("EXIT_AFTER_INIT"):
 def dummy_task():
     return "dummy task scheduled"
 
-print(ray.get([dummy_task.remote()]))
-print(os.getcwd())
-print(os.listdir())
-print("{working_dir}")
+ray.get([dummy_task.remote()])
 
+# Insert working_dir path with unzipped files
 sys.path.insert(0, "{working_dir}")
 
 try:
@@ -291,14 +283,15 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env).strip().split()[-1]
     assert out == "ValueError"
 
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("use_local_working_dir", [True, False])
-@pytest.mark.parametrize("client_mode", [True, False])
-def test_single_node(ray_start_cluster_head, working_dir, client_mode, use_local_working_dir):
+@pytest.mark.parametrize("use_local_working_dir", [False, True])
+@pytest.mark.parametrize("client_mode", [False, True])
+def test_single_node(ray_start_cluster_head, working_dir, client_mode,
+                     use_local_working_dir):
     cluster = ray_start_cluster_head
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
 
-    print(f">>>> runtime_env_dir: {runtime_env_dir}")
     # Setup runtime env here
     if use_local_working_dir:
         runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -306,22 +299,28 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode, use_local
         remote_pkg_uri = "s3://runtime-env-test/remote_runtime_env.zip"
         runtime_env = f"""{{  "working_dir": "{remote_pkg_uri}" }}"""
         _, pkg_name = working_dir_pkg.parse_uri(remote_pkg_uri)
-        working_dir = Path(os.path.join(runtime_env_dir, pkg_name)).with_suffix("")
-        print(f">>>> working_dir: {working_dir}")
+        working_dir = Path(os.path.join(runtime_env_dir,
+                                        pkg_name)).with_suffix("")
+
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    print(out)
-    if use_local_working_dir:
-        assert out.strip().split()[-1] == "1000"
-        assert len(list(Path(runtime_env_dir).iterdir())) == 1
-    else:
-        assert out.strip().split()[-1] == "2000"
-        print(list(Path(working_dir).iterdir()))
-        assert len(list(Path(working_dir).iterdir())) == 1
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Execute driver script in brand new, empty directory
+        os.chdir(tmp_dir)
+        out = run_string_as_driver(script, env)
+        if use_local_working_dir:
+            assert out.strip().split()[-1] == "1000"
+            assert len(list(Path(runtime_env_dir).iterdir())) == 1
+        else:
+            assert out.strip().split()[-1] == "2000"
+            print(list(Path(working_dir).iterdir()))
+            assert len(list(Path(working_dir).iterdir())) == 1
 
-    assert len(kv._internal_kv_list("gcs://")) == 0
+        assert len(kv._internal_kv_list("gcs://")) == 0
+
+        # working_dir fixture will take care of going back to original test
+        # folder
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

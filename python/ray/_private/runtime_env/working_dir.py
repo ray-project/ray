@@ -1,5 +1,5 @@
 from enum import Enum
-from filelock import FileLock, logger
+from filelock import FileLock
 import hashlib
 import logging
 import os
@@ -284,7 +284,6 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
     Args:
         job_config (JobConfig): The job config.
     """
-    default_logger.info(f"rewrite_runtime_env_uris, {job_config.runtime_env}")
     # For now, we only support local directory, packages and zip file on s3
     uris = job_config.runtime_env.get("uris")
     if uris is not None:
@@ -325,7 +324,6 @@ def create_project_package(
         excludes (List(str)): The directories or file to be excluded.
         output_path (str): The path of file to be created.
     """
-    default_logger.info(f"create_project_package, {working_dir}")
     if urlparse(working_dir).scheme == Protocol.S3:
         raise RuntimeError(
             "create_project_package should not be called with s3 working_dir.")
@@ -395,12 +393,10 @@ def package_exists(pkg_uri: str) -> bool:
 
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
-        default_logger.info("Started WorkingDirManager")
         self._resources_dir = resources_dir
         assert _internal_kv_initialized()
 
     def _get_local_path(self, pkg_uri: str) -> str:
-        default_logger.info("_get_local_path")
         _, pkg_name = parse_uri(pkg_uri)
         return os.path.join(self._resources_dir, pkg_name)
 
@@ -450,7 +446,7 @@ class WorkingDirManager:
                                   "`pip install boto3` to fetch URIs in s3 "
                                   "bucket.")
 
-            tp = {'client': boto3.client('s3')}
+            tp = {"client": boto3.client("s3")}
             with open(pkg_uri, "rb", transport_params=tp) as package_zip:
                 with open(pkg_file, "wb") as fin:
                     fin.write(package_zip.read())
@@ -480,9 +476,6 @@ class WorkingDirManager:
         Args:
             job_config (JobConfig): The job config of driver.
         """
-        default_logger.info(
-            f"upload_runtime_env_package_if_needed: job_config - {job_config.runtime_env}"
-        )
         if logger is None:
             logger = default_logger
 
@@ -533,7 +526,6 @@ class WorkingDirManager:
             Working directory is returned if the pkg_uris is not empty,
             otherwise, None is returned.
         """
-        default_logger.info("setup_local_working_dir")
         pkg_dir = None
         for pkg_uri in pkg_uris:
             # For each node, the package will only be downloaded one time
@@ -558,11 +550,11 @@ class WorkingDirManager:
         Returns:
             True if the URI was successfully deleted, else False.
         """
-        default_logger.info("delete_uri")
         if logger is None:
             logger = default_logger
 
-        if urlparse(uri).scheme in {"s3"}:
+        if urlparse(uri).scheme in {Protocol.S3.value}:
+            logger.info(f"Skipping uri deletion for s3 path: {uri}")
             return True
 
         deleted = False
@@ -575,6 +567,7 @@ class WorkingDirManager:
                 else:
                     path.unlink()
                 deleted = True
+                logger.info(f"Deleted {path} for package uri: {uri}")
 
         if not deleted:
             logger.warning(f"Tried to delete nonexistent path: {path}")
@@ -585,14 +578,12 @@ class WorkingDirManager:
               runtime_env: dict,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
-        logger.info(f"Calling setup with runtime_env: {runtime_env}")
-
         if not runtime_env.get("uris"):
             return
 
         working_dir = self.setup_local_working_dir(
             runtime_env["uris"], logger=logger)
-        logger.info(f"After setup working_dir: {working_dir}")
+        logger.info(f"Local working_dir after setting up: {working_dir}")
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is

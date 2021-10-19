@@ -683,7 +683,6 @@ class Worker:
                 # Generate and upload URIs for the working directory. This
                 # uses internal_kv to upload to the GCS.
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    print(">>>>>>>")
                     working_dir_pkg.rewrite_runtime_env_uris(job_config)
                     manager = working_dir_pkg.WorkingDirManager(tmp_dir)
                     manager.upload_runtime_env_package_if_needed(job_config)
