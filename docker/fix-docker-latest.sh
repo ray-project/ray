@@ -27,26 +27,41 @@ done
 echo "You must be logged into a user with push privileges to do this."
 for REPO in "ray" "ray-ml"
 do
-    for PYVERSION in "py36" "py37" "py38" "py39"
-    do
-        export SOURCE_TAG="$IMAGE"-"$PYVERSION"
-        export DEST_TAG="$DEST"-"$PYVERSION"
+    while IFS= read -r PYVERSION; do
+      while IFS= read -r CUDAVERSION; do
+        export SOURCE_TAG="$IMAGE"-"$PYVERSION"-"$CUDAVERSION"
+        export DEST_TAG="$DEST"-"$PYVERSION"-"$CUDAVERSION"
         docker pull rayproject/"$REPO":"$SOURCE_TAG"
         docker tag rayproject/"$REPO":"$SOURCE_TAG" rayproject/"$REPO":"$DEST_TAG"
-        docker tag rayproject/"$REPO":"$SOURCE_TAG" rayproject/"$REPO":"$DEST_TAG"-cpu
-
-        docker pull rayproject/"$REPO":"$SOURCE_TAG"-gpu
-        docker tag rayproject/"$REPO":"$SOURCE_TAG"-gpu rayproject/"$REPO":"$DEST_TAG"-gpu
-
         docker push rayproject/"$REPO":"$DEST_TAG"
-        docker push rayproject/"$REPO":"$DEST_TAG"-cpu
-        docker push rayproject/"$REPO":"$DEST_TAG"-gpu
-    done
+      done < cuda_versions.txt
+
+      export SOURCE_TAG="$IMAGE"-"$PYVERSION"
+      export DEST_TAG="$DEST"-"$PYVERSION"
+      docker pull rayproject/"$REPO":"$SOURCE_TAG"
+      docker tag rayproject/"$REPO":"$SOURCE_TAG" rayproject/"$REPO":"$DEST_TAG"
+      docker tag rayproject/"$REPO":"$SOURCE_TAG" rayproject/"$REPO":"$DEST_TAG"-cpu
+
+      docker pull rayproject/"$REPO":"$SOURCE_TAG"-gpu
+      docker tag rayproject/"$REPO":"$SOURCE_TAG"-gpu rayproject/"$REPO":"$DEST_TAG"-gpu
+
+      docker push rayproject/"$REPO":"$DEST_TAG"
+      docker push rayproject/"$REPO":"$DEST_TAG"-cpu
+      docker push rayproject/"$REPO":"$DEST_TAG"-gpu
+    done < python_versions.txt
 done
 
 
 for REPO in "ray" "ray-ml" "ray-deps" "base-deps"
 do
+    while IFS= read -r CUDAVERSION; do
+      export SOURCE_TAG="$IMAGE"-"$CUDAVERSION"
+      export DEST_TAG="$DEST"-"$CUDAVERSION"
+      docker pull rayproject/"$REPO":"$SOURCE_TAG"
+      docker tag rayproject/"$REPO":"$SOURCE_TAG" rayproject/"$REPO":"$DEST_TAG"
+      docker push rayproject/"$REPO":"$DEST_TAG"
+    done < cuda_versions.txt
+
     docker pull rayproject/"$REPO":"$IMAGE"
     docker tag rayproject/"$REPO":"$IMAGE" rayproject/"$REPO":"$DEST"
     docker tag rayproject/"$REPO":"$IMAGE" rayproject/"$REPO":"$DEST"-cpu
