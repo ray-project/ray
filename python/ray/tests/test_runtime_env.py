@@ -198,10 +198,8 @@ def s3_working_dir():
 
 @pytest.fixture(
     scope="function",
-    params=[
-        lazy_fixture("local_working_dir"),
-        lazy_fixture("s3_working_dir")
-    ])
+    params=[lazy_fixture("local_working_dir"),
+            lazy_fixture("s3_working_dir")])
 def working_dir_parametrized(request):
     return request.param
 
