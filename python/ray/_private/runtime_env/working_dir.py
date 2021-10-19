@@ -270,7 +270,8 @@ def get_project_package_name(
         hash_val = _xor_bytes(
             hash_val,
             _hash_modules(module_dir, module_dir.parent, None, logger=logger))
-    return RAY_PKG_PREFIX + hash_val.hex() + ".zip"
+
+    return (RAY_PKG_PREFIX + hash_val.hex() + ".zip", Protocol.GCS)
 
 
 def rewrite_runtime_env_uris(job_config: JobConfig) -> None:

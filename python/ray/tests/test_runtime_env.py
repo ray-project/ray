@@ -23,9 +23,16 @@ import logging
 import os
 import sys
 import time
+import traceback
 
 import ray
 import ray.util
+
+# Define test_module for py_module tests
+try:
+    import test_module
+except:
+    pass
 
 try:
     job_config = ray.job_config.JobConfig(
@@ -45,13 +52,13 @@ try:
                  namespace="default_test_namespace"
         )
 except ValueError as value_e:
-    print("ValueError: ", str(value_e))
+    print("ValueError: ", traceback.format_exc())
     sys.exit(0)
 except TypeError as type_e:
-    print("TypeError: ", str(type_e))
+    print("TypeError: ", traceback.format_exc())
     sys.exit(0)
 except Exception as e:
-    print("ERROR:", str(e))
+    print("ERROR:", traceback.format_exc())
     sys.exit(0)
 
 
@@ -68,10 +75,8 @@ ray.get([dummy_task.remote()])
 # Insert working_dir path with unzipped files
 sys.path.insert(0, "{working_dir}")
 
-try:
-    import test_module
-except:
-    pass
+# Actual import of test_module after working_dir is setup
+import test_module
 
 @ray.remote
 def run_test():
@@ -108,7 +113,34 @@ def create_file(p):
 
 
 @pytest.fixture(scope="function")
+def working_dir():
+    """Regular local_working_dir test setup for existing tests"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        module_path = path / "test_module"
+        module_path.mkdir(parents=True)
+
+        init_file = module_path / "__init__.py"
+        test_file = module_path / "test.py"
+        with test_file.open(mode="w") as f:
+            f.write("""
+def one():
+    return 1
+""")
+        with init_file.open(mode="w") as f:
+            f.write("""
+from test_module.test import one
+""")
+
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+        yield tmp_dir
+        os.chdir(old_dir)
+
+
+@pytest.fixture(scope="function")
 def local_working_dir():
+    """Parametrized local_working_dir test setup"""
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
         module_path = path / "test_module"
@@ -136,15 +168,22 @@ from test_module.test import one
         os.chdir(tmp_dir)
         runtime_env = f"""{{  "working_dir": "{tmp_dir}" }}"""
         # local working_dir's one() return 1 for each call
-        yield (tmp_dir, runtime_env, "1000")
+        yield tmp_dir, runtime_env, "1000"
         os.chdir(old_dir)
 
 
 @pytest.fixture(scope="function")
 def s3_working_dir():
+    """Parametrized s3_working_dir test setup"""
     with tempfile.TemporaryDirectory() as tmp_dir:
         old_dir = os.getcwd()
         os.chdir(tmp_dir)
+
+        # There are "test.py" file with same module name and function
+        # signature, but different return value. Regular runtime env
+        # working_dir uses existing file and should return 1 on each
+        # call to one(); While s3 remote runtime env with same file
+        # names will return 2.
 
         runtime_env = f"""{{  "working_dir": "{S3_PACKAGE_URI}" }}"""
         _, pkg_name = working_dir_pkg.parse_uri(S3_PACKAGE_URI)
@@ -152,7 +191,7 @@ def s3_working_dir():
         working_dir = Path(os.path.join(runtime_env_dir,
                                         pkg_name)).with_suffix("")
         # s3 working_dir's one() return 2 for each call
-        yield (working_dir, runtime_env, "2000")
+        yield working_dir, runtime_env, "2000"
         os.chdir(old_dir)
 
 
@@ -282,36 +321,36 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out == "TypeError"
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("TypeError")
 
     runtime_env = "{ 'py_modules': [10] }"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out == "TypeError"
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("TypeError")
 
     runtime_env = f"{{ 'working_dir': os.path.join(r'{working_dir}', 'na') }}"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out == "ValueError"
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("ValueError")
 
     runtime_env = f"{{ 'py_modules': [os.path.join(r'{working_dir}', 'na')] }}"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out == "ValueError"
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("ValueError")
 
     runtime_env = "{ 'working_dir': 's3://bucket/package' }"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out == "ValueError"
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("ValueError")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -323,7 +362,9 @@ def test_single_node(ray_start_cluster_head, working_dir_parametrized,
 
     # Unpack lazy fixture tuple to override "working_dir" to fill up
     # execute_statement locals()
+    print(working_dir_parametrized)
     working_dir, runtime_env, expected = working_dir_parametrized
+    print(working_dir, runtime_env, expected)
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
