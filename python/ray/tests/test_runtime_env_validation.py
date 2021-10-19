@@ -188,33 +188,27 @@ class TestValidateEnvVars:
 
 
 class TestParsedRuntimeEnv:
-    @pytest.mark.parametrize("is_task_or_actor", [True, False])
-    def test_empty(self, is_task_or_actor):
-        assert ParsedRuntimeEnv({}, is_task_or_actor=is_task_or_actor) == {}
+    def test_empty(self):
+        assert ParsedRuntimeEnv({}) == {}
 
     @pytest.mark.skipif(
         sys.platform == "win32", reason="Pip option not supported on Windows.")
-    @pytest.mark.parametrize("is_task_or_actor", [True, False])
-    def test_serialization(self, is_task_or_actor):
-        env1 = ParsedRuntimeEnv(
-            {
-                "pip": ["requests"],
-                "env_vars": {
-                    "hi1": "hi1",
-                    "hi2": "hi2"
-                }
-            },
-            is_task_or_actor=is_task_or_actor)
+    def test_serialization(self):
+        env1 = ParsedRuntimeEnv({
+            "pip": ["requests"],
+            "env_vars": {
+                "hi1": "hi1",
+                "hi2": "hi2"
+            }
+        })
 
-        env2 = ParsedRuntimeEnv(
-            {
-                "env_vars": {
-                    "hi2": "hi2",
-                    "hi1": "hi1"
-                },
-                "pip": ["requests"]
+        env2 = ParsedRuntimeEnv({
+            "env_vars": {
+                "hi2": "hi2",
+                "hi1": "hi1"
             },
-            is_task_or_actor=is_task_or_actor)
+            "pip": ["requests"]
+        })
 
         assert env1 == env2
 
@@ -229,93 +223,50 @@ class TestParsedRuntimeEnv:
 
         assert env1 == deserialized_env1 == env2 == deserialized_env2
 
-    @pytest.mark.parametrize("is_task_or_actor", [True, False])
-    def test_reject_pip_and_conda(self, is_task_or_actor):
+    def test_reject_pip_and_conda(self):
         with pytest.raises(ValueError):
-            ParsedRuntimeEnv(
-                {
-                    "pip": ["requests"],
-                    "conda": "env_name"
-                },
-                is_task_or_actor=is_task_or_actor)
+            ParsedRuntimeEnv({"pip": ["requests"], "conda": "env_name"})
 
     @pytest.mark.skipif(
         sys.platform == "win32",
         reason="Conda and pip options not supported on Windows.")
-    @pytest.mark.parametrize("is_task_or_actor", [True, False])
-    def test_ray_commit_injection(self, is_task_or_actor):
+    def test_ray_commit_injection(self):
         # Should not be injected if no pip and conda.
-        result = ParsedRuntimeEnv(
-            {
-                "env_vars": {
-                    "hi": "hi"
-                }
-            }, is_task_or_actor=is_task_or_actor)
+        result = ParsedRuntimeEnv({"env_vars": {"hi": "hi"}})
         assert "_ray_commit" not in result
 
         # Should be injected if pip or conda present.
-        result = ParsedRuntimeEnv(
-            {
-                "pip": ["requests"],
-            }, is_task_or_actor=is_task_or_actor)
+        result = ParsedRuntimeEnv({
+            "pip": ["requests"],
+        })
         assert "_ray_commit" in result
 
-        result = ParsedRuntimeEnv(
-            {
-                "conda": "env_name"
-            }, is_task_or_actor=is_task_or_actor)
+        result = ParsedRuntimeEnv({"conda": "env_name"})
         assert "_ray_commit" in result
 
         # Should not override if passed.
-        result = ParsedRuntimeEnv(
-            {
-                "conda": "env_name",
-                "_ray_commit": "Blah"
-            },
-            is_task_or_actor=is_task_or_actor)
+        result = ParsedRuntimeEnv({"conda": "env_name", "_ray_commit": "Blah"})
         assert result["_ray_commit"] == "Blah"
 
-    @pytest.mark.parametrize("is_task_or_actor", [True, False])
-    def test_inject_current_ray(self, is_task_or_actor):
+    def test_inject_current_ray(self):
         # Should not be injected if not provided by env var.
-        result = ParsedRuntimeEnv(
-            {
-                "env_vars": {
-                    "hi": "hi"
-                }
-            }, is_task_or_actor=is_task_or_actor)
+        result = ParsedRuntimeEnv({"env_vars": {"hi": "hi"}})
         assert "_inject_current_ray" not in result
 
         os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
         # Should be injected if provided by env var.
-        result = ParsedRuntimeEnv({}, is_task_or_actor=is_task_or_actor)
+        result = ParsedRuntimeEnv({})
         assert result["_inject_current_ray"]
 
         # Should be preserved if passed.
-        result = ParsedRuntimeEnv(
-            {
-                "_inject_current_ray": False
-            }, is_task_or_actor=is_task_or_actor)
+        result = ParsedRuntimeEnv({"_inject_current_ray": False})
         assert not result["_inject_current_ray"]
 
         del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
 
 
 class TestOverrideRuntimeEnvs:
-    def test_override_uris(self):
-        child = {}
-        parent = {"uris": ["a", "b"]}
-        assert override_task_or_actor_runtime_env(child, parent) == parent
-
-        child = {"uris": ["a", "b"]}
-        parent = {"uris": ["c", "d"]}
-        assert override_task_or_actor_runtime_env(child, parent) == child
-
-        child = {"uris": ["a", "b"]}
-        parent = {}
-        assert override_task_or_actor_runtime_env(child, parent) == child
-
     def test_override_env_vars(self):
         # (child, parent, expected)
         TEST_CASES = [

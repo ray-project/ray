@@ -11,20 +11,10 @@ import ray
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import import_attr
 
-# We need to setup this variable before
-# using this module
-PKG_DIR = None
-
 logger = logging.getLogger(__name__)
 
-FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
-# NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
-# limit, but for some reason that causes failures when downloading.
-GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
 
-
-def parse_and_validate_working_dir(working_dir: str,
-                                   is_task_or_actor: bool = False) -> str:
+def parse_and_validate_working_dir(working_dir: str) -> str:
     """Parses and validates a user-provided 'working_dir' option.
 
     This should be a URI.
@@ -35,14 +25,20 @@ def parse_and_validate_working_dir(working_dir: str,
         raise TypeError("`working_dir` must be a string, got "
                         f"{type(working_dir)}.")
 
-    # TODO(edoakes): validate that this is a URI!
+    try:
+        from ray._private.runtime_env.packaging import parse_uri
+        uri = parse_uri(working_dir)
+    except ValueError:
+        uri = None
+
+    if uri is None:
+        raise ValueError(
+            f"working_dir must be a valid URI, got {working_dir}.")
 
     return working_dir
 
 
-def parse_and_validate_conda(conda: Union[str, dict],
-                             is_task_or_actor: bool = False
-                             ) -> Union[str, dict]:
+def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     """Parses and validates a user-provided 'conda' option.
 
     Conda can be one of three cases:
@@ -81,9 +77,7 @@ def parse_and_validate_conda(conda: Union[str, dict],
     return result
 
 
-def parse_and_validate_pip(pip: Union[str, List[str]],
-                           is_task_or_actor: bool = False
-                           ) -> Optional[List[str]]:
+def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """Parses and validates a user-provided 'pip' option.
 
     Conda can be one of two cases:
@@ -116,8 +110,7 @@ def parse_and_validate_pip(pip: Union[str, List[str]],
     return result
 
 
-def parse_and_validate_container(container: List[str],
-                                 is_task_or_actor: bool = False) -> List[str]:
+def parse_and_validate_container(container: List[str]) -> List[str]:
     """Parses and validates a user-provided 'container' option.
 
     This is passed through without validation (for now).
@@ -126,8 +119,7 @@ def parse_and_validate_container(container: List[str],
     return container
 
 
-def parse_and_validate_excludes(excludes: List[str],
-                                is_task_or_actor: bool = False) -> List[str]:
+def parse_and_validate_excludes(excludes: List[str]) -> List[str]:
     """Parses and validates a user-provided 'excludes' option.
 
     This is validated to verify that it is of type List[str].
@@ -147,9 +139,8 @@ def parse_and_validate_excludes(excludes: List[str],
                         f"List[str], got {type(excludes)}")
 
 
-def parse_and_validate_env_vars(env_vars: Dict[str, str],
-                                is_task_or_actor: bool = False
-                                ) -> Optional[Dict[str, str]]:
+def parse_and_validate_env_vars(
+        env_vars: Dict[str, str]) -> Optional[Dict[str, str]]:
     """Parses and validates a user-provided 'env_vars' option.
 
     This is validated to verify that all keys and vals are strings.
@@ -231,10 +222,7 @@ class ParsedRuntimeEnv(dict):
         "_ray_release", "_ray_commit", "_inject_current_ray", "plugins"
     }
 
-    def __init__(self,
-                 runtime_env: Dict[str, Any],
-                 is_task_or_actor: bool = False,
-                 _validate: bool = True):
+    def __init__(self, runtime_env: Dict[str, Any], _validate: bool = True):
         super().__init__()
 
         # Blindly trust that the runtime_env has already been validated.
@@ -260,8 +248,7 @@ class ParsedRuntimeEnv(dict):
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = runtime_env.get(option)
             if option_val is not None:
-                validated_option_val = validate_fn(
-                    option_val, is_task_or_actor=is_task_or_actor)
+                validated_option_val = validate_fn(option_val)
                 if validated_option_val is not None:
                     self[option] = validated_option_val
 

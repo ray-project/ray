@@ -112,8 +112,7 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        self._runtime_env = ParsedRuntimeEnv(
-            runtime_env or {}, is_task_or_actor=True)
+        self._runtime_env = ParsedRuntimeEnv(runtime_env or {})
         self._placement_group = placement_group
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
@@ -172,8 +171,7 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = ParsedRuntimeEnv(
-            runtime_env or {}, is_task_or_actor=True)
+        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
