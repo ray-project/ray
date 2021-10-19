@@ -295,40 +295,6 @@ def test_batch_tensors(ray_start_regular_shared):
     assert df.to_dict().keys() == {0, 1}
 
 
-def test_arrow_block_slice_copy():
-    # Test that ArrowBlock slicing properly copies the underlying Arrow
-    # table.
-    n = 20
-    df = pd.DataFrame({"one": list(range(n))})
-    table = pa.Table.from_pandas(df)
-    og_chunk = table.column(0).chunk(0)
-    og_bufs = og_chunk.buffers()
-    a, b = 5, 10
-    expected_slice = table.slice(a, b - a)
-    block_accessor = BlockAccessor.for_block(table)
-
-    # Test with copy.
-    table2 = block_accessor.slice(a, b, True)
-    assert table2.equals(expected_slice)
-    assert table2.schema == table.schema
-    chunk = table2.column(0).chunk(0)
-    assert chunk.offset == 0
-    assert len(chunk) == b - a
-    bufs = chunk.buffers()
-    print(len(bufs))
-    assert bufs[1].address != og_bufs[1].address
-
-    # Test without copy.
-    table2 = block_accessor.slice(a, b, False)
-    assert table2.equals(expected_slice)
-    assert table2.schema == table.schema
-    chunk = table2.column(0).chunk(0)
-    assert chunk.offset == a
-    assert len(chunk) == b - a
-    bufs = chunk.buffers()
-    assert bufs[1].address == og_bufs[1].address
-
-
 def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.data.range_tensor(5, shape=(3, 5))
@@ -391,37 +357,6 @@ def test_tensor_array_reductions(ray_start_regular_shared):
             np_kwargs["ddof"] = 1
         np.testing.assert_equal(df["two"].agg(name),
                                 reducer(arr, axis=0, **np_kwargs))
-
-
-def test_tensor_array_block_slice():
-    # Test that ArrowBlock slicing workers with tensor column extension type.
-    n = 20
-    df = pd.DataFrame({"one": TensorArray(np.array(list(range(n))))})
-    table = pa.Table.from_pandas(df)
-    og_chunk = table.column(0).chunk(0)
-    og_bufs = og_chunk.buffers()
-    a, b = 5, 10
-    expected_slice = table.slice(a, b - a)
-    block_accessor = BlockAccessor.for_block(table)
-
-    # Test with copy.
-    table2 = block_accessor.slice(a, b, True)
-    assert table2.equals(expected_slice)
-    chunk = table2.column(0).chunk(0)
-    assert chunk.offset == 0
-    assert len(chunk) == b - a
-    bufs = chunk.buffers()
-    print(len(bufs))
-    assert bufs[1].address != og_bufs[1].address
-
-    # Test without copy.
-    table2 = block_accessor.slice(a, b, False)
-    assert table2.equals(expected_slice)
-    chunk = table2.column(0).chunk(0)
-    assert chunk.offset == a
-    assert len(chunk) == b - a
-    bufs = chunk.buffers()
-    assert bufs[1].address == og_bufs[1].address
 
 
 def test_arrow_tensor_array_getitem(ray_start_regular_shared):
@@ -1003,6 +938,12 @@ def test_from_pandas(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
 
+    # test from single pandas dataframe
+    ds = ray.data.from_pandas(df1)
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+
 
 def test_from_pandas_refs(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -1010,6 +951,12 @@ def test_from_pandas_refs(ray_start_regular_shared):
     ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+    # test from single pandas dataframe ref
+    ds = ray.data.from_pandas_refs(ray.put(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
 
 
@@ -1034,6 +981,12 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
 
+    # test from single pyarrow table
+    ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+
 
 def test_from_arrow_refs(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -1044,6 +997,12 @@ def test_from_arrow_refs(ray_start_regular_shared):
     ])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+    # test from single pyarrow table ref
+    ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
 
 
