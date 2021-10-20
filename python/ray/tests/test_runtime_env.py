@@ -187,10 +187,8 @@ def s3_working_dir():
         runtime_env = f"""{{  "working_dir": "{S3_PACKAGE_URI}" }}"""
         _, pkg_name = parse_uri(S3_PACKAGE_URI)
         runtime_env_dir = ray.worker._global_node.get_runtime_env_dir_path()
-        working_dir = Path(os.path.join(runtime_env_dir,
-                                        pkg_name)).with_suffix("")
         # s3 working_dir's one() return 2 for each call
-        yield working_dir, runtime_env, "2000"
+        yield None, runtime_env, "2000"
         os.chdir(old_dir)
 
 
@@ -272,22 +270,22 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out.strip().splitlines()[-1].startswith("TypeError")
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("TypeError"), out
 
     runtime_env = f"{{ 'working_dir': os.path.join(r'{working_dir}', 'na') }}"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out.strip().splitlines()[-1].startswith("ValueError")
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("ValueError"), out
 
     runtime_env = "{ 'working_dir': 's3://bucket/package' }"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().splitlines()[-1].startswith("ValueError")
+    assert out.strip().splitlines()[-1].startswith("ValueError"), out
 
 
 @pytest.mark.skip("py_modules not supported yet.")
@@ -302,22 +300,22 @@ def test_invalid_py_modules(ray_start_cluster_head, working_dir, client_mode):
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out.strip().splitlines()[-1].startswith("TypeError")
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("TypeError"), out
 
     runtime_env = f"{{ 'py_modules': [os.path.join(r'{working_dir}', 'na')] }}"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out.strip().splitlines()[-1].startswith("ValueError")
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("ValueError"), out
 
     runtime_env = "{ 'py_modules': ['s3://bucket/package'] }"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().splitlines()[-1].startswith("ValueError")
+    assert out.strip().splitlines()[-1].startswith("ValueError"), out
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -333,8 +331,6 @@ def test_single_node(ray_start_cluster_head, working_dir_parametrized,
     working_dir, runtime_env, expected = working_dir_parametrized
     print(working_dir, runtime_env, expected)
 
-    # Setup runtime env here
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
@@ -343,8 +339,9 @@ def test_single_node(ray_start_cluster_head, working_dir_parametrized,
         # Execute driver script in brand new, empty directory
         os.chdir(tmp_dir)
         out = run_string_as_driver(script, env)
-        assert out.strip().split()[-1] == expected
-        assert len(list(Path(working_dir).iterdir())) == 1
+        assert out.strip().split()[-1] == expected, out
+        if working_dir is not None:
+            assert len(list(Path(working_dir).iterdir())) == 1
         assert len(kv._internal_kv_list("gcs://")) == 0
         # working_dir fixture will take care of going back to original test
         # folder
@@ -365,8 +362,9 @@ def test_two_node(two_node_cluster, working_dir_parametrized, client_mode):
         # Execute driver script in brand new, empty directory
         os.chdir(tmp_dir)
         out = run_string_as_driver(script, env)
-        assert out.strip().split()[-1] == expected
-        assert len(list(Path(working_dir).iterdir())) == 1
+        assert out.strip().split()[-1] == expected, out
+        if working_dir is not None:
+            assert len(list(Path(working_dir).iterdir())) == 1
         assert len(kv._internal_kv_list("gcs://")) == 0
         # working_dir fixture will take care of going back to original test
         # folder
@@ -384,7 +382,7 @@ def test_two_node_module(two_node_cluster, working_dir, client_mode):
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
+    assert out.strip().split()[-1] == "1000", out
     assert len(list(Path(runtime_env_dir).iterdir())) == 1
 
 
@@ -404,7 +402,7 @@ print(sum([int(v) for v in vals]))
 """
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
+    assert out.strip().split()[-1] == "1000", out
     assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
@@ -445,7 +443,7 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     # Test it works before
     assert out.strip().split("\n")[-1] == \
-        "Test,Test,Test,Test,Test,Test,Test,Test"
+        "Test,Test,Test,Test,Test,Test,Test,Test", out
     runtime_env = f"""{{
         "working_dir": r"{working_dir}",
         "excludes": [
@@ -462,7 +460,7 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split("\n")[-1] == \
-        "Test,FAILED,Test,FAILED,FAILED,Test,FAILED,FAILED"
+        "Test,FAILED,Test,FAILED,FAILED,Test,FAILED,FAILED", out
     # Test excluding all files using gitignore pattern matching syntax
     runtime_env = f"""{{
         "working_dir": r"{working_dir}",
@@ -471,7 +469,7 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split("\n")[-1] == \
-        "FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED"
+        "FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED", out
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -522,7 +520,7 @@ def test_exclusion_2(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     # Test it works before
     assert out.strip().split("\n")[-1] == \
-        "Test,Test,Test,Test,Test,Test,Test,Test,Test,Test,Test"
+        "Test,Test,Test,Test,Test,Test,Test,Test,Test,Test,Test", out
     with open(f"{working_dir}/.gitignore", "w") as f:
         f.write("""
 # Comment
@@ -568,7 +566,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 """
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
+    assert out.strip().split()[-1] == "1000", out
     assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
@@ -586,7 +584,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 """
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
+    assert out.strip().split()[-1] == "1000", out
     # It's a detached actors, so it should still be there
     assert len(kv._internal_kv_list("gcs://")) == 1
     assert len(list(Path(runtime_env_dir).iterdir())) == 2

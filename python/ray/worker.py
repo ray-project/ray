@@ -1389,14 +1389,16 @@ def connect(node,
             runtime_env = job_config.runtime_env
             if "working_dir" in runtime_env:
                 working_dir = runtime_env["working_dir"]
-                excludes = runtime_env.pop("excludes", None)
+                if not working_dir.startswith("s3"):
+                    excludes = runtime_env.pop("excludes", None)
 
-                working_dir_uri = get_uri_for_directory(
-                    working_dir, excludes=excludes)
-                upload_package_if_needed(
-                    working_dir_uri, worker.node.get_runtime_env_dir_path(),
-                    working_dir, excludes)
-                runtime_env["working_dir"] = working_dir_uri
+                    working_dir_uri = get_uri_for_directory(
+                        working_dir, excludes=excludes)
+                    upload_package_if_needed(
+                        working_dir_uri,
+                        worker.node.get_runtime_env_dir_path(), working_dir,
+                        excludes)
+                    runtime_env["working_dir"] = working_dir_uri
 
             job_config.set_runtime_env(runtime_env)
 

@@ -687,13 +687,14 @@ class Worker:
                 if "working_dir" in runtime_env:
                     with tempfile.TemporaryDirectory() as tmp_dir:
                         working_dir = runtime_env["working_dir"]
-                        excludes = runtime_env.pop("excludes", None)
+                        if not working_dir.startswith("s3"):
+                            excludes = runtime_env.pop("excludes", None)
 
-                        working_dir_uri = get_uri_for_directory(
-                            working_dir, excludes=excludes)
-                        upload_package_if_needed(working_dir_uri, tmp_dir,
-                                                 working_dir, excludes)
-                        runtime_env["working_dir"] = working_dir_uri
+                            working_dir_uri = get_uri_for_directory(
+                                working_dir, excludes=excludes)
+                            upload_package_if_needed(working_dir_uri, tmp_dir,
+                                                     working_dir, excludes)
+                            runtime_env["working_dir"] = working_dir_uri
 
                 job_config.set_runtime_env(runtime_env)
 
