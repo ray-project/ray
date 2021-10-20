@@ -4,7 +4,8 @@ from collections import namedtuple
 from unittest.mock import patch
 
 from ray.tune.function_runner import wrap_function
-from ray.tune.integration.mlflow import MLflowLoggerCallback, MLflowLogger, mlflow_mixin, MLflowTrainableMixin
+from ray.tune.integration.mlflow import MLflowLoggerCallback, MLflowLogger, \
+    mlflow_mixin, MLflowTrainableMixin
 
 
 class MockTrial(
@@ -124,9 +125,10 @@ class MLflowTest(unittest.TestCase):
     @patch("mlflow.tracking.MlflowClient", MockMlflowClient)
     def testMlFlowLoggerCallbackConfig(self):
         # Explicitly pass in all args.
-        logger = MLflowLoggerCallback(tracking_uri="test1",
-                                      registry_uri="test2",
-                                      experiment_name="test_exp")
+        logger = MLflowLoggerCallback(
+            tracking_uri="test1",
+            registry_uri="test2",
+            experiment_name="test_exp")
         logger.setup()
         self.assertEqual(logger.client.tracking_uri, "test1")
         self.assertEqual(logger.client.registry_uri, "test2")
@@ -200,15 +202,20 @@ class MLflowTest(unittest.TestCase):
         trial_config = {"par1": 4, "par2": 9.0}
         trial = MockTrial(trial_config, "trial1", 0, "artifact")
 
-        logger = MLflowLoggerCallback(experiment_name="test1",
-                                      save_artifact=True)
+        logger = MLflowLoggerCallback(
+            experiment_name="test1",
+            save_artifact=True,
+            tags={"hello": "world"})
         logger.setup()
 
-        # Check if run is created.
+        # Check if run is created with proper tags.
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
         # New run should be created for this trial with correct tag.
         mock_run = logger.client.runs[1][0]
-        self.assertDictEqual(mock_run.tags, {"trial_name": "trial1"})
+        self.assertDictEqual(mock_run.tags, {
+            "hello": "world",
+            "trial_name": "trial1"
+        })
         self.assertTupleEqual(mock_run.run_id, (1, 0))
         self.assertTupleEqual(logger._trial_runs[trial], mock_run.run_id)
         # Params should be logged.

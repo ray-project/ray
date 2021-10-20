@@ -42,7 +42,8 @@ class MLflowLoggerCallback(LoggerCallback):
             If the experiment with the name already exists with MlFlow,
             it will be reused. If not, a new experiment will be created with
             that name.
-        tags (Dict):  An optional dictionary of string keys and values to set as tags on the run
+        tags (Dict):  An optional dictionary of string keys and values to set
+            as tags on the run
         save_artifact (bool): If set to True, automatically save the entire
             contents of the Tune local_dir as an artifact to the
             corresponding run in MlFlow.
@@ -70,13 +71,14 @@ class MLflowLoggerCallback(LoggerCallback):
                 save_artifact=True)])
 
     """
+
     def __init__(
-        self,
-        tracking_uri: Optional[str] = None,
-        registry_uri: Optional[str] = None,
-        experiment_name: Optional[str] = None,
-        tags: Optional[Dict] = None,
-        save_artifact: bool = False,
+            self,
+            tracking_uri: Optional[str] = None,
+            registry_uri: Optional[str] = None,
+            experiment_name: Optional[str] = None,
+            tags: Optional[Dict] = None,
+            save_artifact: bool = False,
     ):
 
         self.tracking_uri = tracking_uri
@@ -101,8 +103,8 @@ class MLflowLoggerCallback(LoggerCallback):
 
         from mlflow.tracking import MlflowClient
 
-        self.client = MlflowClient(tracking_uri=self.tracking_uri,
-                                   registry_uri=self.registry_uri)
+        self.client = MlflowClient(
+            tracking_uri=self.tracking_uri, registry_uri=self.registry_uri)
 
         if self.experiment_name is None:
             # If no name is passed in, then check env vars.
@@ -151,8 +153,8 @@ class MLflowLoggerCallback(LoggerCallback):
             # Set trail name in tags
             self.tags["trial_name"] = str(trial)
 
-            run = self.client.create_run(experiment_id=self.experiment_id,
-                                         tags=self.tags)
+            run = self.client.create_run(
+                experiment_id=self.experiment_id, tags=self.tags)
             self._trial_runs[trial] = run.info.run_id
 
         run_id = self._trial_runs[trial]
@@ -174,10 +176,8 @@ class MLflowLoggerCallback(LoggerCallback):
                              "value cannot be converted to float.".format(
                                  key, value))
                 continue
-            self.client.log_metric(run_id=run_id,
-                                   key=key,
-                                   value=value,
-                                   step=step)
+            self.client.log_metric(
+                run_id=run_id, key=key, value=value, step=step)
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         run_id = self._trial_runs[trial]
@@ -231,8 +231,8 @@ class MLflowLogger(Logger):
             result=result)
 
     def close(self):
-        self._trial_experiment_logger.log_trial_end(trial=self.trial,
-                                                    failed=False)
+        self._trial_experiment_logger.log_trial_end(
+            trial=self.trial, failed=False)
         del self._trial_experiment_logger
 
 
@@ -419,8 +419,8 @@ class MLflowTrainableMixin:
 
         run_name = self.trial_name + "_" + self.trial_id
         run_name = run_name.replace("/", "_")
-        self._mlflow.start_run(experiment_id=self.experiment_id,
-                               run_name=run_name)
+        self._mlflow.start_run(
+            experiment_id=self.experiment_id, run_name=run_name)
 
     def stop(self):
         self._mlflow.end_run()
