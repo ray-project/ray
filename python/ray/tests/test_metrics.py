@@ -137,7 +137,7 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
                 "http://localhost:{}".format(metrics_export_port))
             return response.status_code == 200
 
-        wait_until_succeeded_without_exception(
+        assert wait_until_succeeded_without_exception(
             test_prometheus_endpoint, (requests.exceptions.ConnectionError, ))
 
 

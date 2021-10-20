@@ -341,8 +341,7 @@ def wait_until_succeeded_without_exception(func,
         Whether exception occurs within a timeout.
     """
     if type(exceptions) != tuple:
-        print("exceptions arguments should be given as a tuple")
-        return False
+        raise Exception("exceptions arguments should be given as a tuple")
 
     time_elapsed = 0
     start = time.time()
