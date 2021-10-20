@@ -55,6 +55,15 @@ class TestValidateWorkingDir:
         with pytest.raises(TypeError):
             parse_and_validate_working_dir(1)
 
+    def test_validate_s3_working_dir_invalid_extension(self):
+        with pytest.raises(
+                ValueError, match="Only .zip files supported for S3 URIs."):
+            parse_and_validate_working_dir("s3://bucket/file")
+
+    def test_validate_s3_working_dir_valid_input(self):
+        working_dir = parse_and_validate_working_dir("s3://bucket/file.zip")
+        assert working_dir == "s3://bucket/file.zip"
+
 
 class TestValidateExcludes:
     def test_validate_excludes_invalid_types(self):

@@ -34,6 +34,7 @@ class Protocol(Enum):
         return self
 
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
+    S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -127,13 +128,32 @@ def _hash_directory(
 
 
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
-    """Parse the URI into the protocol and value.
-
-    Raises ValueError on invalid URIs.
+    """
+    Parse resource uri into protocol and package name based on its format.
+    Note that the output of this function is not for handling actual IO, it's
+    only for setting up local directory folders by using package name as path.
+    For GCS URIs, netloc is the package name.
+        urlparse("gcs://_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
+            -> ParseResult(
+                scheme='gcs',
+                netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
+            )
+            -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
+    For S3 URIs, the bucket and path will have '/' replaced with '_'.
+        urlparse("s3://bucket/dir/file.zip")
+            -> ParseResult(
+                scheme='s3',
+                netloc='bucket',
+                path='/dir/file.zip'
+            )
+            -> ("s3", "s3_bucket_dir_file.zip")
     """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
-    return (protocol, uri.netloc)
+    if protocol == Protocol.S3:
+        return (protocol, f"s3_{uri.netloc}_" + "_".join(uri.path.split("/")))
+    else:
+        return (protocol, uri.netloc)
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
@@ -219,6 +239,8 @@ def _push_package(pkg_uri: str, pkg_path: str) -> int:
     data = Path(pkg_path).read_bytes()
     if protocol == Protocol.GCS:
         return _store_package_in_gcs(pkg_uri, data)
+    elif protocol == Protocol.S3:
+        raise RuntimeError("push_package should not be called with s3 path.")
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -246,7 +268,7 @@ def get_uri_for_directory(directory: str,
     This function will generate the name of the package by the directory.
     It'll go through all the files in the directory and hash the contents
     of the files to get the hash value of the package.
-    The final package name is: _ray_pkg_<HASH_VAL>.zip,
+    The final package name is: _ray_pkg_<HASH_VAL>.zip of this package.
     e.g., _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
 
     Examples:
@@ -337,11 +359,27 @@ def download_and_unpack_package(
         else:
             protocol, pkg_name = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
+                # Download package from the GCS.
                 code = _internal_kv_get(pkg_uri)
                 if code is None:
                     raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
                 pkg_file.write_bytes(code)
+            elif protocol == Protocol.S3:
+                # Download package from S3.
+                try:
+                    from smart_open import open
+                    import boto3
+                except ImportError:
+                    raise ImportError(
+                        "You must `pip install smart_open` and "
+                        "`pip install boto3` to fetch URIs in s3 "
+                        "bucket.")
+
+                tp = {"client": boto3.client("s3")}
+                with open(pkg_uri, "rb", transport_params=tp) as package_zip:
+                    with open(pkg_file, "wb") as fin:
+                        fin.write(package_zip.read())
             else:
                 raise NotImplementedError(
                     f"Protocol {protocol} is not supported")
