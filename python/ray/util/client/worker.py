@@ -35,8 +35,7 @@ from ray.util.client.common import (ClientActorClass, ClientActorHandle,
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
-from ray._private.runtime_env.packaging import (get_uri_for_directory,
-                                                upload_package_if_needed)
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -681,22 +680,10 @@ class Worker:
             if job_config is None:
                 serialized_job_config = None
             else:
-                runtime_env = job_config.runtime_env or {}
-                # Generate and upload URIs for the working directory. This
-                # uses internal_kv to upload to the GCS.
-                if "working_dir" in runtime_env:
-                    with tempfile.TemporaryDirectory() as tmp_dir:
-                        working_dir = runtime_env["working_dir"]
-                        if not working_dir.startswith("s3"):
-                            excludes = runtime_env.pop("excludes", None)
-
-                            working_dir_uri = get_uri_for_directory(
-                                working_dir, excludes=excludes)
-                            upload_package_if_needed(working_dir_uri, tmp_dir,
-                                                     working_dir, excludes)
-                            runtime_env["working_dir"] = working_dir_uri
-
-                job_config.set_runtime_env(runtime_env)
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    job_config.set_runtime_env(
+                        upload_working_dir_if_needed(
+                            job_config.runtime_env or {}, tmp_dir))
 
                 serialized_job_config = pickle.dumps(job_config)
 

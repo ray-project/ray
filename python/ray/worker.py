@@ -27,8 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
-from ray._private.runtime_env.packaging import (get_uri_for_directory,
-                                                upload_package_if_needed)
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
@@ -1380,27 +1379,15 @@ def connect(node,
 
     worker.ray_debugger_external = ray_debugger_external
 
-    working_dir_uri = None
     # If it's a driver and it's not coming from ray client, we'll prepare the
     # environment here. If it's ray client, the environment will be prepared
     # at the server side.
-    if mode == SCRIPT_MODE and not job_config.client_job:
-        if job_config.runtime_env:
-            runtime_env = job_config.runtime_env
-            if "working_dir" in runtime_env:
-                working_dir = runtime_env["working_dir"]
-                if not working_dir.startswith("s3"):
-                    excludes = runtime_env.pop("excludes", None)
-
-                    working_dir_uri = get_uri_for_directory(
-                        working_dir, excludes=excludes)
-                    upload_package_if_needed(
-                        working_dir_uri,
-                        worker.node.get_runtime_env_dir_path(), working_dir,
-                        excludes)
-                    runtime_env["working_dir"] = working_dir_uri
-
-            job_config.set_runtime_env(runtime_env)
+    if (mode == SCRIPT_MODE and not job_config.client_job
+            and job_config.runtime_env):
+        job_config.set_runtime_env(
+            upload_working_dir_if_needed(
+                job_config.runtime_env,
+                worker.node.get_runtime_env_dir_path()))
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(

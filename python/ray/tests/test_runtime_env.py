@@ -186,7 +186,6 @@ def s3_working_dir():
 
         runtime_env = f"""{{  "working_dir": "{S3_PACKAGE_URI}" }}"""
         _, pkg_name = parse_uri(S3_PACKAGE_URI)
-        runtime_env_dir = ray.worker._global_node.get_runtime_env_dir_path()
         # s3 working_dir's one() return 2 for each call
         yield None, runtime_env, "2000"
         os.chdir(old_dir)
