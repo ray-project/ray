@@ -234,7 +234,7 @@ TEST(RayApiTest, ActorTest) {
   EXPECT_EQ(*r1.Get(), 42);
 
   std::vector<ray::ObjectRef<int>> list{obj0, obj0};
-  auto r2 = ray::Task(&Counter::GetList).Remote(1, list);
+  auto r2 = actor.Task(&Counter::GetList).Remote(1, list);
   auto result2 = *r2.Get();
   EXPECT_EQ(result2.size(), 2);
 
