@@ -210,7 +210,14 @@ Please refer to the Kubernetes documentation for more information.
 Failure Recovery
 ================
 Ray Serve is resilient to any component failures within the Ray cluster out of the box.
-However, when the Ray cluster goes down, you would need to recover the state by creating a new Ray cluster and re-deploys all Serve deployments into that cluster.
+You can checkout the detail of how process and worker node failure handled at :ref:`serve-ft-detail`.
+However, when the Ray head node goes down, you would need to recover the state by creating a new
+Ray cluster and re-deploys all Serve deployments into that cluster.
+
+.. note::
+  Ray currently cannot survive head node failure and we recommend using application specific
+  failure recovery solutions. Although Ray is not currently highly available (HA), it is on
+  the long term roadmap and being actively worked on.
 
 Ray Serve added an experimental feature to help recovering the state.
 This features enables Serve to write all your deployment configuration and code into a storage location. 
@@ -243,7 +250,15 @@ The checkpoint path argument accepts the following format:
 - ``custom://importable.custom_python.Class/path``
 
 While we have native support for on disk and AWS S3 storage, there is no reason we cannot support more. 
+
+In Kubernetes environment, we recommend using `Persistent Volumes`_ to create a disk and mount it into the Ray head node.
+For example, you can provision Azure Disk, AWS Elastic Block Store, or GCP Persistent Disk using the K8s `Persistent Volumes`_ API.
+Alternatively, you can also directly write to object store like S3.
+
 You can easily try to plug into your own implementation using the ``custom://`` path and inherit the `KVStoreBase`_ class.
+Feel free to open new github issues and contribute more storage backends!
+
+.. _`Persistent Volumes`: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
 
 .. _`KVStoreBase`: https://github.com/ray-project/ray/blob/master/python/ray/serve/storage/kv_store_base.py
 
