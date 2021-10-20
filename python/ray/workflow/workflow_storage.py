@@ -463,9 +463,12 @@ class WorkflowStorage:
                 raise ValueError("No such step_id {} in workflow {}".format(
                     step_id, self._workflow_id))
 
-        input_metadata, _ = await self._get(self._key_step_input_metadata(step_id), True, True)
-        prerun_metadata, _ = await self._get(self._key_step_prerun_metadata(step_id), True, True)
-        postrun_metadata, _ = await self._get(self._key_step_postrun_metadata(step_id), True, True)
+        input_metadata, _ = await self._get(
+            self._key_step_input_metadata(step_id), True, True)
+        prerun_metadata, _ = await self._get(
+            self._key_step_prerun_metadata(step_id), True, True)
+        postrun_metadata, _ = await self._get(
+            self._key_step_postrun_metadata(step_id), True, True)
 
         input_metadata = input_metadata or {}
         prerun_metadata = prerun_metadata or {}
@@ -488,10 +491,14 @@ class WorkflowStorage:
             raise ValueError("No such workflow_id {}".format(
                 self._workflow_id))
 
-        status_metadata, _ = await self._get(self._key_workflow_metadata(), True, True)
-        user_metadata, _ = await self._get(self._key_workflow_user_metadata(), True, True)
-        prerun_metadata, _ = await self._get(self._key_workflow_prerun_metadata(), True, True)
-        postrun_metadata, _ = await self._get(self._key_workflow_postrun_metadata(), True, True)
+        status_metadata, _ = await self._get(self._key_workflow_metadata(),
+                                             True, True)
+        user_metadata, _ = await self._get(self._key_workflow_user_metadata(),
+                                           True, True)
+        prerun_metadata, _ = await self._get(
+            self._key_workflow_prerun_metadata(), True, True)
+        postrun_metadata, _ = await self._get(
+            self._key_workflow_postrun_metadata(), True, True)
 
         status_metadata = status_metadata or {}
         user_metadata = user_metadata or {}

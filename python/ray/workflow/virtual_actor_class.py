@@ -102,9 +102,9 @@ class ActorMethod(ActorMethodBase):
                 try:
                     json.dumps(v)
                 except TypeError as e:
-                    raise ValueError("metadata values must be JSON serializable, "
-                                     "however '{}' has a value whose {}.".format(
-                        k, e))
+                    raise ValueError(
+                        "metadata values must be JSON serializable, "
+                        "however '{}' has a value whose {}.".format(k, e))
 
         func_cls = self
 
@@ -472,8 +472,8 @@ class VirtualActor:
             return ActorMethod(self, item)
         raise AttributeError(f"No method with name '{item}'")
 
-    def _actor_method_call(self, method_name: str, args,
-                           kwargs, options=None) -> "ObjectRef":
+    def _actor_method_call(self, method_name: str, args, kwargs,
+                           options=None) -> "ObjectRef":
         cls = self._metadata.cls
         method = getattr(cls, method_name, None)
         if method is None:
