@@ -21,6 +21,11 @@ def upload_working_dir_if_needed(runtime_env: Dict[str, Any],
     if working_dir is None:
         return runtime_env
 
+    if not isinstance(working_dir, str):
+        raise TypeError(
+            "working_dir must be a string (either a local path or remote "
+            f"URI), got {type(working_dir)}.")
+
     # working_dir is already a URI -- just pass it through.
     try:
         parse_uri(working_dir)
@@ -28,6 +33,7 @@ def upload_working_dir_if_needed(runtime_env: Dict[str, Any],
     except ValueError:
         pass
 
+    # Remove excludes, it isn't relevant after the upload step.
     excludes = runtime_env.pop("excludes", None)
     working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
     upload_package_if_needed(working_dir_uri, scratch_dir, working_dir,
