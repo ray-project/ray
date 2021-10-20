@@ -383,7 +383,12 @@ def test_callbacks(pool_4_processes,
     for process_pool in process_pools:
         # Test error callbacks for map_async.
         test_callback_types = ["regular callback", "error callback"]
+
         for callback_type in test_callback_types:
+            # Reinitialize queue to track number of callback calls made by
+            # the current process_pool and callback_type in map_async
+            callback_queue = queue.Queue()
+
             indices, error_indices = list(range(100)), []
             if callback_type == "error callback":
                 error_indices = [2, 50, 98]
@@ -396,6 +401,10 @@ def test_callbacks(pool_4_processes,
             result.wait()
 
             callback_results = callback_queue.get()
+            callback_queue.task_done()
+
+            # Ensure that callback was called only once
+            assert callback_queue.qsize() == 0
 
             if callback_type == "regular callback":
                 assert result.successful()
