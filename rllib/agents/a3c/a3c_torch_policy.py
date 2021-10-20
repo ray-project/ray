@@ -72,19 +72,25 @@ def actor_critic_loss(policy: Policy, model: ModelV2,
     total_loss = (pi_err + value_err * policy.config["vf_loss_coeff"] -
                   entropy * policy.config["entropy_coeff"])
 
-    policy.entropy = entropy
-    policy.pi_err = pi_err
-    policy.value_err = value_err
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["entropy"] = entropy
+    model.tower_stats["pi_err"] = pi_err
+    model.tower_stats["value_err"] = value_err
 
     return total_loss
 
 
 def loss_and_entropy_stats(policy: Policy,
                            train_batch: SampleBatch) -> Dict[str, TensorType]:
+
     return {
-        "policy_entropy": policy.entropy,
-        "policy_loss": policy.pi_err,
-        "vf_loss": policy.value_err,
+        "policy_entropy": torch.mean(
+            torch.stack(policy.get_tower_stats("entropy"))),
+        "policy_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("pi_err"))),
+        "vf_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("value_err"))),
     }
 
 

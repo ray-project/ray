@@ -172,18 +172,17 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
         [actor_loss, critic_loss] = model.custom_loss(
             [actor_loss, critic_loss], input_dict)
 
-    # Store values for stats function.
-    policy.q_t = q_t
-    policy.actor_loss = actor_loss
-    policy.critic_loss = critic_loss
-
-    # Store td-error in model, such that for multi-GPU, we do not override
-    # them during the parallel loss phase. TD-error tensor in final stats
-    # can then be concatenated and retrieved for each individual batch item.
-    model.td_error = td_error
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["q_t"] = q_t
+    model.tower_stats["actor_loss"] = actor_loss
+    model.tower_stats["critic_loss"] = critic_loss
+    # TD-error tensor in final stats
+    # will be concatenated and retrieved for each individual batch item.
+    model.tower_stats["td_error"] = td_error
 
     # Return two loss terms (corresponding to the two optimizers, we create).
-    return policy.actor_loss, policy.critic_loss
+    return actor_loss, critic_loss
 
 
 def make_ddpg_optimizers(policy: Policy,
@@ -217,12 +216,16 @@ def apply_gradients_fn(policy: Policy, gradients: GradInfoDict) -> None:
 
 def build_ddpg_stats(policy: Policy,
                      batch: SampleBatch) -> Dict[str, TensorType]:
+
+    q_t = torch.stack(policy.get_tower_stats("q_t"))
     stats = {
-        "actor_loss": policy.actor_loss,
-        "critic_loss": policy.critic_loss,
-        "mean_q": torch.mean(policy.q_t),
-        "max_q": torch.max(policy.q_t),
-        "min_q": torch.min(policy.q_t),
+        "actor_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("actor_loss"))),
+        "critic_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("critic_loss"))),
+        "mean_q": torch.mean(q_t),
+        "max_q": torch.max(q_t),
+        "min_q": torch.min(q_t),
     }
     return stats
 
@@ -251,8 +254,8 @@ class ComputeTDErrorMixin:
             # (one TD-error value per item in batch to update PR weights).
             loss_fn(self, self.model, None, input_dict)
 
-            # Self.td_error is set within actor_critic_loss call.
-            return self.model.td_error
+            # `self.model.td_error` is set within actor_critic_loss call.
+            return self.model.tower_stats["td_error"]
 
         self.compute_td_error = compute_td_error
 

@@ -46,6 +46,14 @@ class TorchModelV2(ModelV2):
             name,
             framework="torch")
 
+        # Dict to store per multi-gpu tower stats into.
+        # In PyTorch multi-GPU, we use a single TorchPolicy and copy
+        # it's Model(s) n times (1 copy for each GPU). When computing the loss
+        # on each tower, we cannot store the stats (e.g. `entropy`) inside the
+        # policy object as this would lead to race conditions between the
+        # different towers all accessing the same property at the same time.
+        self.tower_stats = {}
+
     @override(ModelV2)
     def variables(self, as_dict: bool = False) -> \
             Union[List[TensorType], Dict[str, TensorType]]:

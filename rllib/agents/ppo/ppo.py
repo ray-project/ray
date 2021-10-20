@@ -20,9 +20,11 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields, SelectExperiences
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
+    LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -217,12 +219,12 @@ def warn_about_bad_reward_scales(config, result):
         return result  # Punt on handling multiagent case.
 
     # Warn about excessively high VF loss.
-    learner_stats = result["info"]["learner"]
-    if DEFAULT_POLICY_ID in learner_stats:
+    learner_info = result["info"][LEARNER_INFO]
+    if DEFAULT_POLICY_ID in learner_info:
         scaled_vf_loss = config["vf_loss_coeff"] * \
-            learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["vf_loss"]
+            learner_info[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["vf_loss"]
 
-        policy_loss = learner_stats[DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+        policy_loss = learner_info[DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
             "policy_loss"]
         if config.get("model", {}).get("vf_share_layers") and \
                 scaled_vf_loss > 100:
