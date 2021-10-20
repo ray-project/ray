@@ -5,7 +5,7 @@
     - SGD_TESTING=1 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
     - pip install -Ur ./python/requirements_ml_docker.txt
     - ./ci/travis/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only python/ray/util/sgd/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only python/ray/train/...
 
 - label: ":tv: :brain: RLlib: Multi-GPU Tests"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]

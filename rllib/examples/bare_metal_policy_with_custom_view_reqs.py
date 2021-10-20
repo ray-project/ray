@@ -13,25 +13,28 @@ def get_cli_args():
     parser = argparse.ArgumentParser()
 
     # general args
-    parser.add_argument("--run",
-                        default="PPO",
-                        help="The RLlib-registered algorithm to use.")
+    parser.add_argument(
+        "--run", default="PPO", help="The RLlib-registered algorithm to use.")
     parser.add_argument("--num-cpus", type=int, default=3)
-    parser.add_argument("--stop-iters",
-                        type=int,
-                        default=200,
-                        help="Number of iterations to train.")
-    parser.add_argument("--stop-timesteps",
-                        type=int,
-                        default=100000,
-                        help="Number of timesteps to train.")
-    parser.add_argument("--stop-reward",
-                        type=float,
-                        default=80.0,
-                        help="Reward at which we stop training.")
-    parser.add_argument("--local-mode",
-                        action="store_true",
-                        help="Init Ray in local mode for easier debugging.")
+    parser.add_argument(
+        "--stop-iters",
+        type=int,
+        default=200,
+        help="Number of iterations to train.")
+    parser.add_argument(
+        "--stop-timesteps",
+        type=int,
+        default=100000,
+        help="Number of timesteps to train.")
+    parser.add_argument(
+        "--stop-reward",
+        type=float,
+        default=80.0,
+        help="Reward at which we stop training.")
+    parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help="Init Ray in local mode for easier debugging.")
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
@@ -71,5 +74,5 @@ if __name__ == "__main__":
     }
 
     # Train the Trainer with our policy.
-    results = tune.run(BareMetalPolicyTrainer, config=config)
+    results = tune.run(BareMetalPolicyTrainer, config=config, stop=stop)
     print(results)

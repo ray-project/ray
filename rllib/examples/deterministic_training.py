@@ -14,9 +14,8 @@ from ray.rllib.utils.test_utils import check
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--framework",
-                    choices=["tf2", "tf", "tfe", "torch"],
-                    default="tf")
+parser.add_argument(
+    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=2)

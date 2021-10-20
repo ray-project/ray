@@ -1955,7 +1955,7 @@ py_test(
 py_test(
     name = "examples/action_masking_tf",
     main = "examples/action_masking.py",
-    tags = ["team:ml", "examples", "examples_A", "gpu"],
+    tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2"]
@@ -1964,7 +1964,7 @@ py_test(
 py_test(
     name = "examples/action_masking_torch",
     main = "examples/action_masking.py",
-    tags = ["team:ml", "examples", "examples_A", "gpu"],
+    tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=torch"]
@@ -1973,7 +1973,7 @@ py_test(
 py_test(
     name = "examples/attention_net_tf",
     main = "examples/attention_net.py",
-    tags = ["team:ml", "examples", "examples_A", "gpu"],
+    tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
     args = ["--as-test", "--stop-reward=60"]
@@ -1982,7 +1982,7 @@ py_test(
 py_test(
     name = "examples/attention_net_torch",
     main = "examples/attention_net.py",
-    tags = ["team:ml", "examples", "examples_A", "gpu"],
+    tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
     args = ["--as-test", "--stop-reward=60", "--framework torch"]
@@ -1991,7 +1991,7 @@ py_test(
 py_test(
     name = "examples/autoregressive_action_dist_tf",
     main = "examples/autoregressive_action_dist.py",
-    tags = ["team:ml", "examples", "examples_A", "gpu"],
+    tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
     args = ["--as-test", "--stop-reward=150", "--num-cpus=4"]
@@ -2000,7 +2000,7 @@ py_test(
 py_test(
     name = "examples/autoregressive_action_dist_torch",
     main = "examples/autoregressive_action_dist.py",
-    tags = ["team:ml", "examples", "examples_A", "gpu"],
+    tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=150", "--num-cpus=4"]
@@ -2009,7 +2009,7 @@ py_test(
 py_test(
     name = "examples/bare_metal_policy_with_custom_view_reqs",
     main = "examples/bare_metal_policy_with_custom_view_reqs.py",
-    tags = ["team:ml", "examples", "examples_B", "gpu"],
+    tags = ["team:ml", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bare_metal_policy_with_custom_view_reqs.py"],
 )
@@ -2017,7 +2017,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_ppo_tf",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B", "gpu"],
+    tags = ["team:ml", "examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--run=PPO", "--stop-reward=80"]
@@ -2026,7 +2026,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_ppo_torch",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B", "gpu"],
+    tags = ["team:ml", "examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--framework=torch", "--run=PPO", "--stop-reward=80"]
@@ -2035,7 +2035,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_dqn_tf",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B", "gpu"],
+    tags = ["team:ml", "examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--run=DQN", "--stop-reward=70"]
@@ -2044,7 +2044,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_dqn_torch",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B", "gpu"],
+    tags = ["team:ml", "examples", "examples_B"],
     size = "large",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--framework=torch", "--run=DQN", "--stop-reward=70"]
@@ -2053,7 +2053,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B", "gpu"],
+    tags = ["team:ml", "examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
@@ -2062,7 +2062,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_ddpg_torch",
     main = "examples/batch_norm_model.py",
-    tags = ["team:ml", "examples", "examples_B", "gpu"],
+    tags = ["team:ml", "examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--framework=torch", "--run=DDPG", "--stop-iters=1"]
@@ -2780,7 +2780,7 @@ py_test(
 
 py_test(
     name = "examples/rnnsac_stateless_cartpole",
-    tags = ["team:ml", "examples", "examples_R"],
+    tags = ["team:ml", "gpu"],
     size = "large",
     srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )
