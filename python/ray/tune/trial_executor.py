@@ -1,5 +1,5 @@
 # coding: utf-8
-from abc import ABCMeta, abstractmethod
+from abc import abstractmethod
 from functools import lru_cache
 import logging
 import os
@@ -108,6 +108,7 @@ class _WarnOnDirectInheritanceMeta(type):
             warnings.warn(deprecation_msg, DeprecationWarning)
         cls = super().__new__(mcls, name, bases, module, **kwargs)
         return cls
+
 
 @DeveloperAPI
 class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
