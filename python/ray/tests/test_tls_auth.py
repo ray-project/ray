@@ -11,6 +11,14 @@ from ray._private.test_utils import run_string_as_driver
 logger = logging.getLogger(__name__)
 
 
+def build_env():
+    env = os.environ.copy()
+    if sys.platform == "win32" and "SYSTEMROOT" not in env:
+        env["SYSTEMROOT"] = r"C:\Windows"
+
+    return env
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin",
     reason=(
@@ -27,7 +35,7 @@ try:
 finally:
     ray.shutdown()
     """,
-        env=os.environ)
+        env=build_env())
 
 
 @pytest.mark.skipif(
@@ -67,7 +75,7 @@ try:
 finally:
     ray.shutdown()
     """,
-        env=os.environ)
+        env=build_env())
 
 
 @pytest.mark.skipif(
@@ -104,7 +112,7 @@ id1, id2, id3, id4 = a.method._remote(
     args=["test"], kwargs={"b": 2}, num_returns=4)
 assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
     """,
-        env=os.environ)
+        env=build_env())
 
 
 @pytest.mark.skipif(
@@ -113,9 +121,8 @@ assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
         "Cryptography (TLS dependency) doesn't install in Mac build pipeline"))
 @pytest.mark.parametrize("use_tls", [True], indirect=True)
 def test_client_connect_to_tls_server(use_tls, call_ray_start):
-    tls_env = os.environ.copy(
-    )  # use_tls fixture sets TLS environment variables
-    without_tls_env = {}
+    tls_env = build_env()  # use_tls fixture sets TLS environment variables
+    without_tls_env = {k: v for k, v in tls_env.items() if "TLS" not in k}
 
     # Attempt to connect without TLS
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
@@ -142,4 +149,5 @@ print(ray.is_initialized())
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))
