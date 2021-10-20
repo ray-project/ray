@@ -155,6 +155,9 @@ To scale out a deployment to many processes, simply configure the number of repl
   # Scale back down to 1 replica.
   func.options(num_replicas=1).deploy()
 
+Autoscaling
+^^^^^^^^^^^
+
 Serve also has experimental support for a demand-based replica autoscaler.
 It reacts to traffic spikes via observing queue sizes and making scaling decisions.
 To configure it, you can set the ``_autoscaling`` field in deployment options.
@@ -176,16 +179,21 @@ To configure it, you can set the ``_autoscaling`` field in deployment options.
       time.sleep(1)
       return ""
   
-  func.deploy()
+  func.deploy() # The func deployments will now autoscale based on requests demand.
 
-The ``min_replicas`` and ``max_replicas`` fields configures the range for autoscaler
-to choose from. 
-Deployments will start with ``min_replicas`` and the replicas configuration overtime.
-``target_num_ongoing_requests_per_replica`` configuration specifies how much should the
-autoscaler react to traffic. In general, it will try to match existing state against this target 
+The ``min_replicas`` and ``max_replicas`` fields configures the range of replicas of which
+Serve autoscaler to choose from.  Deployments will start with ``min_replicas`` initially.
 
+``target_num_ongoing_requests_per_replica`` configuration specifies how aggresive should the
+autoscaler react to traffic. Serve will try to make sure that each replicas have roughly that number
+of requests being processed and waiting in the queue. For example, if your processing time is ``10ms``
+and the latency constraint is ``100ms``, you can have at most ``10`` requests ongoing per replicas so
+the last requests can finish within the latency constraint. We recommend you benchmark your application
+code and set this number based on end to end latency objective.
 
-
+.. note::
+  ``version`` field is required for autoscaling. We are actively working on removing
+  this limitation.
 
 
 .. _`serve-cpus-gpus`:
