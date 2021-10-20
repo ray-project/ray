@@ -267,9 +267,19 @@ class ArrowBlockAccessor(BlockAccessor):
         # *greater than* the boundary value instead.
         col, _ = key[0]
         comp_fn = pac.greater if descending else pac.less
-        boundary_indices = [
-            pac.sum(comp_fn(table[col], b)).as_py() for b in boundaries
-        ]
+
+        # Compute the boundary indices in O(n) time via scan.
+        boundary_indices = []
+        remaining = boundaries.copy()
+        values = table[col]
+        for i, x in enumerate(values):
+            while remaining and not comp_fn(x, remaining[0]).as_py():
+                remaining.pop(0)
+                boundary_indices.append(i)
+        for _ in remaining:
+            boundary_indices.append(len(values))
+        assert len(boundary_indices) == len(boundaries)
+
         ret = []
         prev_i = 0
         for i in boundary_indices:

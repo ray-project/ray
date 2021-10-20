@@ -118,6 +118,8 @@ class SimpleBlockAccessor(BlockAccessor):
         key_fn = key if key else lambda x: x
         comp_fn = lambda x, b: key_fn(x) > b \
             if descending else lambda x, b: key_fn(x) < b  # noqa E731
+
+        # Compute the boundary indices in O(n) time via scan.
         boundary_indices = []
         remaining = boundaries.copy()
         for i, x in enumerate(items):
@@ -127,10 +129,7 @@ class SimpleBlockAccessor(BlockAccessor):
         for _ in remaining:
             boundary_indices.append(len(items))
         assert len(boundary_indices) == len(boundaries)
-        bx = [
-            len([1 for x in items if comp_fn(x, b)]) for b in boundaries
-        ]
-        assert bx == boundary_indices
+
         ret = []
         prev_i = 0
         for i in boundary_indices:
