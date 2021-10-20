@@ -169,17 +169,8 @@ class ArrowBlockAccessor(BlockAccessor):
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
-            # TODO(Clark): Find a better method to ensure a copy. This Pandas
-            # roundtrip isn't ideal because:
-            #  1. It may break for nested schemas.
-            #  2. Future optimizations of zero-copy roundtrip with Pandas could
-            #     break this copy guarantee.
-            #  3. It creates two full memory copies,
-            #     Arrow --> Pandas --> Arrow, instead of just one.
-            return pyarrow.Table.from_pandas(
-                view.to_pandas(), schema=view.schema)
-        else:
-            return view
+            view = _copy_table(view)
+        return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
         random = np.random.RandomState(random_seed)
@@ -292,3 +283,20 @@ class ArrowBlockAccessor(BlockAccessor):
         indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
         ret = ret.take(indices)
         return ret, ArrowBlockAccessor(ret).get_metadata(None)
+
+
+def _copy_table(table: "pyarrow.Table"):
+    import pyarrow as pa
+
+    cols = table.columns
+    new_cols = []
+    for col in cols:
+        chunks = []
+        for chunk in col.chunks:
+            if isinstance(chunk, pa.ExtensionArray):
+                new_chunk = type(chunk).from_numpy(chunk.to_numpy())
+            else:
+                new_chunk = pa.array(chunk.to_numpy(), chunk.type)
+            chunks.append(new_chunk)
+        new_cols.append(pa.chunked_array(chunks, col.type))
+    return pa.Table.from_arrays(new_cols, schema=table.schema)
