@@ -1,13 +1,13 @@
 import sys
-import time
+
 import pytest
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve.autoscaling_policy import calculate_desired_num_replicas
+from ray.serve.backend_state import ReplicaState
+from ray.serve.config import AutoscalingConfig
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
-from ray.serve.backend_state import ReplicaState
-from ray.serve.config import AutoscalingConfig
-from ray.serve.autoscaling_policy import calculate_desired_num_replicas
 
 
 class TestCalculateDesiredNumReplicas:
@@ -85,6 +85,8 @@ class TestCalculateDesiredNumReplicas:
 def test_e2e_basic_scale_up_down(serve_instance):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
+    signal = SignalActor.remote()
+
     @serve.deployment(
         _autoscaling_config={
             "metrics_interval_s": 0.1,
@@ -94,15 +96,14 @@ def test_e2e_basic_scale_up_down(serve_instance):
             "downscale_delay_s": 0,
             "upscale_delay_s": 0
         },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        _graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1")
     class A:
         def __call__(self):
-            time.sleep(1)
-
-    # We will send over a lot of queries. This will make sure replicas are
-    # killed quickly during cleanup.
-    A._config.experimental_graceful_shutdown_timeout_s = 1
+            ray.get(signal.wait.remote())
 
     A.deploy()
     handle = A.get_handle()
@@ -117,6 +118,7 @@ def test_e2e_basic_scale_up_down(serve_instance):
         return len(running_replicas)
 
     wait_for_condition(lambda: get_num_running_replicas() >= 2)
+    signal.send.remote()
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(lambda: get_num_running_replicas() <= 1)

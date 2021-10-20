@@ -6,6 +6,7 @@ import tempfile
 import time
 import requests
 from pathlib import Path
+from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -13,21 +14,22 @@ import ray.experimental.internal_kv as kv
 from ray._private.test_utils import (
     run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.runtime_env import working_dir as working_dir_pkg
-from ray._private.runtime_env.validation import override_task_or_actor_runtime_env  # noqa: E501
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
+
+S3_PACKAGE_URI = "s3://runtime-env-test/remote_runtime_env.zip"
 
 driver_script = """
 import logging
 import os
 import sys
 import time
-
-sys.path.insert(0, "{working_dir}")
+import traceback
 
 import ray
 import ray.util
 
+# Define test_module for py_module tests
 try:
     import test_module
 except:
@@ -49,20 +51,33 @@ try:
                  job_config=job_config,
                  logging_level=logging.DEBUG,
                  namespace="default_test_namespace"
-)
-except ValueError:
-    print("ValueError")
+        )
+except ValueError as value_e:
+    print("ValueError: ", traceback.format_exc())
     sys.exit(0)
-except TypeError:
-    print("TypeError")
+except TypeError as type_e:
+    print("TypeError: ", traceback.format_exc())
     sys.exit(0)
 except Exception as e:
-    print("ERROR:", str(e))
+    print("ERROR:", traceback.format_exc())
     sys.exit(0)
 
 
 if os.environ.get("EXIT_AFTER_INIT"):
     sys.exit(0)
+
+# Schedule a dummy task to kick off runtime env agent's working_dir setup()
+@ray.remote
+def dummy_task():
+    return "dummy task scheduled"
+
+ray.get([dummy_task.remote()])
+
+# Insert working_dir path with unzipped files
+sys.path.insert(0, "{working_dir}")
+
+# Actual import of test_module after working_dir is setup
+import test_module
 
 @ray.remote
 def run_test():
@@ -88,7 +103,6 @@ if os.environ.get("USE_RAY_CLIENT"):
     ray.util.disconnect()
 else:
     ray.shutdown()
-time.sleep(10)
 """
 
 
@@ -101,10 +115,12 @@ def create_file(p):
 
 @pytest.fixture(scope="function")
 def working_dir():
+    """Regular local_working_dir test setup for existing tests"""
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
         module_path = path / "test_module"
         module_path.mkdir(parents=True)
+
         init_file = module_path / "__init__.py"
         test_file = module_path / "test.py"
         with test_file.open(mode="w") as f:
@@ -116,10 +132,76 @@ def one():
             f.write("""
 from test_module.test import one
 """)
+
         old_dir = os.getcwd()
         os.chdir(tmp_dir)
         yield tmp_dir
         os.chdir(old_dir)
+
+
+@pytest.fixture(scope="function")
+def local_working_dir():
+    """Parametrized local_working_dir test setup"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        module_path = path / "test_module"
+        module_path.mkdir(parents=True)
+
+        # There are "test.py" file with same module name and function
+        # signature, but different return value. Regular runtime env
+        # working_dir uses existing file and should return 1 on each
+        # call to one(); While s3 remote runtime env with same file
+        # names will return 2.
+
+        init_file = module_path / "__init__.py"
+        test_file = module_path / "test.py"
+        with test_file.open(mode="w") as f:
+            f.write("""
+def one():
+    return 1
+""")
+        with init_file.open(mode="w") as f:
+            f.write("""
+from test_module.test import one
+""")
+
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+        runtime_env = f"""{{  "working_dir": "{tmp_dir}" }}"""
+        # local working_dir's one() return 1 for each call
+        yield tmp_dir, runtime_env, "1000"
+        os.chdir(old_dir)
+
+
+@pytest.fixture(scope="function")
+def s3_working_dir():
+    """Parametrized s3_working_dir test setup"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+
+        # There are "test.py" file with same module name and function
+        # signature, but different return value. Regular runtime env
+        # working_dir uses existing file and should return 1 on each
+        # call to one(); While s3 remote runtime env with same file
+        # names will return 2.
+
+        runtime_env = f"""{{  "working_dir": "{S3_PACKAGE_URI}" }}"""
+        _, pkg_name = working_dir_pkg.parse_uri(S3_PACKAGE_URI)
+        runtime_env_dir = ray.worker._global_node.get_runtime_env_dir_path()
+        working_dir = Path(os.path.join(runtime_env_dir,
+                                        pkg_name)).with_suffix("")
+        # s3 working_dir's one() return 2 for each call
+        yield working_dir, runtime_env, "2000"
+        os.chdir(old_dir)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[lazy_fixture("local_working_dir"),
+            lazy_fixture("s3_working_dir")])
+def working_dir_parametrized(request):
+    return request.param
 
 
 def start_client_server(cluster, client_mode):
@@ -238,62 +320,84 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out == "TypeError"
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("TypeError")
 
     runtime_env = "{ 'py_modules': [10] }"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out == "TypeError"
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("TypeError")
 
     runtime_env = f"{{ 'working_dir': os.path.join(r'{working_dir}', 'na') }}"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out == "ValueError"
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("ValueError")
 
     runtime_env = f"{{ 'py_modules': [os.path.join(r'{working_dir}', 'na')] }}"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env).strip().split()[-1]
-    assert out == "ValueError"
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("ValueError")
+
+    runtime_env = "{ 'working_dir': 's3://bucket/package' }"
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = ""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("ValueError")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("client_mode", [True, False])
-def test_single_node(ray_start_cluster_head, working_dir, client_mode):
+@pytest.mark.parametrize("client_mode", [False, True])
+def test_single_node(ray_start_cluster_head, working_dir_parametrized,
+                     client_mode):
     cluster = ray_start_cluster_head
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    # Setup runtime env here
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+
+    # Unpack lazy fixture tuple to override "working_dir" to fill up
+    # execute_statement locals()
+    print(working_dir_parametrized)
+    working_dir, runtime_env, expected = working_dir_parametrized
+    print(working_dir, runtime_env, expected)
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    print(out)
-    assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(runtime_env_dir).iterdir())) == 1
-    assert len(kv._internal_kv_list("gcs://")) == 0
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Execute driver script in brand new, empty directory
+        os.chdir(tmp_dir)
+        out = run_string_as_driver(script, env)
+        assert out.strip().split()[-1] == expected
+        assert len(list(Path(working_dir).iterdir())) == 1
+        assert len(kv._internal_kv_list("gcs://")) == 0
+        # working_dir fixture will take care of going back to original test
+        # folder
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_two_node(two_node_cluster, working_dir, client_mode):
+def test_two_node(two_node_cluster, working_dir_parametrized, client_mode):
     cluster, _ = two_node_cluster
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    # Testing runtime env with working_dir
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Unpack lazy fixture tuple to override "working_dir" to fill up
+    # execute_statement locals()
+    working_dir, runtime_env, expected = working_dir_parametrized
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(runtime_env_dir).iterdir())) == 1
-    assert len(kv._internal_kv_list("gcs://")) == 0
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Execute driver script in brand new, empty directory
+        os.chdir(tmp_dir)
+        out = run_string_as_driver(script, env)
+        assert out.strip().split()[-1] == expected
+        assert len(list(Path(working_dir).iterdir())) == 1
+        assert len(kv._internal_kv_list("gcs://")) == 0
+        # working_dir fixture will take care of going back to original test
+        # folder
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -386,6 +490,15 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     assert out.strip().split("\n")[-1] == \
         "Test,FAILED,Test,FAILED,FAILED,Test,FAILED,FAILED"
+    # Test excluding all files using gitignore pattern matching syntax
+    runtime_env = f"""{{
+        "working_dir": r"{working_dir}",
+        "excludes": ["*"]
+    }}"""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().split("\n")[-1] == \
+        "FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -473,7 +586,7 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
     address, env, runtime_env_dir = start_client_server(cluster, client_mode)
     with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
-        pkg_name = working_dir_pkg.get_project_package_name(
+        pkg_name, _ = working_dir_pkg.get_project_package_name(
             working_dir, [], [])
         pkg_uri = working_dir_pkg.Protocol.PIN_GCS.value + "://" + pkg_name
         working_dir_pkg.create_project_package(working_dir, [], [],
@@ -781,33 +894,31 @@ def test_container_option_serialize():
 def test_working_dir_override_failure(shutdown_only):
     ray.init()
 
-    @ray.remote(runtime_env={"working_dir": "."})
-    def f():
-        pass
-
     with pytest.raises(NotImplementedError):
-        f.remote()
+
+        @ray.remote(runtime_env={"working_dir": "."})
+        def f():
+            pass
 
     @ray.remote
     def g():
         pass
 
     with pytest.raises(NotImplementedError):
-        g.options(runtime_env={"working_dir": "."}).remote()
-
-    @ray.remote(runtime_env={"working_dir": "."})
-    class A:
-        pass
+        g.options(runtime_env={"working_dir": "."})
 
     with pytest.raises(NotImplementedError):
-        A.remote()
+
+        @ray.remote(runtime_env={"working_dir": "."})
+        class A:
+            pass
 
     @ray.remote
     class B:
         pass
 
     with pytest.raises(NotImplementedError):
-        B.options(runtime_env={"working_dir": "."}).remote()
+        B.options(runtime_env={"working_dir": "."})
 
 
 @pytest.mark.skipif(
@@ -941,46 +1052,6 @@ def test_large_file_error(shutdown_only):
             ray.init(runtime_env={"working_dir": "."})
 
         os.chdir(old_dir)
-
-
-class TestOverrideTaskOrActorRuntimeEnv:
-    def test_working_dir_in_child_invalid(self):
-        child_env = {"working_dir": "some_dir"}
-        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
-
-        with pytest.raises(NotImplementedError):
-            override_task_or_actor_runtime_env(child_env, parent_env)
-
-    def test_uri_inherit(self):
-        child_env = {}
-        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"uris": ["a", "b"]}
-
-        # The dicts passed in should not be mutated.
-        assert child_env == {}
-        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
-
-    def test_uri_override(self):
-        child_env = {"uris": ["c", "d"]}
-        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env["uris"] == ["c", "d"]
-        assert result_env.get("working_dir") is None
-
-        # The dicts passed in should not be mutated.
-        assert child_env == {"uris": ["c", "d"]}
-        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
-
-    def test_no_mutate(self):
-        child_env = {}
-        parent_env = {"working_dir": "other_dir", "uris": ["a", "b"]}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"uris": ["a", "b"]}
-
-        # The dictis passed in should not be mutated.
-        assert child_env == {}
-        assert parent_env == {"working_dir": "other_dir", "uris": ["a", "b"]}
 
 
 if __name__ == "__main__":

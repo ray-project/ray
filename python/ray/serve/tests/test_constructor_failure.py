@@ -25,8 +25,8 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
     # Assert no replicas are running in deployment backend after failed
     # deploy() call
     backend_dict = ray.get(
-        serve_instance._controller._all_replica_handles.remote())
-    assert backend_dict["ConstructorFailureDeploymentOneReplica"] == {}
+        serve_instance._controller._all_running_replicas.remote())
+    assert backend_dict["ConstructorFailureDeploymentOneReplica"] == []
 
     # # Test failed to deploy with total of 2 replicas
     @serve.deployment(num_replicas=2)
@@ -43,8 +43,8 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
     # Assert no replicas are running in deployment backend after failed
     # deploy() call
     backend_dict = ray.get(
-        serve_instance._controller._all_replica_handles.remote())
-    assert backend_dict["ConstructorFailureDeploymentTwoReplicas"] == {}
+        serve_instance._controller._all_running_replicas.remote())
+    assert backend_dict["ConstructorFailureDeploymentTwoReplicas"] == []
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -81,7 +81,7 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
     # Assert 2 replicas are running in deployment backend after partially
     # successful deploy() call
     backend_dict = ray.get(
-        serve_instance._controller._all_replica_handles.remote())
+        serve_instance._controller._all_running_replicas.remote())
     assert len(backend_dict["PartialConstructorFailureDeployment"]) == 2
 
 
@@ -109,7 +109,7 @@ def test_deploy_with_transient_constructor_failure(serve_instance):
     # Assert 2 replicas are running in deployment backend after partially
     # successful deploy() call with transient error
     backend_dict = ray.get(
-        serve_instance._controller._all_replica_handles.remote())
+        serve_instance._controller._all_running_replicas.remote())
     assert len(backend_dict["TransientConstructorFailureDeployment"]) == 2
 
 

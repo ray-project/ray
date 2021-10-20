@@ -57,8 +57,6 @@ class AutoscalingConfig(BaseModel):
 class BackendConfig(BaseModel):
     """Configuration options for a backend, to be set by the user.
 
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
-
     Args:
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this backend. Defaults to 1.
@@ -68,10 +66,10 @@ class BackendConfig(BaseModel):
         user_config (Optional[Any]): Arguments to pass to the reconfigure
             method of the backend. The reconfigure method is called if
             user_config is not None.
-        experimental_graceful_shutdown_wait_loop_s (Optional[float]): Duration
+        graceful_shutdown_wait_loop_s (Optional[float]): Duration
             that backend workers will wait until there is no more work to be
             done before shutting down. Defaults to 2s.
-        experimental_graceful_shutdown_timeout_s (Optional[float]):
+        graceful_shutdown_timeout_s (Optional[float]):
             Controller waits for this duration to forcefully kill the replica
             for shutdown. Defaults to 20s.
     """
@@ -80,8 +78,8 @@ class BackendConfig(BaseModel):
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
 
-    experimental_graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
-    experimental_graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
+    graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
+    graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
 
     autoscaling_config: Optional[AutoscalingConfig] = None
 

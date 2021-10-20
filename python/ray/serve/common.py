@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
 
-from ray.actor import ActorClass
+from ray.actor import ActorClass, ActorHandle
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
 
@@ -70,3 +70,11 @@ class ReplicaName:
 
     def __str__(self):
         return self.replica_tag
+
+
+@dataclass(frozen=True)
+class RunningReplicaInfo:
+    backend_tag: BackendTag
+    replica_tag: ReplicaTag
+    actor_handle: ActorHandle
+    max_concurrent_queries: int
