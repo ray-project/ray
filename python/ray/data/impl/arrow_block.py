@@ -285,7 +285,7 @@ class ArrowBlockAccessor(BlockAccessor):
         return ret, ArrowBlockAccessor(ret).get_metadata(None)
 
 
-def _copy_table(table: "pyarrow.Table"):
+def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
     """Copy the provided Arrow table.
     """
     import pyarrow as pa
