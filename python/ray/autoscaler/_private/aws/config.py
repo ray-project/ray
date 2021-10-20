@@ -8,6 +8,7 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 import logging
+from types import SimpleNamespace
 
 import boto3
 import botocore
@@ -398,9 +399,9 @@ def _key_assert_msg(node_type: str) -> str:
         return ("`KeyName` missing from the `node_config` of"
                 f" node type `{node_type}`.")
 
-
 def _configure_subnet(config):
-    ec2 = _resource("ec2", config)
+    ec2 = _client('ec2', config)
+
     use_internal_ips = config["provider"].get("use_internal_ips", False)
 
     # If head or worker security group is specified, filter down to subnets
@@ -413,18 +414,18 @@ def _configure_subnet(config):
         vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
     else:
         vpc_id_of_sg = None
-
     try:
-        candidate_subnets = ec2.subnets.all()
+        candidate_subnets = ec2.describe_subnets()['Subnets']
+        candidate_subnets = [SimpleNamespace(**{k.lower(): v for k, v in x.items()}) for x in candidate_subnets]
         if vpc_id_of_sg:
             candidate_subnets = [
-                s for s in candidate_subnets if s.vpc_id == vpc_id_of_sg
+                s for s in candidate_subnets if s.vpcid == vpc_id_of_sg
             ]
         subnets = sorted(
             (s for s in candidate_subnets if s.state == "available" and (
-                use_internal_ips or s.map_public_ip_on_launch)),
+                use_internal_ips or s.mappubliciponlaunch)),
             reverse=True,  # sort from Z-A
-            key=lambda subnet: subnet.availability_zone)
+            key=lambda subnet: subnet.availabilityzone)
     except botocore.exceptions.ClientError as exc:
         handle_boto_error(exc, "Failed to fetch available subnets from AWS.")
         raise exc
@@ -440,7 +441,7 @@ def _configure_subnet(config):
 
     if "availability_zone" in config["provider"]:
         azs = config["provider"]["availability_zone"].split(",")
-        subnets = [s for s in subnets if s.availability_zone in azs]
+        subnets = [s for s in subnets if s.availabilityzone in azs]
         if not subnets:
             cli_logger.abort(
                 "No usable subnets matching availability zone {} found.\n"
@@ -455,7 +456,7 @@ def _configure_subnet(config):
     # rules to allow traffic between these groups.
     # See https://github.com/ray-project/ray/pull/14868.
     subnet_ids = [
-        s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id
+        s.subnetid for s in subnets if s.vpcid == subnets[0].vpcid
     ]
     # map from node type key -> source of SubnetIds field
     subnet_src_info = {}
