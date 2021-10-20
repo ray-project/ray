@@ -319,7 +319,7 @@ class CoreWorkerProcess {
   ///
   /// \param[in] The existing `CoreWorker` instance.
   /// \return Void.
-  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(mutex_);
+  void RemoveWorker(const std::shared_ptr<CoreWorker> &worker) LOCKS_EXCLUDED(mutex_);
 
   /// Get the `GlobalWorker` instance, if the number of workers is 1.
   std::shared_ptr<CoreWorker> GetGlobalWorker() LOCKS_EXCLUDED(mutex_);
@@ -824,7 +824,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const ActorID &GetActorId() const { return actor_id_; }
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const;
+  ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
@@ -864,7 +864,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] return_object RayObject containing the buffer written info.
   /// \return Status.
   Status SealReturnObject(const ObjectID &return_id,
-                          std::shared_ptr<RayObject> return_object);
+                          const std::shared_ptr<RayObject> &return_object);
 
   /// Get a handle to an actor.
   ///
@@ -1027,7 +1027,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] success_callback The callback to use the result object.
   /// \param[in] python_future the void* object to be passed to SetResultCallback
   /// \return void
-  void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
+  void GetAsync(const ObjectID &object_id, const SetResultCallback &success_callback,
                 void *python_future);
 
   // Get serialized job configuration.
@@ -1080,7 +1080,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void InternalHeartbeat();
 
   /// Helper method to fill in object status reply given an object.
-  void PopulateObjectStatus(const ObjectID &object_id, std::shared_ptr<RayObject> obj,
+  void PopulateObjectStatus(const ObjectID &object_id,
+                            const std::shared_ptr<RayObject> &obj,
                             rpc::GetObjectStatusReply *reply);
 
   ///
@@ -1234,7 +1235,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Request the spillage of an object that we own from the primary that hosts
   /// the primary copy to spill.
   void SpillOwnedObject(const ObjectID &object_id, const std::shared_ptr<RayObject> &obj,
-                        std::function<void()> callback);
+                        const std::function<void()> &callback);
 
   const CoreWorkerOptions options_;
 
@@ -1419,8 +1420,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
 
   // Fallback for when GetAsync cannot directly get the requested object.
-  void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
-                      ObjectID object_id, void *py_future);
+  void PlasmaCallback(const SetResultCallback &success,
+                      const std::shared_ptr<RayObject> &ray_object, ObjectID object_id,
+                      void *py_future);
 
   /// we are shutting down and not running further tasks.
   /// when exiting_ is set to true HandlePushTask becomes no-op.

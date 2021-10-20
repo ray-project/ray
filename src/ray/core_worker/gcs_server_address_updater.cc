@@ -14,26 +14,29 @@
 
 #include "ray/core_worker/gcs_server_address_updater.h"
 
+#include <memory>
+#include <utility>
+
 namespace ray {
 namespace core {
 
 GcsServerAddressUpdater::GcsServerAddressUpdater(
-    const std::string raylet_ip_address, const int port,
+    const std::string &raylet_ip_address, const int port,
     std::function<void(std::string, int)> update_func)
-    : update_func_(update_func) {
+    : update_func_(std::move(update_func)) {
   // Init updater thread and run its io service.
-  updater_thread_.reset(new std::thread([this] {
+  updater_thread_ = std::make_unique<std::thread>([this] {
     SetThreadName("gcs_address_updater");
     /// The asio work to keep io_service_ alive.
     boost::asio::io_service::work io_service_work_(updater_io_service_);
     updater_io_service_.run();
-  }));
-  client_call_manager_.reset(new rpc::ClientCallManager(updater_io_service_));
+  });
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(updater_io_service_);
   auto grpc_client =
       rpc::NodeManagerWorkerClient::make(raylet_ip_address, port, *client_call_manager_);
   raylet_client_ = std::make_shared<raylet::RayletClient>(grpc_client);
   // Init updater runner.
-  updater_runner_.reset(new PeriodicalRunner(updater_io_service_));
+  updater_runner_ = std::make_unique<PeriodicalRunner>(updater_io_service_);
   // Start updating gcs server address.
   updater_runner_->RunFnPeriodically(
       [this] { UpdateGcsServerAddress(); },
