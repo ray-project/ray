@@ -92,7 +92,7 @@ def test_basic(ray_start_with_dashboard):
         for p in processes:
             try:
                 for c in p.cmdline():
-                    if "dashboard/agent.py" in c:
+                    if os.path.join("dashboard", "agent.py") in c:
                         return p
             except Exception:
                 pass
@@ -107,7 +107,7 @@ def test_basic(ray_start_with_dashboard):
         agent_proc.kill()
         agent_proc.wait()
         # The agent will be restarted for imports failure.
-        for x in range(50):
+        for _ in range(300):
             agent_proc = _search_agent(raylet_proc.children())
             if agent_proc:
                 agent_pids.add(agent_proc.pid)

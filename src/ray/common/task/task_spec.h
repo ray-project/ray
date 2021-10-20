@@ -286,14 +286,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
-  SchedulingClass sched_cls_id_;
+  SchedulingClass sched_cls_id_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  /* static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass, */
-  /*                            SchedulingClassDescriptor::hash_fn> */
   static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
       GUARDED_BY(mutex_);
   static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
@@ -312,7 +310,7 @@ class WorkerCacheKey {
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
   WorkerCacheKey(const std::string serialized_runtime_env,
-                 const std::unordered_map<std::string, double> required_resources);
+                 const absl::flat_hash_map<std::string, double> &required_resources);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -337,7 +335,7 @@ class WorkerCacheKey {
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
   /// The required resources for this worker.
-  const std::unordered_map<std::string, double> required_resources;
+  const absl::flat_hash_map<std::string, double> required_resources;
   /// The cached hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   mutable std::size_t hash_ = 0;

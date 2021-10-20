@@ -92,7 +92,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
         # Use default-native keras models whenever possible.
-        config["model"]["_use_default_native_models"] = True
+        # config["model"]["_use_default_native_models"] = True
 
         # Setup lr- and entropy schedules for testing.
         config["lr_schedule"] = [[0, config["lr"]], [128, 0.0]]
@@ -317,6 +317,19 @@ class TestPPO(unittest.TestCase):
                 check(pl, np.mean(-pg_loss))
                 check(v, np.mean(vf_loss), decimals=4)
                 check(tl, overall_loss, decimals=4)
+            elif fw == "torch":
+                check(policy.model.tower_stats["mean_kl_loss"], kl)
+                check(policy.model.tower_stats["mean_entropy"], entropy)
+                check(policy.model.tower_stats["mean_policy_loss"],
+                      np.mean(-pg_loss))
+                check(
+                    policy.model.tower_stats["mean_vf_loss"],
+                    np.mean(vf_loss),
+                    decimals=4)
+                check(
+                    policy.model.tower_stats["total_loss"],
+                    overall_loss,
+                    decimals=4)
             else:
                 check(policy._mean_kl_loss, kl)
                 check(policy._mean_entropy, entropy)

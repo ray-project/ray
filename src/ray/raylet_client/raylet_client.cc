@@ -87,7 +87,7 @@ raylet::RayletClient::RayletClient(
     rpc::WorkerType worker_type, const JobID &job_id, const int &runtime_env_hash,
     const Language &language, const std::string &ip_address, Status *status,
     NodeID *raylet_id, int *port, std::string *serialized_job_config,
-    pid_t worker_shim_pid)
+    pid_t worker_shim_pid, StartupToken startup_token)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
@@ -100,7 +100,7 @@ raylet::RayletClient::RayletClient(
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
-      worker_shim_pid, to_flatbuf(fbb, job_id), runtime_env_hash, language,
+      worker_shim_pid, startup_token, to_flatbuf(fbb, job_id), runtime_env_hash, language,
       fbb.CreateString(ip_address),
       /*port=*/0, fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
@@ -319,6 +319,20 @@ void raylet::RayletClient::RequestObjectSpillage(
   rpc::RequestObjectSpillageRequest request;
   request.set_object_id(object_id.Binary());
   grpc_client_->RequestObjectSpillage(request, callback);
+}
+
+void raylet::RayletClient::ReportWorkerBacklog(
+    const WorkerID &worker_id,
+    const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
+  rpc::ReportWorkerBacklogRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
+  grpc_client_->ReportWorkerBacklog(
+      request, [](const Status &status, const rpc::ReportWorkerBacklogReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Error reporting task backlog information: " << status;
+        }
+      });
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,

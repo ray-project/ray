@@ -182,6 +182,7 @@ test_python() {
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_reference_counting  # too flaky 9/25/21
+      -python/ray/tests:test_runtime_env_plugin # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
       -python/ray/tests:test_stress  # timeout
@@ -333,7 +334,52 @@ install_ray() {
   )
 }
 
+validate_wheels_commit_str() {
+  if [ "${OSTYPE}" = msys ]; then
+    echo "Windows builds do not set the commit string, skipping wheel commit validity check."
+    return 0
+  fi
+
+  if [ -n "${BUILDKITE_COMMIT}" ]; then
+    EXPECTED_COMMIT=${BUILDKITE_COMMIT:-}
+  else
+    EXPECTED_COMMIT=${TRAVIS_COMMIT:-}
+  fi
+
+  if [ -z "$EXPECTED_COMMIT" ]; then
+    echo "Could not validate expected wheel commits: TRAVIS_COMMIT is empty."
+    return 0
+  fi
+
+  for whl in .whl/*.whl; do
+    basename=${whl##*/}
+
+    if [[ "$basename" =~ "_cpp" ]]; then
+      # cpp wheels cannot be checked this way
+      echo "Skipping CPP wheel ${basename} for wheel commit validation."
+      continue
+    fi
+
+    folder=${basename%%-cp*}
+    WHL_COMMIT=$(unzip -p "$whl" "${folder}.data/purelib/ray/__init__.py" | grep "__commit__" | awk -F'"' '{print $2}')
+
+    if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
+      echo "Error: Observed wheel commit (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
+      exit 1
+    fi
+
+    echo "Wheel ${basename} has the correct commit: ${WHL_COMMIT}"
+  done
+
+  echo "All wheels passed the sanity check and have the correct wheel commit set."
+}
+
 build_wheels() {
+  # Create wheel output directory and empty contents
+  # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
+  mkdir -p .whl
+  rm -rf .whl/* || true
+
   case "${OSTYPE}" in
     linux*)
       # Mount bazel cache dir to the docker container.
@@ -354,7 +400,6 @@ build_wheels() {
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
 
-
       if [ -z "${BUILDKITE-}" ]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
@@ -362,19 +407,25 @@ build_wheels() {
         quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
       else
         rm -rf /ray-mount/*
+        rm -rf /ray-mount/.whl || true
+        rm -rf /ray/.whl || true
         cp -rT /ray /ray-mount
-        ls /ray-mount
+        ls -a /ray-mount
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
+
+      validate_wheels_commit_str
       fi
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
       "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+
+      validate_wheels_commit_str
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
@@ -453,7 +504,8 @@ _lint() {
     pushd "${WORKSPACE_DIR}"
       "${ROOT_DIR}"/install-llvm-binaries.sh
     popd
-    "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+    # Disable clang-tidy until ergonomic issues are resolved.
+    # "${ROOT_DIR}"/check-git-clang-tidy-output.sh
   else
     { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
   fi

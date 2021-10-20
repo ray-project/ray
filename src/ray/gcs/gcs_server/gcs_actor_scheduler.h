@@ -312,8 +312,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The handler to handle the successful scheduling.
   std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
       schedule_success_handler_;
-  /// Whether or not to report the backlog of actors waiting to be scheduled.
-  bool report_worker_backlog_;
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
   /// The cached raylet clients used to communicate with raylet.

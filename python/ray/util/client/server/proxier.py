@@ -27,9 +27,10 @@ from ray.util.client.common import (
 from ray.util.client.server.dataservicer import _get_reconnecting_from_context
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
-from ray._private.runtime_env import RuntimeEnvContext
+from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
-from ray._private.utils import detect_fate_sharing_support
+from ray._private.utils import (detect_fate_sharing_support,
+                                check_dashboard_dependencies_installed)
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -206,7 +207,13 @@ class ProxyManager():
 
             Includes retry logic to handle the case when the agent is
             temporarily unreachable (e.g., hasn't been started up yet).
-            """
+        """
+        if not check_dashboard_dependencies_installed():
+            raise RuntimeError("Not all required Ray dependencies for the "
+                               "runtime_env feature were found on the "
+                               "cluster. To install the required "
+                               "dependencies, please run `pip install "
+                               "'ray[default]'` on all cluster nodes.")
         create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"))
@@ -264,6 +271,8 @@ class ProxyManager():
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
         if not serialized_runtime_env or serialized_runtime_env == "{}":
+            # TODO(edoakes): can we just remove this case and always send it
+            # to the agent?
             serialized_runtime_env_context = RuntimeEnvContext().serialize()
         else:
             serialized_runtime_env_context = self._create_runtime_env(

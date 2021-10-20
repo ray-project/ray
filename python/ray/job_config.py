@@ -2,7 +2,6 @@ from typing import Any, Dict, Optional
 import uuid
 
 import ray._private.gcs_utils as gcs_utils
-from ray._private.runtime_env import parse_pip_and_conda
 
 
 class JobConfig:
@@ -49,15 +48,20 @@ class JobConfig:
         return self.get_proto_job_config().SerializeToString()
 
     def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
-        # Lazily import this to avoid circular dependencies.
-        import ray._private.runtime_env as runtime_support
-        if runtime_env:
-            runtime_env_parsed_conda_pip = parse_pip_and_conda(runtime_env)
-            self._parsed_runtime_env = runtime_support.RuntimeEnvDict(
-                runtime_env_parsed_conda_pip)
-        else:
-            self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
+        # TODO(edoakes): this is really unfortunate, but JobConfig is imported
+        # all over the place so this causes circular imports. We should remove
+        # this dependency and pass in a validated runtime_env instead.
+        from ray._private.runtime_env.validation import ParsedRuntimeEnv
+        self._parsed_runtime_env = ParsedRuntimeEnv(runtime_env or {})
         self.runtime_env = runtime_env or dict()
+        eager_install = True
+        if runtime_env and "eager_install" in runtime_env:
+            eager_install = runtime_env["eager_install"]
+        self.runtime_env_eager_install = eager_install
+        assert isinstance(self.runtime_env_eager_install, bool), \
+            f"The type of eager_install is incorrect: " \
+            f"{type(self.runtime_env_eager_install)}" \
+            f", the bool type is needed."
         self._cached_pb = None
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
@@ -82,13 +86,13 @@ class JobConfig:
             self._cached_pb.runtime_env.serialized_runtime_env = serialized_env
             for k, v in self.metadata.items():
                 self._cached_pb.metadata[k] = v
+            self._cached_pb.runtime_env.runtime_env_eager_install = \
+                self.runtime_env_eager_install
         return self._cached_pb
 
     def get_runtime_env_uris(self):
         """Get the uris of runtime environment"""
-        if self.runtime_env.get("uris"):
-            return self.runtime_env.get("uris")
-        return []
+        return self._parsed_runtime_env.get("uris") or []
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""
@@ -96,4 +100,4 @@ class JobConfig:
 
     def set_runtime_env_uris(self, uris):
         self.runtime_env["uris"] = uris
-        self._parsed_runtime_env.set_uris(uris)
+        self._parsed_runtime_env["uris"] = uris

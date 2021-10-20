@@ -147,7 +147,7 @@ bool TaskSpecification::HasRuntimeEnv() const {
 }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
-  std::unordered_map<std::string, double> required_resource{};
+  absl::flat_hash_map<std::string, double> required_resource;
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
@@ -401,7 +401,7 @@ std::string TaskSpecification::CallSiteString() const {
 
 WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
-    const std::unordered_map<std::string, double> required_resources)
+    const absl::flat_hash_map<std::string, double> &required_resources)
     : serialized_runtime_env(serialized_runtime_env),
       required_resources(std::move(required_resources)) {}
 

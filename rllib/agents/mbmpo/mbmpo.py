@@ -26,7 +26,8 @@ from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
     get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, _get_shared_metrics
+    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER, \
+    _get_shared_metrics
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -182,6 +183,7 @@ class MetaUpdate:
         # Modify Reporting Metrics.
         metrics = _get_shared_metrics()
         metrics.info[LEARNER_INFO] = fetches
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = samples.count
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
 
         if self.step_counter == self.num_steps - 1:
