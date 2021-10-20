@@ -93,6 +93,19 @@ class ActorMethod(ActorMethodBase):
             >>> actor.my_method.options(num_cpus=2).run(x, y)
         """
 
+        # validate metadata first
+        metadata = options.get("metadata")
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                raise ValueError("metadata must be a dict.")
+            for k, v in metadata.items():
+                try:
+                    json.dumps(v)
+                except TypeError as e:
+                    raise ValueError("metadata values must be JSON serializable, "
+                                     "however '{}' has a value whose {}.".format(
+                        k, e))
+
         func_cls = self
 
         class FuncWrapper(ActorMethodBase):
@@ -113,7 +126,7 @@ class ActorMethod(ActorMethodBase):
                                "actor.method.run()' instead.")
         try:
             return actor._actor_method_call(
-                self._method_name, args=args, kwargs=kwargs)
+                self._method_name, args=args, kwargs=kwargs, options=options)
         except TypeError as exc:  # capture a friendlier stacktrace
             raise TypeError(
                 "Invalid input arguments for virtual actor "
@@ -185,7 +198,8 @@ class VirtualActorMetadata:
 
         for method_name, method in actor_methods:
 
-            def step(method_name, method, *args, **kwargs):
+            def step(method_name, method, options, *args, **kwargs):
+                options = options or {}
                 readonly = getattr(method, "__virtual_actor_readonly__", False)
                 flattened_args = self.flatten_args(method_name, args, kwargs)
                 actor_id = workflow_context.get_current_workflow_id()
@@ -213,11 +227,11 @@ class VirtualActorMetadata:
                     func_body=_actor_method,
                     step_type=step_type,
                     inputs=workflow_inputs,
-                    max_retries=1,
-                    catch_exceptions=False,
-                    ray_options={},
-                    name=None,
-                    user_metadata=None,
+                    max_retries=options.get("max_retries", 1),
+                    catch_exceptions=options.get("catch_exceptions", False),
+                    ray_options=options.get("ray_options", {}),
+                    name=options.get("name", None),
+                    user_metadata=options.get("metadata", {}),
                 )
                 wf = Workflow(workflow_data)
                 return wf
@@ -459,14 +473,14 @@ class VirtualActor:
         raise AttributeError(f"No method with name '{item}'")
 
     def _actor_method_call(self, method_name: str, args,
-                           kwargs) -> "ObjectRef":
+                           kwargs, options=None) -> "ObjectRef":
         cls = self._metadata.cls
         method = getattr(cls, method_name, None)
         if method is None:
             raise AttributeError(f"Method '{method_name}' does not exist.")
         with workflow_context.workflow_step_context(self._actor_id,
                                                     self._storage.storage_url):
-            wf = method.step(*args, **kwargs)
+            wf = method.step(options, *args, **kwargs)
             readonly = getattr(method, "__virtual_actor_readonly__", False)
             if readonly:
                 return execute_workflow(wf).volatile_output
