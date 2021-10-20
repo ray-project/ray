@@ -97,7 +97,7 @@ def test_tune_error(ray_start_2_cpus):
     def train_func(config):
         raise RuntimeError("Error in training function!")
 
-    trainer = Trainer(TestConfig())
+    trainer = Trainer(TestConfig(), num_workers=1)
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     with pytest.raises(TuneError):
@@ -110,7 +110,7 @@ def test_tune_checkpoint(ray_start_2_cpus):
             train.report(test=i)
         train.save_checkpoint(hello="world")
 
-    trainer = Trainer(TestConfig())
+    trainer = Trainer(TestConfig(), num_workers=1)
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
@@ -133,7 +133,7 @@ def test_reuse_checkpoint(ray_start_2_cpus):
             train.save_checkpoint(iter=i)
             train.report(test=i, training_iteration=i)
 
-    trainer = Trainer(TestConfig())
+    trainer = Trainer(TestConfig(), num_workers=1)
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable, config={"max_iter": 5}).trials
@@ -163,7 +163,7 @@ def test_retry(ray_start_2_cpus):
             train.save_checkpoint(iter=i)
             train.report(test=i, training_iteration=i)
 
-    trainer = Trainer(TestConfig())
+    trainer = Trainer(TestConfig(), num_workers=1)
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     analysis = tune.run(TestTrainable, max_failures=3)
