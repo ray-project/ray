@@ -724,6 +724,11 @@ cdef CRayStatus task_execution_handler(
                 return CRayStatus.IntentionalSystemExit()
             elif hasattr(e, "is_creation_task_error"):
                 return CRayStatus.CreationTaskError()
+            elif e.code and e.code == 0:
+                # This means the system exit was
+                # normal based on the python convention.
+                # https://docs.python.org/3/library/sys.html#sys.exit
+                return CRayStatus.IntentionalSystemExit()
             else:
                 logger.exception("SystemExit was raised from the worker")
                 return CRayStatus.UnexpectedSystemExit()

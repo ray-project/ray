@@ -2,6 +2,9 @@ import subprocess
 import sys
 import pytest
 import re
+import signal
+import time
+import os
 
 import ray
 
@@ -334,6 +337,72 @@ def test_output():
     for line in lines:
         print(line)
     assert len(lines) == 2, lines
+
+
+def test_output_on_driver_shutdown(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=16)
+    # many_ppo.py script.
+    script = """
+import ray
+from ray.tune import run_experiments
+from ray.tune.utils.release_test_util import ProgressCallback
+
+num_redis_shards = 5
+redis_max_memory = 10**8
+object_store_memory = 10**9
+num_nodes = 3
+
+message = ("Make sure there is enough memory on this machine to run this "
+           "workload. We divide the system memory by 2 to provide a buffer.")
+assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
+        ray._private.utils.get_system_memory() / 2), message
+
+# Simulate a cluster on one machine.
+
+ray.init(address="auto")
+
+# Run the workload.
+
+run_experiments(
+    {
+        "ppo": {
+            "run": "PPO",
+            "env": "CartPole-v0",
+            "num_samples": 10,
+            "config": {
+                "framework": "torch",
+                "num_workers": 1,
+                "num_gpus": 0,
+                "num_sgd_iter": 1,
+            },
+            "stop": {
+                "timesteps_total": 1,
+            },
+        }
+    },
+    callbacks=[ProgressCallback()])
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    # Make sure the script is running before sending a sigterm.
+    with pytest.raises(subprocess.TimeoutExpired):
+        print(proc.wait(timeout=10))
+    print(f"Script is running... pid: {proc.pid}")
+    # Send multiple signals to terminate it like real world scenario.
+    for _ in range(10):
+        time.sleep(0.1)
+        os.kill(proc.pid, signal.SIGINT)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        print("Script wasn't terminated by SIGINT. Try SIGTERM.")
+        os.kill(proc.pid, signal.SIGTERM)
+    print(proc.wait(timeout=10))
+    err_str = proc.stderr.read().decode("ascii")
+    assert len(err_str) > 0
+    assert "StackTrace Information" not in err_str
+    print(err_str)
 
 
 if __name__ == "__main__":
