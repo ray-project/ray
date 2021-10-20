@@ -257,10 +257,20 @@
   cluster:
     app_config: decision_tree/decision_tree_app_config.yaml
     compute_template: decision_tree/autoscaling_compute.yaml
-
   run:
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
+
+# Test 20 concurrent decision tree runs on autoscaling compute cluster
+# grpc broadcasting version.
+- name: grpc_decision_tree_autoscaling_20_runs
+  cluster:
+    app_config: decision_tree/decision_tree_app_config_grpc.yaml
+    compute_template: decision_tree/autoscaling_compute.yaml
+  run:
+    timeout: 9600
+    script: python decision_tree/cart_with_tree.py --concurrency=20
+  stable: false
 
 # Stress test shuffle_data_loader.
 - name: shuffle_data_loader
@@ -317,18 +327,15 @@
     prepare: python wait_cluster.py 32 1000
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
 
-# TODO (yic): Add this back when we make it stable
-# - name: many_nodes_actor_test
-#   cluster:
-#     app_config: many_nodes_tests/app_config.yaml
-#     compute_template: many_nodes_tests/compute_config.yaml
+- name: many_nodes_actor_test
+  cluster:
+    app_config: many_nodes_tests/app_config.yaml
+    compute_template: many_nodes_tests/compute_config.yaml
 
-#   run:
-#     timeout: 7200
-#     prepare: python wait_cluster.py 500 5400
-#     script: python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000
-#     # TODO: enable failure test later
-#     #&& python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --fail --no-report && python many_nodes_tests/actor_test.py --cpus-per-actor=0.1 --total-actors=10000 --no-report
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 251 5400
+    script: python many_nodes_tests/actor_test.py
 
 - name: pg_autoscaling_regression_test
   cluster:

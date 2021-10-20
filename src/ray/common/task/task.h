@@ -47,9 +47,7 @@ class RayTask {
   /// Construct a `RayTask` object from a protobuf message.
   ///
   /// \param message The protobuf message.
-  /// \param backlog_size The size of the task owner's backlog size for this
-  ///  task's shape.
-  explicit RayTask(const rpc::Task &message, int64_t backlog_size = -1);
+  explicit RayTask(const rpc::Task &message);
 
   /// Construct a `RayTask` object from a `TaskSpecification` and a
   /// `TaskExecutionSpecification`.
@@ -103,10 +101,6 @@ class RayTask {
   /// Returns the cancellation task callback, or nullptr.
   const CancelTaskCallback &OnCancellation() const { return on_cancellation_; }
 
-  void SetBacklogSize(int64_t backlog_size);
-
-  int64_t BacklogSize() const;
-
   std::string DebugString() const;
 
  private:
@@ -133,8 +127,6 @@ class RayTask {
   /// For direct task calls, overrides the cancellation behaviour to send an
   /// RPC back to the submitting worker.
   mutable CancelTaskCallback on_cancellation_ = nullptr;
-  /// The size of the core worker's backlog when this task was submitted.
-  int64_t backlog_size_ = -1;
 };
 
 }  // namespace ray

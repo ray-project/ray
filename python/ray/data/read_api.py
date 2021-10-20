@@ -61,7 +61,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
             BlockAccessor.for_block(block).get_metadata(input_files=None))
         i += block_size
 
-    return Dataset(BlockList(blocks, metadata))
+    return Dataset(BlockList(blocks, metadata), 0)
 
 
 @PublicAPI(stability="beta")
@@ -202,7 +202,7 @@ def read_datasource(datasource: Datasource[T],
                 input_files=metadata[0].input_files,
             ))
 
-    return Dataset(block_list)
+    return Dataset(block_list, 0)
 
 
 @PublicAPI(stability="beta")
@@ -283,6 +283,7 @@ def read_json(paths: Union[str, List[str]],
               filesystem: Optional["pyarrow.fs.FileSystem"] = None,
               parallelism: int = 200,
               ray_remote_args: Dict[str, Any] = None,
+              arrow_open_stream_args: Optional[Dict[str, Any]] = None,
               **arrow_json_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
 
@@ -302,6 +303,8 @@ def read_json(paths: Union[str, List[str]],
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        arrow_open_stream_args: kwargs passed to
+            pyarrow.fs.FileSystem.open_input_stream
         arrow_json_args: Other json read options to pass to pyarrow.
 
     Returns:
@@ -313,6 +316,7 @@ def read_json(paths: Union[str, List[str]],
         paths=paths,
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,
+        open_stream_args=arrow_open_stream_args,
         **arrow_json_args)
 
 
@@ -322,6 +326,7 @@ def read_csv(paths: Union[str, List[str]],
              filesystem: Optional["pyarrow.fs.FileSystem"] = None,
              parallelism: int = 200,
              ray_remote_args: Dict[str, Any] = None,
+             arrow_open_stream_args: Optional[Dict[str, Any]] = None,
              **arrow_csv_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
 
@@ -341,6 +346,8 @@ def read_csv(paths: Union[str, List[str]],
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        arrow_open_stream_args: kwargs passed to
+            pyarrow.fs.FileSystem.open_input_stream
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
@@ -352,6 +359,7 @@ def read_csv(paths: Union[str, List[str]],
         paths=paths,
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,
+        open_stream_args=arrow_open_stream_args,
         **arrow_csv_args)
 
 
@@ -362,6 +370,7 @@ def read_text(
         encoding: str = "utf-8",
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         parallelism: int = 200,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -377,13 +386,18 @@ def read_text(
         encoding: The encoding of the files (e.g., "utf-8" or "ascii").
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
+        arrow_open_stream_args: kwargs passed to
+            pyarrow.fs.FileSystem.open_input_stream
 
     Returns:
         Dataset holding lines of text read from the specified paths.
     """
 
     return read_binary_files(
-        paths, filesystem=filesystem, parallelism=parallelism).flat_map(
+        paths,
+        filesystem=filesystem,
+        parallelism=parallelism,
+        arrow_open_stream_args=arrow_open_stream_args).flat_map(
             lambda x: x.decode(encoding).split("\n"))
 
 
@@ -392,6 +406,7 @@ def read_numpy(paths: Union[str, List[str]],
                *,
                filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                parallelism: int = 200,
+               arrow_open_stream_args: Optional[Dict[str, Any]] = None,
                **numpy_load_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
 
@@ -410,6 +425,8 @@ def read_numpy(paths: Union[str, List[str]],
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
+        arrow_open_stream_args: kwargs passed to
+            pyarrow.fs.FileSystem.open_input_stream
         numpy_load_args: Other options to pass to np.load.
 
     Returns:
@@ -420,6 +437,7 @@ def read_numpy(paths: Union[str, List[str]],
         parallelism=parallelism,
         paths=paths,
         filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
         **numpy_load_args)
 
 
@@ -431,6 +449,7 @@ def read_binary_files(
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         parallelism: int = 200,
         ray_remote_args: Dict[str, Any] = None,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -449,6 +468,8 @@ def read_binary_files(
         filesystem: The filesystem implementation to read from.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         parallelism: The amount of parallelism to use for the dataset.
+        arrow_open_stream_args: kwargs passed to
+            pyarrow.fs.FileSystem.open_input_stream
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -460,6 +481,7 @@ def read_binary_files(
         include_paths=include_paths,
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,
+        open_stream_args=arrow_open_stream_args,
         schema=bytes)
 
 
@@ -478,7 +500,7 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
 
     partitions = df.to_delayed()
     persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
-    return from_pandas(
+    return from_pandas_refs(
         [next(iter(part.dask.values())) for part in persisted_partitions])
 
 
@@ -513,35 +535,44 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def from_pandas(dfs: List["pandas.DataFrame"]) -> Dataset[ArrowRow]:
+def from_pandas(dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
+                ) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Pandas dataframes.
 
     Args:
-        dfs: A list of Pandas dataframes.
+        dfs: A Pandas dataframe or a list of Pandas dataframes.
 
     Returns:
         Dataset holding Arrow records read from the dataframes.
     """
+    import pandas as pd
+
+    if isinstance(dfs, pd.DataFrame):
+        dfs = [dfs]
     return from_pandas_refs([ray.put(df) for df in dfs])
 
 
 @DeveloperAPI
-def from_pandas_refs(
-        dfs: List[ObjectRef["pandas.DataFrame"]]) -> Dataset[ArrowRow]:
+def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
+        "pandas.DataFrame"]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
 
     Args:
-        dfs: A list of Ray object references to pandas dataframes.
+        dfs: A Ray object references to pandas dataframe, or a list of
+             Ray object references to pandas dataframes.
 
     Returns:
         Dataset holding Arrow records read from the dataframes.
     """
+    if isinstance(dfs, ray.ObjectRef):
+        dfs = [dfs]
+
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+    return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
 
 
 def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
@@ -557,39 +588,47 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+    return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
 
 
 @PublicAPI(stability="beta")
-def from_arrow(
-        tables: List[Union["pyarrow.Table", bytes]]) -> Dataset[ArrowRow]:
+def from_arrow(tables: Union["pyarrow.Table", bytes, List[Union[
+        "pyarrow.Table", bytes]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Arrow tables.
 
     Args:
-        tables: A list of Ray object references to Arrow tables,
+        tables: An Arrow table, or a list of Arrow tables,
                 or its streaming format in bytes.
 
     Returns:
         Dataset holding Arrow records from the tables.
     """
+    import pyarrow as pa
+
+    if isinstance(tables, (pa.Table, bytes)):
+        tables = [tables]
     return from_arrow_refs([ray.put(t) for t in tables])
 
 
 @DeveloperAPI
-def from_arrow_refs(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]]
-                    ) -> Dataset[ArrowRow]:
+def from_arrow_refs(
+        tables: Union[ObjectRef[Union["pyarrow.Table", bytes]], List[ObjectRef[
+            Union["pyarrow.Table", bytes]]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
-        tables: A list of Ray object references to Arrow tables,
-                or its streaming format in bytes.
+        tables: A Ray object reference to Arrow table, or list of Ray object
+                references to Arrow tables, or its streaming format in bytes.
 
     Returns:
         Dataset holding Arrow records from the tables.
     """
+    if isinstance(tables, ray.ObjectRef):
+        tables = [tables]
+
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
-    return Dataset(BlockList(tables, ray.get(metadata)))
+    return Dataset(BlockList(tables, ray.get(metadata)), 0)
 
 
 @PublicAPI(stability="beta")

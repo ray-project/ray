@@ -833,7 +833,8 @@ def _process_observations(
                 sample_collector.add_init_obs(episode, agent_id, env_id,
                                               policy_id, episode.length - 1,
                                               filtered_obs)
-            else:
+            elif agent_infos is None or agent_infos.get(
+                    "training_enabled", True):
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
                     SampleBatch.T: episode.length - 1,
