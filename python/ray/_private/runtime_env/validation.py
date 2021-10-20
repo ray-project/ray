@@ -3,7 +3,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from urllib.parse import urlparse
 import sys
 from typing import Any, Dict, List, Optional, Set, Union
 import yaml
