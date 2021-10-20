@@ -287,6 +287,8 @@ class ArrowBlockAccessor(BlockAccessor):
         ret = []
         prev_i = 0
         for i in boundary_indices:
+            # Slices need to be copied to avoid including the base table
+            # during serialization.
             ret.append(_copy_table(table.slice(prev_i, i - prev_i)))
             prev_i = i
         ret.append(_copy_table(table.slice(prev_i)))
