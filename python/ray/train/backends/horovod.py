@@ -20,9 +20,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-T = TypeVar("T")
-
-
 @dataclass
 class HorovodConfig(BackendConfig):
     """Configurations for Horovod setup.
@@ -31,6 +28,15 @@ class HorovodConfig(BackendConfig):
         nics (Optional[Set[str]): Network interfaces that can be used for
             communication.
         verbose (int): Horovod logging verbosity.
+        key (Optional[str]): Secret used for communication between workers.
+        ssh_port (Optional[int]): Port for SSH server running on worker nodes.
+        ssh_identity_file (Optional[str]): Path to the identity file to
+            ssh into different hosts on the cluster.
+        ssh_str (Optional[str]): CAUTION WHEN USING THIS. Private key
+            file contents. Writes the private key to ssh_identity_file.
+        timeout_s (int): Timeout parameter for Gloo rendezvous.
+        placement_group_timeout_s (int): Timeout parameter for Ray
+            Placement Group creation.
     """
     nics: Optional[Set[str]] = None
     verbose: int = 1
@@ -76,6 +82,11 @@ def init_env_vars(world_rank: int, world_size: int, node_id: str):
     os.environ["HOROVOD_SIZE"] = str(world_size)
 
 
+# TODO(tgaddair): temporary workaround for Horovod's worker discovery logic,
+#  which requires passing in an extra parameter as part of the RayExecutor
+#  API. This will be removed in the future as we migrate more of the
+#  RayExecutor utils into Ray Train.
+#  See: https://github.com/horovod/horovod/blob/v0.23.0/horovod/ray/driver_service.py#L9 # noqa: E501
 @dataclass
 class HorovodWorkerWrapper:
     w: Worker
@@ -87,7 +98,9 @@ class HorovodWorkerWrapper:
         class ExecuteHandle:
             def remote(self, func, *args, **kwargs):
                 _ = None
-                return w.actor._BaseWorkerMixin__execute.remote(func, _, *args, **kwargs)
+                return w.actor._BaseWorkerMixin__execute.remote(
+                    func, _, *args, **kwargs
+                )
 
         return ExecuteHandle()
 
