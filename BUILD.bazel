@@ -977,6 +977,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1209,6 +1210,7 @@ cc_test(
         "gcs_test_util_lib",
         "ray_common",
         "raylet_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
