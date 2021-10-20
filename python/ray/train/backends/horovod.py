@@ -1,7 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional, Set, TypeVar
+from typing import Optional, Set
 
 import ray
 from ray.train.backends.backend import BackendConfig, Backend
