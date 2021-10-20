@@ -151,9 +151,9 @@ def get_metadata(workflow_id: str, name: Optional[str]) -> Dict[str, Any]:
     """
     store = workflow_storage.get_workflow_storage(workflow_id)
     if name is None:
-        return store.load_workflow_metadata()
+        return workflow_storage.asyncio_run(store.load_workflow_metadata())
     else:
-        return store.load_step_metadata(name)
+        return workflow_storage.asyncio_run(store.load_step_metadata(name))
 
 
 def list_all(status_filter: Set[WorkflowStatus]
