@@ -3,16 +3,22 @@
 #include <string>
 #include <thread>
 
+#include "config/streaming_config.h"
+#include "gtest/gtest.h"
+#include "metrics/streaming_perf_metric.h"
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/internal/stats_exporter_impl.h"
 #include "ray/stats/stats.h"
 
-#include "config/streaming_config.h"
-#include "gtest/gtest.h"
-#include "metrics/streaming_perf_metric.h"
-
 using namespace ray::streaming;
 using namespace ray;
+
+auto GetMetricsAgentAddress = [](const ray::stats::GetAgentAddressCallback &callback) {
+  rpc::RegisterAgentRequest register_agent;
+  register_agent.set_agent_ip_address("127.0.0.1");
+  register_agent.set_agent_port(10054);
+  callback(Status::OK(), register_agent.SerializeAsString());
+};
 
 class StreamingReporterCounterTest : public ::testing::Test {
  public:
@@ -27,7 +33,7 @@ class StreamingReporterCounterTest : public ::testing::Test {
     const stats::TagsType global_tags = {{stats::ResourceNameKey, "CPU"}};
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
-    ray::stats::Init(global_tags, 10054, exporter);
+    ray::stats::Init(global_tags, GetMetricsAgentAddress, exporter);
 
     setenv("STREAMING_METRICS_MODE", "DEV", 1);
     setenv("ENABLE_RAY_STATS", "ON", 1);
