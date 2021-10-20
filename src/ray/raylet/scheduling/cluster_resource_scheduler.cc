@@ -1026,10 +1026,9 @@ void ClusterResourceScheduler::ReleaseWorkerResources(
 
 void ClusterResourceScheduler::UpdateLastResourceUsage(
     std::shared_ptr<SchedulingResources> gcs_resources) {
-  NodeResources node_resources = ResourceMapToNodeResources(
+  last_report_resources_ = std::make_unique<NodeResources>(ResourceMapToNodeResources(
       string_to_int_map_, gcs_resources->GetTotalResources().GetResourceMap(),
-      gcs_resources->GetAvailableResources().GetResourceMap());
-  last_report_resources_.reset(new NodeResources(node_resources));
+      gcs_resources->GetAvailableResources().GetResourceMap()));
 }
 
 void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_data) {
