@@ -1,56 +1,26 @@
 import socket
 from dataclasses import dataclass
 import logging
-from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple
+from typing import List, TypeVar, Optional, Dict, Type, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.types import ObjectRef
 
 T = TypeVar("T")
+ActorMetadata = TypeVar("ActorMetadata")
 
 logger = logging.getLogger(__name__)
 
 
-# @dataclass
-# class WorkerMetadata:
-#     """Metadata for each worker/actor.
-#
-#     This information is expected to stay the same throughout the lifetime of
-#     actor.
-#
-#     Args:
-#         node_id (str): ID of the node this worker is on.
-#         node_ip (str): IP address of the node this worker is on.
-#         hostname (str): Hostname that this worker is on.
-#         gpu_ids (List[int]): List of CUDA IDs available to this worker.
-#     """
-#     node_id: str
-#     node_ip: str
-#     hostname: str
-#     gpu_ids: Optional[List[int]]
-#
-#
-# @dataclass
-# class Worker:
-#     """Class representing a Worker."""
-#     actor: ActorHandle
-#     metadata: WorkerMetadata
-#
-#
-# def construct_metadata() -> WorkerMetadata:
-#     """Creates metadata for this worker.
-#
-#     This function is expected to be run on the actor.
-#     """
-#     node_id = ray.get_runtime_context().node_id.hex()
-#     node_ip = ray.util.get_node_ip_address()
-#     hostname = socket.gethostname()
-#     gpu_ids = ray.get_gpu_ids()
-#
-#     return WorkerMetadata(
-#         node_id=node_id, node_ip=node_ip, hostname=hostname, gpu_ids=gpu_ids)
+@dataclass
+class Worker:
+    """Class containing an actor and its metadata."""
+    actor: ActorHandle
+    metadata: ActorMetadata
 
+@dataclass
+class ActorConfig:
+    pass
 
 class ActorGroup:
     """Group of Ray Actors that can execute arbitrary functions.
@@ -63,8 +33,7 @@ class ActorGroup:
     cluster will automatically scale up if autoscaling is enabled.
 
     Args:
-        actor_cls (Optional[Type]): If specified use this class as the
-            remote actors.
+        actor_cls (Type): The class to use as the remote actors.
         num_actors (int): The number of the provided Ray actors to
             launch. Defaults to 1.
         num_cpus_per_actor (float): The number of CPUs to reserve for each
@@ -91,11 +60,11 @@ class ActorGroup:
 
     def __init__(
             self,
+            actor_cls: Type,
             num_actors: int = 1,
             num_cpus_per_actor: float = 1,
             num_gpus_per_actor: float = 0,
             resources_per_actor: Optional[Dict[str, float]] = None,
-            actor_cls: Type = None,
             actor_cls_args: Optional[Tuple] = None,
             actor_cls_kwargs: Optional[Dict] = None):
 
@@ -109,27 +78,21 @@ class ActorGroup:
                              f"num_cpus_per_actor={num_cpus_per_actor} and "
                              f"num_gpus_per_actor={num_gpus_per_actor}.")
 
-        if (actor_cls_args or actor_cls_kwargs) and not actor_cls:
-            raise ValueError("`actor_cls_args` or `actor_class_kwargs` are "
-                             "passed in but no `actor_cls` is passed in.")
+        self.actors = []
 
         self.num_actors = num_actors
         self.num_cpus_per_actor = num_cpus_per_actor
         self.num_gpus_per_actor = num_gpus_per_actor
         self.additional_resources_per_actor = resources_per_actor
-        self.actors = []
-        self._base_cls = create_executable_class(actor_cls)
-        assert issubclass(self._base_cls, BaseactorMixin)
 
         self._actor_cls_args = actor_cls_args or []
         self._actor_cls_kwargs = actor_cls_kwargs or {}
 
-        # TODO(matt): Validate resources. Fast-fail if it is impossible to
-        #  handle the request, rather than hang indefinitely.
+        #TODO: make into dataclass.
         self._remote_cls = ray.remote(
             num_cpus=self.num_cpus_per_actor,
             num_gpus=self.num_gpus_per_actor,
-            resources=self.additional_resources_per_actor)(self._base_cls)
+            resources=self.additional_resources_per_actor)(actor_cls)
         self.start()
 
     def start(self):
@@ -209,3 +172,6 @@ class ActorGroup:
 
     def __len__(self):
         return len(self.actors)
+
+    def __getitem__(self, item):
+        return self.actors[item]
