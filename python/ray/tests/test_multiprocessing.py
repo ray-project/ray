@@ -403,7 +403,7 @@ def test_callbacks(pool_4_processes,
             callback_results = callback_queue.get()
             callback_queue.task_done()
 
-            # Ensure that callback was called only once
+            # Ensure that callback or error_callback was called only once
             assert callback_queue.qsize() == 0
 
             if callback_type == "regular callback":
