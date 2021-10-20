@@ -485,7 +485,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
         num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
-    @ray.remote(max_retries=1 if reconstruction_enabled else 0)
+    @ray.remote
     def large_object():
         return np.zeros(10**7, dtype=np.uint8)
 
@@ -640,6 +640,48 @@ def test_reconstruction_stress(ray_start_cluster):
             ray.get(outputs.pop(0))
             print(i)
             i += 1
+
+
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0, _system_config=config, enable_object_reconstruction=True)
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def nondeterministic_object():
+        if np.random.rand() < 0.5:
+            return np.zeros(10**5, dtype=np.uint8)
+        else:
+            return 0
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    for _ in range(10):
+        obj = nondeterministic_object.options(resources={"node1": 1}).remote()
+        for _ in range(3):
+            ray.get(dependent_task.remote(obj))
+            x = dependent_task.remote(obj)
+            cluster.remove_node(node_to_kill, allow_graceful=False)
+            node_to_kill = cluster.add_node(
+                num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+            ray.get(x)
 
 
 if __name__ == "__main__":

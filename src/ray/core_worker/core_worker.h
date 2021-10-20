@@ -1126,6 +1126,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      ReferenceCounter::ReferenceTableProto *borrowed_refs,
                      bool *is_application_level_error);
 
+  /// Put an object in the local plasma store.
+  Status PutInLocalPlasmaStore(const RayObject &object, const ObjectID &object_id,
+                               bool pin_object);
+
   /// Execute a local mode task (runs normal ExecuteTask)
   ///
   /// \param spec[in] task_spec Task specification.

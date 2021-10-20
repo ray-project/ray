@@ -14,12 +14,11 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include "msgpack.hpp"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/util/util.h"
-
-#include "msgpack.hpp"
 
 namespace ray {
 namespace core {
@@ -191,8 +190,23 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::Address &worker_addr) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
+  // Objects that were stored in plasma upon the first successful execution of
+  // this task. These objects will get stored in plasma again, even if they
+  // were returned directly in the worker's reply. This ensures that any
+  // reference holders that are already scheduled at the raylet can retrieve
+  // these objects through plasma.
+  absl::flat_hash_set<ObjectID> store_in_plasma_ids = {};
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end())
+        << "Tried to complete task that was not pending " << task_id;
+    if (it->second.num_successful_executions > 0) {
+      store_in_plasma_ids = it->second.reconstructable_return_ids;
+    }
+  }
+
   std::vector<ObjectID> direct_return_ids;
-  std::vector<ObjectID> plasma_return_ids;
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
@@ -235,10 +249,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             return_object.metadata().size());
       }
 
-      bool stored_in_direct_memory = in_memory_store_->Put(
-          RayObject(data_buffer, metadata_buffer, nested_refs), object_id);
-      if (stored_in_direct_memory) {
-        direct_return_ids.push_back(object_id);
+      RayObject object(data_buffer, metadata_buffer, nested_refs);
+      if (store_in_plasma_ids.count(object_id)) {
+        put_in_local_plasma_callback_(object, object_id);
+      } else {
+        bool stored_in_direct_memory = in_memory_store_->Put(object, object_id);
+        if (stored_in_direct_memory) {
+          direct_return_ids.push_back(object_id);
+        }
       }
     }
 
@@ -272,6 +290,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_LOG(DEBUG) << "Task " << it->first << " now has "
                    << it->second.reconstructable_return_ids.size()
                    << " plasma returns in scope";
+    it->second.num_successful_executions++;
+
     it->second.pending = false;
     num_pending_tasks_--;
 
