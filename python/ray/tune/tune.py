@@ -108,6 +108,7 @@ def run(
         # Deprecated args
         loggers: Optional[Sequence[Type[Logger]]] = None,
         _remote: bool = None,
+        queue_trials: bool = None,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -288,6 +289,11 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+
+    # To be removed in 1.9.
+    if queue_trials is not None:
+        warnings.warn(
+            "`queue_trials` is being deprecated. Please remove it from API.")
 
     # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
     # remote_run_kwargs must be defined before any other
@@ -652,7 +658,8 @@ def run_experiments(
         raise_on_failed_trial: bool = True,
         concurrent: bool = True,
         callbacks: Optional[Sequence[Callback]] = None,
-        _remote: bool = None):
+        _remote: bool = None,
+        queue_trials: bool = None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -666,6 +673,11 @@ def run_experiments(
         List of Trial objects, holding data for each executed trial.
 
     """
+    # To be removed in 1.9.
+    if queue_trials is not None:
+        warnings.warn(
+            "`queue_trials` is being deprecated. Please remove it from API.")
+
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 

@@ -102,7 +102,7 @@ pbt_scheduler = PopulationBasedTraining(
     mode="min",
     perturbation_interval=1,
     hyperparam_mutations={
-        # distribution for resamplingy
+        # distribution for resampling
         "lr": lambda: np.random.uniform(0.001, 1),
         # allow perturbations within this set of categorical values
         "momentum": [0.8, 0.9, 0.99],
