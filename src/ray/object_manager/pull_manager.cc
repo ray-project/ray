@@ -481,7 +481,8 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // TODO(ekl) should we more directly mark the object as lost in this case?
+  // TODO(swang): Store an error if this times out and the object is not
+  // pending reconstruction.
   RAY_LOG(WARNING) << "Object neither in memory nor external storage " << object_id.Hex();
 }
 
