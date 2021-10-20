@@ -24,7 +24,7 @@
 #include "ray/common/status.h"
 #include "ray/stats/metric.h"
 
-DECLARE_stats(grpc_server_req_latency_ms);
+DECLARE_stats(grpc_server_req_process_time_ms);
 DECLARE_stats(grpc_server_req_new);
 DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
@@ -206,7 +206,7 @@ class ServerCallImpl : public ServerCall {
       auto callback = std::move(send_reply_success_callback_);
       io_service_.post([callback]() { callback(); }, call_name_ + ".success_callback");
     }
-    LogLatency();
+    LogProcessTime();
   }
 
   void OnReplyFailed() override {
@@ -215,17 +215,17 @@ class ServerCallImpl : public ServerCall {
       auto callback = std::move(send_reply_failure_callback_);
       io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
     }
-    LogLatency();
+    LogProcessTime();
   }
 
   const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
  private:
   /// Log the duration this query used
-  void LogLatency() {
+  void LogProcessTime() {
     auto end_time = absl::GetCurrentTimeNanos();
-    STATS_grpc_server_req_latency_ms.Record((end_time - start_time_) / 1000000,
-                                            call_name_);
+    STATS_grpc_server_req_process_time_ms.Record((end_time - start_time_) / 1000000,
+                                                 call_name_);
   }
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
