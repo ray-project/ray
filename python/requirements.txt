@@ -27,7 +27,7 @@ requests
 ## setup.py extras
 dm_tree
 flask
-gym==0.19
+gym
 lz4
 scikit-image
 opencv-python-headless==4.3.0.36

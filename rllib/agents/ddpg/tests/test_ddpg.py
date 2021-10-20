@@ -42,7 +42,7 @@ class TestDDPG(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -67,7 +67,7 @@ class TestDDPG(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             trainer.train()
             with TemporaryDirectory() as temp_dir:
                 checkpoint = trainer.save(temp_dir)
@@ -84,7 +84,7 @@ class TestDDPG(unittest.TestCase):
         for _ in framework_iterator(core_config):
             config = core_config.copy()
             # Default OUNoise setup.
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
@@ -109,7 +109,7 @@ class TestDDPG(unittest.TestCase):
                 "initial_scale": 0.001,
                 "final_scale": 0.001,
             }
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(
                 obs, explore=False)
