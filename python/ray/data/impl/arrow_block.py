@@ -268,24 +268,28 @@ class ArrowBlockAccessor(BlockAccessor):
         col, _ = key[0]
         comp_fn = pac.greater if descending else pac.less
 
-        # Compute the boundary indices in O(n) time via scan.
-        boundary_indices = []
-        remaining = boundaries.copy()
-        values = table[col]
-        for i, x in enumerate(values):
-            while remaining and not comp_fn(x, remaining[0]).as_py():
-                remaining.pop(0)
-                boundary_indices.append(i)
-        for _ in remaining:
-            boundary_indices.append(len(values))
-        assert len(boundary_indices) == len(boundaries)
+        # TODO(ekl) this is O(n^2) but in practice it's much faster than the
+        # O(n) algorithm, could be optimized.
+        boundary_indices = [
+            pac.sum(comp_fn(table[col], b)).as_py() for b in boundaries
+        ]
+        ### Compute the boundary indices in O(n) time via scan.  # noqa
+        # boundary_indices = []
+        # remaining = boundaries.copy()
+        # values = table[col]
+        # for i, x in enumerate(values):
+        #     while remaining and not comp_fn(x, remaining[0]).as_py():
+        #         remaining.pop(0)
+        #         boundary_indices.append(i)
+        # for _ in remaining:
+        #     boundary_indices.append(len(values))
 
         ret = []
         prev_i = 0
         for i in boundary_indices:
-            ret.append(table.slice(prev_i, i - prev_i))
+            ret.append(_copy_table(table.slice(prev_i, i - prev_i)))
             prev_i = i
-        ret.append(table.slice(prev_i))
+        ret.append(_copy_table(table.slice(prev_i)))
         return ret
 
     @staticmethod
@@ -296,3 +300,20 @@ class ArrowBlockAccessor(BlockAccessor):
         indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
         ret = ret.take(indices)
         return ret, ArrowBlockAccessor(ret).get_metadata(None)
+
+
+def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
+    import pyarrow as pa
+
+    cols = table.columns
+    new_cols = []
+    for col in cols:
+        chunks = []
+        for chunk in col.chunks:
+            if isinstance(chunk, pa.ExtensionArray):
+                new_chunk = type(chunk).from_numpy(chunk.to_numpy())
+            else:
+                new_chunk = pa.array(chunk.to_numpy(), chunk.type)
+            chunks.append(new_chunk)
+        new_cols.append(pa.chunked_array(chunks, col.type))
+    return pa.Table.from_arrays(new_cols, schema=table.schema)
