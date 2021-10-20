@@ -27,6 +27,7 @@ import traceback
 import ray
 import ray.util
 
+# Define test_module for py_module tests
 try:
     import test_module
 except:
@@ -112,6 +113,7 @@ def create_file(p):
 
 @pytest.fixture(scope="function")
 def working_dir():
+    """Regular local_working_dir test setup for existing tests"""
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
         module_path = path / "test_module"
@@ -128,6 +130,7 @@ def one():
             f.write("""
 from test_module.test import one
 """)
+
         old_dir = os.getcwd()
         os.chdir(tmp_dir)
         yield tmp_dir
