@@ -331,7 +331,7 @@ def override_task_or_actor_runtime_env(
     task, and the current runtime env comes from the current TaskSpec.
 
     By default, the child runtime env inherits non-specified options from the
-    parent. There are two exceptions to this:
+    parent. There is one exception to this:
         - The env_vars dictionaries are merged, so environment variables
           not specified by the child are still inherited from the parent.
 
