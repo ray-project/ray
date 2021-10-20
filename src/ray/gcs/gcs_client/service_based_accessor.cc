@@ -540,8 +540,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   });
 }
 
-const GcsNodeInfo* ServiceBasedNodeInfoAccessor::Get(
-    const NodeID &node_id, bool filter_dead_nodes) const {
+const GcsNodeInfo *ServiceBasedNodeInfoAccessor::Get(const NodeID &node_id,
+                                                     bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {

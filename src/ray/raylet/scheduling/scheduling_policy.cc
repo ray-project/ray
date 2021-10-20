@@ -51,7 +51,8 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   const auto local_it = nodes.find(local_node_id);
   RAY_CHECK(local_it != nodes.end());
 
-  auto predicate = [node_filter, &is_node_available](int64_t node_id, const NodeResources &node_resources) {
+  auto predicate = [node_filter, &is_node_available](
+                       int64_t node_id, const NodeResources &node_resources) {
     if (!is_node_available(node_id)) {
       return false;
     }
@@ -77,7 +78,8 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
 
   const auto start_index = round.size();
   for (const auto &pair : nodes) {
-    if (pair.first != local_node_id && predicate(pair.first, pair.second.GetLocalView())) {
+    if (pair.first != local_node_id &&
+        predicate(pair.first, pair.second.GetLocalView())) {
       round.push_back(pair.first);
     }
   }

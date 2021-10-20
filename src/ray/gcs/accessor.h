@@ -462,7 +462,7 @@ class NodeInfoAccessor {
   /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
   /// \return The item returned by GCS. If the item to read doesn't exist or the node is
   /// dead, this optional object is empty.
-  virtual const rpc::GcsNodeInfo* Get(const NodeID &node_id,
+  virtual const rpc::GcsNodeInfo *Get(const NodeID &node_id,
                                       bool filter_dead_nodes = true) const = 0;
 
   /// Get information of all nodes from local cache.
