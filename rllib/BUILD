@@ -2462,7 +2462,7 @@ py_test(
 py_test(
     name = "examples/deterministic_training_tf",
     main = "examples/deterministic_training.py",
-    tags = ["team:ml", "examples", "examples_D", "multi_gpu"],
+    tags = ["team:ml", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
     args = ["--as-test", "--stop-iters=1", "--framework=tf", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
@@ -2471,7 +2471,7 @@ py_test(
 py_test(
     name = "examples/deterministic_training_tf2",
     main = "examples/deterministic_training.py",
-    tags = ["team:ml", "examples", "examples_D", "multi_gpu"],
+    tags = ["team:ml", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
     args = ["--as-test", "--stop-iters=1", "--framework=tf2", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
@@ -2480,7 +2480,7 @@ py_test(
 py_test(
     name = "examples/deterministic_training_torch",
     main = "examples/deterministic_training.py",
-    tags = ["team:ml", "examples", "examples_D", "multi_gpu"],
+    tags = ["team:ml", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
     args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
