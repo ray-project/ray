@@ -164,7 +164,7 @@ To configure it, you can set the ``_autoscaling`` field in deployment options.
 
 .. warning::
   The API is experimental and subject to change. We welcome you to test it out
-  and leave us feedback through github issues or discussion forum!
+  and leave us feedback through `Github Issues <https://github.com/ray-project/ray/issues>`_ or our `discussion forum <https://discuss.ray.io/>`_!
 
 .. code-block:: python
 
@@ -179,20 +179,20 @@ To configure it, you can set the ``_autoscaling`` field in deployment options.
       time.sleep(1)
       return ""
   
-  func.deploy() # The func deployments will now autoscale based on requests demand.
+  func.deploy() # The func deployment will now autoscale based on requests demand.
 
-The ``min_replicas`` and ``max_replicas`` fields configures the range of replicas of which
-Serve autoscaler to choose from.  Deployments will start with ``min_replicas`` initially.
+The ``min_replicas`` and ``max_replicas`` fields configure the range of replicas which the
+Serve autoscaler chooses from.  Deployments will start with ``min_replicas`` initially.
 
-``target_num_ongoing_requests_per_replica`` configuration specifies how aggresive should the
-autoscaler react to traffic. Serve will try to make sure that each replicas have roughly that number
+The ``target_num_ongoing_requests_per_replica`` configuration specifies how aggressively the
+autoscaler should react to traffic. Serve will try to make sure that each replica has roughly that number
 of requests being processed and waiting in the queue. For example, if your processing time is ``10ms``
-and the latency constraint is ``100ms``, you can have at most ``10`` requests ongoing per replicas so
+and the latency constraint is ``100ms``, you can have at most ``10`` requests ongoing per replica so
 the last requests can finish within the latency constraint. We recommend you benchmark your application
 code and set this number based on end to end latency objective.
 
 .. note::
-  ``version`` field is required for autoscaling. We are actively working on removing
+  The ``version`` field is required for autoscaling. We are actively working on removing
   this limitation.
 
 
