@@ -14,6 +14,14 @@ diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal
 diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/delta_producer.h
 --- opencensus/stats/internal/delta_producer.h
 +++ opencensus/stats/internal/delta_producer.h
+@@ -20,6 +20,7 @@
+ #include <thread>
+ #include <unordered_map>
+ #include <vector>
++#include <atomic>
+ 
+ #include "absl/synchronization/mutex.h"
+ #include "absl/time/time.h"
 @@ -84,6 +84,8 @@ class DeltaProducer final {
    // Flushes the active delta and blocks until it is harvested.
    void Flush() LOCKS_EXCLUDED(delta_mu_, harvester_mu_);
