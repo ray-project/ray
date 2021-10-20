@@ -119,7 +119,7 @@ class BackendConfig(BaseModel):
             including_default_value_fields=True,
             preserving_proto_field_name=True)
         if "user_config" in data:
-            if data["user_config"] != "":
+            if data["user_config"] != b"":
                 data["user_config"] = pickle.loads(proto.user_config)
             else:
                 data["user_config"] = None
