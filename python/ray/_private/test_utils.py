@@ -698,6 +698,8 @@ def is_placement_group_removed(pg):
 def monitor_memory_usage(interval_s: int = 5, warning_threshold: float = 0.9):
     """Run the memory monitor actor that prints the memory usage.
 
+    The monitor will run on the same node as this function is called.
+
     Params:
         interval_s (int): The interval memory usage information is printed
         warning_threshold (float): The threshold where the
@@ -711,8 +713,19 @@ def monitor_memory_usage(interval_s: int = 5, warning_threshold: float = 0.9):
 
     @ray.remote(num_cpus=0)
     class MemoryMonitorActor:
-        def __init__(self, interval_s=5, warning_threshold=0.9):
+        def __init__(self,
+                     interval_s: float = 5,
+                     warning_threshold: float = 0.9,
+                     n: int = 10):
             """The actor that monitor the memory usage of the cluster.
+
+            Params:
+                interval_s (float): The interval where
+                    memory usage is printed.
+                warning_threshold (float): The threshold where
+                    memory warning is printed
+                n (int): When memory usage is printed,
+                    top n entries are printed.
             """
             # -- Interval the monitor omits the memory usage information. --
             self.interval_s = interval_s
@@ -722,6 +735,13 @@ def monitor_memory_usage(interval_s: int = 5, warning_threshold: float = 0.9):
             self.warning_threshold = warning_threshold
             # -- The monitor that calculates the memory usage of the node. --
             self.monitor = memory_monitor.MemoryMonitor()
+            # -- The top n memory usage of processes are printed. --
+            self.n = n
+            # -- The peak memory usage in GB during lifetime of monitor. --
+            self.peak_memory_usage = 0
+            # -- The top n memory usage of processes
+            # during peak memory usage. --
+            self.peak_top_n_memory_usage = ""
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
 
@@ -734,10 +754,18 @@ def monitor_memory_usage(interval_s: int = 5, warning_threshold: float = 0.9):
             self.is_running = True
             while self.is_running:
                 used_gb, total_gb = self.monitor.get_memory_usage()
+                top_n_memory_usage = memory_monitor.get_top_n_memory_usage(
+                    n=self.n)
+                if used_gb > self.peak_memory_usage:
+                    self.peak_memory_usage = used_gb
+                    self.peak_top_n_memory_usage = top_n_memory_usage
+
                 if used_gb > total_gb * self.warning_threshold:
                     logging.warning("The memory usage is high: "
                                     f"{used_gb / total_gb * 100}%")
-                logging.info(memory_monitor.get_top_n_memory_usage(n=10))
+                logging.info(f"Memory usage: {used_gb} / {total_gb}")
+                logging.info(f"Top {self.n} process memory usage:")
+                logging.info(top_n_memory_usage)
                 await asyncio.sleep(self.interval_s)
 
         async def stop_run(self):
@@ -750,12 +778,17 @@ def monitor_memory_usage(interval_s: int = 5, warning_threshold: float = 0.9):
             self.is_running = False
             return was_running
 
-        async def get_snapshot(self):
-            """Return the snapshot of the memory usage.
+        async def get_peak_memory_info(self):
+            """Return the tuple of the peak memory usage and the
+                top n process information during the peak memory usage.
             """
-            raise NotImplementedError("")
+            return self.peak_memory_usage, self.peak_top_n_memory_usage
 
-    memory_monitor_actor = MemoryMonitorActor.remote(
+    current_node_ip = ray.worker.global_worker.node_ip_address
+    # Schedule the actor on the current node.
+    memory_monitor_actor = MemoryMonitorActor.options(resources={
+        f"node:{current_node_ip}": 0.001
+    }).remote(
         interval_s=interval_s, warning_threshold=warning_threshold)
     print("Waiting for memory monitor actor to be ready...")
     ray.get(memory_monitor_actor.ready.remote())

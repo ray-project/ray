@@ -28,7 +28,7 @@ run_experiments(
         "ppo": {
             "run": "PPO",
             "env": "CartPole-v0",
-            "num_samples": 100,
+            "num_samples": 10000,
             "config": {
                 "framework": "torch",
                 "num_workers": 7,
@@ -41,3 +41,8 @@ run_experiments(
         }
     },
     callbacks=[ProgressCallback()])
+
+ray.get(monitor_actor.stop_run.remote())
+used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
+print(f"Peak memory usage: {round(used_gb, 2)}GB")
+print(f"Peak memory usage per processes:\n {usage}")

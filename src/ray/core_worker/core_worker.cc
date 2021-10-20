@@ -793,18 +793,8 @@ void CoreWorker::Exit(
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
 
-  auto status =
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
-  if (status.IsIOError()) {
-    // If the core worker fails to be connected to raylet due to broken pipe, we just exit
-    // quickly without proceeding graceful shutdown. This happens if
-    // - raylet is already crashed.
-    // - Raylet already unregistered this worker.
-    RAY_LOG(INFO)
-        << "Failed to notify that the direct call task has blocked. Call status: "
-        << status;
-    QuickExit(options_.enable_logging);
-  }
+  RAY_CHECK_OK(
+      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {

@@ -511,17 +511,27 @@ def start_ray_process(command,
     if os.environ.get(gdb_env_var) == "1":
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
+    # Jemalloc memory profiling.
+    jemalloc_mem_profiler_env_var = (
+        f"RAY_{process_type.upper()}_JEMALLOC_LD_PRELOAD")
+    use_jemalloc_mem_profiler = False
+    jemalloc_ld_preload = os.environ.get(jemalloc_mem_profiler_env_var)
+    if os.environ.get(jemalloc_mem_profiler_env_var):
+        logger.info("Detected environment variable: "
+                    f"{jemalloc_mem_profiler_env_var}")
+        use_jemalloc_mem_profiler = True
 
     if sum([
             use_gdb,
             use_valgrind,
             use_valgrind_profiler,
             use_perftools_profiler,
+            use_jemalloc_mem_profiler,
     ]) > 1:
-        raise ValueError(
-            "At most one of the 'use_gdb', 'use_valgrind', "
-            "'use_valgrind_profiler', and 'use_perftools_profiler' flags can "
-            "be used at a time.")
+        raise ValueError("At most one of the 'use_gdb', 'use_valgrind', "
+                         "'use_valgrind_profiler', 'use_perftools_profiler', "
+                         "and 'use_jemalloc_mem_profiler' flags can "
+                         "be used at a time.")
     if env_updates is None:
         env_updates = {}
     if not isinstance(env_updates, dict):
@@ -561,6 +571,9 @@ def start_ray_process(command,
     if use_perftools_profiler:
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
+
+    if use_jemalloc_mem_profiler:
+        modified_env["LD_PRELOAD"] = jemalloc_ld_preload
 
     if use_tmux:
         # The command has to be created exactly as below to ensure that it
