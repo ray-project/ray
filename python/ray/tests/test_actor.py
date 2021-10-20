@@ -935,7 +935,6 @@ def test_named_actor_cache_via_another_actor(ray_start_regular_shared):
             actor = ray.get_actor(name)
             return ray.get(actor.inc_and_get.remote())
 
-
     a = Counter.options(name="hi").remote()
     first_get = ray.get_actor("hi")
     assert ray.get(first_get.inc_and_get.remote()) == 1
