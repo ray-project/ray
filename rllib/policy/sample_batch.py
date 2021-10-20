@@ -40,6 +40,7 @@ class SampleBatch(dict):
     DONES = "dones"
     INFOS = "infos"
     SEQ_LENS = "seq_lens"
+    OBS_EMBEDS = "obs_embeds"
     T = "t"
 
     # Extra action fetches keys.
