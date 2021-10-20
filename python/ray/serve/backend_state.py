@@ -726,9 +726,7 @@ class BackendState:
 
         if backend_info is not None:
             self._target_info = backend_info
-            target_replicas = backend_info.backend_config.num_replicas
-
-            self._target_replicas = target_replicas
+            self._target_replicas = backend_info.backend_config.num_replicas
 
             self._target_version = BackendVersion(
                 backend_info.version,

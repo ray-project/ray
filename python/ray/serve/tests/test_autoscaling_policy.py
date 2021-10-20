@@ -1,17 +1,21 @@
 import sys
 import time
 
+
 import pytest
+from unittest import mock
+
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.autoscaling_policy import (BasicAutoscalingPolicy,
                                           calculate_desired_num_replicas)
 from ray.serve.backend_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve.controller import ServeController
+
 
 import ray
 from ray import serve
-
 
 class TestCalculateDesiredNumReplicas:
     def test_bounds_checking(self):
@@ -84,6 +88,15 @@ class TestCalculateDesiredNumReplicas:
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
 
 
+def get_num_running_replicas(controller: ServeController,
+                             deployment_name: str) -> int:
+    """ Get the amount of replicas currently running for given deployment name """
+    replicas = ray.get(
+        controller._dump_replica_states_for_testing.remote(deployment_name))
+    running_replicas = replicas.get([ReplicaState.RUNNING])
+    return len(running_replicas)
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_e2e_basic_scale_up_down(serve_instance):
     """Send 100 requests and check that we autoscale up, and then back down."""
@@ -114,17 +127,36 @@ def test_e2e_basic_scale_up_down(serve_instance):
 
     controller = serve_instance._controller
 
-    def get_num_running_replicas():
-        replicas = ray.get(
-            controller._dump_replica_states_for_testing.remote("A"))
-        running_replicas = replicas.get([ReplicaState.RUNNING])
-        return len(running_replicas)
-
-    wait_for_condition(lambda: get_num_running_replicas() >= 2)
+    wait_for_condition(lambda: get_num_running_replicas(controller, "A") >= 2)
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(lambda: get_num_running_replicas() <= 1)
+    wait_for_condition(lambda: get_num_running_replicas(controller, "A") <= 1)
+
+
+@mock.patch.object(ServeController, 'autoscale')
+def test_initial_num_replicas(mock, serve_instance):
+    """ assert that the inital amount of replicas a deployment is launched with
+    respects the bounds set by autoscaling_config.
+    
+    For this test we mock out the autoscaling loop, make sure the number of replicas
+    is set correctly before we hit the autoscaling procedure.
+    """
+
+    @serve.deployment(
+        _autoscaling_config={
+            "min_replicas": 2,
+            "max_replicas": 4,
+        },
+        version="v1")
+    class A:
+        def __call__(self):
+            return "ok!"
+
+    A.deploy()
+
+    controller = serve_instance._controller
+    assert get_num_running_replicas(controller, "A") == 2
 
 
 class MockTimer:
