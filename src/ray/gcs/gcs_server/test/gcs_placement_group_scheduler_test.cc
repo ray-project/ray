@@ -44,12 +44,12 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
-    gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(gcs_pub_sub_, gcs_table_storage_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        gcs_pub_sub_, gcs_table_storage_, raylet_client_pool_);
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
         io_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
         *gcs_resource_scheduler_, raylet_client_pool_);

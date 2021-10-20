@@ -97,7 +97,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
                       node_info_delta = node_info_delta](const Status &status) {
     auto on_resource_update_done =
         [this, remote_address = std::move(remote_address), node_id,
-         node_info_delta = std::move(node_info_delta)](const Status &status) {
+         node_info_delta = node_info_delta](const Status &status) {
           auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
           RAY_CHECK(raylet_client);
           // Drain API is not supposed to kill the raylet, but we are doing this until the

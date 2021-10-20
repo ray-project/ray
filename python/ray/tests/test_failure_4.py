@@ -395,7 +395,11 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     # NOTE: In the current implementation we kill nodes when draining them.
     # This check should be removed once we implement
     # the proper drain behavior.
-    wait_for_condition(lambda: len(search_raylet(cluster)) == 1)
+    try:
+        wait_for_condition(lambda: len(search_raylet(cluster)) == 1)
+    except Exception:
+        print("More than one raylets are detected.")
+        print(search_raylet(cluster))
     """
     Make sure the API is idempotent.
     """

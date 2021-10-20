@@ -24,16 +24,16 @@ class RayletBasedActorSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+        [this](const rpc::Address &addr) { return raylet_client_; });
     worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
-    gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(gcs_pub_sub_, gcs_table_storage_);
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        gcs_pub_sub_, gcs_table_storage_, raylet_client_pool_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
-    raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
-        [this](const rpc::Address &addr) { return raylet_client_; });
     gcs_actor_scheduler_ =
         std::make_shared<GcsServerMocker::MockedRayletBasedActorScheduler>(
             io_service_, *gcs_actor_table_, *gcs_node_manager_, gcs_pub_sub_,
