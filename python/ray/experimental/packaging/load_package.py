@@ -68,7 +68,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
 
     # Autofill working directory by uploading to GCS storage.
     if "working_dir" not in runtime_env:
-        pkg_name = working_dir_pkg.get_project_package_name(
+        pkg_name, _ = working_dir_pkg.get_project_package_name(
             working_dir=base_dir, py_modules=[], excludes=[])
         pkg_uri = working_dir_pkg.Protocol.GCS.value + "://" + pkg_name
 
