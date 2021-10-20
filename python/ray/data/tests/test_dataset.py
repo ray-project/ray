@@ -295,6 +295,68 @@ def test_batch_tensors(ray_start_regular_shared):
     assert df.to_dict().keys() == {0, 1}
 
 
+def test_arrow_block_slice_copy():
+    # Test that ArrowBlock slicing properly copies the underlying Arrow
+    # table.
+    def check_for_copy(table1, table2, a, b, is_copy):
+        expected_slice = table1.slice(a, b - a)
+        assert table2.equals(expected_slice)
+        assert table2.schema == table1.schema
+        assert table1.num_columns == table2.num_columns
+        for col1, col2 in zip(table1.columns, table2.columns):
+            assert col1.num_chunks == col2.num_chunks
+            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
+                bufs1 = chunk1.buffers()
+                bufs2 = chunk2.buffers()
+                expected_offset = 0 if is_copy else a
+                assert chunk2.offset == expected_offset
+                assert len(chunk2) == b - a
+                if is_copy:
+                    assert bufs2[1].address != bufs1[1].address
+                else:
+                    assert bufs2[1].address == bufs1[1].address
+
+    n = 20
+    df = pd.DataFrame({
+        "one": list(range(n)),
+        "two": ["a"] * n,
+        "three": [np.nan] + [1.5] * (n - 1)
+    })
+    table = pa.Table.from_pandas(df)
+    a, b = 5, 10
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    check_for_copy(table, table2, a, b, is_copy=True)
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    check_for_copy(table, table2, a, b, is_copy=False)
+
+
+def test_arrow_block_slice_copy_empty():
+    # Test that ArrowBlock slicing properly copies the underlying Arrow
+    # table when the table is empty.
+    df = pd.DataFrame({"one": []})
+    table = pa.Table.from_pandas(df)
+    a, b = 0, 0
+    expected_slice = table.slice(a, b - a)
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    assert table2.equals(expected_slice)
+    assert table2.schema == table.schema
+    assert table2.num_rows == 0
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    assert table2.equals(expected_slice)
+    assert table2.schema == table.schema
+    assert table2.num_rows == 0
+
+
 def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.data.range_tensor(5, shape=(3, 5))
@@ -357,6 +419,44 @@ def test_tensor_array_reductions(ray_start_regular_shared):
             np_kwargs["ddof"] = 1
         np.testing.assert_equal(df["two"].agg(name),
                                 reducer(arr, axis=0, **np_kwargs))
+
+
+def test_tensor_array_block_slice():
+    # Test that ArrowBlock slicing workers with tensor column extension type.
+    def check_for_copy(table1, table2, a, b, is_copy):
+        expected_slice = table1.slice(a, b - a)
+        assert table2.equals(expected_slice)
+        assert table2.schema == table1.schema
+        assert table1.num_columns == table2.num_columns
+        for col1, col2 in zip(table1.columns, table2.columns):
+            assert col1.num_chunks == col2.num_chunks
+            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
+                bufs1 = chunk1.buffers()
+                bufs2 = chunk2.buffers()
+                expected_offset = 0 if is_copy else a
+                assert chunk2.offset == expected_offset
+                assert len(chunk2) == b - a
+                if is_copy:
+                    assert bufs2[1].address != bufs1[1].address
+                else:
+                    assert bufs2[1].address == bufs1[1].address
+
+    n = 20
+    df = pd.DataFrame({
+        "one": TensorArray(np.array(list(range(n)))),
+        "two": ["a"] * n
+    })
+    table = pa.Table.from_pandas(df)
+    a, b = 5, 10
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    check_for_copy(table, table2, a, b, is_copy=True)
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    check_for_copy(table, table2, a, b, is_copy=False)
 
 
 def test_arrow_tensor_array_getitem(ray_start_regular_shared):
