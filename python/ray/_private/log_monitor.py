@@ -300,12 +300,11 @@ class LogMonitor:
                         flush()  # Possible change of task/actor name.
                         file_info.task_name = next_line.split(
                             ray_constants.LOG_PREFIX_TASK_NAME, 1)[1]
-                    elif ("Windows fatal exception: access violation" in
-                          next_line):
+                    elif next_line.startswith(
+                           "Windows fatal exception: access violation"):
                         # We are suppressing the
                         # 'Windows fatal exception: access violation'
-                        # message from user-provided callbacks on Windows.
-                        # As far as we know
+                        # message on Windows here. As far as we know
                         # it is harmless, but frequently popping up
                         # if Python functions are run inside the core
                         # worker C extension. See the investigation in
