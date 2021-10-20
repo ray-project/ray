@@ -215,11 +215,11 @@ def test_job_eager_install(shutdown_only):
     ray.init(runtime_env=runtime_env)
     with pytest.raises(RuntimeError):
         wait_for_condition(
-            lambda: len(get_conda_env_list()) == env_count + 2, timeout=60)
+            lambda: len(get_conda_env_list()) == env_count + 2, timeout=5)
     ray.shutdown()
     # Test unavailable type
     runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         ray.init(runtime_env=runtime_env)
     ray.shutdown()
 
@@ -908,7 +908,6 @@ def test_runtime_env_override(call_ray_start):
         parent = ray.get_actor("parent")
 
         env = ray.get_runtime_context().runtime_env
-        del env["working_dir"]  # make sure to directly use the direcotry
         print("Spawning with env:", env)
         ray.get(parent.spawn_child.remote("child", env))
 
@@ -941,17 +940,19 @@ def test_runtime_env_inheritance_regression(shutdown_only):
             def f(self):
                 return open("hello").read()
 
-        # Not passing the working_dir through should work.
-        env1 = ray.get_runtime_context().runtime_env
-        del env1["working_dir"]
-        t = Test.options(runtime_env=env1).remote()
-        assert ray.get(t.f.remote()) == "world"
-
         # Passing working_dir URI through directly should work.
         env2 = ray.get_runtime_context().runtime_env
         assert "working_dir" in env2
         t = Test.options(runtime_env=env2).remote()
         assert ray.get(t.f.remote()) == "world"
+
+        # Not passing the working_dir through should work
+        # (but not have the file).
+        env1 = ray.get_runtime_context().runtime_env
+        del env1["working_dir"]
+        t = Test.options(runtime_env=env1).remote()
+        with pytest.raises(FileNotFoundError):
+            ray.get(t.f.remote())
 
         # Passing a local directory should not work.
         env3 = ray.get_runtime_context().runtime_env

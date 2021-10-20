@@ -220,8 +220,17 @@ class ParsedRuntimeEnv(dict):
     """
 
     known_fields: Set[str] = {
-        "working_dir", "conda", "pip", "containers", "excludes", "env_vars",
-        "_ray_release", "_ray_commit", "_inject_current_ray", "plugins"
+        "working_dir",
+        "conda",
+        "pip",
+        "containers",
+        "excludes",
+        "env_vars",
+        "_ray_release",
+        "_ray_commit",
+        "_inject_current_ray",
+        "plugins",
+        "eager_install",
     }
 
     def __init__(self, runtime_env: Dict[str, Any], _validate: bool = True):
