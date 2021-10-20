@@ -50,12 +50,9 @@ class ActorGroup:
 
     Example:
 
+    #TODO
     .. code_block:: python
 
-        actor_group = ActorGroup(num_actors=2)
-        output = actor_group.execute(lambda: 1)
-        assert len(output) == 2
-        assert all(o == 1 for o in output)
     """
 
     def __init__(
