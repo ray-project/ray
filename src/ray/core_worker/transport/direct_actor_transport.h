@@ -337,10 +337,10 @@ class FiberStateManager final {
 
  private:
   // Map from the name to their corresponding fibers.
-  std::unordered_map<std::string, std::shared_ptr<FiberState>> name_to_fiber_index_;
+  absl::flat_hash_map<std::string, std::shared_ptr<FiberState>> name_to_fiber_index_;
 
   // Map from the FunctionDescriptors to their corresponding fibers.
-  std::unordered_map<std::string, std::shared_ptr<FiberState>> functions_to_fiber_index_;
+  absl::flat_hash_map<std::string, std::shared_ptr<FiberState>> functions_to_fiber_index_;
 
   // The fiber for default concurrency group. It's nullptr if its max concurrency
   // is 1.
@@ -562,9 +562,13 @@ class ActorSchedulingQueue : public SchedulingQueue {
         pool_manager_(pool_manager),
         is_asyncio_(is_asyncio) {
     if (is_asyncio_) {
-      // TODO: LOG
-      RAY_LOG(INFO) << "Setting actor as asyncio with max_concurrency="
-                    << fiber_max_concurrency << ", creating new fiber thread.";
+      std::stringstream ss;
+      ss << "Setting actor as asyncio with max_concurrency=" << fiber_max_concurrency
+         << ", and defined concurrency groups are:" << std::endl;
+      for (const auto &concurrency_group : concurrency_groups) {
+        ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
+      }
+      RAY_LOG(INFO) << ss.str();
       fiber_state_manager_ =
           std::make_unique<FiberStateManager>(concurrency_groups, fiber_max_concurrency);
     }
@@ -894,7 +898,7 @@ class CoreWorkerDirectTaskReceiver {
 
  protected:
   /// Cache the concurrency groups of actors.
-  std::unordered_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
+  absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
   // Worker context.

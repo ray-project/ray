@@ -328,7 +328,7 @@ cdef c_vector[CFunctionDescriptor] prepare_function_descriptors(pyfd_list):
     return fd_list
 
 
-cdef int prepare_concurrency_groups(
+cdef int prepare_actor_concurrency_groups(
         dict concurrency_groups_dict,
         c_vector[CConcurrencyGroup] *concurrency_groups):
 
@@ -441,6 +441,8 @@ cdef execute_task(
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
         c_bool *is_application_level_error,
+        # This parameter is only used for actor creation task to define
+        # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
         const c_string c_name_of_concurrency_group_to_execute):
 
@@ -492,7 +494,7 @@ cdef execute_task(
 
         # Initial eventloops for asyncio for this actor.
         if core_worker.current_actor_is_asyncio():
-            core_worker.initial_eventloops_for_concurrency_group(
+            core_worker.initialize_eventloops_for_actor_concurrency_group(
                 c_defined_concurrency_groups)
 
     execution_info = execution_infos.get(function_descriptor)
@@ -1474,7 +1476,7 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
-            prepare_concurrency_groups(
+            prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
 
             with nogil:
@@ -1868,7 +1870,7 @@ cdef class CoreWorker:
             ret.append(CFunctionDescriptorToPython(c_function_descriptors[i]))
         return ret
 
-    cdef initial_eventloops_for_concurrency_group(
+    cdef initialize_eventloops_for_actor_concurrency_group(
             self,
             const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups):
 

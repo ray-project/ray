@@ -138,7 +138,7 @@ cdef class CoreWorker:
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
     cdef c_function_descriptors_to_python(
         self, const c_vector[CFunctionDescriptor] &c_function_descriptors)
-    cdef initial_eventloops_for_concurrency_group(
+    cdef initialize_eventloops_for_actor_concurrency_group(
         self, const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups)
 
 cdef class FunctionDescriptor:
