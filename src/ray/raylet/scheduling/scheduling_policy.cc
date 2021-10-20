@@ -51,14 +51,14 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   const auto local_it = nodes.find(local_node_id);
   RAY_CHECK(local_it != nodes.end());
 
-  auto predicate = [node_filter, &is_node_available](const auto &node) {
-    if (!is_node_available(node)) {
+  auto predicate = [node_filter, &is_node_available](int64_t node_id, const NodeResources &node_resources) {
+    if (!is_node_available(node_id)) {
       return false;
     }
     if (node_filter == NodeFilter::kAny) {
       return true;
     }
-    const bool has_gpu = DoesNodeHaveGPUs(node);
+    const bool has_gpu = DoesNodeHaveGPUs(node_resources);
     if (node_filter == NodeFilter::kGPU) {
       return has_gpu;
     }
@@ -66,18 +66,18 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
     return !has_gpu;
   };
 
-  const auto &local_node = local_it->second.GetLocalView();
+  const auto &local_node_view = local_it->second.GetLocalView();
   // If we should include local node at all, make sure it is at the front of the list
   // so that
   // 1. It's first in traversal order.
   // 2. It's easy to avoid sorting it.
-  if (predicate(local_node) && !force_spillback) {
+  if (predicate(local_node_id, local_node_view) && !force_spillback) {
     round.push_back(local_node_id);
   }
 
   const auto start_index = round.size();
   for (const auto &pair : nodes) {
-    if (pair.first != local_node_id && predicate(pair.second.GetLocalView())) {
+    if (pair.first != local_node_id && predicate(pair.first, pair.second.GetLocalView())) {
       round.push_back(pair.first);
     }
   }

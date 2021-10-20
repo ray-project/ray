@@ -443,6 +443,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool IsLocallySchedulable(const absl::flat_hash_map<std::string, double> &shape);
 
  private:
+  bool NodeAlive(int64_t node_id) const;
   /// Init the information about which resources are unit_instance.
   void InitResourceUnitInstanceInfo();
 
