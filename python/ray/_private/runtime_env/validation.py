@@ -36,10 +36,11 @@ def parse_and_validate_working_dir(working_dir: str,
     assert working_dir is not None
 
     if is_task_or_actor:
-        raise NotImplementedError(
-            "Overriding working_dir for tasks and actors isn't supported. "
-            "Please use ray.init(runtime_env={'working_dir': ...}) "
-            "to configure the environment per-job instead.")
+        if not urlparse(working_dir).scheme in {Protocol.S3.value}:
+            raise NotImplementedError(
+                "Overriding working_dir for tasks and actors isn't supported. "
+                "Please use ray.init(runtime_env={'working_dir': ...}) "
+                "to configure the environment per-job instead.")
     elif not isinstance(working_dir, str):
         raise TypeError("`working_dir` must be a string, got "
                         f"{type(working_dir)}.")
