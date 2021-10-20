@@ -228,28 +228,26 @@ def test_virtual_actor(workflow_start_regular):
             return self.v
 
     actor = Actor.get_or_create('vid', 0)
-    actor.add_v.options(name="step_1", metadata={"k1": "v1"}).run(10)
-    actor.add_v.options(name="step_2", metadata={"k2": "v2"}).run(10)
-    actor.add_v.options(name="step_3", metadata={"k3": "v3"}).run(10)
+    actor.add_v.options(name="add", metadata={"k1": "v1"}).run(10)
+    actor.add_v.options(name="add", metadata={"k2": "v2"}).run(10)
+    actor.add_v.options(name="add", metadata={"k3": "v3"}).run(10)
 
-    assert workflow.get_metadata("vid", "step_1")["user_metadata"] == {
-        "k1": "v1"
-    }
-    assert workflow.get_metadata("vid", "step_2")["user_metadata"] == {
+    assert workflow.get_metadata("vid", "add")["user_metadata"] == {"k1": "v1"}
+    assert workflow.get_metadata("vid", "add_1")["user_metadata"] == {
         "k2": "v2"
     }
-    assert workflow.get_metadata("vid", "step_3")["user_metadata"] == {
+    assert workflow.get_metadata("vid", "add_2")["user_metadata"] == {
         "k3": "v3"
     }
     assert workflow.get_metadata(
-        "vid", "step_1")["stats"]["end_time"] >= workflow.get_metadata(
-            "vid", "step_1")["stats"]["start_time"] + 1
+        "vid", "add")["stats"]["end_time"] >= workflow.get_metadata(
+            "vid", "add")["stats"]["start_time"] + 1
     assert workflow.get_metadata(
-        "vid", "step_2")["stats"]["end_time"] >= workflow.get_metadata(
-            "vid", "step_2")["stats"]["start_time"] + 1
+        "vid", "add_1")["stats"]["end_time"] >= workflow.get_metadata(
+            "vid", "add_1")["stats"]["start_time"] + 1
     assert workflow.get_metadata(
-        "vid", "step_3")["stats"]["end_time"] >= workflow.get_metadata(
-            "vid", "step_3")["stats"]["start_time"] + 1
+        "vid", "add_2")["stats"]["end_time"] >= workflow.get_metadata(
+            "vid", "add_2")["stats"]["start_time"] + 1
 
 
 def test_no_workflow_found(workflow_start_regular):
