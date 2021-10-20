@@ -202,7 +202,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
         if (outterCurrentValue) {
           outterCurrentValue.removeEventListener("scroll", scrollFunc);
         }
-      }
+      };
     }
   }, [onScrollBottom]);
 
