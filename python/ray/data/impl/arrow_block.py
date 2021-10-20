@@ -286,17 +286,22 @@ class ArrowBlockAccessor(BlockAccessor):
 
 
 def _copy_table(table: "pyarrow.Table"):
+    """Copy the provided Arrow table.
+    """
     import pyarrow as pa
 
+    # Copy the table by copying each column and constructing a new table with
+    # the same schema.
     cols = table.columns
     new_cols = []
     for col in cols:
-        chunks = []
-        for chunk in col.chunks:
-            if isinstance(chunk, pa.ExtensionArray):
-                new_chunk = type(chunk).from_numpy(chunk.to_numpy())
-            else:
-                new_chunk = pa.array(chunk.to_numpy(), chunk.type)
-            chunks.append(new_chunk)
-        new_cols.append(pa.chunked_array(chunks, col.type))
+        if col.num_chunks > 0 and isinstance(col.chunk(0), pa.ExtensionArray):
+            # If an extension array, we copy the underlying storage arrays.
+            chunk = col.chunk(0)
+            arr = type(chunk).from_storage(
+                chunk.type, pa.concat_arrays([c.storage for c in col.chunks]))
+        else:
+            # Otherwise, we copy the top-level chunk arrays.
+            arr = col.combine_chunks()
+        new_cols.append(arr)
     return pa.Table.from_arrays(new_cols, schema=table.schema)
