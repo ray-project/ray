@@ -3,12 +3,12 @@ import atexit
 import collections
 import inspect
 import logging
+import random
 import re
 import time
 from dataclasses import dataclass
 from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, overload
-from weakref import WeakValueDictionary
 
 from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
@@ -16,12 +16,13 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendInfo, GoalId
+from ray.serve.common import BackendInfo, GoalId, ReplicaTag
 from ray.serve.config import (AutoscalingConfig, BackendConfig, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, HTTP_PROXY_TIMEOUT,
-                                 SERVE_CONTROLLER_NAME)
-from ray.serve.controller import ReplicaTag, ServeController
+                                 SERVE_CONTROLLER_NAME, MAX_CACHED_HANDLES,
+                                 CONTROLLER_MAX_CONCURRENCY)
+from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
@@ -108,7 +109,8 @@ class Client:
         self._root_url = ray.get(self._controller.get_root_url.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
-        self.handle_cache = WeakValueDictionary()
+        self.handle_cache = dict()
+        self._evicted_handle_keys = set()
 
         # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
         # when the interpreter is exiting so we can't rely on __del__ (it
@@ -286,7 +288,9 @@ class Client:
         """
         cache_key = (endpoint_name, missing_ok, sync)
         if cache_key in self.handle_cache:
-            return self.handle_cache[cache_key]
+            cached_handle = self.handle_cache[cache_key]
+            if cached_handle.is_polling and cached_handle.is_same_loop:
+                return cached_handle
 
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
         if not missing_ok and endpoint_name not in all_endpoints:
@@ -329,6 +333,23 @@ class Client:
             )
 
         self.handle_cache[cache_key] = handle
+        if cache_key in self._evicted_handle_keys:
+            logger.warning(
+                "You just got a ServeHandle that was evicted from internal "
+                "cache. This means you are getting too many ServeHandles in "
+                "the same process, this will bring down Serve's performance. "
+                "Please post a github issue at "
+                "https://github.com/ray-project/ray/issues to let the Serve "
+                "team to find workaround for your use case.")
+
+        if len(self.handle_cache) > MAX_CACHED_HANDLES:
+            # Perform random eviction to keep the handle cache from growing
+            # infinitely. We used use WeakValueDictionary but hit
+            # https://github.com/ray-project/ray/issues/18980.
+            evict_key = random.choice(list(self.handle_cache.keys()))
+            self._evicted_handle_keys.add(evict_key)
+            self.handle_cache.pop(evict_key)
+
         return handle
 
 
@@ -418,6 +439,7 @@ def start(
             get_current_node_resource_key(): 0.01
         },
         namespace=controller_namespace,
+        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
         controller_name,
         http_options,

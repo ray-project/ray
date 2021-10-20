@@ -73,7 +73,6 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         for job_table_entry in reply.job_info_list:
             job_id = job_table_entry.job_id.hex()
             config = {
-                "env_vars": dict(job_table_entry.config.worker_env),
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": dict(job_table_entry.config.metadata),
                 "runtime_env": json.loads(

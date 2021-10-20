@@ -119,18 +119,17 @@ def train_main(args, splits):
         for batch_idx, (data, target) in enumerate(train_dataset):
             batch_wait_times.append(timeit.default_timer() - last_batch_time)
             if torch.cuda.is_available():
-                data = [t.cuda() for t in data]
+                data = data.cuda()
                 target = target.cuda()
             for opt in optimizers:
                 opt.zero_grad()
             batch = OrderedDict()
             batch["embeddings"] = OrderedDict()
             batch["one_hot"] = OrderedDict()
-            for name, tensor in zip(annotation["embeddings"], data):
-                batch["embeddings"][name] = tensor
-            hot0, hot1 = data[-2:]
-            batch["one_hot"]["hot0"] = hot0
-            batch["one_hot"]["hot1"] = hot1
+            for i, name in enumerate(annotation["embeddings"]):
+                batch["embeddings"][name] = data[:, i:i + 1]
+            batch["one_hot"]["hot0"] = data[:, -2:-1]
+            batch["one_hot"]["hot1"] = data[:, -1:]
 
             batch_pred = model(batch)
 

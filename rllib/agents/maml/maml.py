@@ -8,7 +8,8 @@ from ray.rllib.agents.maml.maml_torch_policy import MAMLTorchPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, _get_shared_metrics
+    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER, \
+    _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
@@ -126,6 +127,7 @@ class MetaUpdate:
         # Modify Reporting Metrics
         metrics = _get_shared_metrics()
         metrics.info[LEARNER_INFO] = fetches
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = samples.count
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
 
         res = self.metric_gen.__call__(None)
