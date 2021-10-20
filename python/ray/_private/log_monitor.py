@@ -304,7 +304,8 @@ class LogMonitor:
                           next_line):
                         # We are suppressing the
                         # 'Windows fatal exception: access violation'
-                        # message on Windows here. As far as we know
+                        # message from user-provided callbacks on Windows.
+                        # As far as we know
                         # it is harmless, but frequently popping up
                         # if Python functions are run inside the core
                         # worker C extension. See the investigation in
