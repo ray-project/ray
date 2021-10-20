@@ -69,13 +69,28 @@ struct RemoveReference<std::tuple<T...>> {
 template <class Tuple>
 using RemoveReference_t = typename RemoveReference<Tuple>::type;
 
-using RemoteFunction =
-    std::function<msgpack::sbuffer(const std::vector<msgpack::sbuffer> &)>;
+template <class, class = void>
+struct is_object_ref_t : std::false_type {};
+
+template <class T>
+struct is_object_ref_t<T, std::void_t<decltype(std::declval<T>().IsObjectRef())>>
+    : std::true_type {};
+
+template <typename T>
+auto constexpr is_object_ref_v = is_object_ref_t<T>::value;
+
+using ArgsBuffer = std::pair<msgpack::sbuffer, bool>;
+using ArgsBufferList = std::vector<ArgsBuffer>;
+
+using RemoteFunction = std::function<msgpack::sbuffer(const ArgsBufferList &)>;
 using RemoteFunctionMap_t = std::unordered_map<std::string, RemoteFunction>;
 
-using RemoteMemberFunction = std::function<msgpack::sbuffer(
-    msgpack::sbuffer *, const std::vector<msgpack::sbuffer> &)>;
+using RemoteMemberFunction =
+    std::function<msgpack::sbuffer(msgpack::sbuffer *, const ArgsBufferList &)>;
 using RemoteMemberFunctionMap_t = std::unordered_map<std::string, RemoteMemberFunction>;
+
+inline std::function<std::shared_ptr<msgpack::sbuffer>(const std::string &id)>
+    GetObjRefValue;
 
 /// It's help to invoke functions and member functions, the class Invoker<Function> help
 /// do type erase.
@@ -84,7 +99,7 @@ struct Invoker {
   /// Invoke functions by networking stream, at first deserialize the binary data to a
   /// tuple, then call function with tuple.
   static inline msgpack::sbuffer Apply(const Function &func,
-                                       const std::vector<msgpack::sbuffer> &args_buffer) {
+                                       const ArgsBufferList &args_buffer) {
     using RetrunType = boost::callable_traits::return_type_t<Function>;
     using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<Function>>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
@@ -103,9 +118,8 @@ struct Invoker {
     return result;
   }
 
-  static inline msgpack::sbuffer ApplyMember(
-      const Function &func, msgpack::sbuffer *ptr,
-      const std::vector<msgpack::sbuffer> &args_buffer) {
+  static inline msgpack::sbuffer ApplyMember(const Function &func, msgpack::sbuffer *ptr,
+                                             const ArgsBufferList &args_buffer) {
     using RetrunType = boost::callable_traits::return_type_t<Function>;
     using ArgsTuple =
         RemoveReference_t<RemoveFirst_t<boost::callable_traits::args_t<Function>>>;
@@ -131,27 +145,40 @@ struct Invoker {
 
  private:
   template <typename T>
-  static inline T ParseArg(char *data, size_t size, bool &is_ok) {
-    auto pair = Serializer::DeserializeWhenNil<T>(data, size);
-    is_ok = pair.first;
-    return pair.second;
+  static inline T ParseArg(const ArgsBuffer &pair, bool &is_ok) {
+    const char *data = pair.first.data();
+    const size_t size = pair.first.size();
+    const bool is_ref_arg = pair.second;
+    is_ok = true;
+    if constexpr (is_object_ref_v<T>) {
+      // Construct an ObjectRef<T> by id.
+      return T(std::string(data, size));
+    } else {
+      // If it is an ObjectRef arg, get it's real value.
+      if (is_ref_arg) {
+        std::string id(data, size);
+        auto buf = GetObjRefValue(id);
+        return Serializer::Deserialize<T>(buf->data(), buf->size());
+      } else {
+        auto result = Serializer::DeserializeWhenNil<T>(data, size);
+        is_ok = result.first;
+        return result.second;
+      }
+    }
   }
 
-  static inline bool GetArgsTuple(std::tuple<> &tup,
-                                  const std::vector<msgpack::sbuffer> &args_buffer,
+  static inline bool GetArgsTuple(std::tuple<> &tup, const ArgsBufferList &args_buffer,
                                   std::index_sequence<>) {
     return true;
   }
 
   template <size_t... I, typename... Args>
   static inline bool GetArgsTuple(std::tuple<Args...> &tp,
-                                  const std::vector<msgpack::sbuffer> &args_buffer,
+                                  const ArgsBufferList &args_buffer,
                                   std::index_sequence<I...>) {
     bool is_ok = true;
     (void)std::initializer_list<int>{
-        (std::get<I>(tp) = ParseArg<Args>((char *)args_buffer.at(I).data(),
-                                          args_buffer.at(I).size(), is_ok),
-         0)...};
+        (std::get<I>(tp) = ParseArg<Args>(args_buffer.at(I), is_ok), 0)...};
     return is_ok;
   }
 

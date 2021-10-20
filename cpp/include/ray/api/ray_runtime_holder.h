@@ -25,7 +25,10 @@ struct RayRuntimeHolder {
     return instance;
   }
 
-  void Init(std::shared_ptr<RayRuntime> runtime) { runtime_ = runtime; }
+  void Init(std::shared_ptr<RayRuntime> runtime) {
+    runtime_ = runtime;
+    GetObjRefValue = [this](const std::string &id) { return runtime_->Get(id); };
+  }
 
   std::shared_ptr<RayRuntime> Runtime() { return runtime_; }
 

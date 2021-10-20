@@ -54,6 +54,8 @@ class ObjectRef {
  public:
   ObjectRef();
   ~ObjectRef();
+  // Used to identify its type.
+  static bool IsObjectRef() { return true; }
 
   ObjectRef(const ObjectRef &rhs) { CopyAndAddReference(id_, rhs.id_); }
 
@@ -125,6 +127,8 @@ class ObjectRef<void> {
  public:
   ObjectRef() = default;
   ~ObjectRef() { SubReference(id_); }
+  // Used to identify its type.
+  static bool IsObjectRef() { return true; }
 
   ObjectRef(const ObjectRef &rhs) { CopyAndAddReference(id_, rhs.id_); }
 

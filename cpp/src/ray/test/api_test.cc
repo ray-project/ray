@@ -17,6 +17,7 @@
 
 #include <future>
 #include <thread>
+
 #include "boost/filesystem.hpp"
 #include "ray/util/logging.h"
 
@@ -54,10 +55,17 @@ class Counter {
     count += x;
     return count;
   }
+
+  std::string GetVal(ray::ObjectRef<std::string> obj) { return *obj.Get(); }
+
+  int GetIntVal(ray::ObjectRef<ray::ObjectRef<int>> obj) {
+    auto val = *obj.Get();
+    return *val.Get();
+  }
 };
 
 RAY_REMOTE(Counter::FactoryCreate, &Counter::Plus1, &Counter::Plus, &Counter::Triple,
-           &Counter::Add);
+           &Counter::Add, &Counter::GetVal, &Counter::GetIntVal);
 
 TEST(RayApiTest, LogTest) {
   auto log_path = boost::filesystem::current_path().string() + "/tmp/";
@@ -184,6 +192,15 @@ TEST(RayApiTest, ActorTest) {
   config.local_mode = true;
   ray::Init(config);
   auto actor = ray::Actor(Counter::FactoryCreate).Remote();
+  auto obj = ray::Put(std::string("aaa"));
+  auto r = actor.Task(&Counter::GetVal).Remote(obj);
+  EXPECT_EQ(*r.Get(), "aaa");
+
+  auto obj0 = ray::Put(42);
+  auto obj1 = ray::Put(obj0);
+  auto r1 = actor.Task(&Counter::GetIntVal).Remote(obj1);
+  EXPECT_EQ(*r1.Get(), 42);
+
   auto rt1 = actor.Task(&Counter::Add).Remote(1);
   auto rt2 = actor.Task(&Counter::Add).Remote(2);
   auto rt3 = actor.Task(&Counter::Add).Remote(3);
