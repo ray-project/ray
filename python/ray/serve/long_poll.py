@@ -59,6 +59,8 @@ class LongPollClient:
         self.event_loop = call_in_event_loop
         self._reset()
 
+        self.is_running = True
+
     def _reset(self):
         self.snapshot_ids: Dict[KeyType, int] = {
             key: -1
@@ -100,10 +102,12 @@ class LongPollClient:
             # exit.
             logger.debug("LongPollClient failed to connect to host. "
                          "Shutting down.")
+            self.is_running = False
             return
 
         if isinstance(updates, ConnectionError):
             logger.warning("LongPollClient connection failed, shutting down.")
+            self.is_running = False
             return
 
         if isinstance(updates, (ray.exceptions.RayTaskError)):
@@ -129,7 +133,16 @@ class LongPollClient:
             if self.event_loop is None:
                 chained()
             else:
-                self.event_loop.call_soon_threadsafe(chained)
+                # Schedule the next iteration only if the loop is running.
+                # The event loop might not be running if users used a cached
+                # version across loops.
+                if self.event_loop.is_running():
+                    self.event_loop.call_soon_threadsafe(chained)
+                else:
+                    logger.error(
+                        "The event loop is closed, shutting down long poll "
+                        "client.")
+                    self.is_running = False
 
 
 class LongPollHost:
