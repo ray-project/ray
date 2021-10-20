@@ -3,8 +3,8 @@
 Distributed PyTorch
 ===================
 
-.. warning:: This is an older version of Ray SGD. A newer, more light-weight version of Ray SGD is in alpha as of Ray 1.7.
-         See the documentation :ref:`here <sgd-v2-docs>`. To migrate from v1 to v2 you can follow the :ref:`migration guide <sgd-migration>`.
+.. warning:: This is an older version of Ray SGD. A newer, more light-weight version of Ray SGD (named Ray Train) is in alpha as of Ray 1.7.
+         See the documentation :ref:`here <train-docs>`. To migrate from v1 to v2 you can follow the :ref:`migration guide <sgd-migration>`.
 
 The RaySGD ``TorchTrainer`` simplifies distributed model training for PyTorch.
 

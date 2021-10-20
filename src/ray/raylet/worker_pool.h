@@ -156,6 +156,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// on. This takes precedence over min_worker_port and max_worker_port.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
+  /// \param native_library_path The native library path which includes the core
+  /// libraries.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
@@ -168,6 +170,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
+             const std::string &native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external, const std::function<double()> get_time);
 
@@ -624,10 +627,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int node_manager_port_ = 0;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+  /// The native library path which includes the core libraries.
+  std::string native_library_path_;
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
-  /// The callback that will be triggered when a runtime_env setup for a task fails.
-  std::function<void(const TaskID &)> runtime_env_setup_failed_callback_;
   /// If 1, expose Ray debuggers started by the workers externally (to this node).
   int ray_debugger_external;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
