@@ -147,7 +147,6 @@ class ActorMethod:
                 name="",
                 num_returns=None,
                 concurrency_group=None):
-        # TODO(qwang): Handle concurrency_group
         if num_returns is None:
             num_returns = self._num_returns
 

@@ -77,7 +77,6 @@ def test_basic():
 # The case tests that the asyncio count down works well in one concurrency
 # group.
 def test_async_methods_in_concurrency_group():
-    # TODO: concurrency is 2 will cause this case hang. maybe we can test it.
     @ray.remote(concurrency_groups={"async": 3})
     class AsyncBatcher:
         def __init__(self):

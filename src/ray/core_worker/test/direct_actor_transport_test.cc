@@ -509,14 +509,14 @@ class MockWorkerContext : public WorkerContext {
   }
 };
 
-class MockCoreWorkerDirectTaskReceiver: public CoreWorkerDirectTaskReceiver {
+class MockCoreWorkerDirectTaskReceiver : public CoreWorkerDirectTaskReceiver {
  public:
   MockCoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                    instrumented_io_context &main_io_service,
                                    const TaskHandler &task_handler,
                                    const OnTaskDone &task_done)
-      :CoreWorkerDirectTaskReceiver(worker_context, main_io_service, task_handler,
-                                    task_done) {}
+      : CoreWorkerDirectTaskReceiver(worker_context, main_io_service, task_handler,
+                                     task_done) {}
 
   void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
                                     const std::vector<ConcurrencyGroup> &cgs) {

@@ -318,7 +318,6 @@ class FiberStateManager final {
                                        ray::FunctionDescriptor fd) {
     if (!concurrency_group_name.empty()) {
       auto it = name_to_fiber_index_.find(concurrency_group_name);
-      /// TODO(qwang): Fail the user task.
       RAY_CHECK(it != name_to_fiber_index_.end())
           << "Failed to look up the fiber state of the given concurrency group "
           << concurrency_group_name << " . It might be that you didn't define "
@@ -566,7 +565,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
       ss << "Setting actor as asyncio with max_concurrency=" << fiber_max_concurrency
          << ", and defined concurrency groups are:" << std::endl;
       for (const auto &concurrency_group : concurrency_groups) {
-        ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
+        ss << "\t" << concurrency_group.name << " : "
+           << concurrency_group.max_concurrency;
       }
       RAY_LOG(INFO) << ss.str();
       fiber_state_manager_ =
