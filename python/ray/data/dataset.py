@@ -30,7 +30,7 @@ from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import simple_shuffle
+from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
@@ -309,26 +309,66 @@ class Dataset(Generic[T]):
             compute.apply(transform, ray_remote_args, self._blocks),
             self._epoch)
 
-    def repartition(self, num_blocks: int) -> "Dataset[T]":
+    def repartition(self, num_blocks: int, *,
+                    shuffle: bool = False) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
 
-        This is a blocking operation.
+        This is a blocking operation. After repartitioning, all blocks in the
+        returned dataset will have approximately the same number of rows.
 
         Examples:
             >>> # Set the number of output partitions to write to disk.
-            >>> ds.repartition(100).write_parquet(...)
+            >>> ds.repartition(10).write_parquet(...)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             num_blocks: The number of blocks.
+            shuffle: Whether to perform a distributed shuffle during the
+                repartition. When shuffle is enabled, each output block
+                contains a subset of data rows from each input block, which
+                requires all-to-all data movement. When shuffle is disabled,
+                output blocks are created from adjacent input blocks,
+                minimizing data movement.
 
         Returns:
             The repartitioned dataset.
         """
 
-        new_blocks = simple_shuffle(self._blocks, num_blocks)
-        return Dataset(new_blocks, self._epoch)
+        if shuffle:
+            new_blocks = simple_shuffle(self._blocks, num_blocks)
+            return Dataset(new_blocks, self._epoch)
+
+        # Compute the (n-1) indices needed for an equal split of the data.
+        count = self.count()
+        indices = []
+        cur_idx = 0
+        for _ in range(num_blocks - 1):
+            cur_idx += count / num_blocks
+            indices.append(int(cur_idx))
+        assert len(indices) < num_blocks, (indices, num_blocks)
+        if indices:
+            splits = self.split_at_indices(indices)
+            # TODO this saves memory: self._blocks.clear()
+        else:
+            splits = [self]
+
+        # Coalesce each split into a single block.
+        reduce_task = cached_remote_fn(_shuffle_reduce)
+        reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
+        reduce_out = [
+            reduce_task.options(
+                num_returns=2).remote(*s.get_internal_block_refs())
+            for s in splits
+        ]
+        del splits  # Early-release memory.
+        new_blocks, new_metadata = zip(*reduce_out)
+        reduce_bar.block_until_complete(list(new_blocks))
+        new_metadata = ray.get(list(new_metadata))
+        reduce_bar.close()
+
+        return Dataset(
+            BlockList(list(new_blocks), list(new_metadata)), self._epoch)
 
     def random_shuffle(
             self,
