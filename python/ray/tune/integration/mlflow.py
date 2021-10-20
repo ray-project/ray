@@ -154,7 +154,7 @@ class MLflowLoggerCallback(LoggerCallback):
             tags["trial_name"] = str(trial)
 
             run = self.client.create_run(
-                experiment_id=self.experiment_id, tags=self.tags)
+                experiment_id=self.experiment_id, tags=tags)
             self._trial_runs[trial] = run.info.run_id
 
         run_id = self._trial_runs[trial]
