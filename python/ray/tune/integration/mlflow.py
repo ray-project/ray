@@ -150,7 +150,8 @@ class MLflowLoggerCallback(LoggerCallback):
         if trial not in self._trial_runs:
 
             # Set trial name in tags
-            self.tags["trial_name"] = str(trial)
+            tags = self.tags.copy()
+            tags["trial_name"] = str(trial)
 
             run = self.client.create_run(
                 experiment_id=self.experiment_id, tags=self.tags)
