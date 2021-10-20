@@ -7,7 +7,7 @@ build --enable_platform_specific_config
 build --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
-build --linkopt="-latomic"
+build:linux --linkopt="-latomic"
 # Generate minimal debug symbols on Linux and MacOS
 build:linux --copt="-g1"
 build:macos --copt="-g1"
