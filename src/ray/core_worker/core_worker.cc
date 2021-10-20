@@ -115,7 +115,14 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     }
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
     if (options_.install_failure_signal_handler) {
-      RayLog::InstallFailureSignalHandler();
+      // Core worker is loaded as a dynamic library from Python or other languages.
+      // We are not sure if the default argv[0] would be suitable for loading symbols
+      // so leaving it unspecified as nullptr. This could make symbolization of crash
+      // traces fail in some circumstances.
+      //
+      // Also, call the previous crash handler, e.g. the one installed by the Python
+      // worker.
+      RayLog::InstallFailureSignalHandler(nullptr, /*call_previous_handler=*/true);
     }
   } else {
     RAY_CHECK(options_.log_dir.empty())
@@ -410,7 +417,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.runtime_env_hash,
       options_.language, options_.node_ip_address, &raylet_client_status,
-      &local_raylet_id, &assigned_port, &serialized_job_config, options_.worker_shim_pid);
+      &local_raylet_id, &assigned_port, &serialized_job_config, options_.worker_shim_pid,
+      options_.startup_token);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -494,12 +502,20 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
+      /*channels=*/std::vector<
+          rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                            rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*periodical_runner=*/&periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
   object_info_subscriber_ = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/GetWorkerID(),
+      /*channels=*/
+      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                    rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       // /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
       /*get_client=*/
@@ -1799,6 +1815,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
           },
           "ActorCreator.AsyncRegisterActor");
     } else {
+      // For named actor, we still go through the sync way because for
+      // functions like list actors these actors need to be there, especially
+      // for local driver. But the current code all go through the gcs right now.
       auto status = actor_creator_->RegisterActor(task_spec);
       if (!status.ok()) {
         return status;
@@ -2654,8 +2673,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     pub_message.mutable_worker_object_eviction_message()->set_object_id(
         object_id.Binary());
 
-    object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_EVICTION, pub_message,
-                                    object_id.Binary());
+    object_info_publisher_->Publish(pub_message);
   };
 
   const auto object_id = ObjectID::FromBinary(message.object_id());

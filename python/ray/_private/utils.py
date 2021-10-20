@@ -1107,3 +1107,20 @@ def validate_namespace(namespace: str):
     elif namespace == "":
         raise ValueError("\"\" is not a valid namespace. "
                          "Pass None to not specify a namespace.")
+
+
+def check_dashboard_dependencies_installed() -> bool:
+    """Returns True if Ray Dashboard dependencies are installed.
+
+    Checks to see if we should start the dashboard agent or not based on the
+    Ray installation version the user has installed (ray vs. ray[default]).
+    Unfortunately there doesn't seem to be a cleaner way to detect this other
+    than just blindly importing the relevant packages.
+
+    """
+    try:
+        import ray.dashboard.optional_deps  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
