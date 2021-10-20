@@ -301,7 +301,7 @@ class LogMonitor:
                         file_info.task_name = next_line.split(
                             ray_constants.LOG_PREFIX_TASK_NAME, 1)[1]
                     elif next_line.startswith(
-                           "Windows fatal exception: access violation"):
+                            "Windows fatal exception: access violation"):
                         # We are suppressing the
                         # 'Windows fatal exception: access violation'
                         # message on workers on Windows here.
