@@ -186,8 +186,11 @@ def s3_working_dir():
 
         runtime_env = f"""{{  "working_dir": "{S3_PACKAGE_URI}" }}"""
         _, pkg_name = parse_uri(S3_PACKAGE_URI)
+        runtime_env_dir = ray.worker._global_node.get_runtime_env_dir_path()
+        working_dir = Path(os.path.join(runtime_env_dir,
+                                        pkg_name)).with_suffix("")
         # s3 working_dir's one() return 2 for each call
-        yield None, runtime_env, "2000"
+        yield working_dir, runtime_env, "2000"
         os.chdir(old_dir)
 
 
@@ -339,8 +342,7 @@ def test_single_node(ray_start_cluster_head, working_dir_parametrized,
         os.chdir(tmp_dir)
         out = run_string_as_driver(script, env)
         assert out.strip().split()[-1] == expected, out
-        if working_dir is not None:
-            assert len(list(Path(working_dir).iterdir())) == 1
+        assert len(list(Path(runtime_env_dir).iterdir())) == 1
         assert len(kv._internal_kv_list("gcs://")) == 0
         # working_dir fixture will take care of going back to original test
         # folder
@@ -362,8 +364,7 @@ def test_two_node(two_node_cluster, working_dir_parametrized, client_mode):
         os.chdir(tmp_dir)
         out = run_string_as_driver(script, env)
         assert out.strip().split()[-1] == expected, out
-        if working_dir is not None:
-            assert len(list(Path(working_dir).iterdir())) == 1
+        assert len(list(Path(runtime_env_dir).iterdir())) == 1
         assert len(kv._internal_kv_list("gcs://")) == 0
         # working_dir fixture will take care of going back to original test
         # folder
