@@ -1,3 +1,6 @@
+from typing import Optional
+
+import argparse
 import json
 import os
 import time
@@ -7,6 +10,9 @@ from ray import tune
 
 
 def train(config, checkpoint_dir=None):
+    with open(config["indicator_file"], "wt") as fp:
+        fp.write("1")
+
     if checkpoint_dir:
         with open(os.path.join(checkpoint_dir, "checkpoint.json"), "rt") as fp:
             state = json.load(fp)
@@ -27,23 +33,70 @@ def train(config, checkpoint_dir=None):
             internal_iter=state["internal_iter"])
 
 
-def run_tune(experiment_name: str = "tune_cloud_test"):
+def run_tune(
+        sync_to_driver: bool,
+        upload_dir: Optional[str] = None,
+        durable: bool = False,
+        experiment_name: str = "cloud_test",
+        indicator_file: str = "/tmp/tune_cloud_indicator",
+):
+    if durable:
+        trainable = tune.durable(train)
+    else:
+        trainable = train
+
     tune.run(
-        train,
+        trainable,
         name=experiment_name,
         resume="AUTO",
         num_samples=4,
         config={
             "max_iterations": 30,
-            "sleep_time": 10,
+            "sleep_time": 5,
             "checkpoint_freq": 2,
-            "score_multiplied": tune.randint(0, 100)
+            "score_multiplied": tune.randint(0, 100),
+            "indicator_file": indicator_file
         },
+        sync_config=tune.SyncConfig(
+            sync_to_driver=sync_to_driver,
+            upload_dir=upload_dir,
+        ),
+        keep_checkpoints_num=2,
         verbose=2)
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--sync-to-driver", action="store_true", default=False)
+
+    parser.add_argument("--upload-dir", required=False, default=None, type=str)
+
+    parser.add_argument("--durable", action="store_true", default=False)
+
+    parser.add_argument(
+        "--experiment-name", required=False, default=None, type=str)
+
+    parser.add_argument(
+        "--indicator-file",
+        required=False,
+        default="/tmp/tune_cloud_indicator",
+        type=str)
+
+    args = parser.parse_args()
+
+    run_kwargs = dict(
+        sync_to_driver=args.sync_to_driver or False,
+        upload_dir=args.upload_dir or None,
+        durable=args.durable or False,
+        experiment_name=args.experiment_name or "cloud_test",
+        indicator_file=args.indicator_file,
+    )
+
     if not ray.is_initialized:
         ray.init(address="auto")
 
-    run_tune()
+    print("Running with settings:")
+    print(run_kwargs)
+
+    run_tune(**run_kwargs)
