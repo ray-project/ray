@@ -15,11 +15,13 @@ import traceback
 from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
+import logging
 
 import ray
 import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
+import ray._private.memory_monitor as memory_monitor
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
 try:
@@ -691,3 +693,72 @@ def is_placement_group_removed(pg):
     if "state" not in table:
         return False
     return table["state"] == "REMOVED"
+
+
+def monitor_memory_usage(interval_s: int = 5, warning_threshold: float = 0.9):
+    """Run the memory monitor actor that prints the memory usage.
+
+    Params:
+        interval_s (int): The interval memory usage information is printed
+        warning_threshold (float): The threshold where the
+            memory usage warning is printed.
+
+    Returns:
+        The memory monitor actor.
+    """
+    assert ray.is_initialized(), (
+        "The API is only available when Ray is initialized.")
+
+    @ray.remote(num_cpus=0)
+    class MemoryMonitorActor:
+        def __init__(self, interval_s=5, warning_threshold=0.9):
+            """The actor that monitor the memory usage of the cluster.
+            """
+            # -- Interval the monitor omits the memory usage information. --
+            self.interval_s = interval_s
+            # -- Whether or not the monitor is running. --
+            self.is_running = False
+            # -- The used_gb/total_gb threshold where warning message omits. --
+            self.warning_threshold = warning_threshold
+            # -- The monitor that calculates the memory usage of the node. --
+            self.monitor = memory_monitor.MemoryMonitor()
+            # -- logger. --
+            logging.basicConfig(level=logging.INFO)
+
+        def ready(self):
+            pass
+
+        async def run(self):
+            """Run the monitor.
+            """
+            self.is_running = True
+            while self.is_running:
+                used_gb, total_gb = self.monitor.get_memory_usage()
+                if used_gb > total_gb * self.warning_threshold:
+                    logging.warning("The memory usage is high: "
+                                    f"{used_gb / total_gb * 100}%")
+                logging.info(memory_monitor.get_top_n_memory_usage(n=10))
+                await asyncio.sleep(self.interval_s)
+
+        async def stop_run(self):
+            """Stop running the monitor.
+
+            Returns:
+                True if the monitor is stopped. False otherwise.
+            """
+            was_running = self.is_running
+            self.is_running = False
+            return was_running
+
+        async def get_snapshot(self):
+            """Return the snapshot of the memory usage.
+            """
+            raise NotImplementedError("")
+
+    memory_monitor_actor = MemoryMonitorActor.remote(
+        interval_s=interval_s, warning_threshold=warning_threshold)
+    print("Waiting for memory monitor actor to be ready...")
+    ray.get(memory_monitor_actor.ready.remote())
+    print("Memory monitor actor is ready now.")
+    memory_monitor_actor.run.remote()
+    return memory_monitor_actor

@@ -4,6 +4,7 @@
 import ray
 from ray.tune import run_experiments
 from ray.tune.utils.release_test_util import ProgressCallback
+from ray._private.test_utils import monitor_memory_usage
 
 num_redis_shards = 5
 redis_max_memory = 10**8
@@ -18,6 +19,7 @@ assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
 # Simulate a cluster on one machine.
 
 ray.init(address="auto")
+monitor_actor = monitor_memory_usage()
 
 # Run the workload.
 
@@ -26,7 +28,7 @@ run_experiments(
         "ppo": {
             "run": "PPO",
             "env": "CartPole-v0",
-            "num_samples": 10000,
+            "num_samples": 100,
             "config": {
                 "framework": "torch",
                 "num_workers": 7,
