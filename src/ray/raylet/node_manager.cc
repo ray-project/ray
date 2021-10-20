@@ -297,6 +297,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
+          *gcs_client_,
           [this]() { return object_manager_.GetUsedMemory(); },
           [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
 

@@ -29,11 +29,12 @@ ClusterResourceScheduler::ClusterResourceScheduler()
           {};
 
 ClusterResourceScheduler::ClusterResourceScheduler(
-    int64_t local_node_id, const NodeResources &local_node_resources)
+    int64_t local_node_id, const NodeResources &local_node_resources, gcs::GcsClient& gcs_client)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
       spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
       local_node_id_(local_node_id),
-      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
+      gcs_client_(&gcs_client) {
   InitResourceUnitInstanceInfo();
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
@@ -42,11 +43,13 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
     const absl::flat_hash_map<std::string, double> &local_node_resources,
+    gcs::GcsClient& gcs_client,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
       spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
-      get_pull_manager_at_capacity_(get_pull_manager_at_capacity) {
+      get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
+      gcs_client_(&gcs_client) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
@@ -320,7 +323,18 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     if (nodes_.size() > 0) {
       std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
       int idx = distribution(gen_);
-      best_node = std::next(nodes_.begin(), idx)->first;
+      auto iter = std::next(nodes_.begin(), idx);
+      // best_node = std::next(nodes_.begin(), idx)->first;
+      for(size_t i = 0; i < nodes_.size(); ++i) {
+        auto node_id = iter->first;
+        if(!string_to_int_map_.Get(node_id).empty()) {
+          break;
+        }
+        ++iter;
+        if(iter == nodes_.end()) {
+          iter = nodes_.begin();
+        }
+      }
     }
     RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
                    << ", # nodes = " << nodes_.size()
@@ -361,7 +375,6 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
   int64_t node_id = GetBestSchedulableNode(
       resource_request, actor_creation, force_spillback, total_violations, is_infeasible);
 
-  std::string id_string;
   if (node_id == -1) {
     // This is not a schedulable node, so return empty string.
     return "";

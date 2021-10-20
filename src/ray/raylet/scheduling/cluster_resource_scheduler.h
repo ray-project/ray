@@ -22,6 +22,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
@@ -45,10 +46,12 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \param local_node_resources: The total and the available resources associated
   /// with the local node.
   ClusterResourceScheduler(int64_t local_node_id,
-                           const NodeResources &local_node_resources);
+                           const NodeResources &local_node_resources,
+                           gcs::GcsClient& gcs_client);
   ClusterResourceScheduler(
       const std::string &local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
+      gcs::GcsClient& gcs_client,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
@@ -477,6 +480,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Function to get whether the pull manager is at capacity.
   std::function<bool(void)> get_pull_manager_at_capacity_;
 
+  /// Gcs client
+  gcs::GcsClient *gcs_client_;
   // Specify predefine resources that consists of unit-size instances.
   std::unordered_set<int64_t> predefined_unit_instance_resources_{};
 
