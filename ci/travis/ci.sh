@@ -446,10 +446,6 @@ lint_readme() {
   fi
 }
 
-lint_scripts() {
-  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh --all-scripts
-}
-
 lint_bazel() {
   # Run buildifier without affecting external environment variables
   (
@@ -498,24 +494,8 @@ _lint() {
     linux*) platform=linux;;
   esac
 
-  if command -v clang-format > /dev/null; then
-    "${ROOT_DIR}"/check-git-clang-format-output.sh
-  else
-    { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
-  fi
-
-  if command -v clang-tidy > /dev/null; then
-    pushd "${WORKSPACE_DIR}"
-      "${ROOT_DIR}"/install-llvm-binaries.sh
-    popd
-    # Disable clang-tidy until ergonomic issues are resolved.
-    # "${ROOT_DIR}"/check-git-clang-tidy-output.sh
-  else
-    { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
-  fi
-
-  # Run script linting
-  lint_scripts
+  # Lint Python, C++ and Bash changes.
+  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh
 
   # Make sure that the README is formatted properly.
   lint_readme
