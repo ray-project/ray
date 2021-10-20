@@ -155,22 +155,31 @@ message RayException {
 
 /// The pip type runtime env.
 message PipRuntimeEnv {
-  /// A list of pip packages, such as ["redis >= 3.5.0", "numpy"].
-  repeated string config = 1;
-  /// The path to a pip requirements.txt file.
-  string config_file_path = 2;
-  /// The name of a local virtual env.
-  string virtual_env_name = 3;
+  /// The pip packages config.
+  message Config {
+    /// A list of pip packages, such as ["redis >= 3.5.0", "numpy"].
+    repeated string config = 1;
+  }
+  oneof pip_runtime_env {
+    /// The pip packages config.
+    Config config = 1;
+    /// The path to a pip requirements.txt file.
+    string config_file_path = 2;
+    /// The name of a local virtual env.
+    string virtual_env_name = 3;
+  }
 }
 
 /// The conda type runtime env.
 message CondaRuntimeEnv {
-  /// The conda YAML config.
-  string config = 1;
-  /// The path to a conda environment.yaml file.
-  string config_file_path = 2;
-  /// The name of a local conda env.
-  string conda_env_name = 3;
+  oneof conda_runtime_env {
+    /// The conda YAML config.
+    string config = 1;
+    /// The path to a conda environment.yaml file.
+    string config_file_path = 2;
+    /// The name of a local conda env.
+    string conda_env_name = 3;
+  }
 }
 
 /// The container type runtime env.
@@ -218,15 +227,19 @@ message RuntimeEnv {
     CondaRuntimeEnv conda_runtime_env = 5;
     /// container runtime env
     ContainerRuntimeEnv py_container_runtime_env = 6;
+    /// custom runtime env
+    CustomRuntimeEnv py_custom_runtime_env = 7;
   }
   /// One of typed runtime env of java
   oneof java_runtime_env {
     /// jars runtime env
-    JarsRuntimeEnv jars_runtime_env = 7;
+    JarsRuntimeEnv jars_runtime_env = 8;
     /// maven runtime env
-    MavenRuntimeEnv maven_runtime_env = 8;
+    MavenRuntimeEnv maven_runtime_env = 9;
     /// container runtime env
-    ContainerRuntimeEnv java_container_runtime_env = 9;
+    ContainerRuntimeEnv java_container_runtime_env = 10;
+    /// custom runtime env
+    CustomRuntimeEnv java_custom_runtime_env = 11;
   }
 }
 
