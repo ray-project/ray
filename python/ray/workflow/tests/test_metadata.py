@@ -85,12 +85,14 @@ def test_runtime_metadata(workflow_start_regular):
     workflow_metadata = workflow.get_metadata("simple")
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" in workflow_metadata["stats"]
-    assert workflow_metadata["stats"]["end_time"] >= workflow_metadata["stats"]["start_time"] + 2
+    assert workflow_metadata["stats"]["end_time"] >= \
+           workflow_metadata["stats"]["start_time"] + 2
 
     step_metadata = workflow.get_metadata("simple", "simple_step")
     assert "start_time" in step_metadata["stats"]
     assert "end_time" in step_metadata["stats"]
-    assert step_metadata["stats"]["end_time"] >= step_metadata["stats"]["start_time"] + 2
+    assert step_metadata["stats"]["end_time"] >= \
+           step_metadata["stats"]["start_time"] + 2
 
 
 def test_successful_workflow(workflow_start_regular):
@@ -114,13 +116,15 @@ def test_successful_workflow(workflow_start_regular):
     assert workflow_metadata["user_metadata"] == user_run_metadata
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" in workflow_metadata["stats"]
-    assert workflow_metadata["stats"]["end_time"] >= workflow_metadata["stats"]["start_time"] + 2
+    assert workflow_metadata["stats"]["end_time"] >= \
+           workflow_metadata["stats"]["start_time"] + 2
 
     step_metadata = workflow.get_metadata("simple", "simple_step")
     assert step_metadata["user_metadata"] == user_step_metadata
     assert "start_time" in step_metadata["stats"]
     assert "end_time" in step_metadata["stats"]
-    assert step_metadata["stats"]["end_time"] >= step_metadata["stats"]["start_time"] + 2
+    assert step_metadata["stats"]["end_time"] >= \
+           step_metadata["stats"]["start_time"] + 2
 
 
 def test_running_and_canceled_workflow(workflow_start_regular, tmp_path):
@@ -206,10 +210,14 @@ def test_nested_workflow(workflow_start_regular):
     assert outer_step_metadata["user_metadata"] == {"outer_k": "outer_v"}
     assert inner_step_metadata["user_metadata"] == {"inner_k": "inner_v"}
 
-    assert workflow_metadata["stats"]["end_time"] >= workflow_metadata["stats"]["start_time"] + 4
-    assert outer_step_metadata["stats"]["end_time"] >= outer_step_metadata["stats"]["start_time"] + 2
-    assert inner_step_metadata["stats"]["end_time"] >= inner_step_metadata["stats"]["start_time"] + 2
-    assert inner_step_metadata["stats"]["start_time"] >= outer_step_metadata["stats"]["end_time"]
+    assert workflow_metadata["stats"]["end_time"] >= \
+           workflow_metadata["stats"]["start_time"] + 4
+    assert outer_step_metadata["stats"]["end_time"] >= \
+           outer_step_metadata["stats"]["start_time"] + 2
+    assert inner_step_metadata["stats"]["end_time"] >= \
+           inner_step_metadata["stats"]["start_time"] + 2
+    assert inner_step_metadata["stats"]["start_time"] >= \
+           outer_step_metadata["stats"]["end_time"]
 
 
 def test_virtual_actor(workflow_start_regular):
@@ -227,7 +235,7 @@ def test_virtual_actor(workflow_start_regular):
         def get_v(self):
             return self.v
 
-    actor = Actor.get_or_create('vid', 0)
+    actor = Actor.get_or_create("vid", 0)
     actor.add_v.options(name="add", metadata={"k1": "v1"}).run(10)
     actor.add_v.options(name="add", metadata={"k2": "v2"}).run(10)
     actor.add_v.options(name="add", metadata={"k3": "v3"}).run(10)
@@ -239,15 +247,12 @@ def test_virtual_actor(workflow_start_regular):
     assert workflow.get_metadata("vid", "add_2")["user_metadata"] == {
         "k3": "v3"
     }
-    assert workflow.get_metadata(
-        "vid", "add")["stats"]["end_time"] >= workflow.get_metadata(
-            "vid", "add")["stats"]["start_time"] + 1
-    assert workflow.get_metadata(
-        "vid", "add_1")["stats"]["end_time"] >= workflow.get_metadata(
-            "vid", "add_1")["stats"]["start_time"] + 1
-    assert workflow.get_metadata(
-        "vid", "add_2")["stats"]["end_time"] >= workflow.get_metadata(
-            "vid", "add_2")["stats"]["start_time"] + 1
+    assert workflow.get_metadata("vid", "add")["stats"]["end_time"] >= \
+           workflow.get_metadata("vid", "add")["stats"]["start_time"] + 1
+    assert workflow.get_metadata("vid", "add_1")["stats"]["end_time"] >= \
+           workflow.get_metadata("vid", "add_1")["stats"]["start_time"] + 1
+    assert workflow.get_metadata("vid", "add_2")["stats"]["end_time"] >= \
+           workflow.get_metadata("vid", "add_2")["stats"]["start_time"] + 1
 
 
 def test_no_workflow_found(workflow_start_regular):
