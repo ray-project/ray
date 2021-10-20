@@ -62,10 +62,15 @@ class Counter {
     auto val = *obj.Get();
     return *val.Get();
   }
+
+  std::vector<std::shared_ptr<int>> GetList(int x,
+                                            std::vector<ray::ObjectRef<int>> list) {
+    return ray::Get(list);
+  }
 };
 
 RAY_REMOTE(Counter::FactoryCreate, &Counter::Plus1, &Counter::Plus, &Counter::Triple,
-           &Counter::Add, &Counter::GetVal, &Counter::GetIntVal);
+           &Counter::Add, &Counter::GetVal, &Counter::GetIntVal, &Counter::GetList);
 
 TEST(RayApiTest, LogTest) {
   auto log_path = boost::filesystem::current_path().string() + "/tmp/";
@@ -200,6 +205,15 @@ TEST(RayApiTest, ActorTest) {
   auto obj1 = ray::Put(obj0);
   auto r1 = actor.Task(&Counter::GetIntVal).Remote(obj1);
   EXPECT_EQ(*r1.Get(), 42);
+
+  std::vector<ray::ObjectRef<int>> list{obj0, obj0};
+  auto r2 = actor.Task(&Counter::GetList).Remote(1, list);
+  auto result2 = *r2.Get();
+  EXPECT_EQ(result2.size(), 2);
+
+  auto r3 = actor.Task(&Counter::GetList).Remote(obj0, list);
+  auto result3 = *r3.Get();
+  EXPECT_EQ(result3.size(), 2);
 
   auto rt1 = actor.Task(&Counter::Add).Remote(1);
   auto rt2 = actor.Task(&Counter::Add).Remote(2);
