@@ -7,7 +7,6 @@ build --enable_platform_specific_config
 build --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
-build:linux --linkopt="-latomic"
 # Generate minimal debug symbols on Linux and MacOS
 build:linux --copt="-g1"
 build:macos --copt="-g1"
@@ -71,7 +70,7 @@ build:clang-cl --per_file_copt="-\\.(asm|S)$@-fansi-escape-codes"
 build:clang-cl --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
 
 build:manylinux2010 --copt="-Wno-unused-result"
-build:manylinux2010 --linkopt="-lrt"
+build:manylinux2010 --linkopt="-lrt" --linkopt="-latomic"
 
 # Debug build flags. Uncomment in '-c dbg' builds to enable checks in the C++ standard library:
 #build:linux --cxxopt="-D_GLIBCXX_DEBUG=1"
