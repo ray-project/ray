@@ -953,7 +953,7 @@ def test_named_actor_cache_via_another_actor(ray_start_regular_shared):
 
     wait_for_condition(actor_removed)
 
-    actor_after_restart = Counter.options(name="hi").remote()
+    Counter.options(name="hi").remote()
     assert ray.get(actor_getter.get_actor_count.remote("hi")) == 1
     get_by_name = ray.get_actor("hi")
     assert ray.get(get_by_name.inc_and_get.remote()) == 2
