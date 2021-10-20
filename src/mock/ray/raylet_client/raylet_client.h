@@ -183,7 +183,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(void, ShutdownRaylet,
               (const NodeID &node_id, bool graceful,
-               const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback),
+               const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback),
               (override));
 };
 

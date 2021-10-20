@@ -31,9 +31,9 @@ GcsNodeManager::GcsNodeManager(
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
-    : gcs_pub_sub_(gcs_pub_sub),
-      gcs_table_storage_(gcs_table_storage),
-      raylet_client_pool_(raylet_client_pool) {}
+    : gcs_pub_sub_(std::move(gcs_pub_sub)),
+      gcs_table_storage_(std::move(gcs_table_storage)),
+      raylet_client_pool_(std::move(raylet_client_pool)) {}
 
 void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                         rpc::RegisterNodeReply *reply,
@@ -93,7 +93,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
-  auto on_put_done = [this, remote_address = std::move(remote_address), node_id,
+  auto on_put_done = [this, remote_address = remote_address, node_id,
                       node_info_delta = node_info_delta](const Status &status) {
     auto on_resource_update_done =
         [this, remote_address = std::move(remote_address), node_id,
