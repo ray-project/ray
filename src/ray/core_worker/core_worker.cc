@@ -725,8 +725,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         RAY_CHECK_OK(Put(RayObject(reason),
                          /*contained_object_ids=*/{}, object_id,
                          /*pin_object=*/pin_object));
-      },
-      RayConfig::instance().lineage_pinning_enabled());
+      });
 
   // Start the IO thread after all other members have been initialized, in case
   // the thread calls back into any of our members.

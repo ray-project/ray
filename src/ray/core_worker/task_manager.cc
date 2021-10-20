@@ -64,6 +64,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   std::vector<rpc::ObjectReference> returned_refs;
   for (size_t i = 0; i < num_returns; i++) {
     if (!spec.IsActorCreationTask()) {
+      bool is_reconstructable = max_retries != 0;
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
       // publish the WaitForRefRemoved message that we are now a borrower for
@@ -71,7 +72,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       // PushTaskReply.
       reference_counter_->AddOwnedObject(spec.ReturnId(i),
                                          /*inner_ids=*/{}, caller_address, call_site, -1,
-                                         /*is_reconstructable=*/true);
+                                         /*is_reconstructable=*/is_reconstructable);
     }
 
     rpc::ObjectReference ref;

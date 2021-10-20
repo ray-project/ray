@@ -367,12 +367,8 @@ def test_basic_reconstruction_actor_lineage_disabled(ray_start_cluster,
 
     wait_for_pid_to_exit(pid)
 
-    if reconstruction_enabled:
-        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
-            ray.get(obj)
-    else:
-        with pytest.raises(ray.exceptions.ObjectLostError):
-            ray.get(obj)
+    with pytest.raises(ray.exceptions.ObjectLostError):
+        ray.get(obj)
 
     # Make sure the actor handle is still usable.
     pid = ray.get(a.pid.remote())

@@ -1157,6 +1157,18 @@ void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
   }
 }
 
+bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id) const {
+  if (!lineage_pinning_enabled_) {
+    return false;
+  }
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  return it->second.is_reconstructable;
+}
+
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &object_id = it->first;
   const auto &locations = it->second.locations;
