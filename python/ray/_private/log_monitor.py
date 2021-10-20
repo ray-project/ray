@@ -304,9 +304,10 @@ class LogMonitor:
                            "Windows fatal exception: access violation"):
                         # We are suppressing the
                         # 'Windows fatal exception: access violation'
-                        # message on Windows here. As far as we know
-                        # it is harmless, but frequently popping up
-                        # if Python functions are run inside the core
+                        # message on workers on Windows here.
+                        # As far as we know it is harmless,
+                        # but is frequently popping up if Python
+                        # functions are run inside the core
                         # worker C extension. See the investigation in
                         # github.com/ray-project/ray/issues/18944
                         # Also skip the following line, which is an
