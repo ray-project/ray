@@ -399,6 +399,7 @@ def _key_assert_msg(node_type: str) -> str:
         return ("`KeyName` missing from the `node_config` of"
                 f" node type `{node_type}`.")
 
+
 def _configure_subnet(config):
     ec2 = _client('ec2', config)
 
@@ -414,6 +415,7 @@ def _configure_subnet(config):
         vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
     else:
         vpc_id_of_sg = None
+ 
     try:
         candidate_subnets = ec2.describe_subnets()['Subnets']
         candidate_subnets = [SimpleNamespace(**{k.lower(): v for k, v in x.items()}) for x in candidate_subnets]
