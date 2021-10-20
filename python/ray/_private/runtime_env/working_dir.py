@@ -12,6 +12,7 @@ from zipfile import ZipFile
 
 from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
+                                          _internal_kv_list,
                                           _internal_kv_initialized)
 from ray.job_config import JobConfig
 from ray._private.thirdparty.pathspec import PathSpec
@@ -368,7 +369,8 @@ class WorkingDirManager:
         if protocol in (Protocol.GCS, Protocol.PIN_GCS):
             code = _internal_kv_get(pkg_uri)
             if code is None:
-                raise IOError("Fetch uri failed")
+                raise IOError("Fetch uri failed: {} not found in {}".format(
+                    pkg_uri, _internal_kv_list(protocol.value)))
             code = code or b""
             pkg_file.write_bytes(code)
         else:
