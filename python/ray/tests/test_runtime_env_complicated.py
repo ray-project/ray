@@ -929,11 +929,10 @@ def test_runtime_env_inheritance_regression(shutdown_only):
         with open("hello", "w") as f:
             f.write("world")
 
-        job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
-        ray.init(job_config=job_config)
+        ray.init(runtime_env={"working_dir": "."})
 
-        with open("hello", "w") as f:
-            f.write("file should already been cached")
+        # Make sure we aren't reading the original file.
+        os.unlink("hello")
 
         @ray.remote
         class Test:
@@ -941,24 +940,16 @@ def test_runtime_env_inheritance_regression(shutdown_only):
                 return open("hello").read()
 
         # Passing working_dir URI through directly should work.
-        env2 = ray.get_runtime_context().runtime_env
-        assert "working_dir" in env2
-        t = Test.options(runtime_env=env2).remote()
+        env1 = ray.get_runtime_context().runtime_env
+        assert "working_dir" in env1
+        t = Test.options(runtime_env=env1).remote()
         assert ray.get(t.f.remote()) == "world"
 
-        # Not passing the working_dir through should work
-        # (but not have the file).
-        env1 = ray.get_runtime_context().runtime_env
-        del env1["working_dir"]
-        t = Test.options(runtime_env=env1).remote()
-        with pytest.raises(FileNotFoundError):
-            ray.get(t.f.remote())
-
         # Passing a local directory should not work.
-        env3 = ray.get_runtime_context().runtime_env
-        env3["working_dir"] = "."
+        env2 = ray.get_runtime_context().runtime_env
+        env2["working_dir"] = "."
         with pytest.raises(ValueError):
-            t = Test.options(runtime_env=env3).remote()
+            t = Test.options(runtime_env=env2).remote()
 
 
 @pytest.mark.skipif(
