@@ -4,7 +4,8 @@ from collections import deque
 from enum import Enum, unique
 import hashlib
 import re
-from typing import (Dict, Generic, List, Optional, Callable, Set, TypeVar, Iterator, Any)
+from typing import (Dict, Generic, List, Optional, Callable, Set, TypeVar,
+                    Iterator, Any)
 import unicodedata
 
 from dataclasses import dataclass
@@ -183,7 +184,7 @@ def slugify(value: str, allow_unicode=False) -> str:
     return re.sub(r"[-\s]+", "-", value)
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class Workflow(Generic[T]):
