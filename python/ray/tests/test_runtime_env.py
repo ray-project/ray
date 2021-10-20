@@ -1,7 +1,6 @@
 import os
 import pytest
 import sys
-import random
 import tempfile
 import time
 import requests
@@ -11,9 +10,8 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 from ray.exceptions import RuntimeEnvSetupError
 import ray.experimental.internal_kv as kv
-from ray._private.test_utils import (
-    run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
-from ray._private.runtime_env import working_dir as working_dir_pkg
+from ray._private.test_utils import (run_string_as_driver, wait_for_condition)
+from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE, parse_uri
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
@@ -51,14 +49,14 @@ try:
                  job_config=job_config,
                  logging_level=logging.DEBUG,
                  namespace="default_test_namespace"
-        )
-except ValueError as value_e:
-    print("ValueError: ", traceback.format_exc())
+)
+except ValueError:
+    print("ValueError:", traceback.format_exc())
     sys.exit(0)
-except TypeError as type_e:
-    print("TypeError: ", traceback.format_exc())
+except TypeError:
+    print("TypeError:", traceback.format_exc())
     sys.exit(0)
-except Exception as e:
+except Exception:
     print("ERROR:", traceback.format_exc())
     sys.exit(0)
 
@@ -187,7 +185,7 @@ def s3_working_dir():
         # names will return 2.
 
         runtime_env = f"""{{  "working_dir": "{S3_PACKAGE_URI}" }}"""
-        _, pkg_name = working_dir_pkg.parse_uri(S3_PACKAGE_URI)
+        _, pkg_name = parse_uri(S3_PACKAGE_URI)
         runtime_env_dir = ray.worker._global_node.get_runtime_env_dir_path()
         working_dir = Path(os.path.join(runtime_env_dir,
                                         pkg_name)).with_suffix("")
@@ -219,69 +217,6 @@ def start_client_server(cluster, client_mode):
     return address, env, runtime_env_dir
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_travel():
-    import uuid
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        dir_paths = set()
-        file_paths = set()
-        item_num = 0
-        excludes = []
-        root = Path(tmp_dir) / "test"
-
-        def construct(path, excluded=False, depth=0):
-            nonlocal item_num
-            path.mkdir(parents=True)
-            if not excluded:
-                dir_paths.add(str(path))
-            if depth > 8:
-                return
-            if item_num > 500:
-                return
-            dir_num = random.randint(0, 10)
-            file_num = random.randint(0, 10)
-            for _ in range(dir_num):
-                uid = str(uuid.uuid4()).split("-")[0]
-                dir_path = path / uid
-                exclud_sub = random.randint(0, 5) == 0
-                if not excluded and exclud_sub:
-                    excludes.append(str(dir_path.relative_to(root)))
-                if not excluded:
-                    construct(dir_path, exclud_sub or excluded, depth + 1)
-                item_num += 1
-            if item_num > 1000:
-                return
-
-            for _ in range(file_num):
-                uid = str(uuid.uuid4()).split("-")[0]
-                with (path / uid).open("w") as f:
-                    v = random.randint(0, 1000)
-                    f.write(str(v))
-                    if not excluded:
-                        if random.randint(0, 5) == 0:
-                            excludes.append(
-                                str((path / uid).relative_to(root)))
-                        else:
-                            file_paths.add((str(path / uid), str(v)))
-                item_num += 1
-
-        construct(root)
-        exclude_spec = working_dir_pkg._get_excludes(root, excludes)
-        visited_dir_paths = set()
-        visited_file_paths = set()
-
-        def handler(path):
-            if path.is_dir():
-                visited_dir_paths.add(str(path))
-            else:
-                with open(path) as f:
-                    visited_file_paths.add((str(path), f.read()))
-
-        working_dir_pkg._dir_travel(root, [exclude_spec], handler)
-        assert file_paths == visited_file_paths
-        assert dir_paths == visited_dir_paths
-
-
 """
 The following test cases are related with runtime env. It following these steps
   1) Creating a temporary dir with fixture working_dir
@@ -299,7 +234,24 @@ def test_empty_working_dir(ray_start_cluster_head, client_mode):
     env["EXIT_AFTER_INIT"] = "1"
     with tempfile.TemporaryDirectory() as working_dir:
         runtime_env = f"""{{
-    "working_dir": r"{working_dir}",
+    "working_dir": r"{working_dir}"
+}}"""
+        # Execute the following cmd in driver with runtime_env
+        execute_statement = "sys.exit(0)"
+        script = driver_script.format(**locals())
+        out = run_string_as_driver(script, env)
+        assert not out.startswith("ERROR:")
+
+
+@pytest.mark.skip("py_modules not supported yet.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
+def test_empty_py_modules(ray_start_cluster_head, client_mode):
+    cluster = ray_start_cluster_head
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
+    env["EXIT_AFTER_INIT"] = "1"
+    with tempfile.TemporaryDirectory() as working_dir:
+        runtime_env = f"""{{
     "py_modules": [r"{working_dir}"]
 }}"""
         # Execute the following cmd in driver with runtime_env
@@ -321,39 +273,55 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     execute_statement = ""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().splitlines()[-1].startswith("TypeError")
-
-    runtime_env = "{ 'py_modules': [10] }"
-    # Execute the following cmd in driver with runtime_env
-    execute_statement = ""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().splitlines()[-1].startswith("TypeError")
+    assert out.strip().splitlines()[-1].startswith("TypeError"), out
 
     runtime_env = f"{{ 'working_dir': os.path.join(r'{working_dir}', 'na') }}"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().splitlines()[-1].startswith("ValueError")
-
-    runtime_env = f"{{ 'py_modules': [os.path.join(r'{working_dir}', 'na')] }}"
-    # Execute the following cmd in driver with runtime_env
-    execute_statement = ""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().splitlines()[-1].startswith("ValueError")
+    assert out.strip().splitlines()[-1].startswith("ValueError"), out
 
     runtime_env = "{ 'working_dir': 's3://bucket/package' }"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().splitlines()[-1].startswith("ValueError")
+    assert out.strip().splitlines()[-1].startswith("ValueError"), out
+
+
+@pytest.mark.skip("py_modules not supported yet.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
+def test_invalid_py_modules(ray_start_cluster_head, working_dir, client_mode):
+    cluster = ray_start_cluster_head
+    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
+    env["EXIT_AFTER_INIT"] = "1"
+
+    runtime_env = "{ 'py_modules': [10] }"
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = ""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("TypeError"), out
+
+    runtime_env = f"{{ 'py_modules': [os.path.join(r'{working_dir}', 'na')] }}"
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = ""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("ValueError"), out
+
+    runtime_env = "{ 'py_modules': ['s3://bucket/package'] }"
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = ""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().splitlines()[-1].startswith("ValueError"), out
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("client_mode", [False, True])
+@pytest.mark.parametrize("client_mode", [True, False])
 def test_single_node(ray_start_cluster_head, working_dir_parametrized,
                      client_mode):
     cluster = ray_start_cluster_head
@@ -364,15 +332,17 @@ def test_single_node(ray_start_cluster_head, working_dir_parametrized,
     print(working_dir_parametrized)
     working_dir, runtime_env, expected = working_dir_parametrized
     print(working_dir, runtime_env, expected)
+
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Execute driver script in brand new, empty directory
         os.chdir(tmp_dir)
         out = run_string_as_driver(script, env)
-        assert out.strip().split()[-1] == expected
-        assert len(list(Path(working_dir).iterdir())) == 1
+        assert out.strip().split()[-1] == expected, out
+        assert len(list(Path(runtime_env_dir).iterdir())) == 1
         assert len(kv._internal_kv_list("gcs://")) == 0
         # working_dir fixture will take care of going back to original test
         # folder
@@ -393,13 +363,14 @@ def test_two_node(two_node_cluster, working_dir_parametrized, client_mode):
         # Execute driver script in brand new, empty directory
         os.chdir(tmp_dir)
         out = run_string_as_driver(script, env)
-        assert out.strip().split()[-1] == expected
-        assert len(list(Path(working_dir).iterdir())) == 1
+        assert out.strip().split()[-1] == expected, out
+        assert len(list(Path(runtime_env_dir).iterdir())) == 1
         assert len(kv._internal_kv_list("gcs://")) == 0
         # working_dir fixture will take care of going back to original test
         # folder
 
 
+@pytest.mark.skip("py_modules not supported yet.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_two_node_module(two_node_cluster, working_dir, client_mode):
@@ -411,7 +382,7 @@ def test_two_node_module(two_node_cluster, working_dir, client_mode):
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
+    assert out.strip().split()[-1] == "1000", out
     assert len(list(Path(runtime_env_dir).iterdir())) == 1
 
 
@@ -431,7 +402,7 @@ print(sum([int(v) for v in vals]))
 """
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
+    assert out.strip().split()[-1] == "1000", out
     assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
@@ -472,7 +443,7 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     # Test it works before
     assert out.strip().split("\n")[-1] == \
-        "Test,Test,Test,Test,Test,Test,Test,Test"
+        "Test,Test,Test,Test,Test,Test,Test,Test", out
     runtime_env = f"""{{
         "working_dir": r"{working_dir}",
         "excludes": [
@@ -489,7 +460,7 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split("\n")[-1] == \
-        "Test,FAILED,Test,FAILED,FAILED,Test,FAILED,FAILED"
+        "Test,FAILED,Test,FAILED,FAILED,Test,FAILED,FAILED", out
     # Test excluding all files using gitignore pattern matching syntax
     runtime_env = f"""{{
         "working_dir": r"{working_dir}",
@@ -498,7 +469,7 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split("\n")[-1] == \
-        "FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED"
+        "FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED", out
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -549,7 +520,7 @@ def test_exclusion_2(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     # Test it works before
     assert out.strip().split("\n")[-1] == \
-        "Test,Test,Test,Test,Test,Test,Test,Test,Test,Test,Test"
+        "Test,Test,Test,Test,Test,Test,Test,Test,Test,Test,Test", out
     with open(f"{working_dir}/.gitignore", "w") as f:
         f.write("""
 # Comment
@@ -577,31 +548,9 @@ print(ray.get_runtime_context().runtime_env["working_dir"])
 """
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == working_dir
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("client_mode", [True, False])
-def test_two_node_uri(two_node_cluster, working_dir, client_mode):
-    cluster, _ = two_node_cluster
-    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
-        pkg_name, _ = working_dir_pkg.get_project_package_name(
-            working_dir, [], [])
-        pkg_uri = working_dir_pkg.Protocol.PIN_GCS.value + "://" + pkg_name
-        working_dir_pkg.create_project_package(working_dir, [], [],
-                                               tmp_file.name)
-        working_dir_pkg.push_package(pkg_uri, tmp_file.name)
-        runtime_env = f"""{{ "uris": ["{pkg_uri}"] }}"""
-        # Execute the following cmd in driver with runtime_env
-        execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
-    assert len(list(Path(runtime_env_dir).iterdir())) == 1
-    # pinned uri will not be deleted
-    print(list(kv._internal_kv_list("")))
-    assert len(kv._internal_kv_list("pingcs://")) == 1
+    working_dir_uri = out.strip().split()[-1]
+    assert working_dir_uri.startswith("gcs://_ray_pkg_")
+    assert working_dir_uri.endswith(".zip")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -617,7 +566,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 """
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
+    assert out.strip().split()[-1] == "1000", out
     assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
 
@@ -635,7 +584,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 """
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
+    assert out.strip().split()[-1] == "1000", out
     # It's a detached actors, so it should still be there
     assert len(kv._internal_kv_list("gcs://")) == 1
     assert len(list(Path(runtime_env_dir).iterdir())) == 2
@@ -647,83 +596,6 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     time.sleep(5)
     assert len(list(Path(runtime_env_dir).iterdir())) == 1
     assert len(kv._internal_kv_list("gcs://")) == 0
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_jobconfig_compatible_1(ray_start_cluster_head, working_dir):
-    # start job_config=None
-    # start job_config=something
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, True)
-    runtime_env = None
-    # To make the first one hanging there
-    execute_statement = """
-time.sleep(600)
-"""
-    script = driver_script.format(**locals())
-    # Have one running with job config = None
-    proc = run_string_as_driver_nonblocking(script, env)
-    # waiting it to be up
-    time.sleep(5)
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    # Execute the second one which should work because Ray Client servers.
-    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
-    proc.kill()
-    proc.wait()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_jobconfig_compatible_2(ray_start_cluster_head, working_dir):
-    # start job_config=something
-    # start job_config=None
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, True)
-    runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
-    # To make the first one hanging there
-    execute_statement = """
-time.sleep(600)
-"""
-    script = driver_script.format(**locals())
-    proc = run_string_as_driver_nonblocking(script, env)
-    time.sleep(5)
-    runtime_env = None
-    # Execute the following in the second one which should
-    # succeed
-    execute_statement = "print('OK')"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "OK", out
-    proc.kill()
-    proc.wait()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_jobconfig_compatible_3(ray_start_cluster_head, working_dir):
-    # start job_config=something
-    # start job_config=something else
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, True)
-    runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
-    # To make the first one hanging ther
-    execute_statement = """
-time.sleep(600)
-"""
-    script = driver_script.format(**locals())
-    proc = run_string_as_driver_nonblocking(script, env)
-    time.sleep(5)
-    runtime_env = f"""
-{{  "working_dir": test_module.__path__[0] }}"""  # noqa: F541
-    # Execute the following cmd in the second one and ensure that
-    # it is able to run.
-    execute_statement = "print('OK')"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    proc.kill()
-    proc.wait()
-    assert out.strip().split()[-1] == "OK"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -894,7 +766,7 @@ def test_container_option_serialize():
 def test_working_dir_override_failure(shutdown_only):
     ray.init()
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
 
         @ray.remote(runtime_env={"working_dir": "."})
         def f():
@@ -904,10 +776,10 @@ def test_working_dir_override_failure(shutdown_only):
     def g():
         pass
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         g.options(runtime_env={"working_dir": "."})
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
 
         @ray.remote(runtime_env={"working_dir": "."})
         class A:
@@ -917,7 +789,7 @@ def test_working_dir_override_failure(shutdown_only):
     class B:
         pass
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         B.options(runtime_env={"working_dir": "."})
 
 
@@ -1016,7 +888,7 @@ def test_large_file_boundary(shutdown_only):
         os.chdir(tmp_dir)
 
         # Check that packages just under the max size work as expected.
-        size = working_dir_pkg.GCS_STORAGE_MAX_SIZE - 1024 * 1024
+        size = GCS_STORAGE_MAX_SIZE - 1024 * 1024
         with open("test_file", "wb") as f:
             f.write(os.urandom(size))
 
@@ -1041,7 +913,7 @@ def test_large_file_error(shutdown_only):
 
         # Write to two separate files, each of which is below the threshold to
         # make sure the error is for the full package size.
-        size = working_dir_pkg.GCS_STORAGE_MAX_SIZE // 2 + 1
+        size = GCS_STORAGE_MAX_SIZE // 2 + 1
         with open("test_file_1", "wb") as f:
             f.write(os.urandom(size))
 
