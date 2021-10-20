@@ -2586,6 +2586,86 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
+def test_groupby_simple(ray_start_regular_shared):
+    parallelism = 3
+    xs = [("A", 2), ("A", 4), ("A", 9), ("B", 10), ("B", 20), ("C", 3),
+          ("C", 5), ("C", 8), ("C", 12)]
+    random.shuffle(xs)
+    ds = ray.data.from_items(xs, parallelism=parallelism)
+    # Mean aggregation
+    agg_ds = ds.groupby(lambda r: r[0]).aggregate(
+        init=lambda key: (0, 0),
+        accumulate=lambda key, a, r: (a[0] + r[1], a[1] + 1),
+        merge=lambda key, a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
+        finalize=lambda key, a: a[0] / a[1])
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [("A", 5), ("B", 15),
+                                                       ("C", 7)]
+
+    # Test None row
+    parallelism = 2
+    xs = ["A", "A", "A", None, None, None, "B"]
+    random.shuffle(xs)
+    ds = ray.data.from_items(xs, parallelism=parallelism)
+    # Count aggregation
+    agg_ds = ds.groupby(lambda r: str(r)).aggregate(
+        init=lambda key: 0,
+        accumulate=lambda key, a, r: a + 1,
+        merge=lambda key, a1, a2: a1 + a2)
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: str(r[0])).take(3) == [("A", 3), ("B", 1),
+                                                            ("None", 3)]
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    agg_ds = ds.groupby(lambda r: r[0]).aggregate(
+        init=lambda key: 1 / 0,  # should never reach here
+        accumulate=lambda key, a, r: 1 / 0,
+        merge=lambda key, a1, a2: 1 / 0,
+        finalize=lambda key, a: 1 / 0)
+    assert agg_ds.count() == 0
+    assert agg_ds == ds
+
+    # Test built-in count aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).count()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2,
+                                                                          33)]
+
+    # Test built-in sum aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).sum()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617),
+                                                       (2, 1650)]
+
+    # Test built-in min aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).min()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
+
+    # Test built-in max aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).max()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2,
+                                                                          98)]
+
+    # Test built-in mean aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).mean()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5), (1, 49.0),
+                                                       (2, 50.0)]
+
+
 def test_sort_simple(ray_start_regular_shared):
     num_items = 100
     parallelism = 4
