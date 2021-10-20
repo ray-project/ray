@@ -14,14 +14,13 @@
 
 #include "ray/common/id.h"
 
-#include <limits.h>
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <mutex>
 #include <random>
 
 #include "absl/time/clock.h"
-
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
 #include "ray/util/macros.h"
@@ -36,8 +35,6 @@ extern "C" {
 
 namespace ray {
 
-uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
-
 /// A helper function to generate the unique bytes by hash.
 __suppress_ubsan__("undefined") std::string
     GenerateUniqueBytes(const JobID &job_id, const TaskID &parent_task_id,
@@ -48,9 +45,11 @@ __suppress_ubsan__("undefined") std::string
   sha256_update(&ctx, reinterpret_cast<const BYTE *>(job_id.Data()), job_id.Size());
   sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()),
                 parent_task_id.Size());
-  sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
+  sha256_update(&ctx, reinterpret_cast<const BYTE *>(&parent_task_counter),
+                sizeof(parent_task_counter));
   if (extra_bytes > 0) {
-    sha256_update(&ctx, (const BYTE *)&extra_bytes, sizeof(extra_bytes));
+    sha256_update(&ctx, reinterpret_cast<const BYTE *>(&extra_bytes),
+                  sizeof(extra_bytes));
   }
 
   BYTE buff[DIGEST_SIZE];
@@ -83,7 +82,7 @@ __suppress_ubsan__("undefined") uint64_t
 
   uint64_t h = seed ^ (len * m);
 
-  const uint64_t *data = reinterpret_cast<const uint64_t *>(key);
+  const auto *data = reinterpret_cast<const uint64_t *>(key);
   const uint64_t *end = data + (len / 8);
 
   while (data != end) {
@@ -97,7 +96,7 @@ __suppress_ubsan__("undefined") uint64_t
     h *= m;
   }
 
-  const unsigned char *data2 = reinterpret_cast<const unsigned char *>(data);
+  const auto *data2 = reinterpret_cast<const unsigned char *>(data);
 
   switch (len & 7) {
   case 7:

@@ -58,7 +58,7 @@ class ResourceSet {
   /// \brief Constructs ResourceSet from two equal-length vectors with label and capacity
   /// specification.
   ResourceSet(const std::vector<std::string> &resource_labels,
-              const std::vector<double> resource_capacity);
+              const std::vector<double> &resource_capacity);
 
   /// \brief Empty ResourceSet destructor.
   ~ResourceSet();
@@ -145,7 +145,7 @@ class ResourceSet {
   /// Return the number of CPUs.
   ///
   /// \return Number of CPUs.
-  const ResourceSet GetNumCpus() const;
+  ResourceSet GetNumCpus() const;
 
   /// Return true if the resource set is empty. False otherwise.
   ///
@@ -171,7 +171,7 @@ class ResourceSet {
   /// \return map of resource in string to size in FixedPoint.
   const absl::flat_hash_map<std::string, FixedPoint> &GetResourceAmountMap() const;
 
-  const std::string ToString() const;
+  std::string ToString() const;
 
  private:
   /// Resource capacity map.
@@ -413,7 +413,7 @@ class ResourceIdSet {
   ///
   /// \return A serialized string of this object.
   /// TODO(zhijunfu): this can be removed after raylet client is migrated to grpc.
-  const std::string Serialize() const;
+  std::string Serialize() const;
 
  private:
   /// A mapping from resource name to a set of resource IDs for that resource.
@@ -531,7 +531,7 @@ class SchedulingResources {
   ResourceSet resources_normal_tasks_;
 };
 
-std::string format_resource(std::string resource_name, double quantity);
+std::string format_resource(const std::string &resource_name, double quantity);
 
 }  // namespace ray
 

@@ -16,6 +16,7 @@
 
 #include <boost/asio.hpp>
 #include <limits>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
@@ -105,7 +106,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler. Defaults to UNKNOWN.
-  void post(std::function<void()> handler, const std::string name = "UNKNOWN")
+  void post(std::function<void()> handler, const std::string &name = "UNKNOWN")
       LOCKS_EXCLUDED(mutex_);
 
   /// A proxy post function where the operation start is manually recorded. For example,
@@ -122,7 +123,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler. Defaults to UNKNOWN.
-  void dispatch(std::function<void()> handler, const std::string name = "UNKNOWN")
+  void dispatch(std::function<void()> handler, const std::string &name = "UNKNOWN")
       LOCKS_EXCLUDED(mutex_);
 
   /// Sets the queueing start time, increments the current and cumulative counts and
@@ -147,7 +148,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
   static void RecordExecution(const std::function<void()> &fn,
-                              std::shared_ptr<StatsHandle> handle);
+                              const std::shared_ptr<StatsHandle> &handle);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
   /// across all handlers.

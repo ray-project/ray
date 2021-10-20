@@ -76,7 +76,8 @@ FunctionDescriptor FunctionDescriptorBuilder::FromVector(
         function_descriptor_list[1],  // function name
         function_descriptor_list[2]   // signature
     );
-  } else if (language == rpc::Language::PYTHON) {
+  }
+  if (language == rpc::Language::PYTHON) {
     RAY_CHECK(function_descriptor_list.size() == 4);
     return FunctionDescriptorBuilder::BuildPython(
         function_descriptor_list[0],  // module name
@@ -84,7 +85,8 @@ FunctionDescriptor FunctionDescriptorBuilder::FromVector(
         function_descriptor_list[2],  // function name
         function_descriptor_list[3]   // function hash
     );
-  } else if (language == rpc::Language::CPP) {
+  }
+  if (language == rpc::Language::CPP) {
     RAY_CHECK(function_descriptor_list.size() == 1);
     return FunctionDescriptorBuilder::BuildCpp(
         function_descriptor_list[0]  // function name

@@ -148,7 +148,7 @@ bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeou
   return status == std::future_status::ready && future.get();
 }
 
-bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
+bool WaitForCondition(const std::function<bool()> &condition, int timeout_ms) {
   int wait_time = 0;
   while (true) {
     if (condition()) {
@@ -174,7 +174,7 @@ void WaitForExpectedCount(std::atomic<int> &current_count, int expected_count,
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms));
 }
 
-void KillProcessBySocketName(std::string socket_name) {
+void KillProcessBySocketName(const std::string &socket_name) {
   std::string pidfile_path = socket_name + ".pid";
   {
     std::ifstream pidfile(pidfile_path, std::ios_base::in);

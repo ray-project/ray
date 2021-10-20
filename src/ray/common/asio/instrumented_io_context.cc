@@ -13,11 +13,13 @@
 // limitations under the License.
 
 #include "ray/common/asio/instrumented_io_context.h"
+
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <utility>
+
 #include "ray/stats/metric.h"
 
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
@@ -32,7 +34,7 @@ namespace {
 /// A helper for creating a snapshot view of the global stats.
 /// This acquires a reader lock on the provided global stats, and creates a
 /// lockless copy of the stats.
-GlobalStats to_global_stats_view(std::shared_ptr<GuardedGlobalStats> stats) {
+GlobalStats to_global_stats_view(const std::shared_ptr<GuardedGlobalStats> &stats) {
   absl::MutexLock lock(&(stats->mutex));
   return GlobalStats(stats->stats);
 }
@@ -40,7 +42,7 @@ GlobalStats to_global_stats_view(std::shared_ptr<GuardedGlobalStats> stats) {
 /// A helper for creating a snapshot view of the stats for a handler.
 /// This acquires a lock on the provided guarded handler stats, and creates a
 /// lockless copy of the stats.
-HandlerStats to_handler_stats_view(std::shared_ptr<GuardedHandlerStats> stats) {
+HandlerStats to_handler_stats_view(const std::shared_ptr<GuardedHandlerStats> &stats) {
   absl::MutexLock lock(&(stats->mutex));
   return HandlerStats(stats->stats);
 }
@@ -64,7 +66,7 @@ std::string to_human_readable(int64_t duration) {
 }  // namespace
 
 void instrumented_io_context::post(std::function<void()> handler,
-                                   const std::string name) {
+                                   const std::string &name) {
   if (!RayConfig::instance().event_stats()) {
     return boost::asio::io_context::post(std::move(handler));
   }
@@ -75,8 +77,8 @@ void instrumented_io_context::post(std::function<void()> handler,
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
   boost::asio::io_context::post(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(handler, std::move(stats_handle));
+      [handler = std::move(handler), stats_handle = stats_handle]() {
+        RecordExecution(handler, stats_handle);
       });
 }
 
@@ -91,12 +93,12 @@ void instrumented_io_context::post(std::function<void()> handler,
   stats_handle->ZeroAccumulatedQueuingDelay();
   boost::asio::io_context::post(
       [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(handler, std::move(stats_handle));
+        RecordExecution(handler, stats_handle);
       });
 }
 
 void instrumented_io_context::dispatch(std::function<void()> handler,
-                                       const std::string name) {
+                                       const std::string &name) {
   if (!RayConfig::instance().event_stats()) {
     return boost::asio::io_context::post(std::move(handler));
   }
@@ -107,8 +109,8 @@ void instrumented_io_context::dispatch(std::function<void()> handler,
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
   boost::asio::io_context::dispatch(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(handler, std::move(stats_handle));
+      [handler = std::move(handler), stats_handle = stats_handle]() {
+        RecordExecution(handler, stats_handle);
       });
 }
 
@@ -128,8 +130,8 @@ std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
       global_stats_);
 }
 
-void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
-                                              std::shared_ptr<StatsHandle> handle) {
+void instrumented_io_context::RecordExecution(
+    const std::function<void()> &fn, const std::shared_ptr<StatsHandle> &handle) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Update running count
   {

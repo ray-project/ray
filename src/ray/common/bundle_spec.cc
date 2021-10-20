@@ -14,6 +14,8 @@
 
 #include "ray/common/bundle_spec.h"
 
+#include <memory>
+
 namespace ray {
 
 void BundleSpecification::ComputeResources() {
@@ -23,7 +25,7 @@ void BundleSpecification::ComputeResources() {
     // A static nil object is used here to avoid allocating the empty object every time.
     unit_resource_ = ResourceSet::Nil();
   } else {
-    unit_resource_.reset(new ResourceSet(unit_resource));
+    unit_resource_ = std::make_shared<ResourceSet>(unit_resource);
   }
 
   // Generate placement group bundle labels.

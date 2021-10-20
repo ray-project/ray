@@ -18,10 +18,11 @@
 #include <sstream>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/match.h"
 #include "ray/util/logging.h"
 
 namespace ray {
-ResourceSet::ResourceSet() {}
+ResourceSet::ResourceSet() = default;
 
 ResourceSet::ResourceSet(const absl::flat_hash_map<std::string, FixedPoint> &resource_map)
     : resource_capacity_(resource_map) {
@@ -38,7 +39,7 @@ ResourceSet::ResourceSet(const absl::flat_hash_map<std::string, double> &resourc
 }
 
 ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
-                         const std::vector<double> resource_capacity) {
+                         const std::vector<double> &resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (size_t i = 0; i < resource_labels.size(); i++) {
     RAY_CHECK(resource_capacity[i] > 0);
@@ -46,7 +47,7 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
   }
 }
 
-ResourceSet::~ResourceSet() {}
+ResourceSet::~ResourceSet() = default;
 
 bool ResourceSet::operator==(const ResourceSet &rhs) const {
   return (this->IsSubset(rhs) && rhs.IsSubset(*this));
@@ -92,9 +93,8 @@ bool ResourceSet::DeleteResource(const std::string &resource_name) {
   if (resource_capacity_.count(resource_name) == 1) {
     resource_capacity_.erase(resource_name);
     return true;
-  } else {
-    return false;
   }
+  return false;
 }
 
 void ResourceSet::SubtractResources(const ResourceSet &other) {
@@ -180,7 +180,7 @@ FixedPoint ResourceSet::GetResource(const std::string &resource_name) const {
   return capacity;
 }
 
-const ResourceSet ResourceSet::GetNumCpus() const {
+ResourceSet ResourceSet::GetNumCpus() const {
   ResourceSet cpu_resource_set;
   const FixedPoint cpu_quantity = GetResource(kCPU_ResourceLabel);
   if (cpu_quantity > 0) {
@@ -189,40 +189,39 @@ const ResourceSet ResourceSet::GetNumCpus() const {
   return cpu_resource_set;
 }
 
-std::string format_resource(std::string resource_name, double quantity) {
+std::string format_resource(const std::string &resource_name, double quantity) {
   if (resource_name == "object_store_memory" ||
-      resource_name.find(kMemory_ResourceLabel) == 0) {
+      absl::StartsWith(resource_name, kMemory_ResourceLabel)) {
     // The memory resources (in 50MiB unit) are converted to GiB
     return std::to_string(quantity * 50 / 1024) + " GiB";
   }
   return std::to_string(quantity);
 }
 
-const std::string ResourceSet::ToString() const {
-  if (resource_capacity_.size() == 0) {
+std::string ResourceSet::ToString() const {
+  if (resource_capacity_.empty()) {
     return "{}";
-  } else {
-    std::string return_string = "";
-
-    auto it = resource_capacity_.begin();
-
-    // Convert the first element to a string.
-    if (it != resource_capacity_.end()) {
-      double resource_amount = (it->second).Double();
-      return_string +=
-          "{" + it->first + ": " + format_resource(it->first, resource_amount) + "}";
-      it++;
-    }
-
-    // Add the remaining elements to the string (along with a comma).
-    for (; it != resource_capacity_.end(); ++it) {
-      double resource_amount = (it->second).Double();
-      return_string +=
-          ", {" + it->first + ": " + format_resource(it->first, resource_amount) + "}";
-    }
-
-    return return_string;
   }
+  std::string return_string;
+
+  auto it = resource_capacity_.begin();
+
+  // Convert the first element to a string.
+  if (it != resource_capacity_.end()) {
+    double resource_amount = (it->second).Double();
+    return_string +=
+        "{" + it->first + ": " + format_resource(it->first, resource_amount) + "}";
+    it++;
+  }
+
+  // Add the remaining elements to the string (along with a comma).
+  for (; it != resource_capacity_.end(); ++it) {
+    double resource_amount = (it->second).Double();
+    return_string +=
+        ", {" + it->first + ": " + format_resource(it->first, resource_amount) + "}";
+  }
+
+  return return_string;
 }
 
 std::unordered_map<std::string, double> ResourceSet::GetResourceUnorderedMap() const {
@@ -248,7 +247,7 @@ const absl::flat_hash_map<std::string, FixedPoint> &ResourceSet::GetResourceAmou
 
 /// ResourceIds class implementation
 
-ResourceIds::ResourceIds() {}
+ResourceIds::ResourceIds() = default;
 
 ResourceIds::ResourceIds(double resource_quantity) {
   RAY_CHECK(IsWhole(resource_quantity));
@@ -263,7 +262,7 @@ ResourceIds::ResourceIds(double resource_quantity) {
 
 ResourceIds::ResourceIds(const std::vector<int64_t> &whole_ids)
     : whole_ids_(whole_ids),
-      total_capacity_((uint64_t)whole_ids.size()),
+      total_capacity_(static_cast<uint64_t>(whole_ids.size())),
       decrement_backlog_(0) {}
 
 ResourceIds::ResourceIds(
@@ -285,18 +284,16 @@ bool ResourceIds::Contains(const FixedPoint &resource_quantity) const {
     double whole_quantity = resource_quantity.Double();
     RAY_CHECK(IsWhole(whole_quantity));
     return whole_ids_.size() >= whole_quantity;
-  } else {
-    if (whole_ids_.size() > 0) {
+  }
+  if (!whole_ids_.empty()) {
+    return true;
+  }
+  for (auto const &fractional_pair : fractional_ids_) {
+    if (fractional_pair.second >= resource_quantity) {
       return true;
-    } else {
-      for (auto const &fractional_pair : fractional_ids_) {
-        if (fractional_pair.second >= resource_quantity) {
-          return true;
-        }
-      }
-      return false;
     }
   }
+  return false;
 }
 
 ResourceIds ResourceIds::Acquire(const FixedPoint &resource_quantity) {
@@ -315,35 +312,33 @@ ResourceIds ResourceIds::Acquire(const FixedPoint &resource_quantity) {
 
     return ResourceIds(ids_to_return);
 
-  } else {
-    // Handle the fractional case.
-    for (auto &fractional_pair : fractional_ids_) {
-      if (fractional_pair.second >= resource_quantity) {
-        auto return_pair = std::make_pair(fractional_pair.first, resource_quantity);
-        fractional_pair.second -= resource_quantity;
+  }  // Handle the fractional case.
+  for (auto &fractional_pair : fractional_ids_) {
+    if (fractional_pair.second >= resource_quantity) {
+      auto return_pair = std::make_pair(fractional_pair.first, resource_quantity);
+      fractional_pair.second -= resource_quantity;
 
-        // Remove the fractional pair if the new capacity is 0
-        if (fractional_pair.second == 0) {
-          std::swap(fractional_pair, fractional_ids_[fractional_ids_.size() - 1]);
-          fractional_ids_.pop_back();
-        }
-        return ResourceIds({return_pair});
+      // Remove the fractional pair if the new capacity is 0
+      if (fractional_pair.second == 0) {
+        std::swap(fractional_pair, fractional_ids_[fractional_ids_.size() - 1]);
+        fractional_ids_.pop_back();
       }
+      return ResourceIds({return_pair});
     }
-
-    // If we get here then there weren't enough available fractional IDs, so we
-    // need to use a whole ID.
-    RAY_CHECK(whole_ids_.size() > 0);
-    int64_t whole_id = whole_ids_.back();
-    whole_ids_.pop_back();
-
-    auto return_pair = std::make_pair(whole_id, resource_quantity);
-    // We cannot make use of the implicit conversion because ints have no
-    // operator-(const FixedPoint&) function.
-    const FixedPoint remaining_amount = FixedPoint(1) - resource_quantity;
-    fractional_ids_.push_back(std::make_pair(whole_id, remaining_amount));
-    return ResourceIds({return_pair});
   }
+
+  // If we get here then there weren't enough available fractional IDs, so we
+  // need to use a whole ID.
+  RAY_CHECK(!whole_ids_.empty());
+  int64_t whole_id = whole_ids_.back();
+  whole_ids_.pop_back();
+
+  auto return_pair = std::make_pair(whole_id, resource_quantity);
+  // We cannot make use of the implicit conversion because ints have no
+  // operator-(const FixedPoint&) function.
+  const FixedPoint remaining_amount = FixedPoint(1) - resource_quantity;
+  fractional_ids_.push_back(std::make_pair(whole_id, remaining_amount));
+  return ResourceIds({return_pair});
 }
 
 void ResourceIds::Release(const ResourceIds &resource_ids) {
@@ -409,7 +404,7 @@ bool ResourceIds::TotalQuantityIsZero() const {
 }
 
 FixedPoint ResourceIds::TotalQuantity() const {
-  FixedPoint total_quantity = FixedPoint((uint64_t)whole_ids_.size());
+  auto total_quantity = FixedPoint(static_cast<uint64_t>(whole_ids_.size()));
   for (auto const &fractional_pair : fractional_ids_) {
     total_quantity += fractional_pair.second;
   }
@@ -489,7 +484,7 @@ bool ResourceIds::IsWhole(double resource_quantity) const {
 
 /// ResourceIdSet class implementation
 
-ResourceIdSet::ResourceIdSet() {}
+ResourceIdSet::ResourceIdSet() = default;
 
 ResourceIdSet::ResourceIdSet(const ResourceSet &resource_set) {
   for (auto const &resource_pair : resource_set.GetResourceMap()) {
@@ -665,7 +660,7 @@ std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToF
   return return_message;
 }
 
-const std::string ResourceIdSet::Serialize() const {
+std::string ResourceIdSet::Serialize() const {
   flatbuffers::FlatBufferBuilder fbb;
   fbb.Finish(protocol::CreateResourceIdSetInfos(fbb, fbb.CreateVector(ToFlatbuf(fbb))));
   return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
@@ -683,7 +678,7 @@ SchedulingResources::SchedulingResources(const ResourceSet &total)
       resources_available_(total),
       resources_load_(ResourceSet()) {}
 
-SchedulingResources::~SchedulingResources() {}
+SchedulingResources::~SchedulingResources() = default;
 
 const ResourceSet &SchedulingResources::GetAvailableResources() const {
   return resources_available_;

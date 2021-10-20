@@ -20,7 +20,7 @@ namespace ray {
 
 IOServicePool::IOServicePool(size_t io_service_num) : io_service_num_(io_service_num) {}
 
-IOServicePool::~IOServicePool() {}
+IOServicePool::~IOServicePool() = default;
 
 void IOServicePool::Run() {
   for (size_t i = 0; i < io_service_num_; ++i) {

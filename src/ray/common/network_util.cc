@@ -97,8 +97,8 @@ std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
 
   struct ifaddrs *if_info = nullptr;
   for (if_info = ifs_info; if_info != nullptr; if_info = if_info->ifa_next) {
-    if (if_info->ifa_addr && if_info->ifa_addr->sa_family == AF_INET) {
-      void *addr = &((struct sockaddr_in *)if_info->ifa_addr)->sin_addr;
+    if ((if_info->ifa_addr != nullptr) && if_info->ifa_addr->sa_family == AF_INET) {
+      void *addr = &(reinterpret_cast<struct sockaddr_in *>(if_info->ifa_addr))->sin_addr;
 
       char ip[INET_ADDRSTRLEN];
       inet_ntop(AF_INET, addr, ip, INET_ADDRSTRLEN);

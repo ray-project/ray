@@ -15,6 +15,7 @@
 #include "ray/common/task/task_spec.h"
 
 #include <boost/functional/hash.hpp>
+#include <memory>
 #include <sstream>
 
 #include "ray/common/ray_config.h"
@@ -59,7 +60,7 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
   return sched_cls_id;
 }
 
-const BundleID TaskSpecification::PlacementGroupBundleId() const {
+BundleID TaskSpecification::PlacementGroupBundleId() const {
   return std::make_pair(PlacementGroupID::FromBinary(message_->placement_group_id()),
                         message_->placement_group_bundle_index());
 }
@@ -75,7 +76,8 @@ void TaskSpecification::ComputeResources() {
     // A static nil object is used here to avoid allocating the empty object every time.
     required_resources_ = ResourceSet::Nil();
   } else {
-    required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));
+    required_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_resources));
   }
 
   auto &required_placement_resources = message_->required_placement_resources().empty()
@@ -85,8 +87,8 @@ void TaskSpecification::ComputeResources() {
   if (required_placement_resources.empty()) {
     required_placement_resources_ = ResourceSet::Nil();
   } else {
-    required_placement_resources_.reset(
-        new ResourceSet(MapFromProtobuf(required_placement_resources)));
+    required_placement_resources_ =
+        std::make_shared<ResourceSet>(MapFromProtobuf(required_placement_resources));
   }
 
   if (!IsActorTask()) {
@@ -107,7 +109,7 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
-const std::string TaskSpecification::GetSerializedActorHandle() const {
+std::string TaskSpecification::GetSerializedActorHandle() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().serialized_actor_handle();
 }
@@ -139,7 +141,7 @@ std::string TaskSpecification::SerializedRuntimeEnv() const {
 }
 
 bool TaskSpecification::HasRuntimeEnv() const {
-  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
+  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv().empty());
 }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
@@ -151,7 +153,7 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   return env.IntHash();
 }
 
-const SchedulingClass TaskSpecification::GetSchedulingClass() const {
+SchedulingClass TaskSpecification::GetSchedulingClass() const {
   RAY_CHECK(sched_cls_id_ > 0);
   return sched_cls_id_;
 }
@@ -193,7 +195,7 @@ size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
   return message_->args(arg_index).metadata().size();
 }
 
-const std::vector<rpc::ObjectReference> TaskSpecification::ArgInlinedRefs(
+std::vector<rpc::ObjectReference> TaskSpecification::ArgInlinedRefs(
     size_t arg_index) const {
   return VectorFromProtobuf<rpc::ObjectReference>(
       message_->args(arg_index).nested_inlined_refs());
@@ -244,7 +246,7 @@ bool TaskSpecification::IsDriverTask() const {
   return message_->type() == TaskType::DRIVER_TASK;
 }
 
-const std::string TaskSpecification::GetName() const { return message_->name(); }
+std::string TaskSpecification::GetName() const { return message_->name(); }
 
 Language TaskSpecification::GetLanguage() const { return message_->language(); }
 
@@ -347,7 +349,7 @@ std::string TaskSpecification::DebugString() const {
     stream << ", Resources: {";
 
     // Print resource description.
-    for (auto entry : GetRequiredResources().GetResourceMap()) {
+    for (const auto &entry : GetRequiredResources().GetResourceMap()) {
       stream << entry.first << ": " << entry.second << ", ";
     }
     stream << "}";
@@ -394,10 +396,10 @@ std::string TaskSpecification::CallSiteString() const {
 }
 
 WorkerCacheKey::WorkerCacheKey(
-    const std::string serialized_runtime_env,
+    const std::string &serialized_runtime_env,
     const absl::flat_hash_map<std::string, double> &required_resources)
     : serialized_runtime_env(serialized_runtime_env),
-      required_resources(std::move(required_resources)) {}
+      required_resources(required_resources) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
   // FIXME we should compare fields
@@ -405,13 +407,13 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
+  return (serialized_runtime_env.empty() || serialized_runtime_env == "{}") &&
          required_resources.empty();
 }
 
 std::size_t WorkerCacheKey::Hash() const {
   // Cache the hash value.
-  if (!hash_) {
+  if (hash_ == 0u) {
     if (EnvIsEmpty()) {
       // It's useful to have the same predetermined value for both unspecified and empty
       // runtime envs.
@@ -432,7 +434,7 @@ std::size_t WorkerCacheKey::Hash() const {
   return hash_;
 }
 
-int WorkerCacheKey::IntHash() const { return (int)Hash(); }
+int WorkerCacheKey::IntHash() const { return static_cast<int>(Hash()); }
 
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   RAY_CHECK(IsActorCreationTask());
@@ -444,6 +446,7 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
     auto &curr_group_message = actor_creation_task_spec.concurrency_groups(i);
     std::vector<ray::FunctionDescriptor> function_descriptors;
     const auto func_descriptors_size = curr_group_message.function_descriptors_size();
+    function_descriptors.reserve(func_descriptors_size);
     for (auto j = 0; j < func_descriptors_size; ++j) {
       function_descriptors.push_back(FunctionDescriptorBuilder::FromProto(
           curr_group_message.function_descriptors(j)));

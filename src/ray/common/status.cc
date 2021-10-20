@@ -28,9 +28,8 @@
 
 #include "ray/common/status.h"
 
-#include <assert.h>
-
 #include <boost/system/error_code.hpp>
+#include <cassert>
 #include <map>
 
 namespace ray {
@@ -76,7 +75,7 @@ void Status::CopyFrom(const State *state) {
 }
 
 std::string Status::CodeAsString() const {
-  if (state_ == NULL) {
+  if (state_ == nullptr) {
     return STATUS_CODE_OK;
   }
 
@@ -104,7 +103,7 @@ std::string Status::CodeAsString() const {
       {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
   };
 
-  if (!code_to_str.count(code())) {
+  if (code_to_str.count(code()) == 0u) {
     return STATUS_CODE_UNKNOWN;
   }
   return code_to_str[code()];
@@ -112,7 +111,7 @@ std::string Status::CodeAsString() const {
 
 std::string Status::ToString() const {
   std::string result(CodeAsString());
-  if (state_ == NULL) {
+  if (state_ == nullptr) {
     return result;
   }
   result += ": ";

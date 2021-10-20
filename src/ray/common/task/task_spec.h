@@ -129,14 +129,14 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   size_t ArgMetadataSize(size_t arg_index) const;
 
   /// Return the ObjectRefs that were inlined in this task argument.
-  const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;
+  std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;
 
   /// Return the scheduling class of the task. The scheduler makes a best effort
   /// attempt to fairly dispatch tasks of different classes, preventing
   /// starvation of any single class of task.
   ///
   /// \return The scheduling class used for fair task queueing.
-  const SchedulingClass GetSchedulingClass() const;
+  SchedulingClass GetSchedulingClass() const;
 
   /// Return the resources that are to be acquired during the execution of this
   /// task.
@@ -177,7 +177,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   Language GetLanguage() const;
 
   // Returns the task's name.
-  const std::string GetName() const;
+  std::string GetName() const;
 
   /// Whether this task is a normal task.
   bool IsNormalTask() const;
@@ -202,7 +202,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID CallerId() const;
 
-  const std::string GetSerializedActorHandle() const;
+  std::string GetSerializedActorHandle() const;
 
   const rpc::Address &CallerAddress() const;
 
@@ -234,7 +234,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
 
   // Placement Group bundle that this task or actor creation is associated with.
-  const BundleID PlacementGroupBundleId() const;
+  BundleID PlacementGroupBundleId() const;
 
   // Whether or not we should capture parent's placement group implicitly.
   bool PlacementGroupCaptureChildTasks() const;
@@ -277,7 +277,7 @@ class WorkerCacheKey {
   ///
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
-  WorkerCacheKey(const std::string serialized_runtime_env,
+  WorkerCacheKey(const std::string &serialized_runtime_env,
                  const absl::flat_hash_map<std::string, double> &required_resources);
 
   bool operator==(const WorkerCacheKey &k) const;

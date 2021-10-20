@@ -55,7 +55,7 @@ bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeou
 /// \param[in] condition The condition to wait for.
 /// \param[in] timeout_ms Timeout in milliseconds to wait for for.
 /// \return Whether the condition is met.
-bool WaitForCondition(std::function<bool()> condition, int timeout_ms);
+bool WaitForCondition(const std::function<bool()> &condition, int timeout_ms);
 
 /// Wait until the expected count is met, or timeout is reached.
 ///
@@ -67,7 +67,7 @@ void WaitForExpectedCount(std::atomic<int> &current_count, int expected_count,
                           int timeout_ms = 60000);
 
 /// Used to kill process whose pid is stored in `socket_name.id` file.
-void KillProcessBySocketName(std::string socket_name);
+void KillProcessBySocketName(const std::string &socket_name);
 
 /// Kills all processes with the given executable name (similar to killall).
 /// Note: On Windows, this should include the file extension (e.g. ".exe"), if any.

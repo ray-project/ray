@@ -24,9 +24,8 @@ void PlacementGroupSpecification::ConstructBundles() {
 PlacementGroupID PlacementGroupSpecification::PlacementGroupId() const {
   if (message_->placement_group_id().empty()) {
     return PlacementGroupID::Nil();
-  } else {
-    return PlacementGroupID::FromBinary(message_->placement_group_id());
   }
+  return PlacementGroupID::FromBinary(message_->placement_group_id());
 }
 
 std::vector<BundleSpecification> PlacementGroupSpecification::GetBundles() const {
