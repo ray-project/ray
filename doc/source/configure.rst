@@ -132,7 +132,7 @@ The node manager and object manager run as separate processes with their own por
 The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.
 
 - ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10002.
-- ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
+- ``--max-worker-port``: Maximum port number worker can be bound to. Default: 19999.
 
 Port numbers are how Ray disambiguates input and output to and from multiple workers on a single node. Each worker will take input and give output on a single port number. Thus, for example, by default, there is a maximum of 1,000 workers on each node, irrespective of number of CPUs.
 
