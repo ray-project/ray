@@ -300,8 +300,8 @@ class LogMonitor:
                         flush()  # Possible change of task/actor name.
                         file_info.task_name = next_line.split(
                             ray_constants.LOG_PREFIX_TASK_NAME, 1)[1]
-                    elif ("Windows fatal exception: access violation"
-                          in next_line):
+                    elif ("Windows fatal exception: access violation" in
+                          next_line):
                         # We are suppressing the
                         # 'Windows fatal exception: access violation'
                         # message on Windows here. As far as we know
