@@ -52,9 +52,9 @@ class HorovodConfig(BackendConfig):
         return timeout.Timeout(
             self.timeout_s,
             message="Timed out waiting for {activity}. Please "
-                    "check connectivity between servers. You "
-                    "may need to increase the --start-timeout "
-                    "parameter if you have too many servers.")
+            "check connectivity between servers. You "
+            "may need to increase the --start-timeout "
+            "parameter if you have too many servers.")
 
     def __post_init__(self):
         if Coordinator is None:
@@ -99,8 +99,7 @@ class HorovodWorkerWrapper:
             def remote(self, func, *args, **kwargs):
                 _ = None
                 return w.actor._BaseWorkerMixin__execute.remote(
-                    func, _, *args, **kwargs
-                )
+                    func, _, *args, **kwargs)
 
         return ExecuteHandle()
 
