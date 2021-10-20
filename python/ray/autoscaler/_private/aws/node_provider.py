@@ -377,7 +377,10 @@ class AWSNodeProvider(NodeProvider):
         # Try to always launch in the first listed subnet.
         subnet_idx = 0
         cli_logger_tags = {}
-        for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
+        # NOTE: This ensures that we try ALL availability zones before
+        # throwing an error.
+        max_tries = max(BOTO_CREATE_MAX_RETRIES, len(subnet_ids))
+        for attempt in range(1, max_tries + 1):
             try:
                 if "NetworkInterfaces" in conf:
                     net_ifs = conf["NetworkInterfaces"]
@@ -418,7 +421,7 @@ class AWSNodeProvider(NodeProvider):
                                 info=state_reason["Message"]))
                 break
             except botocore.exceptions.ClientError as exc:
-                if attempt == BOTO_CREATE_MAX_RETRIES:
+                if attempt == max_tries:
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.",
                         exc=exc,
