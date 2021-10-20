@@ -16,8 +16,8 @@ T = TypeVar("T")
 # Represents a batch of records to be stored in the Ray object store.
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
-# ``SimpleBlockAccessor``, ``ArrowBlockAccessor``, and ``TensorBlockAccessor``.
-Block = Union[List[T], np.ndarray, "pyarrow.Table", bytes]
+# ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
+Block = Union[List[T], "pyarrow.Table", bytes]
 
 
 @DeveloperAPI
@@ -52,8 +52,8 @@ class BlockAccessor(Generic[T]):
     as a top-level Ray object, without a wrapping class (issue #17186).
 
     There are three types of block accessors: ``SimpleBlockAccessor``, which
-    operates over a plain Python list, ``ArrowBlockAccessor``, for
-    ``pyarrow.Table`` type blocks, and ``TensorBlockAccessor``, for tensors.
+    operates over a plain Python list, and ``ArrowBlockAccessor`` for
+    ``pyarrow.Table`` type blocks.
     """
 
     def num_rows(self) -> int:
@@ -85,12 +85,16 @@ class BlockAccessor(Generic[T]):
         """Convert this block into a Pandas dataframe."""
         raise NotImplementedError
 
-    def to_numpy(self) -> np.ndarray:
-        """Convert this block into a NumPy ndarray."""
+    def to_numpy(self, column: str = None) -> np.ndarray:
+        """Convert this block (or column of block) into a NumPy ndarray.
+
+        Args:
+            column: Name of column to convert, or None.
+        """
         raise NotImplementedError
 
-    def to_arrow(self) -> Union["pyarrow.Table", "pyarrow.Tensor"]:
-        """Convert this block into an Arrow table or tensor."""
+    def to_arrow(self) -> "pyarrow.Table":
+        """Convert this block into an Arrow table."""
         raise NotImplementedError
 
     def size_bytes(self) -> int:
@@ -108,6 +112,10 @@ class BlockAccessor(Generic[T]):
             size_bytes=self.size_bytes(),
             schema=self.schema(),
             input_files=input_files)
+
+    def zip(self, other: "Block[T]") -> "Block[T]":
+        """Zip this block with another block of the same type and size."""
+        raise NotImplementedError
 
     @staticmethod
     def builder() -> "BlockBuilder[T]":
@@ -132,10 +140,6 @@ class BlockAccessor(Generic[T]):
             from ray.data.impl.simple_block import \
                 SimpleBlockAccessor
             return SimpleBlockAccessor(block)
-        elif isinstance(block, np.ndarray):
-            from ray.data.impl.tensor_block import \
-                TensorBlockAccessor
-            return TensorBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {}".format(block))
 

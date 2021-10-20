@@ -953,6 +953,7 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
 }
 
 TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
+  google::protobuf::Arena arena;
   skip_delay_ = false;
   auto job_id_1 = JobID::FromInt(1);
   auto request1 = Mocker::GenRegisterActorRequest(job_id_1, /*max_restarts=*/0,
@@ -971,7 +972,8 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
 
   {
     rpc::GetAllActorInfoRequest request;
-    rpc::GetAllActorInfoReply reply;
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
     bool called = false;
     auto callback = [&called](Status status, std::function<void()> success,
                               std::function<void()> failure) { called = true; };
@@ -981,7 +983,8 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
   }
   {
     rpc::GetAllActorInfoRequest request;
-    rpc::GetAllActorInfoReply reply;
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
     request.set_show_dead_jobs(true);
     std::promise<void> promise;
     auto callback = [&promise](Status status, std::function<void()> success,
@@ -994,7 +997,8 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
   delayed_to_run_();
   {
     rpc::GetAllActorInfoRequest request;
-    rpc::GetAllActorInfoReply reply;
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
     request.set_show_dead_jobs(true);
     std::promise<void> promise;
     auto callback = [&promise](Status status, std::function<void()> success,

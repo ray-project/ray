@@ -86,8 +86,8 @@ class Searcher:
                 "Early stopped trials are now always used. If this is a "
                 "problem, file an issue: https://github.com/ray-project/ray.")
         if max_concurrent is not None:
-            logger.warning(
-                "DeprecationWarning: `max_concurrent` is deprecated for this "
+            raise DeprecationWarning(
+                "`max_concurrent` is deprecated for this "
                 "search algorithm. Use tune.suggest.ConcurrencyLimiter() "
                 "instead. This will raise an error in future versions of Ray.")
 
@@ -423,6 +423,9 @@ class ConcurrencyLimiter(Searcher):
                 trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
             self.num_unfinished_live_trials -= 1
+
+    def on_trial_result(self, trial_id: str, result: Dict) -> None:
+        self.searcher.on_trial_result(trial_id, result)
 
     def add_evaluated_point(self,
                             parameters: Dict,

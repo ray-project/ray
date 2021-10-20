@@ -1,0 +1,14 @@
+# These requirements are used for the CI and CPU-only Docker images so we install CPU only versions of torch.
+# For GPU Docker images, you should install requirements_ml_docker.txt instead.
+
+tensorflow==2.5.0
+tensorflow-probability==0.13.0
+
+torch==1.9.0;sys_platform=="darwin"
+torchvision==0.10.0;sys_platform=="darwin"
+
+# On non-OSX machines only install CPU version of torch and torchvision
+-f https://download.pytorch.org/whl/torch_stable.html
+torch==1.9.0+cpu;sys_platform!="darwin"
+-f https://download.pytorch.org/whl/torch_stable.html
+torchvision==0.10.0+cpu;sys_platform!="darwin"
