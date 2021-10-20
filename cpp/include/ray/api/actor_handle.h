@@ -64,6 +64,9 @@ const std::string &ActorHandle<ActorType>::ID() const {
 template <typename ActorType>
 template <typename F>
 ray::internal::ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
+  static_assert(std::is_member_function_pointer_v<F>,
+                "The caller and function are not match, call non-member function with "
+                "actor.Task is not allowed");
   using Self = boost::callable_traits::class_of_t<F>;
   static_assert(
       std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,

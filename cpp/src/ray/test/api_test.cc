@@ -30,7 +30,18 @@ int Plus(int x, int y) { return x + y; }
 
 int Triple(int x, int y, int z) { return x + y + z; }
 
-RAY_REMOTE(Return1, Plus1, Plus, Triple);
+std::string GetVal(ray::ObjectRef<std::string> obj) { return *obj.Get(); }
+
+int GetIntVal(ray::ObjectRef<ray::ObjectRef<int>> obj) {
+  auto val = *obj.Get();
+  return *val.Get();
+}
+
+std::vector<std::shared_ptr<int>> GetList(int x, std::vector<ray::ObjectRef<int>> list) {
+  return ray::Get(list);
+}
+
+RAY_REMOTE(Return1, Plus1, Plus, Triple, GetVal, GetIntVal, GetList);
 
 class Counter {
  public:
@@ -155,6 +166,22 @@ TEST(RayApiTest, WaitTest) {
   EXPECT_EQ(*getResult[2], 5);
 }
 
+TEST(RayApiTest, ObjectRefArgsTest) {
+  auto obj = ray::Put(std::string("aaa"));
+  auto r = ray::Task(GetVal).Remote(obj);
+  EXPECT_EQ(*r.Get(), "aaa");
+
+  auto obj0 = ray::Put(42);
+  auto obj1 = ray::Put(obj0);
+  auto r1 = ray::Task(GetIntVal).Remote(obj1);
+  EXPECT_EQ(*r1.Get(), 42);
+
+  std::vector<ray::ObjectRef<int>> list{obj0, obj0};
+  auto r2 = ray::Task(GetList).Remote(1, list);
+  auto result2 = *r2.Get();
+  EXPECT_EQ(result2.size(), 2);
+}
+
 TEST(RayApiTest, CallWithValueTest) {
   auto r0 = ray::Task(Return1).Remote();
   auto r1 = ray::Task(Plus1).Remote(3);
@@ -207,7 +234,7 @@ TEST(RayApiTest, ActorTest) {
   EXPECT_EQ(*r1.Get(), 42);
 
   std::vector<ray::ObjectRef<int>> list{obj0, obj0};
-  auto r2 = actor.Task(&Counter::GetList).Remote(1, list);
+  auto r2 = ray::Task(&Counter::GetList).Remote(1, list);
   auto result2 = *r2.Get();
   EXPECT_EQ(result2.size(), 2);
 
