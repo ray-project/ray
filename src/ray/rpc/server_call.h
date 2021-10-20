@@ -224,7 +224,7 @@ class ServerCallImpl : public ServerCall {
   /// Log the duration this query used
   void LogProcessTime() {
     auto end_time = absl::GetCurrentTimeNanos();
-    STATS_grpc_server_req_process_time_ms.Record((end_time - start_time_) / 1000000,
+    STATS_grpc_server_req_process_time_ms.Record((end_time - start_time_) / 1000000.0,
                                                  call_name_);
   }
   /// Tell gRPC to finish this request and send reply asynchronously.
