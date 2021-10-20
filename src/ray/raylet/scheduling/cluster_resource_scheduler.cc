@@ -29,7 +29,8 @@ ClusterResourceScheduler::ClusterResourceScheduler()
           {};
 
 ClusterResourceScheduler::ClusterResourceScheduler(
-    int64_t local_node_id, const NodeResources &local_node_resources, gcs::GcsClient& gcs_client)
+    int64_t local_node_id, const NodeResources &local_node_resources,
+    gcs::GcsClient &gcs_client)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
       spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
       local_node_id_(local_node_id),
@@ -43,8 +44,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
     const absl::flat_hash_map<std::string, double> &local_node_resources,
-    gcs::GcsClient& gcs_client,
-    std::function<int64_t(void)> get_used_object_store_memory,
+    gcs::GcsClient &gcs_client, std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
     : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
       spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
@@ -324,11 +324,11 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
       std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
       int idx = distribution(gen_);
       auto iter = std::next(nodes_.begin(), idx);
-      for(size_t i = 0; i < nodes_.size(); ++i) {
+      for (size_t i = 0; i < nodes_.size(); ++i) {
         auto node_id = iter->first;
 
         ++iter;
-        if(iter == nodes_.end()) {
+        if (iter == nodes_.end()) {
           iter = nodes_.begin();
         }
       }

@@ -52,9 +52,9 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   RAY_CHECK(local_it != nodes.end());
 
   auto predicate = [node_filter, &is_node_available](const auto &node) {
-                     if (!is_node_available(node)) {
-                       return false;
-                     }
+    if (!is_node_available(node)) {
+      return false;
+    }
     if (node_filter == NodeFilter::kAny) {
       return true;
     }
@@ -159,9 +159,7 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
   // Try schedule on non-GPU nodes.
   auto best_node_id = HybridPolicyWithFilter(
       resource_request, local_node_id, nodes, spread_threshold, force_spillback,
-      /*require_available*/ true,
-      is_node_available,
-      NodeFilter::kNonGpu);
+      /*require_available*/ true, is_node_available, NodeFilter::kNonGpu);
   if (best_node_id != -1) {
     return best_node_id;
   }
@@ -169,9 +167,7 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
   // If we cannot find any available node from non-gpu nodes, fallback to the original
   // scheduling
   return HybridPolicyWithFilter(resource_request, local_node_id, nodes, spread_threshold,
-                                force_spillback,
-                                require_available,
-                                is_node_available);
+                                force_spillback, require_available, is_node_available);
 }
 
 }  // namespace raylet_scheduling_policy

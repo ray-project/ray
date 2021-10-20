@@ -47,11 +47,11 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// with the local node.
   ClusterResourceScheduler(int64_t local_node_id,
                            const NodeResources &local_node_resources,
-                           gcs::GcsClient& gcs_client);
+                           gcs::GcsClient &gcs_client);
   ClusterResourceScheduler(
       const std::string &local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
-      gcs::GcsClient& gcs_client,
+      gcs::GcsClient &gcs_client,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
