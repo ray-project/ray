@@ -410,8 +410,7 @@ def run(
         result_buffer_length = 1
 
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors,
-        result_buffer_length=result_buffer_length)
+        reuse_actors=reuse_actors, result_buffer_length=result_buffer_length)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
