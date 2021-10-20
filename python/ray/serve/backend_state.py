@@ -75,7 +75,7 @@ class ActorReplicaWrapper:
         self._backend_tag = backend_tag
 
         # Populated in either self.start() or self.recover()
-        self._initialized_obj_ref: ObjectRef = None
+        self._allocated_obj_ref: ObjectRef = None
         self._ready_obj_ref: ObjectRef = None
 
         self._actor_resources: Dict[str, float] = None
@@ -182,8 +182,7 @@ class ActorReplicaWrapper:
                 backend_info.backend_config.to_proto_bytes(), version,
                 self._controller_name, self._detached)
 
-        self._initialized_obj_ref = self._actor_handle \
-            .initialization_check.remote()
+        self._allocated_obj_ref = self._actor_handle.poke.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
 
@@ -215,8 +214,7 @@ class ActorReplicaWrapper:
                 self._placement_group_name)
 
         # Re-fetch initialization proof
-        self._initialized_obj_ref = self._actor_handle \
-            .initialization_check.remote()
+        self._allocated_obj_ref = self._actor_handle.poke.remote()
 
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
@@ -230,7 +228,9 @@ class ActorReplicaWrapper:
 
         Returns:
             state (ReplicaStartupStatus):
-                PENDING:
+                PENDING_ALLOCATION:
+                    - replica is waiting for a worker to start
+                PENDING_INITIALIZATION
                     - replica reconfigure() haven't returned.
                 FAILED:
                     - replica __init__() failed.
@@ -243,10 +243,13 @@ class ActorReplicaWrapper:
                 version:
                     - replica __init__() and reconfigure() succeeded.
         """
-        ready, _ = ray.wait([self._initialized_obj_ref], timeout=0)
+
+        # check whether the replica has been allocated
+        ready, _ = ray.wait([self._allocated_obj_ref], timeout=0)
         if len(ready) == 0:
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
+        # check whether relica initialization has completed
         ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
@@ -1038,7 +1041,6 @@ class BackendState:
 
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
-            # TODO: this check is redundant - would it be better to remove it?
             elif start_status in [
                     ReplicaStartupStatus.PENDING_ALLOCATION,
                     ReplicaStartupStatus.PENDING_INITIALIZATION,

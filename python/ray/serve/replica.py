@@ -119,7 +119,15 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
-        async def initialization_check(self):
+        async def poke(self):
+            """poke the replica to check whether it's alive.
+
+            When calling this method on an ActorHandle, it will complete as
+            soon as the actor has started running. We use this mechanism to
+            detect when a replica has been allocated a worker slot.
+            At this time, the replica can transition from PENDING_ALLOCATION
+            to PENDING_INITIALIZATION startup state.
+            """
             pass
 
         async def reconfigure(self, user_config: Optional[Any] = None
