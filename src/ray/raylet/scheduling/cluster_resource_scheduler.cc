@@ -324,12 +324,9 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
       std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
       int idx = distribution(gen_);
       auto iter = std::next(nodes_.begin(), idx);
-      // best_node = std::next(nodes_.begin(), idx)->first;
       for(size_t i = 0; i < nodes_.size(); ++i) {
         auto node_id = iter->first;
-        if(!string_to_int_map_.Get(node_id).empty()) {
-          break;
-        }
+
         ++iter;
         if(iter == nodes_.end()) {
           iter = nodes_.begin();
@@ -352,7 +349,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
       resource_request, local_node_id_, nodes_, spread_threshold_, force_spillback,
-      force_spillback);
+      force_spillback, []);
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.

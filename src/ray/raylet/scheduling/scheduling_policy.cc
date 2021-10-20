@@ -40,7 +40,9 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
                                const int64_t local_node_id,
                                const absl::flat_hash_map<int64_t, Node> &nodes,
                                float spread_threshold, bool force_spillback,
-                               bool require_available, NodeFilter node_filter) {
+                               bool require_available,
+                               std::function<bool(int)> is_node_available,
+                               NodeFilter node_filter) {
   // Step 1: Generate the traversal order. We guarantee that the first node is local, to
   // encourage local scheduling. The rest of the traversal order should be globally
   // consistent, to encourage using "warm" workers.
@@ -49,7 +51,10 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   const auto local_it = nodes.find(local_node_id);
   RAY_CHECK(local_it != nodes.end());
 
-  auto predicate = [node_filter](const auto &node) {
+  auto predicate = [node_filter, &is_node_available](const auto &node) {
+                     if (!is_node_available(node)) {
+                       return false;
+                     }
     if (node_filter == NodeFilter::kAny) {
       return true;
     }
@@ -143,16 +148,20 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
 int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t local_node_id,
                      const absl::flat_hash_map<int64_t, Node> &nodes,
                      float spread_threshold, bool force_spillback, bool require_available,
+                     std::function<bool(int)> is_node_available,
                      bool scheduler_avoid_gpu_nodes) {
   if (!scheduler_avoid_gpu_nodes || IsGPURequest(resource_request)) {
     return HybridPolicyWithFilter(resource_request, local_node_id, nodes,
-                                  spread_threshold, force_spillback, require_available);
+                                  spread_threshold, force_spillback, require_available,
+                                  std::move(is_node_available));
   }
 
   // Try schedule on non-GPU nodes.
   auto best_node_id = HybridPolicyWithFilter(
       resource_request, local_node_id, nodes, spread_threshold, force_spillback,
-      /*require_available*/ true, NodeFilter::kNonGpu);
+      /*require_available*/ true,
+      is_node_available,
+      NodeFilter::kNonGpu);
   if (best_node_id != -1) {
     return best_node_id;
   }
@@ -160,7 +169,9 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
   // If we cannot find any available node from non-gpu nodes, fallback to the original
   // scheduling
   return HybridPolicyWithFilter(resource_request, local_node_id, nodes, spread_threshold,
-                                force_spillback, require_available);
+                                force_spillback,
+                                require_available,
+                                is_node_available);
 }
 
 }  // namespace raylet_scheduling_policy
