@@ -1862,8 +1862,8 @@ cdef class CoreWorker:
                         return_id, returns[0][i]))
 
     cdef c_function_descriptors_to_python(
-        self,
-        const c_vector[CFunctionDescriptor] &c_function_descriptors):
+            self,
+            const c_vector[CFunctionDescriptor] &c_function_descriptors):
 
         ret = []
         for i in range(c_function_descriptors.size()):
@@ -1922,9 +1922,8 @@ cdef class CoreWorker:
 
         if specified_cgname is not None:
             if specified_cgname in self.cgname_to_eventloop_dict:
-                return (
-                    self.cgname_to_eventloop_dict[specified_cgname]["eventloop"],
-                    self.cgname_to_eventloop_dict[specified_cgname]["thread"])
+                this_group = self.cgname_to_eventloop_dict[specified_cgname]
+                return (this_group["eventloop"], this_group["thread"])
 
         if function_descriptor in self.fd_to_cgname_dict:
             curr_cgname = self.fd_to_cgname_dict[function_descriptor]
@@ -1933,9 +1932,10 @@ cdef class CoreWorker:
                     self.cgname_to_eventloop_dict[curr_cgname]["eventloop"],
                     self.cgname_to_eventloop_dict[curr_cgname]["thread"])
             else:
-                raise ValueError("The function {} is defined to be executed "
-                "in the concurrency group {} . But there is no this group."
-                .format(function_descriptor, curr_cgname))
+                raise ValueError(
+                    "The function {} is defined to be executed "
+                    "in the concurrency group {} . But there is no this group."
+                    .format(function_descriptor, curr_cgname))
 
         return self.eventloop_for_default_cg, self.thread_for_default_cg
 
