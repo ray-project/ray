@@ -68,19 +68,21 @@ class AutoscalingPolicy:
         self.config = config
 
     @abstractmethod
-    def get_decision_num_replicas(self, router_queue_lens, curr_replicas):
+    def get_decision_num_replicas(self,
+                                  current_num_ongoing_requests: List[float],
+                                  curr_num_replicas: int) -> int:
         """Make a decision to scale backends.
 
         Arguments:
-            router_queue_lens (Dict[str, int]): map of routers to their most
-                recent queue length of unsent queries for this backend.
-            curr_replicas (int): The number of replicas that the backend
+            current_num_ongoing_requests: List[float]: List of number of
+                ongoing requests for each replica.
+            curr_num_replicas (int): The number of replicas that the backend
                 currently has.
 
         Returns:
-            int The new number of replicas to scale this backend to.
+            int: The new number of replicas to scale this backend to.
         """
-        return curr_replicas
+        return curr_num_replicas
 
 
 class BasicAutoscalingPolicy(AutoscalingPolicy):
@@ -115,7 +117,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
     def get_decision_num_replicas(self,
                                   current_num_ongoing_requests: List[float],
-                                  curr_num_replicas) -> int:
+                                  curr_num_replicas: int) -> int:
 
         if len(current_num_ongoing_requests) == 0:
             return curr_num_replicas
