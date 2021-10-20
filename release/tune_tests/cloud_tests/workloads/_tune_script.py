@@ -62,6 +62,7 @@ def run_tune(
             upload_dir=upload_dir,
         ),
         keep_checkpoints_num=2,
+        resources_per_trial={"cpu": 2},
         verbose=2)
 
 
