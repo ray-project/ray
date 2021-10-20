@@ -1,5 +1,5 @@
 from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
-    Optional, TYPE_CHECKING
+    Optional, Callable, TYPE_CHECKING
 
 import numpy as np
 
@@ -12,6 +12,9 @@ from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 
 T = TypeVar("T")
+U = TypeVar("U")
+KeyType = TypeVar("KeyType")
+AggType = TypeVar("AggType")
 
 # Represents a batch of records to be stored in the Ray object store.
 #
@@ -51,7 +54,7 @@ class BlockAccessor(Generic[T]):
     this is needed if we want to support storing ``pyarrow.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
 
-    There are three types of block accessors: ``SimpleBlockAccessor``, which
+    There are two types of block accessors: ``SimpleBlockAccessor``, which
     operates over a plain Python list, and ``ArrowBlockAccessor`` for
     ``pyarrow.Table`` type blocks.
     """
@@ -152,9 +155,25 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
+    def combine(self, key: Callable[[T], KeyType],
+                init: Callable[[KeyType], AggType],
+                accumulate: Callable[[KeyType, AggType, T], AggType]
+                ) -> Block[Tuple[KeyType, AggType]]:
+        """Combine rows with the same key into an accumulator."""
+        raise NotImplementedError
+
     @staticmethod
     def merge_sorted_blocks(
             blocks: List["Block[T]"], key: Any,
             descending: bool) -> Tuple[Block[T], BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
+        raise NotImplementedError
+
+    @staticmethod
+    def aggregate_combined_blocks(
+            blocks: List[Block[Tuple[KeyType, AggType]]],
+            merge: Callable[[KeyType, AggType, AggType], AggType],
+            finalize: Callable[[KeyType, AggType], U]
+    ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
+        """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

@@ -40,6 +40,7 @@ In general, **Option 2 is recommended for most users** because it allows you to 
 
   import ray
   from ray import serve
+  import time
 
   # This will start Ray locally and start Serve on top of it.
   serve.start()

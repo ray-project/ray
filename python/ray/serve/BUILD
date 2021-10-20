@@ -354,3 +354,29 @@ py_test(
     tags = ["exclusive", "post_wheel_build", "team:serve"],
     deps = [":serve_lib"]
 )
+
+pipeline_tests_srcs = glob(["pipeline/tests/**/*.py"])
+
+py_test(
+    name = "test_step",
+    size = "small",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_pipeline",
+    size = "small",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_actor_executor",
+    size = "small",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
