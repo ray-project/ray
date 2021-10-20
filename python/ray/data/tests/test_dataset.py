@@ -23,6 +23,8 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.parquet_datasource import (
+    PARALLELIZE_META_FETCH_THRESHOLD)
 from ray.data.extensions.tensor_extension import (
     TensorArray, TensorDtype, ArrowTensorType, ArrowTensorArray)
 import ray.data.tests.util as util
@@ -60,7 +62,10 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
         assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
     pg = ray.util.placement_group([{"CPU": 1}])
-    ray.get(run.options(placement_group=pg).remote())
+    ray.get(
+        run.options(
+            placement_group=pg,
+            placement_group_capture_child_tasks=True).remote())
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -150,7 +155,7 @@ def test_transform_failure(shutdown_only):
 
     def mapper(x):
         time.sleep(x)
-        assert False
+        raise ValueError("oops")
         return x
 
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -194,7 +199,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         metadata.append(BlockAccessor.for_block(block).get_metadata(None))
         total_rows += block_size
     block_list = BlockList(blocks, metadata)
-    ds = Dataset(block_list)
+    ds = Dataset(block_list, 0)
 
     splits = ds.split(num_splits, equal=True)
     split_counts = [split.count() for split in splits]
@@ -723,7 +728,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=?, "
+        "Dataset(num_blocks=2, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
         "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
@@ -736,7 +741,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=?, "
+        "Dataset(num_blocks=1, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
         "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
@@ -845,17 +850,17 @@ def test_schema(ray_start_regular_shared):
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert ds.take(10) == list(range(10))
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     assert ds.take(20) == list(range(20))
-    assert len(ds._blocks._blocks) == 4
+    assert ds._blocks._num_computed() == 4
     assert ds.take(30) == list(range(30))
-    assert len(ds._blocks._blocks) == 8
+    assert ds._blocks._num_computed() == 8
     assert ds.take(50) == list(range(50))
-    assert len(ds._blocks._blocks) == 16
+    assert ds._blocks._num_computed() == 16
     assert ds.take(100) == list(range(100))
-    assert len(ds._blocks._blocks) == 20
+    assert ds._blocks._num_computed() == 20
 
 
 def test_limit(ray_start_regular_shared):
@@ -882,46 +887,70 @@ def test_from_items(ray_start_regular_shared):
     assert ds.take() == ["hello", "world"]
 
 
-def test_repartition(ray_start_regular_shared):
+def test_repartition_shuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_sizes() == [2] * 10
 
-    ds2 = ds.repartition(5)
+    ds2 = ds.repartition(5, shuffle=True)
     assert ds2.num_blocks() == 5
     assert ds2.sum() == 190
-    # TODO: would be nice to re-distribute these more evenly
-    ds2._block_sizes() == [10, 10, 0, 0, 0]
+    assert ds2._block_sizes() == [10, 10, 0, 0, 0]
 
-    ds3 = ds2.repartition(20)
+    ds3 = ds2.repartition(20, shuffle=True)
     assert ds3.num_blocks() == 20
     assert ds3.sum() == 190
-    ds2._block_sizes() == [2] * 10 + [0] * 10
+    assert ds3._block_sizes() == [2] * 10 + [0] * 10
+
+    large = ray.data.range(10000, parallelism=10)
+    large = large.repartition(20, shuffle=True)
+    assert large._block_sizes() == [500] * 20
+
+
+def test_repartition_noshuffle(ray_start_regular_shared):
+    ds = ray.data.range(20, parallelism=10)
+    assert ds.num_blocks() == 10
+    assert ds.sum() == 190
+    assert ds._block_sizes() == [2] * 10
+
+    ds2 = ds.repartition(5, shuffle=False)
+    assert ds2.num_blocks() == 5
+    assert ds2.sum() == 190
+    assert ds2._block_sizes() == [4, 4, 4, 4, 4]
+
+    ds3 = ds2.repartition(20, shuffle=False)
+    assert ds3.num_blocks() == 20
+    assert ds3.sum() == 190
+    assert ds3._block_sizes() == [1] * 20
+
+    ds4 = ray.data.range(22).repartition(4)
+    assert ds4.num_blocks() == 4
+    assert ds4._block_sizes() == [5, 6, 5, 6]
 
     large = ray.data.range(10000, parallelism=10)
     large = large.repartition(20)
     assert large._block_sizes() == [500] * 20
 
 
-def test_repartition_arrow(ray_start_regular_shared):
+def test_repartition_shuffle_arrow(ray_start_regular_shared):
     ds = ray.data.range_arrow(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.count() == 20
     assert ds._block_sizes() == [2] * 10
 
-    ds2 = ds.repartition(5)
+    ds2 = ds.repartition(5, shuffle=True)
     assert ds2.num_blocks() == 5
     assert ds2.count() == 20
-    ds2._block_sizes() == [10, 10, 0, 0, 0]
+    assert ds2._block_sizes() == [10, 10, 0, 0, 0]
 
-    ds3 = ds2.repartition(20)
+    ds3 = ds2.repartition(20, shuffle=True)
     assert ds3.num_blocks() == 20
     assert ds3.count() == 20
-    ds2._block_sizes() == [2] * 10 + [0] * 10
+    assert ds3._block_sizes() == [2] * 10 + [0] * 10
 
     large = ray.data.range_arrow(10000, parallelism=10)
-    large = large.repartition(20)
+    large = large.repartition(20, shuffle=True)
     assert large._block_sizes() == [500] * 20
 
 
@@ -933,6 +962,12 @@ def test_from_pandas(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
 
+    # test from single pandas dataframe
+    ds = ray.data.from_pandas(df1)
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+
 
 def test_from_pandas_refs(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -940,6 +975,12 @@ def test_from_pandas_refs(ray_start_regular_shared):
     ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+    # test from single pandas dataframe ref
+    ds = ray.data.from_pandas_refs(ray.put(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
 
 
@@ -964,6 +1005,12 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
 
+    # test from single pyarrow table
+    ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+
 
 def test_from_arrow_refs(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -974,6 +1021,12 @@ def test_from_arrow_refs(ray_start_regular_shared):
     ])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+    # test from single pyarrow table ref
+    ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
 
 
@@ -1093,7 +1146,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
@@ -1132,7 +1185,7 @@ def test_parquet_read(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -1146,11 +1199,11 @@ def test_parquet_read(ray_start_regular_shared, fs, data_path):
     assert repr(ds) == \
         "Dataset(num_blocks=2, num_rows=6, " \
         "schema={one: int64, two: string})", ds
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
                               [6, "g"]]
 
@@ -1181,7 +1234,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -1195,11 +1248,11 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         "Dataset(num_blocks=2, num_rows=6, " \
         "schema={two: string, " \
         "one: dictionary<values=int32, indices=int32, ordered=0>})", ds
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     assert sorted(values) == [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"],
                               [3, "g"]]
 
@@ -1228,7 +1281,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
         str(tmp_path), parallelism=1, filter=(pa.dataset.field("two") == "a"))
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
@@ -1237,7 +1290,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
         str(tmp_path), parallelism=2, filter=(pa.dataset.field("two") == "a"))
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
 
@@ -1265,7 +1318,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         str(tmp_path), parallelism=1, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert len(ds._blocks._blocks) == 1
+    assert ds._blocks._num_computed() == 1
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks
@@ -1274,7 +1327,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         str(tmp_path), parallelism=2, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks, 1 empty block
@@ -1286,8 +1339,43 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert len(ds._blocks._blocks) == 2
+    assert ds._blocks._num_computed() == 2
     np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [(None, lazy_fixture("local_path")),
+     (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+     (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+     (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space"))])
+def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs,
+                                          data_path):
+    setup_data_path = _unwrap_protocol(data_path)
+    num_dfs = PARALLELIZE_META_FETCH_THRESHOLD + 1
+    for idx in range(num_dfs):
+        df = pd.DataFrame({"one": list(range(3 * idx, 3 * (idx + 1)))})
+        table = pa.Table.from_pandas(df)
+        path = os.path.join(setup_data_path, f"test_{idx}.parquet")
+        pq.write_table(table, path, filesystem=fs)
+
+    parallelism = 8
+    ds = ray.data.read_parquet(
+        data_path, filesystem=fs, parallelism=parallelism)
+
+    # Test metadata-only parquet ops.
+    assert ds._blocks._num_computed() == 1
+    assert ds.count() == num_dfs * 3
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == num_dfs, input_files
+    assert ds._blocks._num_computed() == 1
+
+    # Forces a data read.
+    values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
+    assert ds._blocks._num_computed() == parallelism
+    assert sorted(values) == list(range(3 * num_dfs))
 
 
 @pytest.mark.parametrize("fs,data_path,endpoint_url", [
@@ -1660,7 +1748,7 @@ def test_lazy_loading_iter_batches_exponential_rampup(
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
     for _, expected in zip(ds.iter_batches(), expected_num_blocks):
-        assert len(ds._blocks._blocks) == expected
+        assert ds._blocks._num_computed() == expected
 
 
 def test_map_batch(ray_start_regular_shared, tmp_path):
@@ -2033,7 +2121,7 @@ def test_to_torch(ray_start_regular_shared, pipelined):
     for _ in range(num_epochs):
         iterations = []
         for batch in iter(torchd):
-            iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
+            iterations.append(torch.cat((batch[0], batch[1]), dim=1).numpy())
         combined_iterations = np.concatenate(iterations)
         assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
 
@@ -2058,7 +2146,7 @@ def test_to_torch_feature_columns(ray_start_regular_shared):
     iterations = []
 
     for batch in iter(torchd):
-        iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
+        iterations.append(torch.cat((batch[0], batch[1]), dim=1).numpy())
     combined_iterations = np.concatenate(iterations)
     assert np.array_equal(df.values, combined_iterations)
 
@@ -2498,6 +2586,86 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
+def test_groupby_simple(ray_start_regular_shared):
+    parallelism = 3
+    xs = [("A", 2), ("A", 4), ("A", 9), ("B", 10), ("B", 20), ("C", 3),
+          ("C", 5), ("C", 8), ("C", 12)]
+    random.shuffle(xs)
+    ds = ray.data.from_items(xs, parallelism=parallelism)
+    # Mean aggregation
+    agg_ds = ds.groupby(lambda r: r[0]).aggregate(
+        init=lambda key: (0, 0),
+        accumulate=lambda key, a, r: (a[0] + r[1], a[1] + 1),
+        merge=lambda key, a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
+        finalize=lambda key, a: a[0] / a[1])
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [("A", 5), ("B", 15),
+                                                       ("C", 7)]
+
+    # Test None row
+    parallelism = 2
+    xs = ["A", "A", "A", None, None, None, "B"]
+    random.shuffle(xs)
+    ds = ray.data.from_items(xs, parallelism=parallelism)
+    # Count aggregation
+    agg_ds = ds.groupby(lambda r: str(r)).aggregate(
+        init=lambda key: 0,
+        accumulate=lambda key, a, r: a + 1,
+        merge=lambda key, a1, a2: a1 + a2)
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: str(r[0])).take(3) == [("A", 3), ("B", 1),
+                                                            ("None", 3)]
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    agg_ds = ds.groupby(lambda r: r[0]).aggregate(
+        init=lambda key: 1 / 0,  # should never reach here
+        accumulate=lambda key, a, r: 1 / 0,
+        merge=lambda key, a1, a2: 1 / 0,
+        finalize=lambda key, a: 1 / 0)
+    assert agg_ds.count() == 0
+    assert agg_ds == ds
+
+    # Test built-in count aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).count()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2,
+                                                                          33)]
+
+    # Test built-in sum aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).sum()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617),
+                                                       (2, 1650)]
+
+    # Test built-in min aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).min()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
+
+    # Test built-in max aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).max()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2,
+                                                                          98)]
+
+    # Test built-in mean aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).mean()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5), (1, 49.0),
+                                                       (2, 50.0)]
+
+
 def test_sort_simple(ray_start_regular_shared):
     num_items = 100
     parallelism = 4
@@ -2522,7 +2690,9 @@ def test_random_shuffle(shutdown_only, pipelined):
     def range(n, parallelism=200):
         ds = ray.data.range(n, parallelism=parallelism)
         if pipelined:
-            return ds.repeat(2)
+            pipe = ds.repeat(2)
+            pipe.random_shuffle = pipe.random_shuffle_each_window
+            return pipe
         else:
             return ds
 
@@ -2692,7 +2862,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         def _read_file(self, f: "pa.NativeFile", path: str, **reader_args):
             count = self.counter.increment.remote()
             if ray.get(count) == 1:
-                raise ValueError()
+                raise ValueError("oops")
             else:
                 return CSVDatasource._read_file(self, f, path, **reader_args)
 
@@ -2700,7 +2870,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
                          **writer_args):
             count = self.counter.increment.remote()
             if ray.get(count) == 1:
-                raise ValueError()
+                raise ValueError("oops")
             else:
                 CSVDatasource._write_block(self, f, block, **writer_args)
 
@@ -2720,7 +2890,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
     def flaky_mapper(x):
         count = counter.increment.remote()
         if ray.get(count) == 1:
-            raise ValueError()
+            raise ValueError("oops")
         else:
             return ray.get(count)
 

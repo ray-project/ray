@@ -338,6 +338,42 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
   ASSERT_EQ(to_schedule, -1);
 }
 
+TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
+  // Prefer to schedule on CPU nodes first.
+  // GPU nodes should be preferred as a last resort.
+  StringIdMap map;
+  int64_t local_node = 0;
+  int64_t remote_node_1 = 1;
+  int64_t remote_node_2 = 2;
+
+  // local {CPU:2, GPU:1}
+  // Remote {CPU: 2}
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
+  nodes.emplace(remote_node_1, CreateNodeResources(2, 2, 0, 0, 0, 0));
+  nodes.emplace(remote_node_2, CreateNodeResources(3, 3, 0, 0, 0, 0));
+
+  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(
+      req, local_node, nodes, 0.51, false, true, /*gpu_avoid_scheduling*/ true);
+  ASSERT_EQ(to_schedule, remote_node_1);
+
+  req = ResourceMapToResourceRequest(map, {{"CPU", 3}}, false);
+  to_schedule = raylet_scheduling_policy::HybridPolicy(
+      req, local_node, nodes, 0.51, false, true, /*gpu_avoid_scheduling*/ true);
+  ASSERT_EQ(to_schedule, remote_node_2);
+
+  req = ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
+  to_schedule = raylet_scheduling_policy::HybridPolicy(
+      req, local_node, nodes, 0.51, false, true, /*gpu_avoid_scheduling*/ true);
+  ASSERT_EQ(to_schedule, local_node);
+
+  req = ResourceMapToResourceRequest(map, {{"CPU", 2}}, false);
+  to_schedule = raylet_scheduling_policy::HybridPolicy(
+      req, local_node, nodes, 0.51, false, true, /*gpu_avoid_scheduling*/ true);
+  ASSERT_EQ(to_schedule, remote_node_1);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

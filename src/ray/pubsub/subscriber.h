@@ -16,12 +16,12 @@
 
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest_prod.h>
+
 #include <boost/any.hpp>
 #include <queue>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/rpc/client_call.h"
@@ -57,7 +57,7 @@ struct SubscriptionInfo {
 /// channel. NOTE: channel is not supposed to be exposed.
 class SubscribeChannelInterface {
  public:
-  virtual ~SubscribeChannelInterface(){};
+  virtual ~SubscribeChannelInterface() = default;
 
   /// Subscribe to the object.
   ///
@@ -120,7 +120,7 @@ class SubscriberChannel : public SubscribeChannelInterface {
  public:
   SubscriberChannel(instrumented_io_context *callback_service)
       : callback_service_(callback_service) {}
-  ~SubscriberChannel() = default;
+  ~SubscriberChannel() override = default;
 
   void Subscribe(const rpc::Address &publisher_address, const std::string &key_id,
                  SubscriptionCallback subscription_callback,
@@ -313,8 +313,9 @@ class SubscriberClientInterface {
 ///
 class Subscriber : public SubscriberInterface {
  public:
-  explicit Subscriber(
-      const SubscriberID subscriber_id, const int64_t max_command_batch_size,
+  Subscriber(
+      const SubscriberID subscriber_id, const std::vector<rpc::ChannelType> &channels,
+      const int64_t max_command_batch_size,
       std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
           get_client,
       instrumented_io_context *callback_service)
@@ -322,12 +323,25 @@ class Subscriber : public SubscriberInterface {
         max_command_batch_size_(max_command_batch_size),
         get_client_(get_client) {
     /// This is used to define new channel_type -> Channel abstraction.
-    channels_.emplace(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                      std::make_unique<WaitForObjectEvictionChannel>(callback_service));
-    channels_.emplace(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                      std::make_unique<WaitForRefRemovedChannel>(callback_service));
-    channels_.emplace(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                      std::make_unique<ObjectLocationsChannel>(callback_service));
+    for (auto type : channels) {
+      switch (type) {
+      case rpc::ChannelType::WORKER_OBJECT_EVICTION:
+        channels_.emplace(
+            rpc::ChannelType::WORKER_OBJECT_EVICTION,
+            std::make_unique<WaitForObjectEvictionChannel>(callback_service));
+        break;
+      case rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL:
+        channels_.emplace(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                          std::make_unique<WaitForRefRemovedChannel>(callback_service));
+        break;
+      case rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL:
+        channels_.emplace(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
+                          std::make_unique<ObjectLocationsChannel>(callback_service));
+        break;
+      default:
+        RAY_LOG(FATAL) << "Unknown channel type " << rpc::ChannelType_Name(type);
+      }
+    }
   }
 
   ~Subscriber() = default;
