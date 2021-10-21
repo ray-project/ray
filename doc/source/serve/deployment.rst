@@ -245,7 +245,6 @@ To automatically include the current deployment and replica in your logs, simply
 ``logger = logging.getLogger("ray")``, and use ``logger`` within your deployment code:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
-  :lines: 1, 9, 11-14, 16-17
 
 Querying a Serve endpoint with the above deployment will produce a log line like the following:
 
@@ -396,11 +395,12 @@ For example, after running the script for some time and refreshing ``localhost:8
 
 which indicates that the average processing latency is just over one second, as expected.
 
-You can even define a `custom metric <..ray-metrics.html#custom-metrics>`__ to use in your deployment, and tag it with the current deployment or replica.
+You can even define a :ref:`custom metric <ray-metrics>` to use in your deployment, and tag it with the current deployment or replica.
 Here's an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
-  :lines: 11-23
+  :start-after: __custom_metrics_deployment_start__
+  :end-before: __custom_metrics_deployment_end__
 
 See the
-`Ray Metrics documentation <../ray-metrics.html>`__ for more details, including instructions for scraping these metrics using Prometheus.
+:ref:`Ray Metrics documentation <ray-metrics>` for more details, including instructions for scraping these metrics using Prometheus.
