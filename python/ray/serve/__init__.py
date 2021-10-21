@@ -4,8 +4,9 @@ try:
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
 except ModuleNotFoundError as e:
-    e.msg += (". You can run `pip install ray[serve]` to install all Ray Serve"
-              " dependencies.")
+    e.msg += (
+        ". You can run `pip install 'ray[serve]'` to install all Ray Serve"
+        " dependencies.")
     raise e
 
 # Mute the warning because Serve sometimes intentionally calls
