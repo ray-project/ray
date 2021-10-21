@@ -28,6 +28,7 @@ DEFAULT_CONFIG = with_common_config({
     "vtrace": True,
     "vtrace_clip_rho_threshold": 1.0,
     "vtrace_clip_pg_rho_threshold": 1.0,
+    "vtrace_drop_last_ts": True,
     # System params.
     #
     # == Overview of data flow in IMPALA ==

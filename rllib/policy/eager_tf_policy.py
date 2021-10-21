@@ -99,90 +99,90 @@ def _disallow_var_creation(next_creator, **kw):
                      "model initialization: {}".format(v.name))
 
 
-def traced_eager_policy(eager_policy_cls):
-    """Wrapper that enables tracing for all eager policy methods.
+#def traced_eager_policy(eager_policy_cls):
+#    """Wrapper that enables tracing for all eager policy methods.
 
-    This is enabled by the --trace / "eager_tracing" config."""
+#    This is enabled by the --trace / "eager_tracing" config."""
 
-    class TracedEagerPolicy(eager_policy_cls):
-        def __init__(self, *args, **kwargs):
-            self._traced_learn_on_batch = None
-            self._traced_compute_actions = None
-            self._traced_compute_gradients = None
-            self._traced_apply_gradients = None
-            super(TracedEagerPolicy, self).__init__(*args, **kwargs)
-
-        @override(eager_policy_cls)
-        @convert_eager_inputs
-        @convert_eager_outputs
-        def _learn_on_batch_eager(self, samples):
-
-            if self._traced_learn_on_batch is None:
-                self._traced_learn_on_batch = tf.function(
-                    super(TracedEagerPolicy, self)._learn_on_batch_eager,
-                    autograph=False,
-                    experimental_relax_shapes=True)
-
-            return self._traced_learn_on_batch(samples)
-
-        @override(Policy)
-        @convert_eager_inputs
-        @convert_eager_outputs
-        def compute_actions(self,
-                            obs_batch,
-                            state_batches=None,
-                            prev_action_batch=None,
-                            prev_reward_batch=None,
-                            info_batch=None,
-                            episodes=None,
-                            explore=None,
-                            timestep=None,
-                            **kwargs):
-
-            obs_batch = tf.convert_to_tensor(obs_batch)
-            state_batches = _convert_to_tf(state_batches)
-            prev_action_batch = _convert_to_tf(prev_action_batch)
-            prev_reward_batch = _convert_to_tf(prev_reward_batch)
-
-            if self._traced_compute_actions is None:
-                self._traced_compute_actions = tf.function(
-                    super(TracedEagerPolicy, self).compute_actions,
-                    autograph=False,
-                    experimental_relax_shapes=True)
-
-            return self._traced_compute_actions(
-                obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, explore, timestep, **kwargs)
-
-        @override(eager_policy_cls)
-        @convert_eager_inputs
-        @convert_eager_outputs
-        def _compute_gradients_eager(self, samples):
-
-            if self._traced_compute_gradients is None:
-                self._traced_compute_gradients = tf.function(
-                    super(TracedEagerPolicy, self).compute_gradients,
-                    autograph=False,
-                    experimental_relax_shapes=True)
-
-            return self._traced_compute_gradients(samples)
-
-        @override(Policy)
-        @convert_eager_inputs
-        @convert_eager_outputs
-        def apply_gradients(self, grads):
-
-            if self._traced_apply_gradients is None:
-                self._traced_apply_gradients = tf.function(
-                    super(TracedEagerPolicy, self).apply_gradients,
-                    autograph=False,
-                    experimental_relax_shapes=True)
-
-            return self._traced_apply_gradients(grads)
-
-    TracedEagerPolicy.__name__ = eager_policy_cls.__name__
-    TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__
-    return TracedEagerPolicy
+#    class TracedEagerPolicy(eager_policy_cls):
+#        def __init__(self, *args, **kwargs):
+#            self._traced_learn_on_batch = None
+#            self._traced_compute_actions = None
+#            self._traced_compute_gradients = None
+#            self._traced_apply_gradients = None
+#            super(TracedEagerPolicy, self).__init__(*args, **kwargs)
+#
+#        @override(eager_policy_cls)
+#        @convert_eager_inputs
+#        @convert_eager_outputs
+#        def _learn_on_batch_eager(self, samples):
+#
+#            if self._traced_learn_on_batch is None:
+#                self._traced_learn_on_batch = tf.function(
+#                    super(TracedEagerPolicy, self)._learn_on_batch_eager,
+#                    autograph=False,
+#                    experimental_relax_shapes=True)
+#
+#            return self._traced_learn_on_batch(samples)
+#
+#        @override(Policy)
+#        @convert_eager_inputs
+#        @convert_eager_outputs
+#        def compute_actions(self,
+#                            obs_batch,
+#                            state_batches=None,
+#                            prev_action_batch=None,
+#                            prev_reward_batch=None,
+#                            info_batch=None,
+#                            episodes=None,
+#                            explore=None,
+#                            timestep=None,
+#                            **kwargs):
+#
+#            obs_batch = tf.convert_to_tensor(obs_batch)
+#            state_batches = _convert_to_tf(state_batches)
+#            prev_action_batch = _convert_to_tf(prev_action_batch)
+#            prev_reward_batch = _convert_to_tf(prev_reward_batch)
+#
+#            if self._traced_compute_actions is None:
+#                self._traced_compute_actions = tf.function(
+#                    super(TracedEagerPolicy, self).compute_actions,
+#                    autograph=False,
+#                    experimental_relax_shapes=True)
+#
+#            return self._traced_compute_actions(
+#                obs_batch, state_batches, prev_action_batch, prev_reward_batch,
+#                info_batch, episodes, explore, timestep, **kwargs)
+#
+#        @override(eager_policy_cls)
+#        @convert_eager_inputs
+#        @convert_eager_outputs
+#        def _compute_gradients_eager(self, samples):
+#
+#            if self._traced_compute_gradients is None:
+#                self._traced_compute_gradients = tf.function(
+#                    super(TracedEagerPolicy, self).compute_gradients,
+#                    autograph=False,
+#                    experimental_relax_shapes=True)
+#
+#            return self._traced_compute_gradients(samples)
+#
+#        @override(Policy)
+#        @convert_eager_inputs
+#        @convert_eager_outputs
+#        def apply_gradients(self, grads):
+#
+#            if self._traced_apply_gradients is None:
+#                self._traced_apply_gradients = tf.function(
+#                    super(TracedEagerPolicy, self).apply_gradients,
+#                    autograph=False,
+#                    experimental_relax_shapes=True)
+#
+#            return self._traced_apply_gradients(grads)
+#
+#    TracedEagerPolicy.__name__ = eager_policy_cls.__name__
+#    TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__
+#    return TracedEagerPolicy
 
 
 class OptimizerWrapper:
@@ -389,16 +389,24 @@ def build_eager_tf_policy(
 
             self._is_training = True
             postprocessed_batch["is_training"] = True
-            stats = self._learn_on_batch_eager(postprocessed_batch)
-            stats.update({"custom_metrics": learn_stats})
-            return stats
+            self._lazy_tensor_dict(postprocessed_batch)
 
-        @convert_eager_inputs
-        @convert_eager_outputs
-        def _learn_on_batch_eager(self, samples):
-            with tf.variable_creator_scope(_disallow_var_creation):
-                grads_and_vars, stats = self._compute_gradients(samples)
-            self._apply_gradients(grads_and_vars)
+            def _learn_on_batch_eager(**samples):
+                with tf.variable_creator_scope(_disallow_var_creation):
+                    grads_and_vars, stats = self._compute_gradients(samples)
+                self._apply_gradients(grads_and_vars)
+                return stats
+
+            if not hasattr(self, "_learn_on_batch_eager"):
+                if self.config["eager_tracing"]:
+                    self._learn_on_batch_eager = tf.function(
+
+                    )(_learn_on_batch_eager)
+                else:
+                    self._learn_on_batch_eager = _learn_on_batch_eager
+
+            stats = self._learn_on_batch_eager(**postprocessed_batch)
+            stats.update({"custom_metrics": learn_stats})
             return stats
 
         @override(Policy)
@@ -841,9 +849,9 @@ def build_eager_tf_policy(
             postprocessed_batch.set_get_interceptor(_convert_to_tf)
             return postprocessed_batch
 
-        @classmethod
-        def with_tracing(cls):
-            return traced_eager_policy(cls)
+        #@classmethod
+        #def with_tracing(cls):
+        #    return traced_eager_policy(cls)
 
     eager_policy_cls.__name__ = name + "_eager"
     eager_policy_cls.__qualname__ = name + "_eager"
