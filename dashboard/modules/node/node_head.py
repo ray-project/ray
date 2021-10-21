@@ -4,7 +4,6 @@ import logging
 import json
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
@@ -68,7 +67,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
             options = (("grpc.enable_http_proxy", 0), )
-            channel = aiogrpc.insecure_channel(address, options=options)
+            channel = ray._private.utils.init_grpc_channel(
+                address, options, asynchronous=True)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 
