@@ -487,9 +487,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto task_it = tasks_.find(task_id);
   RAY_CHECK(task_it != tasks_.end());
   // Set task priority so raylet can use this to sort task queues.
-  TaskSpecification resource_spec(task_it->second.task_spec);
+  rpc::TaskSpec resource_spec_msg(task_it->second.task_spec.GetMutableMessage());
+  resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
+  TaskSpecification resource_spec(resource_spec_msg);
   resource_spec.SetPriority(head->first);
-  resource_spec.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
 
   rpc::Address best_node_address;
   bool has_locality = false;

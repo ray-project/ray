@@ -809,8 +809,9 @@ cdef int64_t restore_spilled_objects_handler(
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
+                # TODO(swang): Pass priority for restored object.
                 bytes_restored = external_storage.restore_spilled_objects(
-                    object_refs, urls)
+                    object_refs, [], urls)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "

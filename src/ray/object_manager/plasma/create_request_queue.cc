@@ -147,8 +147,8 @@ Status CreateRequestQueue::ProcessFirstRequest() {
 Status CreateRequestQueue::ProcessRequests() {
   // Suppress OOM dump to once per grace period.
   bool logged_oom = false;
-  auto queue_it = queue_.begin();
-  while (queue_it != queue_.end()) {
+  while (!queue_.empty()) {
+    auto queue_it = queue_.begin();
     bool spilling_required = false;
     std::unique_ptr<CreateRequest> &request = queue_it->second;
     auto status =
