@@ -16,7 +16,6 @@ from socket import socket
 
 import ray
 import psutil
-import grpc
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
@@ -853,7 +852,7 @@ def stop(force, verbose, log_style, log_color):
                 cli_logger.verbose(
                     "Attempted to stop `{}`, but process was already dead.",
                     cf.bold(proc_string))
-                pass
+                total_stopped += 1
             except (psutil.Error, OSError) as ex:
                 cli_logger.error("Could not terminate `{}` due to {}",
                                  cf.bold(proc_string), str(ex))
@@ -1777,7 +1776,8 @@ def healthcheck(address, redis_password, component):
         try:
             gcs_address = redis_client.get("GcsServerAddress").decode("utf-8")
             options = (("grpc.enable_http_proxy", 0), )
-            channel = grpc.insecure_channel(gcs_address, options=options)
+            channel = ray._private.utils.init_grpc_channel(
+                gcs_address, options)
             stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
             request = gcs_service_pb2.CheckAliveRequest()
             reply = stub.CheckAlive(
