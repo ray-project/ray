@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+from ray.tune.syncer import NodeSyncer, detect_sync_to_driver, get_node_syncer
 from ray.tune.trial_runner import _find_newest_ckpt
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
@@ -55,11 +56,26 @@ class TrialStub:
         # Ignore remaining arguments
 
     @property
+    def hostname(self):
+        return self.last_result["hostname"]
+
+    @property
+    def node_ip(self):
+        return self.last_result["node_ip"]
+
+    @property
+    def dirname(self):
+        return os.path.basename(self.logdir)
+
+    @property
     def was_on_driver_node(self):
-        return self.last_result["hostname"] == platform.node()
+        return self.hostname == platform.node()
 
     def __hash__(self):
         return hash(self.trial_id)
+
+    def __repr__(self):
+        return f"<TrialStub trial_id={self.trial_id}>"
 
 
 @dataclass
@@ -259,23 +275,23 @@ def load_experiment_checkpoint_from_state_file(
 
 
 def load_experiment_checkpoint_from_dir(
-    trials: Iterable[TrialStub],
+        trials: Iterable[TrialStub],
         experiment_dir: str) -> ExperimentDirCheckpoint:
     trial_to_cps = {}
     for f in sorted(os.listdir(experiment_dir)):
         full_path = os.path.join(experiment_dir, f)
         if os.path.isdir(full_path):
             trial_checkpoint_data = load_trial_checkpoint_data(full_path)
-            trial_id = trial_checkpoint_data.results[-1]["trial_id"]
 
+            # Map to TrialStub object
             trial_stub = None
             for trial in trials:
-                if trial.trial_id == trial_id:
+                if trial.dirname == f:
                     trial_stub = trial
                     break
 
             if not trial_stub:
-                raise RuntimeError(f"Trial with ID {trial_id} not found.")
+                raise RuntimeError(f"Trial with dirname {f} not found.")
 
             trial_to_cps[trial_stub] = trial_checkpoint_data
 
@@ -308,6 +324,23 @@ def assert_experiment_checkpoint_validity(
     return experiment_state
 
 
+_trial_node_syncers = {}
+
+
+def get_trial_node_syncer(trial: TrialStub, tmpdir: str) -> NodeSyncer:
+    global _trial_node_syncers
+
+    if trial not in _trial_node_syncers:
+        optional_cloud_syncer = detect_sync_to_driver(sync_to_driver=True)
+        node_syncer = get_node_syncer(
+            tmpdir,
+            remote_dir=trial.local_dir,
+            sync_function=optional_cloud_syncer)
+        _trial_node_syncers[trial] = node_syncer
+
+    return _trial_node_syncers[trial]
+
+
 def fetch_trial_node_dirs_to_tmp_dir(
         trials: List[TrialStub]) -> Dict[TrialStub, str]:
     dirmap = {}
@@ -319,9 +352,18 @@ def fetch_trial_node_dirs_to_tmp_dir(
             # Trial was run on driver
             shutil.rmtree(tmpdir)
             shutil.copytree(trial.local_dir, tmpdir)
+            print("COPIED LOCAL NODE", trial.local_dir, "TO", tmpdir)
+
         else:
             # Trial was run on remote node
-            raise RuntimeError(f"Cannot test right now")
+            node_syncer = get_trial_node_syncer(trial, tmpdir)
+            node_syncer.set_worker_ip(trial.node_ip)
+            if not node_syncer.sync_down():
+                raise RuntimeError(
+                    f"Could not sync remote experiment dir for trial "
+                    f"{trial} from {trial.hostname} ({trial.node_ip}) "
+                    f"to {tmpdir}.")
+            print("SYNCED DOWN REMOTE NODE", trial.hostname, "TO", tmpdir)
 
         dirmap[trial] = tmpdir
 
@@ -329,17 +371,29 @@ def fetch_trial_node_dirs_to_tmp_dir(
 
 
 def load_trial_checkpoint_data(trial_dir: str) -> TrialCheckpointData:
-    with open(os.path.join(trial_dir, "params.json"), "rt") as f:
-        params = json.load(f)
+    params_file = os.path.join(trial_dir, "params.json")
+    if os.path.exists(params_file):
+        with open(params_file, "rt") as f:
+            params = json.load(f)
+    else:
+        params = {}
 
-    results = []
-    with open(os.path.join(trial_dir, "result.json"), "rt") as f:
-        for line in f.readlines():
-            results.append(json.loads(line))
+    result_file = os.path.join(trial_dir, "result.json")
+    if os.path.exists(result_file):
+        results = []
+        with open(result_file, "rt") as f:
+            for line in f.readlines():
+                results.append(json.loads(line))
+    else:
+        results = []
 
-    with open(os.path.join(trial_dir, "progress.csv"), "rt") as f:
-        reader = csv.DictReader(f)
-        progress = list(reader)
+    progress_file = os.path.join(trial_dir, "progress.csv")
+    if os.path.exists(progress_file):
+        with open(progress_file, "rt") as f:
+            reader = csv.DictReader(f)
+            progress = list(reader)
+    else:
+        progress = []
 
     checkpoints = []
     for cp_dir in sorted(os.listdir(trial_dir)):
@@ -363,20 +417,23 @@ def load_data_from_trial_exp_checkpoints(
     trial_to_checkpoint_data = {}
     for trial, dirname in trial_to_exp_dir.items():
         trial_to_checkpoint_data[trial] = load_experiment_checkpoint_from_dir(
-            trial_to_exp_dir.keys(),
-            dirname)
+            trial_to_exp_dir.keys(), dirname)
 
     return trial_to_checkpoint_data
 
 
-def get_experiment_and_trial_data(experiment_name: str) -> Tuple[ExperimentStateCheckpoint, ExperimentDirCheckpoint, Dict[TrialStub, ExperimentDirCheckpoint]]:
+def get_experiment_and_trial_data(
+        experiment_name: str
+) -> Tuple[ExperimentStateCheckpoint, ExperimentDirCheckpoint, Dict[
+        TrialStub, ExperimentDirCheckpoint]]:
     experiment_dir = assert_experiment_dir_exists(
         experiment_name=experiment_name)
 
     experiment_state = assert_experiment_checkpoint_validity(
         experiment_dir=experiment_dir, total_time_bounds=(120, 239))
 
-    driver_dir_cp = load_experiment_checkpoint_from_dir(experiment_state.trials, experiment_dir)
+    driver_dir_cp = load_experiment_checkpoint_from_dir(
+        experiment_state.trials, experiment_dir)
 
     # Fetch experiment dirs from remote nodes to a local temp dir
     trial_to_exp_dir = fetch_trial_node_dirs_to_tmp_dir(
@@ -412,9 +469,9 @@ def test_no_sync():
     indicator_file = "/tmp/cloud_no_sync_indicator"
 
     def between_experiments():
-        print("CHECK CHECK CHECK")
         # Includes Req: 4 trials are running
-        (experiment_state, driver_dir_cp, trial_exp_checkpoint_data) = get_experiment_and_trial_data(experiment_name=experiment_name)
+        (experiment_state, driver_dir_cp, trial_exp_checkpoint_data
+         ) = get_experiment_and_trial_data(experiment_name=experiment_name)
 
         num_trials_on_driver = 0
         num_trials_not_on_driver = 0
@@ -427,8 +484,9 @@ def test_no_sync():
                 num_trials_on_driver += 1
             else:
                 # Req: Driver has no trial checkpoints from remote node trials
-                assert cps == 0, (f"Trial {trial.trial_id} was not on driver, "
-                                 f"but observed too many checkpoints ({cps}).")
+                assert cps == 0, (
+                    f"Trial {trial.trial_id} was not on driver, "
+                    f"but observed too many checkpoints ({cps}).")
                 num_trials_not_on_driver += 1
 
         # Req: At least one trial ran on driver
@@ -436,8 +494,8 @@ def test_no_sync():
             "No trials were scheduled on the driver node."
 
         # Req: At least one trial ran remotely
-        # assert num_trials_not_on_driver > 0, \
-        #     "No trials were scheduled on remote nodes."
+        assert num_trials_not_on_driver > 0, \
+            "No trials were scheduled on remote nodes."
 
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
             seen = len(exp_dir_cp.trial_to_cps)
@@ -449,23 +507,21 @@ def test_no_sync():
                 continue
 
             # Req: Remote trial dirs only have data for one trial
-            assert seen == 1, (f"Trial {trial.trial_id} was on driver, "
-                               f"but observed too few trials ({seen}) "
+            assert seen == 1, (f"Trial {trial.trial_id} was not on driver, "
+                               f"but observed not exactly 1 trials ({seen}) "
                                f"in experiment dir.")
 
-            for trial, trial_cp in driver_dir_cp.trial_to_cps.items():
+            for trial, trial_cp in exp_dir_cp.trial_to_cps.items():
                 cps = len(trial_cp.checkpoints)
                 # Req: Remote trial dirs have checkpoints for node-local trials
                 assert cps > 0, (f"Trial {trial.trial_id} was not on driver, "
                                  f"but observed too few checkpoints ({cps}) "
                                  f"on its local node.")
 
-    between_experiments()
-
-    # run_resume_flow(
-    #     experiment_name=experiment_name,
-    #     indicator_file=indicator_file,
-    #     between_experiments_callback=between_experiments)
+    run_resume_flow(
+        experiment_name=experiment_name,
+        indicator_file=indicator_file,
+        between_experiments_callback=between_experiments)
 
 
 if __name__ == "__main__":
