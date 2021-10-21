@@ -12,6 +12,7 @@ from distutils.version import LooseVersion
 from grpc.experimental import aio as aiogrpc
 import grpc
 
+import ray._private.utils
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -56,7 +57,7 @@ async def get_gcs_address_with_retry(redis_client) -> str:
 
 class GCSHealthCheckThread(threading.Thread):
     def __init__(self, gcs_address: str):
-        self.grpc_gcs_channel = grpc.insecure_channel(
+        self.grpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, options=GRPC_CHANNEL_OPTIONS)
         self.gcs_heartbeat_info_stub = (
             gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
@@ -116,7 +117,8 @@ class DashboardHead:
         ip, port = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = self.server.add_insecure_port("[::]:0")
+        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+            self.server, "[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
                     self.grpc_port)
 
@@ -188,8 +190,8 @@ class DashboardHead:
 
         # Waiting for GCS is ready.
         gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
-        self.aiogrpc_gcs_channel = aiogrpc.insecure_channel(
-            gcs_address, options=GRPC_CHANNEL_OPTIONS)
+        self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
+            gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()
