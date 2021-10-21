@@ -684,9 +684,7 @@ def is_placement_group_removed(pg):
 
 def is_anyscale_connect(address: Optional[str]) -> bool:
     """Returns whether or not the Ray Address points to an Anyscale cluster."""
-    is_anyscale_connect = address is not None and address.startswith(
-        "anyscale://")
-    return is_anyscale_connect
+    return address is not None and address.startswith("anyscale://")
 
 
 def monitor_memory_usage(interval_s: int = 5, warning_threshold: float = 0.9):
