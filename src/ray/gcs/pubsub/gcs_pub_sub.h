@@ -178,39 +178,62 @@ class GcsPubSub {
   size_t total_commands_queued_ GUARDED_BY(mutex_);
 };
 
+/// \class GcsPublisher
+///
+/// Supports publishing per-entity data and errors from GCS. Thread safe.
 class GcsPublisher {
  public:
+  /// Initializes GcsPublisher with both Redis and GCS based publishers.
+  /// Publish*() member functions below would be incrementally converted to use the GCS
+  /// based publisher, if available.
   GcsPublisher(const std::shared_ptr<RedisClient> &redis_client,
                std::unique_ptr<pubsub::Publisher> publisher)
       : pubsub_(std::make_unique<GcsPubSub>(redis_client)),
         publisher_(std::move(publisher)) {}
 
+  /// Test only.
+  /// Initializes GcsPublisher with GcsPubSub, usually a mock.
   explicit GcsPublisher(std::unique_ptr<GcsPubSub> pubsub) : pubsub_(std::move(pubsub)) {}
 
+  /// Unless noted, publishers should contain full state so subscribers only need to
+  /// receive the latest message.
+
+  /// Uses Redis pubsub.
   Status PublishObject(const ObjectID &id, const rpc::ObjectLocationChange &message,
                        const StatusCallback &done);
 
+  /// Uses Redis pubsub.
   Status PublishActor(const ActorID &id, const rpc::ActorTableData &message,
                       const StatusCallback &done);
 
+  /// Uses Redis pubsub.
   Status PublishJob(const JobID &id, const rpc::JobTableData &message,
                     const StatusCallback &done);
 
+  /// Uses Redis pubsub.
   Status PublishNodeInfo(const NodeID &id, const rpc::GcsNodeInfo &message,
                          const StatusCallback &done);
 
+  /// TODO: verify if the delta message semantics work with GCS pubsub.
+  /// Uses Redis pubsub.
   Status PublishNodeResource(const NodeID &id, const rpc::NodeResourceChange &message,
                              const StatusCallback &done);
 
+  /// Will be removed once it is converted to GRPC-based push broadcasting.
+  /// Uses Redis pubsub.
   Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
                               const StatusCallback &done);
 
+  /// Actually this is not a delta message.
+  /// Uses Redis pubsub.
   Status PublishWorkerFailure(const WorkerID &id, const rpc::WorkerDeltaData &message,
                               const StatusCallback &done);
 
+  /// Uses Redis pubsub.
   Status PublishTaskLease(const TaskID &id, const rpc::TaskLeaseData &message,
                           const StatusCallback &done);
 
+  /// Uses Redis pubsub.
   Status PublishError(const std::string &id, const rpc::ErrorTableData &message,
                       const StatusCallback &done);
 

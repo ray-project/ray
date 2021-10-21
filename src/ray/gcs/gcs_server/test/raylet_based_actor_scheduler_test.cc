@@ -25,7 +25,7 @@ class RayletBasedActorSchedulerTest : public ::testing::Test {
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
     worker_client_ = std::make_shared<GcsServerMocker::MockWorkerClient>();
-    gcs_publisher_ = std::make_shared<GcsPublisher>(
+    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
     gcs_node_manager_ =
@@ -37,7 +37,7 @@ class RayletBasedActorSchedulerTest : public ::testing::Test {
         [this](const rpc::Address &addr) { return raylet_client_; });
     gcs_actor_scheduler_ =
         std::make_shared<GcsServerMocker::MockedRayletBasedActorScheduler>(
-            io_service_, *gcs_actor_table_, *gcs_node_manager_, gcs_publisher_,
+            io_service_, *gcs_actor_table_, *gcs_node_manager_,
             /*schedule_failure_handler=*/
             [this](std::shared_ptr<gcs::GcsActor> actor) {
               failure_actors_.emplace_back(std::move(actor));
