@@ -1108,14 +1108,14 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
       resource_scheduler.FillResourceUsage(data);
       for (int j = 0; j < num_slots_available; j++) {
         ASSERT_EQ(remote, resource_scheduler.GetBestSchedulableNode(
-                              task_spec, false, false, false, &t, &is_infeasible));
+                              task_spec, false, false, true, &t, &is_infeasible));
         // Allocate remote resources.
         ASSERT_TRUE(resource_scheduler.AllocateRemoteTaskResources(remote, task_spec));
       }
       // Our local view says there are not enough resources on the remote node to
       // schedule another task.
       ASSERT_EQ("", resource_scheduler.GetBestSchedulableNode(task_spec, false, false,
-                                                              false, &t, &is_infeasible));
+                                                              true, &t, &is_infeasible));
       ASSERT_FALSE(
           resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
       ASSERT_FALSE(resource_scheduler.AllocateRemoteTaskResources(remote, task_spec));
