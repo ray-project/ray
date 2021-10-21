@@ -21,7 +21,7 @@ from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, NODE_IP, PID,
-                             TRAINING_ITERATION, TRIAL_ID)
+                             TRAINING_ITERATION, TRIAL_ID, DEBUG_METRICS)
 from ray.tune.resources import Resources, \
     json_to_resources, resources_to_json
 from ray.tune.utils.placement_groups import PlacementGroupFactory, \
@@ -661,7 +661,11 @@ class Trial:
         self.last_result = result
         self.last_update_time = time.time()
 
-        for metric, value in flatten_dict(result).items():
+        metric_result = copy.deepcopy(self.last_result)
+        for remove_metric in DEBUG_METRICS:
+            metric_result.pop(remove_metric, None)
+
+        for metric, value in flatten_dict(metric_result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
                     self.metric_analysis[metric] = {

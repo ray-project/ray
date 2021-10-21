@@ -150,6 +150,26 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         self.assertAlmostEqual(min_avg_10, min(
             np.mean(scores[:, -10:], axis=1)))
 
+    def testRemoveMagicResults(self):
+        [trial] = run(
+            self.MockTrainable,
+            name="analysis_remove_exp",
+            local_dir=self.test_dir,
+            stop={
+                "training_iteration": 9
+            },
+            num_samples=1,
+            config={
+                "id": 1
+            }).trials
+
+        self.assertNotIn("pid", trial.metric_analysis)
+        self.assertTrue(not any(
+            metric.startswith("config") for metric in trial.metric_analysis))
+        self.assertNotIn("pid", trial.metric_n_steps)
+        self.assertTrue(not any(
+            metric.startswith("config") for metric in trial.metric_n_steps))
+
 
 class AnalysisSuite(unittest.TestCase):
     @classmethod
