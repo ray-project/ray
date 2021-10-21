@@ -231,7 +231,7 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
   // only schedules to a node and triggers rescheduling when node dead.
   if (best_node) {
     for (int index = 0; index < (int)required_resources_list.size(); ++index) {
-      result_nodes.emplace_back(*best_node);
+      result_nodes.emplace_back(std::move(*best_node));
     }
   }
   if (result_nodes.empty()) {
