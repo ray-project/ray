@@ -13,6 +13,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
 )
 
+
 class JobStatus(Enum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
@@ -22,8 +23,16 @@ class JobStatus(Enum):
 
 
 class StorageClient:
+    """
+    Handles formatting of status and logs storage key given job id, and
+    helper functions
+
+    Status is handled by GCS internal KV.
+    Logs is handled by appending to file on local disk within session dir.
+    """
     JOB_LOGS_KEY = "_ray_internal_job_logs_{job_id}"
     JOB_STATUS_KEY = "_ray_internal_job_status_{job_id}"
+
     def __init__(self):
         assert _internal_kv_initialized()
 
@@ -34,10 +43,12 @@ class StorageClient:
 
     def put_status(self, job_id: str, status: JobStatus):
         assert isinstance(status, JobStatus)
-        _internal_kv_put(self.JOB_STATUS_KEY.format(job_id=job_id), pickle.dumps(status))
+        _internal_kv_put(
+            self.JOB_STATUS_KEY.format(job_id=job_id), pickle.dumps(status))
 
     def get_status(self, job_id: str) -> JobStatus:
-        pickled_status = _internal_kv_get(self.JOB_STATUS_KEY.format(job_id=job_id))
+        pickled_status = _internal_kv_get(
+            self.JOB_STATUS_KEY.format(job_id=job_id))
         assert pickled_status is not None, f"Status not found for {job_id}"
         return pickle.loads(pickled_status)
 
@@ -47,15 +58,16 @@ class StorageClient:
         if not os.path.exists(jobs_log_dir):
             os.mkdir(jobs_log_dir)
 
-        logs_file_path = jobs_log_dir + "/" + f"{self.JOB_LOGS_KEY.format(job_id=job_id)}.out"
+        log_file_name =  f"{self.JOB_LOGS_KEY.format(job_id=job_id)}.out"
+        logs_file_path = jobs_log_dir + "/" + log_file_name
         return logs_file_path
 
 
-def exec_cmd_logs_to_file(
-    cmd: str,
-    log_file: str
-) -> int:
-    """Runs a command as a child process, streaming logs to the input list."""
+def exec_cmd_logs_to_file(cmd: str, log_file: str) -> int:
+    """
+    Runs a command as a child process, streaming stderr & stdout to given
+    log file.
+    """
     with open(log_file, "a+") as fin:
         child = subprocess.Popen(
             [cmd],
@@ -67,10 +79,13 @@ def exec_cmd_logs_to_file(
         exit_code = child.wait()
         return exit_code
 
+
 class JobSupervisor:
-    def __init__(
-        self, job_id: str
-    ):
+    """
+    Created for each submitted job from JobManager, runs on head node in same
+    process as ray dashboard.
+    """
+    def __init__(self, job_id: str):
         self._job_id = job_id
         self._status = JobStatus.PENDING
         self._client = StorageClient()
@@ -109,7 +124,11 @@ class JobSupervisor:
     def stop(self):
         pass
 
+
 class JobManager:
+    """
+    Runs on head node in same process as ray dashboard.
+    """
     JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
     START_ACTOR_TIMEOUT_S = 10
 
@@ -121,13 +140,13 @@ class JobManager:
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
             return ray.get_actor(self.JOB_ACTOR_NAME.format(job_id=job_id))
-        except ValueError: # Ray returns ValueError for nonexistent actor.
+        except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
-    def submit_job(
-        self, job_id: str, entrypoint: str,
-        runtime_env: Optional[Dict[str, Any]] = None
-    ) -> str:
+    def submit_job(self,
+                   job_id: str,
+                   entrypoint: str,
+                   runtime_env: Optional[Dict[str, Any]] = None) -> str:
         """
         1) Create new detached actor with same runtime_env as job spec
         2) Get task / actor level runtime_env as env var and pass into
@@ -143,7 +162,8 @@ class JobManager:
         ).remote(job_id)
 
         try:
-            ray.get(supervisor.ready.remote(), timeout=self.START_ACTOR_TIMEOUT_S)
+            ray.get(
+                supervisor.ready.remote(), timeout=self.START_ACTOR_TIMEOUT_S)
         except GetTimeoutError:
             raise RuntimeError(f"Failed to start actor for job {job_id}.")
 

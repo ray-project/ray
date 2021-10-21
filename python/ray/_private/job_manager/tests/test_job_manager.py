@@ -10,13 +10,16 @@ from ray._private.test_utils import wait_for_condition
 
 TEST_NAMESPACE = "jobs_test_namespace"
 
+
 @pytest.fixture(scope="session")
 def shared_ray_instance():
     yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE)
 
+
 @pytest.fixture
 def job_manager(shared_ray_instance):
     yield JobManager()
+
 
 def test_basic_job_echo(job_manager):
     job_id: str = str(uuid4())
@@ -31,9 +34,10 @@ def test_basic_job_echo(job_manager):
     wait_for_condition(check_job_finished)
     assert job_manager.get_job_logs(job_id) == b"hello"
 
+
 def test_basic_job_ls_grep(job_manager):
     job_id: str = str(uuid4())
-    job_id = job_manager.submit_job(job_id, f"ls | grep test_job_manager")
+    job_id = job_manager.submit_job(job_id, f"ls | grep test_job_manager.py")
     assert isinstance(job_id, str)
 
     def check_job_finished():
@@ -44,13 +48,13 @@ def test_basic_job_ls_grep(job_manager):
     wait_for_condition(check_job_finished)
     assert job_manager.get_job_logs(job_id) == b"test_job_manager.py"
 
+
 def test_submit_job_with_entrypoint_script(job_manager):
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(
         job_id,
         "python script.py",
-        runtime_env={"working_dir": "s3://runtime-env-test/script.zip"}
-    )
+        runtime_env={"working_dir": "s3://runtime-env-test/script.zip"})
     assert isinstance(job_id, str)
 
     def check_job_finished():
@@ -59,10 +63,13 @@ def test_submit_job_with_entrypoint_script(job_manager):
         return status == JobStatus.SUCCEEDED
 
     wait_for_condition(check_job_finished)
-    assert job_manager.get_job_logs(job_id) == b"Executing main() from script.py !!"
+    assert job_manager.get_job_logs(
+        job_id) == b"Executing main() from script.py !!"
 
-def test_process_cleanup(job_manager):
-    job_manager.submit_job("echo $$ && sleep infinity")
+
+# def test_process_cleanup(job_manager):
+#     job_manager.submit_job("echo $$ && sleep infinity")
+
 
 class TestRuntimeEnv:
     def test_inheritance(self, job_manager):
