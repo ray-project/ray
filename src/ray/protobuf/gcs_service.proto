@@ -563,12 +563,14 @@ message DrainNodeRequest {
 }
 
 message DrainNodeStatus {
-  // Whether or not draining has succeeded.
+  // The node id that is successfully drained from GCS.
   bytes node_id = 1;
 }
 
 message DrainNodeReply {
+  // Whether or not the RPC succeeds.
   GcsStatus status = 1;
+  // Batched status of nodes that are drained.
   repeated DrainNodeStatus drain_node_status = 2;
 }
 

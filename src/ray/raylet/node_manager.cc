@@ -795,14 +795,16 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   if (node_id == self_node_id_) {
     if (!is_node_drained_) {
       RAY_LOG(FATAL)
-          << "Exiting because this node manager has mistakenly been marked dead by the "
-          << "monitor: GCS didn't receive heartbeats within timeout "
+          << "[Timeout] Exiting because this node manager has mistakenly been marked as "
+             "dead by the "
+          << "GCS: GCS didn't receive heartbeats from this node for "
           << RayConfig::instance().num_heartbeats_timeout() *
                  RayConfig::instance().raylet_heartbeat_period_milliseconds()
-          << " ms. This is likely since the machine or raylet became overloaded.";
+          << " ms. This is likely because the machine or raylet has become overloaded.";
     } else {
       // No-op since this node already starts to be drained, and GCS already knows about
       // it.
+      RAY_LOG(INFO) << "Node is marked as dead by GCS because the node is drained.";
       return;
     }
   }
