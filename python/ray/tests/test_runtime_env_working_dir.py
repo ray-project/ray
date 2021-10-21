@@ -54,27 +54,6 @@ def tmp_working_dir():
         yield tmp_dir
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_fails_without_runtime_env(start_cluster, tmp_working_dir):
-    cluster, address = start_cluster
-    ray.init(address)  # Don't pass working_dir, so it should fail!
-
-    @ray.remote
-    def test_import():
-        import test_module
-        return test_module.one()
-
-    with pytest.raises(ImportError):
-        ray.get(test_import.remote())
-
-    @ray.remote
-    def test_read():
-        return open("hello").read()
-
-    with pytest.raises(FileNotFoundError):
-        ray.get(test_read.remote())
-
-
 @pytest.mark.parametrize("test_failure", [True, False])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_lazy_reads(start_cluster, tmp_working_dir, test_failure):
@@ -181,6 +160,7 @@ def test_captured_import(start_cluster, tmp_working_dir, test_failure):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_empty_working_dir(start_cluster):
+    """Tests the case where we pass an empty directory as the working_dir."""
     cluster, address = start_cluster
     with tempfile.TemporaryDirectory() as working_dir:
         ray.init(address, runtime_env={"working_dir": working_dir})
@@ -203,6 +183,7 @@ def test_empty_working_dir(start_cluster):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_invalid_working_dir(start_cluster):
+    """Tests input validation for the working_dir."""
     cluster, address = start_cluster
 
     with pytest.raises(TypeError):
@@ -279,6 +260,7 @@ def test_s3_uri(start_cluster, test_failure, per_task_actor):
     "working_dir",
     [S3_PACKAGE_URI, pytest.lazy_fixture("tmp_working_dir")])
 def test_multi_node(start_cluster, working_dir):
+    """Tests that the working_dir is propagated across multi-node clusters."""
     NUM_NODES = 3
     cluster, address = start_cluster
     for _ in range(NUM_NODES - 1):  # Head node already added.
@@ -316,6 +298,7 @@ def check_local_files_gced(cluster):
     "working_dir",
     [S3_PACKAGE_URI, pytest.lazy_fixture("tmp_working_dir")])
 def test_job_level_gc(start_cluster, working_dir):
+    """Tests that job-level working_dir is GC'd when the job exits."""
     NUM_NODES = 3
     cluster, address = start_cluster
     for _ in range(NUM_NODES - 1):  # Head node already added.
@@ -358,9 +341,11 @@ def test_job_level_gc(start_cluster, working_dir):
     wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
+# TODO(edoakes): fix this bug and enable test.
 @pytest.mark.skip("Currently failing.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_actor_level_gc(start_cluster):
+    """Tests that actor-level working_dir is GC'd when the actor exits."""
     NUM_NODES = 3
     cluster, address = start_cluster
     for _ in range(NUM_NODES - 1):  # Head node already added.
@@ -368,15 +353,13 @@ def test_actor_level_gc(start_cluster):
 
     ray.init(address)
 
-    env = {"working_dir": S3_PACKAGE_URI}
-
     @ray.remote
     class A:
         def check(self):
             assert "test_module" in os.listdir()
 
     # TODO(edoakes): this doesn't work in decorator with ray client.
-    A = A.options(runtime_env=env)
+    A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
 
     actors = [A.remote() for _ in range(5)]
     ray.get([a.check.remote() for a in actors])
@@ -393,6 +376,7 @@ def test_actor_level_gc(start_cluster):
     "working_dir",
     [S3_PACKAGE_URI, pytest.lazy_fixture("tmp_working_dir")])
 def test_detached_actor_gc(start_cluster, working_dir):
+    """Tests that URIs for detached actors are GC'd only when they exit."""
     cluster, address = start_cluster
     ray.init(
         address, namespace="test", runtime_env={"working_dir": working_dir})
@@ -437,6 +421,7 @@ def test_detached_actor_gc(start_cluster, working_dir):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_exclusion(start_cluster, tmp_working_dir):
+    """Tests various forms of the 'excludes' parameter."""
     cluster, address = start_cluster
 
     def create_file(p):
@@ -556,6 +541,7 @@ cache/
     "working_dir",
     [S3_PACKAGE_URI, pytest.lazy_fixture("tmp_working_dir")])
 def test_runtime_context(start_cluster, working_dir):
+    """Tests that the working_dir is propagated in the runtime_context."""
     cluster, address = start_cluster
     ray.init(runtime_env={"working_dir": working_dir})
 
@@ -584,6 +570,7 @@ def test_runtime_context(start_cluster, working_dir):
 
 
 def test_override_failure(shutdown_only):
+    """Tests invalid override behaviors."""
     ray.init()
 
     with pytest.raises(ValueError):
@@ -622,6 +609,7 @@ def chdir(d: str):
 
 
 def test_inheritance(start_cluster):
+    """Tests that child tasks/actors inherit URIs properly."""
     cluster, address = start_cluster
     with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
         with open("hello", "w") as f:
@@ -652,8 +640,8 @@ def test_inheritance(start_cluster):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_large_file_boundary(shutdown_only):
-    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmpdir):
-        # Check that packages just under the max size work as expected.
+    """Check that packages just under the max size work as expected."""
+    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
         size = GCS_STORAGE_MAX_SIZE - 1024 * 1024
         with open("test_file", "wb") as f:
             f.write(os.urandom(size))
