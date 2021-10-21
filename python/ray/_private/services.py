@@ -106,7 +106,7 @@ def propagate_jemalloc_env_var(*, jemalloc_path: str, jemalloc_conf: str,
             process_type (str): The process type that needs jemalloc
                 env var for memory profiling. If it doesn't match one of
                 jemalloc_comps, the function will return an empty dict.
-        
+
         Returns:
             dictionary of {env_var: value}
                 that are needed to jemalloc profiling. The caller can
