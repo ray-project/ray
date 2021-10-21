@@ -19,7 +19,7 @@ def job_manager(shared_ray_instance):
     yield JobManager()
 
 
-def test_basic_job_echo(job_manager):
+def test_submit_basic_echo(job_manager):
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(job_id, "echo hello")
     assert isinstance(job_id, str)
@@ -30,10 +30,24 @@ def test_basic_job_echo(job_manager):
         return status == JobStatus.SUCCEEDED
 
     wait_for_condition(check_job_finished)
-    assert job_manager.get_job_logs(job_id) == b"hello"
+    assert job_manager.get_job_stdout(job_id) == b"hello"
 
 
-def test_basic_job_ls_grep(job_manager):
+def test_submit_stderr(job_manager):
+    job_id: str = str(uuid4())
+    job_id = job_manager.submit_job(job_id, "echo error 1>&2")
+    assert isinstance(job_id, str)
+
+    def check_job_finished():
+        status = job_manager.get_job_status(job_id)
+        assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
+        return status == JobStatus.SUCCEEDED
+
+    wait_for_condition(check_job_finished)
+    assert job_manager.get_job_stderr(job_id) == b"error"
+
+
+def test_submit_ls_grep(job_manager):
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(job_id, "ls | grep test_job_manager.py")
     assert isinstance(job_id, str)
@@ -44,10 +58,10 @@ def test_basic_job_ls_grep(job_manager):
         return status == JobStatus.SUCCEEDED
 
     wait_for_condition(check_job_finished)
-    assert job_manager.get_job_logs(job_id) == b"test_job_manager.py"
+    assert job_manager.get_job_stdout(job_id) == b"test_job_manager.py"
 
 
-def test_submit_job_with_entrypoint_script(job_manager):
+def test_submit_with_s3_runtime_env(job_manager):
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(
         job_id,
@@ -61,7 +75,7 @@ def test_submit_job_with_entrypoint_script(job_manager):
         return status == JobStatus.SUCCEEDED
 
     wait_for_condition(check_job_finished)
-    assert job_manager.get_job_logs(
+    assert job_manager.get_job_stdout(
         job_id) == b"Executing main() from script.py !!"
 
 

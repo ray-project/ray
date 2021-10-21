@@ -1,7 +1,7 @@
 import subprocess
 import pickle
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Tuple, Optional
 from enum import Enum
 
 import ray
@@ -22,24 +22,58 @@ class JobStatus(Enum):
     FAILED = "FAILED"
 
 
-class StorageClient:
+class JobLogStorageClient:
     """
-    Handles formatting of status and logs storage key given job id, and
-    helper functions
+    Disk storage for stdout / stderr of driver script logs.
+    """
+    JOB_LOGS_STDOUT_KEY = "_ray_internal_job_logs_{job_id}.out"
+    JOB_LOGS_STDERR_KEY = "_ray_internal_job_logs_{job_id}.err"
 
-    Status is handled by GCS internal KV.
-    Logs is handled by appending to file on local disk within session dir.
+    def get_stdout(self, job_id: str):
+        stdout_file, _ = self.get_log_file_paths(job_id)
+        try:
+            with open(stdout_file, "rb") as f:
+                return f.read().rstrip()
+        except FileNotFoundError:
+            return b"No stdout log available yet."
+
+    def get_stderr(self, job_id: str):
+        _, stderr_file = self.get_log_file_paths(job_id)
+        try:
+            with open(stderr_file, "rb") as f:
+                return f.read().rstrip()
+        except FileNotFoundError:
+            return b"No stderr log available yet."
+
+    def get_log_file_paths(self, job_id: str) -> Tuple[str, str]:
+        """
+        Get file paths to logs of given job. Example:
+
+        stdout:
+            /tmp/ray/session_date/logs/jobs/_ray_internal_job_logs_{job_id}.out
+        stderr:
+            /tmp/ray/session_date/logs/jobs/_ray_internal_job_logs_{job_id}.err
+        """
+        session_dir = ray.worker._global_node.get_session_dir_path()
+        jobs_log_dir = os.path.join(session_dir + "/logs/jobs")
+        if not os.path.exists(jobs_log_dir):
+            os.mkdir(jobs_log_dir)
+
+        stdout_file_name = f"{self.JOB_LOGS_STDOUT_KEY.format(job_id=job_id)}"
+        stderr_file_name = f"{self.JOB_LOGS_STDERR_KEY.format(job_id=job_id)}"
+
+        return (os.path.join(jobs_log_dir, stdout_file_name),
+                os.path.join(jobs_log_dir, stderr_file_name))
+
+
+class JobStatusStorageClient:
     """
-    JOB_LOGS_KEY = "_ray_internal_job_logs_{job_id}"
+    Handles formatting of status storage key given job id.
+    """
     JOB_STATUS_KEY = "_ray_internal_job_status_{job_id}"
 
     def __init__(self):
         assert _internal_kv_initialized()
-
-    def get_logs(self, job_id: str):
-        logs_file_path = self.get_logs_file_path(job_id)
-        with open(logs_file_path, "rb") as f:
-            return f.read().rstrip()
 
     def put_status(self, job_id: str, status: JobStatus):
         assert isinstance(status, JobStatus)
@@ -52,29 +86,20 @@ class StorageClient:
         assert pickled_status is not None, f"Status not found for {job_id}"
         return pickle.loads(pickled_status)
 
-    def get_logs_file_path(self, job_id: str) -> str:
-        session_dir = ray.worker._global_node.get_session_dir_path()
-        jobs_log_dir = session_dir + "/logs/jobs"
-        if not os.path.exists(jobs_log_dir):
-            os.mkdir(jobs_log_dir)
 
-        log_file_name = f"{self.JOB_LOGS_KEY.format(job_id=job_id)}.out"
-        logs_file_path = jobs_log_dir + "/" + log_file_name
-        return logs_file_path
-
-
-def exec_cmd_logs_to_file(cmd: str, log_file: str) -> int:
+def exec_cmd_logs_to_file(cmd: str, stdout_file: str, stderr_file: str) -> int:
     """
     Runs a command as a child process, streaming stderr & stdout to given
-    log file.
+    log files.
     """
-    with open(log_file, "a+") as fin:
+    with open(stdout_file, "a+") as stdout_in, open(stderr_file,
+                                                    "a+") as stderr_in:
         child = subprocess.Popen(
-            [cmd],
+            cmd,
             shell=True,
             universal_newlines=True,
-            stdout=fin,
-            stderr=subprocess.STDOUT)
+            stdout=stdout_in,
+            stderr=stderr_in)
 
         exit_code = child.wait()
         return exit_code
@@ -82,14 +107,20 @@ def exec_cmd_logs_to_file(cmd: str, log_file: str) -> int:
 
 class JobSupervisor:
     """
-    Created for each submitted job from JobManager, runs on head node in same
-    process as ray dashboard.
+    Ray actor created by JobManager for each submitted job, responsible to
+    setup runtime_env, execute given shell command in subprocess, update job
+    status and persist job logs.
+
+    One job supervisor actor maps to one subprocess, for one job_id.
+
+    Job supervisor actor should fate share with subprocess it created.
     """
 
     def __init__(self, job_id: str):
         self._job_id = job_id
         self._status = JobStatus.PENDING
-        self._client = StorageClient()
+        self._status_client = JobStatusStorageClient()
+        self._log_client = JobLogStorageClient()
 
     def ready(self):
         pass
@@ -102,14 +133,15 @@ class JobSupervisor:
         assert self._status == JobStatus.PENDING, (
             "Run should only be called once.")
         self._status = JobStatus.RUNNING
-        self._client.put_status(self._job_id, self._status)
+        self._status_client.put_status(self._job_id, self._status)
 
         # 2) Run the command until it finishes, appending logs as it goes.
         # Set JobConfig for the child process (runtime_env, metadata).
         #  - RAY_JOB_CONFIG_JSON={...}
 
-        logs_file_path = self._client.get_logs_file_path(self._job_id)
-        exit_code = exec_cmd_logs_to_file(cmd, logs_file_path)
+        stdout_path, stderr_path = self._log_client.get_log_file_paths(
+            self._job_id)
+        exit_code = exec_cmd_logs_to_file(cmd, stdout_path, stderr_path)
 
         # 3) Once command finishes, update status to SUCCEEDED or FAILED.
         if exit_code == 0:
@@ -117,7 +149,7 @@ class JobSupervisor:
         else:
             self._status = JobStatus.FAILED
 
-        self._client.put_status(self._job_id, self.get_status())
+        self._status_client.put_status(self._job_id, self.get_status())
         ray.actor.exit_actor()
 
     def get_status(self) -> JobStatus:
@@ -129,13 +161,16 @@ class JobSupervisor:
 
 class JobManager:
     """
-    Runs on head node in same process as ray dashboard.
+    Provide python APIs for job submission and management. It does not provide
+    job id generation or persistence, where all runtime data should be expected
+    as lost once the ray cluster running job manager instance is down.
     """
     JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
     START_ACTOR_TIMEOUT_S = 10
 
     def __init__(self):
-        self._client = StorageClient()
+        self._status_client = JobStatusStorageClient()
+        self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         assert _internal_kv_initialized()
 
@@ -167,6 +202,7 @@ class JobManager:
             ray.get(
                 supervisor.ready.remote(), timeout=self.START_ACTOR_TIMEOUT_S)
         except GetTimeoutError:
+            ray.kill(supervisor, no_restart=True)
             raise RuntimeError(f"Failed to start actor for job {job_id}.")
 
         # Kick off the job to run in the background.
@@ -191,20 +227,13 @@ class JobManager:
             pass
 
         # Fall back to storage if the actor is dead.
-        return self._client.get_status(job_id)
+        return self._status_client.get_status(job_id)
 
-    def get_job_logs(self, job_id: str):
-        # a = self._get_actor_for_job(job_id)
-        # if a is not None:
-        #     # Actor is still alive, try to get logs from it.
-        #     try:
-        #         return ray.get(a.get_logs.remote())
-        #     except RayActorError:
-        #         # Actor exited, so we should fall back to internal_kv.
-        #         pass
+    def get_job_stdout(self, job_id: str) -> bytes:
+        return self._log_client.get_stdout(job_id)
 
-        # Fall back to internal_kv if the actor is dead.
-        return self._client.get_logs(job_id)
+    def get_job_stderr(self, job_id: str) -> bytes:
+        return self._log_client.get_stderr(job_id)
 
 
 # 1. get the basic job manager + supervisor working echo
