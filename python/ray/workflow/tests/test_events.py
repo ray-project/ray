@@ -22,7 +22,7 @@ def test_sleep(workflow_start_regular_shared):
     start, end = sleep_helper.step().run()
     duration = end - start
 
-    assert 1 < duration < 3
+    assert 1 < duration
 
 
 def test_sleep_checkpointing(workflow_start_regular_shared):
