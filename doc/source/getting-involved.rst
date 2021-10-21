@@ -67,7 +67,7 @@ PR Review Process
 -----------------
 
 For contributors who are in the ``ray-project`` organization:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - When you first create a PR, add an reviewer to the `assignee` section.
 - Assignees will review your PR and add the `@author-action-required` label if further actions are required.
@@ -77,7 +77,7 @@ For contributors who are in the ``ray-project`` organization:
 - Committers will merge the PR once the build is passing.
 
 For contributors who are not in the ``ray-project`` organization:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Your PRs will have assignees shortly. Assignees of PRs will be actively engaging with contributors to merge the PR.
 - Please actively ping assignees after you address your comments!
