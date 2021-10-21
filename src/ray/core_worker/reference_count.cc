@@ -579,7 +579,12 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
 
     // The object is still in scope. Track the raylet location until the object
     // has gone out of scope or the raylet fails, whichever happens first.
-    RAY_CHECK(!it->second.pinned_at_raylet_id.has_value());
+    if (it->second.pinned_at_raylet_id.has_value()) {
+      RAY_LOG(INFO) << "Updating primary location for object " << object_id << " to node "
+                    << raylet_id << ", but it already has a primary location "
+                    << *it->second.pinned_at_raylet_id
+                    << ". This should only happen during reconstruction";
+    }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
