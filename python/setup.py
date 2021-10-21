@@ -211,7 +211,7 @@ if setup_spec.type == SetupType.RAY:
         ],
     }
 
-    # Ray Serve depends on the Ray dashboard componenents.
+    # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] += setup_spec.extras["default"]
 
     if RAY_EXTRA_CPP:

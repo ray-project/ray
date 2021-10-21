@@ -15,6 +15,7 @@ import pytest
 def test_errr_msg():
     with pytest.raises(ModuleNotFoundError, match="install ray\[serve\]"):
         from ray import serve
+        serve.start()
 
 
 if __name__ == "__main__":
