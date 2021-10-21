@@ -249,6 +249,7 @@ class RemotePlasmaClient : public PlasmaClientInterface {
   RemotePlasmaClient();
   virtual ~RemotePlasmaClient();
 
+  void Fun() {}
   /// Connect to the local plasma store. Return the resulting connection.
   ///
   /// \param store_socket_name The name of the UNIX domain socket to use to

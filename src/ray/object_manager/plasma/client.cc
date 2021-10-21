@@ -19,9 +19,9 @@
 
 #include "ray/object_manager/plasma/client.h"
 
-#include <cstring>
-
 #include <algorithm>
+#include <boost/asio.hpp>
+#include <cstring>
 #include <deque>
 #include <mutex>
 #include <tuple>
@@ -29,16 +29,13 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/asio.hpp>
-
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/object_manager/plasma/shared_memory.h"
 #include "ray/object_manager/plasma/store_runner.h"
-
-#include "absl/container/flat_hash_map.h"
 
 namespace fb = plasma::flatbuf;
 
@@ -139,7 +136,8 @@ class Impl : public std::enable_shared_from_this<Impl> {
   /// Helper method to read and process the reply of a create request.
   Status HandleCreateReply(const ObjectID &object_id, const uint8_t *metadata,
                            std::shared_ptr<Buffer> *data, PlasmaObject &object,
-                           std::shared_ptr<PlasmaClientInterface> client);
+                           std::shared_ptr<PlasmaClientInterface> client, MEMFD_TYPE fd,
+                           int64_t map_size);
 
  private:
   /// Check if store_fd has already been received from the store. If yes,
@@ -203,6 +201,8 @@ Impl::Impl(  /// The connection to the store service.
     std::shared_ptr<StoreConn> store_conn)
     : store_capacity_(0), store_conn_(store_conn) {}
 
+// Impl::Impl()
+//     : store_capacity_(0) {}
 Impl::~Impl() {}
 
 // If the file descriptor fd has been mmapped in this client process before,
@@ -222,6 +222,8 @@ uint8_t *Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val, int64_t map_size) {
       mmap_table_.erase(dedup_fd_table_[store_fd_val.first]);
     }
     dedup_fd_table_[store_fd_val.first] = store_fd_val;
+    RAY_LOG(INFO) << "map_size " << map_size << " fd.first " << fd.first << " fd.second "
+                  << fd.second;
     mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
     return mmap_table_[store_fd_val]->pointer();
   }
@@ -268,15 +270,15 @@ void Impl::IncrementObjectCount(const ObjectID &object_id, PlasmaObject *object,
 
 Status Impl::HandleCreateReply(const ObjectID &object_id, const uint8_t *metadata,
                                std::shared_ptr<Buffer> *data, PlasmaObject &object,
-                               std::shared_ptr<PlasmaClientInterface> client) {
+                               std::shared_ptr<PlasmaClientInterface> client,
+                               MEMFD_TYPE fd, int64_t mmap_size) {
   // If the CreateReply included an error, then the store will not send a file
   // descriptor.
   if (object.device_num == 0) {
     // The metadata should come right after the data.
     RAY_CHECK(object.metadata_offset == object.data_offset + object.data_size);
     *data = std::make_shared<PlasmaMutableBuffer>(
-        client, GetStoreFdAndMmap(object.store_fd, object.mmap_size) + object.data_offset,
-        object.data_size);
+        client, GetStoreFdAndMmap(fd, mmap_size) + object.data_offset, object.data_size);
     // If plasma_create is being called from a transfer, then we will not copy the
     // metadata here. The metadata will be written along with the data streamed
     // from the transfer.
@@ -573,7 +575,7 @@ Status Impl::Disconnect() {
 // ----------------------------------------------------------------------
 // PlasmaClient
 
-RemotePlasmaClient::RemotePlasmaClient() : impl_(std::make_shared<Impl>(store_conn_)) {}
+RemotePlasmaClient::RemotePlasmaClient() {}
 
 RemotePlasmaClient::~RemotePlasmaClient() {}
 
@@ -586,6 +588,7 @@ Status RemotePlasmaClient::Connect(const std::string &store_socket_name,
   ray::local_stream_socket socket(main_service_);
   RAY_RETURN_NOT_OK(ray::ConnectSocketRetry(socket, store_socket_name));
   store_conn_.reset(new StoreConn(std::move(socket)));
+  impl_ = std::make_shared<Impl>(store_conn_);
   // Send a ConnectRequest to the store to get its memory capacity.
   RAY_RETURN_NOT_OK(SendConnectRequest(store_conn_));
   std::vector<uint8_t> buffer;
@@ -661,13 +664,13 @@ Status RemotePlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                                        num_objects, store_fds, mmap_sizes));
         return Status::OK();
       },
-      shared_from_this());
+      std::dynamic_pointer_cast<RemotePlasmaClient>(shared_from_this()));
 }
 
 Status RemotePlasmaClient::Release(const ObjectID &object_id) {
-  return impl_->Release(object_id,
-                        [&]() { return SendReleaseRequest(store_conn_, object_id); },
-                        shared_from_this());
+  return impl_->Release(
+      object_id, [&]() { return SendReleaseRequest(store_conn_, object_id); },
+      std::dynamic_pointer_cast<RemotePlasmaClient>(shared_from_this()));
 }
 
 Status RemotePlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
@@ -711,7 +714,7 @@ Status RemotePlasmaClient::Seal(const ObjectID &object_id) {
         RAY_CHECK(sealed_id == object_id);
         return Status::OK();
       },
-      shared_from_this());
+      std::dynamic_pointer_cast<RemotePlasmaClient>(shared_from_this()));
 }
 
 Status RemotePlasmaClient::Delete(const ObjectID &object_id) {
@@ -745,7 +748,10 @@ Status RemotePlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) 
   });
 }
 
-Status RemotePlasmaClient::Disconnect() { return impl_->Disconnect(); }
+Status RemotePlasmaClient::Disconnect() {
+  store_conn_.reset();
+  return impl_->Disconnect();
+}
 
 std::string RemotePlasmaClient::DebugString() {
   if (!SendGetDebugStringRequest(store_conn_).ok()) {
@@ -792,8 +798,10 @@ Status RemotePlasmaClient::HandleCreateReply(const ObjectID &object_id,
     RAY_CHECK(unused == 0);
   }
 
-  RAY_UNUSED(
-      impl_->HandleCreateReply(object_id, metadata, data, object, shared_from_this()));
+  RAY_UNUSED(impl_->HandleCreateReply(
+      object_id, metadata, data, object,
+      std::dynamic_pointer_cast<RemotePlasmaClient>(shared_from_this()), store_fd,
+      mmap_size));
   return Status::OK();
 }
 
@@ -853,14 +861,16 @@ Status PlasmaClient::TryCreateImmediately(
   object_info.owner_ip_address = owner_address.ip_address();
   object_info.owner_port = owner_address.port();
   object_info.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  auto result = plasma_store_.ExecuteInStoreThread([&]() {
+  // TODO: revert comment
+  /*auto result = */ plasma_store_.ExecuteInStoreThread([&]() {
     return plasma_store_.CreateObject(object_id, nullptr, data_size + metadata_size, true,
                                       req_id, object_info, source, device_num);
   });
-  PlasmaObject &object = result.first;
+  // PlasmaObject &object = result.first;
 
-  RAY_UNUSED(
-      impl_->HandleCreateReply(object_id, metadata, data, object, shared_from_this()));
+  // RAY_UNUSED(
+  //     impl_->HandleCreateReply(object_id, metadata, data, object,
+  //     std::dynamic_pointer_cast<PlasmaClient>((shared_from_this()))));
   return Status::OK();
 }
 
@@ -882,18 +892,19 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeou
         get_return.get_future().get();
         return Status::OK();
       },
-      shared_from_this());
+      std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) {
-  return impl_->Release(object_id,
-                        [&]() {
-                          return plasma_store_.ExecuteInStoreThread([&]() {
-                            plasma_store_.ReleaseObject(object_id, nullptr);
-                            return Status::OK();
-                          });
-                        },
-                        shared_from_this());
+  return impl_->Release(
+      object_id,
+      [&]() {
+        return plasma_store_.ExecuteInStoreThread([&]() {
+          plasma_store_.ReleaseObject(object_id, nullptr);
+          return Status::OK();
+        });
+      },
+      std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
 }
 
 Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
@@ -913,14 +924,15 @@ Status PlasmaClient::Abort(const ObjectID &object_id) {
 }
 
 Status PlasmaClient::Seal(const ObjectID &object_id) {
-  return impl_->Seal(object_id,
-                     [&]() {
-                       return plasma_store_.ExecuteInStoreThread([&]() {
-                         plasma_store_.SealObjects({object_id});
-                         return Status::OK();
-                       });
-                     },
-                     shared_from_this());
+  return impl_->Seal(
+      object_id,
+      [&]() {
+        return plasma_store_.ExecuteInStoreThread([&]() {
+          plasma_store_.SealObjects({object_id});
+          return Status::OK();
+        });
+      },
+      std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
 }
 
 Status PlasmaClient::Delete(const ObjectID &object_id) {
