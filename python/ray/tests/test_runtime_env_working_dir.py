@@ -1,8 +1,9 @@
+from contextlib import contextmanager
 import os
+from pathlib import Path
 import pytest
 import sys
 import tempfile
-from pathlib import Path
 
 import ray
 import ray.experimental.internal_kv as kv
@@ -612,12 +613,46 @@ def test_override_failure(shutdown_only):
         B.options(runtime_env={"working_dir": "."})
 
 
+@contextmanager
+def chdir(d: str):
+    old_dir = os.getcwd()
+    os.chdir(d)
+    yield
+    os.chdir(old_dir)
+
+
+def test_inheritance(start_cluster):
+    cluster, address = start_cluster
+    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        with open("hello", "w") as f:
+            f.write("world")
+
+        ray.init(address, runtime_env={"working_dir": "."})
+
+        # Make sure we aren't reading the original file.
+        os.unlink("hello")
+
+        @ray.remote
+        class Test:
+            def f(self):
+                return open("hello").read()
+
+        # Passing working_dir URI through directly should work.
+        env1 = ray.get_runtime_context().runtime_env
+        assert "working_dir" in env1
+        t = Test.options(runtime_env=env1).remote()
+        assert ray.get(t.f.remote()) == "world"
+
+        # Passing a local directory should not work.
+        env2 = ray.get_runtime_context().runtime_env
+        env2["working_dir"] = "."
+        with pytest.raises(ValueError):
+            t = Test.options(runtime_env=env2).remote()
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_large_file_boundary(shutdown_only):
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        old_dir = os.getcwd()
-        os.chdir(tmp_dir)
-
+    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmpdir):
         # Check that packages just under the max size work as expected.
         size = GCS_STORAGE_MAX_SIZE - 1024 * 1024
         with open("test_file", "wb") as f:
@@ -633,15 +668,11 @@ def test_large_file_boundary(shutdown_only):
 
         t = Test.remote()
         assert ray.get(t.get_size.remote()) == size
-        os.chdir(old_dir)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_large_file_error(shutdown_only):
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        old_dir = os.getcwd()
-        os.chdir(tmp_dir)
-
+    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
         # Write to two separate files, each of which is below the threshold to
         # make sure the error is for the full package size.
         size = GCS_STORAGE_MAX_SIZE // 2 + 1
@@ -654,9 +685,6 @@ def test_large_file_error(shutdown_only):
         with pytest.raises(RuntimeError):
             ray.init(runtime_env={"working_dir": "."})
 
-        os.chdir(old_dir)
-
 
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-sv", __file__]))
