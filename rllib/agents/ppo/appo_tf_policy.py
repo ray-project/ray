@@ -20,8 +20,7 @@ from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy, \
-    EntropyCoeffSchedule
+from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -253,7 +252,7 @@ def appo_surrogate_loss(
 
     # The summed weighted loss.
     total_loss = mean_policy_loss - \
-        mean_entropy * policy.entropy_coeff
+        mean_entropy * policy.config["entropy_coeff"]
     # Optional KL loss.
     if policy.config["use_kl_loss"]:
         total_loss += policy.kl_coeff * mean_kl_loss
@@ -301,7 +300,6 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         "total_loss": policy._total_loss,
         "policy_loss": policy._mean_policy_loss,
         "entropy": policy._mean_entropy,
-        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
         "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
@@ -400,8 +398,6 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
         config (TrainerConfigDict): The Policy's config.
     """
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
-                                  config["entropy_coeff_schedule"])
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
 

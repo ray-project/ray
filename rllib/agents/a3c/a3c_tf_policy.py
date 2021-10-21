@@ -97,7 +97,7 @@ def add_value_function_fetch(policy: Policy) -> Dict[str, TensorType]:
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     return {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
-        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
+        "entropy_coeff": policy.entropy_coeff,
         "policy_loss": policy.loss.pi_loss,
         "policy_entropy": policy.loss.entropy,
         "var_gnorm": tf.linalg.global_norm(
