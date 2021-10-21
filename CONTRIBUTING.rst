@@ -13,7 +13,7 @@ You can post questions or issues or feedback through the following channels:
 To contribute a patch:
 ----------------------
 
-We welcome your contribution!  Please see https://docs.ray.io/en/master/getting-involved.html for details!
+We welcome your contribution!  Please see https://docs.ray.io/en/master/getting-involved.html for details.
 
 .. _`Github Discussions`: https://github.com/ray-project/ray/discussions
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
