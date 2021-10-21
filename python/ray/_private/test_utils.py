@@ -1,5 +1,4 @@
 import asyncio
-import errno
 import io
 import fnmatch
 import os
@@ -15,11 +14,14 @@ import traceback
 from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
+import pytest
+import tempfile
 
 import ray
 import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
+from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
 try:
@@ -31,9 +33,6 @@ except (ImportError, ModuleNotFoundError):
 
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
-
-if sys.platform == "win32":
-    import _winapi
 
 
 class RayTestTimeoutException(Exception):
@@ -50,22 +49,10 @@ def _pid_alive(pid):
     Returns:
         This returns false if the process is dead. Otherwise, it returns true.
     """
-    no_such_process = errno.EINVAL if sys.platform == "win32" else errno.ESRCH
     alive = True
     try:
-        if sys.platform == "win32":
-            SYNCHRONIZE = 0x00100000  # access mask defined in <winnt.h>
-            handle = _winapi.OpenProcess(SYNCHRONIZE, False, pid)
-            try:
-                alive = (_winapi.WaitForSingleObject(handle, 0) !=
-                         _winapi.WAIT_OBJECT_0)
-            finally:
-                _winapi.CloseHandle(handle)
-        else:
-            os.kill(pid, 0)
-    except OSError as ex:
-        if ex.errno != no_such_process:
-            raise
+        psutil.Process(pid)
+    except psutil.NoSuchProcess:
         alive = False
     return alive
 
@@ -338,8 +325,7 @@ def wait_until_succeeded_without_exception(func,
         Whether exception occurs within a timeout.
     """
     if type(exceptions) != tuple:
-        print("exceptions arguments should be given as a tuple")
-        return False
+        raise Exception("exceptions arguments should be given as a tuple")
 
     time_elapsed = 0
     start = time.time()
@@ -692,3 +678,34 @@ def is_placement_group_removed(pg):
     if "state" not in table:
         return False
     return table["state"] == "REMOVED"
+
+
+def setup_tls():
+    """Sets up required environment variables for tls"""
+    if sys.platform == "darwin":
+        pytest.skip("Cryptography doesn't install in Mac build pipeline")
+    cert, key = generate_self_signed_tls_certs()
+    temp_dir = tempfile.mkdtemp("ray-test-certs")
+    cert_filepath = os.path.join(temp_dir, "server.crt")
+    key_filepath = os.path.join(temp_dir, "server.key")
+    with open(cert_filepath, "w") as fh:
+        fh.write(cert)
+    with open(key_filepath, "w") as fh:
+        fh.write(key)
+
+    os.environ["RAY_USE_TLS"] = "1"
+    os.environ["RAY_TLS_SERVER_CERT"] = cert_filepath
+    os.environ["RAY_TLS_SERVER_KEY"] = key_filepath
+    os.environ["RAY_TLS_CA_CERT"] = cert_filepath
+
+    return key_filepath, cert_filepath, temp_dir
+
+
+def teardown_tls(key_filepath, cert_filepath, temp_dir):
+    os.remove(key_filepath)
+    os.remove(cert_filepath)
+    os.removedirs(temp_dir)
+    del os.environ["RAY_USE_TLS"]
+    del os.environ["RAY_TLS_SERVER_CERT"]
+    del os.environ["RAY_TLS_SERVER_KEY"]
+    del os.environ["RAY_TLS_CA_CERT"]

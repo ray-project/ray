@@ -17,7 +17,6 @@ from base64 import b64decode
 from collections import namedtuple
 from collections.abc import MutableMapping, Mapping, Sequence
 from typing import Any
-
 from google.protobuf.json_format import MessageToDict
 
 import ray.dashboard.consts as dashboard_consts
