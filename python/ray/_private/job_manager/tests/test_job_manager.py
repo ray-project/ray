@@ -1,5 +1,6 @@
 import logging
 import time
+from uuid import uuid4
 
 import pytest
 
@@ -17,8 +18,9 @@ def shared_ray_instance():
 def job_manager(shared_ray_instance):
     yield JobManager()
 
-def test_basic_job(job_manager):
-    job_id = job_manager.submit_job("echo 'hello'")
+def test_basic_job_echo(job_manager):
+    job_id: str = str(uuid4())
+    job_id = job_manager.submit_job(job_id, "echo hello")
     assert isinstance(job_id, str)
 
     def check_job_finished():
@@ -27,7 +29,20 @@ def test_basic_job(job_manager):
         return status == JobStatus.SUCCEEDED
 
     wait_for_condition(check_job_finished)
-    assert job_manager.get_job_logs(job_id) == "'hello'"
+    assert job_manager.get_job_logs(job_id) == b"hello"
+
+def test_basic_job_ls_grep(job_manager):
+    job_id: str = str(uuid4())
+    job_id = job_manager.submit_job(job_id, f"ls | grep test_job_manager")
+    assert isinstance(job_id, str)
+
+    def check_job_finished():
+        status = job_manager.get_job_status(job_id)
+        assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
+        return status == JobStatus.SUCCEEDED
+
+    wait_for_condition(check_job_finished)
+    assert job_manager.get_job_logs(job_id) == b"test_job_manager.py"
 
 def test_submit_job_with_entrypoint_script(job_manager):
     job_id = job_manager.submit_job(

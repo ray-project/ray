@@ -1,8 +1,7 @@
 import subprocess
-import sys
-from uuid import uuid4, UUID
 import pickle
-from typing import Any, Dict, List, Tuple, Optional
+import os
+from typing import Any, Dict, List, Optional
 from enum import Enum
 
 import ray
@@ -12,7 +11,6 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_get,
     _internal_kv_put,
-    _internal_kv_list,
 )
 
 class JobStatus(Enum):
@@ -29,12 +27,10 @@ class StorageClient:
     def __init__(self):
         assert _internal_kv_initialized()
 
-    def put_logs(self, job_id: str, logs: str):
-        assert isinstance(logs, str)
-        _internal_kv_put(self.JOB_LOGS_KEY.format(job_id=job_id), logs)
-
     def get_logs(self, job_id: str):
-        return _internal_kv_get(self.JOB_LOGS_KEY.format(job_id=job_id))
+        logs_file_path = self.get_logs_file_path(job_id)
+        with open(logs_file_path, "rb") as f:
+            return f.read().rstrip()
 
     def put_status(self, job_id: str, status: JobStatus):
         assert isinstance(status, JobStatus)
@@ -42,42 +38,47 @@ class StorageClient:
 
     def get_status(self, job_id: str) -> JobStatus:
         pickled_status = _internal_kv_get(self.JOB_STATUS_KEY.format(job_id=job_id))
-        assert pickled_status is not None
+        assert pickled_status is not None, f"Status not found for {job_id}"
         return pickle.loads(pickled_status)
 
-def exec_cmd_stream_to_logger(
+    def get_logs_file_path(self, job_id: str) -> str:
+        session_dir = ray.worker._global_node.get_session_dir_path()
+        jobs_log_dir = session_dir + "/logs/jobs"
+        if not os.path.exists(jobs_log_dir):
+            os.mkdir(jobs_log_dir)
+
+        logs_file_path = jobs_log_dir + "/" + f"{self.JOB_LOGS_KEY.format(job_id=job_id)}.out"
+        return logs_file_path
+
+
+def exec_cmd_logs_to_file(
     cmd: str,
-    log_output_list: List[str]
+    log_file: str
 ) -> int:
     """Runs a command as a child process, streaming logs to the input list."""
-    child = subprocess.Popen(
-        cmd.split(" "),
-        universal_newlines=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+    with open(log_file, "a+") as fin:
+        child = subprocess.Popen(
+            [cmd],
+            shell=True,
+            universal_newlines=True,
+            stdout=fin,
+            stderr=subprocess.STDOUT)
 
-    exit_code = None
-    with child.stdout:
-        for line in iter(child.stdout.readline, b""):
-            log_output_list.append(line.strip())
-            exit_code = child.poll()
-            if exit_code is not None:
-                break
-
-    exit_code = child.wait()
-    return exit_code
+        exit_code = child.wait()
+        return exit_code
 
 class JobSupervisor:
-    def __init__(self, job_id: str):
+    def __init__(
+        self, job_id: str
+    ):
         self._job_id = job_id
-        self._logs = []
         self._status = JobStatus.PENDING
         self._client = StorageClient()
 
     def ready(self):
         pass
 
-    def run(self, cmd: str):
+    def run(self, cmd: str, runtime_env: Optional[Dict[str, Any]] = None):
         """Run the command, then exit afterwards.
 
         Should update state and logs.
@@ -89,7 +90,9 @@ class JobSupervisor:
         # 2) Run the command until it finishes, appending logs as it goes.
         # Set JobConfig for the child process (runtime_env, metadata).
         #  - RAY_JOB_CONFIG_JSON={...}
-        exit_code = exec_cmd_stream_to_logger(cmd, self._logs)
+
+        logs_file_path = self._client.get_logs_file_path(self._job_id)
+        exit_code = exec_cmd_logs_to_file(cmd, logs_file_path)
 
         # 3) Once command finishes, update status to SUCCEEDED or FAILED.
         if exit_code == 0:
@@ -98,14 +101,10 @@ class JobSupervisor:
             self._status = JobStatus.FAILED
 
         self._client.put_status(self._job_id, self.get_status())
-        self._client.put_logs(self._job_id, self.get_logs())
         ray.actor.exit_actor()
 
     def get_status(self) -> JobStatus:
         return self._status
-
-    def get_logs(self) -> str:
-        return "".join(self._logs)
 
     def stop(self):
         pass
@@ -125,7 +124,10 @@ class JobManager:
         except ValueError: # Ray returns ValueError for nonexistent actor.
             return None
 
-    def submit_job(self, entrypoint: str, runtime_env: Optional[Dict[str, Any]] = None) -> str:
+    def submit_job(
+        self, job_id: str, entrypoint: str,
+        runtime_env: Optional[Dict[str, Any]] = None
+    ) -> str:
         """
         1) Create new detached actor with same runtime_env as job spec
         2) Get task / actor level runtime_env as env var and pass into
@@ -134,16 +136,12 @@ class JobManager:
 
         Returns unique job_id.
         """
-        # Generate the job_id.
-        job_id: str = str(uuid4())
-
         supervisor = self._supervisor_actor_cls.options(
             lifetime="detached",
             name=self.JOB_ACTOR_NAME.format(job_id=job_id),
             runtime_env=runtime_env,
         ).remote(job_id)
 
-        # TODO: error if doesn't start after awhile?
         try:
             ray.get(supervisor.ready.remote(), timeout=self.START_ACTOR_TIMEOUT_S)
         except GetTimeoutError:
@@ -154,7 +152,7 @@ class JobManager:
 
         return job_id
 
-    def stop_job(self) -> bool:
+    def stop_job(self, job_id) -> bool:
         """Request job to exit."""
         a = self._get_actor_for_job(job_id)
         if a is not None:
@@ -174,14 +172,14 @@ class JobManager:
         return self._client.get_status(job_id)
 
     def get_job_logs(self, job_id: str):
-        a = self._get_actor_for_job(job_id)
-        if a is not None:
-            # Actor is still alive, try to get logs from it.
-            try:
-                return ray.get(a.get_logs.remote())
-            except RayActorError:
-                # Actor exited, so we should fall back to internal_kv.
-                pass
+        # a = self._get_actor_for_job(job_id)
+        # if a is not None:
+        #     # Actor is still alive, try to get logs from it.
+        #     try:
+        #         return ray.get(a.get_logs.remote())
+        #     except RayActorError:
+        #         # Actor exited, so we should fall back to internal_kv.
+        #         pass
 
         # Fall back to internal_kv if the actor is dead.
         return self._client.get_logs(job_id)
