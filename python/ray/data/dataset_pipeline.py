@@ -608,6 +608,7 @@ for method in PER_DATASET_OPS:
                 lambda ds: getattr(ds, method)(*args, **kwargs))
 
         if impl.__annotations__.get("return"):
+            impl.__annotations__ = impl.__annotations__.copy()
             impl.__annotations__["return"] = impl.__annotations__[
                 "return"].replace("Dataset", "DatasetPipeline")
 
@@ -626,6 +627,7 @@ for method in HOLISTIC_PER_DATASET_OPS:
                 lambda ds: getattr(ds, method)(*args, **kwargs))
 
         if impl.__annotations__.get("return"):
+            impl.__annotations__ = impl.__annotations__.copy()
             impl.__annotations__["return"] = impl.__annotations__[
                 "return"].replace("Dataset", "DatasetPipeline")
 
