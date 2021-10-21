@@ -215,10 +215,9 @@ def test_startup_error_yields_clean_result(shutdown_only):
     sys.platform == "win32",
     reason="PSUtil does not work the same on windows.")
 @pytest.mark.parametrize(
-    "call_ray_start", [
-        "ray start --head --ray-client-server-port 25031 "
-        "--port 0"
-    ],
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25031 "
+     "--port 0"],
     indirect=True)
 def test_runtime_install_error_message(call_ray_start):
     """
