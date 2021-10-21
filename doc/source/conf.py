@@ -140,6 +140,7 @@ extensions = [
     'sphinx_copybutton',
     'sphinxcontrib.yt',
     'versionwarning.extension',
+    'sphinx_sitemap',
 ]
 
 versionwarning_admonition_type = "note"

@@ -533,14 +533,14 @@ if __name__ == "__main__":
 
     # Make sure the python images and cuda versions we build here are
     # consistent with the ones used with fix-latest-docker.sh script.
-    py_version_file = os.path.join(_get_root_dir(), "docker",
+    py_version_file = os.path.join(_get_root_dir(), "docker/retag-lambda",
                                    "python_versions.txt")
     with open(py_version_file) as f:
         py_file_versions = f.read().splitlines()
         assert set(PY_MATRIX.keys()) == set(py_file_versions), \
             (PY_MATRIX.keys(), py_file_versions)
 
-    cuda_version_file = os.path.join(_get_root_dir(), "docker",
+    cuda_version_file = os.path.join(_get_root_dir(), "docker/retag-lambda",
                                      "cuda_versions.txt")
 
     with open(cuda_version_file) as f:
