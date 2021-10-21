@@ -75,7 +75,7 @@ def subnet_in_az(idx):
     return subnet
 
 
-TWENTY_SUBNETS_IN_DIFFENT_AZS = [subnet_in_az(i) for i in range(20)]
+TWENTY_SUBNETS_IN_DIFFERENT_AZS = [subnet_in_az(i) for i in range(20)]
 
 # Secondary EC2 subnet to expose to tests as required.
 AUX_SUBNET = {
