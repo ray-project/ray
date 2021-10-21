@@ -176,7 +176,7 @@ class RayS3KVStore(KVStoreBase):
 
     def __init__(
             self,
-            namepsace: str,
+            namespace: str,
             bucket="",
             prefix="",
             region_name="us-west-2",
@@ -184,7 +184,7 @@ class RayS3KVStore(KVStoreBase):
             aws_secret_access_key=None,
             aws_session_token=None,
     ):
-        self._namespace = namepsace
+        self._namespace = namespace
         self._bucket = bucket
         self._prefix = prefix
         if not boto3:
