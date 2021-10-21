@@ -206,7 +206,7 @@ def test_upscale_downscale_delay():
         current_num_ongoing_requests=overload_requests, curr_num_replicas=1)
     assert new_num_replicas == 2
 
-    # Get some scale-down decisions, but not enough to trigger a scale up.
+    # Get some scale-down decisions, but not enough to trigger a scale down.
     for i in range(int(downscale_wait_periods / 2)):
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=no_requests, curr_num_replicas=2)
