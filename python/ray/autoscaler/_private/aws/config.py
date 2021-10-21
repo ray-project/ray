@@ -400,6 +400,20 @@ def _key_assert_msg(node_type: str) -> str:
 
 
 def _configure_subnet(config):
+
+    # No-op out this function if subnets are explicitly specified
+    # for all node types. (It is a user error if explicitly specified
+    # subnets are invalid.)
+    need_to_configure_subnets = False
+    for key, node_type in config["available_node_types"].items():
+        node_config = node_type["node_config"]
+        if "SubnetIds" not in node_config:
+            need_to_configure_subnets = True
+            break
+
+    if not need_to_configure_subnets:
+        return
+
     ec2 = _resource("ec2", config)
     use_internal_ips = config["provider"].get("use_internal_ips", False)
 
