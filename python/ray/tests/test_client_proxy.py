@@ -74,7 +74,7 @@ def test_proxy_manager_bad_startup(shutdown_only):
     that it is properly GC'd.
     """
     proxier.CHECK_PROCESS_INTERVAL_S = 1
-    proxier.CHECK_CHANNEL_TIMEOUT_S = 1
+    proxier.CHECK_CHANNEL_TIMEOUT_S = 5
     pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
 
@@ -84,7 +84,7 @@ def test_proxy_manager_bad_startup(shutdown_only):
         JobConfig(
             runtime_env={"conda": "conda-env-that-sadly-does-not-exist"}))
     # Wait for reconcile loop
-    time.sleep(2)
+    time.sleep(6)
     assert pm.get_channel(client) is None
 
     assert len(pm._free_ports) == 2
