@@ -318,7 +318,7 @@ AsyncPPOTorchPolicy = build_policy_class(
     before_loss_init=setup_late_mixins,
     make_model=make_appo_model,
     mixins=[
-        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
-        TargetNetworkMixin, ValueNetworkMixin
+        LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
+        ValueNetworkMixin
     ],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])

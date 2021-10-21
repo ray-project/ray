@@ -430,7 +430,7 @@ AsyncPPOTFPolicy = build_tf_policy(
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
     mixins=[
-        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
-        TargetNetworkMixin, ValueNetworkMixin
+        LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
+        ValueNetworkMixin
     ],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])
