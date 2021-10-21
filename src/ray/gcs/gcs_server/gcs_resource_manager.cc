@@ -201,7 +201,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
 
   if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
-      resources_data->resource_load_changed()) {
+      resources_data->object_pulls_queued_changed()) {
     absl::MutexLock guard(&resource_buffer_mutex_);
     resources_buffer_[node_id] = *resources_data;
   }

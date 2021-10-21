@@ -173,26 +173,42 @@ NodeResources ResourceMapToNodeResources(
   }
 
   for (auto const &resource : resource_map_total) {
-    ResourceCapacity resource_capacity;
-    resource_capacity.total = resource.second;
-    auto it = resource_map_available.find(resource.first);
-    if (it == resource_map_available.end()) {
-      resource_capacity.available = 0;
-    } else {
-      resource_capacity.available = it->second;
-    }
     if (resource.first == ray::kCPU_ResourceLabel) {
-      node_resources.predefined_resources[CPU] = resource_capacity;
+      node_resources.predefined_resources[CPU].total = resource.second;
     } else if (resource.first == ray::kGPU_ResourceLabel) {
-      node_resources.predefined_resources[GPU] = resource_capacity;
+      node_resources.predefined_resources[GPU].total = resource.second;
     } else if (resource.first == ray::kObjectStoreMemory_ResourceLabel) {
-      node_resources.predefined_resources[OBJECT_STORE_MEM] = resource_capacity;
+      node_resources.predefined_resources[OBJECT_STORE_MEM].total = resource.second;
     } else if (resource.first == ray::kMemory_ResourceLabel) {
-      node_resources.predefined_resources[MEM] = resource_capacity;
+      node_resources.predefined_resources[MEM].total = resource.second;
     } else {
       // This is a custom resource.
+      ResourceCapacity resource_capacity;
+      resource_capacity.total = resource.second;
       node_resources.custom_resources.emplace(string_to_int_map.Insert(resource.first),
                                               resource_capacity);
+    }
+  }
+
+  for (auto const &resource : resource_map_available) {
+    if (resource.first == ray::kCPU_ResourceLabel) {
+      node_resources.predefined_resources[CPU].available = resource.second;
+    } else if (resource.first == ray::kGPU_ResourceLabel) {
+      node_resources.predefined_resources[GPU].available = resource.second;
+    } else if (resource.first == ray::kObjectStoreMemory_ResourceLabel) {
+      node_resources.predefined_resources[OBJECT_STORE_MEM].available = resource.second;
+    } else if (resource.first == ray::kMemory_ResourceLabel) {
+      node_resources.predefined_resources[MEM].available = resource.second;
+    } else {
+      // This is a custom resource.
+      auto resource_label_int = string_to_int_map.Insert(resource.first);
+      if (node_resources.custom_resources.contains(resource_label_int)) {
+        node_resources.custom_resources[resource_label_int].available = resource.second;
+      } else {
+        ResourceCapacity resource_capacity;
+        resource_capacity.available = resource.second;
+        node_resources.custom_resources.emplace(resource_label_int, resource_capacity);
+      }
     }
   }
   return node_resources;
@@ -228,6 +244,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
       if (resource_request.predefined_resources[i] != 0) {
+        RAY_LOG(INFO) << " wangtao  " << std::to_string(i) << " no capacity";
         return false;
       }
       continue;
@@ -238,6 +255,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
 
     if (resource < demand) {
       RAY_LOG(DEBUG) << "At resource capacity";
+      RAY_LOG(INFO) << " wangtao At " << std::to_string(i) << " lack capacity";
       return false;
     }
   }

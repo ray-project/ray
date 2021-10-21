@@ -410,6 +410,8 @@ ray::Status NodeManager::RegisterGcs() {
           if (resource_notification.updated_resources_size() != 0) {
             ResourceSet resource_set(
                 MapFromProtobuf(resource_notification.updated_resources()));
+            RAY_LOG(INFO) << "wangtao update node id " << id << " resource "
+                          << resource_set.ToString();
             ResourceCreateUpdated(id, resource_set);
           }
 
@@ -759,7 +761,8 @@ void NodeManager::WarnResourceDeadlock() {
 void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   const NodeID node_id = NodeID::FromBinary(node_info.node_id());
 
-  RAY_LOG(DEBUG) << "[NodeAdded] Received callback from node id " << node_id;
+  RAY_LOG(INFO) << "[NodeAdded] Received callback from node id "
+                << node_id;  // wangtao debug to info
   if (node_id == self_node_id_) {
     return;
   }
@@ -780,6 +783,8 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
             resource_set.AddOrUpdateResource(resource_entry.first,
                                              resource_entry.second->resource_capacity());
           }
+          RAY_LOG(INFO) << "wangtao update node id " << node_id << " resource "
+                        << resource_set.ToString();
           ResourceCreateUpdated(node_id, resource_set);
         }
       }));
@@ -870,9 +875,10 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
 
 void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceSet &createUpdatedResources) {
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
-                 << " with created or updated resources: "
-                 << createUpdatedResources.ToString() << ". Updating resource map.";
+  RAY_LOG(INFO) << "[ResourceCreateUpdated] received callback from node id "
+                << node_id  // wangtao debug to info
+                << " with created or updated resources: "
+                << createUpdatedResources.ToString() << ". Updating resource map.";
 
   // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
@@ -1456,6 +1462,7 @@ void NodeManager::HandleUpdateResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
+  RAY_LOG(INFO) << "wangtao update resource batch " << resource_usage_batch.DebugString();
 
   if (resource_usage_batch.seq_no() != next_resource_seq_no_) {
     RAY_LOG(WARNING)
@@ -1484,6 +1491,8 @@ void NodeManager::HandleUpdateResourceUsage(
       if (resource_notification.updated_resources_size() != 0) {
         ResourceSet resource_set(
             MapFromProtobuf(resource_notification.updated_resources()));
+        RAY_LOG(INFO) << "wangtao update node id " << id << " resource "
+                      << resource_set.ToString();
         ResourceCreateUpdated(id, resource_set);
       }
 
@@ -1519,6 +1528,7 @@ void NodeManager::HandleRequestResourceReport(
   }
 
   RAY_LOG(INFO) << "wangtao last report " << last_resource_usage_->DebugString();
+  RAY_LOG(INFO) << "wangtao resources node id " << resources_data->node_id();
   RAY_LOG(INFO) << "wangtao resources " << resources_data->DebugString();
   if (ResourcesDataChanged(*resources_data)) {
     RAY_LOG(INFO) << "wangtao report";
@@ -1622,11 +1632,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     // If the reqiured resource and normal task resource exceed available resource,
     // reject it.
     ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
-    RAY_LOG(INFO) << "Reject leasing as the raylet has no enough resources."//wangtao debug to info
-                   << " actor_id = " << actor_id
-                   << ", normal_task_resources = " << normal_task_resources.ToString()
-                   << ", local_resoruce_view = "
-                   << cluster_resource_scheduler_->GetLocalResourceViewString();
+    RAY_LOG(INFO)
+        << "Reject leasing as the raylet has no enough resources."  // wangtao debug to
+                                                                    // info
+        << " actor_id = " << actor_id
+        << ", normal_task_resources = " << normal_task_resources.ToString()
+        << ", local_resoruce_view = "
+        << cluster_resource_scheduler_->GetLocalResourceViewString();
     auto resources_data = reply->mutable_resources_data();
     resources_data->set_node_id(self_node_id_.Binary());
     resources_data->set_resources_normal_task_changed(true);
