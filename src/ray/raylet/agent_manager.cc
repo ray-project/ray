@@ -132,9 +132,9 @@ void AgentManager::StartAgent() {
               std::pow(2, (agent_restart_count_ + 1))));
     } else {
       RAY_LOG(WARNING) << "The Ray agent process has crashed "
-                    << RayConfig::instance().agent_max_restart_count()
-                    << " times in a row and will not be restarted. Check "
-                       "dashboard_agent.log for more information.";
+                       << RayConfig::instance().agent_max_restart_count()
+                       << " times in a row and will not be restarted. Check "
+                          "dashboard_agent.log for more information.";
       RAY_EVENT(WARNING, EL_RAY_AGENT_EXIT)
               .WithField("ip", agent_ip_address_)
               .WithField("pid", agent_pid_)
