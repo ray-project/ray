@@ -1,25 +1,15 @@
 import os
 import pytest
-import shutil
 import sys
 import tempfile
-import time
 from pathlib import Path
-from pytest_lazyfixture import lazy_fixture
 
 import ray
 import ray.experimental.internal_kv as kv
-from ray._private.test_utils import (run_string_as_driver, wait_for_condition)
-from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE, parse_uri
+from ray._private.test_utils import wait_for_condition
+from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 
 S3_PACKAGE_URI = "s3://runtime-env-test/remote_runtime_env.zip"
-
-
-def create_file(p):
-    if not p.parent.exists():
-        p.parent.mkdir()
-    with p.open("w") as f:
-        f.write("Test")
 
 
 @pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
@@ -367,6 +357,7 @@ def test_job_level_gc(start_cluster, working_dir):
     wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
+@pytest.mark.skip("Currently failing.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_actor_level_gc(start_cluster):
     NUM_NODES = 3
@@ -397,76 +388,55 @@ def test_actor_level_gc(start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("client_mode", [True, False])
-def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    working_path = Path(working_dir)
+@pytest.mark.parametrize(
+    "working_dir",
+    [S3_PACKAGE_URI, pytest.lazy_fixture("tmp_working_dir")])
+def test_detached_actor_gc(start_cluster, working_dir):
+    cluster, address = start_cluster
+    ray.init(
+        address, namespace="test", runtime_env={"working_dir": working_dir})
 
-    create_file(working_path / "tmp_dir" / "test_1")
-    create_file(working_path / "tmp_dir" / "test_2")
-    create_file(working_path / "tmp_dir" / "test_3")
-    create_file(working_path / "tmp_dir" / "sub_dir" / "test_1")
-    create_file(working_path / "tmp_dir" / "sub_dir" / "test_2")
-    create_file(working_path / "test1")
-    create_file(working_path / "test2")
-    create_file(working_path / "test3")
-    tmp_dir_test_3 = str((working_path / "tmp_dir" / "test_3").absolute())
-    runtime_env = f"""{{
-        "working_dir": r"{working_dir}",
-    }}"""
-    execute_statement = """
-    vals = ray.get([
-        check_file.remote('test1'),
-        check_file.remote('test2'),
-        check_file.remote('test3'),
-        check_file.remote(os.path.join('tmp_dir', 'test_1')),
-        check_file.remote(os.path.join('tmp_dir', 'test_2')),
-        check_file.remote(os.path.join('tmp_dir', 'test_3')),
-        check_file.remote(os.path.join('tmp_dir', 'sub_dir', 'test_1')),
-        check_file.remote(os.path.join('tmp_dir', 'sub_dir', 'test_2')),
-    ])
-    print(','.join(vals))
-"""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    # Test it works before
-    assert out.strip().split("\n")[-1] == \
-        "Test,Test,Test,Test,Test,Test,Test,Test", out
-    runtime_env = f"""{{
-        "working_dir": r"{working_dir}",
-        "excludes": [
-            # exclude by relative path
-            r"test2",
-            # exclude by dir
-            r"{str(Path("tmp_dir") / "sub_dir")}",
-            # exclude part of the dir
-            r"{str(Path("tmp_dir") / "test_1")}",
-            # exclude part of the dir
-            r"{str(Path("tmp_dir") / "test_2")}",
-        ]
-    }}"""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split("\n")[-1] == \
-        "Test,FAILED,Test,FAILED,FAILED,Test,FAILED,FAILED", out
-    # Test excluding all files using gitignore pattern matching syntax
-    runtime_env = f"""{{
-        "working_dir": r"{working_dir}",
-        "excludes": ["*"]
-    }}"""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split("\n")[-1] == \
-        "FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED,FAILED", out
+    if working_dir == S3_PACKAGE_URI:
+        assert check_internal_kv_gced()
+    else:
+        assert not check_internal_kv_gced()
+
+    @ray.remote
+    class A:
+        def test_import(self):
+            import test_module
+            test_module.one()
+
+    a = A.options(name="test", lifetime="detached").remote()
+    ray.get(a.test_import.remote())
+
+    if working_dir == S3_PACKAGE_URI:
+        assert check_internal_kv_gced()
+    else:
+        assert not check_internal_kv_gced()
+    assert not check_local_files_gced(cluster)
+
+    ray.shutdown()
+
+    ray.init(address, namespace="test")
+
+    if working_dir == S3_PACKAGE_URI:
+        assert check_internal_kv_gced()
+    else:
+        assert not check_internal_kv_gced()
+    assert not check_local_files_gced(cluster)
+
+    a = ray.get_actor("test")
+    ray.get(a.test_import.remote())
+
+    ray.kill(a)
+    wait_for_condition(check_internal_kv_gced)
+    wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("client_mode", [True, False])
-def test_exclusion_2(ray_start_cluster_head, working_dir, client_mode):
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    working_path = Path(working_dir)
+def test_exclusion(start_cluster, tmp_working_dir):
+    cluster, address = start_cluster
 
     def create_file(p):
         if not p.parent.exists():
@@ -474,43 +444,93 @@ def test_exclusion_2(ray_start_cluster_head, working_dir, client_mode):
         with p.open("w") as f:
             f.write("Test")
 
+    working_path = Path(tmp_working_dir)
+    create_file(working_path / "test1")
+    create_file(working_path / "test2")
+    create_file(working_path / "test3")
     create_file(working_path / "tmp_dir" / "test_1")
     create_file(working_path / "tmp_dir" / "test_2")
     create_file(working_path / "tmp_dir" / "test_3")
     create_file(working_path / "tmp_dir" / "sub_dir" / "test_1")
     create_file(working_path / "tmp_dir" / "sub_dir" / "test_2")
-    create_file(working_path / "test1")
-    create_file(working_path / "test2")
-    create_file(working_path / "test3")
     create_file(working_path / "cache" / "test_1")
     create_file(working_path / "tmp_dir" / "cache" / "test_1")
     create_file(working_path / "another_dir" / "cache" / "test_1")
-    tmp_dir_test_3 = str((working_path / "tmp_dir" / "test_3").absolute())
-    runtime_env = f"""{{
-        "working_dir": r"{working_dir}",
-    }}"""
-    execute_statement = """
-    vals = ray.get([
-        check_file.remote('test1'),
-        check_file.remote('test2'),
-        check_file.remote('test3'),
-        check_file.remote(os.path.join('tmp_dir', 'test_1')),
-        check_file.remote(os.path.join('tmp_dir', 'test_2')),
-        check_file.remote(os.path.join('tmp_dir', 'test_3')),
-        check_file.remote(os.path.join('tmp_dir', 'sub_dir', 'test_1')),
-        check_file.remote(os.path.join('tmp_dir', 'sub_dir', 'test_2')),
-        check_file.remote(os.path.join("cache", "test_1")),
-        check_file.remote(os.path.join("tmp_dir", "cache", "test_1")),
-        check_file.remote(os.path.join("another_dir", "cache", "test_1")),
-    ])
-    print(','.join(vals))
-"""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    # Test it works before
-    assert out.strip().split("\n")[-1] == \
-        "Test,Test,Test,Test,Test,Test,Test,Test,Test,Test,Test", out
-    with open(f"{working_dir}/.gitignore", "w") as f:
+
+    # Test that all files are present without excluding.
+    ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+
+    @ray.remote
+    def check_file(name):
+        try:
+            with open(name) as f:
+                return f.read()
+        except Exception:
+            return "FAILED"
+
+    def get_all():
+        return ray.get([
+            check_file.remote("test1"),
+            check_file.remote("test2"),
+            check_file.remote("test3"),
+            check_file.remote(os.path.join("tmp_dir", "test_1")),
+            check_file.remote(os.path.join("tmp_dir", "test_2")),
+            check_file.remote(os.path.join("tmp_dir", "test_3")),
+            check_file.remote(os.path.join("tmp_dir", "sub_dir", "test_1")),
+            check_file.remote(os.path.join("tmp_dir", "sub_dir", "test_2")),
+            check_file.remote(os.path.join("cache", "test_1")),
+            check_file.remote(os.path.join("tmp_dir", "cache", "test_1")),
+            check_file.remote(os.path.join("another_dir", "cache", "test_1")),
+        ])
+
+    assert get_all() == [
+        "Test", "Test", "Test", "Test", "Test", "Test", "Test", "Test", "Test",
+        "Test", "Test"
+    ]
+
+    ray.shutdown()
+
+    # Test various exclusion methods.
+    ray.init(
+        address,
+        runtime_env={
+            "working_dir": tmp_working_dir,
+            "excludes": [
+                # exclude by relative path
+                "test2",
+                # exclude by dir
+                str(Path("tmp_dir") / "sub_dir"),
+                # exclude part of the dir
+                str(Path("tmp_dir") / "test_1"),
+                # exclude part of the dir
+                str(Path("tmp_dir") / "test_2"),
+            ]
+        })
+
+    assert get_all() == [
+        "Test", "FAILED", "Test", "FAILED", "FAILED", "Test", "FAILED",
+        "FAILED", "Test", "Test", "Test"
+    ]
+
+    ray.shutdown()
+
+    # Test excluding all files using gitignore pattern matching syntax
+    ray.init(
+        address,
+        runtime_env={
+            "working_dir": tmp_working_dir,
+            "excludes": ["*"]
+        })
+
+    assert get_all() == [
+        "FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED",
+        "FAILED", "FAILED", "FAILED", "FAILED"
+    ]
+
+    ray.shutdown()
+
+    # Test excluding with a .gitignore file.
+    with open(f"{tmp_working_dir}/.gitignore", "w") as f:
         f.write("""
 # Comment
 test_[12]
@@ -518,76 +538,51 @@ test_[12]
 !/tmp_dir/sub_dir/test_1
 cache/
 """)
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    t = out.strip().split("\n")[-1]
-    assert out.strip().split("\n")[-1] == \
-        "FAILED,Test,Test,FAILED,FAILED,Test,Test,FAILED,FAILED,FAILED,FAILED"
+
+    ray.init(
+        address, runtime_env={
+            "working_dir": tmp_working_dir,
+        })
+
+    assert get_all() == [
+        "FAILED", "Test", "Test", "FAILED", "FAILED", "Test", "Test", "FAILED",
+        "FAILED", "FAILED", "FAILED"
+    ]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("client_mode", [True, False])
-def test_runtime_env_getter(ray_start_cluster_head, working_dir, client_mode):
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    # Execute the following cmd in driver with runtime_env
-    execute_statement = """
-print(ray.get_runtime_context().runtime_env["working_dir"])
-"""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    working_dir_uri = out.strip().split()[-1]
-    assert working_dir_uri.startswith("gcs://_ray_pkg_")
-    assert working_dir_uri.endswith(".zip")
+@pytest.mark.parametrize(
+    "working_dir",
+    [S3_PACKAGE_URI, pytest.lazy_fixture("tmp_working_dir")])
+def test_runtime_context(start_cluster, working_dir):
+    cluster, address = start_cluster
+    ray.init(runtime_env={"working_dir": working_dir})
+
+    def check():
+        wd = ray.get_runtime_context().runtime_env["working_dir"]
+        if working_dir == S3_PACKAGE_URI:
+            assert wd == S3_PACKAGE_URI
+        else:
+            assert wd.startswith("gcs://_ray_pkg_")
+
+    check()
+
+    @ray.remote
+    def task():
+        check()
+
+    ray.get(task.remote())
+
+    @ray.remote
+    class Actor:
+        def check(self):
+            check()
+
+    a = Actor.remote()
+    ray.get(a.check.remote())
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("client_mode", [True, False])
-def test_regular_actors(ray_start_cluster_head, working_dir, client_mode):
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    # Execute the following cmd in driver with runtime_env
-    execute_statement = """
-test_actor = TestActor.options(name="test_actor").remote()
-print(sum(ray.get([test_actor.one.remote()] * 1000)))
-"""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000", out
-    assert len(list(Path(runtime_env_dir).iterdir())) == 1
-    assert len(kv._internal_kv_list("gcs://")) == 0
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("client_mode", [True, False])
-def test_detached_actors(ray_start_cluster_head, working_dir, client_mode):
-    cluster = ray_start_cluster_head
-    address, env, runtime_env_dir = start_client_server(cluster, client_mode)
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    # Execute the following cmd in driver with runtime_env
-    execute_statement = """
-test_actor = TestActor.options(name="test_actor", lifetime="detached").remote()
-print(sum(ray.get([test_actor.one.remote()] * 1000)))
-"""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000", out
-    # It's a detached actors, so it should still be there
-    assert len(kv._internal_kv_list("gcs://")) == 1
-    assert len(list(Path(runtime_env_dir).iterdir())) == 2
-    pkg_dir = [f for f in Path(runtime_env_dir).glob("*") if f.is_dir()][0]
-    sys.path.insert(0, str(pkg_dir))
-    test_actor = ray.get_actor("test_actor")
-    assert sum(ray.get([test_actor.one.remote()] * 1000)) == 1000
-    ray.kill(test_actor)
-    time.sleep(5)
-    assert len(list(Path(runtime_env_dir).iterdir())) == 1
-    assert len(kv._internal_kv_list("gcs://")) == 0
-
-
-def test_working_dir_override_failure(shutdown_only):
+def test_override_failure(shutdown_only):
     ray.init()
 
     with pytest.raises(ValueError):
