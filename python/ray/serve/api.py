@@ -581,14 +581,20 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                 )
                 return sender.build_starlette_response()
 
-            def __del__(self):
+            # NOTE: __del__ must be async so that we can run asgi shutdown
+            # in the same event loop.
+            async def __del__(self):
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
                 with LoggingContext(
                         self._serve_asgi_lifespan.logger,
                         level=logging.WARNING):
-                    asyncio.get_event_loop().run_until_complete(
-                        self._serve_asgi_lifespan.shutdown())
+                    await self._serve_asgi_lifespan.shutdown()
+
+                # Make sure to call user's del method as well.
+                super_cls = super()
+                if hasattr(super_cls, "__del__"):
+                    super_cls.__del__()
 
         ASGIAppWrapper.__name__ = cls.__name__
         return ASGIAppWrapper
