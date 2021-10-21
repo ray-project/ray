@@ -5,7 +5,7 @@ Besides setting the max concurrency overall for an asyncio actor, Ray allows met
 
 .. warning:: Concurrency groups are only supported for asyncio actors, not threaded actors.
 
-.. _define-concurrency-groups:
+.. _defining-concurrency-groups:
 
 Defining Concurrency Groups
 ---------------------------
@@ -79,7 +79,7 @@ The concurrency of the default group can be changed by setting the ``max_concurr
         actor = AsyncIOActor.options(max_concurrency=10).remote()
 
 
-.. _specify-concurrency-group-for-methods-dynamically:
+.. _setting-the-concurrency-group-at-runtime:
 
 Setting the Concurrency Group at Runtime
 ----------------------------------------
