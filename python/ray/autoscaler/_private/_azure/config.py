@@ -3,8 +3,8 @@ import logging
 from pathlib import Path
 import random
 
-from azure.common.client_factory import get_client_from_cli_profile
-from azure.common.credentials import get_azure_cli_credentials
+from azure.common.credentials import get_cli_profile
+from azure.identity import AzureCliCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
@@ -23,25 +23,16 @@ def bootstrap_azure(config):
     return config
 
 
-def _get_client(client_class, config):
-    kwargs = {}
-    if "subscription_id" in config["provider"]:
-        kwargs["subscription_id"] = config["provider"]["subscription_id"]
-
-    return get_client_from_cli_profile(client_class=client_class, **kwargs)
-
-
 def _configure_resource_group(config):
     # TODO: look at availability sets
     # https://docs.microsoft.com/en-us/azure/virtual-machines/windows/tutorial-availability-sets
-    resource_client = _get_client(ResourceManagementClient, config)
-
-    _, cli_subscription_id = get_azure_cli_credentials(
-        resource=ResourceManagementClient)
-    subscription_id = config["provider"].get("subscription_id",
-                                             cli_subscription_id)
-    logger.info("Using subscription id: %s", subscription_id)
+    subscription_id = config["provider"].get("subscription_id")
+    if subscription_id is None:
+        subscription_id = get_cli_profile().get_subscription_id()
+    resource_client = ResourceManagementClient(AzureCliCredential(),
+                                               subscription_id)
     config["provider"]["subscription_id"] = subscription_id
+    logger.info("Using subscription id: %s", subscription_id)
 
     assert "resource_group" in config["provider"], (
         "Provider config must include resource_group field")
@@ -80,10 +71,9 @@ def _configure_resource_group(config):
         }
     }
 
-    if hasattr(resource_client.deployments, "create_or_update"):
-        create_or_update = resource_client.deployments.create_or_update
-    else:
-        create_or_update = resource_client.deployments.begin_create_or_update
+    create_or_update = getattr(
+        resource_client.deployments, "create_or_update",
+        getattr(resource_client.deployments, "begin_create_or_update"))
     create_or_update(
         resource_group_name=resource_group,
         deployment_name="ray-config",
