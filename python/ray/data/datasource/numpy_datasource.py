@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Callable
 
 import numpy as np
 
@@ -33,8 +33,12 @@ class NumpyDatasource(FileBasedDatasource):
             "value": TensorArray(np.load(buf, allow_pickle=True))
         })
 
-    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
-                     column: str, **writer_args):
+    def _write_block(self,
+                     f: "pyarrow.NativeFile",
+                     block: BlockAccessor,
+                     column: str,
+                     writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+                     **writer_args):
         value = block.to_numpy(column)
         np.save(f, value)
 
