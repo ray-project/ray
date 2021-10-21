@@ -160,7 +160,7 @@ class ProxyManager():
             agent_port = 0
         else:
             try:
-                addr.ParseFromString(serialized=serialized)
+                addr.ParseFromString(serialized)
                 logger.info(
                     "Discovered runtime agent address:\n{}".format(addr))
                 agent_port = addr.agent_port
