@@ -158,9 +158,14 @@ class ProxyManager():
             logger.info("Runtime agent disabled.")
             agent_port = 0
         else:
-            addr.ParseFromString(serialized=serialized)
-            logger.info("Discovered runtime agent address:\n{}".format(addr))
-            agent_port = addr.agent_port
+            try:
+                addr.ParseFromString(serialized=serialized)
+                logger.info(
+                    "Discovered runtime agent address:\n{}".format(addr))
+                agent_port = addr.agent_port
+            except Exception:
+                logger.exception("Failed to parse address.")
+                agent_port = 0
         self._runtime_env_channel = grpc.insecure_channel(
             f"localhost:{agent_port}")
         self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
