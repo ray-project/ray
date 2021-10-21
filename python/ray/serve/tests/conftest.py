@@ -43,3 +43,5 @@ def serve_instance(_shared_serve_instance):
     # Clear all state between tests to avoid naming collisions.
     for deployment in serve.list_deployments().values():
         deployment.delete()
+    # Clear the ServeHandle cache between tests to avoid them piling up.
+    _shared_serve_instance.handle_cache.clear()
