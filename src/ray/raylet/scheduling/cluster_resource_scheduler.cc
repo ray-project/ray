@@ -63,8 +63,6 @@ bool ClusterResourceScheduler::NodeAlive(int64_t node_id) const {
     return false;
   }
   auto node_id_binary = string_to_int_map_.Get(node_id);
-  RAY_LOG(ERROR) << "NodeAlive: " << node_id << "\t" << local_node_id_ << "\t"
-                 << node_id_binary.size();
   return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id_binary)) != nullptr;
 }
 
@@ -104,7 +102,6 @@ void ClusterResourceScheduler::AddOrUpdateNode(
 
 void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
                                                const NodeResources &node_resources) {
-  RAY_LOG(ERROR) << "AddOrUpdateNode: " << node_id;
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.

@@ -184,8 +184,8 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     // policy.
     gcs_client_ = std::make_unique<gcs::MockGcsClient>();
     node_info.set_node_id(NodeID::FromRandom().Binary());
-    EXPECT_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
-        .WillRepeatedly(::testing::Return(&node_info));
+    ON_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
+        .WillByDefault(::testing::Return(&node_info));
   }
 
   void Shutdown() {}
@@ -419,8 +419,6 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   ClusterResourceScheduler resource_scheduler(0, node_resources, *gcs_client_);
   auto node_id = NodeID::FromRandom();
   auto node_internal_id = resource_scheduler.string_to_int_map_.Insert(node_id.Binary());
-  RAY_LOG(ERROR) << "ID: "
-                 << resource_scheduler.string_to_int_map_.Get(node_internal_id).size();
   {
     NodeResources node_resources;
     vector<FixedPoint> pred_capacities{10, 2, 3};
@@ -754,11 +752,11 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
   resource_scheduler.AddOrUpdateNode(node_id.Binary(), resource, resource);
   int64_t violations = 0;
   bool is_infeasible = false;
-  RAY_LOG(ERROR) << "TestingDeadNodeTest";
   ASSERT_EQ(node_id.Binary(),
             resource_scheduler.GetBestSchedulableNode(resource, false, false, false,
                                                       &violations, &is_infeasible));
   EXPECT_CALL(*gcs_client_->mock_node_accessor, Get(node_id, ::testing::_))
+      .WillOnce(::testing::Return(nullptr))
       .WillOnce(::testing::Return(nullptr));
   ASSERT_EQ("", resource_scheduler.GetBestSchedulableNode(resource, false, false, false,
                                                           &violations, &is_infeasible));
@@ -1116,9 +1114,8 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
       }
       // Our local view says there are not enough resources on the remote node to
       // schedule another task.
-      ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false, false,
-                                                          &t, &is_infeasible),
-                "");
+      ASSERT_EQ("", resource_scheduler.GetBestSchedulableNode(task_spec, false, false, false,
+                                                              &t, &is_infeasible));
       ASSERT_FALSE(
           resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
       ASSERT_FALSE(resource_scheduler.AllocateRemoteTaskResources(remote, task_spec));
