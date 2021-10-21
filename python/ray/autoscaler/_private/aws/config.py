@@ -410,7 +410,11 @@ def _configure_subnet(config):
     )
 
     if not need_to_configure_subnets:
-        return
+        _set_config_info(subnet_src={
+            node_type: "config"
+            for node_type in config["available_node_types"].keys()
+        })
+        return config
 
     ec2 = _resource("ec2", config)
     use_internal_ips = config["provider"].get("use_internal_ips", False)
