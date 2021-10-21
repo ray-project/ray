@@ -20,7 +20,8 @@ from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
+from ray.rllib.policy.tf_policy import EntropyCoeffSchedule, \
+    LearningRateSchedule, TFPolicy
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -252,7 +253,7 @@ def appo_surrogate_loss(
 
     # The summed weighted loss.
     total_loss = mean_policy_loss - \
-        mean_entropy * policy.config["entropy_coeff"]
+        mean_entropy * policy.entropy_coeff
     # Optional KL loss.
     if policy.config["use_kl_loss"]:
         total_loss += policy.kl_coeff * mean_kl_loss
@@ -304,7 +305,8 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy._value_targets, [-1]),
-            tf.reshape(values_batched, [-1]))
+            tf.reshape(values_batched, [-1])),
+        "entropy_coeff": policy.entropy_coeff,
     }
 
     if policy.config["vtrace"]:
@@ -400,6 +402,8 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
@@ -430,7 +434,10 @@ AsyncPPOTFPolicy = build_tf_policy(
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
     mixins=[
-        LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
-        ValueNetworkMixin
+        LearningRateSchedule,
+        KLCoeffMixin,
+        TargetNetworkMixin,
+        ValueNetworkMixin,
+        EntropyCoeffSchedule,
     ],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])
