@@ -418,7 +418,7 @@ class SyncerCallback(Callback):
         from ray.tune.durable_trainable import DurableTrainable
 
         trial_syncer = self._get_trial_syncer(trial)
-        if trial.sync_on_checkpoint:
+        if trial.sync_on_checkpoint and self._sync_function is not False:
             try:
                 # Wait for any other syncs to finish. We need to sync again
                 # after this to handle checkpoints taken mid-sync.
