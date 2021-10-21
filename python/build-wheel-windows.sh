@@ -36,6 +36,7 @@ install_ray() {
     pip install wheel
 
     pushd dashboard/client
+      yarn
       yarn build
     popd
 
