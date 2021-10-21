@@ -3,71 +3,71 @@ import pytest
 import ray
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="PSUtil does not work the same on windows.")
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 25001 --port 0"],
-    indirect=True)
-def test_multi_cli_basic(call_ray_start):
-    ray.init("ray://localhost:25001")
-    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
-    cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
-    with cli1:
-        a = ray.put(10)
-
-    with cli2:
-        b = ray.put(20)
-
-    # TODO better error message.
-    # Right now, it's EOFError actually
-    with pytest.raises(Exception):
-        ray.get(a)
-
-    with pytest.raises(Exception), cli2:
-        ray.get(a)
-
-    with pytest.raises(Exception), cli1:
-        ray.get(b)
-
-    c = ray.put(30)
-
-    with cli1:
-        assert 10 == ray.get(a)
-
-    with cli2:
-        assert 20 == ray.get(b)
-
-    with pytest.raises(Exception), cli1:
-        ray.get(c)
-
-    with pytest.raises(Exception), cli2:
-        ray.get(c)
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="PSUtil does not work the same on windows.")
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 25001 --port 0"],
-    indirect=True)
-def test_multi_cli_init(call_ray_start):
-    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
-    with pytest.raises(
-            ValueError,
-            match="The client has already connected to the cluster "
-            "with allow_multiple=True. Please set allow_multiple=True"
-            " to proceed"):
-        ray.init("ray://localhost:25001")
-    cli2 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
-
-    cli1.disconnect()
-    cli2.disconnect()
-
-    ray.init("ray://localhost:25001")
-    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
+#@pytest.mark.skipif(
+#    sys.platform == "win32",
+#    reason="PSUtil does not work the same on windows.")
+#@pytest.mark.parametrize(
+#    "call_ray_start",
+#    ["ray start --head --ray-client-server-port 25001 --port 0"],
+#    indirect=True)
+#def test_multi_cli_basic(call_ray_start):
+#    ray.init("ray://localhost:25001")
+#    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
+#    cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
+#    with cli1:
+#        a = ray.put(10)
+#
+#    with cli2:
+#        b = ray.put(20)
+#
+#    # TODO better error message.
+#    # Right now, it's EOFError actually
+#    with pytest.raises(Exception):
+#        ray.get(a)
+#
+#    with pytest.raises(Exception), cli2:
+#        ray.get(a)
+#
+#    with pytest.raises(Exception), cli1:
+#        ray.get(b)
+#
+#    c = ray.put(30)
+#
+#    with cli1:
+#        assert 10 == ray.get(a)
+#
+#    with cli2:
+#        assert 20 == ray.get(b)
+#
+#    with pytest.raises(Exception), cli1:
+#        ray.get(c)
+#
+#    with pytest.raises(Exception), cli2:
+#        ray.get(c)
+#
+#
+#@pytest.mark.skipif(
+#    sys.platform == "win32",
+#    reason="PSUtil does not work the same on windows.")
+#@pytest.mark.parametrize(
+#    "call_ray_start",
+#    ["ray start --head --ray-client-server-port 25001 --port 0"],
+#    indirect=True)
+#def test_multi_cli_init(call_ray_start):
+#    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
+#    with pytest.raises(
+#            ValueError,
+#            match="The client has already connected to the cluster "
+#            "with allow_multiple=True. Please set allow_multiple=True"
+#            " to proceed"):
+#        ray.init("ray://localhost:25001")
+#    cli2 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
+#
+#    cli1.disconnect()
+#    cli2.disconnect()
+#
+#    ray.init("ray://localhost:25001")
+#    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
 
 
 @pytest.mark.skipif(
