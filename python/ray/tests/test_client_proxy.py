@@ -157,6 +157,7 @@ def test_delay_in_rewriting_environment(shutdown_only):
     """
     proxier.LOGSTREAM_RETRIES = 3
     proxier.LOGSTREAM_RETRY_INTERVAL_SEC = 1
+    proxier.CHECK_CHANNEL_TIMEOUT_S = 5
     ray_instance = ray.init(_redis_password="test")
     server = proxier.serve_proxier(
         "localhost:25010",
