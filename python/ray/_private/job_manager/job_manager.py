@@ -78,7 +78,7 @@ class JobSupervisor:
     def ready(self):
         pass
 
-    def run(self, cmd: str, runtime_env: Optional[Dict[str, Any]] = None):
+    def run(self, cmd: str):
         """Run the command, then exit afterwards.
 
         Should update state and logs.

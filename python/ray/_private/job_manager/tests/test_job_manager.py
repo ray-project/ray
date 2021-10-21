@@ -45,7 +45,9 @@ def test_basic_job_ls_grep(job_manager):
     assert job_manager.get_job_logs(job_id) == b"test_job_manager.py"
 
 def test_submit_job_with_entrypoint_script(job_manager):
+    job_id: str = str(uuid4())
     job_id = job_manager.submit_job(
+        job_id,
         "python script.py",
         runtime_env={"working_dir": "s3://runtime-env-test/script.zip"}
     )
