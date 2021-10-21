@@ -209,7 +209,7 @@ In addition, there are other formatting and semantic checkers for components lik
 
     ./ci/travis/check-git-clang-tidy-output.sh
 
-You can run `setup_hooks.sh` to create a git hook that will run the linter before you push your changes.
+You can run ``setup_hooks.sh`` to create a git hook that will run the linter before you push your changes.
 
 Understanding CI test jobs
 --------------------------
