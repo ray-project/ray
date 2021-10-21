@@ -477,7 +477,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
   RAY_LOG(DEBUG) << "Draining node, node id = " << node_id;
   rpc::DrainNodeRequest request;
   auto draining_request = request.add_drain_node_data();
-  draining_request->set_node_id(local_node_info_.node_id());
+  draining_request->set_node_id(node_id.Binary());
   client_impl_->GetGcsRpcClient().DrainNode(
       request,
       [node_id, callback](const Status &status, const rpc::DrainNodeReply &reply) {
