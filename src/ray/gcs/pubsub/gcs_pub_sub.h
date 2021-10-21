@@ -23,7 +23,9 @@
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/pubsub/publisher.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -48,7 +50,7 @@ class GcsPubSub {
   /// The callback is called when a subscription message is received.
   using Callback = std::function<void(const std::string &id, const std::string &data)>;
 
-  explicit GcsPubSub(std::shared_ptr<RedisClient> redis_client)
+  explicit GcsPubSub(const std::shared_ptr<RedisClient> &redis_client)
       : redis_client_(redis_client), total_commands_queued_(0) {}
 
   virtual ~GcsPubSub() = default;
@@ -176,7 +178,48 @@ class GcsPubSub {
   size_t total_commands_queued_ GUARDED_BY(mutex_);
 };
 
+class GcsPublisher {
+ public:
+  GcsPublisher(const std::shared_ptr<RedisClient> &redis_client,
+               std::unique_ptr<pubsub::Publisher> publisher)
+      : pubsub_(std::make_unique<GcsPubSub>(redis_client)),
+        publisher_(std::move(publisher)) {}
 
+  explicit GcsPublisher(std::unique_ptr<GcsPubSub> pubsub) : pubsub_(std::move(pubsub)) {}
+
+  Status PublishObject(const ObjectID &id, const rpc::ObjectLocationChange &message,
+                       const StatusCallback &done);
+
+  Status PublishActor(const ActorID &id, const rpc::ActorTableData &message,
+                      const StatusCallback &done);
+
+  Status PublishJob(const JobID &id, const rpc::JobTableData &message,
+                    const StatusCallback &done);
+
+  Status PublishNodeInfo(const NodeID &id, const rpc::GcsNodeInfo &message,
+                         const StatusCallback &done);
+
+  Status PublishNodeResource(const NodeID &id, const rpc::NodeResourceChange &message,
+                             const StatusCallback &done);
+
+  Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
+                              const StatusCallback &done);
+
+  Status PublishWorkerFailure(const WorkerID &id, const rpc::WorkerDeltaData &message,
+                              const StatusCallback &done);
+
+  Status PublishTaskLease(const TaskID &id, const rpc::TaskLeaseData &message,
+                          const StatusCallback &done);
+
+  Status PublishError(const std::string &id, const rpc::ErrorTableData &message,
+                      const StatusCallback &done);
+
+  std::string DebugString() const;
+
+ private:
+  const std::unique_ptr<GcsPubSub> pubsub_;
+  const std::unique_ptr<pubsub::Publisher> publisher_;
+};
 
 }  // namespace gcs
 }  // namespace ray

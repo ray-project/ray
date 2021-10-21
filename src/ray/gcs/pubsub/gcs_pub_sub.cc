@@ -205,5 +205,63 @@ std::string GcsPubSub::DebugString() const {
   return stream.str();
 }
 
+Status GcsPublisher::PublishObject(const ObjectID &id,
+                                   const rpc::ObjectLocationChange &message,
+                                   const StatusCallback &done) {
+  return pubsub_->Publish(OBJECT_CHANNEL, id.Hex(), message.SerializeAsString(), done);
+}
+
+Status GcsPublisher::PublishActor(const ActorID &id, const rpc::ActorTableData &message,
+                                  const StatusCallback &done) {
+  return pubsub_->Publish(ACTOR_CHANNEL, id.Hex(), message.SerializeAsString(), done);
+}
+
+Status GcsPublisher::PublishJob(const JobID &id, const rpc::JobTableData &message,
+                                const StatusCallback &done) {
+  return pubsub_->Publish(JOB_CHANNEL, id.Hex(), message.SerializeAsString(), done);
+}
+
+Status GcsPublisher::PublishNodeInfo(const NodeID &id, const rpc::GcsNodeInfo &message,
+                                     const StatusCallback &done) {
+  return pubsub_->Publish(NODE_CHANNEL, id.Hex(), message.SerializeAsString(), done);
+}
+
+Status GcsPublisher::PublishNodeResource(const NodeID &id,
+                                         const rpc::NodeResourceChange &message,
+                                         const StatusCallback &done) {
+  return pubsub_->Publish(NODE_RESOURCE_CHANNEL, id.Hex(), message.SerializeAsString(),
+                          done);
+}
+
+Status GcsPublisher::PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
+                                          const StatusCallback &done) {
+  return pubsub_->Publish(RESOURCES_BATCH_CHANNEL, "", message.SerializeAsString(), done);
+}
+
+Status GcsPublisher::PublishWorkerFailure(const WorkerID &id,
+                                          const rpc::WorkerDeltaData &message,
+                                          const StatusCallback &done) {
+  return pubsub_->Publish(WORKER_CHANNEL, id.Hex(), message.SerializeAsString(), done);
+}
+
+Status GcsPublisher::PublishTaskLease(const TaskID &id, const rpc::TaskLeaseData &message,
+                                      const StatusCallback &done) {
+  return pubsub_->Publish(TASK_LEASE_CHANNEL, id.Hex(), message.SerializeAsString(),
+                          done);
+}
+
+Status GcsPublisher::PublishError(const std::string &id,
+                                  const rpc::ErrorTableData &message,
+                                  const StatusCallback &done) {
+  return pubsub_->Publish(ERROR_INFO_CHANNEL, id, message.SerializeAsString(), done);
+}
+
+std::string GcsPublisher::DebugString() const {
+  if (pubsub_) {
+    return pubsub_->DebugString();
+  }
+  return "GcsPublisher {}";
+}
+
 }  // namespace gcs
 }  // namespace ray
