@@ -404,12 +404,10 @@ def _configure_subnet(config):
     # No-op out this function if subnets are explicitly specified
     # for all node types. (It is a user error if explicitly specified
     # subnets are invalid.)
-    need_to_configure_subnets = False
-    for key, node_type in config["available_node_types"].items():
-        node_config = node_type["node_config"]
-        if "SubnetIds" not in node_config:
-            need_to_configure_subnets = True
-            break
+    need_to_configure_subnets = any(
+        "SubnetIds" not in node_type_config["node_config"] 
+        for node_type_config in config["available_node_types"].values()
+    )
 
     if not need_to_configure_subnets:
         return
