@@ -320,9 +320,11 @@ if [ "${1-}" == '--files' ]; then
 # Format the entire python directory and other scripts.
 elif [ "${1-}" == '--all-scripts' ]; then
     format_all_scripts "${@}"
+    if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi
 # Format the all Python, C++, Java and other script files.
 elif [ "${1-}" == '--all' ]; then
     format_all "${@}"
+    if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi
 else
     # Add the upstream remote if it doesn't exist
     if ! git remote -v | grep -q upstream; then
@@ -335,7 +337,6 @@ else
     # Format only the files that changed in last commit.
     format_changed
 fi
-if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi
 
 # Ensure import ordering
 # Make sure that for every import psutil; import setproctitle

@@ -495,7 +495,7 @@ _lint() {
   esac
 
   # Lint Python, C++ and Bash changes.
-  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh
+  "${ROOT_DIR}"/format.sh
 
   # Make sure that the README is formatted properly.
   lint_readme
