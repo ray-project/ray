@@ -453,7 +453,8 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 
   // Unregister node info
   rpc::DrainNodeRequest unregister_node_info_request;
-  unregister_node_info_request.set_node_id(gcs_node_info->node_id());
+  auto draining_request = unregister_node_info_request.add_drain_node_data();
+  draining_request->set_node_id(gcs_node_info->node_id());
   ASSERT_TRUE(DrainNode(unregister_node_info_request));
   node_info_list = GetAllNodeInfo();
   ASSERT_TRUE(node_info_list.size() == 1);
@@ -493,7 +494,8 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
 
   // Unregister node info
   rpc::DrainNodeRequest unregister_node_info_request;
-  unregister_node_info_request.set_node_id(gcs_node_info->node_id());
+  auto draining_request = unregister_node_info_request.add_drain_node_data();
+  draining_request->set_node_id(gcs_node_info->node_id());
   ASSERT_TRUE(DrainNode(unregister_node_info_request));
   node_info_list = GetAllNodeInfo();
   ASSERT_TRUE(node_info_list.size() == 1);
