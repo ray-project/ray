@@ -109,7 +109,7 @@ def cleanup_remote_node_experiment_dir(experiment_name: str):
     experiment_dir = os.path.join(
         os.path.expanduser("~/ray_results"), experiment_name)
 
-    command = ["rm", "-rf", f"'{experiment_dir}'"]
+    command = ["rm", "-rf", f"{experiment_dir}"]
 
     @ray.remote
     def _run_on_remote_node(cmd: str):
