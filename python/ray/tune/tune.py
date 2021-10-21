@@ -106,9 +106,9 @@ def run(
         callbacks: Optional[Sequence[Callback]] = None,
         max_concurrent_trials: Optional[int] = None,
         # Deprecated args
+        queue_trials: Optional[bool] = None,
         loggers: Optional[Sequence[Type[Logger]]] = None,
-        _remote: bool = None,
-        queue_trials: bool = None,
+        _remote: Optional[bool] = None,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -292,8 +292,12 @@ def run(
 
     # To be removed in 1.9.
     if queue_trials is not None:
-        warnings.warn(
-            "`queue_trials` is being deprecated. Please remove it from API.")
+        raise DeprecationWarning(
+            "`queue_trials` has been deprecated and is replaced by "
+            "the `TUNE_MAX_PENDING_TRIALS_PG` environment variable. "
+            "Per default at least one Trial is queued at all times, "
+            "so you likely don't need to change anything other than "
+            "removing this argument from your call to `tune.run()`")
 
     # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
     # remote_run_kwargs must be defined before any other
@@ -656,9 +660,10 @@ def run_experiments(
         trial_executor: Optional[RayTrialExecutor] = None,
         raise_on_failed_trial: bool = True,
         concurrent: bool = True,
+        # Deprecated args.
+        queue_trials: Optional[bool] = None,
         callbacks: Optional[Sequence[Callback]] = None,
-        _remote: bool = None,
-        queue_trials: bool = None):
+        _remote: Optional[bool] = None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -674,8 +679,12 @@ def run_experiments(
     """
     # To be removed in 1.9.
     if queue_trials is not None:
-        warnings.warn(
-            "`queue_trials` is being deprecated. Please remove it from API.")
+        raise DeprecationWarning(
+            "`queue_trials` has been deprecated and is replaced by "
+            "the `TUNE_MAX_PENDING_TRIALS_PG` environment variable. "
+            "Per default at least one Trial is queued at all times, "
+            "so you likely don't need to change anything other than "
+            "removing this argument from your call to `tune.run()`")
 
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
