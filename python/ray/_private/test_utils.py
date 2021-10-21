@@ -680,6 +680,34 @@ def is_placement_group_removed(pg):
     return table["state"] == "REMOVED"
 
 
+def placement_group_assert_no_leak(pgs_created):
+    for pg in pgs_created:
+        ray.util.remove_placement_group(pg)
+
+    def wait_for_pg_removed():
+        for pg_entry in ray.util.placement_group_table().values():
+            if pg_entry["state"] != "REMOVED":
+                return False
+        return True
+
+    wait_for_condition(wait_for_pg_removed)
+
+    cluster_resources = ray.cluster_resources()
+    cluster_resources.pop("memory")
+    cluster_resources.pop("object_store_memory")
+
+    def wait_for_resource_recovered():
+        for resource, val in ray.available_resources().items():
+            if (resource in cluster_resources
+                    and cluster_resources[resource] != val):
+                return False
+            if "_group_" in resource:
+                return False
+        return True
+
+    wait_for_condition(wait_for_resource_recovered)
+
+
 def setup_tls():
     """Sets up required environment variables for tls"""
     if sys.platform == "darwin":

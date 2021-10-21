@@ -397,3 +397,10 @@ def unstable_spilling_config(request, tmp_path):
     ])
 def slow_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture
+def ray_start_cluster(request):
+    param = getattr(request, "param", {})
+    with _ray_start_cluster(**param) as res:
+        yield res
