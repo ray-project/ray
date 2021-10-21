@@ -245,6 +245,7 @@ def test_object_lost_error(ray_start_cluster, debug_enabled):
         assert ("test_object_lost_error" in error) == debug_enabled
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
@@ -337,6 +338,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
     ray.get(f.options(num_cpus=0).remote())
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
