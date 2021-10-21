@@ -153,9 +153,14 @@ class ProxyManager():
         serialized = ray.experimental.internal_kv._internal_kv_get(
             "DASHBOARD_AGENT_ADDR:{}".format(self._head_node_id))
         addr = agent_manager_pb2.RegisterAgentRequest()
-        addr.ParseFromString(serialized=serialized)
-        logger.info("Discovered runtime agent address:\n{}".format(addr))
-        agent_port = addr.agent_port
+        logger.info("Decoding runtime agent addr:\n{}".format(serialized))
+        if serialized == b"AgentDisabled":
+            logger.info("Runtime agent disabled.")
+            agent_port = 0
+        else:
+            addr.ParseFromString(serialized=serialized)
+            logger.info("Discovered runtime agent address:\n{}".format(addr))
+            agent_port = addr.agent_port
         self._runtime_env_channel = grpc.insecure_channel(
             f"localhost:{agent_port}")
         self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
