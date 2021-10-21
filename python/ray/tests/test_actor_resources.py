@@ -127,6 +127,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
             num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
     ray.init(address=cluster.address)
 
+    print("wangtao 130")
     @ray.remote(num_gpus=2)
     class Actor1:
         def __init__(self):
@@ -144,6 +145,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
         [actor.get_location_and_ids.remote() for actor in actors1])
     node_names = {location for location, gpu_id in locations_and_ids}
     assert len(node_names) == num_nodes
+    print("wangtao 147")
 
     # Keep track of which GPU IDs are being used for each location.
     gpus_in_use = {node_name: [] for node_name in node_names}
@@ -151,12 +153,14 @@ def test_actor_multiple_gpus(ray_start_cluster):
         gpus_in_use[location].extend(gpu_ids)
     for node_name in node_names:
         assert len(set(gpus_in_use[node_name])) == 4
+    print("wangtao 155")
 
     # Creating a new actor should fail because all of the GPUs are being
     # used.
     a = Actor1.remote()
     ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=0.01)
     assert ready_ids == []
+    print("wangtao 162")
 
     # We should be able to create more actors that use only a single GPU.
     @ray.remote(num_gpus=1)
@@ -173,6 +177,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     # Make sure that no two actors are assigned to the same GPU.
     locations_and_ids = ray.get(
         [actor.get_location_and_ids.remote() for actor in actors2])
+    print("wangtao 180")
     names = {location for location, gpu_id in locations_and_ids}
     assert node_names == names
     for location, gpu_ids in locations_and_ids:
@@ -180,12 +185,14 @@ def test_actor_multiple_gpus(ray_start_cluster):
     for node_name in node_names:
         assert len(gpus_in_use[node_name]) == 5
         assert set(gpus_in_use[node_name]) == set(range(5))
+    print("wangtao 186")
 
     # Creating a new actor should fail because all of the GPUs are being
     # used.
     a = Actor2.remote()
     ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=0.01)
     assert ready_ids == []
+    print("wangtao 193")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Very flaky.")

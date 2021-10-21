@@ -437,6 +437,8 @@ NodeID RayletBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
   } else {
     node = SelectNodeRandomly();
   }
+  NodeID wangtao = node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
+  RAY_LOG(INFO) << "wangtao select node " << wangtao << " for actor " << actor->GetActorID();
 
   return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
 }

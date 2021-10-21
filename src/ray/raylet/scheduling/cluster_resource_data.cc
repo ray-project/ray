@@ -244,6 +244,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
       if (resource_request.predefined_resources[i] != 0) {
+        RAY_LOG(INFO) << " wangtao  " << std::to_string(i) << " no capacity";
         return false;
       }
       continue;
@@ -254,6 +255,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
 
     if (resource < demand) {
       RAY_LOG(DEBUG) << "At resource capacity";
+      RAY_LOG(INFO) << " wangtao At " << std::to_string(i) << " lack capacity";
       return false;
     }
   }

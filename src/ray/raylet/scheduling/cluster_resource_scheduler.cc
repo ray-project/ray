@@ -35,6 +35,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   InitResourceUnitInstanceInfo();
+  RAY_LOG(INFO) << "wangtao add local node id " << std::to_string(local_node_id_);
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
 }
@@ -52,6 +53,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       string_to_int_map_, local_node_resources, local_node_resources);
 
   InitResourceUnitInstanceInfo();
+  RAY_LOG(INFO) << "wangtao add local node id " << std::to_string(local_node_id_);
   AddOrUpdateNode(local_node_id_, node_resources);
   InitLocalResources(node_resources);
   get_used_object_store_memory_ = get_used_object_store_memory;
@@ -95,9 +97,15 @@ void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
                                                const NodeResources &node_resources) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
+    RAY_LOG(INFO) << "wangtao add local node id " << std::to_string(node_id)
+                  << " and resource " << node_resources.DebugString(string_to_int_map_)
+                  << " current nodes size is " << nodes_.size();
     // This node is new, so add it to the map.
     nodes_.emplace(node_id, node_resources);
+    RAY_LOG(INFO) << "wangtao after add the nodes size is " << nodes_.size();
   } else {
+    RAY_LOG(INFO) << "wangtao update local node id " << std::to_string(node_id)
+                  << " and resource " << node_resources.DebugString(string_to_int_map_);
     // This node exists, so update its resources.
     it->second = Node(node_resources);
   }
@@ -105,6 +113,8 @@ void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
 
 bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
                                           const rpc::ResourcesData &resource_data) {
+  RAY_LOG(INFO) << "wangtao update node resource, node id " << node_id_string
+                << " resources " << resource_data.DebugString();
   auto node_id = string_to_int_map_.Insert(node_id_string);
   if (!nodes_.contains(node_id)) {
     return false;
@@ -116,6 +126,8 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
       string_to_int_map_, resources_total, resources_available);
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
+  RAY_LOG(INFO) << "wangtao before update " << std::to_string(node_id) << " view is "
+                << local_view.DebugString(string_to_int_map_);
 
   if (resource_data.resources_total_size() > 0) {
     for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
@@ -126,16 +138,29 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
       local_view.custom_resources[entry.first].total = entry.second.total;
     }
   }
+  RAY_LOG(INFO) << "wangtao after total update " << std::to_string(node_id) << " view is "
+                << local_view.DebugString(string_to_int_map_);
 
   if (resource_data.resources_available_changed()) {
     for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
+      RAY_LOG(INFO)
+          << "wangtao index " << std::to_string(i) << " local "
+          << std::to_string(local_view.predefined_resources[i].available.Double())
+          << " updated to "
+          << std::to_string(node_resources.predefined_resources[i].available.Double());
       local_view.predefined_resources[i].available =
           node_resources.predefined_resources[i].available;
     }
     for (auto &entry : node_resources.custom_resources) {
+      RAY_LOG(INFO) << "wangtao custom index " << std::to_string(entry.first) << " local "
+                    << std::to_string(
+                           local_view.custom_resources[entry.first].available.Double())
+                    << " updated to " << std::to_string(entry.second.available.Double());
       local_view.custom_resources[entry.first].available = entry.second.available;
     }
   }
+  RAY_LOG(INFO) << "wangtao after available update " << std::to_string(node_id)
+                << " view is " << local_view.DebugString(string_to_int_map_);
 
   if (resource_data.object_pulls_queued_changed()) {
     local_view.object_pulls_queued = resource_data.object_pulls_queued();
@@ -146,6 +171,7 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
 }
 
 bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {
+  RAY_LOG(INFO) << "WANGTAO remove node " << std::to_string(node_id);
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // Node not found.
@@ -324,9 +350,10 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
       int idx = distribution(gen_);
       best_node = std::next(nodes_.begin(), idx)->first;
     }
-    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
-                   << ", # nodes = " << nodes_.size()
-                   << ", resource_request = " << resource_request.DebugString();
+    RAY_LOG(INFO) << "GetBestSchedulableNode, best_node = "
+                  << best_node  // wangtao debug to info
+                  << ", # nodes = " << nodes_.size()
+                  << ", resource_request = " << resource_request.DebugString();
     return best_node;
   }
 
@@ -339,18 +366,18 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      resource_request, local_node_id_, nodes_, spread_threshold_, force_spillback,
-      force_spillback);
+      string_to_int_map_, resource_request, local_node_id_, nodes_, spread_threshold_,
+      force_spillback, force_spillback);
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.
     *total_violations = 0;
   }
 
-  RAY_LOG(DEBUG) << "Scheduling decision. "
-                 << "forcing spillback: " << force_spillback
-                 << ". Best node: " << best_node_id
-                 << ", is infeasible: " << *is_infeasible;
+  RAY_LOG(INFO) << "Scheduling decision. "  // wangtao debug to info
+                << "forcing spillback: " << force_spillback
+                << ". Best node: " << best_node_id
+                << ", is infeasible: " << *is_infeasible;
   return best_node_id;
 }
 
@@ -507,7 +534,10 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id
     NodeResources node_resources;
     node_resources.predefined_resources.resize(PredefinedResources_MAX);
     node_id = string_to_int_map_.Insert(node_id_string);
+    RAY_LOG(INFO) << "wangtao add node id " << std::to_string(node_id) << " id string "
+                  << node_id_string << " current nodes size " << nodes_.size();
     it = nodes_.emplace(node_id, node_resources).first;
+    RAY_LOG(INFO) << "wangtao after add the nodes size is " << nodes_.size();
   }
 
   int idx = -1;
@@ -1038,6 +1068,17 @@ void ClusterResourceScheduler::FillResourceUsage(
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
       << "Error: Populating heartbeat failed. Please file a bug report: "
          "https://github.com/ray-project/ray/issues/new.";
+
+  // Reset all local views for remote nodes. This is needed in case tasks that
+  // we spilled back to a remote node were not actually scheduled on the
+  // node. Then, the remote node's resource availability may not change and
+  // so it may not send us another update.
+  // for (auto &node : nodes_) { // wangtao comment
+  //   if (node.first != local_node_id_) {
+  //     RAY_LOG(INFO) << "wangtao reset local view for node " << node.first;
+  //     node.second.ResetLocalView(string_to_int_map_);
+  //   }
+  // }
 
   // Automatically report object store usage.
   if (get_used_object_store_memory_ != nullptr) {

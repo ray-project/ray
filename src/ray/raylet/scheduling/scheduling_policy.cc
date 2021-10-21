@@ -36,11 +36,13 @@ bool DoesNodeHaveGPUs(const NodeResources &resources) {
 }
 }  // namespace
 
-int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
+int64_t HybridPolicyWithFilter(StringIdMap &string_to_int_map,
+                               const ResourceRequest &resource_request,
                                const int64_t local_node_id,
                                const absl::flat_hash_map<int64_t, Node> &nodes,
                                float spread_threshold, bool force_spillback,
                                bool require_available, NodeFilter node_filter) {
+  RAY_LOG(INFO) << "wangtao request resources " << resource_request.DebugString();
   // Step 1: Generate the traversal order. We guarantee that the first node is local, to
   // encourage local scheduling. The rest of the traversal order should be globally
   // consistent, to encourage using "warm" workers.
@@ -76,6 +78,8 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
       round.push_back(pair.first);
     }
   }
+  RAY_LOG(INFO) << "wangtao nodes size " << nodes.size() << " round size "
+                << round.size();
   // Sort all the nodes, making sure that if we added the local node in front, it stays in
   // place.
   std::sort(round.begin() + start_index, round.end());
@@ -92,6 +96,8 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
     RAY_CHECK(it != nodes.end());
     const auto &node = it->second;
     if (!node.GetLocalView().IsFeasible(resource_request)) {
+      RAY_LOG(INFO) << "WANGTAO skip node" << node_id << ", local view "
+                    << node.GetLocalView().DebugString(string_to_int_map);
       continue;
     }
 
@@ -103,10 +109,12 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
       // pulled.
       ignore_pull_manager_at_capacity = true;
     }
+    RAY_LOG(INFO) << "WANGTAO node local view " << node_id << " "
+                  << node.GetLocalView().DebugString(string_to_int_map);
     bool is_available = node.GetLocalView().IsAvailable(resource_request,
                                                         ignore_pull_manager_at_capacity);
-    RAY_LOG(DEBUG) << "Node " << node_id << " is "
-                   << (is_available ? "available" : "not available");
+    RAY_LOG(INFO) << "Node " << node_id << " is "  // wangtao debug to info
+                  << (is_available ? "available" : "not available");
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();
     if (critical_resource_utilization < spread_threshold) {
@@ -140,27 +148,30 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   return best_node_id;
 }
 
-int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t local_node_id,
+int64_t HybridPolicy(StringIdMap &string_to_int_map,
+                     const ResourceRequest &resource_request, const int64_t local_node_id,
                      const absl::flat_hash_map<int64_t, Node> &nodes,
                      float spread_threshold, bool force_spillback, bool require_available,
                      bool scheduler_avoid_gpu_nodes) {
   if (!scheduler_avoid_gpu_nodes || IsGPURequest(resource_request)) {
-    return HybridPolicyWithFilter(resource_request, local_node_id, nodes,
-                                  spread_threshold, force_spillback, require_available);
+    return HybridPolicyWithFilter(string_to_int_map, resource_request, local_node_id,
+                                  nodes, spread_threshold, force_spillback,
+                                  require_available);
   }
 
   // Try schedule on non-GPU nodes.
-  auto best_node_id = HybridPolicyWithFilter(
-      resource_request, local_node_id, nodes, spread_threshold, force_spillback,
-      /*require_available*/ true, NodeFilter::kNonGpu);
+  auto best_node_id =
+      HybridPolicyWithFilter(string_to_int_map, resource_request, local_node_id, nodes,
+                             spread_threshold, force_spillback,
+                             /*require_available*/ true, NodeFilter::kNonGpu);
   if (best_node_id != -1) {
     return best_node_id;
   }
 
   // If we cannot find any available node from non-gpu nodes, fallback to the original
   // scheduling
-  return HybridPolicyWithFilter(resource_request, local_node_id, nodes, spread_threshold,
-                                force_spillback, require_available);
+  return HybridPolicyWithFilter(string_to_int_map, resource_request, local_node_id, nodes,
+                                spread_threshold, force_spillback, require_available);
 }
 
 }  // namespace raylet_scheduling_policy
