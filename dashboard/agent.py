@@ -352,6 +352,8 @@ if __name__ == "__main__":
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             logging_params=logging_params)
+        if os.environ.get("_RAY_AGENT_FAILING"):
+            raise Exception("Failure injection failure.")
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())

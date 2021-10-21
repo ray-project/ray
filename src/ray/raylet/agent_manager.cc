@@ -88,11 +88,9 @@ void AgentManager::StartAgent() {
     auto timer = delay_executor_(
         [this, child]() mutable {
           if (agent_pid_ != child.GetId()) {
-            RAY_EVENT(ERROR, EL_RAY_AGENT_NOT_REGISTERED)
-                    .WithField("ip", agent_ip_address_)
-                    .WithField("pid", agent_pid_)
-                << "Agent process with pid " << child.GetId()
-                << " has not registered, restart it.";
+            RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
+                             << " has not registered, restart it. ip "
+                             << agent_ip_address_ << ". pid " << agent_pid_;
             child.Kill();
           }
         },
@@ -100,12 +98,9 @@ void AgentManager::StartAgent() {
 
     int exit_code = child.Wait();
     timer->cancel();
-
-    RAY_EVENT(ERROR, EL_RAY_AGENT_EXIT)
-            .WithField("ip", agent_ip_address_)
-            .WithField("pid", agent_pid_)
-        << "Agent process with pid " << child.GetId() << " exit, return value "
-        << exit_code;
+    RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
+                     << " exit, return value " << exit_code << ". ip "
+                     << agent_ip_address_ << ". pid " << agent_pid_;
     if (agent_restart_count_ < RayConfig::instance().agent_max_restart_count()) {
       RAY_UNUSED(delay_executor_(
           [this] {
@@ -116,11 +111,17 @@ void AgentManager::StartAgent() {
           RayConfig::instance().agent_restart_interval_ms() *
               std::pow(2, (agent_restart_count_ + 1))));
     } else {
-      RAY_LOG(INFO) << "Agent has failed "
-                    << RayConfig::instance().agent_max_restart_count()
-                    << " times in a row without registering the agent. This is highly "
-                       "likely there's a bug in the dashboard agent. Please check out "
-                       "the dashboard_agent.log file.";
+      RAY_LOG(WARNING) << "Agent has failed "
+                       << RayConfig::instance().agent_max_restart_count()
+                       << " times in a row without registering the agent. This is highly "
+                          "likely there's a bug in the dashboard agent. Please check out "
+                          "the dashboard_agent.log file.";
+      RAY_EVENT(WARNING, EL_RAY_AGENT_EXIT)
+              .WithField("ip", agent_ip_address_)
+              .WithField("pid", agent_pid_)
+          << "Agent failed to be restarted "
+          << RayConfig::instance().agent_max_restart_count()
+          << " times. Agent won't be restarted.";
     }
   });
   monitor_thread.detach();
