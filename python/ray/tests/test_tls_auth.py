@@ -143,7 +143,7 @@ ray_client.connect("localhost:10001")
 print(ray.is_initialized())
      """,
         env=tls_env)
-    assert out == "True\n"
+    assert out.strip() == "True"
 
 
 if __name__ == "__main__":

@@ -349,12 +349,6 @@ class RayletClient : public RayletClientInterface {
   ray::Status PushError(const ray::JobID &job_id, const std::string &type,
                         const std::string &error_message, double timestamp);
 
-  /// Store some profile events in the GCS.
-  ///
-  /// \param profile_events A batch of profiling event information.
-  /// \return ray::Status.
-  ray::Status PushProfileEvents(const ProfileTableData &profile_events);
-
   /// Free a list of objects from object stores.
   ///
   /// \param object_ids A list of ObjectsIDs to be deleted.

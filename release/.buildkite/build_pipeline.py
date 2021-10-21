@@ -75,6 +75,7 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
         "many_nodes_actor_test",
+        "grpc_many_nodes_actor_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
