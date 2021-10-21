@@ -1,4 +1,3 @@
-import pytest
 import time
 
 import ray
@@ -13,15 +12,7 @@ class DummyActor:
         return "metadata"
 
 
-@pytest.fixture
-def ray_start_2_cpus():
-    address_info = ray.init(num_cpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def test_actor_creation():
+def test_actor_creation(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
     ag = ActorGroup(actor_cls=DummyActor, num_actors=2)
     assert len(ag) == 2

@@ -152,7 +152,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_actor_group.py
+    "test_actor_group.py"
   ],
   size = "small",
   extra_srcs = SRCS,
