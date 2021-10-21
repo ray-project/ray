@@ -55,7 +55,7 @@ There are a couple steps to merge a contribution.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
    in the relevant file in `ray/python/ray/tests/`.
 4. Document the code. Public functions need to be documented, and remember to provide an usage
-   example if applicable.
+   example if applicable. See `doc/README.md` for instructions on editing and building public documentation.
 5. Address comments on your PR. During the review
    process you may need to address merge conflicts with other changes. To resolve merge conflicts,
    run ``git pull . upstream/master`` on your branch (please do not use rebase, as it is less
