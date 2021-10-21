@@ -49,7 +49,7 @@ class ActorGroupMethod:
 class ActorGroup:
     """Group of Ray Actors that can execute arbitrary functions.
 
-    ``WorkerGroup`` launches Ray actors according to the given
+    ``ActorGroup`` launches Ray actors according to the given
     specification. It can then execute arbitrary Python functions in each of
     these actors.
 
@@ -68,14 +68,8 @@ class ActorGroup:
             Dictionary specifying the resources that will be
             requested for each actor in addition to ``num_cpus_per_actor``
             and ``num_gpus_per_actor``.
-        init_args, init_kwargs: If ``remote_cls`` is provided,
+        init_args, init_kwargs: If ``actor_cls`` is provided,
             these args will be used for the actor initialization.
-
-
-    Example:
-
-    #TODO
-    .. code_block:: python
 
     """
 
@@ -117,6 +111,9 @@ class ActorGroup:
         self.start()
 
     def __getattr__(self, item):
+        if len(self.actors) == 0:
+            raise RuntimeError("This ActorGroup has been shutdown. Please "
+                               "start it again.")
         # Same implementation as actor.py
         return ActorGroupMethod(self, item)
 
