@@ -14,6 +14,7 @@
 
 #pragma once
 #include <optional>
+
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"

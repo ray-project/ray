@@ -263,8 +263,7 @@ SchedulingResult GcsResourceScheduler::PackSchedule(
       break;
     }
 
-    RAY_CHECK(gcs_resource_manager_.AcquireResources(*best_node,
-                                                     required_resources));
+    RAY_CHECK(gcs_resource_manager_.AcquireResources(*best_node, required_resources));
     result_nodes[required_resources_index] = *best_node;
     required_resources_list_copy.pop_front();
 
@@ -295,7 +294,7 @@ std::optional<NodeID> GcsResourceScheduler::GetBestNode(
     const ResourceSet &required_resources,
     const absl::flat_hash_set<NodeID> &candidate_nodes) {
   double best_node_score = -1;
-  const NodeID* best_node_id = nullptr;
+  const NodeID *best_node_id = nullptr;
   const auto &cluster_resources = gcs_resource_manager_.GetClusterResources();
 
   // Score the nodes.
@@ -303,12 +302,12 @@ std::optional<NodeID> GcsResourceScheduler::GetBestNode(
     const auto &iter = cluster_resources.find(node_id);
     RAY_CHECK(iter != cluster_resources.end());
     double node_score = node_scorer_->Score(required_resources, iter->second);
-    if(best_node_id == nullptr || best_node_score < node_score) {
+    if (best_node_id == nullptr || best_node_score < node_score) {
       best_node_id = &node_id;
       best_node_score = node_score;
     }
   }
-  if(best_node_id && best_node_score >= 0) {
+  if (best_node_id && best_node_score >= 0) {
     return *best_node_id;
   } else {
     return std::nullopt;
