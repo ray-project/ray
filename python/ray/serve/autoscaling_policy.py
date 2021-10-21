@@ -91,7 +91,9 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
     to scale up and a maximum threshold to scale down. Each period, a 'scale
     up' or 'scale down' decision is made. This decision must be made for a
     specified number of periods in a row before the number of replicas is
-    actually scaled. See config options for more details.
+    actually scaled. See config options for more details.  Assumes
+    `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
+    seconds.
     """
 
     def __init__(self, config: AutoscalingConfig):
@@ -137,7 +139,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
             # Only actually scale the replicas if we've made this decision for
             # 'scale_up_consecutive_periods' in a row.
-            if self.decision_counter >= self.scale_up_consecutive_periods:
+            if self.decision_counter > self.scale_up_consecutive_periods:
                 self.decision_counter = 0
                 decision_num_replicas = desired_num_replicas
 

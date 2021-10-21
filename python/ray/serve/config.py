@@ -16,13 +16,15 @@ from ray import cloudpickle as cloudpickle
 
 
 class AutoscalingConfig(BaseModel):
+    # Please keep these options in sync with those in
+    # `src/ray/protobuf/serve.proto`.
+
     # Publicly exposed options
     min_replicas: int = 1
     max_replicas: int = 1
     target_num_ongoing_requests_per_replica: int = 1
 
-    # Private options below. When updating these, please also update
-    # `src/ray/protobuf/serve.proto`.
+    # Private options below.
 
     # Metrics scraping options
 
