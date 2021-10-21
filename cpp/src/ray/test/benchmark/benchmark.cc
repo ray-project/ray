@@ -29,13 +29,13 @@ std::string Echo(std::string str) { return str; }
 
 RAY_REMOTE(NoReturn, ReturnVal, Input, Echo);
 
-class Counter {
+class SimpleCounter {
  public:
   int count;
 
-  explicit Counter(int init) { count = init; }
+  explicit SimpleCounter(int init) { count = init; }
 
-  static Counter *FactoryCreate() { return new Counter(0); }
+  static SimpleCounter *FactoryCreate() { return new SimpleCounter(0); }
 
   int Add() {
     count += 1;
@@ -45,7 +45,7 @@ class Counter {
   int Get() const { return count; }
 };
 
-RAY_REMOTE(Counter::FactoryCreate, &Counter::Add, &Counter::Get);
+RAY_REMOTE(SimpleCounter::FactoryCreate, &SimpleCounter::Add, &SimpleCounter::Get);
 
 /// Only ray.call, don't get ObjectRef result.
 template <typename F>
@@ -94,10 +94,10 @@ void RunLatencyTest(F f, std::string func_name, size_t num_repeats) {
 }
 
 TEST(BenchmarkTest, SimpleLatancyTest) {
-  ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate).Remote();
+  ActorHandle<SimpleCounter> actor = ray::Actor(SimpleCounter::FactoryCreate).Remote();
   size_t num_repeats = 20;
-  RunLatencyTest<int>([&actor] { return actor.Task(&Counter::Add).Remote(); },
-                      "&Counter::Add", num_repeats);
+  RunLatencyTest<int>([&actor] { return actor.Task(&SimpleCounter::Add).Remote(); },
+                      "&SimpleCounter::Add", num_repeats);
 
   RunLatencyTest<void>([] { return ray::Task(NoReturn).Remote(); }, "NoReturn",
                        num_repeats);
@@ -107,10 +107,10 @@ TEST(BenchmarkTest, SimpleLatancyTest) {
 }
 
 TEST(BenchmarkTest, SimpleRemoteTest) {
-  ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate).Remote();
+  ActorHandle<SimpleCounter> actor = ray::Actor(SimpleCounter::FactoryCreate).Remote();
   size_t num_repeats = 100000;
-  RunLatencyTestIgnoreGetResult([&actor] { actor.Task(&Counter::Add).Remote(); },
-                                "&Counter::Add", num_repeats);
+  RunLatencyTestIgnoreGetResult([&actor] { actor.Task(&SimpleCounter::Add).Remote(); },
+                                "&SimpleCounter::Add", num_repeats);
 
   RunLatencyTestIgnoreGetResult([] { ray::Task(NoReturn).Remote(); }, "NoReturn",
                                 num_repeats);
