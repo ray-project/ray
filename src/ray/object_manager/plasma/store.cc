@@ -73,7 +73,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
                          ray::SpillObjectsCallback spill_objects_callback,
                          std::function<void()> object_store_full_callback,
                          ray::AddObjectCallback add_object_callback,
-                         ray::DeleteObjectCallback delete_object_callback)
+                         ray::DeleteObjectCallback delete_object_callback,
+              ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback)
     : io_context_(main_service),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
@@ -86,7 +87,9 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
       object_spilling_threshold_(object_spilling_threshold),
       create_request_queue_(
           /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
-          spill_objects_callback, object_store_full_callback,
+          spill_objects_callback,
+          on_object_creation_blocked_callback,
+          object_store_full_callback,
           /*get_time=*/
           []() { return absl::GetCurrentTimeNanos(); },
           // absl can't check thread safety for lambda

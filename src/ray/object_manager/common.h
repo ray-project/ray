@@ -18,6 +18,7 @@
 #include <functional>
 
 #include "ray/common/id.h"
+#include "ray/common/task/task_priority.h"
 #include "ray/common/status.h"
 
 namespace ray {
@@ -25,6 +26,10 @@ namespace ray {
 /// A callback to asynchronously spill objects when space is needed.
 /// It spills enough objects to saturate all spill IO workers.
 using SpillObjectsCallback = std::function<bool()>;
+
+/// Callback when the creation of object(s) is blocked. The priority is the
+/// highest priority of a blocked object.
+using ObjectCreationBlockedCallback = std::function<bool(const ray::Priority &priority)>;
 
 /// A callback to call when space has been released.
 using SpaceReleasedCallback = std::function<void()>;

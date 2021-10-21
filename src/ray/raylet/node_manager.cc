@@ -226,6 +226,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                 "NodeManager.SpillObjects");
             return GetLocalObjectManager().IsSpillingInProgress();
           },
+          /*on_object_creation_blocked_callback=*/
+          [this](const Priority &priority) {
+            return false;
+          },
           /*object_store_full_callback=*/
           [this]() {
             // Post on the node manager's event loop since this

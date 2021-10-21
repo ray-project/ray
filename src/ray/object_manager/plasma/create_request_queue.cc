@@ -169,6 +169,13 @@ Status CreateRequestQueue::ProcessRequests() {
       if (oom_start_time_ns_ == -1) {
         oom_start_time_ns_ = now;
       }
+
+      bool wait = on_object_creation_blocked_callback_(queue_it->first.first);
+      if (wait) {
+        RAY_LOG(INFO) << "Object creation of priority " << priority << " blocked";
+        return Status::TransientObjectStoreFull("Waiting for higher priority tasks to finish");
+      }
+
       auto grace_period_ns = oom_grace_period_ns_;
       auto spill_pending = spill_objects_callback_();
       if (spill_pending) {

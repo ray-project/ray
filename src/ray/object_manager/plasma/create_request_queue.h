@@ -38,11 +38,13 @@ class CreateRequestQueue {
 
   CreateRequestQueue(int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
+                     ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback,
                      std::function<void()> trigger_global_gc,
                      std::function<int64_t()> get_time,
                      std::function<std::string()> dump_debug_info_callback = nullptr)
       : oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
+        on_object_creation_blocked_callback_(on_object_creation_blocked_callback),
         trigger_global_gc_(trigger_global_gc),
         get_time_(get_time),
         dump_debug_info_callback_(dump_debug_info_callback) {}
@@ -172,6 +174,8 @@ class CreateRequestQueue {
   /// throughput. It returns true if space is made by object spilling, and false if
   /// there's no more space to be made.
   const ray::SpillObjectsCallback spill_objects_callback_;
+
+  const ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback_;
 
   /// A callback to trigger global GC in the cluster if the object store is
   /// full.
