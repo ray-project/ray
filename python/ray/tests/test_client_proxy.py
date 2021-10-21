@@ -217,7 +217,7 @@ def test_startup_error_yields_clean_result(shutdown_only):
 @pytest.mark.parametrize(
     "call_ray_start", [
         "ray start --head --ray-client-server-port 25031 "
-        "--port 0 --redis-password=password"
+        "--port 0"
     ],
     indirect=True)
 def test_runtime_install_error_message(call_ray_start):
