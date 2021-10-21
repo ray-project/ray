@@ -51,11 +51,11 @@ There are a couple steps to merge a contribution.
      git pull . upstream/master
 
 2. Make sure all existing `tests <getting-involved.html#testing>`__ and `linters <getting-involved.html#lint-and-formatting>`__ pass.
-   Run `setup_hooks.sh` to create a git hook that will run the linter before you push your changes.
+   Run ``setup_hooks.sh`` to create a git hook that will run the linter before you push your changes.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
-   in the relevant file in `ray/python/ray/tests/`.
+   in the relevant file in ``ray/python/ray/tests/``.
 4. Document the code. Public functions need to be documented, and remember to provide an usage
-   example if applicable. See `doc/README.md` for instructions on editing and building public documentation.
+   example if applicable. See ``doc/README.md`` for instructions on editing and building public documentation.
 5. Address comments on your PR. During the review
    process you may need to address merge conflicts with other changes. To resolve merge conflicts,
    run ``git pull . upstream/master`` on your branch (please do not use rebase, as it is less
