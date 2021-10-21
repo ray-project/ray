@@ -35,6 +35,10 @@ install_ray() {
   (
     pip install wheel
 
+    pushd dashboard/client
+      yarn build
+    popd
+
     cd "${WORKSPACE_DIR}"/python
     "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e .
   )
