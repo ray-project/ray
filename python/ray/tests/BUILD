@@ -40,7 +40,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
+  tags = ["cpu:2", "medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -60,7 +60,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:serverless"],
+  tags = ["cpu:2", "medium_size_python_tests_a_to_j", "team:serverless"],
   deps = ["//:ray_lib"],
 )
 
@@ -98,7 +98,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
+  tags = ["cpu:2", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -126,7 +126,7 @@ py_test_module_list(
   ],
   size = "small",
   extra_srcs = SRCS,
-  tags = ["exclusive", "team:core"],
+  tags = ["cpu:2", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -147,7 +147,7 @@ py_test_module_list(
   ],
   size = "small",
   extra_srcs = SRCS,
-  tags = ["exclusive", "team:serverless"],
+  tags = ["cpu:2", "team:serverless"],
   deps = ["//:ray_lib"],
 )
 
@@ -160,7 +160,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "team:core"],
+  tags = ["cpu:2", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -175,7 +175,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "team:core"],
+  tags = ["cpu:2", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -189,7 +189,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "post_wheel_build", "flaky", "team:serve"],
+  tags = ["cpu:2", "post_wheel_build", "flaky", "team:serve"],
   deps = ["//:ray_lib"],
 )
 
@@ -200,7 +200,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky", "team:core"],
+  tags = ["cpu:2", "medium_size_python_tests_a_to_j", "flaky", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -214,7 +214,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "flaky", "team:core"],
+  tags = ["cpu:2", "medium_size_python_tests_k_to_z", "flaky", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -225,7 +225,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "flaky", "team:core"],
+  tags = ["cpu:2", "flaky", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -236,7 +236,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky-mac", "team:core"],
+  tags = ["cpu:2", "medium_size_python_tests_a_to_j", "flaky-mac", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -246,7 +246,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["flaky-mac", "exclusive", "team:serve"],
+  tags = ["flaky-mac", "cpu:2", "team:serve"],
   deps = ["//:ray_lib"],
 )
 
@@ -258,7 +258,7 @@ py_test(
     name = "test_autoscaler_aws",
     size = "small",
     srcs = SRCS + ["aws/test_autoscaler_aws.py"],
-    tags = ["exclusive", "team:serverless"],
+    tags = ["cpu:2", "team:serverless"],
     deps = ["//:ray_lib"],
 )
 
@@ -266,7 +266,7 @@ py_test(
     name = "test_aws_batch_tag_update",
     size = "small",
     srcs = SRCS + ["aws/test_aws_batch_tag_update.py"],
-    tags = ["exclusive", "team:serverless"],
+    tags = ["cpu:2", "team:serverless"],
     deps = ["//:ray_lib"],
 )
 
@@ -274,7 +274,7 @@ py_test(
     name = "test_gcp_node_provider",
     size = "small",
     srcs = SRCS + ["gcp/test_gcp_node_provider.py"],
-    tags = ["exclusive", "team:serverless"],
+    tags = ["cpu:2", "team:serverless"],
     deps = ["//:ray_lib"],
 )
 
@@ -284,7 +284,7 @@ py_test(
     name = "test_typing",
     size = "small",
     srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
-    tags = ["exclusive", "team:core"],
+    tags = ["cpu:2", "team:core"],
     deps = ["//:ray_lib"],
 )
 
@@ -293,7 +293,7 @@ py_test(
   name = "test_tracing",
   size = "medium",
   srcs = SRCS + ["test_tracing.py"],
-  tags = ["exclusive", "team:serve"],
+  tags = ["cpu:2", "team:serve"],
   deps = ["//:ray_lib"]
 )
 
@@ -301,7 +301,7 @@ py_test(
     name = "test_pydantic_serialization",
     size = "small",
     srcs = SRCS + ["test_pydantic_serialization.py", "pydantic_module.py"],
-    tags = ["exclusive", "team:serve"],
+    tags = ["cpu:2", "team:serve"],
     deps = ["//:ray_lib"],
 )
 
@@ -309,7 +309,7 @@ py_test(
     name = "test_runtime_env_validation",
     size = "small",
     srcs = SRCS + ["test_runtime_env_validation.py"],
-    tags = ["exclusive", "team:serve"],
+    tags = ["cpu:2", "team:serve"],
     deps = ["//:ray_lib"],
 )
 
@@ -317,7 +317,7 @@ py_test(
     name = "test_runtime_env_ray_minimal",
     size = "small",
     srcs = SRCS + ["test_runtime_env_ray_minimal.py"],
-    tags = ["exclusive", "team:serve"],
+    tags = ["cpu:2", "team:serve"],
     deps = ["//:ray_lib"],
 )
 
@@ -325,7 +325,7 @@ py_test(
     name = "test_serve_ray_minimal",
     size = "small",
     srcs = SRCS + ["test_serve_ray_minimal.py"],
-    tags = ["exclusive", "team:serve"],
+    tags = ["cpu:2", "team:serve"],
     deps = ["//:ray_lib"],
 )
 
@@ -348,7 +348,7 @@ py_test_module_list(
   # TODO(barakmich): py_test will support env in Bazel 4.0.0...
   # Until then, we can use tags.
   #env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["cpu:2", "client_tests", "team:serverless"],
   deps = ["//:ray_lib"],
 )
 
@@ -358,7 +358,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "worker-container", "team:serve"],
+  tags = ["cpu:2", "worker-container", "team:serve"],
   # Now we run this test in a container which has installed ray
   deps = [],
 )
@@ -374,7 +374,7 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   name_suffix = "_debug_mode",
-  tags = ["exclusive", "debug_tests", "team:core"],
+  tags = ["cpu:2", "debug_tests", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -389,6 +389,6 @@ py_test_module_list(
   size = "large",
   extra_srcs = SRCS,
   name_suffix = "_asan",
-  tags = ["exclusive", "asan_tests", "team:core"],
+  tags = ["cpu:2", "asan_tests", "team:core"],
   deps = ["//:ray_lib"],
 )
