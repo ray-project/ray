@@ -252,8 +252,14 @@ ray.util.rpdb._driver_set_trace()  # This should disable worker logs.
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_multi_stdout():
-    script = """
+@pytest.mark.parametrize("file", ["stdout", "stderr"])
+def test_multi_stdout_err(file):
+    if file == "stdout":
+        file_handle = "sys.stdout"
+    else:  # sys.stderr
+        file_handle = "sys.stderr"
+
+    script = f"""
 import ray
 import sys
 
@@ -261,15 +267,15 @@ ray.init(num_cpus=1)
 
 @ray.remote
 def foo():
-    print()
+    print(file={file_handle})
 
 @ray.remote
 def bar():
-    print()
+    print(file={file_handle})
 
 @ray.remote
 def baz():
-    print()
+    print(file={file_handle})
 
 ray.get(foo.remote())
 ray.get(bar.remote())
@@ -277,7 +283,10 @@ ray.get(baz.remote())
     """
 
     proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
+    if file == "stdout":
+        out_str = proc.stdout.read().decode("ascii")
+    else:
+        out_str = proc.stderr.read().decode("ascii")
 
     assert "(foo pid=" in out_str, out_str
     assert "(bar pid=" in out_str, out_str
@@ -285,24 +294,31 @@ ray.get(baz.remote())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_actor_stdout():
-    script = """
+@pytest.mark.parametrize("file", ["stdout", "stderr"])
+def test_actor_stdout(file):
+    if file == "stdout":
+        file_handle = "sys.stdout"
+    else:  # sys.stderr
+        file_handle = "sys.stderr"
+
+    script = f"""
 import ray
+import sys
 
 ray.init(num_cpus=2)
 
 @ray.remote
 class Actor1:
     def f(self):
-        print("hi")
+        print("hi", file={file_handle})
 
 @ray.remote
 class Actor2:
     def __init__(self):
-        print("init")
+        print("init", file={file_handle})
         self.name = "ActorX"
     def f(self):
-        print("bye")
+        print("bye", file={file_handle})
     def __repr__(self):
         return self.name
 
@@ -313,7 +329,10 @@ ray.get(b.f.remote())
     """
 
     proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
+    if file == "stdout":
+        out_str = proc.stdout.read().decode("ascii")
+    else:
+        out_str = proc.stderr.read().decode("ascii")
     print(out_str)
 
     assert "hi" in out_str, out_str

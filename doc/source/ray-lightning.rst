@@ -1,9 +1,7 @@
-.. _ray-lightning:
-
 ..
   This part of the docs is generated from the Ray Lightning readme using m2r
   To update:
-  - run `m2r /path/to/xgboost_ray/README.md`
+  - run `m2r /path/to/ray_lightning/README.md`
   - copy the contents of README.rst here
   - remove the table of contents
   - remove the PyTorch Lightning Compatibility section
@@ -11,6 +9,8 @@
   - Adjust some link targets (e.g. for "Ray Tune") to anonymous references
     by adding a second underscore (use `target <link>`__)
   - Search for `\ **` and delete this from the links (bold links are not supported)
+
+.. _ray-lightning:
 
 Distributed PyTorch Lightning Training on Ray
 =============================================

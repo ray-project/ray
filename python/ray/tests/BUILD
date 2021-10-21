@@ -83,6 +83,7 @@ py_test_module_list(
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_env_env_vars.py",
+    "test_runtime_env_packaging.py",
     "test_runtime_env_plugin.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
@@ -92,6 +93,7 @@ py_test_module_list(
     "test_tempfile.py",
     "test_tensorflow.py",
     "test_threaded_actor.py",
+    "test_tls_auth.py",
     "test_ray_debugger.py",
   ],
   size = "medium",
@@ -307,6 +309,14 @@ py_test(
     name = "test_runtime_env_validation",
     size = "small",
     srcs = SRCS + ["test_runtime_env_validation.py"],
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_runtime_env_ray_minimal",
+    size = "small",
+    srcs = SRCS + ["test_runtime_env_ray_minimal.py"],
     tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )

@@ -407,8 +407,7 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = ParsedRuntimeEnv(
-            runtime_env or {}, is_task_or_actor=True)
+        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
@@ -428,8 +427,7 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = ParsedRuntimeEnv(
-            runtime_env or {}, is_task_or_actor=True)
+        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
@@ -495,8 +493,7 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = ParsedRuntimeEnv(
-            runtime_env or {}, is_task_or_actor=True)
+        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
@@ -798,7 +795,7 @@ class ActorClass:
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
             serialized_runtime_env=parsed_runtime_env.serialize(),
-            runtime_env_uris=parsed_runtime_env.get("uris") or [],
+            runtime_env_uris=parsed_runtime_env.get_uris())
             concurrency_groups_dict=concurrency_groups_dict or dict())
 
         actor_handle = ActorHandle(

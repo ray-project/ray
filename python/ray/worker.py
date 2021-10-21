@@ -27,7 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
-from ray._private.runtime_env import working_dir as working_dir_pkg
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
@@ -928,11 +928,6 @@ def init(
             spawn_reaper=False,
             connect_only=True)
 
-    if driver_mode == SCRIPT_MODE and job_config:
-        # Rewrite the URI. Note the package isn't uploaded to the URI until
-        # later in the connect.
-        working_dir_pkg.rewrite_runtime_env_uris(job_config)
-
     connect(
         _global_node,
         mode=driver_mode,
@@ -1384,6 +1379,16 @@ def connect(node,
 
     worker.ray_debugger_external = ray_debugger_external
 
+    # If it's a driver and it's not coming from ray client, we'll prepare the
+    # environment here. If it's ray client, the environment will be prepared
+    # at the server side.
+    if (mode == SCRIPT_MODE and not job_config.client_job
+            and job_config.runtime_env):
+        job_config.set_runtime_env(
+            upload_working_dir_if_needed(
+                job_config.runtime_env,
+                worker.node.get_runtime_env_dir_path()))
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1393,14 +1398,6 @@ def connect(node,
         serialized_job_config, node.metrics_agent_port, runtime_env_hash,
         worker_shim_pid, startup_token)
     worker.gcs_client = worker.core_worker.get_gcs_client()
-
-    # If it's a driver and it's not coming from ray client, we'll prepare the
-    # environment here. If it's ray client, the environment will be prepared
-    # at the server side.
-    if mode == SCRIPT_MODE and not job_config.client_job:
-        manager = working_dir_pkg.WorkingDirManager(
-            worker.node.get_runtime_env_dir_path())
-        manager.upload_runtime_env_package_if_needed(job_config)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
