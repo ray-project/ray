@@ -15,6 +15,7 @@ from typing import Set
 from typing import Optional
 from typing import Callable
 from ray import cloudpickle
+from ray import ray_constants
 from ray.job_config import JobConfig
 import ray
 import ray.state
@@ -774,7 +775,7 @@ def main():
         default="proxy")
     parser.add_argument(
         "--redis-address",
-        required=False,
+        required=True,
         type=str,
         help="Address to use to connect to Ray")
     parser.add_argument(
@@ -803,7 +804,10 @@ def main():
     logger.info(f"Starting Ray Client server on {hostport}")
     if args.mode == "proxy":
         server = serve_proxier(
-            hostport, args.redis_address, redis_password=args.redis_password)
+            hostport,
+            args.redis_address,
+            redis_password=args.redis_password
+            or ray_constants.REDIS_DEFAULT_PASSWORD)
     else:
         server = serve(hostport, ray_connect_handler)
 

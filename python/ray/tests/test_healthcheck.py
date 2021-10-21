@@ -44,13 +44,15 @@ def test_healthcheck_ray_client_server():
         ["ray", "health-check", "--component", "ray_client_server"])
     assert res.returncode != 0
 
-    ray.init()
+    info = ray.init()
     res = subprocess.run(
         ["ray", "health-check", "--component", "ray_client_server"])
     assert res.returncode != 0, res.stdout
 
-    client_server_handle = subprocess.Popen(
-        [sys.executable, "-m", "ray.util.client.server"])
+    client_server_handle = subprocess.Popen([
+        sys.executable, "-m", "ray.util.client.server",
+        "--redis-address={}".format(info["redis_address"])
+    ])
     # Gotta give the server time to initialize.
     time.sleep(5)
 
