@@ -51,6 +51,7 @@ You can find the component name from `ray_constants.py`. For example, if you'd l
 search `PROCESS_TYPE_GCS_SERVER` in `ray_constants.py`. You can see the value is `gcs_server`.
 
 Users are supposed to provide 3 env vars for memory profiling.
+
 - RAY_JEMALLOC_LIB_PATH: The path to the jemalloc shared library `.so`.
 - RAY_JEMALLOC_CONF: The MALLOC_CONF of jemalloc (comma separated).
 - RAY_JEMALLOC_PROFILE: Comma separated Ray components to run Jemalloc `.so`. e.g., ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
