@@ -813,4 +813,3 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
     del os.environ["RAY_TLS_SERVER_CERT"]
     del os.environ["RAY_TLS_SERVER_KEY"]
     del os.environ["RAY_TLS_CA_CERT"]
-
