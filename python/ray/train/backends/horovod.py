@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 @dataclass
 class HorovodConfig(BackendConfig):
     """Configurations for Horovod setup.
+
     See https://github.com/horovod/horovod/blob/master/horovod/runner/common/util/settings.py # noqa: E501
+
     Args:
         nics (Optional[Set[str]): Network interfaces that can be used for
             communication.
