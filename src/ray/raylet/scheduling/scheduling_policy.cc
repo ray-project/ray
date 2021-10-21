@@ -53,7 +53,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   RAY_LOG(ERROR) << "Here!";
   auto predicate = [node_filter, &is_node_available](
                        int64_t node_id, const NodeResources &node_resources) {
-                     RAY_LOG(ERROR) << "check " << node_id;
+    RAY_LOG(ERROR) << "check " << node_id;
     if (!is_node_available(node_id)) {
       return false;
     }

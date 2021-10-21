@@ -23,8 +23,7 @@
 namespace ray {
 
 ClusterResourceScheduler::ClusterResourceScheduler()
-    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold())
-          {};
+    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()){};
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources,
@@ -57,14 +56,15 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 }
 
 bool ClusterResourceScheduler::NodeAlive(int64_t node_id) const {
-  if(node_id == local_node_id_) {
+  if (node_id == local_node_id_) {
     return true;
   }
   if (node_id == -1) {
     return false;
   }
   auto node_id_binary = string_to_int_map_.Get(node_id);
-  RAY_LOG(ERROR) << "NodeAlive: " << node_id << "\t" << local_node_id_ << "\t" << node_id_binary.size();
+  RAY_LOG(ERROR) << "NodeAlive: " << node_id << "\t" << local_node_id_ << "\t"
+                 << node_id_binary.size();
   return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id_binary)) != nullptr;
 }
 

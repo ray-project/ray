@@ -419,7 +419,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   ClusterResourceScheduler resource_scheduler(0, node_resources, *gcs_client_);
   auto node_id = NodeID::FromRandom();
   auto node_internal_id = resource_scheduler.string_to_int_map_.Insert(node_id.Binary());
-  RAY_LOG(ERROR) << "ID: " << resource_scheduler.string_to_int_map_.Get(node_internal_id).size();
+  RAY_LOG(ERROR) << "ID: "
+                 << resource_scheduler.string_to_int_map_.Get(node_internal_id).size();
   {
     NodeResources node_resources;
     vector<FixedPoint> pred_capacities{10, 2, 3};
@@ -754,9 +755,13 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
   int64_t violations = 0;
   bool is_infeasible = false;
   RAY_LOG(ERROR) << "TestingDeadNodeTest";
-  ASSERT_EQ(node_id.Binary(), resource_scheduler.GetBestSchedulableNode(resource, false, false, false, &violations, &is_infeasible));
-  EXPECT_CALL(*gcs_client_->mock_node_accessor, Get(node_id, ::testing::_)).WillOnce(::testing::Return(nullptr));
-  ASSERT_EQ("", resource_scheduler.GetBestSchedulableNode(resource, false, false, false, &violations, &is_infeasible));
+  ASSERT_EQ(node_id.Binary(),
+            resource_scheduler.GetBestSchedulableNode(resource, false, false, false,
+                                                      &violations, &is_infeasible));
+  EXPECT_CALL(*gcs_client_->mock_node_accessor, Get(node_id, ::testing::_))
+      .WillOnce(::testing::Return(nullptr));
+  ASSERT_EQ("", resource_scheduler.GetBestSchedulableNode(resource, false, false, false,
+                                                          &violations, &is_infeasible));
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
@@ -928,15 +933,17 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
   // should spill there.
   auto remote_feasible = NodeID::FromRandom().Binary();
   resource_scheduler.AddOrUpdateNode(remote_feasible, resource_spec, {{"CPU", 0.}});
-  ASSERT_EQ(remote_feasible, resource_scheduler.GetBestSchedulableNode(resource_spec, false, false, false,
+  ASSERT_EQ(remote_feasible,
+            resource_scheduler.GetBestSchedulableNode(resource_spec, false, false, false,
                                                       &total_violations, &is_infeasible));
 
   // Feasible remote node, and it currently has resources available. We should
   // prefer to spill there.
   auto remote_available = NodeID::FromRandom().Binary();
   resource_scheduler.AddOrUpdateNode(remote_available, resource_spec, resource_spec);
-  ASSERT_EQ(remote_available, resource_scheduler.GetBestSchedulableNode(resource_spec, false, false, false,
-                                                                      &total_violations, &is_infeasible));
+  ASSERT_EQ(remote_available,
+            resource_scheduler.GetBestSchedulableNode(resource_spec, false, false, false,
+                                                      &total_violations, &is_infeasible));
 }
 
 TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
@@ -1102,8 +1109,8 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
       // Resource usage report tick should reset the remote node's resources.
       resource_scheduler.FillResourceUsage(data);
       for (int j = 0; j < num_slots_available; j++) {
-        ASSERT_EQ(remote, resource_scheduler.GetBestSchedulableNode(task_spec, false, false,
-                                                            false, &t, &is_infeasible));
+        ASSERT_EQ(remote, resource_scheduler.GetBestSchedulableNode(
+                              task_spec, false, false, false, &t, &is_infeasible));
         // Allocate remote resources.
         ASSERT_TRUE(resource_scheduler.AllocateRemoteTaskResources(remote, task_spec));
       }

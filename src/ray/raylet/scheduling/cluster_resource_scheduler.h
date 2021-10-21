@@ -14,10 +14,11 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <iostream>
 #include <sstream>
 #include <vector>
-#include <gtest/gtest_prod.h>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
