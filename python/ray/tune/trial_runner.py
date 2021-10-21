@@ -797,16 +797,16 @@ class TrialRunner:
         Blocks if all trials queued have finished, but search algorithm is
         still not finished.
         """
-        trials_done = True
+        no_trials_unfinished = True
         no_trials_pending = True
         for trial in self._live_trials:
             if not trial.is_finished():
                 trials_done = False
             if trial.status == Trial.PENDING:
                 no_trials_pending = False
-            if not trials_done and not no_trials_pending:
+            if not no_trials_unfinished and not no_trials_pending:
                 break
-        wait_for_trial = trials_done and not self._search_alg.is_finished()
+        wait_for_trial = no_trials_unfinished and not self._search_alg.is_finished()
         # Only fetch a new trial if we have no pending trial
         if wait_for_trial or no_trials_pending:
             self._update_trial_queue(blocking=wait_for_trial)
