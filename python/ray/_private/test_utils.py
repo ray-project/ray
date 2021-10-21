@@ -1,5 +1,4 @@
 import asyncio
-import errno
 import io
 import fnmatch
 import os
@@ -35,9 +34,6 @@ except (ImportError, ModuleNotFoundError):
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
-if sys.platform == "win32":
-    import _winapi
-
 
 class RayTestTimeoutException(Exception):
     """Exception used to identify timeouts from test utilities."""
@@ -53,22 +49,10 @@ def _pid_alive(pid):
     Returns:
         This returns false if the process is dead. Otherwise, it returns true.
     """
-    no_such_process = errno.EINVAL if sys.platform == "win32" else errno.ESRCH
     alive = True
     try:
-        if sys.platform == "win32":
-            SYNCHRONIZE = 0x00100000  # access mask defined in <winnt.h>
-            handle = _winapi.OpenProcess(SYNCHRONIZE, False, pid)
-            try:
-                alive = (_winapi.WaitForSingleObject(handle, 0) !=
-                         _winapi.WAIT_OBJECT_0)
-            finally:
-                _winapi.CloseHandle(handle)
-        else:
-            os.kill(pid, 0)
-    except OSError as ex:
-        if ex.errno != no_such_process:
-            raise
+        psutil.Process(pid)
+    except psutil.NoSuchProcess:
         alive = False
     return alive
 
