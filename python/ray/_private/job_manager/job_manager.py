@@ -1,7 +1,7 @@
 import subprocess
 import pickle
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from enum import Enum
 
 import ray
@@ -58,7 +58,7 @@ class StorageClient:
         if not os.path.exists(jobs_log_dir):
             os.mkdir(jobs_log_dir)
 
-        log_file_name =  f"{self.JOB_LOGS_KEY.format(job_id=job_id)}.out"
+        log_file_name = f"{self.JOB_LOGS_KEY.format(job_id=job_id)}.out"
         logs_file_path = jobs_log_dir + "/" + log_file_name
         return logs_file_path
 
@@ -85,6 +85,7 @@ class JobSupervisor:
     Created for each submitted job from JobManager, runs on head node in same
     process as ray dashboard.
     """
+
     def __init__(self, job_id: str):
         self._job_id = job_id
         self._status = JobStatus.PENDING
@@ -98,7 +99,8 @@ class JobSupervisor:
 
         Should update state and logs.
         """
-        assert self._status == JobStatus.PENDING, "Run should only be called once."
+        assert self._status == JobStatus.PENDING, (
+            "Run should only be called once.")
         self._status = JobStatus.RUNNING
         self._client.put_status(self._job_id, self._status)
 

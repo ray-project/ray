@@ -1,5 +1,3 @@
-import logging
-import time
 from uuid import uuid4
 
 import pytest
@@ -37,7 +35,7 @@ def test_basic_job_echo(job_manager):
 
 def test_basic_job_ls_grep(job_manager):
     job_id: str = str(uuid4())
-    job_id = job_manager.submit_job(job_id, f"ls | grep test_job_manager.py")
+    job_id = job_manager.submit_job(job_id, "ls | grep test_job_manager.py")
     assert isinstance(job_id, str)
 
     def check_job_finished():
