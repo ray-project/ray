@@ -15,6 +15,8 @@ from ray.serve.controller import ServeController
 import ray
 from ray import serve
 
+from api import Deployment
+
 
 class TestCalculateDesiredNumReplicas:
     def test_bounds_checking(self):
@@ -88,12 +90,20 @@ class TestCalculateDesiredNumReplicas:
 
 
 def get_num_running_replicas(controller: ServeController,
-                             deployment_name: str) -> int:
+                             deployment: Deployment) -> int:
     """ Get the amount of replicas currently running for given deployment """
     replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(deployment_name))
+        controller._dump_replica_states_for_testing.remote(deployment.name))
     running_replicas = replicas.get([ReplicaState.RUNNING])
     return len(running_replicas)
+
+
+def get_deployment_start_time(controller: ServeController,
+                              deployment: Deployment):
+    """ Return start time for given deployment """
+    deployments = ray.get(controller.list_deployments.remote())
+    backend_info, _route_prefix = deployments[deployment.name]
+    return backend_info.start_time_ms
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -121,16 +131,21 @@ def test_e2e_basic_scale_up_down(serve_instance):
             ray.get(signal.wait.remote())
 
     A.deploy()
+
+    controller = serve_instance._controller
+    start_time = get_deployment_start_time(controller, A)
+
     handle = A.get_handle()
     [handle.remote() for _ in range(100)]
 
-    controller = serve_instance._controller
-
-    wait_for_condition(lambda: get_num_running_replicas(controller, "A") >= 2)
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 2)
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(lambda: get_num_running_replicas(controller, "A") <= 1)
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) <= 1)
+
+    # Make sure start time did not change for the deployment
+    assert get_deployment_start_time(controller, A) == start_time
 
 
 @mock.patch.object(ServeController, "autoscale")
@@ -155,7 +170,7 @@ def test_initial_num_replicas(mock, serve_instance):
     A.deploy()
 
     controller = serve_instance._controller
-    assert get_num_running_replicas(controller, "A") == 2
+    assert get_num_running_replicas(controller, A) == 2
 
 
 class MockTimer:
