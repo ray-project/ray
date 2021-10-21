@@ -4,9 +4,14 @@ import time
 import ray
 from ray.util.actor_group import ActorGroup
 
+
 class DummyActor:
-    def return_one(self):
-        return 1
+    def return_arg(self, arg):
+        return arg
+
+    def get_actor_metadata(self):
+        return "metadata"
+
 
 @pytest.fixture
 def ray_start_2_cpus():
@@ -16,7 +21,7 @@ def ray_start_2_cpus():
     ray.shutdown()
 
 
-def test_worker_creation(ray_start_2_cpus):
+def test_actor_creation():
     assert ray.available_resources()["CPU"] == 2
     ag = ActorGroup(actor_cls=DummyActor, num_actors=2)
     assert len(ag) == 2
@@ -26,7 +31,7 @@ def test_worker_creation(ray_start_2_cpus):
     ag.shutdown()
 
 
-def test_worker_creation_num_cpus(ray_start_2_cpus):
+def test_actor_creation_num_cpus(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
     ag = ActorGroup(actor_cls=DummyActor, num_cpus_per_actor=2)
     time.sleep(1)
@@ -36,7 +41,7 @@ def test_worker_creation_num_cpus(ray_start_2_cpus):
     ag.shutdown()
 
 
-def test_worker_shutdown(ray_start_2_cpus):
+def test_actor_shutdown(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
     ag = ActorGroup(actor_cls=DummyActor, num_actors=2)
     time.sleep(1)
@@ -47,10 +52,10 @@ def test_worker_shutdown(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
 
     with pytest.raises(RuntimeError):
-        ag.return_one.remote()
+        ag.return_arg.remote(1)
 
 
-def test_worker_restart(ray_start_2_cpus):
+def test_actor_restart(ray_start_2_cpus):
     ag = ActorGroup(actor_cls=DummyActor, num_actors=2)
     with pytest.raises(RuntimeError):
         ag.start()
@@ -58,56 +63,38 @@ def test_worker_restart(ray_start_2_cpus):
     time.sleep(1)
     ag.shutdown(0)
     ag.start()
-    ray.get(ag.return_one.remote())
+    ray.get(ag.return_arg.remote(1))
 
 
-def test_execute_async(ray_start_2_cpus):
-    wg = WorkerGroup(num_workers=2)
-    futures = wg.execute_async(lambda: 1)
-    assert len(futures) == 2
-    outputs = ray.get(futures)
-    assert all(o == 1 for o in outputs)
+def test_actor_method(ray_start_2_cpus):
+    ag = ActorGroup(actor_cls=DummyActor, num_actors=2)
+    assert ray.get(ag.return_arg.remote(1)) == [1, 1]
 
 
-def test_execute(ray_start_2_cpus):
-    wg = WorkerGroup(num_workers=2)
-    outputs = wg.execute(lambda: 1)
-    assert len(outputs) == 2
-    assert all(o == 1 for o in outputs)
+def test_actor_metadata(ray_start_2_cpus):
+    ag = ActorGroup(actor_cls=DummyActor, num_actors=2)
+    assert ag.actor_metadata == ["metadata", "metadata"]
 
 
-def test_execute_args(ray_start_2_cpus):
-    wg = WorkerGroup(num_workers=2)
-    outputs = wg.execute(lambda x: x, 1)
-    assert len(outputs) == 2
-    assert all(o == 1 for o in outputs)
+def test_actor_method_fail(ray_start_2_cpus):
+    ag = ActorGroup(actor_cls=DummyActor, num_actors=2)
 
+    with pytest.raises(TypeError):
+        ag.return_arg(1)
 
-def test_execute_single(ray_start_2_cpus):
-    wg = WorkerGroup(num_workers=2)
-
-    def f():
-        import os
-        os.environ["TEST"] = "1"
-
-    wg.execute_single(1, f)
-
-    def check():
-        import os
-        return os.environ.get("TEST", "0")
-
-    assert wg.execute(check) == ["0", "1"]
+    with pytest.raises(AttributeError):
+        ag.non_existent_method.remote()
 
 
 def test_bad_resources(ray_start_2_cpus):
     with pytest.raises(ValueError):
-        WorkerGroup(num_workers=-1)
+        ActorGroup(num_workers=-1)
 
     with pytest.raises(ValueError):
-        WorkerGroup(num_cpus_per_worker=-1)
+        ActorGroup(num_cpus_per_worker=-1)
 
     with pytest.raises(ValueError):
-        WorkerGroup(num_gpus_per_worker=-1)
+        ActorGroup(num_gpus_per_worker=-1)
 
 
 if __name__ == "__main__":
