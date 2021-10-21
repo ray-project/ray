@@ -79,7 +79,7 @@ For contributors who are in the ``ray-project`` organization:
 For contributors who are not in the ``ray-project`` organization:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Your PRs will have assignees shortly. Assignees or PRs will be actively engaging with contributors to merge the PR.
+- Your PRs will have assignees shortly. Assignees of PRs will be actively engaging with contributors to merge the PR.
 - Please actively ping assignees after you address your comments!
 
 Testing
