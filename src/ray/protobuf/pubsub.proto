@@ -27,7 +27,7 @@ enum ChannelType {
   WORKER_OBJECT_EVICTION = 0;
   /// A channel for ref removed.
   WORKER_REF_REMOVED_CHANNEL = 1;
-  /// A channel to subscribe object locations.
+  /// A channel for object locations.
   WORKER_OBJECT_LOCATIONS_CHANNEL = 2;
 }
 

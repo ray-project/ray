@@ -509,6 +509,21 @@ class MockWorkerContext : public WorkerContext {
   }
 };
 
+class MockCoreWorkerDirectTaskReceiver : public CoreWorkerDirectTaskReceiver {
+ public:
+  MockCoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
+                                   instrumented_io_context &main_io_service,
+                                   const TaskHandler &task_handler,
+                                   const OnTaskDone &task_done)
+      : CoreWorkerDirectTaskReceiver(worker_context, main_io_service, task_handler,
+                                     task_done) {}
+
+  void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
+                                    const std::vector<ConcurrencyGroup> &cgs) {
+    concurrency_groups_cache_[actor_id] = cgs;
+  }
+};
+
 class DirectActorReceiverTest : public ::testing::Test {
  public:
   DirectActorReceiverTest()
@@ -518,7 +533,7 @@ class DirectActorReceiverTest : public ::testing::Test {
     auto execute_task =
         std::bind(&DirectActorReceiverTest::MockExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
+    receiver_ = std::make_unique<MockCoreWorkerDirectTaskReceiver>(
         worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
@@ -541,7 +556,7 @@ class DirectActorReceiverTest : public ::testing::Test {
     main_io_service_.stop();
   }
 
-  std::unique_ptr<CoreWorkerDirectTaskReceiver> receiver_;
+  std::unique_ptr<MockCoreWorkerDirectTaskReceiver> receiver_;
 
  private:
   rpc::Address rpc_address_;
@@ -575,6 +590,7 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
+    receiver_->UpdateConcurrencyGroupsCache(actor_id, {});
     receiver_->HandleTask(request, &reply, reply_callback);
   }
 
