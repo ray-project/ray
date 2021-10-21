@@ -243,7 +243,7 @@ py_test_module_list(
   files = [
     "test_runtime_env.py"
   ],
-  size = "large",
+  size = "enormous",
   extra_srcs = SRCS,
   tags = ["flaky-mac", "exclusive", "team:serve"],
   deps = ["//:ray_lib"],
