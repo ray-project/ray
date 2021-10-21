@@ -382,7 +382,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
       // Returns a request ID that the client can use to later get the result
       // (to allow async processing on the client).
       auto req_id =
-          create_request_queue_.AddRequest(object_id, client, handle_create, object_size);
+          create_request_queue_.AddRequest(key, object_id, client, handle_create, object_size);
       RAY_LOG(DEBUG) << "Received create request for object " << object_id
                      << " assigned request ID " << req_id << ", " << object_size
                      << " bytes";

@@ -24,14 +24,17 @@
 
 namespace plasma {
 
-uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id,
+uint64_t CreateRequestQueue::AddRequest(const ray::TaskKey &task_id,
+                                        const ObjectID &object_id,
                                         const std::shared_ptr<ClientInterface> &client,
                                         const CreateObjectCallback &create_callback,
                                         size_t object_size) {
   auto req_id = next_req_id_++;
   fulfilled_requests_[req_id] = nullptr;
   // TODO(jae): Convert from FIFO queue to priority queue (absl::btree_map).
-  queue_.emplace_back(
+  //auto taskId = task.GetTaskSpecification().GetTaskKey();
+  queue_.emplace(
+      task_id,
       new CreateRequest(object_id, req_id, client, create_callback, object_size));
   num_bytes_pending_ += object_size;
   return req_id;
@@ -82,20 +85,21 @@ Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
   }
 }
 
-Status CreateRequestQueue::ProcessRequests() {
+Status CreateRequestQueue::ProcessFirstRequest() {
   // Suppress OOM dump to once per grace period.
   bool logged_oom = false;
-  while (!queue_.empty()) {
-    auto request_it = queue_.begin();
+  auto queue_it = queue_.begin();
+  if (queue_it != queue_.end()) {
     bool spilling_required = false;
+    std::unique_ptr<CreateRequest> &request = queue_it->second;
     auto status =
-        ProcessRequest(/*fallback_allocator=*/false, *request_it, &spilling_required);
+        ProcessRequest(/*fallback_allocator=*/false, request, &spilling_required);
     if (spilling_required) {
       spill_objects_callback_();
     }
     auto now = get_time_();
     if (status.ok()) {
-      FinishRequest(request_it);
+      FinishRequest(queue_it);
       // Reset the oom start time since the creation succeeds.
       oom_start_time_ns_ = -1;
     } else {
@@ -120,7 +124,7 @@ Status CreateRequestQueue::ProcessRequests() {
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
         // Trigger the fallback allocator.
-        status = ProcessRequest(/*fallback_allocator=*/true, *request_it,
+        status = ProcessRequest(/*fallback_allocator=*/true, request,
                                 /*spilling_required=*/nullptr);
         if (!status.ok()) {
           std::string dump = "";
@@ -129,11 +133,70 @@ Status CreateRequestQueue::ProcessRequests() {
             logged_oom = true;
           }
           RAY_LOG(INFO) << "Out-of-memory: Failed to create object "
-                        << (*request_it)->object_id << " of size "
-                        << (*request_it)->object_size / 1024 / 1024 << "MB\n"
+                        << (request)->object_id << " of size "
+                        << (request)->object_size / 1024 / 1024 << "MB\n"
                         << dump;
         }
-        FinishRequest(request_it);
+        FinishRequest(queue_it);
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status CreateRequestQueue::ProcessRequests() {
+  // Suppress OOM dump to once per grace period.
+  bool logged_oom = false;
+  auto queue_it = queue_.begin();
+  while (queue_it != queue_.end()) {
+    bool spilling_required = false;
+    std::unique_ptr<CreateRequest> &request = queue_it->second;
+    auto status =
+        ProcessRequest(/*fallback_allocator=*/false, request, &spilling_required);
+    if (spilling_required) {
+      spill_objects_callback_();
+    }
+    auto now = get_time_();
+    if (status.ok()) {
+      FinishRequest(queue_it);
+      // Reset the oom start time since the creation succeeds.
+      oom_start_time_ns_ = -1;
+    } else {
+      if (trigger_global_gc_) {
+        trigger_global_gc_();
+      }
+
+      if (oom_start_time_ns_ == -1) {
+        oom_start_time_ns_ = now;
+      }
+      auto grace_period_ns = oom_grace_period_ns_;
+      auto spill_pending = spill_objects_callback_();
+      if (spill_pending) {
+        RAY_LOG(DEBUG) << "Reset grace period " << status << " " << spill_pending;
+        oom_start_time_ns_ = -1;
+        return Status::TransientObjectStoreFull("Waiting for objects to spill.");
+      } else if (now - oom_start_time_ns_ < grace_period_ns) {
+        // We need a grace period since (1) global GC takes a bit of time to
+        // kick in, and (2) there is a race between spilling finishing and space
+        // actually freeing up in the object store.
+        RAY_LOG(DEBUG) << "In grace period before fallback allocation / oom.";
+        return Status::ObjectStoreFull("Waiting for grace period.");
+      } else {
+        // Trigger the fallback allocator.
+        status = ProcessRequest(/*fallback_allocator=*/true, request,
+                                /*spilling_required=*/nullptr);
+        if (!status.ok()) {
+          std::string dump = "";
+          if (dump_debug_info_callback_ && !logged_oom) {
+            dump = dump_debug_info_callback_();
+            logged_oom = true;
+          }
+          RAY_LOG(INFO) << "Out-of-memory: Failed to create object "
+                        << (request)->object_id << " of size "
+                        << (request)->object_size / 1024 / 1024 << "MB\n"
+                        << dump;
+        }
+        FinishRequest(queue_it);
       }
     }
   }
@@ -141,25 +204,25 @@ Status CreateRequestQueue::ProcessRequests() {
 }
 
 void CreateRequestQueue::FinishRequest(
-    std::list<std::unique_ptr<CreateRequest>>::iterator request_it) {
+    absl::btree_map<ray::TaskKey, std::unique_ptr<CreateRequest>>::iterator queue_it) {
   // Fulfill the request.
-  auto &request = *request_it;
-  auto it = fulfilled_requests_.find(request->request_id);
+  //auto &request = *(queue_it->second);
+  auto it = fulfilled_requests_.find(queue_it->second->request_id);
   RAY_CHECK(it != fulfilled_requests_.end());
   RAY_CHECK(it->second == nullptr);
-  it->second = std::move(request);
+  it->second = std::move(queue_it->second);
   RAY_CHECK(num_bytes_pending_ >= it->second->object_size);
   num_bytes_pending_ -= it->second->object_size;
-  queue_.erase(request_it);
+  queue_it = queue_.erase(queue_it);
 }
 
 void CreateRequestQueue::RemoveDisconnectedClientRequests(
     const std::shared_ptr<ClientInterface> &client) {
   for (auto it = queue_.begin(); it != queue_.end();) {
-    if ((*it)->client == client) {
-      fulfilled_requests_.erase((*it)->request_id);
-      RAY_CHECK(num_bytes_pending_ >= (*it)->object_size);
-      num_bytes_pending_ -= (*it)->object_size;
+    if ((it->second)->client == client) {
+      fulfilled_requests_.erase((it->second)->request_id);
+      RAY_CHECK(num_bytes_pending_ >= (it->second)->object_size);
+      num_bytes_pending_ -= (it->second)->object_size;
       it = queue_.erase(it);
     } else {
       it++;

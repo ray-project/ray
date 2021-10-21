@@ -17,6 +17,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task_priority.h"
 
 namespace plasma {
 
@@ -78,32 +79,39 @@ TEST_F(CreateRequestQueueTest, TestSimple) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
+  ray::TaskKey key(ray::Priority({1,2,3}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({1,2,3,4}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key2(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key3(ray::Priority({1}), ObjectID::FromRandom().TaskId());
+
   // Advance the clock without processing objects. This shouldn't have an impact.
   current_time_ns_ += 10e9;
   auto client = std::make_shared<MockClient>();
-  auto req_id = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
+  auto req_id = queue_.AddRequest(key, ObjectID::Nil(), client, request, 1234);
+  auto req_id1 = queue_.AddRequest(key1, ObjectID::Nil(), client, request, 1234);
   ASSERT_REQUEST_UNFINISHED(queue_, req_id);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
 
-  ASSERT_TRUE(queue_.ProcessRequests().ok());
-  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::OK);
+  
+  ASSERT_TRUE(queue_.ProcessFirstRequest().ok());
+  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::OK);
   ASSERT_EQ(num_global_gc_, 0);
   // Request gets cleaned up after we get it.
-  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::UnexpectedError);
+  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::UnexpectedError);
 
-  auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
-  auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
-  auto req_id3 = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
-  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
+  auto req_id2 = queue_.AddRequest(key2, ObjectID::Nil(), client, request, 1234);
+  auto req_id3 = queue_.AddRequest(key3, ObjectID::Nil(), client, request, 1234);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id);
   ASSERT_REQUEST_UNFINISHED(queue_, req_id2);
   ASSERT_REQUEST_UNFINISHED(queue_, req_id3);
 
   ASSERT_TRUE(queue_.ProcessRequests().ok());
-  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::OK);
+  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::OK);
   ASSERT_REQUEST_FINISHED(queue_, req_id2, PlasmaError::OK);
   ASSERT_REQUEST_FINISHED(queue_, req_id3, PlasmaError::OK);
   ASSERT_EQ(num_global_gc_, 0);
   // Request gets cleaned up after we get it.
-  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::UnexpectedError);
+  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::UnexpectedError);
   ASSERT_REQUEST_FINISHED(queue_, req_id2, PlasmaError::UnexpectedError);
   ASSERT_REQUEST_FINISHED(queue_, req_id3, PlasmaError::UnexpectedError);
   AssertNoLeaks();
@@ -117,10 +125,12 @@ TEST_F(CreateRequestQueueTest, TestOom) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
+  ray::TaskKey key(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({1}), ObjectID::FromRandom().TaskId());
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
-  auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
+  auto req_id1 = queue_.AddRequest(key, ObjectID::Nil(), client, oom_request, 1234);
+  auto req_id2 = queue_.AddRequest(key1, ObjectID::Nil(), client, blocked_request, 1234);
 
   // Neither request was fulfilled.
   ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
@@ -153,10 +163,12 @@ TEST_F(CreateRequestQueueTest, TestFallbackAllocator) {
       return PlasmaError::OutOfMemory;
     }
   };
+  ray::TaskKey key(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({1}), ObjectID::FromRandom().TaskId());
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
-  auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
+  auto req_id1 = queue_.AddRequest(key, ObjectID::Nil(), client, oom_request, 1234);
+  auto req_id2 = queue_.AddRequest(key1, ObjectID::Nil(), client, oom_request, 1234);
 
   // Neither request was fulfilled.
   ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
@@ -195,10 +207,12 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
+  ray::TaskKey key(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({1}), ObjectID::FromRandom().TaskId());
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
-  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
+  auto req_id1 = queue.AddRequest(key, ObjectID::Nil(), client, oom_request, 1234);
+  auto req_id2 = queue.AddRequest(key1, ObjectID::Nil(), client, blocked_request, 1234);
 
   for (int i = 0; i < 10; i++) {
     // Advance 1 second.
@@ -230,10 +244,12 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
+  ray::TaskKey key(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({1}), ObjectID::FromRandom().TaskId());
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
-  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
+  auto req_id1 = queue.AddRequest(key, ObjectID::Nil(), client, oom_request, 1234);
+  auto req_id2 = queue.AddRequest(key1, ObjectID::Nil(), client, blocked_request, 1234);
 
   // Transient OOM should happen until the grace period.
   for (int i = 0; i < 9; i++) {
@@ -276,10 +292,12 @@ TEST_F(CreateRequestQueueTest, TestOomTimerWithSpilling) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
+  ray::TaskKey key(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({1}), ObjectID::FromRandom().TaskId());
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
-  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
+  auto req_id1 = queue.AddRequest(key, ObjectID::Nil(), client, oom_request, 1234);
+  auto req_id2 = queue.AddRequest(key1, ObjectID::Nil(), client, blocked_request, 1234);
 
   // Transient OOM should happen while spilling is in progress.
   for (int i = 0; i < 10; i++) {
@@ -333,10 +351,12 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
+  ray::TaskKey key(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({1}), ObjectID::FromRandom().TaskId());
 
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234);
-  auto req_id2 = queue.AddRequest(ObjectID::Nil(), client, blocked_request, 1234);
+  auto req_id1 = queue.AddRequest(key, ObjectID::Nil(), client, oom_request, 1234);
+  auto req_id2 = queue.AddRequest(key1, ObjectID::Nil(), client, blocked_request, 1234);
 
   // Transient OOM should not use up any until grace period is done.
   for (int i = 0; i < 3; i++) {
@@ -378,9 +398,10 @@ TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
   auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     return PlasmaError::OutOfMemory;
   };
+  ray::TaskKey key(ray::Priority({1}), ObjectID::FromRandom().TaskId());
 
   auto client = std::make_shared<MockClient>();
-  static_cast<void>(queue.AddRequest(ObjectID::Nil(), client, oom_request, 1234));
+  static_cast<void>(queue.AddRequest(key, ObjectID::Nil(), client, oom_request, 1234));
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
   current_time_ns += 1e8;
   ASSERT_TRUE(queue.ProcessRequests().IsObjectStoreFull());
@@ -391,17 +412,20 @@ TEST_F(CreateRequestQueueTest, TestClientDisconnected) {
     result->data_size = 1234;
     return PlasmaError::OK;
   };
+  ray::TaskKey key(ray::Priority({1,2,3}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key2(ray::Priority({1}), ObjectID::FromRandom().TaskId());
 
   // Client makes two requests. One is processed, the other is still in the
   // queue.
   auto client = std::make_shared<MockClient>();
-  auto req_id1 = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
+  auto req_id1 = queue_.AddRequest(key, ObjectID::Nil(), client, request, 1234);
   ASSERT_TRUE(queue_.ProcessRequests().ok());
-  auto req_id2 = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
+  auto req_id2 = queue_.AddRequest(key1, ObjectID::Nil(), client, request, 1234);
 
   // Another client makes a concurrent request.
   auto client2 = std::make_shared<MockClient>();
-  auto req_id3 = queue_.AddRequest(ObjectID::Nil(), client2, request, 1234);
+  auto req_id3 = queue_.AddRequest(key2, ObjectID::Nil(), client2, request, 1234);
 
   // Client disconnects.
   queue_.RemoveDisconnectedClientRequests(client);
@@ -422,13 +446,15 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
   };
   auto client = std::make_shared<MockClient>();
 
+  ray::TaskKey key(ray::Priority({1}), ObjectID::FromRandom().TaskId());
+
   // Queue is empty, request can be fulfilled.
   auto result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
   ASSERT_EQ(result.first.data_size, 1234);
   ASSERT_EQ(result.second, PlasmaError::OK);
 
   // Request would block.
-  auto req_id = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
+  auto req_id = queue_.AddRequest(key, ObjectID::Nil(), client, request, 1234);
   result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
   result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
   ASSERT_EQ(result.first.data_size, 1234);

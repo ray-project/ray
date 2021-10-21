@@ -19,7 +19,9 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/btree_map.h"
 
+#include "ray/common/task/task_priority.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
@@ -58,7 +60,8 @@ class CreateRequestQueue {
   /// \param object_size Object size in bytes.
   /// \return A request ID that can be used to get the result.
   /// TODO(jae): Pass the TaskKey in addition to or instead of the object_id.
-  uint64_t AddRequest(const ObjectID &object_id,
+  uint64_t AddRequest(const ray::TaskKey &task_id,
+                      const ObjectID &object_id,
                       const std::shared_ptr<ClientInterface> &client,
                       const CreateObjectCallback &create_callback,
                       const size_t object_size);
@@ -103,6 +106,7 @@ class CreateRequestQueue {
   ///
   /// \return Bad status for the first request in the queue if it failed to be
   /// serviced, or OK if all requests were fulfilled.
+  Status ProcessFirstRequest();
   Status ProcessRequests();
 
   /// Remove all requests that were made by a client that is now disconnected.
@@ -154,7 +158,7 @@ class CreateRequestQueue {
                         bool *spilling_required);
 
   /// Finish a queued request and remove it from the queue.
-  void FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it);
+  void FinishRequest(absl::btree_map<ray::TaskKey, std::unique_ptr<CreateRequest>>::iterator queue_it);
 
   /// The next request ID to assign, so that the caller can get the results of
   /// a request by retrying. Start at 1 because 0 means "do not retry".
@@ -190,7 +194,8 @@ class CreateRequestQueue {
   /// in the object store. Then, the client does not need to poll on an
   /// OutOfMemory error and we can just respond to them once there is enough
   /// space made, or after a timeout.
-  std::list<std::unique_ptr<CreateRequest>> queue_;
+  //std::list<std::unique_ptr<CreateRequest>> queue_;
+  absl::btree_map<ray::TaskKey, std::unique_ptr<CreateRequest>> queue_;
 
   /// A buffer of the results of fulfilled requests. The value will be null
   /// while the request is pending and will be set once the request has
