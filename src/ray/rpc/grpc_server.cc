@@ -19,12 +19,13 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
+#include "ray/rpc/common.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/stats/metric.h"
 #include "ray/util/util.h"
 
-DEFINE_stats(grpc_server_req_latency_ms, "Request latency in grpc server", ("Method"), (),
-             ray::stats::GAUGE);
+DEFINE_stats(grpc_server_req_process_time_ms, "Request latency in grpc server",
+             ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (),
              ray::stats::COUNT);
 DEFINE_stats(grpc_server_req_handling, "Request number are handling in grpc server",
@@ -65,8 +66,24 @@ void GrpcServer::Run() {
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
-  // TODO(hchen): Add options for authentication.
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
+  if (RayConfig::instance().USE_TLS()) {
+    // Create credentials from locations specified in config
+    std::string rootcert = ReadCert(RayConfig::instance().TLS_CA_CERT());
+    std::string servercert = ReadCert(RayConfig::instance().TLS_SERVER_CERT());
+    std::string serverkey = ReadCert(RayConfig::instance().TLS_SERVER_KEY());
+    grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp = {serverkey, servercert};
+    grpc::SslServerCredentialsOptions ssl_opts(
+        GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
+    ssl_opts.pem_root_certs = rootcert;
+    ssl_opts.pem_key_cert_pairs.push_back(pkcp);
+
+    // Create server credentials
+    std::shared_ptr<grpc::ServerCredentials> server_creds;
+    server_creds = grpc::SslServerCredentials(ssl_opts);
+    builder.AddListeningPort(server_address, server_creds, &port_);
+  } else {
+    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
+  }
   // Register all the services to this server.
   if (services_.empty()) {
     RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;

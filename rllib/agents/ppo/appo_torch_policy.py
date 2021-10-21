@@ -24,8 +24,8 @@ from ray.rllib.models.torch.torch_action_dist import \
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import LearningRateSchedule, \
-    ValueNetworkMixin
+from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
+    LearningRateSchedule, ValueNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance,\
     global_norm, sequence_mask
@@ -204,7 +204,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     # The summed weighted loss
     total_loss = mean_policy_loss + \
         mean_vf_loss * policy.config["vf_loss_coeff"] - \
-        mean_entropy * policy.config["entropy_coeff"]
+        mean_entropy * policy.entropy_coeff
 
     # Optional additional KL Loss
     if policy.config["use_kl_loss"]:
@@ -246,6 +246,7 @@ def stats(policy: Policy, train_batch: SampleBatch):
             torch.stack(policy.get_tower_stats("mean_policy_loss"))),
         "entropy": torch.mean(
             torch.stack(policy.get_tower_stats("mean_entropy"))),
+        "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
         "vf_loss": torch.mean(
             torch.stack(policy.get_tower_stats("mean_vf_loss"))),
@@ -285,6 +286,8 @@ def setup_early_mixins(policy: Policy, obs_space: gym.spaces.Space,
         config (TrainerConfigDict): The Policy's config.
     """
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
@@ -319,6 +322,6 @@ AsyncPPOTorchPolicy = build_policy_class(
     make_model=make_appo_model,
     mixins=[
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
-        ValueNetworkMixin
+        ValueNetworkMixin, EntropyCoeffSchedule
     ],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])
