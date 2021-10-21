@@ -79,15 +79,12 @@ genrule(
     outs = ["ray_cpp_pkg.out"],
     cmd = """
         WORK_DIR="$$(pwd)" &&
-        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
-        cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        cp -f $(locations libray_api.so) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         PY_CPP_DIR="$$WORK_DIR/python/ray/cpp" &&
         rm -rf $$PY_CPP_DIR &&
         BOOST_DIR="$$PY_CPP_DIR/include/boost/" &&
         mkdir -p "$$BOOST_DIR" &&
         mkdir -p "$$PY_CPP_DIR/lib/" &&
+        cp -f $(location default_worker) "$$PY_CPP_DIR/" &&
         cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/assert" "$$BOOST_DIR" &&
