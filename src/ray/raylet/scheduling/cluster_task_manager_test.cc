@@ -103,16 +103,15 @@ class MockWorkerPool : public WorkerPoolInterface {
   int num_pops;
 };
 
-std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(const std::string &id,
-                                                                    double num_cpus,
-                                                                    double num_gpus,
-                                                                    gcs::GcsClient& gcs_client) {
+std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
+    const std::string &id, double num_cpus, double num_gpus, gcs::GcsClient &gcs_client) {
   absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
-  auto scheduler = std::make_shared<ClusterResourceScheduler>(id, local_node_resources, gcs_client);
+  auto scheduler =
+      std::make_shared<ClusterResourceScheduler>(id, local_node_resources, gcs_client);
 
   return scheduler;
 }
@@ -185,8 +184,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
   ClusterTaskManagerTest(double num_cpus_at_head = 8.0, double num_gpus_at_head = 0.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
-        scheduler_(
-            CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head, num_gpus_at_head, *gcs_client_)),
+        scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head,
+                                             num_gpus_at_head, *gcs_client_)),
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
@@ -198,9 +197,9 @@ class ClusterTaskManagerTest : public ::testing::Test {
               return is_owner_alive_;
             },
             /* get_node_info= */
-            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo*{
+            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               node_info_calls_++;
-              if(node_info_.count(node_id)) {
+              if (node_info_.count(node_id)) {
                 return &node_info_[node_id];
               }
               return nullptr;
