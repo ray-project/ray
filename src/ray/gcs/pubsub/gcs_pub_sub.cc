@@ -14,10 +14,12 @@
 
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
+#include "absl/strings/str_cat.h"
+
 namespace ray {
 namespace gcs {
 
-Status GcsPubSub::Publish(const std::string &channel, const std::string &id,
+Status GcsPubSub::Publish(std::string_view channel, const std::string &id,
                           const std::string &data, const StatusCallback &done) {
   rpc::PubSubMessage message;
   message.set_id(id);
@@ -30,22 +32,20 @@ Status GcsPubSub::Publish(const std::string &channel, const std::string &id,
   };
 
   return redis_client_->GetPrimaryContext()->PublishAsync(
-      GenChannelPattern(channel, boost::optional<std::string>(id)),
-      message.SerializeAsString(), on_done);
+      GenChannelPattern(channel, id), message.SerializeAsString(), on_done);
 }
 
-Status GcsPubSub::Subscribe(const std::string &channel, const std::string &id,
+Status GcsPubSub::Subscribe(std::string_view channel, const std::string &id,
                             const Callback &subscribe, const StatusCallback &done) {
-  return SubscribeInternal(channel, subscribe, done, false,
-                           boost::optional<std::string>(id));
+  return SubscribeInternal(channel, subscribe, done, id);
 }
 
-Status GcsPubSub::SubscribeAll(const std::string &channel, const Callback &subscribe,
+Status GcsPubSub::SubscribeAll(std::string_view channel, const Callback &subscribe,
                                const StatusCallback &done) {
-  return SubscribeInternal(channel, subscribe, done, true);
+  return SubscribeInternal(channel, subscribe, done, std::nullopt);
 }
 
-Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string &id) {
+Status GcsPubSub::Unsubscribe(std::string_view channel_name, const std::string &id) {
   std::string pattern = GenChannelPattern(channel_name, id);
 
   absl::MutexLock lock(&mutex_);
@@ -59,10 +59,9 @@ Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string
   return ExecuteCommandIfPossible(channel->first, channel->second);
 }
 
-Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
+Status GcsPubSub::SubscribeInternal(std::string_view channel_name,
                                     const Callback &subscribe, const StatusCallback &done,
-                                    bool is_sub_or_unsub_all,
-                                    const boost::optional<std::string> &id) {
+                                    const std::optional<std::string_view> &id) {
   std::string pattern = GenChannelPattern(channel_name, id);
 
   absl::MutexLock lock(&mutex_);
@@ -74,7 +73,8 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
   }
 
   // Add the SUBSCRIBE command to the queue.
-  channel->second.command_queue.push_back(Command(subscribe, done, is_sub_or_unsub_all));
+  channel->second.command_queue.push_back(
+      Command(subscribe, done, /*is_sub_or_unsub_all=*/!id.has_value()));
   total_commands_queued_++;
 
   // Process the first command on the queue, if possible.
@@ -178,19 +178,18 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
   return status;
 }
 
-std::string GcsPubSub::GenChannelPattern(const std::string &channel,
-                                         const boost::optional<std::string> &id) {
-  std::stringstream pattern;
-  pattern << channel << ":";
+std::string GcsPubSub::GenChannelPattern(std::string_view channel,
+                                         const std::optional<std::string_view> &id) {
+  std::string pattern = absl::StrCat(channel, ":");
   if (id) {
-    pattern << *id;
+    absl::StrAppend(&pattern, *id);
   } else {
-    pattern << "*";
+    absl::StrAppend(&pattern, "*");
   }
-  return pattern.str();
+  return pattern;
 }
 
-bool GcsPubSub::IsUnsubscribed(const std::string &channel, const std::string &id) {
+bool GcsPubSub::IsUnsubscribed(std::string_view channel, const std::string &id) {
   std::string pattern = GenChannelPattern(channel, id);
 
   absl::MutexLock lock(&mutex_);

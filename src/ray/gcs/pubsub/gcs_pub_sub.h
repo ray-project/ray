@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <optional>
+#include <string>
+#include <string_view>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/gcs/callback.h"
@@ -24,16 +28,16 @@
 namespace ray {
 namespace gcs {
 
-#define JOB_CHANNEL "JOB"
-#define NODE_CHANNEL "NODE"
-#define NODE_RESOURCE_CHANNEL "NODE_RESOURCE"
-#define ACTOR_CHANNEL "ACTOR"
-#define WORKER_CHANNEL "WORKER"
-#define OBJECT_CHANNEL "OBJECT"
-#define TASK_CHANNEL "TASK"
-#define TASK_LEASE_CHANNEL "TASK_LEASE"
-#define RESOURCES_BATCH_CHANNEL "RESOURCES_BATCH"
-#define ERROR_INFO_CHANNEL "ERROR_INFO"
+inline constexpr std::string_view JOB_CHANNEL = "JOB";
+inline constexpr std::string_view NODE_CHANNEL = "NODE";
+inline constexpr std::string_view NODE_RESOURCE_CHANNEL = "NODE_RESOURCE";
+inline constexpr std::string_view ACTOR_CHANNEL = "ACTOR";
+inline constexpr std::string_view WORKER_CHANNEL = "WORKER";
+inline constexpr std::string_view OBJECT_CHANNEL = "OBJECT";
+inline constexpr std::string_view TASK_CHANNEL = "TASK";
+inline constexpr std::string_view TASK_LEASE_CHANNEL = "TASK_LEASE";
+inline constexpr std::string_view RESOURCES_BATCH_CHANNEL = "RESOURCES_BATCH";
+inline constexpr std::string_view ERROR_INFO_CHANNEL = "ERROR_INFO";
 
 /// \class GcsPubSub
 ///
@@ -56,7 +60,7 @@ class GcsPubSub {
   /// \param data The data of message to be published to redis.
   /// \param done Callback that will be called when the message is published to redis.
   /// \return Status
-  virtual Status Publish(const std::string &channel, const std::string &id,
+  virtual Status Publish(std::string_view channel, const std::string &id,
                          const std::string &data, const StatusCallback &done);
 
   /// Subscribe to messages with the specified ID under the specified channel.
@@ -67,7 +71,7 @@ class GcsPubSub {
   /// received.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status Subscribe(const std::string &channel, const std::string &id,
+  Status Subscribe(std::string_view channel, const std::string &id,
                    const Callback &subscribe, const StatusCallback &done);
 
   /// Subscribe to messages with the specified channel.
@@ -77,7 +81,7 @@ class GcsPubSub {
   /// received.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status SubscribeAll(const std::string &channel, const Callback &subscribe,
+  Status SubscribeAll(std::string_view channel, const Callback &subscribe,
                       const StatusCallback &done);
 
   /// Unsubscribe to messages with the specified ID under the specified channel.
@@ -85,14 +89,14 @@ class GcsPubSub {
   /// \param channel The channel to unsubscribe from redis.
   /// \param id The id of message to be unsubscribed from redis.
   /// \return Status
-  Status Unsubscribe(const std::string &channel, const std::string &id);
+  Status Unsubscribe(std::string_view channel, const std::string &id);
 
   /// Check if the specified ID under the specified channel is unsubscribed.
   ///
   /// \param channel The channel to unsubscribe from redis.
   /// \param id The id of message to be unsubscribed from redis.
   /// \return Whether the specified ID under the specified channel is unsubscribed.
-  bool IsUnsubscribed(const std::string &channel, const std::string &id);
+  bool IsUnsubscribed(std::string_view channel, const std::string &id);
 
   std::string DebugString() const;
 
@@ -155,12 +159,12 @@ class GcsPubSub {
                                   GcsPubSub::Channel &channel)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status SubscribeInternal(const std::string &channel_name, const Callback &subscribe,
-                           const StatusCallback &done, bool is_sub_or_unsub_all,
-                           const boost::optional<std::string> &id = boost::none);
+  Status SubscribeInternal(std::string_view channel_name, const Callback &subscribe,
+                           const StatusCallback &done,
+                           const std::optional<std::string_view> &id);
 
-  std::string GenChannelPattern(const std::string &channel,
-                                const boost::optional<std::string> &id);
+  std::string GenChannelPattern(std::string_view channel,
+                                const std::optional<std::string_view> &id);
 
   std::shared_ptr<RedisClient> redis_client_;
 
@@ -171,6 +175,8 @@ class GcsPubSub {
 
   size_t total_commands_queued_ GUARDED_BY(mutex_);
 };
+
+
 
 }  // namespace gcs
 }  // namespace ray
