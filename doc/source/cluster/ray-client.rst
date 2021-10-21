@@ -141,7 +141,7 @@ listening port (``10001``).
   $ ray up cluster.yaml
   $ ray attach cluster.yaml -p 10001
 
-Then, you can connect to the Ray cluster using  ``localhost`` as the
+Then, you can connect to the Ray cluster **from another terminal** using  ``localhost`` as the
 ``head_node_host``.
 
 .. code-block:: python
