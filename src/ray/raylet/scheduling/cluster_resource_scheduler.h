@@ -17,6 +17,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <gtest/gtest_prod.h>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -107,45 +108,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///           constraint is violated.
   int64_t IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
                         const NodeResources &resources) const;
-
-  ///  Find a node in the cluster on which we can schedule a given resource request.
-  ///
-  ///  Ignoring soft constraints, this policy prioritizes nodes in the
-  ///  following order:
-  ///
-  ///  1. Local node if resources available.
-  ///  2. Any remote node if resources available.
-  ///  3. If the local node is not feasible, any remote node if feasible.
-  ///
-  ///  If soft constraints are specified, then this policy will prioritize:
-  ///  1. Local node if resources available and does not violate soft
-  ///     constraints.
-  ///  2. Any remote node if resources available and does not violate soft
-  ///     constraints.
-  ///  3. Out of all the nodes, including the local node, pick the one that
-  ///     has resources available and violates the fewest soft constraints.
-  ///  4. If the local node is not feasible, any remote node if feasible.
-  ///
-  ///  If no node can meet any of these, returns -1, in which case the caller
-  ///  should queue the task and try again once resource availability has been
-  ///  updated.
-  ///
-  ///  \param resource_request: Task to be scheduled.
-  ///  \param actor_creation: True if this is an actor creation task.
-  ///  \param force_spillback For non-actor creation requests, pick a remote
-  ///  feasible node. If this is false, then the task may be scheduled to the
-  ///  local node.
-  ///  \param violations: The number of soft constraint violations associated
-  ///                     with the node returned by this function (assuming
-  ///                     a node that can schedule resource_request is found).
-  ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
-  ///  is infeasible.
-  ///
-  ///  \return -1, if no node can schedule the current request; otherwise,
-  ///          return the ID of a node that can schedule the resource request.
-  int64_t GetBestSchedulableNodeSimpleBinPack(const ResourceRequest &resource_request,
-                                              bool actor_creation, bool force_spillback,
-                                              int64_t *violations, bool *is_infeasible);
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
@@ -458,8 +420,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
                                             const ResourceRequest &resource_request);
 
-  /// Use the hybrid spillback policy.
-  const bool hybrid_spillback_;
   /// The threshold at which to switch from packing to spreading.
   const float spread_threshold_;
   /// List of nodes in the clusters and their resources organized as a map.
@@ -488,6 +448,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
 
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
 };
 
 }  // end namespace ray

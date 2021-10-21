@@ -41,7 +41,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
                                const absl::flat_hash_map<int64_t, Node> &nodes,
                                float spread_threshold, bool force_spillback,
                                bool require_available,
-                               std::function<bool(int)> is_node_available,
+                               std::function<bool(int64_t)> is_node_available,
                                NodeFilter node_filter) {
   // Step 1: Generate the traversal order. We guarantee that the first node is local, to
   // encourage local scheduling. The rest of the traversal order should be globally
@@ -50,9 +50,10 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   round.reserve(nodes.size());
   const auto local_it = nodes.find(local_node_id);
   RAY_CHECK(local_it != nodes.end());
-
+  RAY_LOG(ERROR) << "Here!";
   auto predicate = [node_filter, &is_node_available](
                        int64_t node_id, const NodeResources &node_resources) {
+                     RAY_LOG(ERROR) << "check " << node_id;
     if (!is_node_available(node_id)) {
       return false;
     }
@@ -78,6 +79,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
 
   const auto start_index = round.size();
   for (const auto &pair : nodes) {
+    RAY_LOG(ERROR) << "Check node " << pair.first;
     if (pair.first != local_node_id &&
         predicate(pair.first, pair.second.GetLocalView())) {
       round.push_back(pair.first);
@@ -150,7 +152,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
 int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t local_node_id,
                      const absl::flat_hash_map<int64_t, Node> &nodes,
                      float spread_threshold, bool force_spillback, bool require_available,
-                     std::function<bool(int)> is_node_available,
+                     std::function<bool(int64_t)> is_node_available,
                      bool scheduler_avoid_gpu_nodes) {
   if (!scheduler_avoid_gpu_nodes || IsGPURequest(resource_request)) {
     return HybridPolicyWithFilter(resource_request, local_node_id, nodes,

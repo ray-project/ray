@@ -23,16 +23,13 @@
 namespace ray {
 
 ClusterResourceScheduler::ClusterResourceScheduler()
-    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      spread_threshold_(RayConfig::instance().scheduler_spread_threshold())
-
+    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold())
           {};
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources,
     gcs::GcsClient &gcs_client)
-    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
+    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
       local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
@@ -46,8 +43,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const absl::flat_hash_map<std::string, double> &local_node_resources,
     gcs::GcsClient &gcs_client, std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
-    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
-      spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
+    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       gcs_client_(&gcs_client) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
@@ -61,10 +57,14 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 }
 
 bool ClusterResourceScheduler::NodeAlive(int64_t node_id) const {
+  if(node_id == local_node_id_) {
+    return true;
+  }
   if (node_id == -1) {
     return false;
   }
   auto node_id_binary = string_to_int_map_.Get(node_id);
+  RAY_LOG(ERROR) << "NodeAlive: " << node_id << "\t" << local_node_id_ << "\t" << node_id_binary.size();
   return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id_binary)) != nullptr;
 }
 
@@ -104,6 +104,7 @@ void ClusterResourceScheduler::AddOrUpdateNode(
 
 void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
                                                const NodeResources &node_resources) {
+  RAY_LOG(ERROR) << "AddOrUpdateNode: " << node_id;
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.
@@ -241,84 +242,6 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
   return violations;
 }
 
-int64_t ClusterResourceScheduler::GetBestSchedulableNodeSimpleBinPack(
-    const ResourceRequest &resource_request, bool actor_creation, bool force_spillback,
-    int64_t *total_violations, bool *is_infeasible) {
-  // NOTE: We need to set `is_infeasible` to false in advance to avoid `is_infeasible` not
-  // being set.
-  *is_infeasible = false;
-
-  // Minimum number of soft violations across all nodes that can schedule the request.
-  // We will pick the node with the smallest number of soft violations.
-  int64_t min_violations = INT_MAX;
-  // Node associated to min_violations.
-  std::vector<int64_t> best_nodes;
-  *total_violations = 0;
-
-  // Check whether local node is schedulable. We return immediately
-  // the local node only if there are zero violations.
-  const auto local_node_it = nodes_.find(local_node_id_);
-  if (!force_spillback) {
-    if (local_node_it != nodes_.end()) {
-      if (IsSchedulable(resource_request, local_node_it->first,
-                        local_node_it->second.GetLocalView()) == 0) {
-        return local_node_id_;
-      }
-    }
-  }
-
-  bool local_node_feasible =
-      IsFeasible(resource_request, local_node_it->second.GetLocalView());
-
-  for (const auto &node : nodes_) {
-    // Return -1 if node not schedulable. otherwise return the number
-    // of soft constraint violations.
-    int64_t violations =
-        IsSchedulable(resource_request, node.first, node.second.GetLocalView());
-    if (violations == -1) {
-      if (!local_node_feasible && best_nodes.empty() &&
-          IsFeasible(resource_request, node.second.GetLocalView())) {
-        // If the local node is not feasible, and a better node has not yet
-        // been found, and this node does not currently have the resources
-        // available but is feasible, then schedule to this node.
-        // NOTE(swang): This is needed to make sure that tasks that are not
-        // feasible on this node are spilled back to a node that does have the
-        // appropriate total resources in a timely manner.
-        best_nodes.emplace_back(node.first);
-      }
-      continue;
-    }
-
-    if (force_spillback && node.first == local_node_id_) {
-      // Forcing spill back to remote node, so skip the local node.
-      continue;
-    }
-
-    // Update the node with the smallest number of soft constraints violated.
-    if (min_violations > violations) {
-      min_violations = violations;
-      // Clear should be performed by O(1) by the compiler because the
-      // vector entry type is int64_t.
-      best_nodes.clear();
-    }
-    if (min_violations == violations) {
-      best_nodes.emplace_back(node.first);
-    }
-  }
-  *total_violations = min_violations;
-
-  // Randomly select one of the best nodes to spillback.
-  int64_t best_node = -1;
-  if (!best_nodes.empty()) {
-    best_node = best_nodes[0];
-  }
-
-  // If there's no best node, and the task is not feasible locally,
-  // it means the task is infeasible.
-  *is_infeasible = best_node == -1 && !local_node_feasible;
-  return best_node;
-}
-
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     const ResourceRequest &resource_request, bool actor_creation, bool force_spillback,
     int64_t *total_violations, bool *is_infeasible) {
@@ -347,12 +270,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
                    << ", # nodes = " << nodes_.size()
                    << ", resource_request = " << resource_request.DebugString();
     return best_node;
-  }
-
-  if (!hybrid_spillback_) {
-    return GetBestSchedulableNodeSimpleBinPack(resource_request, actor_creation,
-                                               force_spillback, total_violations,
-                                               is_infeasible);
   }
 
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
