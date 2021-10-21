@@ -11,6 +11,7 @@ import numpy as np
 import ray
 from ray.tune import (run, Trainable, sample_from, Analysis,
                       ExperimentAnalysis, grid_search)
+from ray.tune.result import DEBUG_METRICS
 from ray.tune.utils.mock import MyTrainableClass
 from ray.tune.utils.serialization import TuneFunctionEncoder
 
@@ -163,10 +164,12 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                 "id": 1
             }).trials
 
-        self.assertNotIn("pid", trial.metric_analysis)
+        for metric in DEBUG_METRICS:
+            self.assertNotIn(metric, trial.metric_analysis)
+            self.assertNotIn(metric, trial.metric_n_steps)
+
         self.assertTrue(not any(
             metric.startswith("config") for metric in trial.metric_analysis))
-        self.assertNotIn("pid", trial.metric_n_steps)
         self.assertTrue(not any(
             metric.startswith("config") for metric in trial.metric_n_steps))
 

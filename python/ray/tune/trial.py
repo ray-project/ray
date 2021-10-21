@@ -661,7 +661,7 @@ class Trial:
         self.last_result = result
         self.last_update_time = time.time()
 
-        metric_result = copy.deepcopy(self.last_result)
+        metric_result = self.last_result.copy()
         for remove_metric in DEBUG_METRICS:
             metric_result.pop(remove_metric, None)
 
