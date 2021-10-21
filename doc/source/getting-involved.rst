@@ -66,7 +66,7 @@ There are a couple steps to merge a contribution.
 PR Review Process
 -----------------
 
-For contributors who are in the ray-project organization:
+For contributors who are in the ``ray-project`` organization:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - When you first create a PR, add an reviewer to the `assignee` section.
@@ -76,7 +76,7 @@ For contributors who are in the ray-project organization:
 - Once the PR is approved, the author is in charge of ensuring the PR passes the build. Add the `test-ok` label if the build succeeds.
 - Committers will merge the PR once the build is passing.
 
-For contributors who are not in the ray-project organization:
+For contributors who are not in the ``ray-project`` organization:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Your PRs will have assignees shortly. Assignees or PRs will be actively engaging with contributors to merge the PR.
