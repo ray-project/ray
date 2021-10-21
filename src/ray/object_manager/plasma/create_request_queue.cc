@@ -172,7 +172,7 @@ Status CreateRequestQueue::ProcessRequests() {
 
       bool wait = on_object_creation_blocked_callback_(queue_it->first.first);
       if (wait) {
-        RAY_LOG(INFO) << "Object creation of priority " << priority << " blocked";
+        RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first << " blocked";
         return Status::TransientObjectStoreFull("Waiting for higher priority tasks to finish");
       }
 
@@ -207,6 +207,11 @@ Status CreateRequestQueue::ProcessRequests() {
       }
     }
   }
+
+  // If we make it here, then there is nothing left in the queue. It's safe to
+  // run new tasks again.
+  RAY_UNUSED(on_object_creation_blocked_callback_(ray::Priority()));
+
   return Status::OK();
 }
 

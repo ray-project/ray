@@ -228,6 +228,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           },
           /*on_object_creation_blocked_callback=*/
           [this](const Priority &priority) {
+            //cluster_task_manager_->BlockTasks(priority);
             return false;
           },
           /*object_store_full_callback=*/
