@@ -682,11 +682,6 @@ def is_placement_group_removed(pg):
     return table["state"] == "REMOVED"
 
 
-def is_anyscale_connect(address: Optional[str]) -> bool:
-    """Returns whether or not the Ray Address points to an Anyscale cluster."""
-    return address is not None and address.startswith("anyscale://")
-
-
 def monitor_memory_usage(interval_s: int = 5, warning_threshold: float = 0.9):
     """Run the memory monitor actor that prints the memory usage.
 

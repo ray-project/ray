@@ -17,7 +17,6 @@ import time
 from pathlib import Path
 
 import ray
-from ray._private.test_utils import is_anyscale_connect
 
 
 def test_pip_requirements_files():
@@ -31,7 +30,7 @@ def test_pip_requirements_files():
 
     env_18 = {"pip": str(pip_file_18)}
     assert ray.get(
-        get_version.options(runtime_env=env_18).remote() == "2.18.0")
+        get_version.options(runtime_env=env_18).remote()) == "2.18.0"
 
     @ray.remote
     class VersionActor:
@@ -44,7 +43,7 @@ def test_pip_requirements_files():
 
     env_16 = {"pip": str(pip_file_16)}
     actor_16 = VersionActor.options(runtime_env=env_16).remote()
-    assert ray.get(actor_16.get_version.remote() == "2.16.0")
+    assert ray.get(actor_16.get_version.remote()) == "2.16.0"
 
     os.remove(pip_file_18)
     os.remove(pip_file_16)
@@ -66,7 +65,7 @@ if __name__ == "__main__":
 
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "rte_ray_client")
-    if is_anyscale_connect(addr):
+    if addr is not None and addr.startswith("anyscale://"):
         ray.init(address=addr, job_name=job_name)
     else:
         ray.init(address="auto")

@@ -4,7 +4,6 @@ import time
 import json
 from util import import_and_execute_test_script, wait_for_cluster_client
 
-from ray._private.test_utils import is_anyscale_connect
 NOTEBOOK_PATH_RELATIVE_TO_RAY_REPO = (
     "doc/examples/modin_xgboost/modin_xgboost.py")
 
@@ -18,7 +17,7 @@ if __name__ == "__main__":
 
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "modin_xgboost_test")
-    if is_anyscale_connect(addr):
+    if addr is not None and addr.startswith("anyscale://"):
         ray.init(address=addr, job_name=job_name)
     else:
         ray.init(address="auto")
