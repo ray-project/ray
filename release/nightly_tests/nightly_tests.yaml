@@ -337,6 +337,17 @@
     prepare: python wait_cluster.py 251 5400
     script: python many_nodes_tests/actor_test.py
 
+- name: grpc_many_nodes_actor_test
+  cluster:
+    app_config: many_nodes_tests/app_config_grpc.yaml
+    compute_template: many_nodes_tests/compute_config.yaml
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 251 5400
+    script: python many_nodes_tests/actor_test.py
+  stable: false
+
 - name: pg_autoscaling_regression_test
   cluster:
     app_config: placement_group_tests/app_config.yaml
