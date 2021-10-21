@@ -424,7 +424,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
                           "in too many objects being fetched to this node";
     }
   }
-  RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
+  RAY_LOG(DEBUG) << object_id << " OnLocationChange " << spilled_url << " num clients "
                  << client_ids.size();
 
   {
