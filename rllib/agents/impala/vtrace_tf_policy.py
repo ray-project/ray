@@ -199,26 +199,27 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     loss_actions = actions if is_multidiscrete else tf.expand_dims(
         actions, axis=1)
 
-    # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
+    # Inputs are reshaped from [B * T] => [(T|T-1), B] for V-trace calc.
+    drop_last = policy.config["vtrace_drop_last_ts"]
     policy.loss = VTraceLoss(
-        actions=make_time_major(loss_actions, drop_last=True),
+        actions=make_time_major(loss_actions, drop_last=drop_last),
         actions_logp=make_time_major(
-            action_dist.logp(actions), drop_last=True),
+            action_dist.logp(actions), drop_last=drop_last),
         actions_entropy=make_time_major(
-            action_dist.multi_entropy(), drop_last=True),
-        dones=make_time_major(dones, drop_last=True),
+            action_dist.multi_entropy(), drop_last=drop_last),
+        dones=make_time_major(dones, drop_last=drop_last),
         behaviour_action_logp=make_time_major(
-            behaviour_action_logp, drop_last=True),
+            behaviour_action_logp, drop_last=drop_last),
         behaviour_logits=make_time_major(
-            unpacked_behaviour_logits, drop_last=True),
-        target_logits=make_time_major(unpacked_outputs, drop_last=True),
+            unpacked_behaviour_logits, drop_last=drop_last),
+        target_logits=make_time_major(unpacked_outputs, drop_last=drop_last),
         discount=policy.config["gamma"],
-        rewards=make_time_major(rewards, drop_last=True),
-        values=make_time_major(values, drop_last=True),
+        rewards=make_time_major(rewards, drop_last=drop_last),
+        values=make_time_major(values, drop_last=drop_last),
         bootstrap_value=make_time_major(values)[-1],
         dist_class=Categorical if is_multidiscrete else dist_class,
         model=model,
-        valid_mask=make_time_major(mask, drop_last=True),
+        valid_mask=make_time_major(mask, drop_last=drop_last),
         config=policy.config,
         vf_loss_coeff=policy.config["vf_loss_coeff"],
         entropy_coeff=policy.entropy_coeff,
@@ -232,11 +233,13 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
 
 
 def stats(policy, train_batch):
+    drop_last = policy.config["vtrace"] and \
+                policy.config["vtrace_drop_last_ts"]
     values_batched = _make_time_major(
         policy,
         train_batch.get(SampleBatch.SEQ_LENS),
         policy.model.value_function(),
-        drop_last=policy.config["vtrace"])
+        drop_last=drop_last)
 
     return {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),

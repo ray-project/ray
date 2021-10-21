@@ -178,6 +178,26 @@ py_test(
 )
 
 py_test(
+    name = "run_regression_tests_frozenlake_appo_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_tf", "learning_tests_discrete_tf"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/frozenlake-appo-vtrace.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "run_regression_tests_frozenlake_appo_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_torch", "learning_tests_discrete_torch"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/frozenlake-appo-vtrace.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
+)
+
+py_test(
     name = "learning_cartpole_appo_tf_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole", "learning_tests_discrete_tf", "fake_gpus_tf"],
