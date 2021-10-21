@@ -11,6 +11,7 @@
 # -modernize-use-emplace (more subtle behavior)
 # -modernize-use-nodiscard (too much noise)
 # -modernize-use-trailing-return-type (inconsistent style)
+# -modernize-use-override (TODO(mwtian): re-enable after fixing existing derived classes)
 # -modernize-avoid-bind (incorrect conversion)
 # -modernize-loop-convert (more subtle behavior)
 # -modernize-replace-disallow-copy-and-assign-macro (inconsistent style)
@@ -42,6 +43,7 @@ Checks: >
   -modernize-replace-disallow-copy-and-assign-macro,
   -modernize-make-unique,
   -modernize-make-shared,
+  -modernize-use-override,
   performance-*,
   readability-avoid-const-params-in-decls,
   readability-braces-around-statements,

@@ -62,8 +62,15 @@ int64_t HybridPolicy(
     bool force_spillback, bool require_available,
     bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
 
-//
-enum class NodeFilter { kAny, kGPU, kCPUOnly };
+enum class NodeFilter {
+  /// Default scheduling.
+  kAny,
+  /// Schedule on GPU only nodes.
+  kGPU,
+  /// Schedule on nodes that don't have GPU. Since GPUs are more scarce resources, we need
+  /// special handling for this.
+  kNonGpu
+};
 
 /// \param resource_request: The resource request we're attempting to schedule.
 /// \param local_node_id: The id of the local node, which is needed for traversal order.
@@ -72,7 +79,7 @@ enum class NodeFilter { kAny, kGPU, kCPUOnly };
 /// truncated to 0.
 /// \param node_filter: defines the subset of nodes were are allowed to schedule on.
 /// can be one of kAny (can schedule on all nodes), kGPU (can only schedule on kGPU
-/// nodes), kCPUOnly (can only schedule on non-GPU nodes.
+/// nodes), kNonGpu (can only schedule on non-GPU nodes.
 ///
 /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
 /// schedule on.
