@@ -99,9 +99,8 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
 
     if policy.config["vtrace"]:
         drop_last = policy.config["vtrace_drop_last_ts"]
-        logger.debug(
-            "Using V-Trace surrogate loss (vtrace=True; "
-            f"drop_last={drop_last})")
+        logger.debug("Using V-Trace surrogate loss (vtrace=True; "
+                     f"drop_last={drop_last})")
 
         old_policy_behaviour_logits = target_model_out.detach()
         old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
@@ -133,8 +132,8 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
                 unpacked_old_policy_behaviour_logits, drop_last=drop_last),
             actions=torch.unbind(
                 _make_time_major(loss_actions, drop_last=drop_last), dim=2),
-            discounts=(1.0 - _make_time_major(dones, drop_last=drop_last).float()) *
-            policy.config["gamma"],
+            discounts=(1.0 - _make_time_major(
+                dones, drop_last=drop_last).float()) * policy.config["gamma"],
             rewards=_make_time_major(rewards, drop_last=drop_last),
             values=values_time_major[:-1] if drop_last else values_time_major,
             bootstrap_value=values_time_major[-1],

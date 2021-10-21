@@ -144,9 +144,8 @@ def appo_surrogate_loss(
 
     if policy.config["vtrace"]:
         drop_last = policy.config["vtrace_drop_last_ts"]
-        logger.debug(
-            "Using V-Trace surrogate loss (vtrace=True; "
-            f"drop_last={drop_last})")
+        logger.debug("Using V-Trace surrogate loss (vtrace=True; "
+                     f"drop_last={drop_last})")
 
         # Prepare actions for loss.
         loss_actions = actions if is_multidiscrete else tf.expand_dims(
@@ -172,12 +171,15 @@ def appo_surrogate_loss(
                 target_policy_logits=make_time_major(
                     unpacked_old_policy_behaviour_logits, drop_last=drop_last),
                 actions=tf.unstack(
-                    make_time_major(loss_actions, drop_last=drop_last), axis=2),
+                    make_time_major(loss_actions, drop_last=drop_last),
+                    axis=2),
                 discounts=tf.cast(
-                    ~make_time_major(tf.cast(dones, tf.bool), drop_last=drop_last),
+                    ~make_time_major(
+                        tf.cast(dones, tf.bool), drop_last=drop_last),
                     tf.float32) * policy.config["gamma"],
                 rewards=make_time_major(rewards, drop_last=drop_last),
-                values=values_time_major[:-1] if drop_last else values_time_major,
+                values=values_time_major[:-1]
+                if drop_last else values_time_major,
                 bootstrap_value=values_time_major[-1],
                 dist_class=Categorical if is_multidiscrete else dist_class,
                 model=model,
@@ -295,13 +297,12 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     Returns:
         Dict[str, TensorType]: The stats dict.
     """
-    drop_last = policy.config["vtrace"] and \
-                policy.config["vtrace_drop_last_ts"]
     values_batched = _make_time_major(
         policy,
         train_batch.get(SampleBatch.SEQ_LENS),
         policy.model.value_function(),
-        drop_last=drop_last)
+        drop_last=policy.config["vtrace"]
+        and policy.config["vtrace_drop_last_ts"])
 
     stats_dict = {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
