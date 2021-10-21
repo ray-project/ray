@@ -456,8 +456,11 @@ cdef execute_task(
             # We need to handle this separately because `__repr__` may not be
             # runnable until after `__init__` (e.g., if it accesses fields
             # defined in the constructor).
-            print("{}{}".format(
-                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
+            actor_magic_token = "{}{}".format(
+                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
+            # Flush to both .out and .err
+            print(actor_magic_token)
+            print(actor_magic_token, file=sys.stderr)
 
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
@@ -477,8 +480,11 @@ cdef execute_task(
         function_executor = execution_info.function
         # Record the task name via :task_name: magic token in the log file.
         # This is used for the prefix in driver logs `(task_name pid=123) ...`
-        print("{}{}".format(
-            ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", "")))
+        task_name_magic_token = "{}{}".format(
+            ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", ""))
+        # Print on both .out and .err
+        print(task_name_magic_token)
+        print(task_name_magic_token, file=sys.stderr)
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
@@ -605,8 +611,11 @@ cdef execute_task(
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         "__repr__" in
                         actor_class.__ray_actor_class__.__dict__):
-                    print("{}{}".format(
-                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
+                    actor_magic_token = "{}{}".format(
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
+                    # Flush on both stdout and stderr.
+                    print(actor_magic_token)
+                    print(actor_magic_token, file=sys.stderr)
             # Check for a cancellation that was called when the function
             # was exiting and was raised after the except block.
             if not check_signals().ok():
