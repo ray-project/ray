@@ -36,7 +36,7 @@ class HorovodConfig(BackendConfig):
             file contents. Writes the private key to ssh_identity_file.
         timeout_s (int): Timeout parameter for Gloo rendezvous.
         placement_group_timeout_s (int): Timeout parameter for Ray
-            Placement Group creation.
+            Placement Group creation. Currently unused.
     """
     nics: Optional[Set[str]] = None
     verbose: int = 1
