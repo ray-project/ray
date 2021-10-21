@@ -35,6 +35,7 @@ from ray.util.client.common import (ClientActorClass, ClientActorHandle,
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
+import ray._private.utils
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 if TYPE_CHECKING:
@@ -100,7 +101,8 @@ class Worker:
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
-        self._secure = secure
+        self._secure = secure or os.environ.get("RAY_USE_TLS",
+                                                "0").lower() in ("1", "true")
         self._conn_str = conn_str
         self._connection_retries = connection_retries
 
@@ -159,6 +161,13 @@ class Worker:
         if self._secure:
             if self._credentials is not None:
                 credentials = self._credentials
+            elif os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
+                server_cert_chain, private_key, ca_cert = ray._private.utils \
+                    .load_certs_from_env()
+                credentials = grpc.ssl_channel_credentials(
+                    certificate_chain=server_cert_chain,
+                    private_key=private_key,
+                    root_certificates=ca_cert)
             else:
                 credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(

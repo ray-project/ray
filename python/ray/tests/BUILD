@@ -93,6 +93,7 @@ py_test_module_list(
     "test_tempfile.py",
     "test_tensorflow.py",
     "test_threaded_actor.py",
+    "test_tls_auth.py",
     "test_ray_debugger.py",
   ],
   size = "medium",
