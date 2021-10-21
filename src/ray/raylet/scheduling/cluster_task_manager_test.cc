@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// clang-format off
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 
 #include <memory>
@@ -28,12 +29,14 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/test/util.h"
+#include "mock/ray/gcs/gcs_client.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
 
 #include "absl/container/flat_hash_map.h"
 #endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
+// clang-format on
 
 namespace ray {
 
@@ -102,14 +105,14 @@ class MockWorkerPool : public WorkerPoolInterface {
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(const std::string &id,
                                                                     double num_cpus,
-                                                                    double num_gpus) {
+                                                                    double num_gpus,
+                                                                    gcs::GcsClient& gcs_client) {
   absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
-  auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      ClusterResourceScheduler(id, local_node_resources));
+  auto scheduler = std::make_shared<ClusterResourceScheduler>(id, local_node_resources, gcs_client);
 
   return scheduler;
 }
@@ -180,9 +183,10 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
   ClusterTaskManagerTest(double num_cpus_at_head = 8.0, double num_gpus_at_head = 0.0)
-      : id_(NodeID::FromRandom()),
+      : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
+        id_(NodeID::FromRandom()),
         scheduler_(
-            CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head, num_gpus_at_head)),
+            CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head, num_gpus_at_head, *gcs_client_)),
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
@@ -194,9 +198,12 @@ class ClusterTaskManagerTest : public ::testing::Test {
               return is_owner_alive_;
             },
             /* get_node_info= */
-            [this](const NodeID &node_id) {
+            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo*{
               node_info_calls_++;
-              return node_info_[node_id];
+              if(node_info_.count(node_id)) {
+                return &node_info_[node_id];
+              }
+              return nullptr;
             },
             /* announce_infeasible_task= */
             [this](const RayTask &task) { announce_infeasible_task_calls_++; }, pool_,
@@ -215,14 +222,17 @@ class ClusterTaskManagerTest : public ::testing::Test {
             },
             /*max_pinned_task_arguments_bytes=*/1000) {}
 
+  void SetUp() {
+    ON_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
+        .WillByDefault(::testing::Return(&node_info));
+  }
+
   RayObject *MakeDummyArg() {
     std::vector<uint8_t> data;
     data.resize(default_arg_size_);
     auto buffer = std::make_shared<LocalMemoryBuffer>(data.data(), data.size());
     return new RayObject(buffer, nullptr, {});
   }
-
-  void SetUp() {}
 
   void Shutdown() {}
 
@@ -271,6 +281,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
     return count;
   }
 
+  std::unique_ptr<gcs::MockGcsClient> gcs_client_;
+  rpc::GcsNodeInfo node_info;
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
@@ -282,7 +294,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
-  absl::flat_hash_map<NodeID, absl::optional<rpc::GcsNodeInfo>> node_info_;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
