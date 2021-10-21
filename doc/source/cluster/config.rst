@@ -815,6 +815,8 @@ The user that Ray will authenticate with when launching new nodes.
     .. group-tab:: AWS
 
         A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
+        Nodes will be launched in the first listed availability zone and will be tried in the following availability
+        zones if launching fails.
 
         * **Required:** No
         * **Importance:** Low
