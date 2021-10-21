@@ -662,6 +662,9 @@ class Trial:
         self.last_update_time = time.time()
 
         for metric, value in flatten_dict(result).items():
+            # Skip the magic words from metric recording.
+            if metric.startswith("config/"):
+                continue
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
                     self.metric_analysis[metric] = {
