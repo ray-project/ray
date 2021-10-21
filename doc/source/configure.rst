@@ -234,6 +234,28 @@ to localhost when the ray is started using ``ray.init``.
 See the `Redis security documentation <https://redis.io/topics/security>`__
 for more information.
 
+TLS Authentication
+------------------
+
+Ray can be configured to use TLS on it's gRPC channels.
+This has means that connecting to the Ray client on the head node will
+require an appropriate set of credentials and also that data exchanged between
+various processes (client, head, workers) will be encrypted.
+
+Enabling TLS will cause a performance hit due to the extra overhead of mutual
+authentication and encryption.
+Testing has shown that this overhead is large for small workloads and becomes
+relatively smaller for large workloads.
+The exact overhead will depend on the nature of your workload.
+
+TLS is enabled by setting environment variables.
+
+- ``RAY_USE_TLS``: Either 1 or 0 to use/not-use TLS. If this is set to 1 then all of the environment variables below must be set. Default: 0.
+- ``RAY_TLS_SERVER_CERT``: Location of a `certificate file` which is presented to other endpoints so as to achieve mutual authentication.
+- ``RAY_TLS_SERVER_KEY``: Location of a `private key file` which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate.
+- ``RAY_TLS_CA_CERT``: Location of a `CA certificate file` which allows TLS to decide whether an endpoint's certificate has been signed by the correct authority.
+
+
 Java Applications
 -----------------
 

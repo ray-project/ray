@@ -29,6 +29,7 @@ from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
+from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.utils import (detect_fate_sharing_support,
                                 check_dashboard_dependencies_installed)
 
@@ -119,7 +120,7 @@ class ProxyManager():
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
 
-        self._runtime_env_channel = grpc.insecure_channel(
+        self._runtime_env_channel = ray._private.utils.init_grpc_channel(
             f"localhost:{runtime_env_agent_port}")
         self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
             self._runtime_env_channel)
@@ -196,7 +197,7 @@ class ProxyManager():
             server = SpecificServer(
                 port=port,
                 process_handle_future=futures.Future(),
-                channel=grpc.insecure_channel(
+                channel=ray._private.utils.init_grpc_channel(
                     f"localhost:{port}", options=GRPC_OPTIONS))
             self.servers[client_id] = server
             return server
@@ -765,7 +766,7 @@ def serve_proxier(connection_str: str,
         data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
         logs_servicer, server)
-    server.add_insecure_port(connection_str)
+    add_port_to_grpc_server(server, connection_str)
     server.start()
     return ClientServerHandle(
         task_servicer=task_servicer,
