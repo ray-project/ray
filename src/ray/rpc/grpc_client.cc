@@ -14,8 +14,8 @@
 
 #include "ray/stats/metric.h"
 
-DEFINE_stats(grpc_client_req_latency_ms, "Request latency in grpc call",
-             ("Method"), (), ray::stats::GAUGE);
+DEFINE_stats(grpc_client_req_latency_ms, "Request latency in grpc call", ("Method"), (),
+             ray::stats::GAUGE);
 DEFINE_stats(grpc_client_req_new, "New request number in grpc client", ("Method"), (),
              ray::stats::COUNT);
 DEFINE_stats(grpc_client_req_finished, "Finished request number in grpc client",

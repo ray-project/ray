@@ -23,8 +23,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
-#include "ray/util/util.h"
 #include "ray/stats/metric.h"
+#include "ray/util/util.h"
 
 DECLARE_stats(grpc_client_req_latency_ms);
 DECLARE_stats(grpc_client_req_new);
