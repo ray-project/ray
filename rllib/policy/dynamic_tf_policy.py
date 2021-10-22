@@ -649,7 +649,7 @@ class DynamicTFPolicy(TFPolicy):
              if SampleBatch.SEQ_LENS in train_batch else []))
 
         if "is_training" in self._loss_input_dict:
-            del self._loss_input_dict["is_training"]
+            del self._loss_input_dict.is_training
 
         # Call the grads stats fn.
         # TODO: (sven) rename to simply stats_fn to match eager and torch.

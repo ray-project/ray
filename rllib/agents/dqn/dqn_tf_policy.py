@@ -342,7 +342,7 @@ def compute_q_values(policy: Policy,
 
     config = policy.config
 
-    input_dict["is_training"] = policy._get_is_training_placeholder()
+    input_dict.is_training = policy._get_is_training_placeholder()
     model_out, state = model(input_dict, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
