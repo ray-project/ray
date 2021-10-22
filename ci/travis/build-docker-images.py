@@ -440,12 +440,12 @@ def push_and_tag_images(py_versions: List[str],
                     new_tag = full_tag.replace(f"-{ML_CUDA_VERSION}", "-gpu")
                     tag_mapping[old_tag].append(new_tag)
 
-
         # No Python version specified should refer to DEFAULT_PYTHON_VERSION
         for old_tag in tag_mapping.keys():
             if DEFAULT_PYTHON_VERSION in old_tag:
                 for full_tag in tag_mapping[old_tag]:
-                    new_tag = full_tag.replace(f"-{DEFAULT_PYTHON_VERSION}", "")
+                    new_tag = full_tag.replace(f"-{DEFAULT_PYTHON_VERSION}",
+                                               "")
                     tag_mapping[old_tag].append(new_tag)
 
         # For all tags, create Date/Sha tags
@@ -458,10 +458,23 @@ def push_and_tag_images(py_versions: List[str],
         # Sanity checking.
         for old_tag in tag_mapping.keys():
             if DEFAULT_PYTHON_VERSION in old_tag:
-                assert f"nightly-}"
+                assert "nightly-cpu" in tag_mapping[old_tag]
+                assert "nightly" in tag_mapping[old_tag]
+                if "-deps" in image_name:
+                    assert f"{date_tag}-cpu" in tag_mapping[old_tag]
+                    assert f"{date_tag}" in tag_mapping[old_tag]
+                else:
+                    assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
+                    assert f"{sha_tag}" in tag_mapping[old_tag]
 
-        print(f"These tags will be created for {image_name}: ",
-              tag_mapping)
+            if ML_CUDA_VERSION in old_tag:
+                assert "nightly-gpu" in tag_mapping[old_tag]
+                if "-deps" in image_name:
+                    assert f"{date_tag}-gpu" in tag_mapping[old_tag]
+                else:
+                    assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
+
+        print(f"These tags will be created for {image_name}: ", tag_mapping)
 
         # Tag and push all images.
         for old_tag in tag_mapping.keys():
