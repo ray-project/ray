@@ -178,8 +178,8 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
             else:
                 raise ValueError("Unsupported block type", block_format)
             # TODO(ekl) we could set the owner of created read blocks to a
-            # designated actor, but that seems to trigger a reference counting
-            # bug where the block gets immediately deleted.
+            # designated actor, that is blocked by:
+            # https://github.com/ray-project/ray/issues/19659
             read_tasks.append(
                 ReadTask(
                     lambda i=i, count=count: [ray.put(make_block(i, count))],
