@@ -237,25 +237,34 @@ test_wheels() {
 }
 
 install_npm_project() {
-  npm i -g yarn
-  yarn
+  if [ "${OSTYPE}" = msys ]; then
+    # Not Windows-compatible: https://github.com/npm/cli/issues/558#issuecomment-584673763
+    { echo "WARNING: Skipping NPM due to module incompatibilities with Windows"; } 2> /dev/null
+  else
+    npm i -g yarn
+    yarn
+  fi
 }
 
 build_dashboard_front_end() {
-  (
-    cd ray/dashboard/client
+  if [ "${OSTYPE}" = msys ]; then
+    { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
+  else
+    (
+      cd ray/dashboard/client
 
-    # skip nvm activation on buildkite linux instances.
-    if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
-      set +x  # suppress set -x since it'll get very noisy here
-      . "${HOME}/.nvm/nvm.sh"
-      NODE_VERSION="14"
-      nvm install $NODE_VERSION
-      nvm use --silent $NODE_VERSION
-    fi
-    install_npm_project
-    yarn build
-  )
+      # skip nvm activation on buildkite linux instances.
+      if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
+        set +x  # suppress set -x since it'll get very noisy here
+        . "${HOME}/.nvm/nvm.sh"
+        NODE_VERSION="14"
+        nvm install $NODE_VERSION
+        nvm use --silent $NODE_VERSION
+      fi
+      install_npm_project
+      yarn build
+    )
+  fi
 }
 
 build_sphinx_docs() {
