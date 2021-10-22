@@ -610,6 +610,7 @@ def chdir(d: str):
     os.chdir(old_dir)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_inheritance(start_cluster):
     """Tests that child tasks/actors inherit URIs properly."""
     cluster, address = start_cluster
