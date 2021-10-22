@@ -360,6 +360,7 @@ class Dataset(Generic[T]):
         ]
         del splits  # Early-release memory.
         new_blocks, new_metadata = zip(*reduce_out)
+        new_blocks = [ray.put([x]) for x in new_blocks]
         reduce_bar.block_until_complete(list(new_blocks))
         new_metadata = ray.get(list(new_metadata))
         reduce_bar.close()
@@ -1925,11 +1926,12 @@ class Dataset(Generic[T]):
         left_metadata = []
         right_blocks = []
         right_metadata = []
-        for b, m, num_sub_blocks in self._blocks.iter_evaluated_with_orig_metadata():
-            if m.num_rows is None or num_sub_blocks > 1:
+        for b, m, sub_blocks in self._blocks.iter_evaluated_with_orig_metadata(
+        ):
+            if m.num_rows is None or sub_blocks > 1:
                 num_rows = ray.get(get_num_rows.remote(b))
             else:
-                # Metadata num_rows is only accurate if num_sub_blocks == 1.
+                # Metadata num_rows is only accurate if sub_blocks == 1.
                 num_rows = m.num_rows
             if count >= index:
                 if not return_right_half:

@@ -1998,7 +1998,9 @@ def test_split(ray_start_regular_shared):
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(11)
-    assert [1] * 10 + [0] == [dataset._blocks.num_futures() for dataset in datasets]
+    assert [1] * 10 + [0] == [
+        dataset._blocks.num_futures() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
 

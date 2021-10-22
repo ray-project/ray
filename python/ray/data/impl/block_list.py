@@ -71,7 +71,12 @@ class BlockList:
                     refs, orig_meta = next(self._base_iter)
                     refs = ray.get(refs)
                     for ref in refs:
-                        assert isinstance(ref, ray.ObjectRef), (refs, orig_meta)
+                        if not isinstance(ref, ray.ObjectRef):
+                            raise AssertionError(
+                                "Expected list of block refs, but got a list "
+                                "of raw blocks elements: {}. Probably a "
+                                "module returned a block directly instead of "
+                                "a list of block refs.".format(refs))
                         self._buffer.append((ref, orig_meta, len(refs)))
                 return self._buffer.pop(0)
 
