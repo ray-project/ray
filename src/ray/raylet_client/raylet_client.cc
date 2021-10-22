@@ -156,9 +156,10 @@ Status raylet::RayletClient::Disconnect(
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
   if (!status.ok()) {
-    RAY_LOG(ERROR) << status.ToString()
-                   << " [RayletClient] Failed to disconnect from raylet. This means the "
-                      "raylet the worker is connected is probably already dead.";
+    RAY_LOG(WARNING)
+        << status.ToString()
+        << " [RayletClient] Failed to disconnect from raylet. This means the "
+           "raylet the worker is connected is probably already dead.";
   }
   return Status::OK();
 }
@@ -271,20 +272,6 @@ Status raylet::RayletClient::PushError(const JobID &job_id, const std::string &t
       fbb.CreateString(error_message), timestamp);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::PushErrorRequest, &fbb);
-}
-
-Status raylet::RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fbb.CreateString(profile_events.SerializeAsString());
-  fbb.Finish(message);
-
-  auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);
-  // Don't be too strict for profile errors. Just create logs and prevent it from crash.
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << status.ToString()
-                   << " [RayletClient] Failed to push profile events.";
-  }
-  return Status::OK();
 }
 
 Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids,
