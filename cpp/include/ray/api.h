@@ -234,8 +234,7 @@ inline ray::internal::ActorCreator<FuncType> CreateActorInternal(FuncType &creat
 template <typename F>
 ray::internal::TaskCaller<F> Task(F func) {
   static_assert(!std::is_member_function_pointer_v<F>,
-                "The caller and function are not match, call member function with "
-                "ray::Task is not allowed");
+                "Incompatible type: member function cannot be called with ray::Task.");
   return TaskInternal<F>(func);
 }
 

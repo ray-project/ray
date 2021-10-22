@@ -79,7 +79,8 @@ struct is_object_ref_t<T, std::void_t<decltype(std::declval<T>().IsObjectRef())>
 template <typename T>
 auto constexpr is_object_ref_v = is_object_ref_t<T>::value;
 
-using ArgsBuffer = std::pair<msgpack::sbuffer, bool>;
+using ArgsBuffer =
+    std::pair<msgpack::sbuffer, bool /*Show it is an ObjectRef arg or not*/>;
 using ArgsBufferList = std::vector<ArgsBuffer>;
 
 using RemoteFunction = std::function<msgpack::sbuffer(const ArgsBufferList &)>;
@@ -160,9 +161,9 @@ struct Invoker {
         auto buf = GetObjRefValue(id);
         return Serializer::Deserialize<T>(buf->data(), buf->size());
       } else {
-        auto result = Serializer::DeserializeWhenNil<T>(data, size);
-        is_ok = result.first;
-        return result.second;
+        auto [success, value] = Serializer::DeserializeWhenNil<T>(data, size);
+        is_ok = success;
+        return value;
       }
     }
   }

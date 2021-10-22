@@ -74,6 +74,8 @@ class Counter {
     return *val.Get();
   }
 
+  // The dummy x is used to test a heterogeneous case: one is value arg, another is an
+  // ObjectRef arg.
   std::vector<std::shared_ptr<int>> GetList(int x,
                                             std::vector<ray::ObjectRef<int>> list) {
     return ray::Get(list);
@@ -180,6 +182,8 @@ TEST(RayApiTest, ObjectRefArgsTest) {
   auto r2 = ray::Task(GetList).Remote(1, list);
   auto result2 = *r2.Get();
   EXPECT_EQ(result2.size(), 2);
+  EXPECT_EQ(*result2[0], 42);
+  EXPECT_EQ(*result2[1], 42);
 }
 
 TEST(RayApiTest, CallWithValueTest) {

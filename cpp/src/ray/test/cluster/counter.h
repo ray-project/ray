@@ -38,10 +38,7 @@ class Counter {
   bool CheckRestartInActorCreationTask();
   bool CheckRestartInActorTask();
 
-  std::string GetVal(ray::ObjectRef<std::string> obj) {
-    RAYLOG(INFO) << "GetVal begin to ray::Get " << obj.ID();
-    return *obj.Get();
-  }
+  std::string GetVal(ray::ObjectRef<std::string> obj) { return *obj.Get(); }
 
   int GetIntVal(ray::ObjectRef<ray::ObjectRef<int>> obj) {
     auto val = *obj.Get();
