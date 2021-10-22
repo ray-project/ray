@@ -401,8 +401,6 @@ def load_experiment_checkpoint_from_dir(
     for f in sorted(os.listdir(experiment_dir)):
         full_path = os.path.join(experiment_dir, f)
         if os.path.isdir(full_path):
-            trial_checkpoint_data = load_trial_checkpoint_data(full_path)
-
             # Map to TrialStub object
             trial_stub = None
             for trial in trials:
@@ -413,12 +411,16 @@ def load_experiment_checkpoint_from_dir(
             if not trial_stub:
                 raise RuntimeError(f"Trial with dirname {f} not found.")
 
+            trial_checkpoint_data = load_trial_checkpoint_data(
+                full_path, node_trial=trial_stub)
+
             trial_to_cps[trial_stub] = trial_checkpoint_data
 
     return ExperimentDirCheckpoint(trial_to_cps)
 
 
-def load_trial_checkpoint_data(trial_dir: str) -> TrialCheckpointData:
+def load_trial_checkpoint_data(trial_dir: str,
+                               node_trial: TrialStub) -> TrialCheckpointData:
     params_file = os.path.join(trial_dir, "params.json")
     if os.path.exists(params_file):
         with open(params_file, "rt") as f:
@@ -447,6 +449,20 @@ def load_trial_checkpoint_data(trial_dir: str) -> TrialCheckpointData:
     for cp_dir in sorted(os.listdir(trial_dir)):
         if not cp_dir.startswith("checkpoint_"):
             continue
+
+        try:
+            checkpoint_num = int(cp_dir.lstrip("checkpoint_"))
+            if checkpoint_num > node_trial.last_result["training_iteration"]:
+                # Checkpoint has not been observed by tune, yet, so we can't
+                # account for it. This is a race condition where training
+                # already created a checkpoint, but the result was not yet
+                # processed by Ray Tune. So, we just pretend it isn't there
+                # for the sake of the test.
+                continue
+        except ValueError:
+            # temporary checkpoint
+            continue
+
         with open(os.path.join(trial_dir, cp_dir, "checkpoint.json"),
                   "rt") as f:
             checkpoint_data = json.load(f)
@@ -558,6 +574,18 @@ def assert_checkpoint_count(experiment_dir_cp: ExperimentDirCheckpoint,
                 f"({cps} != {for_worker_trial}).")
 
 
+def assert_trial_progressed_training(trial: TrialStub):
+    assert (
+        trial.last_result["training_iteration"] >
+        trial.last_result["iterations_since_restore"]), (
+            f"Trial {trial.trial_id} had a checkpoint but did not continue "
+            f"on resume (training iteration: "
+            f"{trial.last_result['training_iteration']} <="
+            f"{trial.last_result['iterations_since_restore']}). "
+            f"This probably means the checkpoint has not been synced "
+            f"to the node correctly.")
+
+
 def test_no_sync_down():
     """
     No down syncing, so:
@@ -641,13 +669,7 @@ def test_no_sync_down():
                 num_errored += 1
             else:
                 # Req: The running trial progressed with training
-                assert trial.last_result["training_iteration"] >= 8, (
-                    f"Trial {trial.trial_id} had a checkpoint (because it "
-                    f"previously ran on the driver) but did not continue "
-                    f"on resume (training iteration: "
-                    f"{trial.last_result['training_iteration']}). "
-                    f"This probably means the checkpoint has not been synced "
-                    f"to the node from the driver correctly.")
+                assert_trial_progressed_training(trial)
 
         # Req: 1 trial is running, 3 errored
         assert num_errored == 3, (
@@ -662,8 +684,8 @@ def test_no_sync_down():
         sync_to_driver=False,
         upload_dir=None,
         durable=False,
-        first_run_time=33,
-        second_run_time=33,
+        first_run_time=45,
+        second_run_time=45,
         between_experiments_callback=between_experiments,
         after_experiments_callback=after_experiments)
 
@@ -748,12 +770,7 @@ def test_ssh_sync():
             for trial in experiment_state.trials), "Not all trials are RUNNING"
 
         for trial in experiment_state.trials:
-            assert trial.last_result["training_iteration"] >= 8, (
-                f"Trial {trial.trial_id} had a checkpoint but did not "
-                f"continue on resume (training iteration: "
-                f"{trial.last_result['training_iteration']}). "
-                f"This probably means the checkpoint has not been synced "
-                f"to the node from the driver correctly.")
+            assert_trial_progressed_training(trial)
 
     run_resume_flow(
         experiment_name=experiment_name,
@@ -761,8 +778,8 @@ def test_ssh_sync():
         sync_to_driver=True,
         upload_dir=None,
         durable=False,
-        first_run_time=33 + 12,  # 33 seconds plus sync time slack
-        second_run_time=33 + 12,
+        first_run_time=55,  # More time because of SSH syncing
+        second_run_time=55,
         between_experiments_callback=between_experiments,
         after_experiments_callback=after_experiments)
 
