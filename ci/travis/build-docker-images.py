@@ -407,6 +407,8 @@ def push_and_tag_images(py_versions: List[str],
 
         # Mapping from old tags to new tags.
         # These are the tags we will push.
+        # The key is the full image name, and the values are all the tags
+        # for that image.
         tag_mapping = defaultdict(list)
         for py_name in py_versions:
             for image_type in image_types:
@@ -509,7 +511,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--py-versions",
-        choices=["py36", "py37", "py38", "py39"],
+        choices=list(PY_MATRIX.keys()),
         default="py37",
         nargs="*",
         help="Which python versions to build. "

@@ -275,7 +275,7 @@ Image releases are `tagged` using the following format:
      - A specific nightly build (uses a SHA from the Github ``master``).
 
 
-Each tag has `variants` that add or change functionality:
+Some tags also have `variants` that add or change functionality:
 
 .. list-table::
    :widths: 16 40
@@ -283,10 +283,12 @@ Each tag has `variants` that add or change functionality:
 
    * - Variant
      - Description
-   * - -gpu
-     - These are based off of an NVIDIA CUDA image. They require the Nvidia Docker Runtime.
    * - -cpu
      - These are based off of an Ubuntu image.
+   * - -cuXX
+     - These are based off of an NVIDIA CUDA image with the specified CUDA version. They require the Nvidia Docker Runtime.
+   * - -gpu
+     - Aliases to a specific ``-cuXX`` tagged image.
    * - <no tag>
      - Aliases to ``-cpu`` tagged images
 
