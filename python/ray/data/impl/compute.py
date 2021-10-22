@@ -18,7 +18,7 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-def _map_block(block: Block, fn: Any,
+def _map_block(block_owner: "ActorHandle", block: Block, fn: Any,
                input_files: List[str]) -> (Block, BlockMetadata):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
@@ -27,7 +27,9 @@ def _map_block(block: Block, fn: Any,
         size_bytes=accessor.size_bytes(),
         schema=accessor.schema(),
         input_files=input_files)
-    return [ray.put(new_block)], new_meta
+    # Set the owner to the global block owner so the blocks don't fate-share
+    # with all the workers in the cluster.
+    return [ray.put(new_block, _owner=block_owner)], new_meta
 
 
 class TaskPool(ComputeStrategy):
@@ -43,9 +45,11 @@ class TaskPool(ComputeStrategy):
         kwargs = remote_args.copy()
         kwargs["num_returns"] = 2
 
+        block_owner = _get_or_create_block_owner_actor()
         map_block = cached_remote_fn(_map_block)
         refs = [
-            map_block.options(**kwargs).remote(b, fn, m.input_files)
+            map_block.options(**kwargs).remote(block_owner, b, fn,
+                                               m.input_files)
             for b, m in blocks
         ]
         new_blocks, new_metadata = zip(*refs)
@@ -163,8 +167,7 @@ def _get_or_create_block_owner_actor() -> "ActorHandle":
         return ray.get_actor(name=name, namespace=namespace)
     except ValueError:
         return _DesignatedBlockOwner.options(
-            name=name, namespace=namespace,
-            lifetime="detached").remote()
+            name=name, namespace=namespace, lifetime="detached").remote()
 
 
 def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]

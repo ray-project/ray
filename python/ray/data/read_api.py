@@ -56,7 +56,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
         for item in items[i:i + block_size]:
             builder.add(item)
         block = builder.build()
-        blocks.append(ray.put(block))
+        blocks.append(ray.put([ray.put(block)]))
         metadata.append(
             BlockAccessor.for_block(block).get_metadata(input_files=None))
         i += block_size
