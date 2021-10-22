@@ -60,15 +60,15 @@ How do you use the Ray client?
 Step 1: Set up your Ray cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-First, you'll want to create a Ray cluster. To start a Ray cluster locally, you can run
+If you have a running Ray cluster (version >= 1.5), Ray client server is likely already running on port ``10001`` of the head node by default. Otherwise, you'll want to create a Ray cluster. To start a Ray cluster locally, you can run
 
 .. code-block:: bash
 
    ray start --head
 
-To start a Ray cluster remote, you can follow the directions in :ref:`ref-cluster-quick-start`.
+To start a Ray cluster remotely, you can follow the directions in :ref:`ref-cluster-quick-start`.
 
-In both cases, the Ray client server will be listening on port ``10001`` of the head node by default. If necessary, you can modify this port by specifying ``--ray-client-server-port=...`` to the ``ray start`` `command <http://127.0.0.1:5500/doc/_build/html/package-ref.html#ray-start>`_.
+If necessary, you can modify the Ray client server port to be other than ``10001``, by specifying ``--ray-client-server-port=...`` to the ``ray start`` `command <http://127.0.0.1:5500/doc/_build/html/package-ref.html#ray-start>`_.
 
 Step 2: Check ports
 ~~~~~~~~~~~~~~~~~~~
