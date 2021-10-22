@@ -115,35 +115,57 @@ def calculate_identifier(obj: Any) -> str:
 
 
 @dataclass
+class WorkflowStepOptions:
+    # Type of the step.
+    step_type: "StepType"
+    # Whether the user want to handle the exception manually.
+    catch_exceptions: bool
+    # The num of retry for application exception.
+    max_retries: int
+    # ray_remote options
+    ray_options: Dict[str, Any]
+
+    def to_metadata(self) -> Dict[str, Any]:
+        return {
+            "step_type": self.step_type,
+            "max_retries": self.max_retries,
+            "catch_exceptions": self.catch_exceptions,
+            "ray_options": self.ray_options,
+        }
+
+    @classmethod
+    def from_metadata(cls, metadata: Dict[str, Any]):
+        return cls(
+            step_type=StepType[metadata["step_type"]],
+            max_retries=metadata["max_retries"],
+            catch_exceptions=metadata["catch_exceptions"],
+            ray_options=metadata["ray_options"],
+        )
+
+
+@dataclass
 class WorkflowData:
     # The workflow step function body.
     func_body: Callable
-    # The type of the step
-    step_type: StepType
     # The arguments of a workflow.
     inputs: WorkflowInputs
-    # The num of retry for application exception
-    max_retries: int
-    # Whether the user want to handle the exception mannually
-    catch_exceptions: bool
-    # ray_remote options
-    ray_options: Dict[str, Any]
     # name of the step
     name: str
+    # Workflow step options provided by users.
+    step_options: WorkflowStepOptions
     # meta data to store
     user_metadata: Dict[str, Any]
 
     def to_metadata(self) -> Dict[str, Any]:
         f = self.func_body
+        # TODO(suquark): "name" here is different from the "name" field.
+        # Maybe rename it to avoid confusion.
         metadata = {
             "name": get_module(f) + "." + get_qualname(f),
-            "step_type": self.step_type,
             "workflows": [w.step_id for w in self.inputs.workflows],
-            "max_retries": self.max_retries,
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
-            "catch_exceptions": self.catch_exceptions,
-            "ray_options": self.ray_options,
-            "user_metadata": self.user_metadata
+            "step_options": self.step_options.to_metadata(),
+            "user_metadata": self.user_metadata,
         }
         return metadata
 
@@ -191,7 +213,7 @@ class Workflow(Generic[T]):
     def __init__(self,
                  workflow_data: WorkflowData,
                  prepare_inputs: Optional[Callable] = None):
-        if workflow_data.ray_options.get("num_returns", 1) > 1:
+        if workflow_data.step_options.ray_options.get("num_returns", 1) > 1:
             raise ValueError("Workflow steps can only have one return.")
         self._data: WorkflowData = workflow_data
         self._prepare_inputs: Callable = prepare_inputs

@@ -12,7 +12,7 @@ from ray.util.inspect import (is_function_or_method, is_class_method,
 from ray._private import signature
 
 from ray.workflow.common import (slugify, WorkflowData, Workflow, WorkflowRef,
-                                 StepType)
+                                 StepType, WorkflowStepOptions)
 from ray.workflow import serialization_context
 from ray.workflow.storage import Storage, get_global_storage
 from ray.workflow.workflow_storage import WorkflowStorage
@@ -252,8 +252,6 @@ class VirtualActorMetadata:
                                 "however '{}' has a value whose {}.".format(
                                     k, e))
                     step_options["metadata"] = metadata
-                if len(options) != 0:
-                    step_options["ray_options"] = options
                 readonly = getattr(method, "__virtual_actor_readonly__", False)
                 flattened_args = self.flatten_args(method_name, args, kwargs)
                 actor_id = workflow_context.get_current_workflow_id()
@@ -277,15 +275,19 @@ class VirtualActorMetadata:
                     _actor_method = _wrap_actor_method(self.cls, method_name)
                     step_type = StepType.ACTOR_METHOD
                 # TODO(suquark): Support actor options.
-                workflow_data = WorkflowData(
-                    func_body=_actor_method,
+                _step_options = WorkflowStepOptions(
                     step_type=step_type,
-                    inputs=workflow_inputs,
                     max_retries=step_options.get("max_retries", 1),
                     catch_exceptions=step_options.get("catch_exceptions",
                                                       False),
-                    ray_options=step_options.get("ray_options", {}),
+                    # remaining options are Ray options
+                    ray_options=options,
+                )
+                workflow_data = WorkflowData(
+                    func_body=_actor_method,
+                    inputs=workflow_inputs,
                     name=step_options.get("name", None),
+                    step_options=_step_options,
                     user_metadata=step_options.get("metadata", {}),
                 )
                 wf = Workflow(workflow_data)
@@ -493,9 +495,9 @@ def _wrap_actor_method(cls: type, method_name: str):
         method = getattr(instance, method_name)
         output = method(*args, **kwargs)
         if isinstance(output, Workflow):
-            if output.data.step_type == StepType.FUNCTION:
+            if output.data.step_options.step_type == StepType.FUNCTION:
                 next_step = deref.step(__getstate(instance), output)
-                next_step.data.step_type = StepType.ACTOR_METHOD
+                next_step.data.step_options.step_type = StepType.ACTOR_METHOD
                 return next_step, None
             return __getstate(instance), output
         return __getstate(instance), output

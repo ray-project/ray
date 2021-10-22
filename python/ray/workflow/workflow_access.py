@@ -194,7 +194,7 @@ class WorkflowManagementActor:
             logger.info(f"Workflow job [id={workflow_id}] started.")
         return result
 
-    def gen_step_id(self, workflow_id: str, step_name: str) -> int:
+    def gen_step_id(self, workflow_id: str, step_name: str) -> str:
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         idx = wf_store.gen_step_id(step_name)
         if idx == 0:

@@ -5,7 +5,7 @@ from typing import Callable, Dict, Any
 from ray._private import signature
 from ray.workflow import serialization_context
 from ray.workflow.common import (Workflow, WorkflowData, StepType,
-                                 ensure_ray_initialized)
+                                 ensure_ray_initialized, WorkflowStepOptions)
 from ray.util.annotations import PublicAPI
 
 
@@ -14,6 +14,7 @@ class WorkflowStepFunction:
 
     def __init__(self,
                  func: Callable,
+                 *,
                  max_retries=3,
                  catch_exceptions=False,
                  name=None,
@@ -53,13 +54,16 @@ class WorkflowStepFunction:
                 return serialization_context.make_workflow_inputs(
                     flattened_args)
 
-            workflow_data = WorkflowData(
-                func_body=self._func,
+            step_options = WorkflowStepOptions(
                 step_type=StepType.FUNCTION,
-                inputs=None,
                 max_retries=self._max_retries,
                 catch_exceptions=self._catch_exceptions,
                 ray_options=self._ray_options,
+            )
+            workflow_data = WorkflowData(
+                func_body=self._func,
+                inputs=None,
+                step_options=step_options,
                 name=self._name,
                 user_metadata=self._user_metadata)
             return Workflow(workflow_data, prepare_inputs)
@@ -100,5 +104,13 @@ class WorkflowStepFunction:
         Returns:
             The step function itself.
         """
-        return WorkflowStepFunction(self._func, max_retries, catch_exceptions,
-                                    name, metadata, ray_options)
+        # TODO(suquark): The options seems drops items that we did not
+        # specify (e.g., the name become "None" if we did not pass
+        # name to the options). This does not seem correct to me.
+        return WorkflowStepFunction(
+            self._func,
+            max_retries=max_retries,
+            catch_exceptions=catch_exceptions,
+            name=name,
+            metadata=metadata,
+            ray_options=ray_options)

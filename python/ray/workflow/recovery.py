@@ -99,14 +99,12 @@ def _construct_resume_workflow_from_step(
 
         args, kwargs = reader.load_step_args(step_id, input_workflows,
                                              workflow_refs)
-
-        recovery_workflow: Workflow = _recover_workflow_step.options(
-            max_retries=result.max_retries,
-            catch_exceptions=result.catch_exceptions,
-            **result.ray_options).step(args, kwargs, input_workflows,
-                                       workflow_refs)
+        step_options = result.step_options
+        recovery_workflow: Workflow = _recover_workflow_step.step(
+            args, kwargs, input_workflows, workflow_refs)
         recovery_workflow._step_id = step_id
-        recovery_workflow.data.step_type = result.step_type
+        # override step_options
+        recovery_workflow.data.step_options = step_options
         return recovery_workflow
 
 
