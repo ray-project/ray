@@ -1,9 +1,10 @@
 import time
 
-from ray import workflow
 from ray.tests.conftest import *  # noqa
 
 import pytest
+import ray
+from ray import workflow
 
 
 def test_user_metadata(workflow_start_regular):
