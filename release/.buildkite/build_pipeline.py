@@ -123,6 +123,13 @@ NIGHTLY_TESTS = {
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
     ],
+    "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
+        "no_sync_down",
+        "ssh_sync",
+        "durable_upload",
+        # Disabled until #19637 is fixed
+        # "no_durable_upload",
+    ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "bookkeeping_overhead",
         "durable_trainable",
