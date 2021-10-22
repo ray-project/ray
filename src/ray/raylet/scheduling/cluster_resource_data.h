@@ -200,12 +200,7 @@ struct Node {
   Node(const NodeResources &resources)
       : last_reported_(resources), local_view_(resources) {}
 
-  void ResetLocalView(StringIdMap &string_to_int_map) {
-    RAY_LOG(INFO) << "wangtao reset local view from "
-                  << local_view_.DebugString(string_to_int_map) << " to "
-                  << last_reported_.DebugString(string_to_int_map);
-    local_view_ = last_reported_;
-  }
+  void ResetLocalView() { local_view_ = last_reported_; }
 
   NodeResources *GetMutableLocalView() { return &local_view_; }
 

@@ -116,7 +116,6 @@ ray::Status Raylet::RegisterGcs() {
       auto resource = std::make_shared<rpc::ResourceTableData>();
       resource->set_resource_capacity(resource_pair.second);
       resources.emplace(resource_pair.first, resource);
-    RAY_LOG(INFO) << "wangtao update resources " << resource_pair.first << " " << resource->DebugString();
     }
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(self_node_id_,
                                                                    resources, nullptr));

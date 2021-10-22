@@ -57,9 +57,9 @@ namespace raylet_scheduling_policy {
 /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
 /// schedule on.
 int64_t HybridPolicy(
-    StringIdMap &string_to_int_map, const ResourceRequest &resource_request,
-    const int64_t local_node_id, const absl::flat_hash_map<int64_t, Node> &nodes,
-    float spread_threshold, bool force_spillback, bool require_available,
+    const ResourceRequest &resource_request, const int64_t local_node_id,
+    const absl::flat_hash_map<int64_t, Node> &nodes, float spread_threshold,
+    bool force_spillback, bool require_available,
     bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
 
 enum class NodeFilter {
@@ -83,8 +83,7 @@ enum class NodeFilter {
 ///
 /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
 /// schedule on.
-int64_t HybridPolicyWithFilter(StringIdMap &string_to_int_map,
-                               const ResourceRequest &resource_request,
+int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
                                const int64_t local_node_id,
                                const absl::flat_hash_map<int64_t, Node> &nodes,
                                float spread_threshold, bool force_spillback,

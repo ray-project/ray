@@ -72,7 +72,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // tasks from being scheduled.
       const std::shared_ptr<Work> &work = *work_it;
       RayTask task = work->task;
-      RAY_LOG(INFO) << "Scheduling pending task " // wangtao info to debug
+      RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
       auto placement_resources =
           task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
@@ -87,14 +87,13 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
       if (node_id_string.empty()) {
-        RAY_LOG(INFO) << "No node found to schedule a task " // wangtao info to debug
+        RAY_LOG(DEBUG) << "No node found to schedule a task "
                        << task.GetTaskSpecification().TaskId() << " is infeasible?"
                        << is_infeasible;
         break;
       }
 
       if (node_id_string == self_node_id_.Binary()) {
-        RAY_LOG(INFO) << "wangtao self node for task " << task.GetTaskSpecification().TaskId();
         // Warning: WaitForTaskArgsRequests must execute (do not let it short
         // circuit if did_schedule is true).
         bool task_scheduled = WaitForTaskArgsRequests(work);
@@ -102,7 +101,6 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       } else {
         // Should spill over to a different node.
         NodeID node_id = NodeID::FromBinary(node_id_string);
-        RAY_LOG(INFO) << "wangtao other node " << node_id << " for task " << task.GetTaskSpecification().TaskId();
         Spillback(node_id, work);
       }
       work_it = work_queue.erase(work_it);
@@ -1050,7 +1048,7 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   metric_tasks_spilled_++;
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
-  RAY_LOG(INFO) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to; // wangtao debug to info
+  RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
 
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
           spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
