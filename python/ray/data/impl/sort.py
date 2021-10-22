@@ -33,7 +33,7 @@ T = TypeVar("T")
 SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 
 
-def sample_boundaries(blocks: BlockList[T], key: SortKeyT,
+def sample_boundaries(blocks: BlockList, key: SortKeyT,
                       num_reducers: int) -> List[T]:
     """
     Return (num_reducers - 1) items in ascending order from the blocks that
@@ -60,8 +60,8 @@ def sample_boundaries(blocks: BlockList[T], key: SortKeyT,
     return ret[1:]
 
 
-def sort_impl(blocks: BlockList[T], key: SortKeyT,
-              descending: bool = False) -> BlockList[T]:
+def sort_impl(blocks: BlockList, key: SortKeyT,
+              descending: bool = False) -> BlockList:
     if len(blocks) == 0:
         return BlockList([], [])
 

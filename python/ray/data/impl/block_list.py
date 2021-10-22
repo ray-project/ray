@@ -1,17 +1,18 @@
 import math
-from typing import Iterable, List
+from typing import Iterable, List, Iterator
 
 import numpy as np
 
+import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata
 
 
-class BlockList(Iterable[ObjectRef[Block]]):
-    def __init__(self, blocks: List[ObjectRef[Block]],
+class BlockList:
+    def __init__(self, blocks: List[ObjectRef[List[Block]]],
                  metadata: List[BlockMetadata]):
         assert len(blocks) == len(metadata), (blocks, metadata)
-        self._blocks = blocks
+        self._block_futures: List[ObjectRef[List[Block]]] = blocks
         self._metadata = metadata
 
     def set_metadata(self, i: int, metadata: BlockMetadata) -> None:
@@ -21,21 +22,21 @@ class BlockList(Iterable[ObjectRef[Block]]):
         return self._metadata.copy()
 
     def copy(self) -> "BlockList":
-        return BlockList(self._blocks, self._metadata)
+        return BlockList(self._block_futures, self._metadata)
 
     def clear(self):
-        self._blocks = None
+        self._block_futures = None
 
     def _check_if_cleared(self):
-        if self._blocks is None:
+        if self._block_futures is None:
             raise ValueError(
                 "This Dataset's blocks have been moved, which means that you "
                 "can no longer use this Dataset.")
 
     def split(self, split_size: int) -> List["BlockList"]:
         self._check_if_cleared()
-        num_splits = math.ceil(len(self._blocks) / split_size)
-        blocks = np.array_split(self._blocks, num_splits)
+        num_splits = math.ceil(len(self._block_futures) / split_size)
+        blocks = np.array_split(self._block_futures, num_splits)
         meta = np.array_split(self._metadata, num_splits)
         output = []
         for b, m in zip(blocks, meta):
@@ -44,15 +45,36 @@ class BlockList(Iterable[ObjectRef[Block]]):
 
     def divide(self, block_idx: int) -> ("BlockList", "BlockList"):
         self._check_if_cleared()
-        return (BlockList(self._blocks[:block_idx],
+        return (BlockList(self._block_futures[:block_idx],
                           self._metadata[:block_idx]),
-                BlockList(self._blocks[block_idx:],
+                BlockList(self._block_futures[block_idx:],
                           self._metadata[block_idx:]))
 
-    def __len__(self):
-        self._check_if_cleared()
-        return len(self._blocks)
+    def iter_futures(self) -> Iterator[ObjectRef[List[Block]]]:
+        return iter(self._block_futures)
 
-    def __iter__(self):
+    def iter_evaluated(self) -> Iterator[ObjectRef[Block]]:
         self._check_if_cleared()
-        return iter(self._blocks)
+        outer = self
+
+        class Iter:
+            def __init__(self):
+                self._base_iter = outer.iter_futures()
+                self._buffer = []
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                if not self._buffer:
+                    self._buffer.extend(ray.get(next(self._base_iter)))
+                return self._buffer.pop(0)
+
+        return Iter()
+
+    def num_futures(self) -> int:
+        return len(self._block_futures)
+
+    def num_evaluated(self) -> int:
+        self._check_if_cleared()
+        return len(list(self.iter_evaluated()))

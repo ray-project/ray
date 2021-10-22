@@ -15,30 +15,29 @@ CallableClass = type
 
 
 class ComputeStrategy:
-    def apply(self, fn: Any,
-              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
+    def apply(self, fn: Any, blocks: BlockList) -> BlockList:
         raise NotImplementedError
 
 
-def _map_block(block: Block, meta: BlockMetadata,
-               fn: Any) -> (Block, BlockMetadata):
+def _map_block(block: Block, fn: Any) -> (Block, BlockMetadata):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
     new_meta = BlockMetadata(
         num_rows=accessor.num_rows(),
         size_bytes=accessor.size_bytes(),
         schema=accessor.schema(),
-        input_files=meta.input_files)
-    return new_block, new_meta
+        input_files=None)  # TODO propagate input files at global level only
+    return [ray.put(new_block)], new_meta
 
 
 class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
-              blocks: BlockList[Any]) -> BlockList[Any]:
+              blocks: BlockList) -> BlockList:
         # Handle empty datasets.
-        if len(blocks) == 0:
+        if blocks.num_futures() == 0:
             return blocks
 
+        blocks = list(blocks.iter_evaluated())
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         kwargs = remote_args.copy()
@@ -46,8 +45,8 @@ class TaskPool(ComputeStrategy):
 
         map_block = cached_remote_fn(_map_block)
         refs = [
-            map_block.options(**kwargs).remote(b, m, fn)
-            for b, m in zip(blocks, blocks.get_metadata())
+            map_block.options(**kwargs).remote(b, fn)
+            for b in blocks
         ]
         new_blocks, new_metadata = zip(*refs)
 
@@ -79,26 +78,27 @@ class ActorPool(ComputeStrategy):
         for w in self.workers:
             w.__ray_terminate__.remote()
 
-    def apply(self, fn: Any, remote_args: dict,
-              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
+    def apply(self, fn: Any, remote_args: dict, blocks: BlockList) -> BlockList:
 
-        map_bar = ProgressBar("Map Progress", total=len(blocks))
+        blocks_in = list(blocks.iter_evaluated())
+        orig_num_blocks = len(blocks_in)
+        blocks_out = []
+        map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
 
         class BlockWorker:
             def ready(self):
                 return "ok"
 
             @ray.method(num_returns=2)
-            def process_block(self, block: Block,
-                              meta: BlockMetadata) -> (Block, BlockMetadata):
+            def process_block(self, block: Block) -> (Block, BlockMetadata):
                 new_block = fn(block)
                 accessor = BlockAccessor.for_block(new_block)
                 new_metadata = BlockMetadata(
                     num_rows=accessor.num_rows(),
                     size_bytes=accessor.size_bytes(),
                     schema=accessor.schema(),
-                    input_files=meta.input_files)
-                return new_block, new_metadata
+                    input_files=None)
+                return [ray.put(new_block)], new_metadata
 
         if not remote_args:
             remote_args["num_cpus"] = 1
@@ -108,10 +108,8 @@ class ActorPool(ComputeStrategy):
         metadata_mapping = {}
         tasks = {w.ready.remote(): w for w in self.workers}
         ready_workers = set()
-        blocks_in = [(b, m) for (b, m) in zip(blocks, blocks.get_metadata())]
-        blocks_out = []
 
-        while len(blocks_out) < len(blocks):
+        while len(blocks_out) < orig_num_blocks:
             ready, _ = ray.wait(
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
             if not ready:
@@ -138,8 +136,7 @@ class ActorPool(ComputeStrategy):
 
             # Schedule a new task.
             if blocks_in:
-                block_ref, meta_ref = worker.process_block.remote(
-                    *blocks_in.pop())
+                block_ref, meta_ref = worker.process_block.remote(blocks_in.pop())
                 metadata_mapping[block_ref] = meta_ref
                 tasks[block_ref] = worker
 
