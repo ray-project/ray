@@ -65,6 +65,7 @@ def run_tune(
         sync_config=tune.SyncConfig(
             sync_to_driver=sync_to_driver,
             upload_dir=upload_dir,
+            sync_on_checkpoint=True,
         ),
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},

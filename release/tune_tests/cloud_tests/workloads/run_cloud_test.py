@@ -1,4 +1,6 @@
+import argparse
 import csv
+from dataclasses import dataclass
 import json
 import os
 import platform
@@ -7,7 +9,6 @@ import signal
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import ray
@@ -554,9 +555,9 @@ def assert_checkpoint_count(experiment_dir_cp: ExperimentDirCheckpoint,
                 f"({cps} != {for_worker_trial}).")
 
 
-def test_no_sync():
+def test_no_sync_down():
     """
-    No syncing, so:
+    No down syncing, so:
 
         sync_to_driver=False
         upload_dir=None
@@ -572,15 +573,19 @@ def test_no_sync():
         - Remote trial dirs only have data for one trial
         - Remote trial dirs have checkpoints for node-local trials
 
-    Then, remote checkpoint directories are cleaned up.
+    Then, remote checkpoint directories are cleaned up. This means only
+    one trial can continue training (the one trained on the head node)
+    - even if it is subsequently scheduled on a different node (as
+    sync_on_checkpoint is still True).
 
     Expected results after second checkpoint:
 
-        - 4 trials are running
+        - 1 trial is running, 3 errored
+        - The running trial progressed with training
 
     """
-    experiment_name = "cloud_no_sync"
-    indicator_file = "/tmp/cloud_no_sync_indicator"
+    experiment_name = "cloud_no_sync_down"
+    indicator_file = f"/tmp/{experiment_name}_indicator"
 
     def between_experiments():
         (experiment_state, driver_dir_cp, trial_exp_checkpoint_data
@@ -632,6 +637,7 @@ def test_no_sync():
             if trial.status == "ERROR":
                 num_errored += 1
             else:
+                # Req: The running trial progressed with training
                 assert trial.last_result["training_iteration"] >= 8, (
                     f"Trial {trial.trial_id} had a checkpoint (because it "
                     f"previously ran on the driver) but did not continue "
@@ -640,6 +646,7 @@ def test_no_sync():
                     f"This probably means the checkpoint has not been synced "
                     f"to the node from the driver correctly.")
 
+        # Req: 1 trial is running, 3 errored
         assert num_errored == 3, (
             f"Only one trial should have had a valid checkpoint, but "
             f"{num_errored} trials errored (expected 3). If more trials have "
@@ -652,10 +659,122 @@ def test_no_sync():
         sync_to_driver=False,
         upload_dir=None,
         durable=False,
+        first_run_time=33,
+        second_run_time=33,
+        between_experiments_callback=between_experiments,
+        after_experiments_callback=after_experiments)
+
+
+def test_ssh_sync():
+    """
+    SSH syncing, so:
+
+        sync_to_driver=True
+        upload_dir=None
+        no durable_trainable
+
+    Expected results after first checkpoint:
+
+        - 4 trials are running
+        - At least one trial ran on the head node
+        - At least one trial ran remotely
+        - Driver has trial checkpoints from head node trial
+        - Driver has trial checkpoints from remote node trials
+        - Remote trial dirs only have data for one trial
+        - Remote trial dirs have checkpoints for node-local trials
+
+    Then, remote checkpoint directories are cleaned up.
+
+    Expected results after second checkpoint:
+
+        - 4 trials are running
+        - All trials progressed with training
+
+    """
+    experiment_name = "cloud_ssh_sync"
+    indicator_file = f"/tmp/{experiment_name}_indicator"
+
+    def between_experiments():
+        (experiment_state, driver_dir_cp, trial_exp_checkpoint_data
+         ) = get_experiment_and_trial_data(experiment_name=experiment_name)
+
+        # Req: 4 trials are running
+        assert all(
+            trial.status == "RUNNING"
+            for trial in experiment_state.trials), "Not all trials are RUNNING"
+
+        # Req: At least one trial ran on driver
+        # Req: At least one trial ran remotely
+        assert_min_num_trials(
+            driver_dir_cp.trial_to_cps.keys(), on_driver=1, on_worker=1)
+
+        # Req: Driver has trial checkpoints from head node trial
+        # Req: Driver has trial checkpoints from remote node trials
+        assert_checkpoint_count(
+            driver_dir_cp, for_driver_trial=2, for_worker_trial=2)
+
+        for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
+            # Req: Remote trial dirs only have data for one trial
+
+            seen = len(exp_dir_cp.trial_to_cps)
+
+            if trial.was_on_driver_node:
+                assert seen == 4, (f"Trial {trial.trial_id} was on driver, "
+                                   f"but observed too few trials ({seen}) "
+                                   f"in experiment dir.")
+            else:
+                assert seen == 1, (
+                    f"Trial {trial.trial_id} was not on driver, "
+                    f"but observed not exactly 1 trials ({seen}) "
+                    f"in experiment dir.")
+
+                assert_checkpoint_count(
+                    exp_dir_cp, for_driver_trial=0, for_worker_trial=2)
+
+        # Delete remote checkpoints before resume
+        print("Deleting remote checkpoints before resume")
+        cleanup_remote_node_experiment_dir(experiment_name)
+
+    def after_experiments():
+        (experiment_state, driver_dir_cp, trial_exp_checkpoint_data
+         ) = get_experiment_and_trial_data(experiment_name=experiment_name)
+
+        # Req: 4 trials are running
+        assert all(
+            trial.status == "RUNNING"
+            for trial in experiment_state.trials), "Not all trials are RUNNING"
+
+        for trial in experiment_state.trials:
+            assert trial.last_result["training_iteration"] >= 8, (
+                f"Trial {trial.trial_id} had a checkpoint but did not "
+                f"continue on resume (training iteration: "
+                f"{trial.last_result['training_iteration']}). "
+                f"This probably means the checkpoint has not been synced "
+                f"to the node from the driver correctly.")
+
+    run_resume_flow(
+        experiment_name=experiment_name,
+        indicator_file=indicator_file,
+        sync_to_driver=True,
+        upload_dir=None,
+        durable=False,
+        first_run_time=33 + 12,  # 33 seconds plus sync time slack
+        second_run_time=33 + 12,
         between_experiments_callback=between_experiments,
         after_experiments_callback=after_experiments)
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("variant", choices=["no_sync_down", "ssh_sync"])
+
+    args = parser.parse_args()
+
     ray.init()
-    test_no_sync()
+
+    print(f"Running cloud test variant: {args.variant}")
+    if args.variant == "no_sync_down":
+        test_no_sync_down()
+    elif args.variant == "ssh_sync":
+        test_ssh_sync()
