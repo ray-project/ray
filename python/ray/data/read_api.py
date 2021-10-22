@@ -572,6 +572,7 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
+    blocks = [ray.put([x]) for x in blocks]
     return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
 
 
@@ -588,6 +589,7 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = zip(*res)
+    blocks = [ray.put([x]) for x in blocks]
     return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
 
 
@@ -628,6 +630,7 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
+    tables = [ray.put([x]) for x in tables]
     return Dataset(BlockList(tables, ray.get(metadata)), 0)
 
 
