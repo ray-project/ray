@@ -23,7 +23,8 @@ namespace ray {
 ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
                                    uint64_t chunk_size)
     : store_socket_name_(store_socket_name), default_chunk_size_(chunk_size) {
-  RAY_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", 0, 300));
+  store_client_ = std::make_shared<plasma::RemotePlasmaClient>();
+  RAY_CHECK_OK(store_client_->Connect(store_socket_name_.c_str(), "", 0, 300));
 }
 
 ObjectBufferPool::~ObjectBufferPool() {
@@ -50,13 +51,13 @@ ObjectBufferPool::~ObjectBufferPool() {
 
   // Abort unfinished buffers in progress.
   for (auto it = create_buffer_state_.begin(); it != create_buffer_state_.end(); it++) {
-    RAY_CHECK_OK(store_client_.Release(it->first));
-    RAY_CHECK_OK(store_client_.Abort(it->first));
+    RAY_CHECK_OK(store_client_->Release(it->first));
+    RAY_CHECK_OK(store_client_->Abort(it->first));
     create_buffer_state_.erase(it);
   }
 
   RAY_CHECK(create_buffer_state_.empty());
-  RAY_CHECK_OK(store_client_.Disconnect());
+  RAY_CHECK_OK(store_client_->Disconnect());
 }
 
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) const {
@@ -78,7 +79,7 @@ ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
   std::vector<ObjectID> object_ids{object_id};
   std::vector<plasma::ObjectBuffer> object_buffers(1);
   RAY_CHECK_OK(
-      store_client_.Get(object_ids, 0, &object_buffers, /*is_from_worker=*/false));
+      store_client_->Get(object_ids, 0, &object_buffers, /*is_from_worker=*/false));
   if (object_buffers[0].data == nullptr) {
     RAY_LOG(INFO)
         << "Failed to get a chunk of the object: " << object_id
@@ -131,8 +132,8 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id, const uint64_t chun
   it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
   it->second.num_seals_remaining--;
   if (it->second.num_seals_remaining == 0) {
-    RAY_CHECK_OK(store_client_.Seal(object_id));
-    RAY_CHECK_OK(store_client_.Release(object_id));
+    RAY_CHECK_OK(store_client_->Seal(object_id));
+    RAY_CHECK_OK(store_client_->Release(object_id));
     create_buffer_state_.erase(it);
     RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
                    << ", last chunk index: " << chunk_index;
@@ -145,8 +146,8 @@ void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
   if (it != create_buffer_state_.end()) {
     RAY_LOG(INFO) << "Not enough memory to create requested object " << object_id
                   << ", aborting";
-    RAY_CHECK_OK(store_client_.Release(object_id));
-    RAY_CHECK_OK(store_client_.Abort(object_id));
+    RAY_CHECK_OK(store_client_->Release(object_id));
+    RAY_CHECK_OK(store_client_->Abort(object_id));
     create_buffer_state_.erase(object_id);
   }
 }
@@ -204,7 +205,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
 
   // Release pool_mutex_ during the blocking create call.
   pool_mutex_.Unlock();
-  Status s = store_client_.CreateAndSpillIfNeeded(
+  Status s = store_client_->CreateAndSpillIfNeeded(
       object_id, owner_address, static_cast<int64_t>(object_size), nullptr,
       static_cast<int64_t>(metadata_size), &data,
       plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
@@ -244,7 +245,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
 
 void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&pool_mutex_);
-  RAY_CHECK_OK(store_client_.Delete(object_ids));
+  RAY_CHECK_OK(store_client_->Delete(object_ids));
 }
 
 std::string ObjectBufferPool::DebugString() const {

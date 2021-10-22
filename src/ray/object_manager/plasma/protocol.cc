@@ -562,11 +562,13 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
   return PlasmaSend(client, MessageType::PlasmaGetReply, &fbb, message);
 }
 
-Status ReadGetReply(uint8_t *data, size_t size, ObjectID object_ids[],
-                    PlasmaObject plasma_objects[], int64_t num_objects,
+Status ReadGetReply(uint8_t *data, size_t size, std::vector<ObjectID> &object_ids,
+                    std::vector<PlasmaObject> &plasma_objects, size_t num_objects,
                     std::vector<MEMFD_TYPE> &store_fds,
                     std::vector<int64_t> &mmap_sizes) {
   RAY_DCHECK(data);
+  RAY_CHECK(object_ids.size() == num_objects);
+  RAY_CHECK(plasma_objects.size() == num_objects);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   for (uoffset_t i = 0; i < num_objects; ++i) {

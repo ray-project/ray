@@ -247,6 +247,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             }
             return result;
           }),
+      store_client_(std::make_shared<plasma::RemotePlasmaClient>()),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
@@ -347,7 +348,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             self_node_id_, resource_names, nullptr));
       });
 
-  RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
+  RAY_CHECK_OK(store_client_->Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);
@@ -1746,12 +1747,12 @@ void NodeManager::MarkObjectsAsFailed(
                    << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
-    status = store_client_.TryCreateImmediately(
+    status = store_client_->TryCreateImmediately(
         object_id, ref.owner_address(), 0,
         reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data,
         plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
     if (status.ok()) {
-      status = store_client_.Seal(object_id);
+      status = store_client_->Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
       RAY_LOG(DEBUG) << "Marking plasma object failed " << object_id;
@@ -2075,7 +2076,7 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
   if (!store_client_
-           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
+           ->Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
            .ok()) {
     return false;
   }

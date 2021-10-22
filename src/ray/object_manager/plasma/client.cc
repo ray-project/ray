@@ -358,7 +358,7 @@ Status Impl::GetBuffers(
 
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
-  std::vector<ObjectID> received_object_ids;
+  std::vector<ObjectID> received_object_ids(num_objects);
   std::vector<PlasmaObject> object_data(num_objects);
   RAY_RETURN_NOT_OK(
       get_from_store(store_fds, mmap_sizes, received_object_ids, object_data));
@@ -648,7 +648,8 @@ Status RemotePlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                                bool is_from_worker) {
   return impl_->Get(
       object_ids, timeout_ms, object_buffers, is_from_worker,
-      [&](std::vector<MEMFD_TYPE> &store_fds, std::vector<int64_t> &mmap_sizes,
+      [this, object_ids, timeout_ms, is_from_worker](
+          std::vector<MEMFD_TYPE> &store_fds, std::vector<int64_t> &mmap_sizes,
           std::vector<ObjectID> &received_object_ids,
           std::vector<PlasmaObject> &object_data) {
         // If we get here, then the objects aren't all currently in use by this
@@ -659,9 +660,8 @@ Status RemotePlasmaClient::Get(const std::vector<ObjectID> &object_ids,
         std::vector<uint8_t> buffer;
         RAY_RETURN_NOT_OK(
             PlasmaReceive(store_conn_, MessageType::PlasmaGetReply, &buffer));
-        RAY_RETURN_NOT_OK(ReadGetReply(buffer.data(), buffer.size(),
-                                       received_object_ids.data(), object_data.data(),
-                                       num_objects, store_fds, mmap_sizes));
+        RAY_RETURN_NOT_OK(ReadGetReply(buffer.data(), buffer.size(), received_object_ids,
+                                       object_data, num_objects, store_fds, mmap_sizes));
         return Status::OK();
       },
       std::dynamic_pointer_cast<RemotePlasmaClient>(shared_from_this()));
@@ -669,12 +669,13 @@ Status RemotePlasmaClient::Get(const std::vector<ObjectID> &object_ids,
 
 Status RemotePlasmaClient::Release(const ObjectID &object_id) {
   return impl_->Release(
-      object_id, [&]() { return SendReleaseRequest(store_conn_, object_id); },
+      object_id,
+      [this, object_id]() { return SendReleaseRequest(store_conn_, object_id); },
       std::dynamic_pointer_cast<RemotePlasmaClient>(shared_from_this()));
 }
 
 Status RemotePlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
-  return impl_->Contains(object_id, has_object, [&]() {
+  return impl_->Contains(object_id, has_object, [this, object_id, has_object]() {
     // If we don't already have a reference to the object, check with the store
     // to see if we have the object.
     RAY_RETURN_NOT_OK(SendContainsRequest(store_conn_, object_id));
@@ -690,7 +691,7 @@ Status RemotePlasmaClient::Contains(const ObjectID &object_id, bool *has_object)
 }
 
 Status RemotePlasmaClient::Abort(const ObjectID &object_id) {
-  return impl_->Abort(object_id, [&]() {
+  return impl_->Abort(object_id, [this, object_id]() {
     // Send the abort request.
     RAY_RETURN_NOT_OK(SendAbortRequest(store_conn_, object_id));
     std::vector<uint8_t> buffer;
@@ -703,7 +704,7 @@ Status RemotePlasmaClient::Abort(const ObjectID &object_id) {
 Status RemotePlasmaClient::Seal(const ObjectID &object_id) {
   return impl_->Seal(
       object_id,
-      [&]() {
+      [this, object_id]() {
         /// Send the seal request to Plasma.
         RAY_RETURN_NOT_OK(SendSealRequest(store_conn_, object_id));
         std::vector<uint8_t> buffer;
@@ -723,7 +724,7 @@ Status RemotePlasmaClient::Delete(const ObjectID &object_id) {
 }
 
 Status RemotePlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
-  return impl_->Delete(object_ids, [&](std::vector<ObjectID> &not_in_use_ids) {
+  return impl_->Delete(object_ids, [this](std::vector<ObjectID> &not_in_use_ids) {
     RAY_RETURN_NOT_OK(SendDeleteRequest(store_conn_, not_in_use_ids));
     std::vector<uint8_t> buffer;
     RAY_RETURN_NOT_OK(
@@ -738,14 +739,16 @@ Status RemotePlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
 }
 
 Status RemotePlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
-  return impl_->Evict(num_bytes, num_bytes_evicted, [&]() {
-    // Send a request to the store to evict objects.
-    RAY_RETURN_NOT_OK(SendEvictRequest(store_conn_, num_bytes));
-    // Wait for a response with the number of bytes actually evicted.
-    std::vector<uint8_t> buffer;
-    RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaEvictReply, &buffer));
-    return ReadEvictReply(buffer.data(), buffer.size(), num_bytes_evicted);
-  });
+  return impl_->Evict(
+      num_bytes, num_bytes_evicted, [this, num_bytes, &num_bytes_evicted]() {
+        // Send a request to the store to evict objects.
+        RAY_RETURN_NOT_OK(SendEvictRequest(store_conn_, num_bytes));
+        // Wait for a response with the number of bytes actually evicted.
+        std::vector<uint8_t> buffer;
+        RAY_RETURN_NOT_OK(
+            PlasmaReceive(store_conn_, MessageType::PlasmaEvictReply, &buffer));
+        return ReadEvictReply(buffer.data(), buffer.size(), num_bytes_evicted);
+      });
 }
 
 Status RemotePlasmaClient::Disconnect() {
@@ -878,7 +881,8 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeou
                          std::vector<ObjectBuffer> *object_buffers, bool is_from_worker) {
   return impl_->Get(
       object_ids, timeout_ms, object_buffers, is_from_worker,
-      [&](std::vector<MEMFD_TYPE> &store_fds, std::vector<int64_t> &mmap_sizes,
+      [this, object_ids, timeout_ms, is_from_worker](
+          std::vector<MEMFD_TYPE> &store_fds, std::vector<int64_t> &mmap_sizes,
           std::vector<ObjectID> &received_object_ids,
           std::vector<PlasmaObject> &object_data) {
         std::promise<void> get_return;
@@ -896,19 +900,18 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeou
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) {
-  return impl_->Release(
-      object_id,
-      [&]() {
-        return plasma_store_.ExecuteInStoreThread([&]() {
-          plasma_store_.ReleaseObject(object_id, nullptr);
-          return Status::OK();
-        });
-      },
-      std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
+  return impl_->Release(object_id,
+                        [this, object_id]() {
+                          return plasma_store_.ExecuteInStoreThread([&]() {
+                            plasma_store_.ReleaseObject(object_id, nullptr);
+                            return Status::OK();
+                          });
+                        },
+                        std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
 }
 
 Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
-  return impl_->Contains(object_id, has_object, [&]() {
+  return impl_->Contains(object_id, has_object, [this, object_id, has_object]() {
     return plasma_store_.ExecuteInStoreThread([&]() {
       *has_object = plasma_store_.ContainsObject(object_id);
       return Status::OK();
@@ -917,22 +920,21 @@ Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
 }
 
 Status PlasmaClient::Abort(const ObjectID &object_id) {
-  return impl_->Abort(object_id, [&]() {
+  return impl_->Abort(object_id, [this, object_id]() {
     return plasma_store_.ExecuteInStoreThread(
         [&]() { return plasma_store_.AbortObject(object_id, nullptr); });
   });
 }
 
 Status PlasmaClient::Seal(const ObjectID &object_id) {
-  return impl_->Seal(
-      object_id,
-      [&]() {
-        return plasma_store_.ExecuteInStoreThread([&]() {
-          plasma_store_.SealObjects({object_id});
-          return Status::OK();
-        });
-      },
-      std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
+  return impl_->Seal(object_id,
+                     [this, object_id]() {
+                       return plasma_store_.ExecuteInStoreThread([&]() {
+                         plasma_store_.SealObjects({object_id});
+                         return Status::OK();
+                       });
+                     },
+                     std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
 }
 
 Status PlasmaClient::Delete(const ObjectID &object_id) {
@@ -941,7 +943,7 @@ Status PlasmaClient::Delete(const ObjectID &object_id) {
 }
 
 Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
-  return impl_->Delete(object_ids, [&](std::vector<ObjectID> &not_in_use_ids) {
+  return impl_->Delete(object_ids, [this](std::vector<ObjectID> &not_in_use_ids) {
     return plasma_store_.ExecuteInStoreThread([&]() {
       RAY_UNUSED(plasma_store_.DeleteObjects(not_in_use_ids));
       return Status::OK();
@@ -950,12 +952,13 @@ Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
 }
 
 Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
-  return impl_->Evict(num_bytes, num_bytes_evicted, [&]() {
-    return plasma_store_.ExecuteInStoreThread([&]() {
-      num_bytes_evicted = plasma_store_.EvictObject(num_bytes);
-      return Status::OK();
-    });
-  });
+  return impl_->Evict(num_bytes, num_bytes_evicted,
+                      [this, num_bytes, &num_bytes_evicted]() {
+                        return plasma_store_.ExecuteInStoreThread([&]() {
+                          num_bytes_evicted = plasma_store_.EvictObject(num_bytes);
+                          return Status::OK();
+                        });
+                      });
 }
 
 std::string PlasmaClient::DebugString() {
