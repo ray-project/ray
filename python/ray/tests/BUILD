@@ -153,6 +153,16 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_actor_group.py"
+  ],
+  size = "small",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "team:serve"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_cli.py",
     "test_failure.py",
     "test_actor_advanced.py",
@@ -242,7 +252,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_runtime_env.py"
+    "test_runtime_env.py",
+    "test_runtime_env_working_dir.py"
   ],
   size = "large",
   extra_srcs = SRCS,
