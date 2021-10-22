@@ -56,9 +56,10 @@ def tmp_working_dir():
         yield tmp_dir
 
 
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize("test_failure", [True, False])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_lazy_reads(start_cluster, tmp_working_dir, test_failure):
+def test_lazy_reads(start_cluster, tmp_working_dir, test_failure, option):
     """Tests the case where we lazily read files or import inside a task/actor.
 
     This tests both that this fails *without* the working_dir and that it
@@ -70,7 +71,10 @@ def test_lazy_reads(start_cluster, tmp_working_dir, test_failure):
         # Don't pass working_dir, so it should fail!
         ray.init(address)
     else:
-        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+        if option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+        elif option == "py_modules":
+            ray.init(address, runtime_env={"py_modules": [tmp_working_dir]})
 
     @ray.remote
     def test_import():
@@ -90,7 +94,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, test_failure):
     if test_failure:
         with pytest.raises(FileNotFoundError):
             ray.get(test_read.remote())
-    else:
+    elif option == "working_dir":
         assert ray.get(test_read.remote()) == "world"
 
     @ray.remote
@@ -108,7 +112,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, test_failure):
             assert ray.get(a.test_import.remote()) == 1
         with pytest.raises(FileNotFoundError):
             assert ray.get(a.test_read.remote()) == "world"
-    else:
+    elif option == "working_dir":
         assert ray.get(a.test_import.remote()) == 1
         assert ray.get(a.test_read.remote()) == "world"
 

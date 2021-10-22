@@ -89,7 +89,7 @@ def _zip_module(root: Path,
             if file_size >= FILE_SIZE_WARNING:
                 logger.warning(
                     f"File {path} is very large ({file_size} bytes). "
-                    "Consider excluding this file from the working directory.")
+                    "Consider excluding this file using 'excludes'.")
             to_path = path.relative_to(relative_path)
             if include_parent_dir:
                 to_path = root.name / to_path
@@ -188,10 +188,11 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
     if len(data) >= GCS_STORAGE_MAX_SIZE:
+        size_mib = float(len(data) / 1024**2)
         raise RuntimeError(
-            "working_dir package exceeds the maximum size of 100MiB. You "
-            "can exclude large files using the 'excludes' option to the "
-            "runtime_env.")
+            f"Package size ({size_mib:.2f}MiB) exceeds the maximum size of "
+            "100MiB. You can exclude large files using the 'excludes' option "
+            "to the runtime_env.")
 
     _internal_kv_put(gcs_key, data)
     return len(data)
