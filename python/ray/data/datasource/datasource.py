@@ -176,6 +176,9 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 schema = int
             else:
                 raise ValueError("Unsupported block type", block_format)
+            # TODO(ekl) we could set the owner of created read blocks to a
+            # designated actor, but that seems to trigger a reference counting
+            # bug where the block gets immediately deleted.
             read_tasks.append(
                 ReadTask(
                     lambda i=i, count=count: [ray.put(make_block(i, count))],
