@@ -110,6 +110,7 @@ absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
     const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources,
     const std::function<bool(const NodeID &)> &node_filter_func) {
   absl::flat_hash_set<NodeID> result;
+  result.reserve(cluster_resources.size());
   for (const auto &iter : cluster_resources) {
     const auto &node_id = iter.first;
     if (node_filter_func == nullptr || node_filter_func(node_id)) {
