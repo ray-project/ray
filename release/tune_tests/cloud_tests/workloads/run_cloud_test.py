@@ -1,3 +1,33 @@
+"""Run cloud checkpointing tests.
+
+This script provides utilities and end to end tests for cloud checkpointing.
+
+We are considering several scenarios depending on the combination of the
+following Tune properties:
+
+sync_to_driver
+upload_dir
+DurableTrainable
+
+Generally the flow is as follows:
+
+A Tune run is started in a separate process. It is terminated after some
+time. It is then restarted for another period of time.
+
+Depending on the combination of the run properties above, we expect different
+results between the two runs and after the second run.
+
+For instance, we sometimes expect all checkpoints to be synced to the driver
+(sync_to_driver=True), and sometimes not (sync_to_driver=False).
+
+We also ensure that checkpoints are properly deleted.
+
+The Tune run is kicked off in _tune_script.py. Trials write a checkpoint
+every 2 iterations, and take 5 seconds per iteration.
+
+More details on the expected results can be found in the scenario descriptions.
+"""
+
 import argparse
 import csv
 from dataclasses import dataclass
