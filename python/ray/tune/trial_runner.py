@@ -36,12 +36,14 @@ MAX_DEBUG_TRIALS = 20
 logger = logging.getLogger(__name__)
 
 
-def _find_newest_ckpt(ckpt_dir):
+def _find_newest_ckpt(ckpt_dir) -> Optional[str]:
     """Returns path to most recently modified checkpoint."""
     full_paths = [
         os.path.join(ckpt_dir, fname) for fname in os.listdir(ckpt_dir)
         if fname.startswith("experiment_state") and fname.endswith(".json")
     ]
+    if not full_paths:
+        return None
     return max(full_paths)
 
 
@@ -473,6 +475,13 @@ class TrialRunner:
                         "details. "
                         "Ray Tune will now start a new experiment.")
                     return False
+                if not self.checkpoint_exists(self._local_checkpoint_dir):
+                    logger.warning(
+                        "A remote checkpoint was fetched, but no checkpoint "
+                        "data was found. This can happen when e.g. the cloud "
+                        "bucket exists but does not contain any data. "
+                        "Ray Tune will start a new, fresh run.")
+                    return False
                 logger.info(
                     "A remote experiment checkpoint was found and will be "
                     "used to restore the previous experiment state.")
@@ -576,13 +585,19 @@ class TrialRunner:
                 search_alg=self._search_alg,
                 force=force)
 
-    def resume(self, run_errored_only=False):
+    def resume(self, run_errored_only=False) -> bool:
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
         """
         newest_ckpt_path = _find_newest_ckpt(self._local_checkpoint_dir)
+
+        if not newest_ckpt_path:
+            raise ValueError(f"Tried to resume from checkpoint dir "
+                             f"`{self._local_checkpoint_dir}`, but no "
+                             f"experiment checkpoint data was found.")
+
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
@@ -615,6 +630,8 @@ class TrialRunner:
                 self.add_trial(new_trial)
             else:
                 self.add_trial(trial)
+
+        return True
 
     def update_pending_trial_resources(
             self, resources: Union[dict, PlacementGroupFactory]):
