@@ -323,8 +323,7 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            CheckpointDeleter(self._trainable_name(), self.runner,
-                              ray.util.get_node_ip_address()))
+            CheckpointDeleter(self._trainable_name(), self.runner))
 
         # Restoration fields
         self.restore_path = restore_path
