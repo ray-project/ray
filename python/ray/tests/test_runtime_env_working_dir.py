@@ -1,9 +1,11 @@
 from contextlib import contextmanager
 import os
 from pathlib import Path
-import pytest
 import sys
 import tempfile
+
+import pytest
+from pytest_lazyfixture import lazy_fixture
 
 import ray
 import ray.experimental.internal_kv as kv
@@ -258,7 +260,7 @@ def test_s3_uri(start_cluster, test_failure, per_task_actor):
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize(
     "working_dir",
-    [S3_PACKAGE_URI, pytest.lazy_fixture("tmp_working_dir")])
+    [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
 def test_multi_node(start_cluster, working_dir):
     """Tests that the working_dir is propagated across multi-node clusters."""
     NUM_NODES = 3
@@ -296,7 +298,7 @@ def check_local_files_gced(cluster):
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize(
     "working_dir",
-    [S3_PACKAGE_URI, pytest.lazy_fixture("tmp_working_dir")])
+    [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
 def test_job_level_gc(start_cluster, working_dir):
     """Tests that job-level working_dir is GC'd when the job exits."""
     NUM_NODES = 3
@@ -374,7 +376,7 @@ def test_actor_level_gc(start_cluster):
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize(
     "working_dir",
-    [S3_PACKAGE_URI, pytest.lazy_fixture("tmp_working_dir")])
+    [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
 def test_detached_actor_gc(start_cluster, working_dir):
     """Tests that URIs for detached actors are GC'd only when they exit."""
     cluster, address = start_cluster
@@ -539,7 +541,7 @@ cache/
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize(
     "working_dir",
-    [S3_PACKAGE_URI, pytest.lazy_fixture("tmp_working_dir")])
+    [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
 def test_runtime_context(start_cluster, working_dir):
     """Tests that the working_dir is propagated in the runtime_context."""
     cluster, address = start_cluster
