@@ -99,15 +99,15 @@ class CheckpointDeleter:
             return
 
         if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
+            checkpoint_path = checkpoint.value
+
             logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
-                         checkpoint.value)
+                         checkpoint_path)
 
             # TODO(ujvl): Batch remote deletes.
             # We first delete the remote checkpoint. If it is on the same
             # node as the driver, it will also remove the local copy.
-            self.runner.delete_checkpoint.remote(checkpoint.value)
-
-            checkpoint_path = checkpoint.value
+            ray.get(self.runner.delete_checkpoint.remote(checkpoint_path))
 
             # Delete local copy, if any exists.
             if os.path.exists(checkpoint_path):
@@ -116,7 +116,8 @@ class CheckpointDeleter:
                         checkpoint_path)
                     shutil.rmtree(checkpoint_dir)
                 except FileNotFoundError:
-                    logger.warning("Checkpoint dir not found during deletion.")
+                    logger.debug(
+                        "Local checkpoint dir not found during deletion.")
 
 
 class TrialInfo:
