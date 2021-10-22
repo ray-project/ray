@@ -7,6 +7,7 @@ from enum import Enum
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
+from ray.serve.utils import get_current_node_resource_key
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_get,
@@ -194,6 +195,11 @@ class JobManager:
         supervisor = self._supervisor_actor_cls.options(
             lifetime="detached",
             name=self.JOB_ACTOR_NAME.format(job_id=job_id),
+            # Currently we assume JobManager is created by dashboard server
+            # running on headnode, same for job supervisor actors scheduled
+            resources={
+                get_current_node_resource_key(): 0.001,
+            },
             runtime_env=runtime_env,
         ).remote(job_id)
 
