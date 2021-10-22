@@ -502,12 +502,20 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
+      /*channels=*/std::vector<
+          rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                            rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*periodical_runner=*/&periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
   object_info_subscriber_ = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/GetWorkerID(),
+      /*channels=*/
+      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                    rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       // /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
       /*get_client=*/
@@ -792,8 +800,19 @@ void CoreWorker::Exit(
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type);
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
-  RAY_CHECK_OK(
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
+  auto status =
+      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
+  if (status.IsIOError()) {
+    // If the core worker fails to be connected to raylet due to broken pipe, we just exit
+    // quickly without proceeding graceful shutdown. This happens if
+    // - raylet is already crashed.
+    // - Raylet already unregistered this worker.
+    RAY_LOG(INFO)
+        << "Failed to notify that the direct call task has blocked. Call status: "
+        << status;
+    QuickExit(options_.enable_logging);
+    RAY_LOG(FATAL) << "Unreachable.";
+  }
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {
@@ -2265,11 +2284,21 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
   std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
+
+  std::vector<ConcurrencyGroup> defined_concurrency_groups = {};
+  std::string name_of_concurrency_group_to_execute;
+  if (task_spec.IsActorCreationTask()) {
+    defined_concurrency_groups = task_spec.ConcurrencyGroups();
+  } else if (task_spec.IsActorTask()) {
+    name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
+  }
+
   status = options_.task_execution_callback(
       task_type, task_spec.GetName(), func,
       task_spec.GetRequiredResources().GetResourceUnorderedMap(), args, arg_refs,
       return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
-      creation_task_exception_pb_bytes, is_application_level_error);
+      creation_task_exception_pb_bytes, is_application_level_error,
+      defined_concurrency_groups, name_of_concurrency_group_to_execute);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2665,8 +2694,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     pub_message.mutable_worker_object_eviction_message()->set_object_id(
         object_id.Binary());
 
-    object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_EVICTION, pub_message,
-                                    object_id.Binary());
+    object_info_publisher_->Publish(pub_message);
   };
 
   const auto object_id = ObjectID::FromBinary(message.object_id());
