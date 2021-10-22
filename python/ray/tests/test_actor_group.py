@@ -80,13 +80,13 @@ def test_actor_method_fail(ray_start_2_cpus):
 
 def test_bad_resources(ray_start_2_cpus):
     with pytest.raises(ValueError):
-        ActorGroup(num_workers=-1)
+        ActorGroup(actor_cls=DummyActor, num_actors=-1)
 
     with pytest.raises(ValueError):
-        ActorGroup(num_cpus_per_worker=-1)
+        ActorGroup(actor_cls=DummyActor, num_actors=-1)
 
     with pytest.raises(ValueError):
-        ActorGroup(num_gpus_per_worker=-1)
+        ActorGroup(actor_cls=DummyActor, num_actors=-1)
 
 
 if __name__ == "__main__":
