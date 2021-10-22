@@ -499,6 +499,7 @@ class ActorClass:
             new_runtime_env = ParsedRuntimeEnv(runtime_env)
         else:
             new_runtime_env = runtime_env
+
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(
