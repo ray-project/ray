@@ -118,16 +118,9 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials: bool = False):
+    def __init__(self):
         """Initializes a new TrialExecutor.
-
-        Args:
-            queue_trials (bool): Whether to queue trials when the cluster does
-                not currently have enough resources to launch one. This should
-                be set to True when running on an autoscaling cluster to enable
-                automatic scale-up.
         """
-        self._queue_trials = queue_trials
         self._cached_trial_state = {}
         self._trials_to_cache = set()
         # The next two variables are used to keep track of if there is any
@@ -338,29 +331,21 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
             trials (List[Trial]): The list of trials. Note, refrain from
                 providing TrialRunner directly here.
         """
-        if self._queue_trials:
-            return
         self._may_warn_insufficient_resources(trials)
         for trial in trials:
             if trial.uses_placement_groups:
                 return
+            # TODO(xwjiang): The rest should be gone in a follow up PR
+            #  to remove non-pg case.
             if trial.status == Trial.PENDING:
                 if not self.has_resources_for_trial(trial):
                     resource_string = trial.resources.summary_string()
                     trial_resource_help_msg = trial.get_trainable_cls(
                     ).resource_help(trial.config)
-                    autoscaling_msg = ""
-                    if is_ray_cluster():
-                        autoscaling_msg = (
-                            "Pass `queue_trials=True` in ray.tune.run() or "
-                            "on the command line to queue trials until the "
-                            "cluster scales up or resources become available. "
-                        )
                     raise TuneError(
                         "Insufficient cluster resources to launch trial: "
                         f"trial requested {resource_string}, but the cluster "
                         f"has only {self.resource_string()}. "
-                        f"{autoscaling_msg}"
                         f"{trial_resource_help_msg} ")
             elif trial.status == Trial.PAUSED:
                 raise TuneError("There are paused trials, but no more pending "
