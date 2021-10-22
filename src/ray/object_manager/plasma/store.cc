@@ -93,13 +93,14 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
           // absl can't check thread safety for lambda
           [this]() ABSL_NO_THREAD_SAFETY_ANALYSIS { return GetDebugDump(); }),
       total_consumed_bytes_(0),
-      get_request_queue_(io_context_, object_lifecycle_mgr_,
-                         // absl failed to check thread safety for lambda
-                         [this](const ObjectID &object_id, const auto &request)
-                             ABSL_NO_THREAD_SAFETY_ANALYSIS {
-                               this->AddToClientObjectIds(object_id, request->client);
-                             },
-                         [this](const auto &request) { this->ReturnFromGet(request); }) {
+      get_request_queue_(
+          io_context_, object_lifecycle_mgr_,
+          // absl failed to check thread safety for lambda
+          [this](const ObjectID &object_id, const auto &request)
+              ABSL_NO_THREAD_SAFETY_ANALYSIS {
+                this->AddToClientObjectIds(object_id, request->client);
+              },
+          [this](const auto &request) { this->ReturnFromGet(request); }) {
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms > 0 && RayConfig::instance().event_stats()) {
@@ -468,7 +469,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   } break;
   default:
     // This code should be unreachable.
-    RAY_CHECK(0);
+    RAY_CHECK(0) << "Unsupported message type: " << (int64_t)type;
   }
   return Status::OK();
 }
@@ -502,13 +503,14 @@ void PlasmaStore::ProcessCreateRequests() {
 
   if (retry_after_ms > 0) {
     // Try to process requests later, after space has been made.
-    create_timer_ = execute_after(io_context_,
-                                  [this]() {
-                                    std::lock_guard<std::recursive_mutex> guard(mutex_);
-                                    create_timer_ = nullptr;
-                                    ProcessCreateRequests();
-                                  },
-                                  retry_after_ms);
+    create_timer_ = execute_after(
+        io_context_,
+        [this]() {
+          std::lock_guard<std::recursive_mutex> guard(mutex_);
+          create_timer_ = nullptr;
+          ProcessCreateRequests();
+        },
+        retry_after_ms);
   }
 }
 
@@ -548,8 +550,9 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 void PlasmaStore::PrintDebugDump() const {
   std::lock_guard<std::recursive_mutex> guard(mutex_);
   RAY_LOG(INFO) << GetDebugDump();
-  stats_timer_ = execute_after(io_context_, [this]() { PrintDebugDump(); },
-                               RayConfig::instance().event_stats_print_interval_ms());
+  stats_timer_ = execute_after(
+      io_context_, [this]() { PrintDebugDump(); },
+      RayConfig::instance().event_stats_print_interval_ms());
 }
 
 std::string PlasmaStore::GetDebugDump() const {

@@ -241,6 +241,8 @@ class PlasmaClient : public PlasmaClientInterface {
  private:
   PlasmaStore &plasma_store_;
   std::shared_ptr<Impl> impl_;
+  /// A mutex which protects this class.
+  std::recursive_mutex client_mutex_;
 };
 
 class StoreConn;

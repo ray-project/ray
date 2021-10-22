@@ -646,6 +646,7 @@ Status RemotePlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                                int64_t timeout_ms,
                                std::vector<ObjectBuffer> *object_buffers,
                                bool is_from_worker) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   return impl_->Get(
       object_ids, timeout_ms, object_buffers, is_from_worker,
       [this, object_ids, timeout_ms, is_from_worker](
@@ -668,6 +669,7 @@ Status RemotePlasmaClient::Get(const std::vector<ObjectID> &object_ids,
 }
 
 Status RemotePlasmaClient::Release(const ObjectID &object_id) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   return impl_->Release(
       object_id,
       [this, object_id]() { return SendReleaseRequest(store_conn_, object_id); },
@@ -675,6 +677,7 @@ Status RemotePlasmaClient::Release(const ObjectID &object_id) {
 }
 
 Status RemotePlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   return impl_->Contains(object_id, has_object, [this, object_id, has_object]() {
     // If we don't already have a reference to the object, check with the store
     // to see if we have the object.
@@ -691,6 +694,7 @@ Status RemotePlasmaClient::Contains(const ObjectID &object_id, bool *has_object)
 }
 
 Status RemotePlasmaClient::Abort(const ObjectID &object_id) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   return impl_->Abort(object_id, [this, object_id]() {
     // Send the abort request.
     RAY_RETURN_NOT_OK(SendAbortRequest(store_conn_, object_id));
@@ -702,6 +706,7 @@ Status RemotePlasmaClient::Abort(const ObjectID &object_id) {
 }
 
 Status RemotePlasmaClient::Seal(const ObjectID &object_id) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   return impl_->Seal(
       object_id,
       [this, object_id]() {
@@ -719,11 +724,13 @@ Status RemotePlasmaClient::Seal(const ObjectID &object_id) {
 }
 
 Status RemotePlasmaClient::Delete(const ObjectID &object_id) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   std::vector<ObjectID> object_ids{object_id};
   return Delete(object_ids);
 }
 
 Status RemotePlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   return impl_->Delete(object_ids, [this](std::vector<ObjectID> &not_in_use_ids) {
     RAY_RETURN_NOT_OK(SendDeleteRequest(store_conn_, not_in_use_ids));
     std::vector<uint8_t> buffer;
@@ -739,6 +746,7 @@ Status RemotePlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
 }
 
 Status RemotePlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   return impl_->Evict(
       num_bytes, num_bytes_evicted, [this, num_bytes, &num_bytes_evicted]() {
         // Send a request to the store to evict objects.
@@ -752,11 +760,13 @@ Status RemotePlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) 
 }
 
 Status RemotePlasmaClient::Disconnect() {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   store_conn_.reset();
   return impl_->Disconnect();
 }
 
 std::string RemotePlasmaClient::DebugString() {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   if (!SendGetDebugStringRequest(store_conn_).ok()) {
     return "error sending request";
   }
@@ -772,6 +782,7 @@ std::string RemotePlasmaClient::DebugString() {
 }
 
 bool RemotePlasmaClient::IsInUse(const ObjectID &object_id) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   return impl_->IsInUse(object_id);
 }
 
@@ -779,6 +790,7 @@ Status RemotePlasmaClient::HandleCreateReply(const ObjectID &object_id,
                                              const uint8_t *metadata,
                                              uint64_t *retry_with_request_id,
                                              std::shared_ptr<Buffer> *data) {
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   std::vector<uint8_t> buffer;
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaCreateReply, &buffer));
   ObjectID id;
@@ -818,6 +830,7 @@ Status PlasmaClient::CreateAndSpillIfNeeded(
     const ObjectID &object_id, const ray::rpc::Address &owner_address, int64_t data_size,
     const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
     plasma::flatbuf::ObjectSource source, int device_num) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   /// TODO: Using TryCreateImmediately
   uint64_t req_id;
   ray::ObjectInfo object_info;
@@ -855,6 +868,7 @@ Status PlasmaClient::TryCreateImmediately(
     const ObjectID &object_id, const ray::rpc::Address &owner_address, int64_t data_size,
     const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
     plasma::flatbuf::ObjectSource source, int device_num) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   uint64_t req_id;
   ray::ObjectInfo object_info;
   object_info.data_size = data_size;
@@ -879,6 +893,7 @@ Status PlasmaClient::TryCreateImmediately(
 
 Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                          std::vector<ObjectBuffer> *object_buffers, bool is_from_worker) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return impl_->Get(
       object_ids, timeout_ms, object_buffers, is_from_worker,
       [this, object_ids, timeout_ms, is_from_worker](
@@ -900,17 +915,20 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeou
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) {
-  return impl_->Release(object_id,
-                        [this, object_id]() {
-                          return plasma_store_.ExecuteInStoreThread([&]() {
-                            plasma_store_.ReleaseObject(object_id, nullptr);
-                            return Status::OK();
-                          });
-                        },
-                        std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  return impl_->Release(
+      object_id,
+      [this, object_id]() {
+        return plasma_store_.ExecuteInStoreThread([&]() {
+          plasma_store_.ReleaseObject(object_id, nullptr);
+          return Status::OK();
+        });
+      },
+      std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
 }
 
 Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return impl_->Contains(object_id, has_object, [this, object_id, has_object]() {
     return plasma_store_.ExecuteInStoreThread([&]() {
       *has_object = plasma_store_.ContainsObject(object_id);
@@ -920,6 +938,7 @@ Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
 }
 
 Status PlasmaClient::Abort(const ObjectID &object_id) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return impl_->Abort(object_id, [this, object_id]() {
     return plasma_store_.ExecuteInStoreThread(
         [&]() { return plasma_store_.AbortObject(object_id, nullptr); });
@@ -927,22 +946,26 @@ Status PlasmaClient::Abort(const ObjectID &object_id) {
 }
 
 Status PlasmaClient::Seal(const ObjectID &object_id) {
-  return impl_->Seal(object_id,
-                     [this, object_id]() {
-                       return plasma_store_.ExecuteInStoreThread([&]() {
-                         plasma_store_.SealObjects({object_id});
-                         return Status::OK();
-                       });
-                     },
-                     std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
+  return impl_->Seal(
+      object_id,
+      [this, object_id]() {
+        return plasma_store_.ExecuteInStoreThread([&]() {
+          plasma_store_.SealObjects({object_id});
+          return Status::OK();
+        });
+      },
+      std::dynamic_pointer_cast<PlasmaClient>(shared_from_this()));
 }
 
 Status PlasmaClient::Delete(const ObjectID &object_id) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   std::vector<ObjectID> object_ids{object_id};
   return Delete(object_ids);
 }
 
 Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return impl_->Delete(object_ids, [this](std::vector<ObjectID> &not_in_use_ids) {
     return plasma_store_.ExecuteInStoreThread([&]() {
       RAY_UNUSED(plasma_store_.DeleteObjects(not_in_use_ids));
@@ -952,6 +975,7 @@ Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
 }
 
 Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return impl_->Evict(num_bytes, num_bytes_evicted,
                       [this, num_bytes, &num_bytes_evicted]() {
                         return plasma_store_.ExecuteInStoreThread([&]() {
@@ -962,6 +986,7 @@ Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
 }
 
 std::string PlasmaClient::DebugString() {
+  std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return plasma_store_.ExecuteInStoreThread(
       [&]() { return plasma_store_.DebugString(); });
 }
