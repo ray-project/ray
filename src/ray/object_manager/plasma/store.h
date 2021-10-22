@@ -153,7 +153,7 @@ class PlasmaStore {
   std::string DebugString();
 
   template <class F, class... Args>
-  auto ExecuteInStoreThread(F &&f, Args &&... args) -> decltype(f(args...)) {
+  auto ExecuteInStoreThread(F &&f, Args &&...args) -> decltype(f(args...)) {
     using return_type = decltype(f(args...));
     std::packaged_task<return_type()> task(
         std::bind(std::forward<F>(f), std::forward<Args>(args)...));
