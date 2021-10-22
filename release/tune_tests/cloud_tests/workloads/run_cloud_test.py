@@ -159,7 +159,10 @@ def start_run(
     if indicator_file:
         args.extend(["--indicator-file", indicator_file])
 
-    process = subprocess.Popen(["python", TUNE_SCRIPT] + args)
+    env = os.environ.copy()
+    env["TUNE_RESULT_BUFFER_LENGTH"] = "1"
+
+    process = subprocess.Popen(["python", TUNE_SCRIPT] + args, env=env)
 
     return process
 
