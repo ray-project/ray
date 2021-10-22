@@ -36,7 +36,7 @@ class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList) -> BlockList:
         # Handle empty datasets.
-        if blocks.num_futures() == 0:
+        if blocks.num_tasks() == 0:
             return blocks
 
         blocks = list(blocks.iter_evaluated_with_orig_metadata())

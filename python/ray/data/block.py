@@ -22,9 +22,6 @@ AggType = TypeVar("AggType")
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
 Block = Union[List[T], "pyarrow.Table", bytes]
 
-# The target max block size to return from read and transform tasks.
-DEFAULT_MAX_BLOCK_SIZE_BYTES = 1000 * 1024 * 1024
-
 
 @DeveloperAPI
 class BlockMetadata:

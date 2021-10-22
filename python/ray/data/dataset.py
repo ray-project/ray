@@ -597,7 +597,7 @@ class Dataset(Generic[T]):
             new_splits.extend(new_splits_small)
             return new_splits
 
-        block_refs = list(self._blocks.iter_futures())
+        block_refs = list(self._blocks.iter_tasks())
         metadata_mapping = {
             b: m
             for b, m in zip(block_refs, self._blocks.get_metadata())
@@ -780,9 +780,9 @@ class Dataset(Generic[T]):
             if isinstance(bl, LazyBlockList):
                 calls.extend(bl._calls)
             else:
-                calls.extend([None] * bl.num_futures())
+                calls.extend([None] * bl.num_tasks())
             metadata.extend(bl._metadata)
-            blocks.extend(list(bl.iter_futures()))
+            blocks.extend(list(bl.iter_tasks()))
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1046,7 +1046,7 @@ class Dataset(Generic[T]):
         Returns:
             The number of blocks of this dataset.
         """
-        return self._blocks.num_futures()
+        return self._blocks.num_tasks()
 
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
@@ -1984,7 +1984,7 @@ class Dataset(Generic[T]):
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            self._blocks.num_futures(), count, schema_str)
+            self._blocks.num_tasks(), count, schema_str)
 
     def __str__(self) -> str:
         return repr(self)

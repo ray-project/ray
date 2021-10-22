@@ -13,7 +13,7 @@ class BlockList:
                  metadata: List[BlockMetadata]):
         assert len(blocks) == len(metadata), (blocks, metadata)
         self._block_futures: List[ObjectRef[List[Block]]] = blocks
-        self._num_futures = len(self._block_futures)
+        self._num_tasks = len(self._block_futures)
         self._metadata = metadata
 
     def set_metadata(self, i: int, metadata: BlockMetadata) -> None:
@@ -51,7 +51,7 @@ class BlockList:
                 BlockList(self._block_futures[block_idx:],
                           self._metadata[block_idx:]))
 
-    def iter_futures(self) -> Iterator[ObjectRef[List[Block]]]:
+    def iter_tasks(self) -> Iterator[ObjectRef[List[Block]]]:
         return iter(self._block_futures)
 
     def iter_evaluated_with_orig_metadata(
@@ -61,7 +61,7 @@ class BlockList:
 
         class Iter:
             def __init__(self):
-                self._base_iter = zip(outer.iter_futures(), outer._metadata)
+                self._base_iter = zip(outer.iter_tasks(), outer._metadata)
                 self._buffer = []
 
             def __iter__(self):
@@ -101,8 +101,8 @@ class BlockList:
 
         return Iter()
 
-    def num_futures(self) -> int:
-        return self._num_futures
+    def num_tasks(self) -> int:
+        return self._num_tasks
 
     def num_evaluated(self) -> int:
         self._check_if_cleared()
