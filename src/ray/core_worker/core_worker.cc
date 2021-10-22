@@ -580,6 +580,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_,
+      /*put_in_local_plasma_callback=*/
+      [this](const RayObject &object, const ObjectID &object_id) {
+        RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
+      },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool delay) {
         if (delay) {
@@ -729,8 +733,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         RAY_CHECK_OK(Put(RayObject(reason),
                          /*contained_object_ids=*/{}, object_id,
                          /*pin_object=*/pin_object));
-      },
-      RayConfig::instance().lineage_pinning_enabled());
+      });
 
   // Start the IO thread after all other members have been initialized, in case
   // the thread calls back into any of our members.
@@ -1128,17 +1131,8 @@ Status CoreWorker::Put(const RayObject &object,
   return status;
 }
 
-Status CoreWorker::Put(const RayObject &object,
-                       const std::vector<ObjectID> &contained_object_ids,
-                       const ObjectID &object_id, bool pin_object) {
-  RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
-  if (options_.is_local_mode ||
-      (RayConfig::instance().put_small_object_in_memory_store() &&
-       static_cast<int64_t>(object.GetSize()) < max_direct_call_object_size_)) {
-    RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
-    RAY_CHECK(memory_store_->Put(object, object_id));
-    return Status::OK();
-  }
+Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
+                                         const ObjectID &object_id, bool pin_object) {
   bool object_exists;
   RAY_RETURN_NOT_OK(plasma_store_provider_->Put(
       object, object_id, /* owner_address = */ rpc_address_, &object_exists));
@@ -1162,6 +1156,20 @@ Status CoreWorker::Put(const RayObject &object,
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   return Status::OK();
+}
+
+Status CoreWorker::Put(const RayObject &object,
+                       const std::vector<ObjectID> &contained_object_ids,
+                       const ObjectID &object_id, bool pin_object) {
+  RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
+  if (options_.is_local_mode ||
+      (RayConfig::instance().put_small_object_in_memory_store() &&
+       static_cast<int64_t>(object.GetSize()) < max_direct_call_object_size_)) {
+    RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
+    RAY_CHECK(memory_store_->Put(object, object_id));
+    return Status::OK();
+  }
+  return PutInLocalPlasmaStore(object, object_id, pin_object);
 }
 
 Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
