@@ -308,6 +308,9 @@ def test_job_level_gc(start_cluster, working_dir):
 
     ray.init(address, runtime_env={"working_dir": working_dir})
 
+    # For a local directory, the package should be in the GCS.
+    # For an S3 URI, there should be nothing in the GCS because
+    # it will be downloaded from S3 directly on each node.
     if working_dir == S3_PACKAGE_URI:
         assert check_internal_kv_gced()
     else:
@@ -383,6 +386,9 @@ def test_detached_actor_gc(start_cluster, working_dir):
     ray.init(
         address, namespace="test", runtime_env={"working_dir": working_dir})
 
+    # For a local directory, the package should be in the GCS.
+    # For an S3 URI, there should be nothing in the GCS because
+    # it will be downloaded from S3 directly on each node.
     if working_dir == S3_PACKAGE_URI:
         assert check_internal_kv_gced()
     else:
