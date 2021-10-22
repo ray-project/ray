@@ -10,9 +10,6 @@ from ray import tune
 
 
 def train(config, checkpoint_dir=None):
-    with open(config["indicator_file"], "wt") as fp:
-        fp.write("1")
-
     if checkpoint_dir:
         with open(os.path.join(checkpoint_dir, "checkpoint.json"), "rt") as fp:
             state = json.load(fp)
@@ -31,6 +28,15 @@ def train(config, checkpoint_dir=None):
         tune.report(
             score=i * 10 * config["score_multiplied"],
             internal_iter=state["internal_iter"])
+
+
+class IndicatorCallback(tune.Callback):
+    def __init__(self, indicator_file):
+        self.indicator_file = indicator_file
+
+    def on_step_begin(self, iteration, trials, **info):
+        with open(self.indicator_file, "wt") as fp:
+            fp.write("1")
 
 
 def run_tune(
@@ -55,7 +61,6 @@ def run_tune(
             "sleep_time": 5,
             "checkpoint_freq": 2,
             "score_multiplied": tune.randint(0, 100),
-            "indicator_file": indicator_file
         },
         sync_config=tune.SyncConfig(
             sync_to_driver=sync_to_driver,
@@ -63,6 +68,7 @@ def run_tune(
         ),
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
+        callbacks=[IndicatorCallback(indicator_file=indicator_file)],
         verbose=2)
 
 

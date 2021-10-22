@@ -189,20 +189,21 @@ def send_signal_after_wait(process: subprocess.Popen,
                            signal: int,
                            wait: int = 30):
     print(f"Waiting {wait} seconds until sending signal {signal} "
-          f"to process ")
+          f"to process {process.pid}")
 
     time.sleep(wait)
 
     if process.poll() is not None:
-        raise RuntimeError("Process already terminated.")
+        raise RuntimeError(f"Process {process.pid} already terminated.")
 
-    print(f"Sending signal {signal} to process")
+    print(f"Sending signal {signal} to process {process.pid}")
     process.send_signal(signal)
 
 
 def wait_until_process_terminated(process: subprocess.Popen,
                                   timeout: int = 60):
-    print(f"Waiting up to {timeout} seconds until process terminated")
+    print(f"Waiting up to {timeout} seconds until process "
+          f"{process.pid} terminates")
 
     timeout = time.monotonic() + timeout
     while process.poll() is None and time.monotonic() < timeout:
@@ -212,10 +213,10 @@ def wait_until_process_terminated(process: subprocess.Popen,
         process.terminate()
 
         raise RuntimeError(
-            "Process did not terminate within timeout, terminating "
-            "forcefully instead.")
+            f"Process {process.pid} did not terminate within timeout, "
+            f"terminating forcefully instead.")
 
-    print("Process terminated.")
+    print(f"Process {process.pid} terminated gracefully.")
 
 
 def run_tune_script_for_time(
@@ -255,6 +256,8 @@ def run_resume_flow(
         sync_to_driver: bool,
         upload_dir: Optional[str],
         durable: bool,
+        first_run_time: int = 33,
+        second_run_time: int = 33,
         before_experiments_callback: Optional[Callable[[], None]] = None,
         between_experiments_callback: Optional[Callable[[], None]] = None,
         after_experiments_callback: Optional[Callable[[], None]] = None):
@@ -262,9 +265,9 @@ def run_resume_flow(
 
     - Clean up existing experiment dir
     - Call before experiment callback
-    - Run tune script for 30 seconds
+    - Run tune script for `first_run_time` seconds
     - Call between experiment callback
-    - Run tune script for another 30 seconds
+    - Run tune script for another `second_run_time` seconds
     - Call after experiment callback
     """
     # Cleanup ~/ray_results/<experiment_name> folder
@@ -275,14 +278,16 @@ def run_resume_flow(
 
     # Run before experiment callbacks
     if before_experiments_callback:
+        print("Before experiments: Invoking callback")
         before_experiments_callback()
+        print("Before experiments: Callback completed")
 
     # Delete indicator file
     delete_file_if_exists(indicator_file)
 
-    # Run tune script for 30 seconds
+    # Run tune script for `first_run_time` seconds
     run_tune_script_for_time(
-        run_time=30,
+        run_time=first_run_time,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         sync_to_driver=sync_to_driver,
@@ -293,14 +298,16 @@ def run_resume_flow(
     # Before we restart, run a couple of checks
     # Run before experiment callbacks
     if between_experiments_callback:
+        print("Between experiments: Invoking callback")
         between_experiments_callback()
+        print("Between experiments: Callback completed")
 
     # Restart. First, clean up indicator file
     delete_file_if_exists(indicator_file)
 
-    # Start run again, run for another 30 seconds
+    # Start run again, run for another `second_run_time` seconds
     run_tune_script_for_time(
-        run_time=30,
+        run_time=second_run_time,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         sync_to_driver=sync_to_driver,
@@ -309,7 +316,9 @@ def run_resume_flow(
     )
 
     if after_experiments_callback:
+        print("After experiments: Invoking callback")
         after_experiments_callback()
+        print("After experiments: Callback completed")
 
 
 # Download data from remote nodes
@@ -342,18 +351,20 @@ def fetch_trial_node_dirs_to_tmp_dir(
             # Trial was run on driver
             shutil.rmtree(tmpdir)
             shutil.copytree(trial.local_dir, tmpdir)
-            print("COPIED LOCAL NODE", trial.local_dir, "TO", tmpdir)
+            print("Copied local node experiment dir", trial.local_dir, "to",
+                  tmpdir)
 
         else:
             # Trial was run on remote node
             node_syncer = get_trial_node_syncer(trial, tmpdir)
             node_syncer.set_worker_ip(trial.node_ip)
             if not node_syncer.sync_down():
-                raise RuntimeError(
-                    f"Could not sync remote experiment dir for trial "
+                print(
+                    f"WARNING: Could not sync remote experiment dir for trial "
                     f"{trial} from {trial.hostname} ({trial.node_ip}) "
                     f"to {tmpdir}.")
-            print("SYNCED DOWN REMOTE NODE", trial.hostname, "TO", tmpdir)
+            print("Synced remote node experiment dir from", trial.hostname,
+                  "to", tmpdir)
 
         dirmap[trial] = tmpdir
 
@@ -466,7 +477,7 @@ def get_experiment_and_trial_data(
         experiment_name=experiment_name)
 
     experiment_state = assert_experiment_checkpoint_validity(
-        experiment_dir=experiment_dir, total_time_bounds=(120, 239))
+        experiment_dir=experiment_dir)
 
     driver_dir_cp = load_experiment_checkpoint_from_dir(
         experiment_state.trials, experiment_dir)
@@ -505,19 +516,6 @@ def assert_experiment_checkpoint_validity(
 
     assert len(
         experiment_state.trials) == 4, "Not all trials have been created."
-
-    assert all(
-        trial.status == "RUNNING"
-        for trial in experiment_state.trials), "Not all trials are RUNNING"
-
-    runner_data = experiment_state.runner_data
-    if total_time_bounds:
-        assert (total_time_bounds[0]
-                <= runner_data["_total_time"]
-                <= total_time_bounds[1]), \
-            f"Total time {runner_data['_total_time']} not within bounds " \
-            f"({total_time_bounds[0]} <= {runner_data['_total_time']} <= " \
-            f"{total_time_bounds[1]})"
 
     return experiment_state
 
@@ -574,14 +572,24 @@ def test_no_sync():
         - Remote trial dirs only have data for one trial
         - Remote trial dirs have checkpoints for node-local trials
 
+    Then, remote checkpoint directories are cleaned up.
+
+    Expected results after second checkpoint:
+
+        - 4 trials are running
+
     """
     experiment_name = "cloud_no_sync"
     indicator_file = "/tmp/cloud_no_sync_indicator"
 
     def between_experiments():
-        # Includes Req: 4 trials are running
         (experiment_state, driver_dir_cp, trial_exp_checkpoint_data
          ) = get_experiment_and_trial_data(experiment_name=experiment_name)
+
+        # Req: 4 trials are running
+        assert all(
+            trial.status == "RUNNING"
+            for trial in experiment_state.trials), "Not all trials are RUNNING"
 
         # Req: At least one trial ran on driver
         # Req: At least one trial ran remotely
@@ -611,13 +619,41 @@ def test_no_sync():
                 assert_checkpoint_count(
                     exp_dir_cp, for_driver_trial=0, for_worker_trial=2)
 
+        # Delete remote checkpoints before resume
+        print("Deleting remote checkpoints before resume")
+        cleanup_remote_node_experiment_dir(experiment_name)
+
+    def after_experiments():
+        (experiment_state, driver_dir_cp, trial_exp_checkpoint_data
+         ) = get_experiment_and_trial_data(experiment_name=experiment_name)
+
+        num_errored = 0
+        for trial in experiment_state.trials:
+            if trial.status == "ERROR":
+                num_errored += 1
+            else:
+                assert trial.last_result["training_iteration"] >= 8, (
+                    f"Trial {trial.trial_id} had a checkpoint (because it "
+                    f"previously ran on the driver) but did not continue "
+                    f"on resume (training iteration: "
+                    f"{trial.last_result['training_iteration']}). "
+                    f"This probably means the checkpoint has not been synced "
+                    f"to the node from the driver correctly.")
+
+        assert num_errored == 3, (
+            f"Only one trial should have had a valid checkpoint, but "
+            f"{num_errored} trials errored (expected 3). If more trials have "
+            f"errored, there is something wrong with restoration. If less, "
+            f"maybe cleanup has not worked, or syncing to driver took place.")
+
     run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         sync_to_driver=False,
         upload_dir=None,
         durable=False,
-        between_experiments_callback=between_experiments)
+        between_experiments_callback=between_experiments,
+        after_experiments_callback=after_experiments)
 
 
 if __name__ == "__main__":
