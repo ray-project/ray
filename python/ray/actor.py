@@ -493,7 +493,7 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        # We must preserve the distinction between None and ParsedRuntimeEnv({})
+        # We must preserve the distinction between None and ParsedRuntimeEnv
         # because remote() may be called downstream TODO(architkulkarni)
         if runtime_env is not None:
             new_runtime_env = ParsedRuntimeEnv(runtime_env)
