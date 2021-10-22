@@ -98,11 +98,6 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-/// Whether to use the hybrid scheduling policy, or one of the legacy spillback
-/// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
-/// then spread via weighted (by critical resource usage).
-RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
-
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.

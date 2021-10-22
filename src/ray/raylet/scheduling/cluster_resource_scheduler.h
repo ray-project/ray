@@ -442,8 +442,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Function to get whether the pull manager is at capacity.
   std::function<bool(void)> get_pull_manager_at_capacity_;
 
-  /// Gcs client
+  /// Gcs client. It's not owned by this class.
   gcs::GcsClient *gcs_client_;
+
   // Specify predefine resources that consists of unit-size instances.
   std::unordered_set<int64_t> predefined_unit_instance_resources_{};
 
