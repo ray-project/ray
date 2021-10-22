@@ -9,6 +9,7 @@ from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray._private.test_utils import (RayTestTimeoutException,
                                      wait_until_succeeded_without_exception)
+from ray._private.utils import init_grpc_channel
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -20,7 +21,7 @@ def test_worker_stats(shutdown_only):
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     ray.nodes()[0]["NodeManagerPort"])
 
-    channel = grpc.insecure_channel(raylet_address)
+    channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
 
     def try_get_node_stats(num_retry=5, timeout=2):
@@ -136,7 +137,7 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
                 "http://localhost:{}".format(metrics_export_port))
             return response.status_code == 200
 
-        wait_until_succeeded_without_exception(
+        assert wait_until_succeeded_without_exception(
             test_prometheus_endpoint, (requests.exceptions.ConnectionError, ))
 
 

@@ -468,6 +468,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddBorrowerAddress(const ObjectID &object_id, const rpc::Address &borrower_address)
       LOCKS_EXCLUDED(mutex_);
 
+  bool IsObjectReconstructable(const ObjectID &object_id) const;
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.

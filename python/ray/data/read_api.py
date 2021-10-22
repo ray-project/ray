@@ -535,30 +535,39 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def from_pandas(dfs: List["pandas.DataFrame"]) -> Dataset[ArrowRow]:
+def from_pandas(dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
+                ) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Pandas dataframes.
 
     Args:
-        dfs: A list of Pandas dataframes.
+        dfs: A Pandas dataframe or a list of Pandas dataframes.
 
     Returns:
         Dataset holding Arrow records read from the dataframes.
     """
+    import pandas as pd
+
+    if isinstance(dfs, pd.DataFrame):
+        dfs = [dfs]
     return from_pandas_refs([ray.put(df) for df in dfs])
 
 
 @DeveloperAPI
-def from_pandas_refs(
-        dfs: List[ObjectRef["pandas.DataFrame"]]) -> Dataset[ArrowRow]:
+def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
+        "pandas.DataFrame"]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
 
     Args:
-        dfs: A list of Ray object references to pandas dataframes.
+        dfs: A Ray object references to pandas dataframe, or a list of
+             Ray object references to pandas dataframes.
 
     Returns:
         Dataset holding Arrow records read from the dataframes.
     """
+    if isinstance(dfs, ray.ObjectRef):
+        dfs = [dfs]
+
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
@@ -583,32 +592,40 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def from_arrow(
-        tables: List[Union["pyarrow.Table", bytes]]) -> Dataset[ArrowRow]:
+def from_arrow(tables: Union["pyarrow.Table", bytes, List[Union[
+        "pyarrow.Table", bytes]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Arrow tables.
 
     Args:
-        tables: A list of Ray object references to Arrow tables,
+        tables: An Arrow table, or a list of Arrow tables,
                 or its streaming format in bytes.
 
     Returns:
         Dataset holding Arrow records from the tables.
     """
+    import pyarrow as pa
+
+    if isinstance(tables, (pa.Table, bytes)):
+        tables = [tables]
     return from_arrow_refs([ray.put(t) for t in tables])
 
 
 @DeveloperAPI
-def from_arrow_refs(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]]
-                    ) -> Dataset[ArrowRow]:
+def from_arrow_refs(
+        tables: Union[ObjectRef[Union["pyarrow.Table", bytes]], List[ObjectRef[
+            Union["pyarrow.Table", bytes]]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
-        tables: A list of Ray object references to Arrow tables,
-                or its streaming format in bytes.
+        tables: A Ray object reference to Arrow table, or list of Ray object
+                references to Arrow tables, or its streaming format in bytes.
 
     Returns:
         Dataset holding Arrow records from the tables.
     """
+    if isinstance(tables, ray.ObjectRef):
+        tables = [tables]
+
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
     return Dataset(BlockList(tables, ray.get(metadata)), 0)
