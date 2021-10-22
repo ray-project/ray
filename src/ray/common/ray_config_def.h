@@ -335,7 +335,7 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 
 // The interval where metrics are exported in milliseconds. If set to -1, then the
-// default harvest interval will be used.
+// default report interval will be used.
 RAY_CONFIG(int64_t, metrics_report_interval_ms, -1)
 
 /// Enable the task timeline. If this is enabled, certain events such as task

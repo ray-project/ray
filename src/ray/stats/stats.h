@@ -103,13 +103,16 @@ static inline void Init(const TagsType &global_tags, GetAgentAddressFn get_agent
   if (RayConfig::instance().metrics_report_interval_ms() > 0) {
     // TODO(ekl) setting harvest interval trips tsan testing (we should fix up the
     // patch to allow setting this unsafely without holding the census lock).
-    StatsConfig::instance().SetReportInterval(
-        absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms(),
-                                    static_cast<uint64_t>(1000))));
+    StatsConfig::instance().SetHarvestInterval(absl::Milliseconds(
+        std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
+                 static_cast<int64_t>(500))));
+    StatsConfig::instance().SetReportInterval(absl::Milliseconds(std::max(
+        RayConfig::instance().metrics_report_interval_ms(), static_cast<int64_t>(1000))));
+    opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
+        StatsConfig::instance().GetHarvestInterval());
+    opencensus::stats::StatsExporter::SetInterval(
+        StatsConfig::instance().GetReportInterval());
   }
-  StatsConfig::instance().SetHarvestInterval(
-      absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
-                                  static_cast<uint64_t>(500))));
 
   MetricPointExporter::Register(exporter, metrics_report_batch_size);
   OpenCensusProtoExporter::Register(
@@ -128,10 +131,6 @@ static inline void Init(const TagsType &global_tags, GetAgentAddressFn get_agent
           }
         });
       });
-  opencensus::stats::StatsExporter::SetInterval(
-      StatsConfig::instance().GetReportInterval());
-  opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
-      StatsConfig::instance().GetHarvestInterval());
   StatsConfig::instance().SetGlobalTags(global_tags);
   for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();
