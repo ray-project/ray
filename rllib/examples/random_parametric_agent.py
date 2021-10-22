@@ -66,7 +66,8 @@ class RandomParametriclPolicy(Policy, ABC):
 def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
                    **kwargs) -> LocalIterator[dict]:
     assert len(kwargs) == 0, (
-        "Random parametric execution_plan does NOT take any additional parameters")
+        "Random parametric execution_plan does NOT take any additional parameters"
+    )
 
     rollouts = ParallelRollouts(workers, mode="async")
 
