@@ -786,7 +786,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --ray-client-server-port 25553 --num-cpus=0"],
+    ["ray start --head --ray-client-server-port 25553 --num-cpus 0"],
     indirect=True)
 @pytest.mark.parametrize("use_client", [True, False])
 def test_init_requires_no_resources(call_ray_start, use_client):
