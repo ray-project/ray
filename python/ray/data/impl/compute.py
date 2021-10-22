@@ -50,7 +50,7 @@ class TaskPool(ComputeStrategy):
         refs = [
             map_block.options(**kwargs).remote(block_owner, b, fn,
                                                m.input_files)
-            for b, m in blocks
+            for b, m, _ in blocks
         ]
         new_blocks, new_metadata = zip(*refs)
 
@@ -145,8 +145,9 @@ class ActorPool(ComputeStrategy):
 
             # Schedule a new task.
             if blocks_in:
+                block, orig_meta, _ = blocks_in.pop()
                 block_ref, meta_ref = worker.process_block.remote(
-                    *blocks_in.pop())
+                    block, orig_meta.input_files)
                 metadata_mapping[block_ref] = meta_ref
                 tasks[block_ref] = worker
 

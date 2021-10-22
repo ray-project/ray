@@ -779,9 +779,9 @@ class Dataset(Generic[T]):
             if isinstance(bl, LazyBlockList):
                 calls.extend(bl._calls)
             else:
-                calls.extend([None] * len(bl))
+                calls.extend([None] * bl.num_futures())
             metadata.extend(bl._metadata)
-            blocks.extend(bl._blocks)
+            blocks.extend(list(bl.iter_futures()))
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1925,11 +1925,11 @@ class Dataset(Generic[T]):
         left_metadata = []
         right_blocks = []
         right_metadata = []
-        for b, m in zip(self._blocks.iter_futures(),
-                        self._blocks.get_metadata()):
-            if m.num_rows is None:
+        for b, m, num_sub_blocks in self._blocks.iter_evaluated_with_orig_metadata():
+            if m.num_rows is None or num_sub_blocks > 1:
                 num_rows = ray.get(get_num_rows.remote(b))
             else:
+                # Metadata num_rows is only accurate if num_sub_blocks == 1.
                 num_rows = m.num_rows
             if count >= index:
                 if not return_right_half:
@@ -1951,6 +1951,8 @@ class Dataset(Generic[T]):
                 right_metadata.append(ray.get(m1))
             count += num_rows
 
+        left_blocks = [ray.put([x]) for x in left_blocks]
+        right_blocks = [ray.put([x]) for x in right_blocks]
         left = Dataset(BlockList(left_blocks, left_metadata), self._epoch)
         if return_right_half:
             right = Dataset(

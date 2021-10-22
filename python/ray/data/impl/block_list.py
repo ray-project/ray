@@ -54,7 +54,7 @@ class BlockList:
         return iter(self._block_futures)
 
     def iter_evaluated_with_orig_metadata(
-            self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+            self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata, int]]:
         self._check_if_cleared()
         outer = self
 
@@ -67,10 +67,12 @@ class BlockList:
                 return self
 
             def __next__(self):
-                if not self._buffer:
+                while not self._buffer:
                     refs, orig_meta = next(self._base_iter)
-                    for ref in ray.get(refs):
-                        self._buffer.append((ref, orig_meta))
+                    refs = ray.get(refs)
+                    for ref in refs:
+                        assert isinstance(ref, ray.ObjectRef), (refs, orig_meta)
+                        self._buffer.append((ref, orig_meta, len(refs)))
                 return self._buffer.pop(0)
 
         return Iter()
@@ -87,7 +89,8 @@ class BlockList:
                 return self
 
             def __next__(self):
-                ref, _ = next(self._base_iter)
+                ref, meta, n = next(self._base_iter)
+                assert isinstance(ref, ray.ObjectRef), (ref, meta, n)
                 return ref
 
         return Iter()

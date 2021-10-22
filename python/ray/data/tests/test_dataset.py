@@ -195,7 +195,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     total_rows = 0
     for block_size in block_sizes:
         block = list(range(total_rows, total_rows + block_size))
-        blocks.append(ray.put(block))
+        blocks.append(ray.put([ray.put(block)]))
         metadata.append(BlockAccessor.for_block(block).get_metadata(None))
         total_rows += block_size
     block_list = BlockList(blocks, metadata)
@@ -1982,23 +1982,23 @@ def test_split(ray_start_regular_shared):
     assert ds._block_sizes() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [len(dataset._blocks) for dataset in datasets]
+    assert [2] * 5 == [dataset._blocks.num_futures() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3, 3] == [len(dataset._blocks) for dataset in datasets]
+    assert [4, 3, 3] == [dataset._blocks.num_futures() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [len(dataset._blocks) for dataset in datasets]
+    assert [10] == [dataset._blocks.num_futures() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [len(dataset._blocks) for dataset in datasets]
+    assert [1] * 10 == [dataset._blocks.num_futures() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(11)
-    assert [1] * 10 + [0] == [len(dataset._blocks) for dataset in datasets]
+    assert [1] * 10 + [0] == [dataset._blocks.num_futures() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
 
