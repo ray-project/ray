@@ -1014,8 +1014,7 @@ class Dataset(Generic[T]):
 
         return sum(
             ray.get([
-                get_sum.remote(block)
-                for block in self._blocks.iter_results()
+                get_sum.remote(block) for block in self._blocks.iter_results()
             ]))
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
@@ -1700,8 +1699,7 @@ class Dataset(Generic[T]):
 
         block_to_df = cached_remote_fn(_block_to_df)
         return [
-            block_to_df.remote(block)
-            for block in self._blocks.iter_results()
+            block_to_df.remote(block) for block in self._blocks.iter_results()
         ]
 
     def to_numpy(self, *,
@@ -1927,8 +1925,7 @@ class Dataset(Generic[T]):
         left_metadata = []
         right_blocks = []
         right_metadata = []
-        for b, m, sub_blocks in self._blocks.iter_results_with_orig_metadata(
-        ):
+        for b, m, sub_blocks in self._blocks.iter_results_with_orig_metadata():
             if m.num_rows is None or sub_blocks > 1:
                 num_rows = ray.get(get_num_rows.remote(b))
             else:

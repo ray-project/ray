@@ -106,7 +106,7 @@ class ActorPool(ComputeStrategy):
                     schema=accessor.schema(),
                     input_files=input_files)
                 # Set the owner to the global block owner so the blocks live
-                # past the exist of this actor.
+                # past the exit of this actor.
                 return [ray.put(new_block, _owner=block_owner)], new_metadata
 
         if not remote_args:
