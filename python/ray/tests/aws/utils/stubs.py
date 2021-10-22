@@ -5,7 +5,7 @@ from ray.tests.aws.utils import helpers
 from ray.tests.aws.utils.mocks import mock_path_exists_key_pair
 from ray.tests.aws.utils.constants import DEFAULT_INSTANCE_PROFILE, \
     DEFAULT_KEY_PAIR, DEFAULT_SUBNET, A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS, \
-    DEFAULT_LT
+    DEFAULT_LT, TWENTY_SUBNETS_IN_DIFFERENT_AZS
 
 from unittest import mock
 
@@ -50,6 +50,13 @@ def describe_a_thousand_subnets_in_different_vpcs(ec2_client_stub):
         "describe_subnets",
         expected_params={},
         service_response={"Subnets": A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS})
+
+
+def describe_twenty_subnets_in_different_azs(ec2_client_stub):
+    ec2_client_stub.add_response(
+        "describe_subnets",
+        expected_params={},
+        service_response={"Subnets": TWENTY_SUBNETS_IN_DIFFERENT_AZS})
 
 
 def skip_to_configure_sg(ec2_client_stub, iam_client_stub):

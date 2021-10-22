@@ -15,7 +15,7 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Optional
+from typing import Optional, List
 
 # Ray modules
 import ray
@@ -63,6 +63,10 @@ DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "install Ray using `pip install "
     "ray[default]`.")
 
+RAY_JEMALLOC_LIB_PATH = "RAY_JEMALLOC_LIB_PATH"
+RAY_JEMALLOC_CONF = "RAY_JEMALLOC_CONF"
+RAY_JEMALLOC_PROFILE = "RAY_JEMALLOC_PROFILE"
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -82,6 +86,46 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
 
 def serialize_config(config):
     return base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
+
+
+def propagate_jemalloc_env_var(*, jemalloc_path: str, jemalloc_conf: str,
+                               jemalloc_comps: List[str], process_type: str):
+    """Read the jemalloc memory profiling related
+        env var and return the dictionary that translates
+        them to proper jemalloc related env vars.
+
+        For example, if users specify `RAY_JEMALLOC_LIB_PATH`,
+        it is translated into `LD_PRELOAD` which is needed to
+        run Jemalloc as a shared library.
+
+        Params:
+            jemalloc_path (str): The path to the jemalloc shared library.
+            jemalloc_conf (str): `,` separated string of jemalloc config.
+            jemalloc_comps List(str): The list of Ray components
+                that we will profile.
+            process_type (str): The process type that needs jemalloc
+                env var for memory profiling. If it doesn't match one of
+                jemalloc_comps, the function will return an empty dict.
+
+        Returns:
+            dictionary of {env_var: value}
+                that are needed to jemalloc profiling. The caller can
+                call `dict.update(return_value_of_this_func)` to
+                update the dict of env vars. If the process_type doesn't
+                match jemalloc_comps, it will return an empty dict.
+    """
+    assert isinstance(jemalloc_comps, list)
+    assert process_type is not None
+    process_type = process_type.lower()
+    if (not jemalloc_path or process_type not in jemalloc_comps):
+        return {}
+
+    env_vars = {
+        "LD_PRELOAD": jemalloc_path,
+    }
+    if jemalloc_conf:
+        env_vars.update({"MALLOC_CONF": jemalloc_conf})
+    return env_vars
 
 
 class ConsolePopen(subprocess.Popen):
@@ -511,17 +555,29 @@ def start_ray_process(command,
     if os.environ.get(gdb_env_var) == "1":
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
+    # Jemalloc memory profiling.
+    jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH)
+    jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
+    jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
+    jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
+    jemalloc_env_vars = propagate_jemalloc_env_var(
+        jemalloc_path=jemalloc_lib_path,
+        jemalloc_conf=jemalloc_conf,
+        jemalloc_comps=jemalloc_comps,
+        process_type=process_type)
+    use_jemalloc_mem_profiler = len(jemalloc_env_vars) > 0
 
     if sum([
             use_gdb,
             use_valgrind,
             use_valgrind_profiler,
             use_perftools_profiler,
+            use_jemalloc_mem_profiler,
     ]) > 1:
-        raise ValueError(
-            "At most one of the 'use_gdb', 'use_valgrind', "
-            "'use_valgrind_profiler', and 'use_perftools_profiler' flags can "
-            "be used at a time.")
+        raise ValueError("At most one of the 'use_gdb', 'use_valgrind', "
+                         "'use_valgrind_profiler', 'use_perftools_profiler', "
+                         "and 'use_jemalloc_mem_profiler' flags can "
+                         "be used at a time.")
     if env_updates is None:
         env_updates = {}
     if not isinstance(env_updates, dict):
@@ -561,6 +617,11 @@ def start_ray_process(command,
     if use_perftools_profiler:
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
+
+    if use_jemalloc_mem_profiler:
+        logger.info(f"Jemalloc profiling will be used for {process_type}. "
+                    f"env vars: {jemalloc_env_vars}")
+        modified_env.update(jemalloc_env_vars)
 
     if use_tmux:
         # The command has to be created exactly as below to ensure that it
