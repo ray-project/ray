@@ -958,7 +958,7 @@ class Dataset(Generic[T]):
         output = []
         for row in self.iter_rows():
             output.append(row)
-            if len(output) >= limit:
+            if len(output) > limit:
                 raise ValueError(
                     "The dataset has more than the given limit of {} records.".
                     format(limit))
