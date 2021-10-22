@@ -213,7 +213,7 @@ def test_crash_after_commit(workflow_start_regular_shared):
         async def poll_for_event(self):
             assert not utils.check_global_mark("committed")
 
-        async def event_checkpointed(self):
+        async def event_checkpointed(self, event):
             utils.set_global_mark("committed")
             if utils.check_global_mark("first"):
                 utils.set_global_mark("second")
@@ -221,13 +221,8 @@ def test_crash_after_commit(workflow_start_regular_shared):
                 utils.set_global_mark("first")
                 await asyncio.sleep(1000000)
 
-    @workflow.step
-    def wait_then_finish(arg):
-        while not utils.check_global_mark("finish"):
-            time.sleep(0.1)
-
     event_promise = workflow.wait_for_event(MyEventListener)
-    wait_then_finish.step(event_promise).run_async("workflow")
+    event_promise.run_async("workflow")
 
     while not utils.check_global_mark("first"):
         time.sleep(0.1)
@@ -239,8 +234,7 @@ def test_crash_after_commit(workflow_start_regular_shared):
     workflow.init(storage=_storage)
     workflow.resume("workflow")
 
-    utils.set_global_mark("finish")
-    workflow.get_output("workflow")
+    ray.get(workflow.get_output("workflow"))
     assert utils.check_global_mark("second")
 
 
