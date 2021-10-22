@@ -1,7 +1,6 @@
-from typing import TypeVar, Iterable, Any, Union, Callable
+from typing import TypeVar, Any, Union, Callable, List
 
 import ray
-from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
@@ -19,14 +18,15 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-def _map_block(block: Block, fn: Any) -> (Block, BlockMetadata):
+def _map_block(block: Block, fn: Any,
+               input_files: List[str]) -> (Block, BlockMetadata):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
     new_meta = BlockMetadata(
         num_rows=accessor.num_rows(),
         size_bytes=accessor.size_bytes(),
         schema=accessor.schema(),
-        input_files=None)  # TODO propagate input files at global level only
+        input_files=input_files)
     return [ray.put(new_block)], new_meta
 
 
@@ -37,7 +37,7 @@ class TaskPool(ComputeStrategy):
         if blocks.num_futures() == 0:
             return blocks
 
-        blocks = list(blocks.iter_evaluated())
+        blocks = list(blocks.iter_evaluated_with_orig_metadata())
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         kwargs = remote_args.copy()
@@ -45,8 +45,8 @@ class TaskPool(ComputeStrategy):
 
         map_block = cached_remote_fn(_map_block)
         refs = [
-            map_block.options(**kwargs).remote(b, fn)
-            for b in blocks
+            map_block.options(**kwargs).remote(b, fn, m.input_files)
+            for b, m in blocks
         ]
         new_blocks, new_metadata = zip(*refs)
 
@@ -78,9 +78,10 @@ class ActorPool(ComputeStrategy):
         for w in self.workers:
             w.__ray_terminate__.remote()
 
-    def apply(self, fn: Any, remote_args: dict, blocks: BlockList) -> BlockList:
+    def apply(self, fn: Any, remote_args: dict,
+              blocks: BlockList) -> BlockList:
 
-        blocks_in = list(blocks.iter_evaluated())
+        blocks_in = list(blocks.iter_evaluated_with_orig_metadata())
         orig_num_blocks = len(blocks_in)
         blocks_out = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
@@ -90,14 +91,15 @@ class ActorPool(ComputeStrategy):
                 return "ok"
 
             @ray.method(num_returns=2)
-            def process_block(self, block: Block) -> (Block, BlockMetadata):
+            def process_block(self, block: Block, input_files: List[str]
+                              ) -> (Block, BlockMetadata):
                 new_block = fn(block)
                 accessor = BlockAccessor.for_block(new_block)
                 new_metadata = BlockMetadata(
                     num_rows=accessor.num_rows(),
                     size_bytes=accessor.size_bytes(),
                     schema=accessor.schema(),
-                    input_files=None)
+                    input_files=input_files)
                 return [ray.put(new_block)], new_metadata
 
         if not remote_args:
@@ -136,7 +138,8 @@ class ActorPool(ComputeStrategy):
 
             # Schedule a new task.
             if blocks_in:
-                block_ref, meta_ref = worker.process_block.remote(blocks_in.pop())
+                block_ref, meta_ref = worker.process_block.remote(
+                    *blocks_in.pop())
                 metadata_mapping[block_ref] = meta_ref
                 tasks[block_ref] = worker
 
