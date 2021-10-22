@@ -432,25 +432,35 @@ def push_and_tag_images(py_versions: List[str],
         # "-gpu" tag should refer to the ML_CUDA_VERSION
         for old_tag in tag_mapping.keys():
             if "cpu" in old_tag:
-                new_tag = old_tag.replace("-cpu", "")
-                tag_mapping[old_tag].append(new_tag)
+                for full_tag in tag_mapping[old_tag]:
+                    new_tag = full_tag.replace("-cpu", "")
+                    tag_mapping[old_tag].append(new_tag)
             elif ML_CUDA_VERSION in old_tag:
-                new_tag = old_tag.replace(f"-{ML_CUDA_VERSION}", "-gpu")
-                tag_mapping[old_tag].append(new_tag)
+                for full_tag in tag_mapping[old_tag]:
+                    new_tag = full_tag.replace(f"-{ML_CUDA_VERSION}", "-gpu")
+                    tag_mapping[old_tag].append(new_tag)
+
 
         # No Python version specified should refer to DEFAULT_PYTHON_VERSION
         for old_tag in tag_mapping.keys():
             if DEFAULT_PYTHON_VERSION in old_tag:
-                new_tag = old_tag.replace(f"-{DEFAULT_PYTHON_VERSION}", "")
-                tag_mapping[old_tag].append(new_tag)
+                for full_tag in tag_mapping[old_tag]:
+                    new_tag = full_tag.replace(f"-{DEFAULT_PYTHON_VERSION}", "")
+                    tag_mapping[old_tag].append(new_tag)
 
         # For all tags, create Date/Sha tags
         for old_tag in tag_mapping.keys():
-            new_tag = old_tag.replace(
-                "nightly", date_tag if "-deps" in image_name else sha_tag)
-            tag_mapping[old_tag].append(new_tag)
+            for full_tag in tag_mapping[old_tag]:
+                new_tag = full_tag.replace(
+                    "nightly", date_tag if "-deps" in image_name else sha_tag)
+                tag_mapping[old_tag].append(new_tag)
 
-        print("These tags will be created for the following images: ",
+        # Sanity checking.
+        for old_tag in tag_mapping.keys():
+            if DEFAULT_PYTHON_VERSION in old_tag:
+                assert f"nightly-}"
+
+        print(f"These tags will be created for {image_name}: ",
               tag_mapping)
 
         # Tag and push all images.
