@@ -273,9 +273,9 @@ def test_wait_timing(shutdown_only):
 
     future = f.remote()
 
-    start = time.perf_counter()
+    start = time.time()
     ready, not_ready = ray.wait([future], timeout=0.2)
-    assert 0.2 < time.perf_counter() - start < 0.5
+    assert 0.2 < time.time() - start < 0.3
     assert len(ready) == 0
     assert len(not_ready) == 1
 
