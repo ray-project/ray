@@ -233,17 +233,3 @@ class JobManager:
 
     def get_job_stderr(self, job_id: str) -> bytes:
         return self._log_client.get_stderr(job_id)
-
-
-# 1. get the basic job manager + supervisor working echo
-#  -> no runtime_env, just check process mgmt stuff
-#  -> add unit tests for this
-# 2. try query job status from job manager
-# 2.5 write logs to ray.worker._global_node.get_session_dir_path()
-# 3. setup job http server with basic API to wire up with job manager
-# 4. get logs
-
-# 5. process fate sharing ...
-# 6. get runtime_env stuff working
-# ...
-# 7. optimize 4. but don't just overwrite
