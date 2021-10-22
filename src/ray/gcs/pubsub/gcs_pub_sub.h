@@ -193,14 +193,18 @@ class GcsPublisher {
 
   /// Test only.
   /// Initializes GcsPublisher with GcsPubSub, usually a mock.
+  /// TODO: remove this constructor and inject mock / fake from the other constructor.
   explicit GcsPublisher(std::unique_ptr<GcsPubSub> pubsub) : pubsub_(std::move(pubsub)) {}
 
-  /// Unless noted, publishers should contain full state so subscribers only need to
-  /// receive the latest message.
-
-  /// Uses Redis pubsub.
-  Status PublishObject(const ObjectID &id, const rpc::ObjectLocationChange &message,
-                       const StatusCallback &done);
+  /// Each publishing method below publishes to a different "channel".
+  /// ID is the entity which the message is associated with, e.g. ActorID for Actor data.
+  /// Subscribers receive typed messages for the ID that they subscribe to.
+  ///
+  /// The full stream of NodeResource and Error channels are needed by its subscribers.
+  /// But for other channels, subscribers should only need the latest data.
+  ///
+  /// TODO: Verify GCS pubsub satisfies the streaming semantics.
+  /// TODO: Implement optimization for channels where only latest data per ID is useful.
 
   /// Uses Redis pubsub.
   Status PublishActor(const ActorID &id, const rpc::ActorTableData &message,
@@ -214,17 +218,11 @@ class GcsPublisher {
   Status PublishNodeInfo(const NodeID &id, const rpc::GcsNodeInfo &message,
                          const StatusCallback &done);
 
-  /// TODO: verify if the delta message semantics work with GCS pubsub.
   /// Uses Redis pubsub.
   Status PublishNodeResource(const NodeID &id, const rpc::NodeResourceChange &message,
                              const StatusCallback &done);
 
-  /// Will be removed once it is converted to GRPC-based push broadcasting.
-  /// Uses Redis pubsub.
-  Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
-                              const StatusCallback &done);
-
-  /// Actually this is not a delta message.
+  /// Actually rpc::WorkerDeltaData is not a delta message.
   /// Uses Redis pubsub.
   Status PublishWorkerFailure(const WorkerID &id, const rpc::WorkerDeltaData &message,
                               const StatusCallback &done);
@@ -237,6 +235,17 @@ class GcsPublisher {
   Status PublishError(const std::string &id, const rpc::ErrorTableData &message,
                       const StatusCallback &done);
 
+  /// TODO: remove once it is converted to GRPC-based push broadcasting.
+  /// Uses Redis pubsub.
+  Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
+                              const StatusCallback &done);
+
+  /// TODO: This belongs to a deprecated codepath. Remove this and its callsites.
+  /// Uses Redis pubsub.
+  Status PublishObject(const ObjectID &id, const rpc::ObjectLocationChange &message,
+                       const StatusCallback &done);
+
+  /// Prints debugging info for the publisher.
   std::string DebugString() const;
 
  private:
