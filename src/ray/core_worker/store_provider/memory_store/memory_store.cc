@@ -96,13 +96,14 @@ bool GetRequest::Wait(int64_t timeout_ms) {
 
   // Wait until all objects are ready, or the timeout expires.
   std::unique_lock<std::mutex> lock(mutex_);
+  auto remaining_timeout_ms = timeout_ms;
   auto timeout_timestamp = current_time_ms() + timeout_ms;
   while (!is_ready_) {
-    auto status = cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms));
+    auto status = cv_.wait_for(lock, std::chrono::milliseconds(remaining_timeout_ms));
     auto current_timestamp = current_time_ms();
-    timeout_ms =
+    remaining_timeout_ms =
         current_timestamp < timeout_timestamp ? timeout_timestamp - current_timestamp : 0;
-    if (status == std::cv_status::timeout || timeout_ms <= 0) {
+    if (status == std::cv_status::timeout || remaining_timeout_ms <= 0) {
       return false;
     }
   }
