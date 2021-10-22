@@ -60,7 +60,7 @@ using RemoteMemberFunction =
 using RemoteMemberFunctionMap_t = std::unordered_map<std::string, RemoteMemberFunction>;
 
 inline std::function<std::shared_ptr<msgpack::sbuffer>(const std::string &id)>
-    GetObjRefValue;
+    GetValueFromObjectId;
 
 /// It's help to invoke functions and member functions, the class Invoker<Function> help
 /// do type erase.
@@ -127,7 +127,7 @@ struct Invoker {
       // If it is an ObjectRef arg, get it's real value.
       if (is_ref_arg) {
         std::string id(data, size);
-        auto buf = GetObjRefValue(id);
+        auto buf = GetValueFromObjectId(id);
         return Serializer::Deserialize<T>(buf->data(), buf->size());
       } else {
         auto [success, value] = Serializer::DeserializeWhenNil<T>(data, size);

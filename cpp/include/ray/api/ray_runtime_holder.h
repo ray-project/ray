@@ -27,7 +27,10 @@ struct RayRuntimeHolder {
 
   void Init(std::shared_ptr<RayRuntime> runtime) {
     runtime_ = runtime;
-    GetObjRefValue = [this](const std::string &id) { return runtime_->Get(id); };
+    // It is used by function manager to get the value of ObjectRef when the task arg is
+    // ObjectRef, GetValueFromObjectId only init once so init it here.
+    // The callback also avoid Circular reference
+    GetValueFromObjectId = [this](const std::string &id) { return runtime_->Get(id); };
   }
 
   std::shared_ptr<RayRuntime> Runtime() { return runtime_; }
