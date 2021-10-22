@@ -257,10 +257,20 @@
   cluster:
     app_config: decision_tree/decision_tree_app_config.yaml
     compute_template: decision_tree/autoscaling_compute.yaml
-
   run:
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
+
+# Test 20 concurrent decision tree runs on autoscaling compute cluster
+# grpc broadcasting version.
+- name: grpc_decision_tree_autoscaling_20_runs
+  cluster:
+    app_config: decision_tree/decision_tree_app_config_grpc.yaml
+    compute_template: decision_tree/autoscaling_compute.yaml
+  run:
+    timeout: 9600
+    script: python decision_tree/cart_with_tree.py --concurrency=20
+  stable: false
 
 # Stress test shuffle_data_loader.
 - name: shuffle_data_loader
@@ -326,6 +336,17 @@
     timeout: 7200
     prepare: python wait_cluster.py 251 5400
     script: python many_nodes_tests/actor_test.py
+
+- name: grpc_many_nodes_actor_test
+  cluster:
+    app_config: many_nodes_tests/app_config_grpc.yaml
+    compute_template: many_nodes_tests/compute_config.yaml
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 251 5400
+    script: python many_nodes_tests/actor_test.py
+  stable: false
 
 - name: pg_autoscaling_regression_test
   cluster:

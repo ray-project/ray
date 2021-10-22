@@ -24,7 +24,7 @@ class TrainingLogdirMixin:
             logdir_path = Path(logdir)
 
         if not logdir_path.is_dir():
-            raise ValueError(f"logdir '{logdir}' must be a directory.")
+            raise ValueError(f"logdir '{logdir_path}' must be a directory.")
 
         self._logdir_path = logdir_path
 

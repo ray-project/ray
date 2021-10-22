@@ -257,7 +257,9 @@ build_dashboard_front_end() {
       if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
         set +x  # suppress set -x since it'll get very noisy here
         . "${HOME}/.nvm/nvm.sh"
-        nvm use --silent node
+        NODE_VERSION="14"
+        nvm install $NODE_VERSION
+        nvm use --silent $NODE_VERSION
       fi
       install_npm_project
       yarn build
@@ -469,7 +471,9 @@ lint_web() {
 
     if [ -z "${BUILDKITE-}" ]; then
       . "${HOME}/.nvm/nvm.sh"
-      nvm use --silent node
+      NODE_VERSION="14"
+      nvm install $NODE_VERSION
+      nvm use --silent $NODE_VERSION
     fi
 
     install_npm_project
@@ -555,7 +559,7 @@ _check_job_triggers() {
 
   local variable_definitions
   # shellcheck disable=SC2031
-  variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+  variable_definitions=($(python3 "${ROOT_DIR}"/determine_tests_to_run.py))
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
     if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)
