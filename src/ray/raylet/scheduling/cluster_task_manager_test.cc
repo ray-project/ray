@@ -157,7 +157,7 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
       const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     for (auto &obj_ref : required_objects) {
-      if (missing_objects_.find(ObjectRefToId(obj_ref)) == missing_objects_.end()) {
+      if (missing_objects_.find(ObjectRefToId(obj_ref)) != missing_objects_.end()) {
         return false;
       }
     }
@@ -199,7 +199,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               node_info_calls_++;
-              if (node_info_.count(node_id)) {
+              if (node_info_.count(node_id) != 0) {
                 return &node_info_[node_id];
               }
               return nullptr;
@@ -222,6 +222,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /*max_pinned_task_arguments_bytes=*/1000) {}
 
   void SetUp() {
+    static rpc::GcsNodeInfo node_info;
     ON_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
         .WillByDefault(::testing::Return(&node_info));
   }
@@ -281,7 +282,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
   }
 
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
-  rpc::GcsNodeInfo node_info;
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
