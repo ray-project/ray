@@ -141,7 +141,7 @@ if BUILD_JAVA or os.path.exists(
     ray_files.append("ray/jars/ray_dist.jar")
 
 if setup_spec.type == SetupType.RAY_CPP:
-    setup_spec.files_to_include += ["ray/core/src/ray/cpp/default_worker"]
+    setup_spec.files_to_include += ["ray/cpp/default_worker" + exe_suffix]
     # C++ API library and project template files.
     setup_spec.files_to_include += [
         os.path.join(dirpath, filename)
@@ -210,6 +210,10 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-exporter-otlp==1.1.0"
         ],
     }
+
+    # Ray Serve depends on the Ray dashboard components.
+    setup_spec.extras["serve"] = list(
+        set(setup_spec.extras["serve"] + setup_spec.extras["default"]))
 
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]

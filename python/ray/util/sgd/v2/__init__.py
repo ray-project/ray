@@ -1,15 +1,8 @@
-from ray.util.sgd.v2.backends import (BackendConfig, HorovodConfig,
-                                      TensorflowConfig, TorchConfig)
-from ray.util.sgd.v2.callbacks import SGDCallback
-from ray.util.sgd.v2.checkpoint import CheckpointStrategy
-from ray.util.sgd.v2.session import (get_dataset_shard, local_rank,
-                                     load_checkpoint, report, save_checkpoint,
-                                     world_rank)
-from ray.util.sgd.v2.trainer import Trainer, SGDIterator
+import warnings
 
-__all__ = [
-    "BackendConfig", "CheckpointStrategy", "get_dataset_shard",
-    "HorovodConfig", "load_checkpoint", "local_rank", "report",
-    "save_checkpoint", "SGDIterator", "TensorflowConfig", "SGDCallback",
-    "TorchConfig", "Trainer", "world_rank"
-]
+from ray.train import *  # noqa: F401, F403
+from ray.train import TrainingCallback
+
+SGDCallback = TrainingCallback
+
+warnings.warn("ray.util.sgd.v2 has been moved to ray.train.")

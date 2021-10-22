@@ -14,7 +14,7 @@ import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     get_other_nodes, generate_system_config_map,
     kill_actor_and_wait_for_failure, run_string_as_driver, wait_for_condition,
-    get_error_message)
+    get_error_message, placement_group_assert_no_leak)
 from ray.util.placement_group import get_current_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
@@ -59,6 +59,8 @@ def test_check_bundle_index(ray_start_cluster, connect_to_client):
 
         with pytest.raises(ValueError, match="bundle index must be -1"):
             Actor.options(placement_group_bundle_index=0).remote()
+
+        placement_group_assert_no_leak([placement_group])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])

@@ -295,6 +295,68 @@ def test_batch_tensors(ray_start_regular_shared):
     assert df.to_dict().keys() == {0, 1}
 
 
+def test_arrow_block_slice_copy():
+    # Test that ArrowBlock slicing properly copies the underlying Arrow
+    # table.
+    def check_for_copy(table1, table2, a, b, is_copy):
+        expected_slice = table1.slice(a, b - a)
+        assert table2.equals(expected_slice)
+        assert table2.schema == table1.schema
+        assert table1.num_columns == table2.num_columns
+        for col1, col2 in zip(table1.columns, table2.columns):
+            assert col1.num_chunks == col2.num_chunks
+            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
+                bufs1 = chunk1.buffers()
+                bufs2 = chunk2.buffers()
+                expected_offset = 0 if is_copy else a
+                assert chunk2.offset == expected_offset
+                assert len(chunk2) == b - a
+                if is_copy:
+                    assert bufs2[1].address != bufs1[1].address
+                else:
+                    assert bufs2[1].address == bufs1[1].address
+
+    n = 20
+    df = pd.DataFrame({
+        "one": list(range(n)),
+        "two": ["a"] * n,
+        "three": [np.nan] + [1.5] * (n - 1)
+    })
+    table = pa.Table.from_pandas(df)
+    a, b = 5, 10
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    check_for_copy(table, table2, a, b, is_copy=True)
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    check_for_copy(table, table2, a, b, is_copy=False)
+
+
+def test_arrow_block_slice_copy_empty():
+    # Test that ArrowBlock slicing properly copies the underlying Arrow
+    # table when the table is empty.
+    df = pd.DataFrame({"one": []})
+    table = pa.Table.from_pandas(df)
+    a, b = 0, 0
+    expected_slice = table.slice(a, b - a)
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    assert table2.equals(expected_slice)
+    assert table2.schema == table.schema
+    assert table2.num_rows == 0
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    assert table2.equals(expected_slice)
+    assert table2.schema == table.schema
+    assert table2.num_rows == 0
+
+
 def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.data.range_tensor(5, shape=(3, 5))
@@ -357,6 +419,44 @@ def test_tensor_array_reductions(ray_start_regular_shared):
             np_kwargs["ddof"] = 1
         np.testing.assert_equal(df["two"].agg(name),
                                 reducer(arr, axis=0, **np_kwargs))
+
+
+def test_tensor_array_block_slice():
+    # Test that ArrowBlock slicing workers with tensor column extension type.
+    def check_for_copy(table1, table2, a, b, is_copy):
+        expected_slice = table1.slice(a, b - a)
+        assert table2.equals(expected_slice)
+        assert table2.schema == table1.schema
+        assert table1.num_columns == table2.num_columns
+        for col1, col2 in zip(table1.columns, table2.columns):
+            assert col1.num_chunks == col2.num_chunks
+            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
+                bufs1 = chunk1.buffers()
+                bufs2 = chunk2.buffers()
+                expected_offset = 0 if is_copy else a
+                assert chunk2.offset == expected_offset
+                assert len(chunk2) == b - a
+                if is_copy:
+                    assert bufs2[1].address != bufs1[1].address
+                else:
+                    assert bufs2[1].address == bufs1[1].address
+
+    n = 20
+    df = pd.DataFrame({
+        "one": TensorArray(np.array(list(range(n)))),
+        "two": ["a"] * n
+    })
+    table = pa.Table.from_pandas(df)
+    a, b = 5, 10
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    check_for_copy(table, table2, a, b, is_copy=True)
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    check_for_copy(table, table2, a, b, is_copy=False)
 
 
 def test_arrow_tensor_array_getitem(ray_start_regular_shared):
@@ -887,46 +987,70 @@ def test_from_items(ray_start_regular_shared):
     assert ds.take() == ["hello", "world"]
 
 
-def test_repartition(ray_start_regular_shared):
+def test_repartition_shuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_sizes() == [2] * 10
 
-    ds2 = ds.repartition(5)
+    ds2 = ds.repartition(5, shuffle=True)
     assert ds2.num_blocks() == 5
     assert ds2.sum() == 190
-    # TODO: would be nice to re-distribute these more evenly
-    ds2._block_sizes() == [10, 10, 0, 0, 0]
+    assert ds2._block_sizes() == [10, 10, 0, 0, 0]
 
-    ds3 = ds2.repartition(20)
+    ds3 = ds2.repartition(20, shuffle=True)
     assert ds3.num_blocks() == 20
     assert ds3.sum() == 190
-    ds2._block_sizes() == [2] * 10 + [0] * 10
+    assert ds3._block_sizes() == [2] * 10 + [0] * 10
+
+    large = ray.data.range(10000, parallelism=10)
+    large = large.repartition(20, shuffle=True)
+    assert large._block_sizes() == [500] * 20
+
+
+def test_repartition_noshuffle(ray_start_regular_shared):
+    ds = ray.data.range(20, parallelism=10)
+    assert ds.num_blocks() == 10
+    assert ds.sum() == 190
+    assert ds._block_sizes() == [2] * 10
+
+    ds2 = ds.repartition(5, shuffle=False)
+    assert ds2.num_blocks() == 5
+    assert ds2.sum() == 190
+    assert ds2._block_sizes() == [4, 4, 4, 4, 4]
+
+    ds3 = ds2.repartition(20, shuffle=False)
+    assert ds3.num_blocks() == 20
+    assert ds3.sum() == 190
+    assert ds3._block_sizes() == [1] * 20
+
+    ds4 = ray.data.range(22).repartition(4)
+    assert ds4.num_blocks() == 4
+    assert ds4._block_sizes() == [5, 6, 5, 6]
 
     large = ray.data.range(10000, parallelism=10)
     large = large.repartition(20)
     assert large._block_sizes() == [500] * 20
 
 
-def test_repartition_arrow(ray_start_regular_shared):
+def test_repartition_shuffle_arrow(ray_start_regular_shared):
     ds = ray.data.range_arrow(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.count() == 20
     assert ds._block_sizes() == [2] * 10
 
-    ds2 = ds.repartition(5)
+    ds2 = ds.repartition(5, shuffle=True)
     assert ds2.num_blocks() == 5
     assert ds2.count() == 20
-    ds2._block_sizes() == [10, 10, 0, 0, 0]
+    assert ds2._block_sizes() == [10, 10, 0, 0, 0]
 
-    ds3 = ds2.repartition(20)
+    ds3 = ds2.repartition(20, shuffle=True)
     assert ds3.num_blocks() == 20
     assert ds3.count() == 20
-    ds2._block_sizes() == [2] * 10 + [0] * 10
+    assert ds3._block_sizes() == [2] * 10 + [0] * 10
 
     large = ray.data.range_arrow(10000, parallelism=10)
-    large = large.repartition(20)
+    large = large.repartition(20, shuffle=True)
     assert large._block_sizes() == [500] * 20
 
 
@@ -938,6 +1062,12 @@ def test_from_pandas(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
 
+    # test from single pandas dataframe
+    ds = ray.data.from_pandas(df1)
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+
 
 def test_from_pandas_refs(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -945,6 +1075,12 @@ def test_from_pandas_refs(ray_start_regular_shared):
     ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
     values = [(r["one"], r["two"]) for r in ds.take(6)]
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+
+    # test from single pandas dataframe ref
+    ds = ray.data.from_pandas_refs(ray.put(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
 
 
@@ -969,6 +1105,12 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
 
+    # test from single pyarrow table
+    ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+
 
 def test_from_arrow_refs(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -981,6 +1123,12 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
 
+    # test from single pyarrow table ref
+    ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
+
 
 def test_to_pandas(ray_start_regular_shared):
     n = 5
@@ -990,12 +1138,19 @@ def test_to_pandas(ray_start_regular_shared):
     assert df.equals(dfds)
 
     # Test limit.
-    dfds = ds.to_pandas(limit=3)
-    assert df[:3].equals(dfds)
+    with pytest.raises(ValueError):
+        dfds = ds.to_pandas(limit=3)
 
     # Test limit greater than number of rows.
     dfds = ds.to_pandas(limit=6)
     assert df.equals(dfds)
+
+
+def test_take_all(ray_start_regular_shared):
+    assert ray.data.range(5).take_all() == [0, 1, 2, 3, 4]
+
+    with pytest.raises(ValueError):
+        assert ray.data.range(5).take_all(4)
 
 
 def test_to_pandas_refs(ray_start_regular_shared):
@@ -2536,6 +2691,86 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     # Test metadata ops.
     for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+
+
+def test_groupby_simple(ray_start_regular_shared):
+    parallelism = 3
+    xs = [("A", 2), ("A", 4), ("A", 9), ("B", 10), ("B", 20), ("C", 3),
+          ("C", 5), ("C", 8), ("C", 12)]
+    random.shuffle(xs)
+    ds = ray.data.from_items(xs, parallelism=parallelism)
+    # Mean aggregation
+    agg_ds = ds.groupby(lambda r: r[0]).aggregate(
+        init=lambda key: (0, 0),
+        accumulate=lambda key, a, r: (a[0] + r[1], a[1] + 1),
+        merge=lambda key, a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
+        finalize=lambda key, a: a[0] / a[1])
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [("A", 5), ("B", 15),
+                                                       ("C", 7)]
+
+    # Test None row
+    parallelism = 2
+    xs = ["A", "A", "A", None, None, None, "B"]
+    random.shuffle(xs)
+    ds = ray.data.from_items(xs, parallelism=parallelism)
+    # Count aggregation
+    agg_ds = ds.groupby(lambda r: str(r)).aggregate(
+        init=lambda key: 0,
+        accumulate=lambda key, a, r: a + 1,
+        merge=lambda key, a1, a2: a1 + a2)
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: str(r[0])).take(3) == [("A", 3), ("B", 1),
+                                                            ("None", 3)]
+
+    # Test empty dataset.
+    ds = ray.data.from_items([])
+    agg_ds = ds.groupby(lambda r: r[0]).aggregate(
+        init=lambda key: 1 / 0,  # should never reach here
+        accumulate=lambda key, a, r: 1 / 0,
+        merge=lambda key, a1, a2: 1 / 0,
+        finalize=lambda key, a: 1 / 0)
+    assert agg_ds.count() == 0
+    assert agg_ds == ds
+
+    # Test built-in count aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).count()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2,
+                                                                          33)]
+
+    # Test built-in sum aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).sum()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617),
+                                                       (2, 1650)]
+
+    # Test built-in min aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).min()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
+
+    # Test built-in max aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).max()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2,
+                                                                          98)]
+
+    # Test built-in mean aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).mean()
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5), (1, 49.0),
+                                                       (2, 50.0)]
 
 
 def test_sort_simple(ray_start_regular_shared):
