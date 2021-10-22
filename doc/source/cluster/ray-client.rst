@@ -68,7 +68,7 @@ If you have a running Ray cluster (version >= 1.5), Ray client server is likely 
 
 To start a Ray cluster remotely, you can follow the directions in :ref:`ref-cluster-quick-start`.
 
-If necessary, you can modify the Ray client server port to be other than ``10001``, by specifying ``--ray-client-server-port=...`` to the ``ray start`` `command <http://127.0.0.1:5500/doc/_build/html/package-ref.html#ray-start>`_.
+If necessary, you can modify the Ray client server port to be other than ``10001``, by specifying ``--ray-client-server-port=...`` to the ``ray start`` :ref:`command <ray-start-doc>`.
 
 Step 2: Check ports
 ~~~~~~~~~~~~~~~~~~~
