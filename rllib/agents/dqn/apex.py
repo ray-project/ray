@@ -141,8 +141,11 @@ class UpdateWorkerWeights:
             metrics.counters["num_weight_syncs"] += 1
 
 
-def apex_execution_plan(workers: WorkerSet,
-                        config: dict) -> LocalIterator[dict]:
+def apex_execution_plan(workers: WorkerSet, config: dict,
+                        **kwargs) -> LocalIterator[dict]:
+    assert len(kwargs) == 0, (
+        "Apex execution_plan does NOT take any additional parameters")
+
     # Create a number of replay buffer actors.
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
     replay_actors = create_colocated(ReplayActor, [

@@ -152,8 +152,8 @@ def validate_config(config: TrainerConfigDict) -> None:
                 "For SARSA strategy, batch_mode must be 'complete_episodes'")
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the SlateQ algorithm. Defines the distributed dataflow.
 
     Args:
@@ -164,14 +164,8 @@ def execution_plan(workers: WorkerSet,
     Returns:
         LocalIterator[dict]: A local iterator over training metrics.
     """
-    local_replay_buffer = LocalReplayBuffer(
-        num_shards=1,
-        learning_starts=config["learning_starts"],
-        capacity=config["buffer_size"],
-        replay_batch_size=config["train_batch_size"],
-        replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config["replay_sequence_length"],
-    )
+    assert "local_replay_buffer" in kwargs, (
+        "SlateQ execution plan requires a local replay buffer.")
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -179,12 +173,12 @@ def execution_plan(workers: WorkerSet,
     # (1) Generate rollouts and store them in our local replay buffer. Calling
     # next() on store_op drives this.
     store_op = rollouts.for_each(
-        StoreToReplayBuffer(local_buffer=local_replay_buffer))
+        StoreToReplayBuffer(local_buffer=kwargs["local_replay_buffer"]))
 
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step.
-    replay_op = Replay(local_buffer=local_replay_buffer) \
+    replay_op = Replay(local_buffer=kwargs["local_replay_buffer"]) \
         .for_each(TrainOneStep(workers))
 
     if config["slateq_strategy"] != "RANDOM":

@@ -24,7 +24,6 @@ from ray.rllib.utils.typing import TrainerConfigDict
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
-replay_buffer = None
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -74,29 +73,11 @@ def validate_config(config: TrainerConfigDict):
         try_import_tfp(error=True)
 
 
-def execution_plan(workers, config):
-    if config.get("prioritized_replay"):
-        prio_args = {
-            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
-            "prioritized_replay_beta": config["prioritized_replay_beta"],
-            "prioritized_replay_eps": config["prioritized_replay_eps"],
-        }
-    else:
-        prio_args = {}
+def execution_plan(workers, config, **kwargs):
+    assert "local_replay_buffer" in kwargs, (
+        "CQL execution plan requires a local replay buffer.")
 
-    local_replay_buffer = LocalReplayBuffer(
-        num_shards=1,
-        learning_starts=config["learning_starts"],
-        capacity=config["buffer_size"],
-        replay_batch_size=config["train_batch_size"],
-        replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config.get("replay_sequence_length", 1),
-        replay_burn_in=config.get("burn_in", 0),
-        replay_zero_init_states=config.get("zero_init_states", True),
-        **prio_args)
-
-    global replay_buffer
-    replay_buffer = local_replay_buffer
+    local_replay_buffer = kwargs["local_replay_buffer"]
 
     def update_prio(item):
         samples, info_dict = item
@@ -150,8 +131,8 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
 def after_init(trainer):
     # Add the entire dataset to Replay Buffer (global variable)
-    global replay_buffer
     reader = trainer.workers.local_worker().input_reader
+    replay_buffer = trainer.local_replay_buffer
 
     # For d4rl, add the D4RLReaders' dataset to the buffer.
     if isinstance(trainer.config["input"], str) and \

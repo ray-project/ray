@@ -63,8 +63,11 @@ class RandomParametriclPolicy(Policy, ABC):
         pass
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
+    assert len(kwargs) == 0, (
+        "Random parametric execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="async")
 
     # Collect batches for the trainable policies.

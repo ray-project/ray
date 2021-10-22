@@ -122,8 +122,8 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
         return SimpleQTorchPolicy
 
 
-def execution_plan(trainer: Trainer, workers: WorkerSet,
-                   config: TrainerConfigDict, **kwargs) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the Simple Q algorithm. Defines the distributed dataflow.
 
     Args:
@@ -135,16 +135,10 @@ def execution_plan(trainer: Trainer, workers: WorkerSet,
     Returns:
         LocalIterator[dict]: A local iterator over training metrics.
     """
-    local_replay_buffer = LocalReplayBuffer(
-        num_shards=1,
-        learning_starts=config["learning_starts"],
-        capacity=config["buffer_size"],
-        replay_batch_size=config["train_batch_size"],
-        replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config["replay_sequence_length"])
-    # Assign to Trainer, so we can store the LocalReplayBuffer's
-    # data when we save checkpoints.
-    trainer.local_replay_buffer = local_replay_buffer
+    assert "local_replay_buffer" in kwargs, (
+        "SimpleQ execution plan requires a local replay buffer.")
+
+    local_replay_buffer = kwargs["local_replay_buffer"]
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
