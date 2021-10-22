@@ -15,7 +15,7 @@ from ray.experimental.internal_kv import (
 )
 
 
-class JobStatus(Enum):
+class JobStatus(str, Enum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"
@@ -172,6 +172,7 @@ class JobManager:
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
+
         assert _internal_kv_initialized()
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
@@ -225,11 +226,12 @@ class JobManager:
     def get_job_status(self, job_id: str):
         a = self._get_actor_for_job(job_id)
         # Actor is still alive, try to get status from it.
-        try:
-            return ray.get(a.get_status.remote())
-        except RayActorError:
-            # Actor exited, so we should fall back to internal_kv.
-            pass
+        if a is not None:
+            try:
+                return ray.get(a.get_status.remote())
+            except RayActorError:
+                # Actor exited, so we should fall back to internal_kv.
+                pass
 
         # Fall back to storage if the actor is dead.
         return self._status_client.get_status(job_id)
