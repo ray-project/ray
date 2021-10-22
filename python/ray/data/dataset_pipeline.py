@@ -25,7 +25,9 @@ PER_DATASET_OUTPUT_OPS = [
 ]
 
 # Operations that operate over the stream of output batches from the pipeline.
-OUTPUT_ITER_OPS = ["take", "show", "iter_rows", "to_tf", "to_torch"]
+OUTPUT_ITER_OPS = [
+    "take", "take_all", "show", "iter_rows", "to_tf", "to_torch"
+]
 
 
 @PublicAPI(stability="beta")

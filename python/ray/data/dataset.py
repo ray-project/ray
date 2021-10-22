@@ -944,6 +944,26 @@ class Dataset(Generic[T]):
                 break
         return output
 
+    def take_all(self, limit: int = 100000) -> List[T]:
+        """Take all the records in the dataset.
+
+        Time complexity: O(dataset size)
+
+        Args:
+            limit: Raise an error if the size exceeds the specified limit.
+
+        Returns:
+            A list of all the records in the dataset.
+        """
+        output = []
+        for row in self.iter_rows():
+            output.append(row)
+            if len(output) >= limit:
+                raise ValueError(
+                    "The dataset has more than the given limit of {} records.".
+                    format(limit))
+        return output
+
     def show(self, limit: int = 20) -> None:
         """Print up to the given number of records from the dataset.
 
@@ -1624,16 +1644,19 @@ class Dataset(Generic[T]):
         return raydp.spark.ray_dataset_to_spark_dataframe(
             spark, self.schema(), self.get_internal_block_refs(), locations)
 
-    def to_pandas(self, limit: int = 1000) -> "pandas.DataFrame":
+    def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. This
-        limits the number of records returned to the provided limit.
+        This is only supported for datasets convertible to Arrow records. An
+        error is raised if the number of records exceeds the provided limit.
+        Note that you can use ``.limit()`` on the dataset beforehand to
+        truncate the dataset manually.
 
-        Time complexity: O(limit)
+        Time complexity: O(dataset size)
 
         Args:
-            limit: The maximum number of records to return.
+            limit: The maximum number of records to return. An error will be
+                raised if the limit is exceeded.
 
         Returns:
             A Pandas DataFrame created from this dataset, containing a limited
@@ -1641,10 +1664,10 @@ class Dataset(Generic[T]):
         """
 
         if self.count() > limit:
-            logger.warning(f"Only returning the first {limit} records from "
-                           "to_pandas()")
-        limited_ds = self.limit(limit)
-        blocks = limited_ds.get_internal_block_refs()
+            raise ValueError(
+                "The dataset has more than the given limit of {} records.".
+                format(limit))
+        blocks = self.get_internal_block_refs()
         output = DelegatingArrowBlockBuilder()
         for block in ray.get(blocks):
             output.add_block(block)
