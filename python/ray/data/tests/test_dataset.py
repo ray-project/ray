@@ -1157,17 +1157,17 @@ def test_to_pandas_refs(ray_start_regular_shared):
 def test_to_numpy(ray_start_regular_shared):
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
-    arr = np.concatenate(ray.get(ds.to_numpy(column="value")))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
     ds = ray.data.range_arrow(10)
-    arr = np.concatenate(ray.get(ds.to_numpy(column="value")))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
     # Simple Dataset
     ds = ray.data.range(10)
-    arr = np.concatenate(ray.get(ds.to_numpy()))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
 
@@ -1177,13 +1177,17 @@ def test_to_arrow(ray_start_regular_shared):
     # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.data.range_arrow(n)
-    dfds = pd.concat([t.to_pandas() for t in ds.to_arrow()], ignore_index=True)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
+        ignore_index=True)
     assert df.equals(dfds)
 
     # Conversion.
     df = pd.DataFrame({0: list(range(n))})
     ds = ray.data.range(n)
-    dfds = pd.concat([t.to_pandas() for t in ds.to_arrow()], ignore_index=True)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
+        ignore_index=True)
     assert df.equals(dfds)
 
 
