@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import sys
 from collections import defaultdict
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 import docker
 
@@ -42,6 +42,14 @@ BASE_IMAGES = {
     "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04",
     "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04",
     "cpu": "ubuntu:focal",
+}
+
+CUDA_FULL = {
+    "cu112": "CUDA 11.2",
+    "cu111": "CUDA 11.1",
+    "cu110": "CUDA 11.0",
+    "cu102": "CUDA 10.2",
+    "cu101": "CUDA 10.1"
 }
 
 # The CUDA version to use for the ML Docker image.
@@ -136,7 +144,7 @@ def _check_if_docker_files_modified():
 
 def _build_docker_image(image_name: str,
                         py_version: str,
-                        image_type: Optional[str] = None,
+                        image_type: str,
                         no_cache=True):
     """Builds Docker image with the provided info.
 
@@ -144,7 +152,7 @@ def _build_docker_image(image_name: str,
         IMAGE_NAMES.
     py_version (str): The Python version to build the image for.
         Must be one of PY_MATRIX.keys()
-    image_type (Optiona[str]): The image type to build. Must be one of
+    image_type (str): The image type to build. Must be one of
         BASE_IMAGES.keys()
     no_cache (bool): If True, don't use caching when building the image.
     """
@@ -199,10 +207,19 @@ def _build_docker_image(image_name: str,
         cleanup = DOCKER_CLIENT.containers.prune().get("SpaceReclaimed")
         if cleanup is not None:
             print(f"Cleaned up {cleanup / (2 ** 20)}MB")
+
+        labels = {
+            "image-name": image_name,
+            "python-version": PY_MATRIX[py_version]
+        }
+        if image_type in CUDA_FULL:
+            labels["cuda-version"] = CUDA_FULL[image_type]
+
         output = DOCKER_CLIENT.api.build(
             path=os.path.join(_get_root_dir(), "docker", image_name),
             tag=tagged_name,
             nocache=no_cache,
+            labels=labels,
             buildargs=build_args)
 
         cmd_output = []
@@ -530,6 +547,8 @@ if __name__ == "__main__":
 
     image_types = args.device_types if args.device_types else list(
         BASE_IMAGES.keys())
+
+    assert set(list(CUDA_FULL.keys()) + ["cpu"]) == set(BASE_IMAGES.keys())
 
     # Make sure the python images and cuda versions we build here are
     # consistent with the ones used with fix-latest-docker.sh script.

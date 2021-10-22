@@ -7,8 +7,10 @@ import boto3
 DOCKER_USER = None
 DOCKER_PASS = None
 
+
 def _get_curr_dir():
     return os.path.dirname(os.path.realpath(__file__))
+
 
 def get_secrets():
     global DOCKER_PASS, DOCKER_USER
@@ -38,19 +40,21 @@ def retag(repo: str, source: str, destination: str) -> str:
             "DOCKER_PASS": DOCKER_PASS
         })
 
+
 def parse_versions(version_file):
     with open(version_file) as f:
         file_versions = f.read().splitlines()
     return file_versions
 
+
 def lambda_handler(event, context):
     source_image = event["source_tag"]
     destination_image = event["destination_tag"]
     total_results = []
-    python_versions = parse_versions(os.path.join(_get_curr_dir(),
-                                                  "python_versions.txt"))
-    cuda_versions = parse_versions(os.path.join(_get_curr_dir(),
-                                                "cuda_versions.txt"))
+    python_versions = parse_versions(
+        os.path.join(_get_curr_dir(), "python_versions.txt"))
+    cuda_versions = parse_versions(
+        os.path.join(_get_curr_dir(), "cuda_versions.txt"))
     for repo in ["ray", "ray-ml"]:
         results = []
         for pyversion in python_versions:
@@ -59,7 +63,9 @@ def lambda_handler(event, context):
             for cudaversion in cuda_versions:
                 cuda_source_tag = source_tag + f"-{cudaversion}"
                 cuda_destination_tag = destination_tag + f"-{cudaversion}"
-                results.append(retag(repo, cuda_source_tag, cuda_destination_tag))
+                results.append(
+                    retag(repo, cuda_source_tag, cuda_destination_tag))
+            results.append(retag(repo, source_tag, destination_tag))
             results.append(retag(repo, source_tag, destination_tag + "-cpu"))
             results.append(
                 retag(repo, source_tag + "-gpu", destination_tag + "-gpu"))
@@ -69,6 +75,12 @@ def lambda_handler(event, context):
     # Retag images without a python version specified (defaults to py37)
     results = []
     for repo in ["ray", "ray-ml", "ray-deps", "base-deps"]:
+        for cudaversion in cuda_versions:
+            source_tag = f"{source_image}-{cudaversion}"
+            destination_tag = f"{destination_image}-{cudaversion}"
+            results.append(retag(repo, source_tag, destination_tag))
+
+        # ray:nightly -> ray:1.x
         results.append(retag(repo, source_image, destination_image))
         results.append(retag(repo, source_image, destination_image + "-cpu"))
         results.append(
