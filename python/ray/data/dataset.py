@@ -596,11 +596,10 @@ class Dataset(Generic[T]):
             new_splits.extend(new_splits_small)
             return new_splits
 
-        block_refs = self._blocks.iter_futures()
+        block_refs = list(self._blocks.iter_futures())
         metadata_mapping = {
             b: m
-            for b, m in zip(self._blocks.iter_futures(),
-                            self._blocks.get_metadata())
+            for b, m in zip(block_refs, self._blocks.get_metadata())
         }
 
         if locality_hints is None:

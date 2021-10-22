@@ -1,5 +1,5 @@
 import math
-from typing import List, Iterator
+from typing import List, Iterator, Tuple
 
 import numpy as np
 
@@ -54,13 +54,13 @@ class BlockList:
         return iter(self._block_futures)
 
     def iter_evaluated_with_orig_metadata(
-            self) -> Iterator[(ObjectRef[Block], BlockMetadata)]:
+            self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
         self._check_if_cleared()
         outer = self
 
         class Iter:
             def __init__(self):
-                self._base_iter = zip(outer.iter_futures(), self._metadata)
+                self._base_iter = zip(outer.iter_futures(), outer._metadata)
                 self._buffer = []
 
             def __iter__(self):
@@ -69,8 +69,8 @@ class BlockList:
             def __next__(self):
                 if not self._buffer:
                     refs, orig_meta = next(self._base_iter)
-                    for ref in refs:
-                        self._buffer.append((ray.get(ref), orig_meta))
+                    for ref in ray.get(refs):
+                        self._buffer.append((ref, orig_meta))
                 return self._buffer.pop(0)
 
         return Iter()

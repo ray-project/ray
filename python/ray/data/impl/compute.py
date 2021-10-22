@@ -85,6 +85,7 @@ class ActorPool(ComputeStrategy):
         orig_num_blocks = len(blocks_in)
         blocks_out = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
+        block_owner = _get_or_create_block_owner_actor()
 
         class BlockWorker:
             def ready(self):
@@ -100,7 +101,9 @@ class ActorPool(ComputeStrategy):
                     size_bytes=accessor.size_bytes(),
                     schema=accessor.schema(),
                     input_files=input_files)
-                return [ray.put(new_block)], new_metadata
+                # Set the owner to the global block owner so the blocks live
+                # past the exist of this actor.
+                return [ray.put(new_block, _owner=block_owner)], new_metadata
 
         if not remote_args:
             remote_args["num_cpus"] = 1
@@ -146,6 +149,22 @@ class ActorPool(ComputeStrategy):
         new_metadata = ray.get([metadata_mapping[b] for b in blocks_out])
         map_bar.close()
         return BlockList(blocks_out, new_metadata)
+
+
+@ray.remote(num_cpus=0)
+class _DesignatedBlockOwner:
+    pass
+
+
+def _get_or_create_block_owner_actor() -> "ActorHandle":
+    name = "datasets_global_block_owner"
+    namespace = "datasets_global_namespace"
+    try:
+        return ray.get_actor(name=name, namespace=namespace)
+    except ValueError:
+        return _DesignatedBlockOwner.options(
+            name=name, namespace=namespace,
+            lifetime="detached").remote()
 
 
 def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
