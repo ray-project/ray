@@ -7,6 +7,7 @@ import urllib.parse
 if TYPE_CHECKING:
     import pyarrow
 
+import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
@@ -89,8 +90,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             else:
                 num_rows = len(read_paths) * self._rows_per_file()
             read_task = ReadTask(
-                lambda read_paths=read_paths: read_files(
-                    read_paths, filesystem),
+                lambda read_paths=read_paths: [ray.put(read_files(
+                    read_paths, filesystem))],
                 BlockMetadata(
                     num_rows=num_rows,
                     size_bytes=sum(file_sizes),

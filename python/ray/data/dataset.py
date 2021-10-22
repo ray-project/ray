@@ -906,6 +906,7 @@ class Dataset(Generic[T]):
 
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
+        blocks = [ray.put([x]) for x in blocks]
         return Dataset(BlockList(blocks, metadata), self._epoch)
 
     def limit(self, limit: int) -> "Dataset[T]":

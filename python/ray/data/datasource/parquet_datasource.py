@@ -7,6 +7,7 @@ import numpy as np
 if TYPE_CHECKING:
     import pyarrow
 
+import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
@@ -143,7 +144,8 @@ class ParquetDatasource(FileBasedDatasource):
                                                    inferred_schema)
             read_tasks.append(
                 ReadTask(
-                    lambda pieces_=serialized_pieces: read_pieces(pieces_),
+                    lambda pieces_=serialized_pieces: [
+                        ray.put(read_pieces(pieces_))],
                     block_metadata))
 
         return read_tasks

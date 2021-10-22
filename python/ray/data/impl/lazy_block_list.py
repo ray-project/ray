@@ -14,6 +14,7 @@ class LazyBlockList(BlockList):
                  metadata: List[BlockMetadata],
                  blocks: List[ObjectRef[Block]] = None):
         self._calls = calls
+        self._num_futures = len(self._calls)
         self._metadata = metadata
         if blocks:
             self._block_futures = blocks

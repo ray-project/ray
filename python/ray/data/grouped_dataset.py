@@ -67,10 +67,10 @@ class GroupedDataset(Generic[T]):
         if self._dataset.num_blocks() == 0:
             return self._dataset
 
-        num_mappers = len(self._dataset._blocks)
+        blocks = list(self._dataset._blocks.iter_evaluated())
+        num_mappers = len(blocks)
         num_reducers = num_mappers
-        boundaries = sort.sample_boundaries(self._dataset._blocks, self._key,
-                                            num_reducers)
+        boundaries = sort.sample_boundaries(blocks, self._key, num_reducers)
 
         partition_and_combine_block = cached_remote_fn(
             _partition_and_combine_block).options(num_returns=num_reducers)
@@ -78,7 +78,7 @@ class GroupedDataset(Generic[T]):
             _aggregate_combined_blocks, num_returns=2)
 
         map_results = np.empty((num_mappers, num_reducers), dtype=object)
-        for i, block in enumerate(self._dataset._blocks):
+        for i, block in enumerate(blocks):
             map_results[i, :] = partition_and_combine_block.remote(
                 block, boundaries, self._key, init, accumulate)
         map_bar = ProgressBar("GroupBy Map", len(map_results))
@@ -94,7 +94,7 @@ class GroupedDataset(Generic[T]):
         reduce_bar.block_until_complete([ret[0] for ret in reduce_results])
         reduce_bar.close()
 
-        blocks = [b for b, _ in reduce_results]
+        blocks = [ray.put([b]) for b, _ in reduce_results]
         metadata = ray.get([m for _, m in reduce_results])
         return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
 

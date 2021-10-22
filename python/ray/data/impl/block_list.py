@@ -13,6 +13,7 @@ class BlockList:
                  metadata: List[BlockMetadata]):
         assert len(blocks) == len(metadata), (blocks, metadata)
         self._block_futures: List[ObjectRef[List[Block]]] = blocks
+        self._num_futures = len(self._block_futures)
         self._metadata = metadata
 
     def set_metadata(self, i: int, metadata: BlockMetadata) -> None:
@@ -75,8 +76,8 @@ class BlockList:
                             raise AssertionError(
                                 "Expected list of block refs, but got a list "
                                 "of raw blocks elements: {}. Probably a "
-                                "module returned a block directly instead of "
-                                "a list of block refs.".format(refs))
+                                "task returned a block ref directly instead "
+                                "of [ray.put(block)].".format(refs))
                         self._buffer.append((ref, orig_meta, len(refs)))
                 return self._buffer.pop(0)
 
@@ -101,7 +102,7 @@ class BlockList:
         return Iter()
 
     def num_futures(self) -> int:
-        return len(self._block_futures)
+        return self._num_futures
 
     def num_evaluated(self) -> int:
         self._check_if_cleared()

@@ -113,7 +113,8 @@ class ReadTask(Callable[[], List[Block]]):
         result = self._read_fn()
         if not isinstance(result, list):
             raise ValueError(
-                "Read task must return list of block refs, got {}".format(
+                "Read task must return list of block refs, got {}. Probably"
+                "you need to return `[ray.put(x)]` instead of `x`.".format(
                     result))
         if len(result) == 0:
             raise ValueError("Read task must return non-empty list.")
