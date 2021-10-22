@@ -135,22 +135,21 @@ class JobSupervisor:
         self._status = JobStatus.RUNNING
         self._status_client.put_status(self._job_id, self._status)
 
-        # 2) Run the command until it finishes, appending logs as it goes.
-        # Set JobConfig for the child process (runtime_env, metadata).
-        #  - RAY_JOB_CONFIG_JSON={...}
-
-        stdout_path, stderr_path = self._log_client.get_log_file_paths(
-            self._job_id)
-        exit_code = exec_cmd_logs_to_file(cmd, stdout_path, stderr_path)
-
-        # 3) Once command finishes, update status to SUCCEEDED or FAILED.
-        if exit_code == 0:
-            self._status = JobStatus.SUCCEEDED
-        else:
-            self._status = JobStatus.FAILED
-
-        self._status_client.put_status(self._job_id, self.get_status())
-        ray.actor.exit_actor()
+        try:
+            # 2) Run the command until it finishes, appending logs as it goes.
+            # Set JobConfig for the child process (runtime_env, metadata).
+            #  - RAY_JOB_CONFIG_JSON={...}
+            stdout_path, stderr_path = self._log_client.get_log_file_paths(
+                self._job_id)
+            exit_code = exec_cmd_logs_to_file(cmd, stdout_path, stderr_path)
+        finally:
+            # 3) Once command finishes, update status to SUCCEEDED or FAILED.
+            if exit_code == 0:
+                self._status = JobStatus.SUCCEEDED
+            else:
+                self._status = JobStatus.FAILED
+            self._status_client.put_status(self._job_id, self.get_status())
+            ray.actor.exit_actor()
 
     def get_status(self) -> JobStatus:
         return self._status
