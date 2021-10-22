@@ -25,6 +25,7 @@ from ray.workflow.common import (
     StepID,
     WorkflowData,
 )
+from ray.workflow.utils import resources_equal
 
 if TYPE_CHECKING:
     from ray.workflow.common import (WorkflowRef, WorkflowInputs,
@@ -137,7 +138,8 @@ def _resolve_step_inputs(
     return signature.recover_args(flattened_args)
 
 
-def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
+def execute_workflow(workflow: "Workflow",
+                     inplace=False) -> "WorkflowExecutionResult":
     """Execute workflow.
 
     Returns:
@@ -149,18 +151,42 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     step_options = workflow_data.step_options
-    persisted_output, volatile_output = _workflow_step_executor.options(
-        **step_options.ray_options).remote(
+    if inplace:
+        # TODO(suquark): For inplace execution, it is impossible
+        # to get the ObjectRef of the output before execution.
+        # Here we use a dummy ObjectRef, because _record_step_status does not
+        # even use it (?!).
+        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
+                            [ray.put(None)])
+        # Note: we need to be careful about workflow context when
+        # calling the executor directly.
+        persisted_output, volatile_output = _workflow_step_executor(
             workflow_data.func_body,
             workflow_context.get_workflow_step_context(), workflow.step_id,
             baked_inputs, workflow_data.step_options)
+        if not isinstance(persisted_output, ray.ObjectRef):
+            persisted_output = ray.put(persisted_output)
+        if not isinstance(persisted_output, ray.ObjectRef):
+            volatile_output = ray.put(volatile_output)
+    else:
+        persisted_output, volatile_output = (
+            _workflow_step_executor_remote.options(
+                **step_options.ray_options).remote(
+                    workflow_data.func_body,
+                    workflow_context.get_workflow_step_context(),
+                    workflow.step_id, baked_inputs,
+                    workflow_data.step_options))
 
     if not isinstance(persisted_output, WorkflowOutputType):
         raise TypeError("Unexpected return type of the workflow.")
 
     if step_options.step_type != StepType.READONLY_ACTOR_METHOD:
-        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
-                            [volatile_output])
+        if not inplace:
+            # TODO: [Possible flaky bug] Here the RUNNING state may
+            # be recorded earlier than SUCCESSFUL. This caused some
+            # confusion during development.
+            _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
+                                [volatile_output])
 
     result = WorkflowExecutionResult(persisted_output, volatile_output)
     workflow._result = result
@@ -309,11 +335,10 @@ def _wrap_run(func: Callable, runtime_options: "WorkflowStepRuntimeOptions",
     return persisted_output, volatile_output
 
 
-@ray.remote(num_returns=2)
 def _workflow_step_executor(
         func: Callable, context: "WorkflowStepContext", step_id: "StepID",
         baked_inputs: "_BakedWorkflowInputs",
-        runtime_options: "WorkflowStepRuntimeOptions") -> Any:
+        runtime_options: "WorkflowStepRuntimeOptions") -> Tuple[Any, Any]:
     """Executor function for workflow step.
 
     Args:
@@ -372,7 +397,18 @@ def _workflow_step_executor(
             # Execute sub-workflow. Pass down "outer_most_step_id".
             with workflow_context.fork_workflow_step_context(
                     outer_most_step_id=outer_most_step_id):
-                result = execute_workflow(persisted_output)
+                sub_workflow = persisted_output
+                if resources_equal(runtime_options.ray_options,
+                                   sub_workflow.data.step_options.ray_options):
+                    # The workflow step returned by the current step has
+                    # exactly same resource and environment constraints.
+                    # So we execute it inplace.
+                    # TODO(suquark): We still have recursive Python calls.
+                    # This would cause stack overflow if we have a really
+                    # deep recursive call. We should fix it later.
+                    result = execute_workflow(sub_workflow, inplace=True)
+                else:
+                    result = execute_workflow(sub_workflow)
             # When virtual actor returns a workflow in the method,
             # the volatile_output and persisted_output will be put together
             persisted_output = result.persisted_output
@@ -389,6 +425,16 @@ def _workflow_step_executor(
         volatile_output = volatile_output.run_async(
             workflow_context.get_current_workflow_id())
     return persisted_output, volatile_output
+
+
+@ray.remote(num_returns=2)
+def _workflow_step_executor_remote(
+        func: Callable, context: "WorkflowStepContext", step_id: "StepID",
+        baked_inputs: "_BakedWorkflowInputs",
+        runtime_options: "WorkflowStepRuntimeOptions") -> Any:
+    """The remote version of '_workflow_step_executor'."""
+    return _workflow_step_executor(func, context, step_id, baked_inputs,
+                                   runtime_options)
 
 
 @dataclass
