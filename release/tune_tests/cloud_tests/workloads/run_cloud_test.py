@@ -353,7 +353,7 @@ def fetch_trial_node_dirs_to_tmp_dir(
             shutil.rmtree(tmpdir)
             shutil.copytree(trial.local_dir, tmpdir)
             print("Copied local node experiment dir", trial.local_dir, "to",
-                  tmpdir)
+                  tmpdir, "for trial", trial.trial_id)
 
         else:
             # Trial was run on remote node
@@ -365,7 +365,7 @@ def fetch_trial_node_dirs_to_tmp_dir(
                     f"{trial} from {trial.hostname} ({trial.node_ip}) "
                     f"to {tmpdir}.")
             print("Synced remote node experiment dir from", trial.hostname,
-                  "to", tmpdir)
+                  "to", tmpdir, "for trial", trial.trial_id)
 
         dirmap[trial] = tmpdir
 
