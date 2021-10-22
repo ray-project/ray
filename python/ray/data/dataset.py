@@ -837,7 +837,7 @@ class Dataset(Generic[T]):
             >>> ds.sort(lambda record: record["field1"] % 100)
 
             >>> # Sort by multiple columns (not yet supported).
-            >>> ds.sort([("field1", "ascending"), ("field2", "descending)])
+            >>> ds.sort([("field1", "ascending"), ("field2", "descending")])
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -942,6 +942,26 @@ class Dataset(Generic[T]):
             output.append(row)
             if len(output) >= limit:
                 break
+        return output
+
+    def take_all(self, limit: int = 100000) -> List[T]:
+        """Take all the records in the dataset.
+
+        Time complexity: O(dataset size)
+
+        Args:
+            limit: Raise an error if the size exceeds the specified limit.
+
+        Returns:
+            A list of all the records in the dataset.
+        """
+        output = []
+        for row in self.iter_rows():
+            output.append(row)
+            if len(output) > limit:
+                raise ValueError(
+                    "The dataset has more than the given limit of {} records.".
+                    format(limit))
         return output
 
     def show(self, limit: int = 20) -> None:
@@ -1050,13 +1070,15 @@ class Dataset(Generic[T]):
                 files.add(f)
         return list(files)
 
-    def write_parquet(self,
-                      path: str,
-                      *,
-                      filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                      try_create_dir: bool = True,
-                      arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-                      **arrow_parquet_args) -> None:
+    def write_parquet(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            try_create_dir: bool = True,
+            arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+            arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+            **arrow_parquet_args) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1078,6 +1100,12 @@ class Dataset(Generic[T]):
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
+            arrow_parquet_args_fn: Callable that returns a dictionary of write
+                arguments to use when writing each block to a file. Overrides
+                any duplicate keys from arrow_parquet_args. This should be used
+                instead of arrow_parquet_args if any of your write arguments
+                cannot be pickled, or if you'd like to lazily resolve the write
+                arguments for each dataset block.
             arrow_parquet_args: Options to pass to
                 pyarrow.parquet.write_table(), which is used to write out each
                 block to a file.
@@ -1089,15 +1117,18 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            write_args_fn=arrow_parquet_args_fn,
             **arrow_parquet_args)
 
-    def write_json(self,
-                   path: str,
-                   *,
-                   filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                   try_create_dir: bool = True,
-                   arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-                   **pandas_json_args) -> None:
+    def write_json(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            try_create_dir: bool = True,
+            arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+            pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+            **pandas_json_args) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1119,6 +1150,12 @@ class Dataset(Generic[T]):
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
+            pandas_json_args_fn: Callable that returns a dictionary of write
+                arguments to use when writing each block to a file. Overrides
+                any duplicate keys from pandas_json_args. This should be used
+                instead of pandas_json_args if any of your write arguments
+                cannot be pickled, or if you'd like to lazily resolve the write
+                arguments for each dataset block.
             pandas_json_args: These args will be passed to
                 pandas.DataFrame.to_json(), which we use under the hood to
                 write out each Datasets block. These
@@ -1131,6 +1168,7 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            write_args_fn=pandas_json_args_fn,
             **pandas_json_args)
 
     def write_csv(self,
@@ -1139,6 +1177,7 @@ class Dataset(Generic[T]):
                   filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                   try_create_dir: bool = True,
                   arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+                  arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
                   **arrow_csv_args) -> None:
         """Write the dataset to csv.
 
@@ -1161,6 +1200,12 @@ class Dataset(Generic[T]):
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
+            arrow_csv_args_fn: Callable that returns a dictionary of write
+                arguments to use when writing each block to a file. Overrides
+                any duplicate keys from arrow_csv_args. This should be used
+                instead of arrow_csv_args if any of your write arguments
+                cannot be pickled, or if you'd like to lazily resolve the write
+                arguments for each dataset block.
             arrow_csv_args: Other CSV write options to pass to pyarrow.
         """
         self.write_datasource(
@@ -1170,6 +1215,7 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            write_args_fn=arrow_csv_args_fn,
             **arrow_csv_args)
 
     def write_numpy(
@@ -1598,16 +1644,19 @@ class Dataset(Generic[T]):
         return raydp.spark.ray_dataset_to_spark_dataframe(
             spark, self.schema(), self.get_internal_block_refs(), locations)
 
-    def to_pandas(self, limit: int = 1000) -> "pandas.DataFrame":
+    def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. This
-        limits the number of records returned to the provided limit.
+        This is only supported for datasets convertible to Arrow records. An
+        error is raised if the number of records exceeds the provided limit.
+        Note that you can use ``.limit()`` on the dataset beforehand to
+        truncate the dataset manually.
 
-        Time complexity: O(limit)
+        Time complexity: O(dataset size)
 
         Args:
-            limit: The maximum number of records to return.
+            limit: The maximum number of records to return. An error will be
+                raised if the limit is exceeded.
 
         Returns:
             A Pandas DataFrame created from this dataset, containing a limited
@@ -1615,10 +1664,10 @@ class Dataset(Generic[T]):
         """
 
         if self.count() > limit:
-            logger.warning(f"Only returning the first {limit} records from "
-                           "to_pandas()")
-        limited_ds = self.limit(limit)
-        blocks = limited_ds.get_internal_block_refs()
+            raise ValueError(
+                "The dataset has more than the given limit of {} records.".
+                format(limit))
+        blocks = self.get_internal_block_refs()
         output = DelegatingArrowBlockBuilder()
         for block in ray.get(blocks):
             output.add_block(block)

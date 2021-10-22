@@ -923,38 +923,6 @@ def test_runtime_env_override(call_ray_start):
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.")
-def test_runtime_env_inheritance_regression(shutdown_only):
-    # https://github.com/ray-project/ray/issues/16479
-    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
-        with open("hello", "w") as f:
-            f.write("world")
-
-        ray.init(runtime_env={"working_dir": "."})
-
-        # Make sure we aren't reading the original file.
-        os.unlink("hello")
-
-        @ray.remote
-        class Test:
-            def f(self):
-                return open("hello").read()
-
-        # Passing working_dir URI through directly should work.
-        env1 = ray.get_runtime_context().runtime_env
-        assert "working_dir" in env1
-        t = Test.options(runtime_env=env1).remote()
-        assert ray.get(t.f.remote()) == "world"
-
-        # Passing a local directory should not work.
-        env2 = ray.get_runtime_context().runtime_env
-        env2["working_dir"] = "."
-        with pytest.raises(ValueError):
-            t = Test.options(runtime_env=env2).remote()
-
-
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.")
 def test_runtime_env_logging_to_driver(ray_start_regular_shared, log_pubsub):
     @ray.remote(runtime_env={"pip": [f"requests=={REQUEST_VERSIONS[0]}"]})
     def func():

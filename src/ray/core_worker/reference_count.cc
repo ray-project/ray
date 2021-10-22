@@ -579,7 +579,12 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
 
     // The object is still in scope. Track the raylet location until the object
     // has gone out of scope or the raylet fails, whichever happens first.
-    RAY_CHECK(!it->second.pinned_at_raylet_id.has_value());
+    if (it->second.pinned_at_raylet_id.has_value()) {
+      RAY_LOG(INFO) << "Updating primary location for object " << object_id << " to node "
+                    << raylet_id << ", but it already has a primary location "
+                    << *it->second.pinned_at_raylet_id
+                    << ". This should only happen during reconstruction";
+    }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
@@ -1003,6 +1008,7 @@ bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
 
 void ReferenceCounter::AddObjectLocationInternal(ReferenceTable::iterator it,
                                                  const NodeID &node_id) {
+  RAY_LOG(DEBUG) << "Adding location " << node_id << " for object " << it->first;
   if (it->second.locations.emplace(node_id).second) {
     // Only push to subscribers if we added a new location. We eagerly add the pinned
     // location without waiting for the object store notification to trigger a location
@@ -1014,6 +1020,7 @@ void ReferenceCounter::AddObjectLocationInternal(ReferenceTable::iterator it,
 bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                                             const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
+  RAY_LOG(DEBUG) << "Removing location " << node_id << " for object " << object_id;
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(DEBUG) << "Tried to remove an object location for an object " << object_id
@@ -1152,6 +1159,18 @@ void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
   if (inserted) {
     WaitForRefRemoved(it, borrower_worker_address);
   }
+}
+
+bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id) const {
+  if (!lineage_pinning_enabled_) {
+    return false;
+  }
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  return it->second.is_reconstructable;
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {

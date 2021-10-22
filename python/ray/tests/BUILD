@@ -93,6 +93,7 @@ py_test_module_list(
     "test_tempfile.py",
     "test_tensorflow.py",
     "test_threaded_actor.py",
+    "test_tls_auth.py",
     "test_ray_debugger.py",
   ],
   size = "medium",
@@ -147,6 +148,16 @@ py_test_module_list(
   size = "small",
   extra_srcs = SRCS,
   tags = ["exclusive", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_actor_group.py"
+  ],
+  size = "small",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "team:serve"],
   deps = ["//:ray_lib"],
 )
 
@@ -241,7 +252,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_runtime_env.py"
+    "test_runtime_env.py",
+    "test_runtime_env_working_dir.py"
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -316,6 +328,14 @@ py_test(
     name = "test_runtime_env_ray_minimal",
     size = "small",
     srcs = SRCS + ["test_runtime_env_ray_minimal.py"],
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_serve_ray_minimal",
+    size = "small",
+    srcs = SRCS + ["test_serve_ray_minimal.py"],
     tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )
