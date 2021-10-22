@@ -455,6 +455,7 @@ class WorkflowStorage:
         Returns:
             The metadata of the given step.
         """
+
         async def _load_step_metadata():
             if not await self._scan([self._workflow_id, "steps", step_id]):
                 if not await self._scan([self._workflow_id]):
@@ -468,7 +469,8 @@ class WorkflowStorage:
             tasks = [
                 self._get(self._key_step_input_metadata(step_id), True, True),
                 self._get(self._key_step_prerun_metadata(step_id), True, True),
-                self._get(self._key_step_postrun_metadata(step_id), True, True)
+                self._get(
+                    self._key_step_postrun_metadata(step_id), True, True)
             ]
 
             ((input_metadata, _), (prerun_metadata, _),
@@ -493,6 +495,7 @@ class WorkflowStorage:
         Returns:
             The metadata of the current workflow.
         """
+
         async def _load_workflow_metadata():
             if not await self._scan([self._workflow_id]):
                 raise ValueError("No such workflow_id {}".format(
