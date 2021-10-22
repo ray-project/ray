@@ -62,7 +62,7 @@ def sample_boundaries(blocks: BlockList, key: SortKeyT,
 
 def sort_impl(blocks: BlockList, key: SortKeyT,
               descending: bool = False) -> BlockList:
-    blocks = list(blocks.iter_evaluated())
+    blocks = list(blocks.iter_results())
     if len(blocks) == 0:
         return BlockList([], [])
 

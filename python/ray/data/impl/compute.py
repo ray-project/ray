@@ -39,7 +39,7 @@ class TaskPool(ComputeStrategy):
         if blocks.num_tasks() == 0:
             return blocks
 
-        blocks = list(blocks.iter_evaluated_with_orig_metadata())
+        blocks = list(blocks.iter_results_with_orig_metadata())
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         kwargs = remote_args.copy()
@@ -85,7 +85,7 @@ class ActorPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList) -> BlockList:
 
-        blocks_in = list(blocks.iter_evaluated_with_orig_metadata())
+        blocks_in = list(blocks.iter_results_with_orig_metadata())
         orig_num_blocks = len(blocks_in)
         blocks_out = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
