@@ -701,7 +701,8 @@ void GcsPlacementGroupManager::Tick() {
   // Note that we don't currently have a known race condition that requires this, but we
   // added as a safety check. https://github.com/ray-project/ray/pull/18419
   SchedulePendingPlacementGroups();
-  execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+  execute_after(
+      io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
