@@ -57,18 +57,18 @@ Ray client should be used when you want to connect a script or an interactive sh
 How do you use the Ray client?
 ------------------------------
 
-Step 1: set up your Ray cluster
+Step 1: Set up your Ray cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-First, you'll want to create a remote Ray cluster. Follow the directions in :ref:`ref-cluster-quick-start` to do this.
-
-If using the :doc:`Ray cluster launcher <cloud>`, the remote cluster will be listening on port ``10001`` of the head node. If necessary, you can modify this port by setting ``--ray-client-server-port`` to the ``ray start`` `command <http://127.0.0.1:5500/doc/_build/html/package-ref.html#ray-start>`_.
-
-If not using the :doc:`Ray cluster launcher <cloud>`, you can start the "Ray Client Server" manually on the head node of your remote cluster by running the following:
+First, you'll want to create a Ray cluster. To start a Ray cluster locally, you can run
 
 .. code-block:: bash
 
-    python -m ray.util.client.server [--host host_ip] [--port port] [--redis-address address] [--redis-password password]
+   ray start --head
+
+To start a Ray cluster remote, you can follow the directions in :ref:`ref-cluster-quick-start`.
+
+In both cases, the Ray client server will be listening on port ``10001`` of the head node by default. If necessary, you can modify this port by specifying ``--ray-client-server-port=...`` to the ``ray start`` `command <http://127.0.0.1:5500/doc/_build/html/package-ref.html#ray-start>`_.
 
 Step 2: Check ports
 ~~~~~~~~~~~~~~~~~~~
