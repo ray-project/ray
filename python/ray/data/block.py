@@ -120,6 +120,10 @@ class BlockAccessor(Generic[T]):
         """Zip this block with another block of the same type and size."""
         raise NotImplementedError
 
+    def join(self, other: "Block[T]", key: Any) -> "Block[U]":
+        """Join this block based on a given join key."""
+        raise NotImplementedError
+
     @staticmethod
     def builder() -> "BlockBuilder[T]":
         """Create a builder for this block type."""

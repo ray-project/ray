@@ -1,4 +1,5 @@
 import random
+import collections
 import sys
 import heapq
 from typing import Callable, Iterator, List, Tuple, Union, Any, Optional, \
@@ -87,6 +88,27 @@ class SimpleBlockAccessor(BlockAccessor):
                 "Cannot zip self (length {}) with block of length {}".format(
                     len(self), len(other)))
         return list(zip(self._items, other))
+
+    def join(self, other: "Block[T]", key: SortKeyT) -> "Block[U]":
+        if len(self._items) < len(other):
+            build_side = self._items
+            probe_side = other
+            probe_left = False
+        else:
+            build_side = other
+            probe_side = self._items
+            probe_left = True
+        table = collections.defaultdict(list)
+        for item in build_side:
+            table[key(item)].append(item)
+        output = []
+        for item in probe_side:
+            for r in table[key(item)]:
+                if probe_left:
+                    output.append((item, r))
+                else:
+                    output.append((r, item))
+        return output
 
     @staticmethod
     def builder() -> SimpleBlockBuilder[T]:

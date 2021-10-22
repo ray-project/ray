@@ -2785,6 +2785,17 @@ def test_sort_simple(ray_start_regular_shared):
     assert s1 == ds
 
 
+def test_join_simple(ray_start_regular_shared):
+    x = ray.data.from_items([(1, "a"), (2, "b")])
+    y = ray.data.from_items([(1, "foo"), (1, "bar"), (2, "baz"), (3, 0)])
+    result = x.join(y, key=lambda r: r[0]).take()
+    assert result == [
+        ((1, "a"), (1, "foo")),
+        ((1, "a"), (1, "bar")),
+        ((2, "b"), (2, "baz")),
+    ]
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_random_shuffle(shutdown_only, pipelined):
     def range(n, parallelism=200):

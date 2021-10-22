@@ -16,7 +16,7 @@ Merging: a merge task would receive a block from every worker that consists
 of items in a certain range. It then merges the sorted blocks into one sorted
 block and becomes part of the new, sorted dataset.
 """
-from typing import List, Any, Callable, TypeVar, Tuple, Union
+from typing import List, Any, Callable, TypeVar, Tuple, Union, Optional
 
 import numpy as np
 import ray
@@ -60,8 +60,10 @@ def sample_boundaries(blocks: BlockList[T], key: SortKeyT,
     return ret[1:]
 
 
-def sort_impl(blocks: BlockList[T], key: SortKeyT,
-              descending: bool = False) -> BlockList[T]:
+def sort_impl(blocks: BlockList[T],
+              key: SortKeyT,
+              descending: bool = False,
+              num_output_blocks: Optional[int] = None) -> BlockList[T]:
     if len(blocks) == 0:
         return BlockList([], [])
 
@@ -72,7 +74,10 @@ def sort_impl(blocks: BlockList[T], key: SortKeyT,
         descending = key[0][1] == "descending"
 
     num_mappers = len(blocks)
-    num_reducers = num_mappers
+    if num_output_blocks:
+        num_reducers = num_output_blocks
+    else:
+        num_reducers = num_mappers
     boundaries = sample_boundaries(blocks, key, num_reducers)
     if descending:
         boundaries.reverse()

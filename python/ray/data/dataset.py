@@ -818,11 +818,63 @@ class Dataset(Generic[T]):
         from ray.data.grouped_dataset import GroupedDataset
         return GroupedDataset(self, key)
 
+    def join(self,
+             other: "Dataset[U]",
+             *,
+             key: Union[None, str, List[str], Callable[[T], Any]] = None
+             ) -> "Dataset[(T, U)]":
+        """Join with another dataset on the given key function (Experimental).
+
+        Currently only simple block datasets are supported.
+
+        Examples:
+            >>> # Join two tuple datasets by their first element.
+            >>> x = ray.data.from_items([(1, "a"), (2, "b")])
+            >>> y = ray.data.from_items([(1, "foo"), (1, "bar"), (2, "baz")])
+            >>> x.join(y, key=lambda r: r[0]).show()
+            ((1, 'a'), (1, 'foo'))
+            ((1, 'a'), (1, 'bar'))
+            ((2, 'b'), (2, 'baz'))
+
+        Time complexity: O(dataset size * log(dataset size / parallelism))
+
+        Args:
+            other: The other dataset to join with.
+            key: A key function that can be applied to both datasets.
+
+        Returns:
+            A dataset with tuples of matching items from this dataset on the
+            left and the other dataset on the right.
+        """
+        # Handle empty dataset.
+        if self.num_blocks() == 0:
+            return self
+
+        # Co-partition both datasets via sort.
+        num_output_blocks = max(len(self._blocks), len(other._blocks))
+        left = self.sort(key, num_output_blocks=num_output_blocks)
+        right = other.sort(key, num_output_blocks=num_output_blocks)
+        assert left.num_blocks() == right.num_blocks(), (left, right)
+
+        # Merge co-partitioned blocks.
+        join_blocks = cached_remote_fn(_join_blocks)
+        map_bar = ProgressBar("Merge", num_output_blocks)
+        output = []
+        metadata = []
+        for r, s in zip(left._blocks, right._blocks):
+            block, meta = join_blocks.options(num_returns=2).remote(r, s, key)
+            output.append(block)
+            metadata.append(meta)
+        map_bar.block_until_complete(output)
+        map_bar.close()
+
+        return Dataset(BlockList(output, ray.get(metadata)), self._epoch)
+
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
-             descending: bool = False) -> "Dataset[T]":
-        """Sort the dataset by the specified key column or key function.
-        (experimental support)
+             descending: bool = False,
+             num_output_blocks: Optional[int] = None) -> "Dataset[T]":
+        """Sort by the specified key column or function (Experimental).
 
         This is a blocking operation.
 
@@ -848,6 +900,7 @@ class Dataset(Generic[T]):
                   function that returns a comparison key to sort by, or None
                   to sort by the original value.
             descending: Whether to sort in descending order.
+            num_output_blocks: The number of output dataset blocks.
 
         Returns:
             A new, sorted dataset.
@@ -855,7 +908,9 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
-        return Dataset(sort_impl(self._blocks, key, descending), self._epoch)
+        return Dataset(
+            sort_impl(self._blocks, key, descending, num_output_blocks),
+            self._epoch)
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1998,6 +2053,13 @@ def _block_to_arrow(block: Block):
 def _check_is_arrow(block: Block) -> bool:
     import pyarrow
     return isinstance(block, pyarrow.Table)
+
+
+def _join_blocks(left: Block, right: Block,
+                 key: Callable[[Any], Any]) -> (Block, BlockMetadata):
+    left = BlockAccessor.for_block(left)
+    output = left.join(right, key)
+    return output, BlockAccessor.for_block(output).get_metadata(None)
 
 
 def _split_block(
