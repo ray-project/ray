@@ -375,6 +375,32 @@ def fetch_trial_node_dirs_to_tmp_dir(
     return dirmap
 
 
+# Bucket interaction
+
+
+def clear_bucket_contents(bucket: str):
+    if bucket.startswith("s3://"):
+        print("Clearing bucket contents:", bucket)
+        subprocess.check_call(
+            ["aws", "s3", "rm", "--recursive", "--quiet", bucket])
+    else:
+        raise ValueError(f"Invalid bucket URL: {bucket}")
+
+
+def fetch_bucket_contents_to_tmp_dir(bucket: str) -> str:
+    tmpdir = tempfile.mkdtemp(prefix="tune_cloud_test")
+
+    if bucket.startswith("s3://"):
+        subprocess.check_call(
+            ["aws", "s3", "cp", "--recursive", "--quiet", bucket, tmpdir])
+    else:
+        raise ValueError(f"Invalid bucket URL: {bucket}")
+
+    print("Copied bucket data from", bucket, "to", tmpdir)
+
+    return tmpdir
+
+
 # Load data from local dirs into objects
 
 
@@ -496,8 +522,10 @@ def get_experiment_and_trial_data(
     experiment_dir = assert_experiment_dir_exists(
         experiment_name=experiment_name)
 
-    experiment_state = assert_experiment_checkpoint_validity(
+    experiment_state = load_experiment_checkpoint_from_state_file(
         experiment_dir=experiment_dir)
+
+    assert_experiment_checkpoint_validity(experiment_state)
 
     driver_dir_cp = load_experiment_checkpoint_from_dir(
         experiment_state.trials, experiment_dir)
@@ -511,6 +539,22 @@ def get_experiment_and_trial_data(
         trial_to_exp_dir)
 
     return experiment_state, driver_dir_cp, trial_exp_checkpoint_data
+
+
+def get_bucket_data(
+        bucket: str,
+        experiment_name: str,
+) -> Tuple[ExperimentStateCheckpoint, ExperimentDirCheckpoint]:
+    local_bucket_dir = fetch_bucket_contents_to_tmp_dir(bucket)
+    local_experiment_dir = os.path.join(local_bucket_dir, experiment_name)
+
+    bucket_state_cp = load_experiment_checkpoint_from_state_file(
+        local_experiment_dir)
+
+    bucket_dir_cp = load_experiment_checkpoint_from_dir(
+        bucket_state_cp.trials, local_experiment_dir)
+
+    return bucket_state_cp, bucket_dir_cp
 
 
 # Assertions
@@ -528,16 +572,9 @@ def assert_experiment_dir_exists(experiment_name: str) -> str:
 
 
 def assert_experiment_checkpoint_validity(
-        experiment_dir: str,
-        total_time_bounds: Optional[Tuple[float, float]] = None
-) -> ExperimentStateCheckpoint:
-    experiment_state = load_experiment_checkpoint_from_state_file(
-        experiment_dir)
-
+        experiment_state: ExperimentStateCheckpoint):
     assert len(
         experiment_state.trials) == 4, "Not all trials have been created."
-
-    return experiment_state
 
 
 def assert_min_num_trials(trials: Iterable[TrialStub], on_driver: int,
@@ -784,10 +821,132 @@ def test_ssh_sync():
         after_experiments_callback=after_experiments)
 
 
+def test_durable_upload(bucket: str):
+    """
+    Sync trial and experiment checkpoints to cloud, so:
+
+        sync_to_driver=False
+        upload_dir="s3://"
+        durable_trainable
+
+    Expected results after first checkpoint:
+
+        - 4 trials are running
+        - At least one trial ran on the head node
+        - At least one trial ran remotely
+        - Driver has trial checkpoints from head node trial
+        - Driver has no trial checkpoints from remote node trials
+        - Remote trial dirs only have data for one trial
+        - Remote trial dirs have checkpoints for node-local trials
+        - Cloud checkpoint is
+
+    Then, remote checkpoint directories are cleaned up.
+
+    Expected results after second checkpoint:
+
+        - 4 trials are running
+        - All trials progressed with training
+
+    """
+    if not bucket:
+        raise ValueError(
+            "The `durable_upload` test requires a `--bucket` argument to "
+            "be set.")
+
+    experiment_name = "cloud_durable_upload"
+    indicator_file = f"/tmp/{experiment_name}_indicator"
+
+    def before_experiments():
+        clear_bucket_contents(bucket)
+
+    def between_experiments():
+        (experiment_state, driver_dir_cp, trial_exp_checkpoint_data
+         ) = get_experiment_and_trial_data(experiment_name=experiment_name)
+
+        # Req: 4 trials are running
+        assert all(
+            trial.status == "RUNNING"
+            for trial in experiment_state.trials), "Not all trials are RUNNING"
+
+        # Req: At least one trial ran on driver
+        # Req: At least one trial ran remotely
+        assert_min_num_trials(
+            driver_dir_cp.trial_to_cps.keys(), on_driver=1, on_worker=1)
+
+        # Req: Driver has trial checkpoints from head node trial
+        # Req: Driver has no trial checkpoints from remote node trials
+        assert_checkpoint_count(
+            driver_dir_cp, for_driver_trial=2, for_worker_trial=0)
+
+        for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
+            # Req: Remote trial dirs only have data for one trial
+
+            seen = len(exp_dir_cp.trial_to_cps)
+
+            if trial.was_on_driver_node:
+                assert seen == 4, (f"Trial {trial.trial_id} was on driver, "
+                                   f"but observed too few trials ({seen}) "
+                                   f"in experiment dir.")
+            else:
+                assert seen == 1, (
+                    f"Trial {trial.trial_id} was not on driver, "
+                    f"but observed not exactly 1 trials ({seen}) "
+                    f"in experiment dir.")
+
+                assert_checkpoint_count(
+                    exp_dir_cp, for_driver_trial=0, for_worker_trial=2)
+
+        bucket_state_cp, bucket_dir_cp = get_bucket_data(
+            bucket, experiment_name)
+        assert_experiment_checkpoint_validity(bucket_state_cp)
+
+        assert_checkpoint_count(
+            bucket_dir_cp, for_driver_trial=2, for_worker_trial=2)
+
+        # Delete remote checkpoints before resume
+        print("Deleting remote checkpoints before resume")
+        cleanup_remote_node_experiment_dir(experiment_name)
+
+    def after_experiments():
+        (experiment_state, driver_dir_cp, trial_exp_checkpoint_data
+         ) = get_experiment_and_trial_data(experiment_name=experiment_name)
+
+        # Req: 4 trials are running
+        assert all(
+            trial.status == "RUNNING"
+            for trial in experiment_state.trials), "Not all trials are RUNNING"
+
+        for trial in experiment_state.trials:
+            assert_trial_progressed_training(trial)
+
+        bucket_state_cp, bucket_dir_cp = get_bucket_data(
+            bucket, experiment_name)
+        assert_experiment_checkpoint_validity(bucket_state_cp)
+
+        assert_checkpoint_count(
+            bucket_dir_cp, for_driver_trial=2, for_worker_trial=2)
+
+        clear_bucket_contents(bucket)
+
+    run_resume_flow(
+        experiment_name=experiment_name,
+        indicator_file=indicator_file,
+        sync_to_driver=False,
+        upload_dir=bucket,
+        durable=True,
+        first_run_time=45,
+        second_run_time=45,
+        before_experiments_callback=before_experiments,
+        between_experiments_callback=between_experiments,
+        after_experiments_callback=after_experiments)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("variant", choices=["no_sync_down", "ssh_sync"])
+    parser.add_argument(
+        "variant", choices=["no_sync_down", "ssh_sync", "durable_upload"])
+    parser.add_argument("--bucket", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -798,3 +957,6 @@ if __name__ == "__main__":
         test_no_sync_down()
     elif args.variant == "ssh_sync":
         test_ssh_sync()
+    elif args.variant == "durable_upload":
+        test_durable_upload(args.bucket)
+    print(f"Test for variant {args.variant} SUCCEEDED")
