@@ -217,7 +217,9 @@ def test_crash_after_commit(workflow_start_regular_shared):
             utils.set_global_mark("committed")
             if utils.check_global_mark("first"):
                 utils.set_global_mark("second")
-            utils.set_global_mark("first")
+            else:
+                utils.set_global_mark("first")
+                await asyncio.sleep(1000000)
 
     @workflow.step
     def wait_then_finish(arg):
@@ -226,6 +228,9 @@ def test_crash_after_commit(workflow_start_regular_shared):
 
     event_promise = workflow.wait_for_event(MyEventListener)
     wait_then_finish.step(event_promise).run_async("workflow")
+
+    while not utils.check_global_mark("first"):
+        time.sleep(0.1)
 
     ray.shutdown()
     subprocess.check_output(["ray", "stop", "--force"])
