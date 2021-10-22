@@ -18,7 +18,7 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-def _map_block(block_owner: "ActorHandle", block: Block, fn: Any,
+def _map_block(block_owner: ray.actor.ActorHandle, block: Block, fn: Any,
                input_files: List[str]) -> (Block, BlockMetadata):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
@@ -160,7 +160,7 @@ class _DesignatedBlockOwner:
     pass
 
 
-def _get_or_create_block_owner_actor() -> "ActorHandle":
+def _get_or_create_block_owner_actor() -> ray.actor.ActorHandle:
     name = "datasets_global_block_owner"
     namespace = "datasets_global_namespace"
     try:
