@@ -784,5 +784,24 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         assert False
 
 
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25553 --num-cpus=0"],
+    indirect=True)
+@pytest.mark.parametrize("use_client", [True, False])
+def test_init_requires_no_resources(call_ray_start, use_client):
+    if use_client:
+        address = call_ray_start
+        ray.init(address)
+    else:
+        ray.init("ray://localhost:25553")
+
+    @ray.remote(num_cpus=0)
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
