@@ -100,8 +100,13 @@ static inline void Init(const TagsType &global_tags, GetAgentAddressFn get_agent
   }
 
   // Set interval.
-  StatsConfig::instance().SetReportInterval(absl::Milliseconds(std::max(
-      RayConfig::instance().metrics_report_interval_ms(), static_cast<uint64_t>(1000))));
+  if (RayConfig::instance().metrics_report_interval_ms() > 0) {
+    // TODO(ekl) setting harvest interval trips tsan testing (we should fix up the
+    // patch to allow setting this unsafely without holding the census lock).
+    StatsConfig::instance().SetReportInterval(
+        absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms(),
+                                    static_cast<uint64_t>(1000))));
+  }
   StatsConfig::instance().SetHarvestInterval(
       absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
                                   static_cast<uint64_t>(500))));
