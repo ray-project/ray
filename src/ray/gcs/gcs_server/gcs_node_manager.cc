@@ -100,8 +100,16 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
          node_info_delta = node_info_delta](const Status &status) {
           auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
           RAY_CHECK(raylet_client);
-          // Drain API is not supposed to kill the raylet, but we are doing this until the
-          // proper "drain" behavior is implemented.
+          // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
+          // this until the proper "drain" behavior is implemented. Currently, before
+          // raylet is killed, it sends a drain request to GCS. That said, this can
+          // happen;
+          // - GCS updates the drain state and kills a raylet gracefully.
+          // - Raylet kills itself and send a drain request of itself to GCS.
+          // - Drain request will become a no-op in GCS.
+          // This behavior is redundant, but harmless. We'll keep this behavior until we
+          // implement the right drain behavior for the simplicity. Check
+          // https://github.com/ray-project/ray/pull/19350 for more details.
           raylet_client->ShutdownRaylet(
               node_id, /*graceful*/ true,
               [this, node_id, node_info_delta = node_info_delta](
