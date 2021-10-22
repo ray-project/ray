@@ -80,7 +80,8 @@ def run(
         #  - it's a new workflow
         # TODO (yic): follow up with force rerun
         if is_growing or not wf_exists:
-            commit_step(ws, "", entry_workflow, exception=None)
+            # We must checkpoint entry workflow.
+            commit_step(ws, "", entry_workflow, exception=None, checkpoint=True)
         workflow_manager = get_or_create_management_actor()
         ignore_existing = is_growing
         # NOTE: It is important to 'ray.get' the returned output. This

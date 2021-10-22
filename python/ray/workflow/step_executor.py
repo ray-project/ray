@@ -27,10 +27,15 @@ from ray.workflow.common import (
     WorkflowData,
     WorkflowStaticRef,
     asyncio_run,
+    CheckpointMode,
 )
 
 if TYPE_CHECKING:
-    from ray.workflow.common import WorkflowRef, WorkflowStepRuntimeOptions
+    from ray.workflow.common import (
+        WorkflowRef,
+        CheckpointModeType,
+        WorkflowStepRuntimeOptions,
+    )
     from ray.workflow.workflow_context import WorkflowStepContext
 
 WaitResult = Tuple[List[Any], List[Workflow]]
@@ -117,9 +122,26 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     # Stage 1: prepare inputs
     workflow_data = workflow.data
     inputs = workflow_data.inputs
+    # If the outer workflow step skips checkpointing, it would
+    # update the checkpoint context of all inner steps except
+    # the output step, marking them "detached" from the DAG.
+    # Output step is not detached from the DAG because once
+    # completed, it replaces the output of the outer step.
+    step_context = workflow_context.get_workflow_step_context()
+    checkpoint_context = step_context.checkpoint_context.copy()
+    # detached := already detached or the outer step skips checkpointing
+    checkpoint_context.detached_from_dag = (
+        checkpoint_context.detached_from_dag
+        or not step_context.checkpoint_context.checkpoint
+    )
+    # Apply checkpoint context to input steps. Since input steps
+    # further apply them to their inputs, this would eventually
+    # apply to all steps except the output step.
     workflow_outputs = []
     with workflow_context.fork_workflow_step_context(
-        outer_most_step_id=None, last_step_of_workflow=False
+        outer_most_step_id=None,
+        last_step_of_workflow=False,
+        checkpoint_context=checkpoint_context,
     ):
         for w in inputs.workflows:
             static_ref = w.ref
@@ -131,7 +153,7 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
             workflow_outputs.append(static_ref)
 
     baked_inputs = _BakedWorkflowInputs(
-        args=workflow_data.inputs.args,
+        args=inputs.args,
         workflow_outputs=workflow_outputs,
         workflow_refs=inputs.workflow_refs,
     )
@@ -167,7 +189,7 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     # Stage 3: execution
     persisted_output, volatile_output = executor(
         workflow_data.func_body,
-        workflow_context.get_workflow_step_context(),
+        step_context,
         workflow.step_id,
         baked_inputs,
         workflow_data.step_options,
@@ -230,6 +252,7 @@ def commit_step(
     ret: Union["Workflow", Any],
     *,
     exception: Optional[Exception],
+    checkpoint: "CheckpointModeType",
 ):
     """Checkpoint the step output.
     Args:
@@ -237,9 +260,14 @@ def commit_step(
         step_id: The ID of the step.
         ret: The returned object of the workflow step.
         exception: The exception caught by the step.
+        checkpoint: The checkpoint mode.
     """
     from ray.workflow.common import Workflow
 
+    if checkpoint == CheckpointMode.SKIP.value:
+        return
+    elif checkpoint != CheckpointMode.SYNC.value:
+        raise ValueError(f"Unknown checkpoint mode: {checkpoint}.")
     if isinstance(ret, Workflow):
         assert not ret.executed
         tasks = []
@@ -369,6 +397,7 @@ def _workflow_step_executor(
     workflow_context.update_workflow_step_context(context, step_id)
     context = workflow_context.get_workflow_step_context()
     step_type = runtime_options.step_type
+    context.checkpoint_context.checkpoint = runtime_options.checkpoint
 
     # Part 2: resolve inputs
     args, kwargs = baked_inputs.resolve()
@@ -384,7 +413,8 @@ def _workflow_step_executor(
         step_postrun_metadata = {"end_time": time.time()}
         store.save_step_postrun_metadata(step_id, step_postrun_metadata)
     except Exception as e:
-        commit_step(store, step_id, None, exception=e)
+        # Always checkpoint the exception.
+        commit_step(store, step_id, None, exception=e, checkpoint=True)
         raise e
 
     # Part 4: save outputs
@@ -395,8 +425,16 @@ def _workflow_step_executor(
             )
         assert not isinstance(persisted_output, Workflow)
     else:
+        # TODO(suquark): Validate checkpoint options before
+        # commit the step.
         store = workflow_storage.get_workflow_storage()
-        commit_step(store, step_id, persisted_output, exception=None)
+        commit_step(
+            store,
+            step_id,
+            persisted_output,
+            exception=None,
+            checkpoint=runtime_options.checkpoint,
+        )
         if isinstance(persisted_output, Workflow):
             outer_most_step_id = context.outer_most_step_id
             if step_type == StepType.FUNCTION:
