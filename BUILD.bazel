@@ -973,6 +973,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1001,6 +1002,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1206,6 +1208,7 @@ cc_test(
         "gcs_test_util_lib",
         "ray_common",
         "raylet_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )

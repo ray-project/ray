@@ -565,7 +565,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);
-    return node.has_value();
+    return node != nullptr;
   };
   auto reconstruct_object_callback = [this](const ObjectID &object_id) {
     io_service_.post(
