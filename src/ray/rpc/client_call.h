@@ -17,7 +17,6 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
-
 #include <chrono>
 
 #include "absl/synchronization/mutex.h"
@@ -25,6 +24,11 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 #include "ray/util/util.h"
+#include "ray/stats/metric.h"
+
+DECLARE_stats(grpc_client_req_latency_ms);
+DECLARE_stats(grpc_client_req_new);
+DECLARE_stats(grpc_client_req_finished);
 
 namespace ray {
 namespace rpc {
@@ -69,14 +73,17 @@ class ClientCallImpl : public ClientCall {
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientCallImpl(const ClientCallback<Reply> &callback,
                           std::shared_ptr<StatsHandle> stats_handle,
-                          int64_t timeout_ms = -1)
-      : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
+                          std::string call_name, int64_t timeout_ms = -1)
+      : start_time_(absl::GetCurrentTimeNanos()),
+        call_name_(std::move(call_name)),
+        callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
         stats_handle_(std::move(stats_handle)) {
     if (timeout_ms != -1) {
       auto deadline =
           std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms);
       context_.set_deadline(deadline);
     }
+    STATS_grpc_client_req_new.Record(1, call_name_);
   }
 
   Status GetStatus() override {
@@ -90,7 +97,11 @@ class ClientCallImpl : public ClientCall {
   }
 
   void OnReplyReceived() override {
+    auto time_used = (absl::GetCurrentTimeNanos() - start_time_) / 1.0e-9;
+    STATS_grpc_client_req_latency_ms.Record(time_used, call_name_);
+    STATS_grpc_client_req_finished.Record(1, call_name_);
     ray::Status status;
+
     {
       absl::MutexLock lock(&mutex_);
       status = return_status_;
@@ -103,6 +114,12 @@ class ClientCallImpl : public ClientCall {
   std::shared_ptr<StatsHandle> GetStatsHandle() override { return stats_handle_; }
 
  private:
+  /// Start time of this call
+  int64_t start_time_;
+
+  /// Call name
+  std::string call_name_;
+
   /// The reply message.
   Reply reply_;
 
@@ -230,8 +247,9 @@ class ClientCallManager {
       const Request &request, const ClientCallback<Reply> &callback,
       std::string call_name) {
     auto stats_handle = main_service_.RecordStart(call_name);
-    auto call = std::make_shared<ClientCallImpl<Reply>>(callback, std::move(stats_handle),
-                                                        call_timeout_ms_);
+    auto call = std::make_shared<ClientCallImpl<Reply>>(
+        callback, std::move(stats_handle), std::move(call_name), call_timeout_ms_);
+
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(

@@ -24,7 +24,7 @@
 #include "ray/stats/metric.h"
 #include "ray/util/util.h"
 
-DEFINE_stats(grpc_server_req_process_time_ms, "Request latency in grpc server",
+DEFINE_stats(grpc_server_req_process_time_ms, "Request processing time in grpc",
              ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (),
              ray::stats::COUNT);
