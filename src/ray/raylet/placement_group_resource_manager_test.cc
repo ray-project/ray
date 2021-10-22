@@ -32,11 +32,11 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   std::unique_ptr<raylet::NewPlacementGroupResourceManager>
       new_placement_group_resource_manager_;
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
-  rpc::GcsNodeInfo node_info;
+  rpc::GcsNodeInfo node_info_;
   void SetUp() {
     gcs_client_ = std::make_unique<gcs::MockGcsClient>();
     EXPECT_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
-        .WillRepeatedly(::testing::Return(&node_info));
+        .WillRepeatedly(::testing::Return(&node_info_));
   }
   void InitLocalAvailableResource(
       absl::flat_hash_map<std::string, double> &unit_resource) {

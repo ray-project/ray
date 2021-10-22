@@ -157,7 +157,7 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
       const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     for (auto &obj_ref : required_objects) {
-      if (missing_objects_.count(ObjectRefToId(obj_ref))) {
+      if (missing_objects_.find(ObjectRefToId(obj_ref)) == missing_objects_.end()) {
         return false;
       }
     }

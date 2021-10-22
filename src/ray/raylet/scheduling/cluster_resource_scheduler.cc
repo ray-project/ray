@@ -253,6 +253,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
       int idx = distribution(gen_);
       auto iter = std::next(nodes_.begin(), idx);
       for (size_t i = 0; i < nodes_.size(); ++i) {
+        // TODO(iycheng): Here is there are a lot of nodes died, the
+        // distribution might not be even.
         if (NodeAlive(iter->first)) {
           best_node = iter->first;
           break;
