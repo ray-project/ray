@@ -26,6 +26,12 @@ epilogue_commands: &epilogue_commands |-
 steps:
 - label: ":mac: :apple: Wheels and Jars"
   <<: *common
+  conditions:
+    [
+      "RAY_CI_MACOS_WHEELS_AFFECTED",
+      "RAY_CI_JAVA_AFFECTED",
+      "RAY_CI_STREAMING_JAVA_AFFECTED",
+    ]
   commands:
     # Cleanup environments
     - ./ci/travis/upload_build_info.sh
@@ -60,6 +66,7 @@ steps:
 
 
 - label: ":mac: :apple: Ray C++ and Libraries"
+  conditions: [ "RAY_CI_CPP_AFFECTED" ]
   <<: *common
   commands:
     - *prelude_commands
@@ -69,6 +76,7 @@ steps:
     - *epilogue_commands
 
 - label: ":mac: :apple: Worker"
+  conditions: [ "RAY_CI_CPP_AFFECTED" ]
   <<: *common
   commands:
     - *prelude_commands
@@ -77,6 +85,7 @@ steps:
 
 - label: ":mac: :apple: Small and Large"
   <<: *common
+  conditions: [ "RAY_CI_PYTHON_AFFECTED" ]
   commands:
     - *prelude_commands
     - bazel test $(./scripts/bazel_export_options) --config=ci
@@ -88,6 +97,7 @@ steps:
 
 - label: ":mac: :apple: Medium A-J"
   <<: *common
+  conditions: [ "RAY_CI_PYTHON_AFFECTED" ]
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
@@ -97,6 +107,7 @@ steps:
 
 - label: ":mac: :apple: Medium K-Z"
   <<: *common
+  conditions: [ "RAY_CI_PYTHON_AFFECTED" ]
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
@@ -106,6 +117,7 @@ steps:
 
 - label: ":mac: :apple: :snowflake: Flaky"
   <<: *common
+  conditions: [ "RAY_CI_PYTHON_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_RLLIB_AFFECTED", "RAY_CI_TUNE_AFFECTED" ]
   commands:
     - *prelude_commands
     - ./ci/travis/install-dependencies.sh
