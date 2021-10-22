@@ -77,6 +77,7 @@ def _zip_module(root: Path,
                 relative_path: Path,
                 excludes: Optional[Callable],
                 zip_handler: ZipFile,
+                include_parent_dir: bool = False,
                 logger: Optional[logging.Logger] = default_logger) -> None:
     """Go through all files and zip them into a zip file."""
 
@@ -90,6 +91,8 @@ def _zip_module(root: Path,
                     f"File {path} is very large ({file_size} bytes). "
                     "Consider excluding this file from the working directory.")
             to_path = path.relative_to(relative_path)
+            if include_parent_dir:
+                to_path = root.name / to_path
             zip_handler.write(path, to_path)
 
     excludes = [] if excludes is None else [excludes]
@@ -202,6 +205,7 @@ def _get_local_path(base_directory: str, pkg_uri: str) -> str:
 def _zip_directory(directory: str,
                    excludes: List[str],
                    output_path: str,
+                   include_parent_dir: bool = False,
                    logger: Optional[logging.Logger] = default_logger) -> None:
     """Zip the target directory and write it to the output_path.
 
@@ -219,6 +223,7 @@ def _zip_directory(directory: str,
             working_path,
             _get_excludes(working_path, excludes),
             zip_handler,
+            include_parent_dir=include_parent_dir,
             logger=logger)
 
 
@@ -305,6 +310,7 @@ def get_uri_for_directory(directory: str,
 def upload_package_if_needed(pkg_uri: str,
                              base_directory: str,
                              directory: str,
+                             include_parent_dir: bool = False,
                              excludes: Optional[List[str]] = None,
                              logger: Optional[logging.Logger] = default_logger
                              ) -> Tuple[bool, bool]:
@@ -327,7 +333,12 @@ def upload_package_if_needed(pkg_uri: str,
         if not pkg_file.exists():
             created = True
             logger.info(f"Creating a new package for directory {directory}.")
-            _zip_directory(directory, excludes, pkg_file, logger=logger)
+            _zip_directory(
+                directory,
+                excludes,
+                pkg_file,
+                include_parent_dir=include_parent_dir,
+                logger=logger)
         # Push the data to remote storage
         pkg_size = _push_package(pkg_uri, pkg_file)
         logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes.")

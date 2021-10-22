@@ -48,7 +48,7 @@ def upload_working_dir_if_needed(runtime_env: Dict[str, Any],
 
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
-        self._resources_dir = resources_dir
+        self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         assert _internal_kv_initialized()
 
     def delete_uri(self,

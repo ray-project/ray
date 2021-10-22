@@ -27,6 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
@@ -1384,10 +1385,11 @@ def connect(node,
     # at the server side.
     if (mode == SCRIPT_MODE and not job_config.client_job
             and job_config.runtime_env):
+        scratch_dir: str = worker.node.get_runtime_env_dir_path()
         job_config.set_runtime_env(
-            upload_working_dir_if_needed(
-                job_config.runtime_env,
-                worker.node.get_runtime_env_dir_path()))
+            upload_py_modules_if_needed(job_config.runtime_env, scratch_dir))
+        job_config.set_runtime_env(
+            upload_working_dir_if_needed(job_config.runtime_env, scratch_dir))
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
