@@ -192,7 +192,8 @@ def read_datasource(datasource: Datasource[T],
     # Get the schema from the first block synchronously.
     if metadata and metadata[0].schema is None:
         get_schema = cached_remote_fn(_get_schema)
-        schema0 = ray.get(get_schema.remote(next(block_list.iter_results())))
+        schema0 = ray.get(
+            get_schema.remote(next(block_list.iter_output_blocks())))
         block_list.set_metadata(
             0,
             BlockMetadata(

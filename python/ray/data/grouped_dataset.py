@@ -67,7 +67,7 @@ class GroupedDataset(Generic[T]):
         if self._dataset.num_blocks() == 0:
             return self._dataset
 
-        blocks = list(self._dataset._blocks.iter_results())
+        blocks = list(self._dataset._blocks.iter_output_blocks())
         num_mappers = len(blocks)
         num_reducers = num_mappers
         boundaries = sort.sample_boundaries(blocks, self._key, num_reducers)

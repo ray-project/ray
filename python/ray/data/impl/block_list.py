@@ -13,9 +13,9 @@ class BlockList:
 
     The BlockList tracks a set of tasks that produce List[Block] object refs
     as output. The set of tasks may be accessed via ``.iter_tasks()``. Each
-    task produces a list of one or more Blocks, the full list of which can be
-    accessed via ``.iter_results()``. Note that the number of results may be
-    greater than the number of tasks, if some tasks return multiple objects.
+    task produces a list of one or more Blocks, the flat list of which can be
+    accessed via ``.iter_output_blocks()``. Note that the number of results may
+    be greater than the number of tasks, if some tasks return multiple objects.
     """
 
     def __init__(self, blocks: List[ObjectRef[List[Block]]],
@@ -63,7 +63,7 @@ class BlockList:
     def iter_tasks(self) -> Iterator[ObjectRef[List[Block]]]:
         return iter(self._block_futures)
 
-    def iter_results_with_orig_metadata(
+    def iter_output_blocks_with_orig_metadata(
             self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata, int]]:
         self._check_if_cleared()
         outer = self
@@ -92,13 +92,13 @@ class BlockList:
 
         return Iter()
 
-    def iter_results(self) -> Iterator[ObjectRef[Block]]:
+    def iter_output_blocks(self) -> Iterator[ObjectRef[Block]]:
         self._check_if_cleared()
         outer = self
 
         class Iter:
             def __init__(self):
-                self._base_iter = outer.iter_results_with_orig_metadata()
+                self._base_iter = outer.iter_output_blocks_with_orig_metadata()
 
             def __iter__(self):
                 return self
@@ -113,6 +113,6 @@ class BlockList:
     def num_tasks(self) -> int:
         return self._num_tasks
 
-    def num_results(self) -> int:
+    def num_output_blocks(self) -> int:
         self._check_if_cleared()
-        return len(list(self.iter_results()))
+        return len(list(self.iter_output_blocks()))
