@@ -16,24 +16,18 @@
 
 #include <ray/api/object_ref.h>
 #include <ray/api/serializer.h>
+#include <ray/api/type_traits.h>
 
 #include <msgpack.hpp>
 
 namespace ray {
 namespace internal {
 
-/// Check T is ObjectRef or not.
-template <typename T>
-struct is_object_ref : std::false_type {};
-
-template <typename T>
-struct is_object_ref<ObjectRef<T>> : std::true_type {};
-
 class Arguments {
  public:
   template <typename ArgType>
   static void WrapArgsImpl(std::vector<TaskArg> *task_args, ArgType &&arg) {
-    static_assert(!is_object_ref<ArgType>::value, "ObjectRef can not be wrapped");
+    static_assert(!is_object_ref_v<ArgType>, "ObjectRef can not be wrapped");
 
     msgpack::sbuffer buffer = Serializer::Serialize(arg);
     TaskArg task_arg;
@@ -51,7 +45,7 @@ class Arguments {
   }
 
   template <typename... OtherArgTypes>
-  static void WrapArgs(std::vector<TaskArg> *task_args, OtherArgTypes &&... args) {
+  static void WrapArgs(std::vector<TaskArg> *task_args, OtherArgTypes &&...args) {
     (void)std::initializer_list<int>{
         (WrapArgsImpl(task_args, std::forward<OtherArgTypes>(args)), 0)...};
     /// Silence gcc warning error.

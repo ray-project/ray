@@ -16,6 +16,7 @@
 
 #include <ray/api/common_types.h>
 #include <ray/api/serializer.h>
+#include <ray/api/type_traits.h>
 
 #include <boost/callable_traits.hpp>
 #include <functional>
@@ -46,38 +47,6 @@ inline static msgpack::sbuffer PackVoid() {
 }
 
 msgpack::sbuffer PackError(std::string error_msg);
-
-template <typename>
-struct RemoveFirst;
-
-template <class First, class... Second>
-struct RemoveFirst<std::tuple<First, Second...>> {
-  using type = std::tuple<Second...>;
-};
-
-template <class Tuple>
-using RemoveFirst_t = typename RemoveFirst<Tuple>::type;
-
-template <typename>
-struct RemoveReference;
-
-template <class... T>
-struct RemoveReference<std::tuple<T...>> {
-  using type = std::tuple<std::remove_const_t<std::remove_reference_t<T>>...>;
-};
-
-template <class Tuple>
-using RemoveReference_t = typename RemoveReference<Tuple>::type;
-
-template <class, class = void>
-struct is_object_ref_t : std::false_type {};
-
-template <class T>
-struct is_object_ref_t<T, std::void_t<decltype(std::declval<T>().IsObjectRef())>>
-    : std::true_type {};
-
-template <typename T>
-auto constexpr is_object_ref_v = is_object_ref_t<T>::value;
 
 using ArgsBuffer =
     std::pair<msgpack::sbuffer, bool /*Show it is an ObjectRef arg or not*/>;
