@@ -43,12 +43,11 @@ class ClusterResourceSchedulerInterface {
   virtual bool UpdateNode(const std::string &node_id_string,
                           const rpc::ResourcesData &resource_data) = 0;
 
-  /// \param node_name: Node whose resource we want to update.
-  /// \param resource_name: Resource which we want to update.
-  /// \param resource_total: New capacity of the resource.
-  virtual void UpdateResourceCapacity(const std::string &node_id_string,
-                                      const std::string &resource_name,
-                                      double resource_total) = 0;
+  /// \param node_id_string Node whose resource we want to update.
+  /// \param resources Resources which we want to update.
+  virtual void UpdateResources(
+      const std::string &node_id_string,
+      const absl::flat_hash_map<std::string, double> &resources) = 0;
 
   /// Delete a given resource from a given node.
   ///

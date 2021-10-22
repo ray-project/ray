@@ -1086,6 +1086,9 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
       // Resource usage report tick should reset the remote node's resources.
       resource_scheduler.FillResourceUsage(data, last_resource_usage_);
       for (int j = 0; j < num_slots_available; j++) {
+        RAY_LOG(INFO) << "WANGTAO num_slots_available "
+                      << std::to_string(num_slots_available) << " j "
+                      << std::to_string(j);
         ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false,
                                                             false, &t, &is_infeasible),
                   "remote");

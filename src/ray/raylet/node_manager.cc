@@ -880,13 +880,16 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                 << " with created or updated resources: "
                 << createUpdatedResources.ToString() << ". Updating resource map.";
 
+  cluster_resource_scheduler_->UpdateResources(node_id.Binary(),
+                                               createUpdatedResources.GetResourceMap());
   // Update local_available_resources_ and SchedulingResources
-  for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
-    const std::string &resource_label = resource_pair.first;
-    const double &new_resource_capacity = resource_pair.second;
-    cluster_resource_scheduler_->UpdateResourceCapacity(node_id.Binary(), resource_label,
-                                                        new_resource_capacity);
-  }
+  // for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
+  //   const std::string &resource_label = resource_pair.first;
+  //   const double &new_resource_capacity = resource_pair.second;
+  //   cluster_resource_scheduler_->UpdateResourceCapacity(node_id.Binary(),
+  //   resource_label,
+  //                                                       new_resource_capacity);
+  // }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
 
   if (node_id == self_node_id_) {

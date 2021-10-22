@@ -202,14 +202,11 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \param resource_name: Resource which we want to check.
   bool IsAvailableResourceEmpty(const std::string &resource_name);
 
-  /// Update total capacity of a given resource of a given node.
-  ///
-  /// \param node_name: Node whose resource we want to update.
-  /// \param resource_name: Resource which we want to update.
-  /// \param resource_total: New capacity of the resource.
-  void UpdateResourceCapacity(const std::string &node_name,
-                              const std::string &resource_name,
-                              double resource_total) override;
+  /// \param node_id_string Node whose resource we want to update.
+  /// \param resources Resources which we want to update.
+  void UpdateResources(
+      const std::string &node_id_string,
+      const absl::flat_hash_map<std::string, double> &resources) override;
 
   /// Delete a given resource from the local node.
   ///
@@ -448,6 +445,14 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// and false otherwise.
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
                                             const ResourceRequest &resource_request);
+
+  /// Update total capacity of a given resource of a given node.
+  ///
+  /// \param node_name: Node whose resource we want to update.
+  /// \param resource_name: Resource which we want to update.
+  /// \param resource_total: New capacity of the resource.
+  void UpdateResourceCapacity(const std::string &node_name,
+                              const std::string &resource_name, double resource_total);
 
   /// Use the hybrid spillback policy.
   const bool hybrid_spillback_;

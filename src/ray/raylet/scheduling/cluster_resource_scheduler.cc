@@ -524,6 +524,23 @@ bool ClusterResourceScheduler::IsAvailableResourceEmpty(
   }
 }
 
+void ClusterResourceScheduler::UpdateResources(
+    const std::string &node_id_string,
+    const absl::flat_hash_map<std::string, double> &resources) {
+  int64_t node_id = string_to_int_map_.Get(node_id_string);
+
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    AddOrUpdateNode(node_id_string, resources, resources);
+  } else {
+    for (const auto &resource_pair : resources) {
+      const std::string &resource_label = resource_pair.first;
+      const double &new_resource_capacity = resource_pair.second;
+      UpdateResourceCapacity(node_id_string, resource_label, new_resource_capacity);
+    }
+  }
+}
+
 void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id_string,
                                                       const std::string &resource_name,
                                                       double resource_total) {
@@ -1073,12 +1090,12 @@ void ClusterResourceScheduler::FillResourceUsage(
   // we spilled back to a remote node were not actually scheduled on the
   // node. Then, the remote node's resource availability may not change and
   // so it may not send us another update.
-  // for (auto &node : nodes_) { // wangtao comment
-  //   if (node.first != local_node_id_) {
-  //     RAY_LOG(INFO) << "wangtao reset local view for node " << node.first;
-  //     node.second.ResetLocalView(string_to_int_map_);
-  //   }
-  // }
+  for (auto &node : nodes_) {  // wangtao comment
+    if (node.first != local_node_id_) {
+      RAY_LOG(INFO) << "wangtao reset local view for node " << node.first;
+      node.second.ResetLocalView(string_to_int_map_);
+    }
+  }
 
   // Automatically report object store usage.
   if (get_used_object_store_memory_ != nullptr) {
