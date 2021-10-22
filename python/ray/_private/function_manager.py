@@ -177,7 +177,8 @@ class FunctionActorManager:
                  "module", "max_calls"
              ])
 
-        if job_id_str != self._worker.current_job_id.binary():
+        if ray_constants.ISOLATE_EXPORTS and \
+                job_id_str != self._worker.current_job_id.binary():
             # A worker only executes tasks from the assigned job.
             # TODO(jjyao): If fetching unrelated remote functions
             # becomes a perf issue, we can also consider having export

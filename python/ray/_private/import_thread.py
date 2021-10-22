@@ -166,7 +166,8 @@ class ImportThread:
         if self.worker.mode == ray.SCRIPT_MODE:
             return
 
-        if job_id != self.worker.current_job_id.binary():
+        if ray_constants.ISOLATE_EXPORTS and \
+                job_id != self.worker.current_job_id.binary():
             return
 
         try:
