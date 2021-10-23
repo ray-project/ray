@@ -251,6 +251,7 @@ SUITES = {
     "nightly": NIGHTLY_TESTS,
     "weekly": WEEKLY_TESTS,
     "manual": MANUAL_TESTS,
+    "realistic": REALISTIC_TESTS,
 }
 
 DEFAULT_STEP_TEMPLATE = {
