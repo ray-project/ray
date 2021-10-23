@@ -691,12 +691,14 @@ class Worker:
                 serialized_job_config = None
             else:
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    job_config.set_runtime_env(
-                        upload_py_modules_if_needed(
-                            job_config.runtime_env or {}, tmp_dir))
-                    job_config.set_runtime_env(
-                        upload_working_dir_if_needed(
-                            job_config.runtime_env or {}, tmp_dir))
+                    runtime_env = job_config.runtime_env or {}
+                    runtime_env = upload_py_modules_if_needed(
+                        runtime_env, tmp_dir)
+                    runtime_env = upload_working_dir_if_needed(
+                        runtime_env, tmp_dir)
+                    # Remove excludes, it isn't relevant after the upload step.
+                    runtime_env.pop("excludes", None)
+                    job_config.set_runtime_env(runtime_env)
 
                 serialized_job_config = pickle.dumps(job_config)
 

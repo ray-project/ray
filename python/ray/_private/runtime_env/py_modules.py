@@ -56,8 +56,13 @@ def upload_py_modules_if_needed(runtime_env: Dict[str, Any],
             module_uri = module_path
         else:
             module_uri = get_uri_for_directory(module_path)
+            excludes = runtime_env.get("excludes", None)
             upload_package_if_needed(
-                module_uri, scratch_dir, module_path, include_parent_dir=True)
+                module_uri,
+                scratch_dir,
+                module_path,
+                excludes=excludes,
+                include_parent_dir=True)
 
         py_modules_uris.append(module_uri)
 

@@ -1386,10 +1386,12 @@ def connect(node,
     if (mode == SCRIPT_MODE and not job_config.client_job
             and job_config.runtime_env):
         scratch_dir: str = worker.node.get_runtime_env_dir_path()
-        job_config.set_runtime_env(
-            upload_py_modules_if_needed(job_config.runtime_env, scratch_dir))
-        job_config.set_runtime_env(
-            upload_working_dir_if_needed(job_config.runtime_env, scratch_dir))
+        runtime_env = job_config.runtime_env or {}
+        runtime_env = upload_py_modules_if_needed(runtime_env, scratch_dir)
+        runtime_env = upload_working_dir_if_needed(runtime_env, scratch_dir)
+        # Remove excludes, it isn't relevant after the upload step.
+        runtime_env.pop("excludes", None)
+        job_config.set_runtime_env(runtime_env)
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(

@@ -22,6 +22,11 @@ GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
 RAY_PKG_PREFIX = "_ray_pkg_"
 
 
+def _mib_string(num_bytes: float) -> str:
+    size_mib = float(num_bytes / 1024**2)
+    return f"{size_mib:.2f}MiB"
+
+
 class Protocol(Enum):
     """A enum for supported storage backends."""
 
@@ -88,7 +93,7 @@ def _zip_module(root: Path,
             file_size = path.stat().st_size
             if file_size >= FILE_SIZE_WARNING:
                 logger.warning(
-                    f"File {path} is very large ({file_size} bytes). "
+                    f"File {path} is very large ({_mib_string(file_size)}). "
                     "Consider excluding this file using 'excludes'.")
             to_path = path.relative_to(relative_path)
             if include_parent_dir:
@@ -188,11 +193,10 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
     if len(data) >= GCS_STORAGE_MAX_SIZE:
-        size_mib = float(len(data) / 1024**2)
         raise RuntimeError(
-            f"Package size ({size_mib:.2f}MiB) exceeds the maximum size of "
-            "100MiB. You can exclude large files using the 'excludes' option "
-            "to the runtime_env.")
+            f"Package size ({_mib_string(len(data))}) exceeds the maximum "
+            f"size of {_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude "
+            "large files using the 'excludes' option to the runtime_env.")
 
     _internal_kv_put(gcs_key, data)
     return len(data)
@@ -226,29 +230,6 @@ def _zip_directory(directory: str,
             zip_handler,
             include_parent_dir=include_parent_dir,
             logger=logger)
-
-
-def _push_package(pkg_uri: str, pkg_path: str) -> int:
-    """Push a package to a given URI.
-
-    This function is to push a local file to remote URI. Right now, only
-    storing in the GCS is supported.
-
-    Args:
-        pkg_uri (str): The URI of the package to upload to.
-        pkg_path (str): Path of the local file.
-
-    Returns:
-        The number of bytes uploaded.
-    """
-    protocol, pkg_name = parse_uri(pkg_uri)
-    data = Path(pkg_path).read_bytes()
-    if protocol == Protocol.GCS:
-        return _store_package_in_gcs(pkg_uri, data)
-    elif protocol == Protocol.S3:
-        raise RuntimeError("push_package should not be called with s3 path.")
-    else:
-        raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
 def _package_exists(pkg_uri: str) -> bool:
@@ -340,9 +321,21 @@ def upload_package_if_needed(pkg_uri: str,
                 pkg_file,
                 include_parent_dir=include_parent_dir,
                 logger=logger)
+
         # Push the data to remote storage
-        pkg_size = _push_package(pkg_uri, pkg_file)
-        logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes.")
+        protocol, pkg_name = parse_uri(pkg_uri)
+        data = Path(pkg_file).read_bytes()
+        logger.info(f"Pushing package {pkg_uri} ({_mib_string(len(data))}).")
+        if protocol == Protocol.GCS:
+            return _store_package_in_gcs(pkg_uri, data)
+        elif protocol == Protocol.S3:
+            raise RuntimeError(
+                "push_package should not be called with s3 path.")
+        else:
+            raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+        logger.info(f"{pkg_uri} pushed successfully.")
+
         uploaded = True
 
     return created, uploaded
