@@ -99,7 +99,8 @@ std::string GrpcBasedResourceBroadcaster::DebugString() {
   absl::MutexLock guard(&mutex_);
   std::ostringstream stream;
   stream << "GrpcBasedResourceBroadcaster: {Tracked nodes: " << nodes_.size()
-         << "}" return stream.str();
+         << "}";
+  return stream.str();
 }
 
 void GrpcBasedResourceBroadcaster::SendBroadcast() {
