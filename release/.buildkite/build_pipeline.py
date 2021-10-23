@@ -249,7 +249,7 @@ MANUAL_TESTS = {
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
 
-RELEASTIC_TESTS = {
+REALISTIC_TESTS = {
     "~/ray/release/horovod_tests/horovod_tests.yaml": [
         ConnectTest(
             "horovod_releastic_test",
@@ -269,7 +269,7 @@ SUITES = {
     "nightly": NIGHTLY_TESTS,
     "weekly": WEEKLY_TESTS,
     "manual": MANUAL_TESTS,
-    "realistic": RELEASTIC_TESTS,
+    "realistic": REALISTIC_TESTS,
 }
 
 DEFAULT_STEP_TEMPLATE = {
