@@ -252,7 +252,7 @@ MANUAL_TESTS = {
 REALISTIC_TESTS = {
     "~/ray/release/horovod_tests/horovod_tests.yaml": [
         ConnectTest(
-            "horovod_releastic_test",
+            "horovod_realistic_test",
             setup_commands=[
                 "export "
                 "HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 "
