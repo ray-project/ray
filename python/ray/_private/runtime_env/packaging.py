@@ -337,6 +337,8 @@ def upload_package_if_needed(pkg_uri: str,
         logger.info(f"{pkg_uri} pushed successfully.")
 
         uploaded = True
+        # Remove the local file to avoid accumulating temporary zip files.
+        pkg_file.unlink()
 
     return created, uploaded
 
