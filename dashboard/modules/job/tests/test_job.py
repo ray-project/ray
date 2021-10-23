@@ -24,6 +24,7 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
     resp = requests.post(f"{webui_url}/submit", json={"job_id": job_id})
     resp.raise_for_status()
     result = resp.json()
+    print(result)
     assert result["data"]["data"] == job_id
 
     resp = requests.get(f"{webui_url}/status", json={"job_id": job_id})

@@ -206,7 +206,8 @@ class JobManager:
 
         try:
             ray.get(
-                supervisor.ready.remote(), timeout=self.START_ACTOR_TIMEOUT_S)
+                supervisor.ready.remote(),
+                timeout=self.START_ACTOR_TIMEOUT_S)
         except GetTimeoutError:
             ray.kill(supervisor, no_restart=True)
             raise RuntimeError(f"Failed to start actor for job {job_id}.")
@@ -218,17 +219,17 @@ class JobManager:
 
     def stop_job(self, job_id) -> bool:
         """Request job to exit."""
-        a = self._get_actor_for_job(job_id)
-        if a is not None:
+        job_supervisor_actor = self._get_actor_for_job(job_id)
+        if job_supervisor_actor is not None:
             # Actor is still alive, signal it to stop the driver.
-            a.stop.remote()
+            job_supervisor_actor.stop.remote()
 
     def get_job_status(self, job_id: str):
-        a = self._get_actor_for_job(job_id)
+        job_supervisor_actor = self._get_actor_for_job(job_id)
         # Actor is still alive, try to get status from it.
-        if a is not None:
+        if job_supervisor_actor is not None:
             try:
-                return ray.get(a.get_status.remote())
+                return ray.get(job_supervisor_actor.get_status.remote())
             except RayActorError:
                 # Actor exited, so we should fall back to internal_kv.
                 pass

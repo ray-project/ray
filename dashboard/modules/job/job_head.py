@@ -1,13 +1,29 @@
-import logging
 import aiohttp.web
+from functools import wraps
+import logging
+from typing import Callable
 
 import ray
 import ray.dashboard.utils as dashboard_utils
 from ray._private.job_manager import JobManager, JobStatus
+from ray.dashboard.modules.job.data_types import (
+    JobSubmitRequest, JobSubmitResponse, JobSpec)
 from ray.experimental.internal_kv import (_initialize_internal_kv,
                                           _internal_kv_initialized)
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
+
+RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs_"
+
+
+def _ensure_ray_initialized(f: Callable) -> Callable:
+    @wraps(f)
+    def check(self, *args, **kwargs):
+        if not ray.is_initialized():
+            ray.init(address="auto", namespace=RAY_INTERNAL_JOBS_NAMESPACE)
+        return f(self, *args, **kwargs)
+
+    return check
 
 
 class JobHead(dashboard_utils.DashboardHeadModule):
@@ -21,22 +37,20 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._job_manager = None
 
     @routes.post("/submit")
-    async def submit_job(self, req) -> aiohttp.web.Response:
-        if not ray.is_initialized():
-            ray.init(address="auto")
-
+    @_ensure_ray_initialized
+    async def submit(self, req: JobSubmitRequest) -> aiohttp.web.Response:
         req_data = dict(await req.json())
         job_id = req_data.get("job_id")
         self._job_manager.submit_job(job_id, "echo hello")
 
         return dashboard_utils.rest_response(
-            success=True, data=job_id, message=f"Submitted job {job_id}")
+            success=True,
+            data=job_id,
+            message=f"Submitted job {job_id}")
 
     @routes.get("/status")
+    @_ensure_ray_initialized
     async def status(self, req) -> aiohttp.web.Response:
-        if not ray.is_initialized():
-            ray.init(address="auto")
-
         req_data = dict(await req.json())
         job_id = req_data.get("job_id")
 
@@ -48,10 +62,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             message=f"Queried status for job {job_id}")
 
     @routes.get("/logs")
+    @_ensure_ray_initialized
     async def logs(self, req) -> aiohttp.web.Response:
-        if not ray.is_initialized():
-            ray.init(address="auto")
-
         req_data = dict(await req.json())
         job_id = req_data.get("job_id")
 
