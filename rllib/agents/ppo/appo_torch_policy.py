@@ -84,11 +84,14 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     values = model.value_function()
     values_time_major = _make_time_major(values)
 
+    drop_last = policy.config["vtrace"] and \
+        policy.config["vtrace_drop_last_ts"]
+
     if policy.is_recurrent():
         max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
         mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = torch.reshape(mask, [-1])
-        mask = _make_time_major(mask, drop_last=policy.config["vtrace"])
+        mask = _make_time_major(mask, drop_last=drop_last)
         num_valid = torch.sum(mask)
 
         def reduce_mean_valid(t):
@@ -98,7 +101,6 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         reduce_mean_valid = torch.mean
 
     if policy.config["vtrace"]:
-        drop_last = policy.config["vtrace_drop_last_ts"]
         logger.debug("Using V-Trace surrogate loss (vtrace=True; "
                      f"drop_last={drop_last})")
 
@@ -226,8 +228,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     model.tower_stats["vf_explained_var"] = explained_variance(
         torch.reshape(value_targets, [-1]),
         torch.reshape(
-            values_time_major[:-1] if policy.config["vtrace"] and drop_last
-            else values_time_major, [-1]),
+            values_time_major[:-1] if drop_last else values_time_major, [-1]),
     )
 
     return total_loss
