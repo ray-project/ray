@@ -111,8 +111,8 @@ class TestDDPG(unittest.TestCase):
             }
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
-            deterministic_action = trainer.compute_single_action(
-                obs, explore=False)
+            deterministic_action = trainer.compute_single_action(obs,
+                                                                 explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
             # ts=1-49 (in random window).
             random_a = []
@@ -227,8 +227,9 @@ class TestDDPG(unittest.TestCase):
         tf_updated_weights = []
         # History of input batches used.
         tf_inputs = []
-        for fw, sess in framework_iterator(
-                config, frameworks=("tf", "torch"), session=True):
+        for fw, sess in framework_iterator(config,
+                                           frameworks=("tf", "torch"),
+                                           session=True):
             # Generate Trainer and get its default Policy object.
             trainer = ddpg.DDPGTrainer(config=config, env=env)
             policy = trainer.get_policy()
@@ -300,15 +301,15 @@ class TestDDPG(unittest.TestCase):
                 # Test actor gradients.
                 policy._actor_optimizer.zero_grad()
                 assert all(v.grad is None for v in policy.model.q_variables())
-                assert all(
-                    v.grad is None for v in policy.model.policy_variables())
+                assert all(v.grad is None
+                           for v in policy.model.policy_variables())
                 a.backward()
                 # `actor_loss` depends on Q-net vars
                 # (but not twin-Q-net vars!).
                 assert not any(v.grad is None
                                for v in policy.model.q_variables()[:4])
-                assert all(
-                    v.grad is None for v in policy.model.q_variables()[4:])
+                assert all(v.grad is None
+                           for v in policy.model.q_variables()[4:])
                 assert not all(
                     torch.mean(v.grad) == 0
                     for v in policy.model.policy_variables())
@@ -327,12 +328,10 @@ class TestDDPG(unittest.TestCase):
 
                 # Test critic gradients.
                 policy._critic_optimizer.zero_grad()
-                assert all(
-                    v.grad is None or torch.mean(v.grad) == 0.0
-                    for v in policy.model.q_variables())
-                assert all(
-                    v.grad is None or torch.min(v.grad) == 0.0
-                    for v in policy.model.q_variables())
+                assert all(v.grad is None or torch.mean(v.grad) == 0.0
+                           for v in policy.model.q_variables())
+                assert all(v.grad is None or torch.min(v.grad) == 0.0
+                           for v in policy.model.q_variables())
                 c.backward()
                 assert not all(
                     torch.mean(v.grad) == 0
@@ -379,12 +378,11 @@ class TestDDPG(unittest.TestCase):
                     updated_weights = policy.get_weights()
                     # Net must have changed.
                     if tf_updated_weights:
-                        check(
-                            updated_weights[
-                                "default_policy/actor_hidden_0/kernel"],
-                            tf_updated_weights[-1][
-                                "default_policy/actor_hidden_0/kernel"],
-                            false=True)
+                        check(updated_weights[
+                            "default_policy/actor_hidden_0/kernel"],
+                              tf_updated_weights[-1]
+                              ["default_policy/actor_hidden_0/kernel"],
+                              false=True)
                     tf_updated_weights.append(updated_weights)
 
                 # Compare with updated tf-weights. Must all be the same.
@@ -403,16 +401,15 @@ class TestDDPG(unittest.TestCase):
                         if re.search(
                                 "actor_out_1|actor_hidden_0_1|sequential_"
                                 "[23]", tf_key):
-                            torch_var = policy.target_model.state_dict()[map_[
-                                tf_key]]
+                            torch_var = policy.target_model.state_dict()[
+                                map_[tf_key]]
                         # Target model.
                         else:
                             torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(
-                                tf_var,
-                                np.transpose(torch_var.cpu()),
-                                atol=0.1)
+                            check(tf_var,
+                                  np.transpose(torch_var.cpu()),
+                                  atol=0.1)
                         else:
                             check(tf_var, torch_var, atol=0.1)
 
@@ -423,8 +420,8 @@ class TestDDPG(unittest.TestCase):
             SampleBatch.CUR_OBS: np.random.random(size=obs_size),
             SampleBatch.ACTIONS: actions,
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
-            SampleBatch.DONES: np.random.choice(
-                [True, False], size=(batch_size, )),
+            SampleBatch.DONES: np.random.choice([True, False],
+                                                size=(batch_size, )),
             SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
             "weights": np.ones(shape=(batch_size, )),
         })
@@ -435,82 +432,73 @@ class TestDDPG(unittest.TestCase):
         model_out_t = train_batch[SampleBatch.CUR_OBS]
         target_model_out_tp1 = train_batch[SampleBatch.NEXT_OBS]
         # get_policy_output
-        policy_t = sigmoid(2.0 * fc(
-            relu(
-                fc(model_out_t, weights[ks[1]], weights[ks[0]], framework=fw)),
-            weights[ks[5]],
-            weights[ks[4]],
-            framework=fw))
+        policy_t = sigmoid(2.0 * fc(relu(
+            fc(model_out_t, weights[ks[1]], weights[ks[0]], framework=fw)),
+                                    weights[ks[5]],
+                                    weights[ks[4]],
+                                    framework=fw))
         # Get policy output for t+1 (target model).
-        policy_tp1 = sigmoid(2.0 * fc(
-            relu(
-                fc(target_model_out_tp1,
-                   weights[ks[3]],
-                   weights[ks[2]],
-                   framework=fw)),
-            weights[ks[7]],
-            weights[ks[6]],
-            framework=fw))
+        policy_tp1 = sigmoid(2.0 * fc(relu(
+            fc(target_model_out_tp1,
+               weights[ks[3]],
+               weights[ks[2]],
+               framework=fw)),
+                                      weights[ks[7]],
+                                      weights[ks[6]],
+                                      framework=fw))
         # Assume no smooth target policy.
         policy_tp1_smoothed = policy_tp1
 
         # Q-values for the actually selected actions.
         # get_q_values
-        q_t = fc(
-            relu(
-                fc(np.concatenate(
-                    [model_out_t, train_batch[SampleBatch.ACTIONS]], -1),
-                   weights[ks[9]],
-                   weights[ks[8]],
-                   framework=fw)),
-            weights[ks[11]],
-            weights[ks[10]],
-            framework=fw)
-        twin_q_t = fc(
-            relu(
-                fc(np.concatenate(
-                    [model_out_t, train_batch[SampleBatch.ACTIONS]], -1),
-                   weights[ks[13]],
-                   weights[ks[12]],
-                   framework=fw)),
-            weights[ks[15]],
-            weights[ks[14]],
-            framework=fw)
+        q_t = fc(relu(
+            fc(np.concatenate([model_out_t, train_batch[SampleBatch.ACTIONS]],
+                              -1),
+               weights[ks[9]],
+               weights[ks[8]],
+               framework=fw)),
+                 weights[ks[11]],
+                 weights[ks[10]],
+                 framework=fw)
+        twin_q_t = fc(relu(
+            fc(np.concatenate([model_out_t, train_batch[SampleBatch.ACTIONS]],
+                              -1),
+               weights[ks[13]],
+               weights[ks[12]],
+               framework=fw)),
+                      weights[ks[15]],
+                      weights[ks[14]],
+                      framework=fw)
 
         # Q-values for current policy in given current state.
         # get_q_values
-        q_t_det_policy = fc(
-            relu(
-                fc(np.concatenate([model_out_t, policy_t], -1),
-                   weights[ks[9]],
-                   weights[ks[8]],
-                   framework=fw)),
-            weights[ks[11]],
-            weights[ks[10]],
-            framework=fw)
+        q_t_det_policy = fc(relu(
+            fc(np.concatenate([model_out_t, policy_t], -1),
+               weights[ks[9]],
+               weights[ks[8]],
+               framework=fw)),
+                            weights[ks[11]],
+                            weights[ks[10]],
+                            framework=fw)
 
         # Target q network evaluation.
         # target_model.get_q_values
-        q_tp1 = fc(
-            relu(
-                fc(np.concatenate([target_model_out_tp1, policy_tp1_smoothed],
-                                  -1),
-                   weights[ks[17]],
-                   weights[ks[16]],
-                   framework=fw)),
-            weights[ks[19]],
-            weights[ks[18]],
-            framework=fw)
-        twin_q_tp1 = fc(
-            relu(
-                fc(np.concatenate([target_model_out_tp1, policy_tp1_smoothed],
-                                  -1),
-                   weights[ks[21]],
-                   weights[ks[20]],
-                   framework=fw)),
-            weights[ks[23]],
-            weights[ks[22]],
-            framework=fw)
+        q_tp1 = fc(relu(
+            fc(np.concatenate([target_model_out_tp1, policy_tp1_smoothed], -1),
+               weights[ks[17]],
+               weights[ks[16]],
+               framework=fw)),
+                   weights[ks[19]],
+                   weights[ks[18]],
+                   framework=fw)
+        twin_q_tp1 = fc(relu(
+            fc(np.concatenate([target_model_out_tp1, policy_tp1_smoothed], -1),
+               weights[ks[21]],
+               weights[ks[20]],
+               framework=fw)),
+                        weights[ks[23]],
+                        weights[ks[22]],
+                        framework=fw)
 
         q_t_selected = np.squeeze(q_t, axis=-1)
         twin_q_t_selected = np.squeeze(twin_q_t, axis=-1)

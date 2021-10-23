@@ -49,11 +49,11 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         for _ in range(self.framestack):
             self.frame_buffer.append(np.zeros((self.single_frame_dim, )))
 
-        self.observation_space = gym.spaces.Box(
-            0.0,
-            1.0,
-            shape=(self.single_frame_dim * self.framestack, ),
-            dtype=np.float32)
+        self.observation_space = gym.spaces.Box(0.0,
+                                                1.0,
+                                                shape=(self.single_frame_dim *
+                                                       self.framestack, ),
+                                                dtype=np.float32)
 
     def observation(self, obs):
         # Debug output: max-x/y positions to watch exploration progress.
@@ -92,8 +92,8 @@ class OneHotWrapper(gym.core.ObservationWrapper):
 
         all_ = np.concatenate([objects, colors, states], -1)
         all_flat = np.reshape(all_, (-1, ))
-        direction = one_hot(
-            np.array(self.agent_dir), depth=4).astype(np.float32)
+        direction = one_hot(np.array(self.agent_dir),
+                            depth=4).astype(np.float32)
         single_frame = np.concatenate([all_flat, direction])
         self.frame_buffer.append(single_frame)
         return np.concatenate(self.frame_buffer)

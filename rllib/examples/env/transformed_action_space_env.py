@@ -40,10 +40,8 @@ def transform_action_space(env_name_or_creator):
          >>> pendulum_300_to_500.action_space
          ... gym.spaces.Box(-15.0, 1.0, (1, ), "float32")
     """
-
     class TransformedActionSpaceEnv(gym.Env):
         """PendulumEnv w/ an action space of range 300.0 to 500.0."""
-
         def __init__(self, config):
             self._low = config.pop("low", -1.0)
             self._high = config.pop("high", 1.0)

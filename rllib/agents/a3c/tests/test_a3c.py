@@ -11,7 +11,6 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
 
 class TestA3C(unittest.TestCase):
     """Sanity tests for A2C exec impl."""
-
     def setUp(self):
         ray.init(num_cpus=4)
 

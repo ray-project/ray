@@ -67,8 +67,9 @@ class MyCallbacks(DefaultCallbacks):
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
         check(stats["entropy_coeff"], 0.1 if trainer.iteration == 1 else 0.05)
 
-        trainer.workers.foreach_policy(self._check_lr_torch if trainer.config[
-            "framework"] == "torch" else self._check_lr_tf)
+        trainer.workers.foreach_policy(
+            self._check_lr_torch if trainer.config["framework"] ==
+            "torch" else self._check_lr_tf)
 
 
 class TestPPO(unittest.TestCase):
@@ -148,11 +149,10 @@ class TestPPO(unittest.TestCase):
             # Default Agent should be setup with StochasticSampling.
             trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v1")
             # explore=False, always expect the same (deterministic) action.
-            a_ = trainer.compute_single_action(
-                obs,
-                explore=False,
-                prev_action=np.array(2),
-                prev_reward=np.array(1.0))
+            a_ = trainer.compute_single_action(obs,
+                                               explore=False,
+                                               prev_action=np.array(2),
+                                               prev_reward=np.array(1.0))
             # Test whether this is really the argmax action over the logits.
             if fw != "tf":
                 last_out = trainer.get_policy().model.last_output()
@@ -161,21 +161,19 @@ class TestPPO(unittest.TestCase):
                 else:
                     check(a_, np.argmax(last_out.numpy(), 1)[0])
             for _ in range(50):
-                a = trainer.compute_single_action(
-                    obs,
-                    explore=False,
-                    prev_action=np.array(2),
-                    prev_reward=np.array(1.0))
+                a = trainer.compute_single_action(obs,
+                                                  explore=False,
+                                                  prev_action=np.array(2),
+                                                  prev_reward=np.array(1.0))
                 check(a, a_)
 
             # With explore=True (default), expect stochastic actions.
             actions = []
             for _ in range(300):
                 actions.append(
-                    trainer.compute_single_action(
-                        obs,
-                        prev_action=np.array(2),
-                        prev_reward=np.array(1.0)))
+                    trainer.compute_single_action(obs,
+                                                  prev_action=np.array(2),
+                                                  prev_reward=np.array(1.0)))
             check(np.mean(actions), 1.5, atol=0.2)
             trainer.stop()
 
@@ -279,18 +277,18 @@ class TestPPO(unittest.TestCase):
                 list(policy.model.parameters())
             if fw == "tf":
                 vars = policy.get_session().run(vars)
-            expected_shared_out = fc(
-                train_batch[SampleBatch.CUR_OBS],
-                vars[0 if fw != "torch" else 2],
-                vars[1 if fw != "torch" else 3],
-                framework=fw)
-            expected_logits = fc(
-                expected_shared_out,
-                vars[2 if fw != "torch" else 0],
-                vars[3 if fw != "torch" else 1],
-                framework=fw)
-            expected_value_outs = fc(
-                expected_shared_out, vars[4], vars[5], framework=fw)
+            expected_shared_out = fc(train_batch[SampleBatch.CUR_OBS],
+                                     vars[0 if fw != "torch" else 2],
+                                     vars[1 if fw != "torch" else 3],
+                                     framework=fw)
+            expected_logits = fc(expected_shared_out,
+                                 vars[2 if fw != "torch" else 0],
+                                 vars[3 if fw != "torch" else 1],
+                                 framework=fw)
+            expected_value_outs = fc(expected_shared_out,
+                                     vars[4],
+                                     vars[5],
+                                     framework=fw)
 
             kl, entropy, pg_loss, vf_loss, overall_loss = \
                 self._ppo_loss_helper(
@@ -310,8 +308,8 @@ class TestPPO(unittest.TestCase):
                         policy._mean_vf_loss,
                         policy._total_loss,
                     ],
-                    feed_dict=policy._get_loss_inputs_dict(
-                        train_batch, shuffle=False))
+                    feed_dict=policy._get_loss_inputs_dict(train_batch,
+                                                           shuffle=False))
                 check(k, kl)
                 check(e, entropy)
                 check(pl, np.mean(-pg_loss))
@@ -322,14 +320,12 @@ class TestPPO(unittest.TestCase):
                 check(policy.model.tower_stats["mean_entropy"], entropy)
                 check(policy.model.tower_stats["mean_policy_loss"],
                       np.mean(-pg_loss))
-                check(
-                    policy.model.tower_stats["mean_vf_loss"],
-                    np.mean(vf_loss),
-                    decimals=4)
-                check(
-                    policy.model.tower_stats["total_loss"],
-                    overall_loss,
-                    decimals=4)
+                check(policy.model.tower_stats["mean_vf_loss"],
+                      np.mean(vf_loss),
+                      decimals=4)
+                check(policy.model.tower_stats["total_loss"],
+                      overall_loss,
+                      decimals=4)
             else:
                 check(policy._mean_kl_loss, kl)
                 check(policy._mean_entropy, entropy)
@@ -382,9 +378,9 @@ class TestPPO(unittest.TestCase):
         # Policy loss component.
         pg_loss = np.minimum(
             train_batch[Postprocessing.ADVANTAGES] * expected_rho,
-            train_batch[Postprocessing.ADVANTAGES] * np.clip(
-                expected_rho, 1 - policy.config["clip_param"],
-                1 + policy.config["clip_param"]))
+            train_batch[Postprocessing.ADVANTAGES] *
+            np.clip(expected_rho, 1 - policy.config["clip_param"],
+                    1 + policy.config["clip_param"]))
 
         # Value function loss component.
         vf_loss1 = np.power(

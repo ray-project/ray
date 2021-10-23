@@ -134,12 +134,12 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
-        do_test_log_likelihood(
-            pg.PGTrainer,
-            config,
-            prev_a,
-            continuous=True,
-            layer_key=("fc", (0, 2), ("_hidden_layers.0.", "_logits.")))
+        do_test_log_likelihood(pg.PGTrainer,
+                               config,
+                               prev_a,
+                               continuous=True,
+                               layer_key=("fc", (0, 2), ("_hidden_layers.0.",
+                                                         "_logits.")))
 
     def test_pg_discr(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
@@ -185,14 +185,14 @@ class TestComputeLogLikelihood(unittest.TestCase):
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
 
-        do_test_log_likelihood(
-            sac.SACTrainer,
-            config,
-            prev_a,
-            continuous=True,
-            layer_key=("fc", (0, 2), ("action_model._hidden_layers.0.",
-                                      "action_model._logits.")),
-            logp_func=logp_func)
+        do_test_log_likelihood(sac.SACTrainer,
+                               config,
+                               prev_a,
+                               continuous=True,
+                               layer_key=("fc", (0, 2),
+                                          ("action_model._hidden_layers.0.",
+                                           "action_model._logits.")),
+                               logp_func=logp_func)
 
     def test_sac_discr(self):
         """Tests SAC's (discrete actions) compute_log_likelihoods method."""

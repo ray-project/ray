@@ -76,8 +76,8 @@ class TestMARWIL(unittest.TestCase):
                     "MARWILTrainer did not reach {} reward from expert "
                     "offline data!".format(min_reward))
 
-            check_compute_single_action(
-                trainer, include_prev_action_reward=True)
+            check_compute_single_action(trainer,
+                                        include_prev_action_reward=True)
 
             trainer.stop()
 
@@ -143,8 +143,10 @@ class TestMARWIL(unittest.TestCase):
 
             # Calculate our own expected values (to then compare against the
             # agent's loss output).
-            cummulative_rewards = compute_advantages(
-                batch, 0.0, config["gamma"], 1.0, False, False)["advantages"]
+            cummulative_rewards = compute_advantages(batch, 0.0,
+                                                     config["gamma"], 1.0,
+                                                     False,
+                                                     False)["advantages"]
             if fw == "torch":
                 cummulative_rewards = torch.tensor(cummulative_rewards)
             if fw != "tf":
@@ -186,8 +188,8 @@ class TestMARWIL(unittest.TestCase):
             else:
                 loss_out, v_loss, p_loss = policy.get_session().run(
                     [policy._loss, policy.loss.v_loss, policy.loss.p_loss],
-                    feed_dict=policy._get_loss_inputs_dict(
-                        postprocessed_batch, shuffle=False))
+                    feed_dict=policy._get_loss_inputs_dict(postprocessed_batch,
+                                                           shuffle=False))
 
             # Check all components.
             if fw == "torch":
