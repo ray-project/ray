@@ -21,7 +21,7 @@ def start_cluster(ray_start_cluster, request):
     use_ray_client: bool = request.param == "ray_client"
 
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=4)
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10003"
         cluster.head_node.start_ray_client_server()
