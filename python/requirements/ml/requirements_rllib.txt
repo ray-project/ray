@@ -3,8 +3,9 @@
 # Environment adapters.
 # ---------------------
 # Atari
-atari_py==0.2.9
-gym[atari]==0.21.0
+autorom[accept-rom-license]
+gym[atari]>=0.21.0; python_version >= '3.7'
+gym[atari]==0.19.0; python_version < '3.7'
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing
