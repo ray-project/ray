@@ -1,5 +1,5 @@
 frozenlake-appo-vtrace:
-    env: FrozenLake-v1
+    env: FrozenLake-v0
     run: APPO
     stop:
         episode_reward_mean: 0.99
