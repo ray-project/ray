@@ -14,7 +14,7 @@ class BlockList:
     The BlockList tracks a set of tasks that produce List[Block] object refs
     as output. The set of tasks may be accessed via ``.iter_tasks()``. Each
     task produces a list of one or more Blocks, the flat list of which can be
-    accessed via ``.iter_output_blocks()``. Note that the number of results may
+    accessed via ``.iter_output_blocks()``. Note that the number of outputs may
     be greater than the number of tasks, if some tasks return multiple objects.
     """
 
