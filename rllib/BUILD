@@ -46,7 +46,7 @@
 
 # A2C/A3C
 py_test(
-    name = "run_regression_tests_cartpole_a2c",
+    name = "learning_tests_cartpole_a2c",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -66,7 +66,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_cartpole_a3c",
+    name = "learning_tests_cartpole_a3c",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -77,7 +77,7 @@ py_test(
 
 # APEX-DQN
 py_test(
-    name = "run_regression_tests_cartpole_apex",
+    name = "learning_tests_cartpole_apex",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -101,7 +101,7 @@ py_test(
 
 # APPO
 py_test(
-    name = "run_regression_tests_cartpole_appo",
+    name = "learning_tests_cartpole_appo",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -114,7 +114,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_cartpole_separate_losses_appo",
+    name = "learning_tests_cartpole_separate_losses_appo",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "tf_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -137,7 +137,7 @@ py_test(
 
 # ARS
 py_test(
-    name = "run_regression_tests_cartpole_ars",
+    name = "learning_tests_cartpole_ars",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -148,7 +148,7 @@ py_test(
 
 # CQL
 py_test(
-    name = "run_regression_tests_pendulum_cql",
+    name = "learning_tests_pendulum_cql",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "flaky"],
     size = "large",
@@ -163,7 +163,7 @@ py_test(
 
 # DDPG
 py_test(
-    name = "run_regression_tests_pendulum_ddpg",
+    name = "learning_tests_pendulum_ddpg",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
@@ -184,7 +184,7 @@ py_test(
 
 # DDPPO
 py_test(
-    name = "run_regression_tests_cartpole_ddppo",
+    name = "learning_tests_cartpole_ddppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -195,7 +195,7 @@ py_test(
 
 # DQN
 py_test(
-    name = "run_regression_tests_cartpole_dqn",
+    name = "learning_tests_cartpole_dqn",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -205,7 +205,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_cartpole_dqn_softq",
+    name = "learning_tests_cartpole_dqn_softq",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -215,7 +215,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_cartpole_dqn_param_noise",
+    name = "learning_tests_cartpole_dqn_param_noise",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -236,7 +236,7 @@ py_test(
 
 # Simple-Q
 py_test(
-    name = "run_regression_tests_cartpole_simpleq",
+    name = "learning_tests_cartpole_simpleq",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -259,7 +259,7 @@ py_test(
 
 # ES
 py_test(
-    name = "run_regression_tests_cartpole_es",
+    name = "learning_tests_cartpole_es",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -270,7 +270,7 @@ py_test(
 
 # IMPALA
 py_test(
-    name = "run_regression_tests_cartpole_impala",
+    name = "learning_tests_cartpole_impala",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -293,7 +293,7 @@ py_test(
 # Removed due to Higher API conflicts with Pytorch-Import tests
 ## MB-MPO
 #py_test(
-#    name = "run_regression_tests_pendulum_mbmpo",
+#    name = "learning_tests_pendulum_mbmpo",
 #    main = "tests/run_regression_tests.py",
 #    tags = ["team:ml", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
 #    size = "large",
@@ -304,7 +304,7 @@ py_test(
 
 # PG
 py_test(
-    name = "run_regression_tests_cartpole_pg",
+    name = "learning_tests_cartpole_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -325,7 +325,7 @@ py_test(
 
 # PPO
 py_test(
-    name = "run_regression_tests_cartpole_ppo",
+    name = "learning_tests_cartpole_ppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -335,7 +335,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_pendulum_ppo",
+    name = "learning_tests_pendulum_ppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
@@ -345,7 +345,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_transformed_actions_pendulum_ppo",
+    name = "learning_tests_transformed_actions_pendulum_ppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
@@ -355,7 +355,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_repeat_after_me_ppo",
+    name = "learning_tests_repeat_after_me_ppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
     size = "large",
@@ -376,7 +376,7 @@ py_test(
 
 # R2D2
 py_test(
-    name = "run_regression_tests_stateless_cartpole_r2d2",
+    name = "learning_tests_stateless_cartpole_r2d2",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -397,7 +397,7 @@ py_test(
 
 # SAC
 py_test(
-    name = "run_regression_tests_cartpole_sac",
+    name = "learning_tests_cartpole_sac",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
@@ -407,7 +407,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_cartpole_continuous_pybullet_sac",
+    name = "learning_tests_cartpole_continuous_pybullet_sac",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_continuous"],
     size = "large",
@@ -417,7 +417,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_pendulum_sac",
+    name = "learning_tests_pendulum_sac",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "flaky"],
     size = "large",
@@ -427,7 +427,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_transformed_actions_pendulum_sac",
+    name = "learning_tests_transformed_actions_pendulum_sac",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
@@ -448,7 +448,7 @@ py_test(
 
 # TD3
 py_test(
-    name = "run_regression_tests_pendulum_td3",
+    name = "learning_tests_pendulum_td3",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
