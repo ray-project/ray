@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 import pytest
+from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray._private.job_manager import JobManager, JobStatus

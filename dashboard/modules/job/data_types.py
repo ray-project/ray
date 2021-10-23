@@ -1,9 +1,15 @@
 from pydantic import BaseModel
-from dataclasses import dataclass
-from typing import Optional
+from enum import Enum
 
-@dataclass
-class JobSpec:
+
+class JobStatus(str, Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    STOPPED = "STOPPED"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+
+class JobSpec(BaseModel):
   # Dict to setup execution environment, better to have schema for this
   runtime_env: dict
   # Command to start execution, ex: "python script.py"
@@ -14,6 +20,7 @@ class JobSpec:
   # Likely there will be more fields needed later on for different apps
   # but we should keep it minimal and delegate policies to job manager
 
+## ==== Job Submit ====
 
 class JobSubmitRequest(BaseModel):
    job_spec: JobSpec
@@ -23,8 +30,26 @@ class JobSubmitRequest(BaseModel):
    #   - Start new job execution
    # Else if job server has a running job with given id:
    #   - Fail, deployment update and reconfigure should happen in job manager
-   job_id: Optional[str] = None
+   job_id: str = None
 
 
 class JobSubmitResponse(BaseModel):
    job_id: str
+
+## ==== Job Status ====
+
+class JobStatusRequest(BaseModel):
+   job_id: str
+
+class JobStatusResponse(BaseModel):
+   job_status: JobStatus
+
+## ==== Job Logs ====
+
+class JobLogsRequest(BaseModel):
+   job_id: str
+
+# TODO(jiaodong): Support log streaming #19415
+class JobLogsResponse(BaseModel):
+   stdout: str
+   stderr: str

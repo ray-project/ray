@@ -2,7 +2,6 @@ import subprocess
 import pickle
 import os
 from typing import Any, Dict, Tuple, Optional
-from enum import Enum
 
 import ray
 from ray.actor import ActorHandle
@@ -13,15 +12,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_get,
     _internal_kv_put,
 )
-
-
-class JobStatus(str, Enum):
-    PENDING = "PENDING"
-    RUNNING = "RUNNING"
-    STOPPED = "STOPPED"
-    SUCCEEDED = "SUCCEEDED"
-    FAILED = "FAILED"
-
+from ray.dashboard.modules.job.data_types import JobStatus
 
 class JobLogStorageClient:
     """

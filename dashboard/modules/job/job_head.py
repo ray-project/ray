@@ -5,9 +5,10 @@ from typing import Callable
 
 import ray
 import ray.dashboard.utils as dashboard_utils
-from ray._private.job_manager import JobManager, JobStatus
+from ray._private.job_manager import JobManager
 from ray.dashboard.modules.job.data_types import (
-    JobSubmitRequest, JobSubmitResponse, JobSpec)
+    JobStatus, JobSubmitRequest, JobSubmitResponse, JobStatusRequest,
+    JobStatusResponse, JobLogsRequest, JobLogsResponse)
 from ray.experimental.internal_kv import (_initialize_internal_kv,
                                           _internal_kv_initialized)
 logger = logging.getLogger(__name__)
@@ -38,45 +39,56 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     @routes.post("/submit")
     @_ensure_ray_initialized
-    async def submit(self, req: JobSubmitRequest) -> aiohttp.web.Response:
+    async def submit(self, req) -> aiohttp.web.Response:
         req_data = dict(await req.json())
-        job_id = req_data.get("job_id")
-        self._job_manager.submit_job(job_id, "echo hello")
+        submit_request = JobSubmitRequest(**req_data)
+        self._job_manager.submit_job(
+            submit_request.job_id,
+            submit_request.job_spec.entrypoint,
+            submit_request.job_spec.runtime_env
+        )
 
+        resp = JobSubmitResponse(job_id=submit_request.job_id)
         return dashboard_utils.rest_response(
             success=True,
-            data=job_id,
-            message=f"Submitted job {job_id}")
+            convert_google_style=False,
+            data=resp.dict(),
+            message=f"Submitted job {submit_request.job_id}")
 
     @routes.get("/status")
     @_ensure_ray_initialized
     async def status(self, req) -> aiohttp.web.Response:
         req_data = dict(await req.json())
-        job_id = req_data.get("job_id")
+        status_request = JobStatusRequest(**req_data)
 
-        status: JobStatus = self._job_manager.get_job_status(job_id)
-
+        status: JobStatus = self._job_manager.get_job_status(status_request.job_id)
+        resp = JobStatusResponse(job_status=status)
         return dashboard_utils.rest_response(
             success=True,
-            data=status,
-            message=f"Queried status for job {job_id}")
+            convert_google_style=False,
+            data=resp.dict(),
+            message=f"Queried status for job {status_request.job_id}")
 
     @routes.get("/logs")
     @_ensure_ray_initialized
     async def logs(self, req) -> aiohttp.web.Response:
         req_data = dict(await req.json())
-        job_id = req_data.get("job_id")
+        logs_request = JobLogsRequest(**req_data)
 
-        stdout: bytes = self._job_manager.get_job_stdout(job_id)
-        stderr: bytes = self._job_manager.get_job_stderr(job_id)
+        stdout: bytes = self._job_manager.get_job_stdout(logs_request.job_id)
+        stderr: bytes = self._job_manager.get_job_stderr(logs_request.job_id)
+
+        # TODO(jiaodong): Support log streaming #19415
+        resp = JobLogsResponse(
+            stdout=stdout.decode("utf-8"),
+            stderr=stderr.decode("utf-8")
+        )
 
         return dashboard_utils.rest_response(
             success=True,
-            data={
-                "stdout": stdout.decode("utf-8"),
-                "stderr": stderr.decode("utf-8")
-            },
-            message=f"Logs returned for job {job_id}")
+            convert_google_style=False,
+            data=resp.dict(),
+            message=f"Logs returned for job {logs_request.job_id}")
 
     async def run(self, server):
         if not self._job_manager:
