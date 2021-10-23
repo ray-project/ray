@@ -221,7 +221,8 @@ Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
   rpc::RegisterActorRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   client_impl_->GetGcsRpcClient().RegisterActor(
-      request, [callback](const Status &, const rpc::RegisterActorReply &reply) {
+      request,
+      [callback](const Status & /*unused*/, const rpc::RegisterActorReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
@@ -239,7 +240,8 @@ Status ServiceBasedActorInfoAccessor::AsyncKillActor(
   request.set_force_kill(force_kill);
   request.set_no_restart(no_restart);
   client_impl_->GetGcsRpcClient().KillActorViaGcs(
-      request, [callback](const Status &, const rpc::KillActorViaGcsReply &reply) {
+      request,
+      [callback](const Status & /*unused*/, const rpc::KillActorViaGcsReply &reply) {
         if (callback) {
           auto status =
               reply.status().code() == (int)StatusCode::OK
@@ -258,7 +260,7 @@ Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
   rpc::CreateActorRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreateActor(
-      request, [callback](const Status &, const rpc::CreateActorReply &reply) {
+      request, [callback](const Status & /*unused*/, const rpc::CreateActorReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
@@ -682,7 +684,7 @@ Status ServiceBasedNodeResourceInfoAccessor::AsyncGetResources(
       request,
       [node_id, callback](const Status &status, const rpc::GetResourcesReply &reply) {
         ResourceMap resource_map;
-        for (auto resource : reply.resources()) {
+        for (const auto &resource : reply.resources()) {
           resource_map[resource.first] =
               std::make_shared<rpc::ResourceTableData>(resource.second);
         }
@@ -1458,8 +1460,9 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreatePlacementGroup(
-      request, [placement_group_spec, callback](
-                   const Status &, const rpc::CreatePlacementGroupReply &reply) {
+      request,
+      [placement_group_spec, callback](const Status & /*unused*/,
+                                       const rpc::CreatePlacementGroupReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
