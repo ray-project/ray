@@ -28,7 +28,7 @@ GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
         send_batch
 
     )
-    : seq_no_(0),
+    : seq_no_(absl::GetCurrentTimeNanos()),
       ticker_(broadcast_service_),
       raylet_client_pool_(raylet_client_pool),
       get_resource_usage_batch_for_broadcast_(get_resource_usage_batch_for_broadcast),
@@ -88,7 +88,7 @@ void GrpcBasedResourceBroadcaster::HandleNodeRemoved(const rpc::GcsNodeInfo &nod
   {
     absl::MutexLock guard(&mutex_);
     nodes_.erase(node_id);
-    inflight_updates_.erase(node_id);
+    // inflight_updates_.erase(node_id);
     RAY_LOG(DEBUG) << "Node removed (node_id: " << node_id
                    << ")# of remaining nodes: " << nodes_.size();
   }
@@ -98,8 +98,7 @@ std::string GrpcBasedResourceBroadcaster::DebugString() {
   absl::MutexLock guard(&mutex_);
   std::ostringstream stream;
   stream << "GrpcBasedResourceBroadcaster: {Tracked nodes: " << nodes_.size()
-         << ", Nodes skipped in last broadcast: " << num_skipped_nodes_;
-
+         << "}"
   return stream.str();
 }
 
@@ -118,17 +117,9 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
   stats::OutboundHeartbeatSizeKB.Record((double)(serialized_batch.size() / 1024.0));
 
   absl::MutexLock guard(&mutex_);
-  num_skipped_nodes_ = 0;
   for (const auto &pair : nodes_) {
     const auto &node_id = pair.first;
     const auto &address = pair.second;
-
-    auto already_inflight = inflight_updates_[node_id];
-    if (already_inflight) {
-      num_skipped_nodes_++;
-      continue;
-    }
-
     double start_time = absl::GetCurrentTimeNanos();
     auto callback = [this, node_id, start_time](
                         const Status &status,
@@ -136,15 +127,7 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
       double end_time = absl::GetCurrentTimeNanos();
       double lapsed_time_ms = static_cast<double>(end_time - start_time) / 1e6;
       ray::stats::GcsUpdateResourceUsageTime.Record(lapsed_time_ms);
-
-      absl::MutexLock guard(&mutex_);
-      if (inflight_updates_.count(node_id)) {
-        // The entry may have already been freed if the node was removed before the
-        // request finished.
-        inflight_updates_[node_id] = false;
-      }
     };
-    inflight_updates_[node_id] = true;
     send_batch_(address, raylet_client_pool_, serialized_batch, callback);
   }
 }
