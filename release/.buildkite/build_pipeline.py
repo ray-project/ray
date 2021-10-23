@@ -2,6 +2,7 @@ import copy
 import logging
 import os
 import sys
+from typing import Optional, List
 
 import yaml
 
@@ -44,6 +45,24 @@ class SmokeTest(ReleaseTest):
     def __init__(self, name: str, retry: int = 0):
         super(SmokeTest, self).__init__(
             name=name, smoke_test=True, retry=retry)
+
+
+class ConnectTest(ReleaseTest):
+    """Release Test that requires extra setup on the driver."""
+
+    def __init__(self,
+                 *args,
+                 setup_commands: Optional[List[str]] = None,
+                 requirements_file: str = None,
+                 **kwargs):
+
+        # Commands to run on the driver before kicking off the test.
+        self.setup_commands = setup_commands if setup_commands else []
+
+        # Requirements to install on the driver before kicking off the test.
+        self.requirements_file = requirements_file
+
+        super().__init__(*args, **kwargs)
 
 
 CORE_NIGHTLY_TESTS = {
@@ -216,6 +235,16 @@ MANUAL_TESTS = {
         SmokeTest("serve_failure"),
     ]
 }
+
+# This test suite holds "realistic" tests to test important user workflows
+# in a particular environment.
+# All workloads in this test suite should:
+#   1. Be run in a distributed (multi-node) fashion
+#   2. Use autoscaling/scale up (no wait_cluster.py)
+#   3. Use GPUs if applicable
+#   4. Have the `use_connect` flag set.
+
+REALISTIC_TESTS = {}
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
@@ -442,6 +471,13 @@ def create_test_step(
         "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
         "|| true"
     ]
+
+    if isinstance(test_name, ConnectTest):
+        # Add driver side setup commands to the step.
+        step_conf["commands"] = test_name.setup_commands \
+                                + [f"pip install -U -r "
+                                   f"{test_name.requirements_file}"] \
+                                + step_conf["commands"]
 
     step_conf["label"] = f"{ray_wheels_str}{test_name} ({ray_branch}) - " \
                          f"{ray_test_branch}/{ray_test_repo}"
