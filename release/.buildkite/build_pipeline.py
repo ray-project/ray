@@ -20,7 +20,12 @@ import yaml
 
 
 class ReleaseTest:
-    def __init__(self, name: str, smoke_test: bool = False, retry: int = 0):
+    def __init__(
+            self,
+            name: str,
+            smoke_test: bool = False,
+            retry: int = 0,
+    ):
         self.name = name
         self.smoke_test = smoke_test
         self.retry = retry
@@ -244,7 +249,20 @@ MANUAL_TESTS = {
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
 
-REALISTIC_TESTS = {}
+RELEASTIC_TESTS = {
+    "~/ray/release/horovod_tests/horovod_tests.yaml": [
+        ConnectTest(
+            "horovod_releastic_test",
+            setup_commands=[
+                "export "
+                "HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 "
+                "HOROVOD_WITHOUT_TENSORFLOW=1 HOROVOD_WITHOUT_MXNET=1 "
+                "HOROVOD_WITH_PYTORCH=1"
+            ],
+            requirements_file="~/ray/release/horovod_tests"
+            "/driver_requirements.txt")
+    ]
+}
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,

@@ -1,0 +1,5 @@
+torch
+torchvision
+
+# Horovod master.
+git+https://github.com/horovod/horovod.git
