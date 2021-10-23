@@ -354,8 +354,7 @@ class Worker:
         return self.deserialize_objects(data_metadata_pairs,
                                         object_refs), debugger_breakpoint
 
-    def run_function_on_all_workers(self, function,
-                                    run_on_other_drivers=False):
+    def run_function_on_all_workers(self, function):
         """Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
@@ -367,9 +366,6 @@ class Worker:
             function (Callable): The function to run on all of the workers. It
                 takes only one argument, a worker info dict. If it returns
                 anything, its return values will not be used.
-            run_on_other_drivers: The boolean that indicates whether we want to
-                run this function on other drivers. One case is we may need to
-                share objects across drivers.
         """
         # If ray.init has not been called yet, then cache the function and
         # export it when connect is called. Otherwise, run the function on all
@@ -405,7 +401,6 @@ class Worker:
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                    "run_on_other_drivers": str(run_on_other_drivers),
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
