@@ -103,6 +103,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init KV Manager
   InitKVManager();
 
+  // Init Pub/Sub handler
+  InitPubSubHandler();
+
   // Init RuntimeENv manager
   InitRuntimeEnvManager();
 
@@ -398,6 +401,14 @@ void GcsServer::InitKVManager() {
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
+}
+
+void GcsServer::InitPubSubHandler() {
+  pubsub_handler_ = std::make_unique<InternalPubSubHandler>(gcs_publisher_);
+  pubsub_service_ =
+      std::make_unique<rpc::InternalPubSubGrpcService>(main_service_, *pubsub_handler_);
+  // Register service.
+  rpc_server_.RegisterService(*pubsub_service_);
 }
 
 void GcsServer::InitRuntimeEnvManager() {

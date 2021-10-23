@@ -196,6 +196,9 @@ class GcsPublisher {
   /// TODO: remove this constructor and inject mock / fake from the other constructor.
   explicit GcsPublisher(std::unique_ptr<GcsPubSub> pubsub) : pubsub_(std::move(pubsub)) {}
 
+  /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
+  pubsub::Publisher *GetPublisher() const { return publisher_.get(); }
+
   /// Each publishing method below publishes to a different "channel".
   /// ID is the entity which the message is associated with, e.g. ActorID for Actor data.
   /// Subscribers receive typed messages for the ID that they subscribe to.
