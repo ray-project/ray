@@ -383,6 +383,14 @@ def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
         _docker_push(full_image_name, new_tag)
 
 
+def _create_new_tags(all_tags, old_str, new_str):
+    new_tags = []
+    for full_tag in all_tags:
+        new_tag = full_tag.replace(old_str, new_str)
+        new_tags.append(new_tag)
+    return new_tags
+
+
 # For non-release builds, push "nightly" & "sha"
 # For release builds, push "nightly" & "latest" & "x.x.x"
 def push_and_tag_images(py_versions: List[str],
@@ -432,28 +440,36 @@ def push_and_tag_images(py_versions: List[str],
         # "-gpu" tag should refer to the ML_CUDA_VERSION
         for old_tag in tag_mapping.keys():
             if "cpu" in old_tag:
-                for full_tag in tag_mapping[old_tag]:
-                    new_tag = full_tag.replace("-cpu", "")
-                    tag_mapping[old_tag].append(new_tag)
+                new_tags = _create_new_tags(
+                    tag_mapping[old_tag], old_str="-cpu", new_str="")
+                tag_mapping[old_tag].extend(new_tags)
             elif ML_CUDA_VERSION in old_tag:
-                for full_tag in tag_mapping[old_tag]:
-                    new_tag = full_tag.replace(f"-{ML_CUDA_VERSION}", "-gpu")
-                    tag_mapping[old_tag].append(new_tag)
+                new_tags = _create_new_tags(
+                    tag_mapping[old_tag],
+                    old_str=f"-{ML_CUDA_VERSION}",
+                    new_str="-gpu")
+                tag_mapping[old_tag].extend(new_tags)
 
         # No Python version specified should refer to DEFAULT_PYTHON_VERSION
         for old_tag in tag_mapping.keys():
             if DEFAULT_PYTHON_VERSION in old_tag:
-                for full_tag in tag_mapping[old_tag]:
-                    new_tag = full_tag.replace(f"-{DEFAULT_PYTHON_VERSION}",
-                                               "")
-                    tag_mapping[old_tag].append(new_tag)
+                new_tags = _create_new_tags(
+                    tag_mapping[old_tag],
+                    old_str=f"-"
+                    f""
+                    f""
+                    f""
+                    f"{DEFAULT_PYTHON_VERSION}",
+                    new_str="")
+                tag_mapping[old_tag].extend(new_tags)
 
         # For all tags, create Date/Sha tags
         for old_tag in tag_mapping.keys():
-            for full_tag in tag_mapping[old_tag]:
-                new_tag = full_tag.replace(
-                    "nightly", date_tag if "-deps" in image_name else sha_tag)
-                tag_mapping[old_tag].append(new_tag)
+            new_tags = _create_new_tags(
+                tag_mapping[old_tag],
+                old_str="nightly",
+                new_str=date_tag if "-deps" in image_name else sha_tag)
+            tag_mapping[old_tag].extend(new_tags)
 
         # Sanity checking.
         for old_tag in tag_mapping.keys():
