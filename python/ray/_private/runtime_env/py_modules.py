@@ -97,8 +97,7 @@ class PyModulesManager:
         for uri in runtime_env["py_modules"]:
             module_dir = download_and_unpack_package(
                 uri, self._resources_dir, logger=logger)
-            if module_dir is not None:
-                module_dirs.append(module_dir)
+            module_dirs.append(module_dir)
 
         # Insert the py_modules directories into the PYTHONPATH.
         python_path = os.pathsep.join(module_dirs)

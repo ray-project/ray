@@ -70,8 +70,6 @@ class WorkingDirManager:
 
         working_dir = download_and_unpack_package(
             runtime_env["working_dir"], self._resources_dir, logger=logger)
-        if working_dir is None:
-            return
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is

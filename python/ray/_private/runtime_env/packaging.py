@@ -347,7 +347,7 @@ def download_and_unpack_package(
         pkg_uri: str,
         base_directory: str,
         logger: Optional[logging.Logger] = default_logger,
-) -> Optional[str]:
+) -> str:
     """Download the package corresponding to this URI and unpack it.
 
     Will be written to a directory named {base_directory}/{uri}.
