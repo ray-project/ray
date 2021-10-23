@@ -304,24 +304,24 @@ std::optional<NodeID> GcsResourceScheduler::GetBestNode(
     const auto &iter = cluster_resources.find(node_id);
     RAY_CHECK(iter != cluster_resources.end());
     double node_score = node_scorer_->Score(required_resources, iter->second);
-    if(node_score < 0) {
+    if (node_score < 0) {
       continue;
     }
     ++qualified_num;
     auto rnd = 1.0 * std::rand() / RAND_MAX;
     size_t offset = rnd * qualified_num;
-    if(candidates_num < candidates.size()) {
+    if (candidates_num < candidates.size()) {
       candidates[candidates_num++] = std::make_pair(node_score, node_id);
-    } else if(offset < candidates_num) {
+    } else if (offset < candidates_num) {
       candidates[offset] = std::make_pair(node_score, node_id);
     }
   }
-  if(candidates_num == 0) {
+  if (candidates_num == 0) {
     return std::nullopt;
   } else if (candidates_num == 1) {
     return candidates[0].second;
   } else {
-    if(candidates[0].first > candidates[1].first) {
+    if (candidates[0].first > candidates[1].first) {
       return candidates[0].second;
     } else {
       return candidates[1].second;
