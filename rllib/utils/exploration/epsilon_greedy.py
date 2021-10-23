@@ -70,11 +70,13 @@ class EpsilonGreedy(Exploration):
             self._tf_state_op = self.get_state()
 
     @override(Exploration)
-    def get_exploration_action(self,
-                               *,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[int, TensorType],
-                               explore: bool = True):
+    def get_exploration_action(
+            self,
+            *,
+            action_distribution: ActionDistribution,
+            timestep: Union[int, TensorType],
+            explore: Optional[Union[bool, TensorType]] = True,
+    ):
 
         if self.framework in ["tf2", "tf", "tfe"]:
             return self._get_tf_exploration_action_op(action_distribution,

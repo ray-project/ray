@@ -149,9 +149,13 @@ def r2d2_loss(policy: Policy, model, _,
         # Mask away also the burn-in sequence at the beginning.
         burn_in = policy.config["burn_in"]
         # Making sure, this works for both static graph and eager.
-        if burn_in > 0 and (config["framework"] == "tf" or burn_in < T):
-            seq_mask = tf.concat(
-                [tf.fill([B, burn_in], False), seq_mask[:, burn_in:]], axis=1)
+        if burn_in > 0:
+            seq_mask = tf.cond(
+                pred=tf.convert_to_tensor(burn_in, tf.int32) < T,
+                true_fn=lambda: tf.concat([tf.fill([B, burn_in], False),
+                                           seq_mask[:, burn_in:]], 1),
+                false_fn=lambda: seq_mask,
+            )
 
         def reduce_mean_valid(t):
             return tf.reduce_mean(tf.boolean_mask(t, seq_mask))

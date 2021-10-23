@@ -475,6 +475,10 @@ def build_eager_tf_policy(
                 input_dict[SampleBatch.PREV_REWARDS] = \
                     tf.convert_to_tensor(prev_reward_batch)
 
+            # Call the exploration before_compute_actions hook.
+            self.exploration.before_compute_actions(
+                timestep=timestep, explore=explore, tf_sess=self.get_session())
+
             return self._compute_action_helper(input_dict, state_batches,
                                                episodes, explore, timestep)
 
@@ -492,10 +496,15 @@ def build_eager_tf_policy(
 
             # Pass lazy (eager) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
+            input_dict.is_training = False
             # Pack internal state inputs into (separate) list.
             state_batches = [
                 input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
             ]
+
+            # Call the exploration before_compute_actions hook.
+            self.exploration.before_compute_actions(
+                timestep=timestep, explore=explore, tf_sess=self.get_session())
 
             return self._compute_action_helper(input_dict, state_batches, None,
                                                explore, timestep)
@@ -537,10 +546,6 @@ def build_eager_tf_policy(
                         timestep=timestep,
                         episodes=episodes)
                 else:
-                    # Exploration hook before each forward pass.
-                    self.exploration.before_compute_actions(
-                        timestep=timestep, explore=explore)
-
                     if action_distribution_fn:
 
                         # Try new action_distribution_fn signature, supporting

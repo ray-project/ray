@@ -147,7 +147,7 @@ class ParameterNoise(Exploration):
     def before_compute_actions(self,
                                *,
                                timestep: Optional[int] = None,
-                               explore: bool = None,
+                               explore: Optional[bool] = None,
                                tf_sess: Optional["tf.Session"] = None):
         explore = explore if explore is not None else \
             self.policy_config["explore"]
