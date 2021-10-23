@@ -1138,12 +1138,19 @@ def test_to_pandas(ray_start_regular_shared):
     assert df.equals(dfds)
 
     # Test limit.
-    dfds = ds.to_pandas(limit=3)
-    assert df[:3].equals(dfds)
+    with pytest.raises(ValueError):
+        dfds = ds.to_pandas(limit=3)
 
     # Test limit greater than number of rows.
     dfds = ds.to_pandas(limit=6)
     assert df.equals(dfds)
+
+
+def test_take_all(ray_start_regular_shared):
+    assert ray.data.range(5).take_all() == [0, 1, 2, 3, 4]
+
+    with pytest.raises(ValueError):
+        assert ray.data.range(5).take_all(4)
 
 
 def test_to_pandas_refs(ray_start_regular_shared):
