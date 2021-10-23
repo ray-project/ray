@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
+
 #include "ray/stats/stats.h"
 
 namespace ray {
@@ -98,8 +99,7 @@ std::string GrpcBasedResourceBroadcaster::DebugString() {
   absl::MutexLock guard(&mutex_);
   std::ostringstream stream;
   stream << "GrpcBasedResourceBroadcaster: {Tracked nodes: " << nodes_.size()
-         << "}"
-  return stream.str();
+         << "}" return stream.str();
 }
 
 void GrpcBasedResourceBroadcaster::SendBroadcast() {
