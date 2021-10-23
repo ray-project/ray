@@ -14,6 +14,7 @@ from ray.experimental.internal_kv import (
 )
 from ray.dashboard.modules.job.data_types import JobStatus
 
+
 class JobLogStorageClient:
     """
     Disk storage for stdout / stderr of driver script logs.
@@ -197,8 +198,7 @@ class JobManager:
 
         try:
             ray.get(
-                supervisor.ready.remote(),
-                timeout=self.START_ACTOR_TIMEOUT_S)
+                supervisor.ready.remote(), timeout=self.START_ACTOR_TIMEOUT_S)
         except GetTimeoutError:
             ray.kill(supervisor, no_restart=True)
             raise RuntimeError(f"Failed to start actor for job {job_id}.")

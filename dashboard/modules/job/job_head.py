@@ -42,11 +42,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def submit(self, req) -> aiohttp.web.Response:
         req_data = dict(await req.json())
         submit_request = JobSubmitRequest(**req_data)
-        self._job_manager.submit_job(
-            submit_request.job_id,
-            submit_request.job_spec.entrypoint,
-            submit_request.job_spec.runtime_env
-        )
+        self._job_manager.submit_job(submit_request.job_id,
+                                     submit_request.job_spec.entrypoint,
+                                     submit_request.job_spec.runtime_env)
 
         resp = JobSubmitResponse(job_id=submit_request.job_id)
         return dashboard_utils.rest_response(
@@ -61,7 +59,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         req_data = dict(await req.json())
         status_request = JobStatusRequest(**req_data)
 
-        status: JobStatus = self._job_manager.get_job_status(status_request.job_id)
+        status: JobStatus = self._job_manager.get_job_status(
+            status_request.job_id)
         resp = JobStatusResponse(job_status=status)
         return dashboard_utils.rest_response(
             success=True,
@@ -80,9 +79,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         # TODO(jiaodong): Support log streaming #19415
         resp = JobLogsResponse(
-            stdout=stdout.decode("utf-8"),
-            stderr=stderr.decode("utf-8")
-        )
+            stdout=stdout.decode("utf-8"), stderr=stderr.decode("utf-8"))
 
         return dashboard_utils.rest_response(
             success=True,

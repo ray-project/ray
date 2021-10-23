@@ -10,6 +10,7 @@ def local_working_dir():
         "expected_stderr": ""
     }
 
+
 @pytest.fixture(scope="function")
 def s3_working_dir():
     yield {
