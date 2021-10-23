@@ -112,7 +112,8 @@ class ActorMethod(ActorMethodBase):
 
         if max_retries is not None:
             if not isinstance(max_retries, int) or max_retries < 1:
-                raise ValueError("max_retries should be greater or equal to 1.")
+                raise ValueError(
+                    "max_retries should be greater or equal to 1.")
         if metadata is not None:
             if not isinstance(metadata, dict):
                 raise ValueError("metadata must be a dict.")
@@ -128,12 +129,14 @@ class ActorMethod(ActorMethodBase):
 
         class FuncWrapper(ActorMethodBase):
             def run_async(self, *args, **kwargs):
-                return func_cls._run(args=args, kwargs=kwargs,
-                                     max_retries=max_retries,
-                                     catch_exceptions=catch_exceptions,
-                                     name=name,
-                                     metadata=metadata,
-                                     **ray_options)
+                return func_cls._run(
+                    args=args,
+                    kwargs=kwargs,
+                    max_retries=max_retries,
+                    catch_exceptions=catch_exceptions,
+                    name=name,
+                    metadata=metadata,
+                    **ray_options)
 
         return FuncWrapper()
 
@@ -227,7 +230,8 @@ class VirtualActorMetadata:
                 max_retries = options.pop("max_retries", None)
                 if max_retries is not None:
                     if not isinstance(max_retries, int) or max_retries < 1:
-                        raise ValueError("max_retries should be greater or equal to 1.")
+                        raise ValueError(
+                            "max_retries should be greater or equal to 1.")
                     step_options["max_retries"] = max_retries
                 catch_exceptions = options.pop("catch_exceptions", None)
                 if catch_exceptions is not None:
@@ -245,7 +249,8 @@ class VirtualActorMetadata:
                         except TypeError as e:
                             raise ValueError(
                                 "metadata values must be JSON serializable, "
-                                "however '{}' has a value whose {}.".format(k, e))
+                                "however '{}' has a value whose {}.".format(
+                                    k, e))
                     step_options["metadata"] = metadata
                 if len(options) != 0:
                     step_options["ray_options"] = options
@@ -277,7 +282,8 @@ class VirtualActorMetadata:
                     step_type=step_type,
                     inputs=workflow_inputs,
                     max_retries=step_options.get("max_retries", 1),
-                    catch_exceptions=step_options.get("catch_exceptions", False),
+                    catch_exceptions=step_options.get("catch_exceptions",
+                                                      False),
                     ray_options=step_options.get("ray_options", {}),
                     name=step_options.get("name", None),
                     user_metadata=step_options.get("metadata", {}),
@@ -290,7 +296,9 @@ class VirtualActorMetadata:
             def _options(method_name, method, **options):
                 def _method(*args, **kwargs):
                     return method(*args, **kwargs)
-                _method.step = functools.partial(step, method_name, method, options)
+
+                _method.step = functools.partial(step, method_name, method,
+                                                 options)
                 return _method
 
             method.options = functools.partial(_options, method_name, method)
