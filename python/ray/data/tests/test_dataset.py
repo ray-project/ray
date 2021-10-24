@@ -2707,6 +2707,18 @@ def test_groupby_arrow(ray_start_regular_shared):
         [{"A": 0, "count()": 34}, {"A": 1, "count()": 33},
          {"A": 2, "count()": 33}]
 
+    # Test built-in mean aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items([{
+        "A": (x % 3),
+        "B": x
+    } for x in xs]).groupby("A").mean("B")
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "mean(B)": 49.5}, {"A": 1, "mean(B)": 49.0},
+         {"A": 2, "mean(B)": 50.0}]
+
 
 def test_groupby_simple(ray_start_regular_shared):
     parallelism = 3
