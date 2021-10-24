@@ -42,6 +42,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     Args:
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the dataset.
+            Parallelism may be limited by the number of items.
 
     Returns:
         Dataset holding the items.
@@ -74,6 +75,7 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
     Args:
         n: The upper bound of the range of integers.
         parallelism: The amount of parallelism to use for the dataset.
+            Parallelism may be limited by the number of items.
 
     Returns:
         Dataset holding the integers.
@@ -96,6 +98,7 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     Args:
         n: The upper bound of the range of integer records.
         parallelism: The amount of parallelism to use for the dataset.
+            Parallelism may be limited by the number of items.
 
     Returns:
         Dataset holding the integers as Arrow records.
@@ -120,6 +123,7 @@ def range_tensor(n: int, *, shape: Tuple = (1, ),
         n: The upper bound of the range of integer records.
         shape: The shape of each record.
         parallelism: The amount of parallelism to use for the dataset.
+            Parallelism may be limited by the number of items.
 
     Returns:
         Dataset holding the integers as tensors.
@@ -143,7 +147,8 @@ def read_datasource(datasource: Datasource[T],
 
     Args:
         datasource: The datasource to read data from.
-        parallelism: The requested parallelism of the read.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the available partitioning of the datasource.
         read_args: Additional kwargs to pass to the datasource impl.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
 
@@ -229,7 +234,8 @@ def read_parquet(paths: Union[str, List[str]],
         paths: A single file path or a list of file paths (or directories).
         filesystem: The filesystem implementation to read from.
         columns: A list of column names to read.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         _tensor_column_schema: A dict of column name --> tensor dtype and shape
             mappings for converting a Parquet column containing serialized
@@ -302,7 +308,8 @@ def read_json(paths: Union[str, List[str]],
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
@@ -345,7 +352,8 @@ def read_csv(paths: Union[str, List[str]],
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
@@ -386,7 +394,8 @@ def read_text(
         paths: A single file path or a list of file paths (or directories).
         encoding: The encoding of the files (e.g., "utf-8" or "ascii").
         filesystem: The filesystem implementation to read from.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
 
@@ -425,7 +434,8 @@ def read_numpy(paths: Union[str, List[str]],
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
         numpy_load_args: Other options to pass to np.load.
@@ -468,7 +478,8 @@ def read_binary_files(
             tuple of the file path and the file contents.
         filesystem: The filesystem implementation to read from.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
 
@@ -506,8 +517,7 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def from_mars(df: "mars.DataFrame", *,
-              parallelism: int = 200) -> Dataset[ArrowRow]:
+def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a MARS dataframe.
 
     Args:
