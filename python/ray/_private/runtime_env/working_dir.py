@@ -6,7 +6,7 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
-    parse_uri, upload_package_if_needed)
+    parse_uri, Protocol, upload_package_if_needed)
 
 default_logger = logging.getLogger(__name__)
 
@@ -28,10 +28,14 @@ def upload_working_dir_if_needed(runtime_env: Dict[str, Any],
 
     # working_dir is already a URI -- just pass it through.
     try:
-        parse_uri(working_dir)
-        return runtime_env
+        protocol, path = parse_uri(working_dir)
     except ValueError:
-        pass
+        protocol, path = None, None
+
+    if protocol is not None:
+        if protocol == Protocol.S3 and not path.endswith(".zip"):
+            raise ValueError("Only .zip files supported for S3 URIs.")
+        return runtime_env
 
     # Remove excludes, it isn't relevant after the upload step.
     excludes = runtime_env.pop("excludes", None)

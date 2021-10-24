@@ -531,7 +531,10 @@ def init_log_pubsub():
     return p
 
 
-def get_log_message(pub_sub, num, timeout=20):
+def get_log_message(pub_sub,
+                    num: int,
+                    timeout: float = 20,
+                    job_id: Optional[str] = None) -> List[str]:
     """Get errors through pub/sub."""
     start_time = time.time()
     msgs = []
@@ -540,7 +543,10 @@ def get_log_message(pub_sub, num, timeout=20):
         if msg is None:
             time.sleep(0.01)
             continue
-        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
+        structured = json.loads(ray._private.utils.decode(msg["data"]))
+        if job_id and job_id != structured["job"]:
+            continue
+        log_lines = structured["lines"]
         msgs = log_lines
 
     return msgs
@@ -680,6 +686,34 @@ def is_placement_group_removed(pg):
     if "state" not in table:
         return False
     return table["state"] == "REMOVED"
+
+
+def placement_group_assert_no_leak(pgs_created):
+    for pg in pgs_created:
+        ray.util.remove_placement_group(pg)
+
+    def wait_for_pg_removed():
+        for pg_entry in ray.util.placement_group_table().values():
+            if pg_entry["state"] != "REMOVED":
+                return False
+        return True
+
+    wait_for_condition(wait_for_pg_removed)
+
+    cluster_resources = ray.cluster_resources()
+    cluster_resources.pop("memory")
+    cluster_resources.pop("object_store_memory")
+
+    def wait_for_resource_recovered():
+        for resource, val in ray.available_resources().items():
+            if (resource in cluster_resources
+                    and cluster_resources[resource] != val):
+                return False
+            if "_group_" in resource:
+                return False
+        return True
+
+    wait_for_condition(wait_for_resource_recovered)
 
 
 def monitor_memory_usage(interval_s: int = 5, warning_threshold: float = 0.9):
