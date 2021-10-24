@@ -32,7 +32,7 @@ def test_incremental_take(shutdown_only):
             time.sleep(999999)
         return x
 
-    pipe = ray.data.range(2).window(blocks_per_window=1)
+    pipe = ray.data.range(2).window(partitions_per_window=1)
     pipe = pipe.map(block_on_ones)
     assert pipe.take(1) == [0]
 
@@ -45,7 +45,7 @@ def test_epoch(ray_start_regular_shared):
     assert results == [[0, 4, 8, 12, 16], [0, 4, 8, 12, 16], [0, 4, 8, 12, 16]]
 
     # Test dataset pipeline repeat.
-    pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
+    pipe = ray.data.range(3).window(partitions_per_window=2).repeat(3)
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
 
@@ -56,20 +56,20 @@ def test_epoch(ray_start_regular_shared):
                        [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
 
     # Test preserve_epoch=True.
-    pipe = ray.data.range(5).repeat(2).rewindow(blocks_per_window=2)
+    pipe = ray.data.range(5).repeat(2).rewindow(partitions_per_window=2)
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
 
     # Test preserve_epoch=False.
     pipe = ray.data.range(5).repeat(2).rewindow(
-        blocks_per_window=2, preserve_epoch=False)
+        partitions_per_window=2, preserve_epoch=False)
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2, 3], [4, 0, 1, 2, 3, 4]]
 
 
 def test_cannot_read_twice(ray_start_regular_shared):
     ds = ray.data.range(10)
-    pipe = ds.window(blocks_per_window=1)
+    pipe = ds.window(partitions_per_window=1)
     assert pipe.count() == 10
     with pytest.raises(RuntimeError):
         pipe.count()
@@ -84,15 +84,15 @@ def test_cannot_read_twice(ray_start_regular_shared):
 def test_basic_pipeline(ray_start_regular_shared):
     ds = ray.data.range(10)
 
-    pipe = ds.window(blocks_per_window=1)
+    pipe = ds.window(partitions_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
     assert pipe.count() == 10
 
-    pipe = ds.window(blocks_per_window=1).map(lambda x: x).map(lambda x: x)
+    pipe = ds.window(partitions_per_window=1).map(lambda x: x).map(lambda x: x)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=3)"
     assert pipe.take() == list(range(10))
 
-    pipe = ds.window(blocks_per_window=999)
+    pipe = ds.window(partitions_per_window=999)
     assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=1)"
     assert pipe.count() == 10
 
@@ -105,9 +105,9 @@ def test_basic_pipeline(ray_start_regular_shared):
 
 def test_window(ray_start_regular_shared):
     ds = ray.data.range(10)
-    pipe = ds.window(blocks_per_window=1)
+    pipe = ds.window(partitions_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
-    pipe = pipe.rewindow(blocks_per_window=3)
+    pipe = pipe.rewindow(partitions_per_window=3)
     assert str(pipe) == "DatasetPipeline(num_windows=None, num_stages=1)"
     datasets = list(pipe.iter_datasets())
     assert len(datasets) == 4
@@ -117,9 +117,9 @@ def test_window(ray_start_regular_shared):
     assert datasets[3].take() == [9]
 
     ds = ray.data.range(10)
-    pipe = ds.window(blocks_per_window=5)
+    pipe = ds.window(partitions_per_window=5)
     assert str(pipe) == "DatasetPipeline(num_windows=2, num_stages=1)"
-    pipe = pipe.rewindow(blocks_per_window=3)
+    pipe = pipe.rewindow(partitions_per_window=3)
     assert str(pipe) == "DatasetPipeline(num_windows=None, num_stages=1)"
     datasets = list(pipe.iter_datasets())
     assert len(datasets) == 4
@@ -131,14 +131,14 @@ def test_window(ray_start_regular_shared):
 
 def test_repeat(ray_start_regular_shared):
     ds = ray.data.range(5)
-    pipe = ds.window(blocks_per_window=1)
+    pipe = ds.window(partitions_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=5, num_stages=1)"
     pipe = pipe.repeat(2)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
     assert pipe.take() == (list(range(5)) + list(range(5)))
 
     ds = ray.data.range(5)
-    pipe = ds.window(blocks_per_window=1)
+    pipe = ds.window(partitions_per_window=1)
     pipe = pipe.repeat()
     assert str(pipe) == "DatasetPipeline(num_windows=inf, num_stages=1)"
     assert len(pipe.take(99)) == 99
@@ -174,30 +174,30 @@ def test_repartition(ray_start_regular_shared):
 
 
 def test_iter_batches(ray_start_regular_shared):
-    pipe = ray.data.range(10).window(blocks_per_window=2)
+    pipe = ray.data.range(10).window(partitions_per_window=2)
     batches = list(pipe.iter_batches())
     assert len(batches) == 10
     assert all(len(e) == 1 for e in batches)
 
 
 def test_iter_datasets(ray_start_regular_shared):
-    pipe = ray.data.range(10).window(blocks_per_window=2)
+    pipe = ray.data.range(10).window(partitions_per_window=2)
     ds = list(pipe.iter_datasets())
     assert len(ds) == 5
 
-    pipe = ray.data.range(10).window(blocks_per_window=5)
+    pipe = ray.data.range(10).window(partitions_per_window=5)
     ds = list(pipe.iter_datasets())
     assert len(ds) == 2
 
 
 def test_foreach_window(ray_start_regular_shared):
-    pipe = ray.data.range(5).window(blocks_per_window=2)
+    pipe = ray.data.range(5).window(partitions_per_window=2)
     pipe = pipe.foreach_window(lambda ds: ds.map(lambda x: x * 2))
     assert pipe.take() == [0, 2, 4, 6, 8]
 
 
 def test_schema(ray_start_regular_shared):
-    pipe = ray.data.range(5).window(blocks_per_window=2)
+    pipe = ray.data.range(5).window(partitions_per_window=2)
     assert pipe.schema() == int
 
 
@@ -256,7 +256,7 @@ def test_parquet_write(ray_start_regular_shared, tmp_path):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
-    ds = ds.window(blocks_per_window=1)
+    ds = ds.window(partitions_per_window=1)
     path = os.path.join(tmp_path, "test_parquet_dir")
     os.mkdir(path)
     ds._set_uuid("data")
@@ -271,14 +271,14 @@ def test_infinity_of_pipeline(ray_start_regular_shared):
     ds = ray.data.range(3)
     pipe = ds.repeat()
     assert float("inf") == pipe._length
-    pipe = ds.window(blocks_per_window=2)
+    pipe = ds.window(partitions_per_window=2)
     assert float("inf") != pipe._length
     pipe = ds.repeat(3)
     assert float("inf") != pipe._length
     assert float("inf") == pipe.repeat()._length
 
     # ensure infinite length is transitive
-    pipe = ds.repeat().rewindow(blocks_per_window=2)
+    pipe = ds.repeat().rewindow(partitions_per_window=2)
     assert float("inf") == pipe._length
     pipe = ds.repeat().split(2)[0]
     assert float("inf") == pipe._length

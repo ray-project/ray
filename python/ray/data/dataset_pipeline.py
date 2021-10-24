@@ -41,7 +41,7 @@ class DatasetPipeline(Generic[T]):
 
     A DatasetPipeline can be created by either repeating a Dataset
     (``ds.repeat(times=None)``), by turning a single Dataset into a pipeline
-    (``ds.window(blocks_per_window=10)``), or defined explicitly using
+    (``ds.window(partitions_per_window=10)``), or defined explicitly using
     ``DatasetPipeline.from_iterable()``.
 
     DatasetPipeline supports the all the per-record transforms of Datasets
@@ -242,19 +242,21 @@ class DatasetPipeline(Generic[T]):
                 progress_bars=False) for idx in range(n)
         ]
 
-    def rewindow(self, *, blocks_per_window: int,
+    def rewindow(self,
+                 *,
+                 partitions_per_window: int,
                  preserve_epoch: bool = True) -> "DatasetPipeline[T]":
         """Change the windowing (blocks per dataset) of this pipeline.
 
         Changes the windowing of this pipeline to the specified size. For
         example, if the current pipeline has two blocks per dataset, and
-        `.rewindow(blocks_per_window=4)` is requested, adjacent datasets will
-        be merged until each dataset is 4 blocks. If
-        `.rewindow(blocks_per_window)` was requested the datasets will be
+        `.rewindow(partitions_per_window=4)` is requested, adjacent datasets
+        will be merged until each dataset is 4 blocks. If
+        `.rewindow(partitions_per_window)` was requested the datasets will be
         split into smaller windows.
 
         Args:
-            blocks_per_window: The new target blocks per window.
+            partitions_per_window: The new target blocks per window.
             preserve_epoch: Whether to preserve epoch boundaries. If set to
                 False, then windows can contain data from two adjacent epochs.
         """
@@ -269,7 +271,8 @@ class DatasetPipeline(Generic[T]):
                     # Merge windows until we meet the requested window size.
                     if self._buffer is None:
                         self._buffer = next(self._original_iter)
-                    while self._buffer.num_partitions() < blocks_per_window:
+                    while (self._buffer.num_partitions() <
+                           partitions_per_window):
                         next_ds = next(self._original_iter)
                         if (preserve_epoch and self._buffer._get_epoch() !=
                                 next_ds._get_epoch()):
@@ -279,8 +282,9 @@ class DatasetPipeline(Generic[T]):
                         else:
                             self._buffer = self._buffer.union(next_ds)
                     # Slice off the left-most chunk and return it.
-                    res, self._buffer = self._buffer._divide(blocks_per_window)
-                    assert res.num_partitions() <= blocks_per_window, res
+                    res, self._buffer = self._buffer._divide(
+                        partitions_per_window)
+                    assert res.num_partitions() <= partitions_per_window, res
                     if self._buffer.num_partitions() == 0:
                         self._buffer = None
                     return lambda: res
@@ -288,7 +292,8 @@ class DatasetPipeline(Generic[T]):
                     # Return the left-over data as a single window.
                     if self._buffer and self._buffer.num_partitions() > 0:
                         res = self._buffer
-                        assert res.num_partitions() <= blocks_per_window, res
+                        assert res.num_partitions(
+                        ) <= partitions_per_window, res
                         self._buffer = None
                         return lambda: res
                     else:

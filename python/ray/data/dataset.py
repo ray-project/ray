@@ -1835,10 +1835,12 @@ class Dataset(Generic[T]):
         return DatasetPipeline(Iterable(self), length=times or float("inf"))
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        raise DeprecationWarning("Use .window(blocks_per_window=n) instead of "
-                                 ".pipeline(parallelism=n)")
+        raise DeprecationWarning(
+            "Use .window(partitions_per_window=n) instead of "
+            ".pipeline(parallelism=n)")
 
-    def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
+    def window(self, *,
+               partitions_per_window: int = 10) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
 
         Transformations prior to the call to ``window()`` are evaluated in
@@ -1867,11 +1869,11 @@ class Dataset(Generic[T]):
         Examples:
             >>> # Create an inference pipeline.
             >>> ds = ray.data.read_binary_files(dir)
-            >>> pipe = ds.window(blocks_per_window=10).map(infer)
+            >>> pipe = ds.window(partitions_per_window=10).map(infer)
             DatasetPipeline(num_windows=40, num_stages=2)
 
             >>> # The higher the stage parallelism, the shorter the pipeline.
-            >>> pipe = ds.window(blocks_per_window=20).map(infer)
+            >>> pipe = ds.window(partitions_per_window=20).map(infer)
             DatasetPipeline(num_windows=20, num_stages=2)
 
             >>> # Outputs can be incrementally read from the pipeline.
@@ -1879,7 +1881,7 @@ class Dataset(Generic[T]):
             ...    print(item)
 
         Args:
-            blocks_per_window: The window size (parallelism) in blocks.
+            partitions_per_window: The window size (parallelism) in blocks.
                 Increasing window size increases pipeline throughput, but also
                 increases the latency to initial output, since it decreases the
                 length of the pipeline. Setting this to infinity effectively
@@ -1905,7 +1907,7 @@ class Dataset(Generic[T]):
 
         class Iterable:
             def __init__(self, blocks, epoch):
-                self._splits = blocks.split(split_size=blocks_per_window)
+                self._splits = blocks.split(split_size=partitions_per_window)
                 self._epoch = epoch
 
             def __iter__(self):
