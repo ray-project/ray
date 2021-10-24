@@ -9,6 +9,13 @@ from ray.data.impl.block_list import BlockList, BlockPartition, \
 
 
 class LazyBlockList(BlockList):
+    """A BlockList that submits tasks lazily on-demand.
+
+    This BlockList is used for implementing read operations (e.g., to avoid
+    needing to read all files of a Dataset when the user is just wanting to
+    .take() the first few rows or view the schema).
+    """
+
     def __init__(self,
                  calls: Callable[[], ObjectRef[BlockPartition]],
                  metadata: List[BlockPartitionMetadata],
