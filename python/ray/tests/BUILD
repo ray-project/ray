@@ -242,7 +242,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_runtime_env.py"
+    "test_runtime_env.py",
+    "test_runtime_env_working_dir.py"
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -250,7 +251,13 @@ py_test_module_list(
   deps = ["//:ray_lib"],
 )
 
-
+py_test(
+    name = "test_actor_group",
+    size = "medium",
+    srcs = SRCS + ["test_actor_group.py"],
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"]
+)
 
 # TODO(barakmich): aws/ might want its own buildfile, or
 #    py_test_module_list should support subdirectories.

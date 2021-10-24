@@ -412,11 +412,6 @@ class Dataset(Generic[T]):
             _spread_resource_prefix=_spread_resource_prefix)
         return Dataset(new_blocks, self._epoch)
 
-    def _move_blocks(self):
-        blocks = self._blocks.copy()
-        self._blocks.clear()
-        return blocks
-
     def split(self,
               n: int,
               *,
@@ -1673,7 +1668,6 @@ class Dataset(Generic[T]):
             output.add_block(block)
         return output.build().to_pandas()
 
-    @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
 
@@ -1691,8 +1685,8 @@ class Dataset(Generic[T]):
         block_to_df = cached_remote_fn(_block_to_df)
         return [block_to_df.remote(block) for block in self._blocks]
 
-    def to_numpy(self, *,
-                 column: Optional[str] = None) -> List[ObjectRef[np.ndarray]]:
+    def to_numpy_refs(self, *, column: Optional[str] = None
+                      ) -> List[ObjectRef[np.ndarray]]:
         """Convert this dataset into a distributed set of NumPy ndarrays.
 
         This is only supported for datasets convertible to NumPy ndarrays.
@@ -1716,22 +1710,6 @@ class Dataset(Generic[T]):
             for block in self._blocks
         ]
 
-    def to_arrow(self) -> List["pyarrow.Table"]:
-        """Convert this dataset into a list of Arrow tables.
-
-        This is only supported for datasets convertible to Arrow records.
-        This function is zero-copy if the existing data is already in Arrow
-        format. Otherwise, the data will be converted to Arrow format.
-
-        Time complexity: O(1) unless conversion is required.
-
-        Returns:
-            A list of Arrow tables created from this dataset.
-        """
-
-        return ray.get(self.to_arrow_refs())
-
-    @DeveloperAPI
     def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
         """Convert this dataset into a distributed set of Arrow tables.
 
@@ -1900,6 +1878,11 @@ class Dataset(Generic[T]):
             A list of references to this dataset's blocks.
         """
         return list(self._blocks)
+
+    def _move_blocks(self):
+        blocks = self._blocks.copy()
+        self._blocks.clear()
+        return blocks
 
     def _split(self, index: int,
                return_right_half: bool) -> ("Dataset[T]", "Dataset[T]"):
