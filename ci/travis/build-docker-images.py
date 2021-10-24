@@ -474,16 +474,17 @@ def push_and_tag_images(py_versions: List[str],
         # Sanity checking.
         for old_tag in tag_mapping.keys():
             if DEFAULT_PYTHON_VERSION in old_tag:
-                assert "nightly-cpu" in tag_mapping[old_tag]
-                assert "nightly" in tag_mapping[old_tag]
-                if "-deps" in image_name:
-                    assert f"{date_tag}-cpu" in tag_mapping[old_tag]
-                    assert f"{date_tag}" in tag_mapping[old_tag]
-                else:
-                    assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
-                    assert f"{sha_tag}" in tag_mapping[old_tag]
+                if "-cpu" in old_tag:
+                    assert "nightly-cpu" in tag_mapping[old_tag]
+                    assert "nightly" in tag_mapping[old_tag]
+                    if "-deps" in image_name:
+                        assert f"{date_tag}-cpu" in tag_mapping[old_tag]
+                        assert f"{date_tag}" in tag_mapping[old_tag]
+                    else:
+                        assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
+                        assert f"{sha_tag}" in tag_mapping[old_tag]
 
-                if ML_CUDA_VERSION in old_tag:
+                elif ML_CUDA_VERSION in old_tag:
                     assert "nightly-gpu" in tag_mapping[old_tag]
                     if "-deps" in image_name:
                         assert f"{date_tag}-gpu" in tag_mapping[old_tag]
