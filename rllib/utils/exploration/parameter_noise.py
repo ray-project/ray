@@ -424,5 +424,7 @@ class ParameterNoise(Exploration):
         # Set self.stddev to calculated value.
         if self.framework == "tf":
             self.stddev.load(self.stddev_val, session=sess)
-        else:
+        elif self.framework == "torch":
             self.stddev = self.stddev_val
+        else:
+            self.stddev.assign(self.stddev_val)

@@ -212,5 +212,7 @@ class GaussianNoise(Exploration):
                   sess: Optional["tf.Session"] = None) -> None:
         if self.framework == "tf":
             self.last_timestep.load(state["last_timestep"], session=sess)
-        else:
+        elif self.framework == "torch":
             self.last_timestep = state["last_timestep"]
+        else:
+            self.last_timestep.assign(state["last_timestep"])
