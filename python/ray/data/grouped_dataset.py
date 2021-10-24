@@ -64,7 +64,7 @@ class GroupedDataset(Generic[T]):
             and v is the corresponding aggregation result.
         """
         # Handle empty dataset.
-        if self._dataset.num_blocks() == 0:
+        if self._dataset.num_partitions() == 0:
             return self._dataset
 
         blocks = list(self._dataset._blocks.iter_executed_blocks())

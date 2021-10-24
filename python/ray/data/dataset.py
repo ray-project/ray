@@ -1918,7 +1918,8 @@ class Dataset(Generic[T]):
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
 
-        This function can be used for zero-copy access to the data.
+        This function can be used for zero-copy access to the data. It blocks
+        until the underlying blocks are computed.
 
         Time complexity: O(1)
 

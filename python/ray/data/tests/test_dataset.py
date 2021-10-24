@@ -1985,24 +1985,29 @@ def test_split(ray_start_regular_shared):
     assert ds._block_sizes() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [dataset._blocks.num_tasks() for dataset in datasets]
+    assert [2] * 5 == [
+        dataset._blocks.num_partitions() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3, 3] == [dataset._blocks.num_tasks() for dataset in datasets]
+    assert [4, 3,
+            3] == [dataset._blocks.num_partitions() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [dataset._blocks.num_tasks() for dataset in datasets]
+    assert [10] == [dataset._blocks.num_partitions() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [dataset._blocks.num_tasks() for dataset in datasets]
+    assert [1] * 10 == [
+        dataset._blocks.num_partitions() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
-        dataset._blocks.num_tasks() for dataset in datasets
+        dataset._blocks.num_partitions() for dataset in datasets
     ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
