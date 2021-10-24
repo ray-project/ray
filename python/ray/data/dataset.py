@@ -397,7 +397,7 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
-        curr_num_blocks = self.num_blocks()
+        curr_num_blocks = self.num_partitions()
         # Handle empty dataset.
         if curr_num_blocks == 0:
             return self
@@ -853,7 +853,7 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
         # Handle empty dataset.
-        if self.num_blocks() == 0:
+        if self.num_partitions() == 0:
             return self
         return Dataset(sort_impl(self._blocks, key, descending), self._epoch)
 
@@ -985,7 +985,7 @@ class Dataset(Generic[T]):
             The number of records in the dataset.
         """
         # Handle empty dataset.
-        if self.num_blocks() == 0:
+        if self.num_partitions() == 0:
             return 0
 
         # For parquet, we can return the count directly from metadata.
@@ -1039,12 +1039,19 @@ class Dataset(Generic[T]):
         return None
 
     def num_blocks(self) -> int:
-        """Return the number of blocks of this dataset.
+        raise DeprecationWarning("Use .num_partitions() instead.")
+
+    def num_partitions(self) -> int:
+        """Return the number of partitions of this dataset.
+
+        Note that in some cases, partitions may be composed more than one
+        underlying physical block. The number of blocks per partition cannot
+        be known fully until after execution.
 
         Time complexity: O(1)
 
         Returns:
-            The number of blocks of this dataset.
+            The number of partitions of this dataset.
         """
         return self._blocks.num_partitions()
 
@@ -1986,7 +1993,7 @@ class Dataset(Generic[T]):
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
-        return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
+        return "Dataset(num_partitions={}, num_rows={}, schema={})".format(
             self._blocks.num_partitions(), count, schema_str)
 
     def __str__(self) -> str:

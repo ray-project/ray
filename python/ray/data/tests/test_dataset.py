@@ -989,17 +989,17 @@ def test_from_items(ray_start_regular_shared):
 
 def test_repartition_shuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds.num_partitions() == 10
     assert ds.sum() == 190
     assert ds._block_sizes() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
-    assert ds2.num_blocks() == 5
+    assert ds2.num_partitions() == 5
     assert ds2.sum() == 190
     assert ds2._block_sizes() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
-    assert ds3.num_blocks() == 20
+    assert ds3.num_partitions() == 20
     assert ds3.sum() == 190
     assert ds3._block_sizes() == [2] * 10 + [0] * 10
 
@@ -1010,22 +1010,22 @@ def test_repartition_shuffle(ray_start_regular_shared):
 
 def test_repartition_noshuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds.num_partitions() == 10
     assert ds.sum() == 190
     assert ds._block_sizes() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=False)
-    assert ds2.num_blocks() == 5
+    assert ds2.num_partitions() == 5
     assert ds2.sum() == 190
     assert ds2._block_sizes() == [4, 4, 4, 4, 4]
 
     ds3 = ds2.repartition(20, shuffle=False)
-    assert ds3.num_blocks() == 20
+    assert ds3.num_partitions() == 20
     assert ds3.sum() == 190
     assert ds3._block_sizes() == [1] * 20
 
     ds4 = ray.data.range(22).repartition(4)
-    assert ds4.num_blocks() == 4
+    assert ds4.num_partitions() == 4
     assert ds4._block_sizes() == [5, 6, 5, 6]
 
     large = ray.data.range(10000, parallelism=10)
@@ -1035,17 +1035,17 @@ def test_repartition_noshuffle(ray_start_regular_shared):
 
 def test_repartition_shuffle_arrow(ray_start_regular_shared):
     ds = ray.data.range_arrow(20, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds.num_partitions() == 10
     assert ds.count() == 20
     assert ds._block_sizes() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
-    assert ds2.num_blocks() == 5
+    assert ds2.num_partitions() == 5
     assert ds2.count() == 20
     assert ds2._block_sizes() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
-    assert ds3.num_blocks() == 20
+    assert ds3.num_partitions() == 20
     assert ds3.count() == 20
     assert ds3._block_sizes() == [2] * 10 + [0] * 10
 
@@ -1927,7 +1927,7 @@ def test_union(ray_start_regular_shared):
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
-    assert ds.num_blocks() == 50
+    assert ds.num_partitions() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
 
@@ -1979,7 +1979,7 @@ def test_split_at_indices(ray_start_regular_shared):
 
 def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
-    assert ds.num_blocks() == 10
+    assert ds.num_partitions() == 10
     assert ds.sum() == 190
     assert ds._block_sizes() == [2] * 10
 
