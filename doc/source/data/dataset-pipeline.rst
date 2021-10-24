@@ -31,7 +31,7 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     # Create a dataset and then create a pipeline from it.
     base = ray.data.range(1000000)
     print(base)
-    # -> Dataset(num_blocks=200, num_rows=1000000, schema=<class 'int'>)
+    # -> Dataset(num_partitions=200, num_rows=1000000, schema=<class 'int'>)
     pipe = base.window(blocks_per_window=10)
     print(pipe)
     # -> DatasetPipeline(num_windows=20, num_stages=1)
@@ -219,7 +219,7 @@ Here we specified ``blocks_per_window=2``, which means that the Dataset is split
 Tuning Parallelism
 ~~~~~~~~~~~~~~~~~~
 
-Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` setting. As a rule of thumb, higher parallelism settings perform better, however ``blocks_per_window == num_blocks`` effectively disables pipelining, since the DatasetPipeline will only contain a single Dataset. The other extreme is setting ``blocks_per_window=1``, which minimizes the latency to initial output but only allows one concurrent transformation task per stage:
+Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` setting. As a rule of thumb, higher parallelism settings perform better, however ``blocks_per_window == num_partitions`` effectively disables pipelining, since the DatasetPipeline will only contain a single Dataset. The other extreme is setting ``blocks_per_window=1``, which minimizes the latency to initial output but only allows one concurrent transformation task per stage:
 
 .. image:: dataset-pipeline-3.svg
 
@@ -344,7 +344,7 @@ See :ref:`the Train User Guide <train-dataset-pipeline>` for more details.
 Changing Pipeline Structure
 ---------------------------
 
-Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``. The latter may produce windows that span multiple copies of the same original data if ``preserve_epoch=False`` is set:
+Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_partitions()``. The latter may produce windows that span multiple copies of the same original data if ``preserve_epoch=False`` is set:
 
 .. code-block:: python
 

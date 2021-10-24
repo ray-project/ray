@@ -21,7 +21,7 @@ The most basic case is when a dataset only has a single column, which is of tens
 
     # Create a Dataset of tensor-typed values.
     ds = ray.data.range_tensor(10000, shape=(3, 5))
-    # -> Dataset(num_blocks=200, num_rows=10000,
+    # -> Dataset(num_partitions=200, num_rows=10000,
     #            schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})
 
     # Save to storage.
@@ -29,7 +29,7 @@ The most basic case is when a dataset only has a single column, which is of tens
 
     # Read from storage.
     ray.data.read_numpy("/tmp/tensor_out")
-    # -> Dataset(num_blocks=200, num_rows=?,
+    # -> Dataset(num_partitions=200, num_rows=?,
     #            schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})
 
 Reading existing serialized tensor columns
@@ -122,7 +122,7 @@ Now that the tensor column is properly typed and in a ``Dataset``, we can perfor
     # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
     print(ds)
     # -> Dataset(
-    #        num_blocks=1, num_rows=3,
+    #        num_partitions=1, num_rows=3,
     #        schema=<class 'int',
     #            class ray.data.extensions.tensor_extension.ArrowTensorType>)
     print([row["two"] for row in ds.take(5)])
