@@ -287,7 +287,8 @@ def test_zip_arrow(ray_start_regular_shared):
 def test_batch_tensors(ray_start_regular_shared):
     import torch
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
-    res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
+    res = ("Dataset(num_partitions=40, num_rows=40, "
+           "schema=<class 'torch.Tensor'>)")
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
@@ -361,7 +362,7 @@ def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.data.range_tensor(5, shape=(3, 5))
     assert str(ds) == (
-        "Dataset(num_blocks=5, num_rows=5, "
+        "Dataset(num_partitions=5, num_rows=5, "
         "schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})")
 
     # Pandas conversion.
@@ -828,7 +829,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=None, "
+        "Dataset(num_partitions=2, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
         "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
@@ -841,7 +842,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=None, "
+        "Dataset(num_partitions=1, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
         "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
@@ -920,7 +921,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x > 1)
     assert str(ds) == \
-        "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
+        "Dataset(num_partitions=1, num_rows=0, schema=Unknown schema)"
 
     # Test map on empty dataset.
     ds = ray.data.from_items([])
@@ -939,13 +940,13 @@ def test_schema(ray_start_regular_shared):
     ds3 = ds2.repartition(5)
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     assert str(ds) == \
-        "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "Dataset(num_partitions=10, num_rows=10, schema=<class 'int'>)"
     assert str(ds2) == \
-        "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
+        "Dataset(num_partitions=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == \
-        "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
+        "Dataset(num_partitions=5, num_rows=10, schema={value: int64})"
     assert str(ds4) == \
-        "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
+        "Dataset(num_partitions=1, num_rows=5, schema={a: string, b: double})"
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
@@ -1301,10 +1302,10 @@ def test_parquet_read(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert str(ds) == \
-        "Dataset(num_blocks=2, num_rows=6, " \
+        "Dataset(num_partitions=2, num_rows=6, " \
         "schema={one: int64, two: string})", ds
     assert repr(ds) == \
-        "Dataset(num_blocks=2, num_rows=6, " \
+        "Dataset(num_partitions=2, num_rows=6, " \
         "schema={one: int64, two: string})", ds
     assert ds._blocks._num_computed() == 1
 
@@ -1348,11 +1349,11 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert str(ds) == \
-        "Dataset(num_blocks=2, num_rows=6, " \
+        "Dataset(num_partitions=2, num_rows=6, " \
         "schema={two: string, " \
         "one: dictionary<values=int32, indices=int32, ordered=0>})", ds
     assert repr(ds) == \
-        "Dataset(num_blocks=2, num_rows=6, " \
+        "Dataset(num_partitions=2, num_rows=6, " \
         "schema={two: string, " \
         "one: dictionary<values=int32, indices=int32, ordered=0>})", ds
     assert ds._blocks._num_computed() == 1
@@ -1624,7 +1625,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for blocks, meta in zip(ds2._blocks.iter_tasks(),
+    for blocks, meta in zip(ds2._blocks.iter_partitions(),
                             ds2._blocks.get_metadata()):
         [block] = ray.get(blocks)
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
@@ -2031,7 +2032,7 @@ def test_split_hints(ray_start_regular_shared):
         """
         num_blocks = len(block_node_ids)
         ds = ray.data.range(num_blocks, parallelism=num_blocks)
-        blocks = list(ds._blocks.iter_tasks())
+        blocks = list(ds._blocks.iter_partitions())
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
@@ -2057,7 +2058,7 @@ def test_split_hints(ray_start_regular_shared):
                 for i in range(len(actors)):
                     assert {blocks[j]
                             for j in expected_split_result[i]} == set(
-                                list(datasets[i]._blocks.iter_tasks()))
+                                datasets[i]._blocks.iter_partitions())
 
     assert_split_assignment(["node2", "node1", "node1"], ["node1", "node2"],
                             [[1, 2], [0]])
@@ -2295,7 +2296,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for blocks, meta in zip(ds._blocks.iter_tasks(),
+    for blocks, meta in zip(ds._blocks.iter_partitions(),
                             ds._blocks.get_metadata()):
         [block] = ray.get(blocks)
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
@@ -2418,7 +2419,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
-    for blocks, meta in zip(ds._blocks.iter_tasks(),
+    for blocks, meta in zip(ds._blocks.iter_partitions(),
                             ds._blocks.get_metadata()):
         [block] = ray.get(blocks)
         BlockAccessor.for_block(ray.get(block)).size_bytes()
@@ -2499,7 +2500,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for blocks, meta in zip(ds2._blocks.iter_tasks(),
+    for blocks, meta in zip(ds2._blocks.iter_partitions(),
                             ds2._blocks.get_metadata()):
         [block] = ray.get(blocks)
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
@@ -2518,7 +2519,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for blocks, meta in zip(ds2._blocks.iter_tasks(),
+    for blocks, meta in zip(ds2._blocks.iter_partitions(),
                             ds2._blocks.get_metadata()):
         [block] = ray.get(blocks)
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
@@ -2558,7 +2559,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for blocks, meta in zip(ds._blocks.iter_tasks(),
+    for blocks, meta in zip(ds._blocks.iter_partitions(),
                             ds._blocks.get_metadata()):
         [block] = ray.get(blocks)
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
@@ -2691,7 +2692,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for blocks, meta in zip(ds2._blocks.iter_tasks(),
+    for blocks, meta in zip(ds2._blocks.iter_partitions(),
                             ds2._blocks.get_metadata()):
         [block] = ray.get(blocks)
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
@@ -2705,7 +2706,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for blocks, meta in zip(ds2._blocks.iter_tasks(),
+    for blocks, meta in zip(ds2._blocks.iter_partitions(),
                             ds2._blocks.get_metadata()):
         [block] = ray.get(blocks)
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
