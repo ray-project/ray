@@ -22,7 +22,6 @@ class TestDQN(unittest.TestCase):
         config["num_workers"] = 2
 
         num_iterations = 1
-
         for _ in framework_iterator(config):
             # Double-dueling DQN.
             print("Double-dueling")
