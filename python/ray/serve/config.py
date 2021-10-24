@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import pydantic
 from google.protobuf.json_format import MessageToDict
 from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
+from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
 from ray.serve.generated.serve_pb2 import (BackendConfig as BackendConfigProto,
                                            AutoscalingConfig as
                                            AutoscalingConfigProto)
@@ -16,12 +16,15 @@ from ray import cloudpickle as cloudpickle
 
 
 class AutoscalingConfig(BaseModel):
+    # Please keep these options in sync with those in
+    # `src/ray/protobuf/serve.proto`.
+
     # Publicly exposed options
-    min_replicas: int
-    max_replicas: int
+    min_replicas: int = 1
+    max_replicas: int = 1
     target_num_ongoing_requests_per_replica: int = 1
 
-    # Private options below
+    # Private options below.
 
     # Metrics scraping options
 
@@ -35,13 +38,14 @@ class AutoscalingConfig(BaseModel):
     # Multiplicative "gain" factor to limit scaling decisions
     smoothing_factor: float = 1.0
 
-    # TODO(architkulkarni): implement below
-    # loop_period_s = 30 # How frequently to make autoscaling decisions
+    # How frequently to make autoscaling decisions
+    # loop_period_s: float = CONTROL_LOOP_PERIOD_S
     # How long to wait before scaling down replicas
-    # downscale_delay_s: float = 600.0
+    downscale_delay_s: float = 600.0
     # How long to wait before scaling up replicas
-    # upscale_delay_s: float = 30.0
+    upscale_delay_s: float = 30.0
 
+    # TODO(architkulkarni): implement below
     # The number of replicas to start with when creating the deployment
     # initial_replicas: int = 1
     # The num_ongoing_requests_per_replica error ratio (desired / current)
@@ -112,12 +116,23 @@ class BackendConfig(BaseModel):
     @classmethod
     def from_proto_bytes(cls, proto_bytes: bytes):
         proto = BackendConfigProto.FromString(proto_bytes)
-        data = MessageToDict(proto, preserving_proto_field_name=True)
+        data = MessageToDict(
+            proto,
+            including_default_value_fields=True,
+            preserving_proto_field_name=True)
         if "user_config" in data:
-            data["user_config"] = pickle.loads(proto.user_config)
+            if data["user_config"] != "":
+                data["user_config"] = pickle.loads(proto.user_config)
+            else:
+                data["user_config"] = None
         if "autoscaling_config" in data:
             data["autoscaling_config"] = AutoscalingConfig(
                 **data["autoscaling_config"])
+
+        # Delete fields which are only used in protobuf, not in Python.
+        del data["is_cross_language"]
+        del data["backend_language"]
+
         return cls(**data)
 
 

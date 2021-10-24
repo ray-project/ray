@@ -264,15 +264,31 @@ class ArrowBlockAccessor(BlockAccessor):
         # *greater than* the boundary value instead.
         col, _ = key[0]
         comp_fn = pac.greater if descending else pac.less
+
+        # TODO(ekl) this is O(n^2) but in practice it's much faster than the
+        # O(n) algorithm, could be optimized.
         boundary_indices = [
             pac.sum(comp_fn(table[col], b)).as_py() for b in boundaries
         ]
+        ### Compute the boundary indices in O(n) time via scan.  # noqa
+        # boundary_indices = []
+        # remaining = boundaries.copy()
+        # values = table[col]
+        # for i, x in enumerate(values):
+        #     while remaining and not comp_fn(x, remaining[0]).as_py():
+        #         remaining.pop(0)
+        #         boundary_indices.append(i)
+        # for _ in remaining:
+        #     boundary_indices.append(len(values))
+
         ret = []
         prev_i = 0
         for i in boundary_indices:
-            ret.append(table.slice(prev_i, i - prev_i))
+            # Slices need to be copied to avoid including the base table
+            # during serialization.
+            ret.append(_copy_table(table.slice(prev_i, i - prev_i)))
             prev_i = i
-        ret.append(table.slice(prev_i))
+        ret.append(_copy_table(table.slice(prev_i)))
         return ret
 
     @staticmethod
@@ -286,8 +302,7 @@ class ArrowBlockAccessor(BlockAccessor):
 
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
-    """Copy the provided Arrow table.
-    """
+    """Copy the provided Arrow table."""
     import pyarrow as pa
 
     # Copy the table by copying each column and constructing a new table with

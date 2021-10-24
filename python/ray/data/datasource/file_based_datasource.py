@@ -122,6 +122,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  try_create_dir: bool = True,
                  open_stream_args: Optional[Dict[str, Any]] = None,
+                 write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
                  _block_udf: Optional[Callable[[Block], Block]] = None,
                  **write_args) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
@@ -145,8 +146,11 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block = _block_udf(block)
 
             with fs.open_output_stream(write_path, **open_stream_args) as f:
-                _write_block_to_file(f, BlockAccessor.for_block(block),
-                                     **write_args)
+                _write_block_to_file(
+                    f,
+                    BlockAccessor.for_block(block),
+                    writer_args_fn=write_args_fn,
+                    **write_args)
 
         write_block = cached_remote_fn(write_block)
 
@@ -160,7 +164,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         return write_tasks
 
-    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+    def _write_block(self,
+                     f: "pyarrow.NativeFile",
+                     block: BlockAccessor,
+                     writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
                      **writer_args):
         """Writes a block to a single file, passing all kwargs to the writer.
 
@@ -373,3 +380,12 @@ class _S3FileSystemWrapper:
 
     def __reduce__(self):
         return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
+
+
+def _resolve_kwargs(kwargs_fn: Callable[[], Dict[str, Any]],
+                    **kwargs) -> Dict[str, Any]:
+
+    if kwargs_fn:
+        kwarg_overrides = kwargs_fn()
+        kwargs.update(kwarg_overrides)
+    return kwargs
