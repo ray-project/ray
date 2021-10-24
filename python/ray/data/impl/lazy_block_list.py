@@ -4,7 +4,6 @@ from typing import Callable, List, Iterator
 import numpy as np
 
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata
 from ray.data.impl.block_list import BlockList, BlockPartition, \
     BlockPartitionMetadata
 
@@ -31,7 +30,7 @@ class LazyBlockList(BlockList):
         return LazyBlockList(self._calls.copy(), self._metadata.copy(),
                              self._partitions.copy())
 
-    def clear(self):
+    def clear(self) -> None:
         super().clear()
         self._calls = None
 
@@ -46,14 +45,13 @@ class LazyBlockList(BlockList):
             output.append(LazyBlockList(c.tolist(), m.tolist(), b.tolist()))
         return output
 
-    def divide(self, block_idx: int) -> ("BlockList", "BlockList"):
+    def divide(self, part_idx: int) -> ("BlockList", "BlockList"):
         self._check_if_cleared()
-        left = LazyBlockList(self._calls[:block_idx],
-                             self._metadata[:block_idx],
-                             self._partitions[:block_idx])
-        right = LazyBlockList(self._calls[block_idx:],
-                              self._metadata[block_idx:],
-                              self._partitions[block_idx:])
+        left = LazyBlockList(self._calls[:part_idx], self._metadata[:part_idx],
+                             self._partitions[:part_idx])
+        right = LazyBlockList(self._calls[part_idx:],
+                              self._metadata[part_idx:],
+                              self._partitions[part_idx:])
         return left, right
 
     def iter_partitions(self) -> Iterator[ObjectRef[BlockPartition]]:
@@ -89,7 +87,7 @@ class LazyBlockList(BlockList):
             assert self._partitions[i], self._partitions
         return self._partitions[i]
 
-    def _num_computed(self):
+    def _num_computed(self) -> int:
         i = 0
         for b in self._partitions:
             if b is not None:

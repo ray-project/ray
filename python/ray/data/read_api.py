@@ -193,7 +193,7 @@ def read_datasource(datasource: Datasource[T],
     if metadata and metadata[0].schema is None:
         get_schema = cached_remote_fn(_get_schema)
         schema0 = ray.get(
-            get_schema.remote(next(block_list.iter_output_blocks())))
+            get_schema.remote(next(block_list.iter_executed_blocks())))
         block_list.set_metadata(
             0,
             BlockMetadata(

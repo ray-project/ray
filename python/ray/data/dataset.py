@@ -1937,7 +1937,7 @@ class Dataset(Generic[T]):
         left_metadata = []
         right_blocks = []
         right_metadata = []
-        it = self._blocks.iter_executed_blocks_with_orig_metadata()
+        it = self._blocks.iter_executed_blocks_with_partition_metadata()
         for b, m, sub_blocks in it:
             if m.num_rows is None or sub_blocks > 1:
                 num_rows = ray.get(get_num_rows.remote(b))
