@@ -7,10 +7,9 @@ import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata
 
-
-Partition = ObjectRef[List[Block]]
-PartitionMetadata = BlockMetadata
-PartitionSize = int
+BlockPartition = ObjectRef[List[Block]]
+BlockPartitionMetadata = BlockMetadata
+BlockPartitionSize = int
 
 
 class BlockList:
@@ -19,21 +18,21 @@ class BlockList:
     The BlockList tracks a set of tasks that produce List[Block] object refs
     as output. The set of tasks may be accessed via ``.iter_partitions()``. Each
     task produces a list of one or more Blocks, the flat list of which can be
-    accessed via ``.iter_partition_blocks()``. Note that the number of outputs may
+    accessed via ``.iter_executed_blocks()``. Note that the number of outputs may
     be greater than the number of tasks, if some tasks return multiple objects.
     """
 
-    def __init__(self, blocks: List[ObjectRef[Partition]],
-                 metadata: List[PartitionMetadata]):
-        assert len(blocks) == len(metadata), (blocks, metadata)
-        self._partitions: List[ObjectRef[Partition]] = blocks
+    def __init__(self, partitions: List[ObjectRef[BlockPartition]],
+                 metadata: List[BlockPartitionMetadata]):
+        assert len(partitions) == len(metadata), (partitions, metadata)
+        self._partitions: List[ObjectRef[BlockPartition]] = partitions
         self._num_partitions = len(self._partitions)
         self._metadata = metadata
 
-    def set_metadata(self, i: int, metadata: PartitionMetadata) -> None:
+    def set_metadata(self, i: int, metadata: BlockPartitionMetadata) -> None:
         self._metadata[i] = metadata
 
-    def get_metadata(self) -> List[PartitionMetadata]:
+    def get_metadata(self) -> List[BlockPartitionMetadata]:
         return self._metadata.copy()
 
     def copy(self) -> "BlockList":
@@ -65,11 +64,11 @@ class BlockList:
                 BlockList(self._partitions[block_idx:],
                           self._metadata[block_idx:]))
 
-    def iter_partitions(self) -> Iterator[ObjectRef[Partition]]:
+    def iter_partitions(self) -> Iterator[ObjectRef[BlockPartition]]:
         return iter(self._partitions)
 
-    def iter_partition_blocks_with_orig_metadata(
-            self) -> Iterator[Tuple[ObjectRef[Block], PartitionMetadata, PartitionSize]]:
+    def iter_executed_blocks_with_orig_metadata(self) -> Iterator[Tuple[
+            ObjectRef[Block], BlockPartitionMetadata, BlockPartitionSize]]:
         self._check_if_cleared()
         outer = self
 
@@ -97,13 +96,14 @@ class BlockList:
 
         return Iter()
 
-    def iter_partition_blocks(self) -> Iterator[ObjectRef[Block]]:
+    def iter_executed_blocks(self) -> Iterator[ObjectRef[Block]]:
         self._check_if_cleared()
         outer = self
 
         class Iter:
             def __init__(self):
-                self._base_iter = outer.iter_partition_blocks_with_orig_metadata()
+                self._base_iter = outer.iter_executed_blocks_with_orig_metadata(
+                )
 
             def __iter__(self):
                 return self
@@ -120,4 +120,4 @@ class BlockList:
 
     def num_output_blocks(self) -> int:
         self._check_if_cleared()
-        return len(list(self.iter_partition_blocks()))
+        return len(list(self.iter_executed_blocks()))

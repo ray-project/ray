@@ -597,7 +597,7 @@ class Dataset(Generic[T]):
             new_splits.extend(new_splits_small)
             return new_splits
 
-        block_refs = list(self._blocks.iter_tasks())
+        block_refs = list(self._blocks.iter_partitions())
         metadata_mapping = {
             b: m
             for b, m in zip(block_refs, self._blocks.get_metadata())
@@ -780,9 +780,9 @@ class Dataset(Generic[T]):
             if isinstance(bl, LazyBlockList):
                 calls.extend(bl._calls)
             else:
-                calls.extend([None] * bl.num_tasks())
+                calls.extend([None] * bl.num_partitions())
             metadata.extend(bl._metadata)
-            blocks.extend(list(bl.iter_tasks()))
+            blocks.extend(list(bl.iter_partitions()))
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -998,7 +998,7 @@ class Dataset(Generic[T]):
         return sum(
             ray.get([
                 get_num_rows.remote(block)
-                for block in self._blocks.iter_output_blocks()
+                for block in self._blocks.iter_executed_blocks()
             ]))
 
     def sum(self) -> int:
@@ -1015,7 +1015,7 @@ class Dataset(Generic[T]):
         return sum(
             ray.get([
                 get_sum.remote(block)
-                for block in self._blocks.iter_output_blocks()
+                for block in self._blocks.iter_executed_blocks()
             ]))
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
@@ -1046,7 +1046,7 @@ class Dataset(Generic[T]):
         Returns:
             The number of blocks of this dataset.
         """
-        return self._blocks.num_tasks()
+        return self._blocks.num_partitions()
 
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
@@ -1283,7 +1283,7 @@ class Dataset(Generic[T]):
         """
 
         write_results = datasource.do_write(
-            list(self._blocks.iter_output_blocks()),
+            list(self._blocks.iter_executed_blocks()),
             self._blocks.get_metadata(), **write_args)
         progress = ProgressBar("Write Progress", len(write_results))
         try:
@@ -1388,7 +1388,7 @@ class Dataset(Generic[T]):
                 yield format_batch(batcher.next_batch(), batch_format)
 
         block_window = []  # Handle empty sliding window gracefully.
-        for block_window in sliding_window(self._blocks.iter_output_blocks(),
+        for block_window in sliding_window(self._blocks.iter_executed_blocks(),
                                            prefetch_blocks + 1):
             block_window = list(block_window)
             ray.wait(block_window, num_returns=1, fetch_local=True)
@@ -1598,7 +1598,8 @@ class Dataset(Generic[T]):
         # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
         # once that's implemented.
         ddf = dd.from_delayed([
-            block_to_df(block) for block in self._blocks.iter_output_blocks()
+            block_to_df(block)
+            for block in self._blocks.iter_executed_blocks()
         ])
         return ddf
 
@@ -1702,7 +1703,7 @@ class Dataset(Generic[T]):
         block_to_df = cached_remote_fn(_block_to_df)
         return [
             block_to_df.remote(block)
-            for block in self._blocks.iter_output_blocks()
+            for block in self._blocks.iter_executed_blocks()
         ]
 
     def to_numpy(self, *,
@@ -1727,7 +1728,7 @@ class Dataset(Generic[T]):
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
         return [
             block_to_ndarray.remote(block, column=column)
-            for block in self._blocks.iter_output_blocks()
+            for block in self._blocks.iter_executed_blocks()
         ]
 
     def to_arrow(self) -> List["pyarrow.Table"]:
@@ -1761,7 +1762,7 @@ class Dataset(Generic[T]):
 
         check_is_arrow = cached_remote_fn(_check_is_arrow)
         blocks: List[ObjectRef[Block]] = list(
-            self._blocks.iter_output_blocks())
+            self._blocks.iter_executed_blocks())
         is_arrow = ray.get(check_is_arrow.remote(blocks[0]))
 
         if is_arrow:
@@ -1770,7 +1771,7 @@ class Dataset(Generic[T]):
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [
             block_to_arrow.remote(block)
-            for block in self._blocks.iter_output_blocks()
+            for block in self._blocks.iter_executed_blocks()
         ]
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
@@ -1917,7 +1918,7 @@ class Dataset(Generic[T]):
         Returns:
             A list of references to this dataset's blocks.
         """
-        return list(self._blocks.iter_output_blocks())
+        return list(self._blocks.iter_executed_blocks())
 
     def _split(self, index: int,
                return_right_half: bool) -> ("Dataset[T]", "Dataset[T]"):
@@ -1929,7 +1930,7 @@ class Dataset(Generic[T]):
         left_metadata = []
         right_blocks = []
         right_metadata = []
-        it = self._blocks.iter_output_blocks_with_orig_metadata()
+        it = self._blocks.iter_executed_blocks_with_orig_metadata()
         for b, m, sub_blocks in it:
             if m.num_rows is None or sub_blocks > 1:
                 num_rows = ray.get(get_num_rows.remote(b))
@@ -1986,7 +1987,7 @@ class Dataset(Generic[T]):
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            self._blocks.num_tasks(), count, schema_str)
+            self._blocks.num_partitions(), count, schema_str)
 
     def __str__(self) -> str:
         return repr(self)
@@ -1994,7 +1995,8 @@ class Dataset(Generic[T]):
     def _block_sizes(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
         return ray.get([
-            get_num_rows.remote(b) for b in self._blocks.iter_output_blocks()
+            get_num_rows.remote(b)
+            for b in self._blocks.iter_executed_blocks()
         ])
 
     def _meta_count(self) -> Optional[int]:
