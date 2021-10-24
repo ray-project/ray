@@ -11,6 +11,8 @@ from ray.data.dataset_pipeline import DatasetPipeline
 from ray.tests.conftest import *  # noqa
 
 
+@pytest.mark.skip(
+    reason="OwnerDiedError: https://github.com/ray-project/ray/issues/19659")
 def test_pipeline_actors(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1)
     pipe = ray.data.range(3) \

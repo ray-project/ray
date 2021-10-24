@@ -212,7 +212,7 @@ We can optimize this by *pipelining* the execution of the dataset with the ``.wi
     pipe = pipe.map_batches(BatchInferModel, compute="actors", batch_size=256, num_gpus=1)
     pipe.write_json("/tmp/results")
 
-Here we specified ``blocks_per_window=2``, which means that the Dataset is split into smaller sub-Datasets of two blocks each. Each transformation or *stage* of the pipeline is operating over these two-block Datasets in parallel. This means batch inference processing can start as soon as two blocks are read and preprocessed, greatly reducing the GPU idle time:
+Here we specified ``blocks_per_window=2``, which means that the Dataset is split into smaller sub-Datasets of two blocks (partitions) each. Each transformation or *stage* of the pipeline is operating over these two-block Datasets in parallel. This means batch inference processing can start as soon as two blocks are read and preprocessed, greatly reducing the GPU idle time:
 
 .. image:: dataset-pipeline-2.svg
 
