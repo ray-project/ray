@@ -483,12 +483,12 @@ def push_and_tag_images(py_versions: List[str],
                     assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
                     assert f"{sha_tag}" in tag_mapping[old_tag]
 
-            if ML_CUDA_VERSION in old_tag:
-                assert "nightly-gpu" in tag_mapping[old_tag]
-                if "-deps" in image_name:
-                    assert f"{date_tag}-gpu" in tag_mapping[old_tag]
-                else:
-                    assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
+                if ML_CUDA_VERSION in old_tag:
+                    assert "nightly-gpu" in tag_mapping[old_tag]
+                    if "-deps" in image_name:
+                        assert f"{date_tag}-gpu" in tag_mapping[old_tag]
+                    else:
+                        assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
 
         print(f"These tags will be created for {image_name}: ", tag_mapping)
 
