@@ -38,9 +38,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
  public:
   /// Create a GcsNodeManager.
   ///
-  /// \param gcs_pub_sub GCS message publisher.
+  /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsNodeManager(std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+  explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                           std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
@@ -144,7 +144,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Raylet client pool.

@@ -28,10 +28,10 @@ namespace gcs {
 
 //////////////////////////////////////////////////////////////////////////////////////////
 GcsNodeManager::GcsNodeManager(
-    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
-    : gcs_pub_sub_(std::move(gcs_pub_sub)),
+    : gcs_publisher_(std::move(gcs_publisher)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       raylet_client_pool_(std::move(raylet_client_pool)) {}
 
@@ -46,8 +46,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id
                   << ", address = " << request.node_info().node_manager_address();
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
-                                       request.node_info().SerializeAsString(), nullptr));
+    RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, request.node_info(), nullptr));
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -78,7 +77,6 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   if (!node) {
     RAY_LOG(INFO) << "Node " << node_id << " is already removed";
     return;
-  }
 
   // Do the procedure to drain a node.
   node->set_state(rpc::GcsNodeInfo::DEAD);
@@ -117,9 +115,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
                 RAY_LOG(INFO) << "Raylet " << node_id << " is drained. Status " << status
                               << ". The information will be published to the cluster.";
                 /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
-                RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
-                                                   node_info_delta->SerializeAsString(),
-                                                   nullptr));
+                RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
               });
         };
     RAY_CHECK_OK(
@@ -207,14 +203,13 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
                     << " has been marked dead because the detector"
                     << " has missed too many heartbeats from it. This can happen when a "
                        "raylet crashes unexpectedly or has lagging heartbeats.";
-      auto error_data_ptr =
-          gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
-      RAY_EVENT(INFO, EL_RAY_NODE_REMOVED)
+      RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
               .WithField("node_id", node_id.Hex())
               .WithField("ip", removed_node->node_manager_address())
           << error_message.str();
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, node_id.Hex(),
-                                         error_data_ptr->SerializeAsString(), nullptr));
+      auto error_data_ptr =
+          gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+      RAY_CHECK_OK(gcs_publisher_->PublishError(node_id.Hex(), *error_data_ptr, nullptr));
     }
 
     // Notify all listeners.
@@ -237,8 +232,7 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
 
     auto on_done = [this, node_id, node_info_delta](const Status &status) {
       auto on_done = [this, node_id, node_info_delta](const Status &status) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(
-            NODE_CHANNEL, node_id.Hex(), node_info_delta->SerializeAsString(), nullptr));
+        RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
       };
       RAY_CHECK_OK(gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
     };

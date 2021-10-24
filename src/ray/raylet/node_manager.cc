@@ -304,7 +304,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
-          [this]() { return object_manager_.GetUsedMemory(); },
+          *gcs_client_, [this]() { return object_manager_.GetUsedMemory(); },
           [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
 
   auto get_node_info_func = [this](const NodeID &node_id) {
@@ -331,7 +331,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
     return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
              failed_nodes_cache_.count(owner_node_id) > 0);
   };
-  cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
+  cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_, is_owner_alive, get_node_info_func, announce_infeasible_task,
@@ -340,7 +340,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
              std::vector<std::unique_ptr<RayObject>> *results) {
         return GetObjectsFromPlasma(object_ids, results);
       },
-      max_task_args_memory));
+      max_task_args_memory);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       // TODO (Alex): Ideally we could do these in a more robust way (retry
