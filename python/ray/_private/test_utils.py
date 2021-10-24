@@ -543,7 +543,10 @@ def init_log_pubsub():
     return p
 
 
-def get_log_message(pub_sub, num, timeout=20):
+def get_log_message(pub_sub,
+                    num: int,
+                    timeout: float = 20,
+                    job_id: Optional[str] = None) -> List[str]:
     """Get errors through pub/sub."""
     start_time = time.time()
     msgs = []
@@ -552,7 +555,10 @@ def get_log_message(pub_sub, num, timeout=20):
         if msg is None:
             time.sleep(0.01)
             continue
-        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
+        structured = json.loads(ray._private.utils.decode(msg["data"]))
+        if job_id and job_id != structured["job"]:
+            continue
+        log_lines = structured["lines"]
         msgs = log_lines
 
     return msgs
