@@ -23,7 +23,7 @@ class TestParameterNoise(unittest.TestCase):
 
     def test_dqn_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            dqn.DQNTrainer, dqn.DEFAULT_CONFIG, "FrozenLake-v0", {
+            dqn.DQNTrainer, dqn.DEFAULT_CONFIG, "FrozenLake-v1", {
                 "is_slippery": False,
                 "map_name": "4x4"
             }, np.array(0))
