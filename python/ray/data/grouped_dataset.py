@@ -1,4 +1,4 @@
-from typing import Callable, Generic, Tuple, List
+from typing import Any, Union, Callable, Generic, Tuple, List
 import numpy as np
 import ray
 from ray.util.annotations import PublicAPI
@@ -10,43 +10,18 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType, AggType
 
+GroupKeyT = Union[Callable[[T], KeyType], str]
+
 
 @PublicAPI(stability="beta")
-class GroupedDataset(Generic[T]):
-    """Implements a lazy dataset grouped by key (Experimental).
-
-    The actual groupby is deferred until an aggregation is applied.
-    """
-
-    def __init__(self, dataset: Dataset[T], key: Callable[[T], KeyType]):
-        """Construct a dataset grouped by key (internal API).
-
-        The constructor is not part of the GroupedDataset API.
-        Use the ``Dataset.groupby()`` method to construct one.
+class Aggregator(object):
+    def __init__(self,
+                 init: Callable[[KeyType], AggType],
+                 accumulate: Callable[[AggType, T], AggType],
+                 merge: Callable[[AggType, AggType], AggType],
+                 finalize: Callable[[AggType], U] = lambda a: a,
+                 name: Union[None, str] = None):
         """
-        self._dataset = dataset
-        self._key = key
-
-    def aggregate(self,
-                  init: Callable[[KeyType], AggType],
-                  accumulate: Callable[[KeyType, AggType, T], AggType],
-                  merge: Callable[[KeyType, AggType, AggType], AggType],
-                  finalize: Callable[[KeyType, AggType], U] = lambda k, a: a
-                  ) -> Dataset[Tuple[KeyType, U]]:
-        """Implements the accumulator-based aggregation.
-
-        This is a blocking operation.
-        See https://www.sigops.org/s/conferences/sosp/2009/papers/yu-sosp09.pdf
-        for more details about accumulator-based aggregation.
-
-        Examples:
-            >>> grouped_ds.aggregate(
-            ...     init=lambda k: [],
-            ...     accumulate=lambda k, a, r: a.append(r),
-            ...     merge=lambda k, a1, a2: a1 + a2,
-            ...     finalize=lambda k, a: a
-            ... )
-
         Args:
             init: This is called once for each key
                 to return the empty accumulator.
@@ -58,6 +33,44 @@ class GroupedDataset(Generic[T]):
                 two accumulators into one.
             finalize: This is called once to compute the final aggregation
                 result from the fully merged accumulator.
+        """
+        self.init = init
+        self.accumulate = accumulate
+        self.merge = merge
+        self.finalize = finalize
+        self.name = name
+
+
+@PublicAPI(stability="beta")
+class GroupedDataset(Generic[T]):
+    """Implements a lazy dataset grouped by key (Experimental).
+
+    The actual groupby is deferred until an aggregation is applied.
+    """
+
+    def __init__(self, dataset: Dataset[T], key: GroupKeyT):
+        """Construct a dataset grouped by key (internal API).
+
+        The constructor is not part of the GroupedDataset API.
+        Use the ``Dataset.groupby()`` method to construct one.
+        """
+        self._dataset = dataset
+        self._key = key
+
+    def aggregate(self, agg: Aggregator) -> Dataset[U]:
+        """Implements the accumulator-based aggregation.
+
+        This is a blocking operation.
+        See https://www.sigops.org/s/conferences/sosp/2009/papers/yu-sosp09.pdf
+        for more details about accumulator-based aggregation.
+
+        Examples:
+            >>> grouped_ds.aggregate(Aggregator(
+            ...     init=lambda k: [],
+            ...     accumulate=lambda a, r: a.append(r),
+            ...     merge=lambda a1, a2: a1 + a2,
+            ...     finalize=lambda a: a
+            ... ))
 
         Returns:
             A new dataset of (k, v) pairs where k is the groupby key
@@ -69,8 +82,9 @@ class GroupedDataset(Generic[T]):
 
         num_mappers = len(self._dataset._blocks)
         num_reducers = num_mappers
-        boundaries = sort.sample_boundaries(self._dataset._blocks, self._key,
-                                            num_reducers)
+        boundaries = sort.sample_boundaries(
+            self._dataset._blocks, [(self._key, "ascending")]
+            if isinstance(self._key, str) else self._key, num_reducers)
 
         partition_and_combine_block = cached_remote_fn(
             _partition_and_combine_block).options(num_returns=num_reducers)
@@ -80,14 +94,14 @@ class GroupedDataset(Generic[T]):
         map_results = np.empty((num_mappers, num_reducers), dtype=object)
         for i, block in enumerate(self._dataset._blocks):
             map_results[i, :] = partition_and_combine_block.remote(
-                block, boundaries, self._key, init, accumulate)
+                block, boundaries, self._key, agg)
         map_bar = ProgressBar("GroupBy Map", len(map_results))
         map_bar.block_until_complete([ret[0] for ret in map_results])
         map_bar.close()
 
         reduce_results = []
         for j in range(num_reducers):
-            ret = aggregate_combined_blocks.remote(merge, finalize,
+            ret = aggregate_combined_blocks.remote(agg,
                                                    *map_results[:, j].tolist())
             reduce_results.append(ret)
         reduce_bar = ProgressBar("GroupBy Reduce", len(reduce_results))
@@ -98,7 +112,7 @@ class GroupedDataset(Generic[T]):
         metadata = ray.get([m for _, m in reduce_results])
         return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
 
-    def count(self) -> Dataset[Tuple[KeyType, int]]:
+    def count(self) -> Dataset[U]:
         """Compute count of each group.
 
         This is a blocking operation.
@@ -111,11 +125,14 @@ class GroupedDataset(Generic[T]):
             and v is the number of rows with that key.
         """
         return self.aggregate(
-            init=lambda k: 0,
-            accumulate=lambda k, a, r: a + 1,
-            merge=lambda k, a1, a2: a1 + a2)
+            Aggregator(
+                init=lambda k: 0,
+                accumulate=lambda a, r: a + 1,
+                merge=lambda a1, a2: a1 + a2,
+                name="count()"))
 
-    def sum(self) -> Dataset[Tuple[KeyType, T]]:
+    def sum(self,
+            on: Union[Callable[[T], Any], str] = lambda r: r) -> Dataset[U]:
         """Compute sum of each group.
 
         This is a blocking operation.
@@ -127,12 +144,19 @@ class GroupedDataset(Generic[T]):
             A new dataset of (k, v) pairs where k is the groupby key
             and v is the sum of the group.
         """
+        on_fn = on
+        if isinstance(on, str):
+            # TODO(jjyao) Check to make sure it's arrow dataset
+            on_fn = lambda r: r[on]
         return self.aggregate(
-            init=lambda k: 0,
-            accumulate=lambda k, a, r: a + r,
-            merge=lambda k, a1, a2: a1 + a2)
+            Aggregator(
+                init=lambda k: 0,
+                accumulate=lambda a, r: a + on_fn(r),
+                merge=lambda a1, a2: a1 + a2,
+                name=(f"sum({on})" if isinstance(on, str) else None)))
 
-    def min(self) -> Dataset[Tuple[KeyType, T]]:
+    def min(self,
+            on: Union[Callable[[T], Any], str] = lambda r: r) -> Dataset[U]:
         """Compute min of each group.
 
         This is a blocking operation.
@@ -144,12 +168,20 @@ class GroupedDataset(Generic[T]):
             A new dataset of (k, v) pairs where k is the groupby key
             and v is the min of the group.
         """
+        on_fn = on
+        if isinstance(on, str):
+            # TODO(jjyao) Check to make sure it's arrow dataset
+            on_fn = lambda r: r[on]
         return self.aggregate(
-            init=lambda k: None,
-            accumulate=lambda k, a, r: r if a is None else min(a, r),
-            merge=lambda k, a1, a2: min(a1, a2))
+            Aggregator(
+                init=lambda k: None,
+                accumulate=
+                lambda a, r: on_fn(r) if a is None else min(a, on_fn(r)),
+                merge=lambda a1, a2: min(a1, a2),
+                name=(f"min({on})" if isinstance(on, str) else None)))
 
-    def max(self) -> Dataset[Tuple[KeyType, T]]:
+    def max(self,
+            on: Union[Callable[[T], Any], str] = lambda r: r) -> Dataset[U]:
         """Compute max of each group.
 
         This is a blocking operation.
@@ -161,12 +193,20 @@ class GroupedDataset(Generic[T]):
             A new dataset of (k, v) pairs where k is the groupby key
             and v is the max of the group.
         """
+        on_fn = on
+        if isinstance(on, str):
+            # TODO(jjyao) Check to make sure it's arrow dataset
+            on_fn = lambda r: r[on]
         return self.aggregate(
-            init=lambda k: None,
-            accumulate=lambda k, a, r: r if a is None else max(a, r),
-            merge=lambda k, a1, a2: max(a1, a2))
+            Aggregator(
+                init=lambda k: None,
+                accumulate=
+                lambda a, r: on_fn(r) if a is None else max(a, on_fn(r)),
+                merge=lambda a1, a2: max(a1, a2),
+                name=(f"max({on})" if isinstance(on, str) else None)))
 
-    def mean(self) -> Dataset[Tuple[KeyType, U]]:
+    def mean(self,
+             on: Union[Callable[[T], Any], str] = lambda r: r) -> Dataset[U]:
         """Compute mean of each group.
 
         This is a blocking operation.
@@ -178,34 +218,33 @@ class GroupedDataset(Generic[T]):
             A new dataset of (k, v) pairs where k is the groupby key
             and v is the mean of the group.
         """
+        on_fn = on
+        if isinstance(on, str):
+            # TODO(jjyao) Check to make sure it's arrow dataset
+            on_fn = lambda r: r[on]
         return self.aggregate(
-            init=lambda k: (0, 0),
-            accumulate=lambda k, a, r: (a[0] + r, a[1] + 1),
-            merge=lambda k, a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
-            finalize=lambda k, a: a[0] / a[1])
+            Aggregator(
+                init=lambda k: [0, 0],
+                accumulate=lambda a, r: [a[0] + on_fn(r), a[1] + 1],
+                merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+                finalize=lambda a: a[0] / a[1],
+                name=(f"mean({on})" if isinstance(on, str) else None)))
 
 
 def _partition_and_combine_block(
-        block: Block[T], boundaries: List[KeyType],
-        key: Callable[[T], KeyType], init: Callable[[KeyType], AggType],
-        accumulate: Callable[[KeyType, AggType, T], AggType]
-) -> List[Block[Tuple[KeyType, AggType]]]:
+        block: Block[T], boundaries: List[KeyType], key: GroupKeyT,
+        agg: Aggregator) -> List[Block[Tuple[KeyType, AggType]]]:
     """Partition the block and combine rows with the same key."""
     partitions = BlockAccessor.for_block(block).sort_and_partition(
-        boundaries, key, descending=False)
-    return [
-        BlockAccessor.for_block(p).combine(key, init, accumulate)
-        for p in partitions
-    ]
+        boundaries, [(key, "ascending")] if isinstance(key, str) else key,
+        descending=False)
+    return [BlockAccessor.for_block(p).combine(key, agg) for p in partitions]
 
 
-def _aggregate_combined_blocks(
-        merge: Callable[[KeyType, AggType, AggType], AggType],
-        finalize: Callable[[KeyType, AggType], U],
-        *blocks: Tuple[Block[Tuple[KeyType, AggType]], ...]
-) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
+def _aggregate_combined_blocks(agg: Aggregator, *blocks: Tuple[Block[U], ...]
+                               ) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
     if len(blocks) == 1:
         blocks = blocks[0]  # Ray weirdness
     return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
-        list(blocks), merge, finalize)
+        list(blocks), agg)

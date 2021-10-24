@@ -22,6 +22,7 @@ from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
+from ray.data.grouped_dataset import Aggregator
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD)
@@ -2693,6 +2694,20 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
+def test_groupby_arrow(ray_start_regular_shared):
+    # Test built-in count aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items([{
+        "A": (x % 3),
+        "B": x
+    } for x in xs]).groupby("A").count()
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "count()": 34}, {"A": 1, "count()": 33},
+         {"A": 2, "count()": 33}]
+
+
 def test_groupby_simple(ray_start_regular_shared):
     parallelism = 3
     xs = [("A", 2), ("A", 4), ("A", 9), ("B", 10), ("B", 20), ("C", 3),
@@ -2701,10 +2716,11 @@ def test_groupby_simple(ray_start_regular_shared):
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Mean aggregation
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
-        init=lambda key: (0, 0),
-        accumulate=lambda key, a, r: (a[0] + r[1], a[1] + 1),
-        merge=lambda key, a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
-        finalize=lambda key, a: a[0] / a[1])
+        Aggregator(
+            init=lambda k: (0, 0),
+            accumulate=lambda a, r: (a[0] + r[1], a[1] + 1),
+            merge=lambda a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
+            finalize=lambda a: a[0] / a[1]))
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [("A", 5), ("B", 15),
                                                        ("C", 7)]
@@ -2716,9 +2732,10 @@ def test_groupby_simple(ray_start_regular_shared):
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Count aggregation
     agg_ds = ds.groupby(lambda r: str(r)).aggregate(
-        init=lambda key: 0,
-        accumulate=lambda key, a, r: a + 1,
-        merge=lambda key, a1, a2: a1 + a2)
+        Aggregator(
+            init=lambda k: 0,
+            accumulate=lambda a, r: a + 1,
+            merge=lambda a1, a2: a1 + a2))
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: str(r[0])).take(3) == [("A", 3), ("B", 1),
                                                             ("None", 3)]
@@ -2726,10 +2743,11 @@ def test_groupby_simple(ray_start_regular_shared):
     # Test empty dataset.
     ds = ray.data.from_items([])
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
-        init=lambda key: 1 / 0,  # should never reach here
-        accumulate=lambda key, a, r: 1 / 0,
-        merge=lambda key, a1, a2: 1 / 0,
-        finalize=lambda key, a: 1 / 0)
+        Aggregator(
+            init=lambda k: 1 / 0,  # should never reach here
+            accumulate=lambda a, r: 1 / 0,
+            merge=lambda a1, a2: 1 / 0,
+            finalize=lambda a: 1 / 0))
     assert agg_ds.count() == 0
     assert agg_ds == ds
 

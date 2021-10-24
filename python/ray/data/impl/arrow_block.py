@@ -1,5 +1,6 @@
 import collections
 import random
+import heapq
 from typing import Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
     TYPE_CHECKING
 
@@ -16,6 +17,7 @@ from ray.data.impl.simple_block import SimpleBlockBuilder
 
 if TYPE_CHECKING:
     import pandas
+    from ray.data.grouped_dataset import Aggregator
 
 T = TypeVar("T")
 
@@ -235,7 +237,7 @@ class ArrowBlockAccessor(BlockAccessor):
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()
 
-    def sample(self, n_samples: int, key: SortKeyT) -> List[T]:
+    def sample(self, n_samples: int, key: SortKeyT) -> "pyarrow.Table":
         if key is None or callable(key):
             raise NotImplementedError(
                 "Arrow sort key must be a column name, was: {}".format(key))
@@ -291,6 +293,35 @@ class ArrowBlockAccessor(BlockAccessor):
         ret.append(_copy_table(table.slice(prev_i)))
         return ret
 
+    def combine(self, key: str, agg):
+        iter = self.iter_rows()
+        next_row = None
+        builder = ArrowBlockBuilder()
+        while True:
+            try:
+                if next_row is None:
+                    next_row = next(iter)
+                next_key = next_row[key]
+
+                def gen():
+                    nonlocal iter
+                    nonlocal next_row
+                    while next_row[key] == next_key:
+                        yield next_row
+                        try:
+                            next_row = next(iter)
+                        except StopIteration:
+                            next_row = None
+                            break
+
+                accumulator = agg.init(next_key)
+                for r in gen():
+                    accumulator = agg.accumulate(accumulator, r)
+                builder.add({key: next_key, agg.name: accumulator})
+            except StopIteration:
+                break
+        return builder.build()
+
     @staticmethod
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
@@ -298,6 +329,54 @@ class ArrowBlockAccessor(BlockAccessor):
         ret = pyarrow.concat_tables(blocks)
         indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
         ret = ret.take(indices)
+        return ret, ArrowBlockAccessor(ret).get_metadata(None)
+
+    @staticmethod
+    def aggregate_combined_blocks(
+            blocks: List[Block[ArrowRow]],
+            agg: "Aggregator") -> Tuple[Block[ArrowRow], BlockMetadata]:
+        def key(r):
+            return r[r._row.schema.names[0]]
+
+        iter = heapq.merge(
+            *[ArrowBlockAccessor(block).iter_rows() for block in blocks],
+            key=key)
+        next_row = None
+        builder = ArrowBlockBuilder()
+        while True:
+            try:
+                if next_row is None:
+                    next_row = next(iter)
+                next_key = key(next_row)
+                next_key_name = next_row._row.schema.names[0]
+
+                def gen():
+                    nonlocal iter
+                    nonlocal next_row
+                    while key(next_row) == next_key:
+                        yield next_row
+                        try:
+                            next_row = next(iter)
+                        except StopIteration:
+                            next_row = None
+                            break
+
+                first = True
+                accumulator = None
+                for r in gen():
+                    if first:
+                        accumulator = r[agg.name]
+                        first = False
+                    else:
+                        accumulator = agg.merge(accumulator, r[agg.name])
+                builder.add({
+                    next_key_name: next_key,
+                    agg.name: agg.finalize(accumulator)
+                })
+            except StopIteration:
+                break
+
+        ret = builder.build()
         return ret, ArrowBlockAccessor(ret).get_metadata(None)
 
 
