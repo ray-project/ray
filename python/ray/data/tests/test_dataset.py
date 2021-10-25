@@ -2956,6 +2956,17 @@ def test_sort_arrow(ray_start_regular, num_items, parallelism):
         ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
 
 
+def test_sort_arrow_with_empty_blocks(ray_start_regular):
+    ds = ray.data.from_items(
+        [{
+            "A": (x % 3),
+            "B": x
+        } for x in range(3)], parallelism=3)
+    ds = ds.filter(lambda r: r["A"] == 0)
+    assert [row.as_pydict() for row in ds.sort("A").iter_rows()] == \
+        [{"A": 0, "B": 0}]
+
+
 def test_dataset_retry_exceptions(ray_start_regular, local_path):
     @ray.remote
     class Counter:

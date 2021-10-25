@@ -235,10 +235,14 @@ class ArrowBlockAccessor(BlockAccessor):
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()
 
-    def sample(self, n_samples: int, key: SortKeyT) -> List[T]:
+    def sample(self, n_samples: int, key: SortKeyT) -> "pyarrow.Table":
         if key is None or callable(key):
             raise NotImplementedError(
                 "Arrow sort key must be a column name, was: {}".format(key))
+        if self._table.num_rows == 0:
+            # If the pyarrow table is empty we may not have schema
+            # so calling table.select() will raise an error.
+            return pyarrow.Table.from_pydict({})
         k = min(n_samples, self._table.num_rows)
         indices = random.sample(range(self._table.num_rows), k)
         return self._table.select([k[0] for k in key]).take(indices)
@@ -248,6 +252,14 @@ class ArrowBlockAccessor(BlockAccessor):
         if len(key) > 1:
             raise NotImplementedError(
                 "sorting by multiple columns is not supported yet")
+
+        if self._table.num_rows == 0:
+            # If the pyarrow table is empty we may not have schema
+            # so calling sort_indices() will raise an error.
+            return [
+                pyarrow.Table.from_pydict({})
+                for _ in range(len(boundaries) + 1)
+            ]
 
         import pyarrow.compute as pac
 
@@ -295,9 +307,13 @@ class ArrowBlockAccessor(BlockAccessor):
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
             _descending: bool) -> Tuple[Block[T], BlockMetadata]:
-        ret = pyarrow.concat_tables(blocks)
-        indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
-        ret = ret.take(indices)
+        blocks = [b for b in blocks if b.num_rows > 0]
+        if len(blocks) == 0:
+            ret = pyarrow.Table.from_pydict({})
+        else:
+            ret = pyarrow.concat_tables(blocks)
+            indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
+            ret = ret.take(indices)
         return ret, ArrowBlockAccessor(ret).get_metadata(None)
 
 
