@@ -13,7 +13,7 @@ except ImportError:
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
-from ray.data.impl.size_estimator import RunningMean
+from ray.data.impl.size_estimator import SizeEstimator
 
 if TYPE_CHECKING:
     import pandas
@@ -23,6 +23,10 @@ T = TypeVar("T")
 # An Arrow block can be sorted by a list of (column, asc/desc) pairs,
 # e.g. [("column1", "ascending"), ("column2", "descending")]
 SortKeyT = List[Tuple[str, str]]
+
+# The max size of Python tuples to buffer before compacting them into an Arrow
+# table in the BlockBuilder.
+MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
 
 
 class ArrowRow:
@@ -109,12 +113,10 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         self._columns = collections.defaultdict(list)
         # The set of compacted tables we have built so far.
         self._tables: List["pyarrow.Table"] = []
-        # Size estimator for the compacted table values.
-        self._running_mean = RunningMean()
-        # Number of rows added total so far.
+        self._tables_nbytes = 0
+        # Size estimator for un-compacted table values.
+        self._uncompacted_size = SizeEstimator()
         self._num_rows = 0
-        # Increases 10x each compaction until reaching max size.
-        self._compaction_threshold = 1
         self._num_compactions = 0
 
     def add(self, item: Union[dict, ArrowRow]) -> None:
@@ -128,13 +130,13 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             self._columns[key].append(value)
         self._num_rows += 1
         self._compact_if_needed()
-        assert self._running_mean.n > 0, self._running_mean
+        self._uncompacted_size.add(item)
 
     def add_block(self, block: "pyarrow.Table") -> None:
         assert isinstance(block, pyarrow.Table), block
         self._tables.append(block)
+        self._tables_nbytes += block.nbytes
         self._num_rows += block.num_rows
-        self._running_mean.add(block.nbytes, weight=block.num_rows)
 
     def build(self) -> Block:
         if self._columns:
@@ -155,21 +157,16 @@ class ArrowBlockBuilder(BlockBuilder[T]):
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
-        assert self._num_rows >= self._running_mean.n
-        return int(
-            self._running_mean.mean * (self._num_rows / self._running_mean.n))
+        return self._tables_nbytes + self._uncompacted_size.size_bytes()
 
     def _compact_if_needed(self) -> None:
         assert self._columns
-        num_uncompacted = len(next(iter(self._columns.values())))
-        if num_uncompacted < self._compaction_threshold:
+        if self._uncompacted_size.size_bytes() < MAX_UNCOMPACTED_SIZE_BYTES:
             return
-        self._compaction_threshold *= 10
-        if self._compaction_threshold > 10000:
-            self._compaction_threshold = 10000
         block = pyarrow.Table.from_pydict(self._columns)
         self._tables.append(block)
-        self._running_mean.add(block.nbytes, weight=block.num_rows)
+        self._tables_nbytes += block.nbytes
+        self._uncompacted_size = SizeEstimator()
         self._columns.clear()
         self._num_compactions += 1
 
