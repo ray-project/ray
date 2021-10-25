@@ -69,6 +69,8 @@ public class RayConfig {
 
   public final int numWorkersPerProcess;
 
+  public final String namespace;
+
   public final List<String> jvmOptionsForJavaWorker;
   public final Map<String, String> workerEnv;
 
@@ -117,6 +119,9 @@ public class RayConfig {
     } else {
       this.jobId = JobId.NIL;
     }
+
+    // Namespace of this job.
+    namespace = config.getString("ray.job.namespace");
 
     // jvm options for java workers of this job.
     jvmOptionsForJavaWorker = config.getStringList("ray.job.jvm-options");
