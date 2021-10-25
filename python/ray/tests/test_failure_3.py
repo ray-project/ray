@@ -1,4 +1,4 @@
-import asyncio
+import threading
 import os
 import sys
 import random
@@ -111,73 +111,66 @@ def test_async_actor_task_retries(ray_start_regular):
 
 
 def test_task_retry_mini_integration(ray_start_cluster):
+    """Test nested tasks with infinite retry and
+        keep killing nodes while retrying is happening.
+
+        It is the sanity check test for larger scale chaos testing.
+    """
     cluster = ray_start_cluster
     NUM_NODES = 3
     NUM_CPUS = 8
     # head node.
     cluster.add_node(num_cpus=0, resources={"head": 1})
+    ray.init(address=cluster.address)
     workers = []
     for _ in range(NUM_NODES):
         workers.append(
             cluster.add_node(num_cpus=NUM_CPUS, resources={"worker": 1}))
-    ray.init(address=cluster.address)
 
-    def generate_data(size_in_kb=10):
-        return np.zeros(1024 * size_in_kb, dtype=np.uint8)
-    
     @ray.remote(max_retries=-1, resources={"worker": 0.1})
-    def cheap_task():
+    def task():
+        def generate_data(size_in_kb=10):
+            return np.zeros(1024 * size_in_kb, dtype=np.uint8)
+
         a = ""
         for _ in range(100000):
             a = a + random.choice(string.ascii_letters)
         return generate_data(size_in_kb=50)
 
-    # 50MB.
-    TOTAL_TASKS = 1000
-    # results = [cheap_task.remote() for _ in range(TOTAL_TASKS)]
-    # pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS)
-    # start = time.time()
-    # pb.block_until_complete(results)
-    # runtime_without_failure = time.time() - start
-    # pb.close()
+    @ray.remote(max_retries=-1, resources={"worker": 0.1})
+    def invoke_nested_task():
+        time.sleep(0.8)
+        return ray.get(task.remote())
 
-    # At least 10 times node failures within the timeout.
-    # kill_interval = runtime_without_failure / 10
-    from ray.util import inspect_serializability
-    inspect_serializability(cluster, name="cluster")
-    inspect_serializability(workers, name="workers")
+    # 50MB of return values.
+    TOTAL_TASKS = 500
 
-    @ray.remote(resources={"head": 0.1})
-    class KillerActor:
-        def __init__(self, kill_interval_s, cluster, workers):
-            self.kill_interval_s = kill_interval_s
-            self._is_running = False
-            self._cluster = cluster
-            self._workers = workers
-        
-        async def run(self):
-            self._is_running = True
-            while self._is_running:
-                worker_to_kill = self._workers.pop(0)
-                self._cluster.remove_node(worker_to_kill, allow_graceful=False)
-                workers.append(
-                    self._cluster.add_node(
-                        num_cpus=NUM_CPUS, resources={"worker": 1}))
-                asyncio.sleep(self.kill_interval_s)
-    
-        async def stop(self):
-            self._is_running = False
-    
-    kill_actor = KillerActor.remote(1, cluster, workers)
-    kill_actor.run.remote()
+    def run_chaos_test():
+        # Chaos testing.
+        pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS)
+        results = [invoke_nested_task.remote() for _ in range(TOTAL_TASKS)]
+        start = time.time()
+        pb.block_until_complete(results)
+        runtime_with_failure = time.time() - start
+        print(f"Runtime when there are many failures: {runtime_with_failure}")
+        pb.close()
 
-    # Chaos testing.
-    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS)
+    x = threading.Thread(target=run_chaos_test)
+    x.start()
+
+    kill_interval = 2
     start = time.time()
-    pb.block_until_complete(results)
-    runtime_without_failure = time.time() - start
-    pb.close()
-
+    while True:
+        worker_to_kill = workers.pop(0)
+        pid = worker_to_kill.all_processes["raylet"][0].process.pid
+        # SIGKILL
+        os.kill(pid, 9)
+        workers.append(
+            cluster.add_node(num_cpus=NUM_CPUS, resources={"worker": 1}))
+        time.sleep(kill_interval)
+        if time.time() - start > 30:
+            break
+    x.join()
 
 
 if __name__ == "__main__":

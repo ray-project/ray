@@ -1264,6 +1264,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   Status WaitForActorRegistered(const std::vector<ObjectID> &ids);
 
+  /// Check the status of the local raylet RPC and take the proper actions.
+  /// The method is supposed to be used upon the local raylet RPC that's done through the
+  /// Unix socket. Otherwise, it would have the unexpected behavior.
+  ///
+  /// \param status[in] The status of the Local raylet RPC.
+  /// \param error_msg[in] The error message to print when it proceeds the ungraceful
+  /// shutdown.
+  void OnLocalRayletReplied(const Status &status, const std::string &error_msg);
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.

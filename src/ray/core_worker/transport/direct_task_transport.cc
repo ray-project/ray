@@ -576,19 +576,27 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           // A lease request to a remote raylet failed. Retry locally if the lease is
           // still needed.
           // TODO(swang): Fail after some number of retries?
-          RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
-                         << status.ToString();
+          RAY_LOG(INFO) << "Retrying attempt to schedule task at remote node. Try again "
+                           "on a local node. Error: "
+                        << status.ToString();
 
           RequestNewWorkerIfNeeded(scheduling_key);
 
         } else {
-          // A local request failed. This shouldn't happen if the raylet is still alive
-          // and we don't currently handle raylet failures, so treat it as a fatal
-          // error.
-          RAY_LOG(ERROR) << "The worker failed to receive a response from the local "
-                            "raylet. This is most "
-                            "likely because the local raylet has crashed.";
-          RAY_LOG(FATAL) << status.ToString();
+          if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+            RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
+                                "raylet because it is crashed. Terminating the worker.";
+            // Terminate the worker ungracefully.
+            _Exit(1);
+          } else {
+            RAY_LOG(ERROR)
+                << "The worker failed to receive a response from the local raylet, but "
+                   "raylet is still alive. It is an unexpected issue. Please report the "
+                   "error to https://github.com/ray-project/ray/issues.";
+            // If the request to the local request has failed, but if the raylet is still
+            // alive, it is a fatal error.
+            RAY_LOG(FATAL) << status.ToString();
+          }
         }
       },
       task_queue.size());
