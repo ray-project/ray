@@ -43,6 +43,7 @@ class ActorInfoAccessor {
  public:
   ActorInfoAccessor() = default;
   explicit ActorInfoAccessor(GcsClient *client_impl);
+  virtual ~ActorInfoAccessor() = default;
   /// Get actor specification from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor to look up in the GCS.
@@ -183,6 +184,7 @@ class JobInfoAccessor {
  public:
   JobInfoAccessor() = default;
   explicit JobInfoAccessor(GcsClient *client_impl);
+  virtual ~JobInfoAccessor() = default;
   /// Add a job to GCS asynchronously.
   ///
   /// \param data_ptr The job that will be add to GCS.
@@ -249,7 +251,7 @@ class TaskInfoAccessor {
  public:
   TaskInfoAccessor() = default;
   explicit TaskInfoAccessor(GcsClient *client_impl);
-
+  virtual ~TaskInfoAccessor() = default;
   /// Add a task to GCS asynchronously.
   ///
   /// \param data_ptr The task that will be added to GCS.
@@ -346,7 +348,7 @@ class ObjectInfoAccessor {
  public:
   ObjectInfoAccessor() = default;
   explicit ObjectInfoAccessor(GcsClient *client_impl);
-
+  virtual ~ObjectInfoAccessor() = default;
   /// Get object's locations from GCS asynchronously.
   ///
   /// \param object_id The ID of object to lookup in GCS.
@@ -454,7 +456,7 @@ class NodeInfoAccessor {
  public:
   NodeInfoAccessor() = default;
   explicit NodeInfoAccessor(GcsClient *client_impl);
-
+  virtual ~NodeInfoAccessor() = default;
   /// Register local node to GCS asynchronously.
   ///
   /// \param node_info The information of node to register to GCS.
@@ -601,7 +603,7 @@ class NodeResourceInfoAccessor {
  public:
   NodeResourceInfoAccessor() = default;
   explicit NodeResourceInfoAccessor(GcsClient *client_impl);
-
+  virtual ~NodeResourceInfoAccessor() = default;
   // TODO(micafan) Define ResourceMap in GCS proto.
   typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
       ResourceMap;
@@ -724,7 +726,7 @@ class ErrorInfoAccessor {
  public:
   ErrorInfoAccessor() = default;
   explicit ErrorInfoAccessor(GcsClient *client_impl);
-
+  virtual ~ErrorInfoAccessor() = default;
   /// Report a job error to GCS asynchronously.
   /// The error message will be pushed to the driver of a specific if it is
   /// a job internal error, or broadcast to all drivers if it is a system error.
@@ -751,7 +753,7 @@ class StatsInfoAccessor {
  public:
   StatsInfoAccessor() = default;
   explicit StatsInfoAccessor(GcsClient *client_impl);
-
+  virtual ~StatsInfoAccessor() = default;
   /// Add profile data to GCS asynchronously.
   ///
   /// \param data_ptr The profile data that will be added to GCS.
@@ -779,7 +781,7 @@ class WorkerInfoAccessor {
  public:
   WorkerInfoAccessor() = default;
   explicit WorkerInfoAccessor(GcsClient *client_impl);
-
+  virtual ~WorkerInfoAccessor() = default;
   /// Subscribe to all unexpected failure of workers from GCS asynchronously.
   /// Note that this does not include workers that failed due to node failure
   /// and only fileds in WorkerDeltaData would be published.
@@ -843,7 +845,7 @@ class PlacementGroupInfoAccessor {
  public:
   PlacementGroupInfoAccessor() = default;
   explicit PlacementGroupInfoAccessor(GcsClient *client_impl);
-
+  virtual ~PlacementGroupInfoAccessor() = default;
   /// Create a placement group to GCS asynchronously.
   ///
   /// \param placement_group_spec The specification for the placement group creation task.
@@ -902,7 +904,7 @@ class InternalKVAccessor {
  public:
   InternalKVAccessor() = default;
   explicit InternalKVAccessor(GcsClient *client_impl);
-
+  virtual ~InternalKVAccessor() = default;
   /// Asynchronously list keys with prefix stored in internal kv
   ///
   /// \param prefix The prefix to scan.
