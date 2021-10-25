@@ -66,12 +66,14 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
 }
 }  // namespace
 
-CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
+CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id,
+                       CoreWorkerProcessImpl &process)
     : options_(options),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
+      process_(process),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       periodical_runner_(io_service_),
@@ -2115,7 +2117,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   // Because we support concurrent actor calls, we need to update the
   // worker ID for the current thread.
-  CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
+  process_.SetThreadLocalWorkerById(GetWorkerID());
 
   std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
 

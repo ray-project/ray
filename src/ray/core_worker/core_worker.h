@@ -25,6 +25,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
+#include "ray/core_worker/core_worker_process_impl.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/gcs_server_address_updater.h"
 #include "ray/core_worker/lease_policy.h"
@@ -67,7 +68,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] options The various initialization options.
   /// \param[in] worker_id ID of this worker.
-  CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
+  CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id,
+             CoreWorkerProcessImpl &process);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -997,6 +999,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
   WorkerContext worker_context_;
+
+  CoreWorkerProcessImpl &process_;
 
   /// The ID of the current task being executed by the main thread. If there
   /// are multiple threads, they will have a thread-local task ID stored in the
