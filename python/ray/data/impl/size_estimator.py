@@ -39,6 +39,8 @@ class RunningMean:
         self._M = 0
 
     def add(self, x: int, weight: int = 1) -> None:
+        if weight == 0:
+            return
         n1 = self._n
         n2 = weight
         n = n1 + n2
