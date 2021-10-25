@@ -593,6 +593,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                 << "The worker failed to receive a response from the local raylet, but "
                    "raylet is still alive. Try again on a local node. Error: "
                 << status;
+            // TODO(sang): Maybe we should raise FATAL error if it happens too many times.
             RequestNewWorkerIfNeeded(scheduling_key);
           }
         }
