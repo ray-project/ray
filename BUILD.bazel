@@ -99,8 +99,8 @@ cc_grpc_library(
 cc_library(
     name = "gcs_service_rpc",
     hdrs = [
-        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
         "src/ray/rpc/gcs_server/gcs_rpc_client.h",
+        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",

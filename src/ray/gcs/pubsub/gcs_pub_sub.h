@@ -333,7 +333,7 @@ class GcsSubscriber {
 /// \class GcsSubscriberClient
 ///
 /// Adapts GcsRpcClient to SubscriberClientInterface. Thread safe.
-class GcsSubscriberClient : public pubsub::SubscriberClientInterface {
+class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
  public:
   explicit GcsSubscriberClient(const std::shared_ptr<rpc::GcsRpcClient> &rpc_client)
       : rpc_client_(rpc_client) {}

@@ -658,7 +658,8 @@ service InternalPubSubGcsService {
   /// the caller (subscriber).
   rpc GcsSubscriberPoll(GcsSubscriberPollRequest) returns (GcsSubscriberPollReply);
   /// The pubsub command batch request used by the subscriber.
-  rpc GcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest) returns (GcsSubscriberCommandBatchReply);
+  rpc GcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest)
+      returns (GcsSubscriberCommandBatchReply);
 }
 
 message GetAllResourceUsageRequest {
