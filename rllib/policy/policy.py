@@ -82,8 +82,8 @@ class Policy(metaclass=ABCMeta):
     """
 
     @DeveloperAPI
-    def __init__(self, observation_space: gym.Space,
-                 action_space: gym.Space, config: TrainerConfigDict):
+    def __init__(self, observation_space: gym.Space, action_space: gym.Space,
+                 config: TrainerConfigDict):
         """Initializes a Policy instance.
 
         Args:
@@ -156,8 +156,8 @@ class Policy(metaclass=ABCMeta):
         last n observations, the last m actions/rewards, or a combination
         of any of these.
         Alternatively, in case no complex inputs are required, takes a single
-        `obs` values (and possibly single state values, prev-action/reward values,
-        etc..).
+        `obs` values (and possibly single state values, prev-action/reward
+        values, etc..).
 
         Args:
             obs: Single observation.
@@ -601,7 +601,8 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def set_state(
-            self, state: Union[Dict[str, TensorType], List[TensorType]],
+            self,
+            state: Union[Dict[str, TensorType], List[TensorType]],
     ) -> None:
         """Restores the entire current state of this Policy from `state`.
 
@@ -623,6 +624,15 @@ class Policy(metaclass=ABCMeta):
         # Store the current global time step (sum over all policies' sample
         # steps).
         self.global_timestep = global_vars["timestep"]
+
+    @DeveloperAPI
+    def export_checkpoint(self, export_dir: str) -> None:
+        """Export Policy checkpoint to local directory.
+
+        Args:
+            export_dir (str): Local writable directory.
+        """
+        raise NotImplementedError
 
     @DeveloperAPI
     def export_model(self, export_dir: str,
@@ -963,15 +973,6 @@ class Policy(metaclass=ABCMeta):
                 if "state_out_{}".format(i) not in vr:
                     vr["state_out_{}".format(i)] = ViewRequirement(
                         space=space, used_for_training=True)
-
-    @Deprecated(new="save", error=False)
-    def export_checkpoint(self, export_dir: str) -> None:
-        """Export Policy checkpoint to local directory.
-
-        Args:
-            export_dir (str): Local writable directory.
-        """
-        raise NotImplementedError
 
     @Deprecated(new="get_exploration_state", error=False)
     def get_exploration_info(self) -> Dict[str, TensorType]:

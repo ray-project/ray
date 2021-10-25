@@ -202,8 +202,8 @@ class DefaultCallbacks:
 
         pass
 
-    def on_train_result(self, *, trainer: "Trainer",
-                        result: dict, **kwargs) -> None:
+    def on_train_result(self, *, trainer: "Trainer", result: dict,
+                        **kwargs) -> None:
         """Called at the end of Trainable.train().
 
         Args:

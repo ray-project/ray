@@ -38,20 +38,14 @@ class DynamicTFPolicy(TFPolicy):
     to generate your custom tf (graph-mode or eager) Policy classes.
 
     Initialization of this class occurs in two phases.
-      * Phase 1: the model is created and model variables are initialized.
-      * Phase 2: a fake batch of data is created, sent to the trajectory
+
+    Phase 1: The model is created and model variables are initialized.
+    Phase 2: A fake batch of data is created, sent to the trajectory
         postprocessor, and then used to create placeholders for the loss
         function. The loss and stats functions are initialized with these
         placeholders.
 
     Initialization defines the static graph.
-
-    Attributes:
-        observation_space (gym.Space): observation space of the policy.
-        action_space (gym.Space): action space of the policy.
-        config (dict): config of the policy
-        model (ModelV2): TF model instance
-        dist_class (type): TF action distribution class
     """
 
     @DeveloperAPI
@@ -89,41 +83,28 @@ class DynamicTFPolicy(TFPolicy):
         """Initializes a DynamicTFPolicy instance.
 
         Args:
-            observation_space (gym.spaces.Space): Observation space of the
-                policy.
-            action_space (gym.spaces.Space): Action space of the policy.
-            config (TrainerConfigDict): Policy-specific configuration data.
-            loss_fn (Callable[[Policy, ModelV2, Type[TFActionDistribution],
-                SampleBatch], TensorType]): Function that returns a loss tensor
-                for the policy graph.
-            stats_fn (Optional[Callable[[Policy, SampleBatch],
-                Dict[str, TensorType]]]): Optional function that returns a dict
-                of TF fetches given the policy and batch input tensors.
-            grad_stats_fn (Optional[Callable[[Policy, SampleBatch,
-                ModelGradients], Dict[str, TensorType]]]):
-                Optional function that returns a dict of TF fetches given the
-                policy, sample batch, and loss gradient tensors.
-            before_loss_init (Optional[Callable[
-                [Policy, gym.spaces.Space, gym.spaces.Space,
-                TrainerConfigDict], None]]): Optional function to run prior to
+            observation_space: Observation space of the policy.
+            action_space: Action space of the policy.
+            config: Policy-specific configuration data.
+            loss_fn: Function that returns a loss tensor for the policy graph.
+            stats_fn: Optional function that returns a dict of TF fetches
+                given the policy and batch input tensors.
+            grad_stats_fn: Optional function that returns a dict of TF
+                fetches given the policy, sample batch, and loss gradient
+                tensors.
+            before_loss_init: Optional function to run prior to
                 loss init that takes the same arguments as __init__.
-            make_model (Optional[Callable[[Policy, gym.spaces.Space,
-                gym.spaces.Space, TrainerConfigDict], ModelV2]]): Optional
-                function that returns a ModelV2 object given
-                policy, obs_space, action_space, and policy config.
+            make_model: Optional function that returns a ModelV2 object
+                given policy, obs_space, action_space, and policy config.
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
-            action_sampler_fn (Optional[Callable[[Policy, ModelV2, Dict[
-                str, TensorType], TensorType, TensorType], Tuple[TensorType,
-                TensorType]]]): A callable returning a sampled action and its
+            action_sampler_fn: A callable returning a sampled action and its
                 log-likelihood given Policy, ModelV2, input_dict, explore,
                 timestep, and is_training.
-            action_distribution_fn (Optional[Callable[[Policy, ModelV2,
-                Dict[str, TensorType], TensorType, TensorType],
-                Tuple[TensorType, type, List[TensorType]]]]): A callable
-                returning distribution inputs (parameters), a dist-class to
-                generate an action distribution object from, and
-                internal-state outputs (or an empty list if not applicable).
+            action_distribution_fn: A callable returning distribution inputs
+                (parameters), a dist-class to generate an action distribution
+                object from, and internal-state outputs (or an empty list if
+                not applicable).
                 Note: No Exploration hooks have to be called from within
                 `action_distribution_fn`. It's should only perform a simple
                 forward pass through some model.
@@ -131,14 +112,13 @@ class DynamicTFPolicy(TFPolicy):
                 inputs.
                 The callable takes as inputs: Policy, ModelV2, input_dict,
                 explore, timestep, is_training.
-            existing_inputs (Optional[Dict[str, tf1.placeholder]]): When
-                copying a policy, this specifies an existing dict of
-                placeholders to use instead of defining new ones.
-            existing_model (Optional[ModelV2]): When copying a policy, this
-                specifies an existing model to clone and share weights with.
-            get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
-                Optional callable that returns the divisibility requirement for
-                sample batches. If None, will assume a value of 1.
+            existing_inputs: When copying a policy, this specifies an existing
+                dict of placeholders to use instead of defining new ones.
+            existing_model: When copying a policy, this specifies an existing
+                model to clone and share weights with.
+            get_batch_divisibility_req: Optional callable that returns the
+                divisibility requirement for sample batches. If None, will
+                assume a value of 1.
         """
         if obs_include_prev_action_reward != DEPRECATED_VALUE:
             deprecation_warning(
