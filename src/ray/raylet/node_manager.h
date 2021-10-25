@@ -754,8 +754,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   int64_t next_resource_seq_no_;
 
   /// Cache which stores resource usage in last report used to check if they are changed.
-  std::shared_ptr<SchedulingResources> last_resource_usage_ =
-      std::make_shared<SchedulingResources>();
+  std::unique_ptr<SchedulingResources> last_resource_usage_ =
+      std::make_unique<SchedulingResources>();
 
   /// Whether resource deadlock warned in last report.
   bool last_report_resource_deadlock_warned_;

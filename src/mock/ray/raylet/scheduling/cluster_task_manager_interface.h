@@ -27,7 +27,7 @@ class MockClusterTaskManagerInterface : public ClusterTaskManagerInterface {
   MOCK_METHOD(void, TasksUnblocked, (const std::vector<TaskID> &ready_ids), (override));
   MOCK_METHOD(void, FillResourceUsage,
               (rpc::ResourcesData & data,
-               const std::shared_ptr<SchedulingResources> &last_reported_resources),
+               const SchedulingResources &last_reported_resources),
               (override));
   MOCK_METHOD(void, FillPendingActorInfo, (rpc::GetNodeStatsReply * reply),
               (const, override));

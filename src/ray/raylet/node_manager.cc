@@ -568,8 +568,8 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_id(self_node_id_.Binary());
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
-  cluster_resource_scheduler_->FillResourceUsage(resources_data, last_resource_usage_);
-  cluster_task_manager_->FillResourceUsage(resources_data, last_resource_usage_);
+  cluster_resource_scheduler_->FillResourceUsage(resources_data, *last_resource_usage_);
+  cluster_task_manager_->FillResourceUsage(resources_data, *last_resource_usage_);
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }

@@ -959,8 +959,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
                     other_cust_capacities);
   resource_scheduler.AddOrUpdateNode(12345, other_node_resources);
 
-  std::shared_ptr<SchedulingResources> last_resource_usage_ =
-      std::make_shared<SchedulingResources>();
+  SchedulingResources last_resource_usage_;
 
   {  // Cluster is idle.
     rpc::ResourcesData data;
@@ -1042,8 +1041,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   initNodeResources(other_node_resources, other_pred_capacities, cust_ids,
                     other_cust_capacities);
   resource_scheduler.AddOrUpdateNode(12345, other_node_resources);
-  std::shared_ptr<SchedulingResources> last_resource_usage_ =
-      std::make_shared<SchedulingResources>();
+  SchedulingResources last_resource_usage_;
 
   {
     rpc::ResourcesData data;
@@ -1098,8 +1096,7 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
   ASSERT_FALSE(resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
   // View of local resources is not affected by resource usage report.
   rpc::ResourcesData data;
-  std::shared_ptr<SchedulingResources> last_resource_usage_ =
-      std::make_shared<SchedulingResources>();
+  SchedulingResources last_resource_usage_;
   resource_scheduler.FillResourceUsage(data, last_resource_usage_);
   ASSERT_FALSE(resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
 

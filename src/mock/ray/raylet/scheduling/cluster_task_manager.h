@@ -42,7 +42,7 @@ class MockClusterTaskManager : public ClusterTaskManager {
               (const, override));
   MOCK_METHOD(void, FillResourceUsage,
               (rpc::ResourcesData & data,
-               const std::shared_ptr<SchedulingResources> &last_reported_resources),
+               const SchedulingResources &last_reported_resources),
               (override));
   MOCK_METHOD(bool, AnyPendingTasks,
               (RayTask * exemplar, bool *any_pending, int *num_pending_actor_creation,

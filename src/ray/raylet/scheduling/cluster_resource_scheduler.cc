@@ -981,10 +981,10 @@ void ClusterResourceScheduler::ReleaseWorkerResources(
 
 void ClusterResourceScheduler::FillResourceUsage(
     rpc::ResourcesData &resources_data,
-    std::shared_ptr<SchedulingResources> last_report_resources) {
+    const SchedulingResources &last_report_resources) {
   NodeResources last_report_node_resources = ResourceMapToNodeResources(
-      string_to_int_map_, last_report_resources->GetTotalResources().GetResourceMap(),
-      last_report_resources->GetAvailableResources().GetResourceMap());
+      string_to_int_map_, last_report_resources.GetTotalResources().GetResourceMap(),
+      last_report_resources.GetAvailableResources().GetResourceMap());
 
   NodeResources resources;
 

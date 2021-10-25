@@ -686,8 +686,7 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
 }
 
 void ClusterTaskManager::FillResourceUsage(
-    rpc::ResourcesData &data,
-    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
+    rpc::ResourcesData &data, const SchedulingResources &last_reported_resources) {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
@@ -847,8 +846,7 @@ void ClusterTaskManager::FillResourceUsage(
     absl::flat_hash_map<std::string, double> local_resource_map(
         data.resource_load().begin(), data.resource_load().end());
     ResourceSet local_resource(local_resource_map);
-    if (last_reported_resources == nullptr ||
-        !last_reported_resources->GetLoadResources().IsEqual(local_resource)) {
+    if (!last_reported_resources.GetLoadResources().IsEqual(local_resource)) {
       data.set_resource_load_changed(true);
     }
   } else {

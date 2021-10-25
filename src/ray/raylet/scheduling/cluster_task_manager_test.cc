@@ -837,7 +837,8 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 
   {
     rpc::ResourcesData data;
-    task_manager_.FillResourceUsage(data);
+    SchedulingResources last_resource_usage_;
+    task_manager_.FillResourceUsage(data, last_resource_usage_);
 
     auto load_by_shape =
         data.mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -919,9 +920,10 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(node_info_calls_, 0);
 
+  SchedulingResources last_resource_usage_;
   {  // No tasks can run because the worker pool is empty.
     rpc::ResourcesData data;
-    task_manager_.FillResourceUsage(data);
+    task_manager_.FillResourceUsage(data, last_resource_usage_);
     auto resource_load_by_shape = data.resource_load_by_shape();
     auto shape1 = resource_load_by_shape.resource_demands()[0];
 
@@ -940,7 +942,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 
   {
     rpc::ResourcesData data;
-    task_manager_.FillResourceUsage(data);
+    task_manager_.FillResourceUsage(data, last_resource_usage_);
     auto resource_load_by_shape = data.resource_load_by_shape();
     auto shape1 = resource_load_by_shape.resource_demands()[0];
 
@@ -957,7 +959,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 
   {
     rpc::ResourcesData data;
-    task_manager_.FillResourceUsage(data);
+    task_manager_.FillResourceUsage(data, last_resource_usage_);
     auto resource_load_by_shape = data.resource_load_by_shape();
     ASSERT_EQ(resource_load_by_shape.resource_demands().size(), 0);
 
@@ -1488,19 +1490,16 @@ TEST_F(ClusterTaskManagerTest, LargeArgsNoStarvationTest) {
 TEST_F(ClusterTaskManagerTest, TestResourceDiff) {
   // When scheduling_resources is null, resource is always marked as changed
   rpc::ResourcesData resource_data;
-  task_manager_.FillResourceUsage(resource_data, nullptr);
-  ASSERT_TRUE(resource_data.resource_load_changed());
-  auto scheduling_resources = std::make_shared<SchedulingResources>();
+  SchedulingResources last_resource_usage_;
   // Same resources(empty), not changed.
-  resource_data.set_resource_load_changed(false);
-  task_manager_.FillResourceUsage(resource_data, scheduling_resources);
+  task_manager_.FillResourceUsage(resource_data, last_resource_usage_);
   ASSERT_FALSE(resource_data.resource_load_changed());
   // Resource changed.
   resource_data.set_resource_load_changed(false);
   ResourceSet res;
   res.AddOrUpdateResource("CPU", 100);
-  scheduling_resources->SetLoadResources(std::move(res));
-  task_manager_.FillResourceUsage(resource_data, scheduling_resources);
+  last_resource_usage_.SetLoadResources(std::move(res));
+  task_manager_.FillResourceUsage(resource_data, last_resource_usage_);
   ASSERT_TRUE(resource_data.resource_load_changed());
 }
 
@@ -1583,7 +1582,8 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
     ASSERT_EQ(node_info_calls_, 0);
 
     rpc::ResourcesData data;
-    task_manager_.FillResourceUsage(data);
+    SchedulingResources last_resource_usage_;
+    task_manager_.FillResourceUsage(data, last_resource_usage_);
     const auto &resource_load_by_shape = data.resource_load_by_shape();
     ASSERT_EQ(resource_load_by_shape.resource_demands().size(), demand_types[i]);
 

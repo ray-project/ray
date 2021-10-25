@@ -69,9 +69,8 @@ class ClusterResourceSchedulerInterface {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  virtual void FillResourceUsage(
-      rpc::ResourcesData &data,
-      std::shared_ptr<SchedulingResources> last_report_resource) = 0;
+  virtual void FillResourceUsage(rpc::ResourcesData &data,
+                                 const SchedulingResources &last_reported_resources) = 0;
 
   virtual double GetLocalAvailableCpus() const = 0;
 
