@@ -938,18 +938,18 @@ def test_named_actor_cache_via_another_actor(ray_start_regular_shared):
             return ray.get(actor.inc_and_get.remote())
 
     # Start a actor and get it by name in driver.
-    a = Counter.options(name="hi").remote()
-    first_get = ray.get_actor("hi")
+    a = Counter.options(name="foo").remote()
+    first_get = ray.get_actor("foo")
     assert ray.get(first_get.inc_and_get.remote()) == 1
 
     # Start another actor as the third actor to get named actor.
     actor_getter = ActorGetter.remote()
-    assert ray.get(actor_getter.get_actor_count.remote("hi")) == 2
+    assert ray.get(actor_getter.get_actor_count.remote("foo")) == 2
     ray.kill(a, no_restart=True)
 
     def actor_removed():
         try:
-            ray.get_actor("hi")
+            ray.get_actor("foo")
             return False
         except ValueError:
             return True
@@ -957,12 +957,12 @@ def test_named_actor_cache_via_another_actor(ray_start_regular_shared):
     wait_for_condition(actor_removed)
 
     # Restart the named actor.
-    get_after_restart = Counter.options(name="hi").remote()
+    get_after_restart = Counter.options(name="foo").remote()
     assert ray.get(get_after_restart.inc_and_get.remote()) == 1
     # Get the named actor from the third actor again.
-    assert ray.get(actor_getter.get_actor_count.remote("hi")) == 2
+    assert ray.get(actor_getter.get_actor_count.remote("foo")) == 2
     # Get the named actor by name in driver again.
-    get_by_name = ray.get_actor("hi")
+    get_by_name = ray.get_actor("foo")
     assert ray.get(get_by_name.inc_and_get.remote()) == 3
 
 
