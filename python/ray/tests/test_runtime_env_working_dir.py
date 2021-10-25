@@ -6,6 +6,7 @@ import tempfile
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
+from python.ray._private.test_utils import run_string_as_driver
 
 import ray
 import ray.experimental.internal_kv as kv
