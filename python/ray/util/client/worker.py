@@ -35,7 +35,8 @@ from ray.util.client.common import (ClientActorClass, ClientActorHandle,
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
-import ray._private.runtime_env.working_dir as working_dir_pkg
+import ray._private.utils
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -100,7 +101,8 @@ class Worker:
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
-        self._secure = secure
+        self._secure = secure or os.environ.get("RAY_USE_TLS",
+                                                "0").lower() in ("1", "true")
         self._conn_str = conn_str
         self._connection_retries = connection_retries
 
@@ -126,6 +128,9 @@ class Worker:
 
         self._connect_channel()
         self._has_connected = True
+
+        # Has Ray been initialized on the server?
+        self._serverside_ray_initialized = False
 
         # Initialize the streams to finish protocol negotiation.
         self.data_client = DataClient(self, self._client_id, self.metadata)
@@ -156,6 +161,13 @@ class Worker:
         if self._secure:
             if self._credentials is not None:
                 credentials = self._credentials
+            elif os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
+                server_cert_chain, private_key, ca_cert = ray._private.utils \
+                    .load_certs_from_env()
+                credentials = grpc.ssl_channel_credentials(
+                    certificate_chain=server_cert_chain,
+                    private_key=private_key,
+                    root_certificates=ca_cert)
             else:
                 credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
@@ -639,10 +651,17 @@ class Worker:
         return json.loads(self.data_client.ListNamedActors(req).actors_json)
 
     def is_initialized(self) -> bool:
-        if self.server is not None:
-            return self.get_cluster_info(
+        if not self.is_connected() or self.server is None:
+            return False
+        if not self._serverside_ray_initialized:
+            # We only check that Ray is initialized on the server once to
+            # avoid making an RPC every time this function is called. This is
+            # safe to do because Ray only 'un-initializes' on the server when
+            # the Client connection is torn down.
+            self._serverside_ray_initialized = self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
-        return False
+
+        return self._serverside_ray_initialized
 
     def ping_server(self, timeout=None) -> bool:
         """Simple health check.
@@ -670,12 +689,10 @@ class Worker:
             if job_config is None:
                 serialized_job_config = None
             else:
-                # Generate and upload URIs for the working directory. This
-                # uses internal_kv to upload to the GCS.
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    working_dir_pkg.rewrite_runtime_env_uris(job_config)
-                    manager = working_dir_pkg.WorkingDirManager(tmp_dir)
-                    manager.upload_runtime_env_package_if_needed(job_config)
+                    job_config.set_runtime_env(
+                        upload_working_dir_if_needed(
+                            job_config.runtime_env or {}, tmp_dir))
 
                 serialized_job_config = pickle.dumps(job_config)
 
@@ -707,6 +724,7 @@ class Worker:
                 "object_store_memory": md.object_store_memory,
                 "resources": md.resources,
                 "accelerator_type": md.accelerator_type,
+                "runtime_env": md.runtime_env
             })
         return key
 
@@ -724,7 +742,8 @@ class Worker:
                 "resources": func._resources,
                 "accelerator_type": func._accelerator_type,
                 "num_returns": func._num_returns,
-                "memory": func._memory
+                "memory": func._memory,
+                "runtime_env": func._runtime_env,
             })
         return key
 

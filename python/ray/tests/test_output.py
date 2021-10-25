@@ -2,10 +2,90 @@ import subprocess
 import sys
 import pytest
 import re
+import signal
+import time
+import os
 
 import ray
 
 from ray._private.test_utils import run_string_as_driver_nonblocking
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_autoscaler_infeasible():
+    script = """
+import ray
+import time
+
+ray.init(num_cpus=1)
+
+@ray.remote(num_gpus=1)
+def foo():
+    pass
+
+x = foo.remote()
+time.sleep(15)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "Tip:" in out_str
+    assert "Error: No available node types can fulfill" in out_str
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_autoscaler_warn_deadlock():
+    script = """
+import ray
+import time
+
+ray.init(num_cpus=1)
+
+@ray.remote(num_cpus=1)
+class A:
+    pass
+
+a = A.remote()
+b = A.remote()
+time.sleep(25)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "Tip:" in out_str
+    assert "Warning: The following resource request cannot" in out_str
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_autoscaler_no_spam():
+    script = """
+import ray
+import time
+
+# Check that there are no false positives with custom resources.
+ray.init(num_cpus=1, resources={"node:x": 1})
+
+@ray.remote(num_cpus=1, resources={"node:x": 1})
+def f():
+    time.sleep(1)
+    print("task done")
+
+ray.get([f.remote() for _ in range(15)])
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "Tip:" not in out_str
+    assert "Tip:" not in err_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -175,8 +255,14 @@ ray.util.rpdb._driver_set_trace()  # This should disable worker logs.
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_multi_stdout():
-    script = """
+@pytest.mark.parametrize("file", ["stdout", "stderr"])
+def test_multi_stdout_err(file):
+    if file == "stdout":
+        file_handle = "sys.stdout"
+    else:  # sys.stderr
+        file_handle = "sys.stderr"
+
+    script = f"""
 import ray
 import sys
 
@@ -184,15 +270,15 @@ ray.init(num_cpus=1)
 
 @ray.remote
 def foo():
-    print()
+    print(file={file_handle})
 
 @ray.remote
 def bar():
-    print()
+    print(file={file_handle})
 
 @ray.remote
 def baz():
-    print()
+    print(file={file_handle})
 
 ray.get(foo.remote())
 ray.get(bar.remote())
@@ -200,7 +286,10 @@ ray.get(baz.remote())
     """
 
     proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
+    if file == "stdout":
+        out_str = proc.stdout.read().decode("ascii")
+    else:
+        out_str = proc.stderr.read().decode("ascii")
 
     assert "(foo pid=" in out_str, out_str
     assert "(bar pid=" in out_str, out_str
@@ -208,24 +297,31 @@ ray.get(baz.remote())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_actor_stdout():
-    script = """
+@pytest.mark.parametrize("file", ["stdout", "stderr"])
+def test_actor_stdout(file):
+    if file == "stdout":
+        file_handle = "sys.stdout"
+    else:  # sys.stderr
+        file_handle = "sys.stderr"
+
+    script = f"""
 import ray
+import sys
 
 ray.init(num_cpus=2)
 
 @ray.remote
 class Actor1:
     def f(self):
-        print("hi")
+        print("hi", file={file_handle})
 
 @ray.remote
 class Actor2:
     def __init__(self):
-        print("init")
+        print("init", file={file_handle})
         self.name = "ActorX"
     def f(self):
-        print("bye")
+        print("bye", file={file_handle})
     def __repr__(self):
         return self.name
 
@@ -236,7 +332,10 @@ ray.get(b.f.remote())
     """
 
     proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
+    if file == "stdout":
+        out_str = proc.stdout.read().decode("ascii")
+    else:
+        out_str = proc.stderr.read().decode("ascii")
     print(out_str)
 
     assert "hi" in out_str, out_str
@@ -257,6 +356,73 @@ def test_output():
     for line in lines:
         print(line)
     assert len(lines) == 2, lines
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_output_on_driver_shutdown(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=16)
+    # many_ppo.py script.
+    script = """
+import ray
+from ray.tune import run_experiments
+from ray.tune.utils.release_test_util import ProgressCallback
+
+num_redis_shards = 5
+redis_max_memory = 10**8
+object_store_memory = 10**9
+num_nodes = 3
+
+message = ("Make sure there is enough memory on this machine to run this "
+           "workload. We divide the system memory by 2 to provide a buffer.")
+assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
+        ray._private.utils.get_system_memory() / 2), message
+
+# Simulate a cluster on one machine.
+
+ray.init(address="auto")
+
+# Run the workload.
+
+run_experiments(
+    {
+        "ppo": {
+            "run": "PPO",
+            "env": "CartPole-v0",
+            "num_samples": 10,
+            "config": {
+                "framework": "torch",
+                "num_workers": 1,
+                "num_gpus": 0,
+                "num_sgd_iter": 1,
+            },
+            "stop": {
+                "timesteps_total": 1,
+            },
+        }
+    },
+    callbacks=[ProgressCallback()])
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    # Make sure the script is running before sending a sigterm.
+    with pytest.raises(subprocess.TimeoutExpired):
+        print(proc.wait(timeout=10))
+    print(f"Script is running... pid: {proc.pid}")
+    # Send multiple signals to terminate it like real world scenario.
+    for _ in range(10):
+        time.sleep(0.1)
+        os.kill(proc.pid, signal.SIGINT)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        print("Script wasn't terminated by SIGINT. Try SIGTERM.")
+        os.kill(proc.pid, signal.SIGTERM)
+    print(proc.wait(timeout=10))
+    err_str = proc.stderr.read().decode("ascii")
+    assert len(err_str) > 0
+    assert "StackTrace Information" not in err_str
+    print(err_str)
 
 
 if __name__ == "__main__":

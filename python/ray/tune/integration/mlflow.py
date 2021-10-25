@@ -42,6 +42,8 @@ class MLflowLoggerCallback(LoggerCallback):
             If the experiment with the name already exists with MlFlow,
             it will be reused. If not, a new experiment will be created with
             that name.
+        tags (Dict):  An optional dictionary of string keys and values to set
+            as tags on the run
         save_artifact (bool): If set to True, automatically save the entire
             contents of the Tune local_dir as an artifact to the
             corresponding run in MlFlow.
@@ -51,6 +53,10 @@ class MLflowLoggerCallback(LoggerCallback):
     .. code-block:: python
 
         from ray.tune.integration.mlflow import MLflowLoggerCallback
+
+        tags = { "user_name" : "John",
+                 "git_commit_hash" : "abc123"}
+
         tune.run(
             train_fn,
             config={
@@ -60,19 +66,24 @@ class MLflowLoggerCallback(LoggerCallback):
             },
             callbacks=[MLflowLoggerCallback(
                 experiment_name="experiment1",
+                tags=tags,
                 save_artifact=True)])
 
     """
 
-    def __init__(self,
-                 tracking_uri: Optional[str] = None,
-                 registry_uri: Optional[str] = None,
-                 experiment_name: Optional[str] = None,
-                 save_artifact: bool = False):
+    def __init__(
+            self,
+            tracking_uri: Optional[str] = None,
+            registry_uri: Optional[str] = None,
+            experiment_name: Optional[str] = None,
+            tags: Optional[Dict] = None,
+            save_artifact: bool = False,
+    ):
 
         self.tracking_uri = tracking_uri
         self.registry_uri = registry_uri
         self.experiment_name = experiment_name
+        self.tags = tags
         self.save_artifact = save_artifact
 
         if ray.util.client.ray.is_connected():
@@ -90,6 +101,7 @@ class MLflowLoggerCallback(LoggerCallback):
                                "install mlflow` to use the MLflowLogger.")
 
         from mlflow.tracking import MlflowClient
+
         self.client = MlflowClient(
             tracking_uri=self.tracking_uri, registry_uri=self.registry_uri)
 
@@ -123,6 +135,10 @@ class MLflowLoggerCallback(LoggerCallback):
                                  "set one of these to use the "
                                  "MLflowLoggerCallback.")
 
+        if self.tags is None:
+            # Create empty dictionary for tags if not given explicitly
+            self.tags = {}
+
         # At this point, experiment_id should be set.
         self.experiment_id = experiment_id
         self.save_artifact = self.save_artifact
@@ -132,9 +148,13 @@ class MLflowLoggerCallback(LoggerCallback):
     def log_trial_start(self, trial: "Trial"):
         # Create run if not already exists.
         if trial not in self._trial_runs:
+
+            # Set trial name in tags
+            tags = self.tags.copy()
+            tags["trial_name"] = str(trial)
+
             run = self.client.create_run(
-                experiment_id=self.experiment_id,
-                tags={"trial_name": str(trial)})
+                experiment_id=self.experiment_id, tags=tags)
             self._trial_runs[trial] = run.info.run_id
 
         run_id = self._trial_runs[trial]

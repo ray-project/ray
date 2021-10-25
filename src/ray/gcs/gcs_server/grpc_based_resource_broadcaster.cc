@@ -115,7 +115,7 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
 
   // Serializing is relatively expensive on large batches, so we should only do it once.
   std::string serialized_batch = batch.SerializeAsString();
-  stats::OutboundHeartbeatSizeKB.Record((double)(batch.ByteSizeLong() / 1024.0));
+  stats::OutboundHeartbeatSizeKB.Record((double)(serialized_batch.size() / 1024.0));
 
   absl::MutexLock guard(&mutex_);
   num_skipped_nodes_ = 0;
@@ -134,7 +134,7 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
                         const Status &status,
                         const rpc::UpdateResourceUsageReply &reply) {
       double end_time = absl::GetCurrentTimeNanos();
-      double lapsed_time_ms = (end_time - start_time) * 1e6;
+      double lapsed_time_ms = static_cast<double>(end_time - start_time) / 1e6;
       ray::stats::GcsUpdateResourceUsageTime.Record(lapsed_time_ms);
 
       absl::MutexLock guard(&mutex_);

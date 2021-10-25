@@ -28,13 +28,6 @@ import ray._private.gcs_utils as gcs_utils
 
 
 @pytest.fixture
-def ray_shutdown():
-    yield
-    serve.shutdown()
-    ray.shutdown()
-
-
-@pytest.fixture
 def ray_cluster():
     cluster = Cluster()
     yield Cluster()
@@ -102,7 +95,7 @@ def test_detached_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
-    head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
+    head_node = cluster.add_node(num_cpus=6)
 
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address, namespace="serve")

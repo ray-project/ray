@@ -414,7 +414,6 @@ cc_library(
         ],
     ) + [
         "src/ray/raylet/scheduling/cluster_resource_data.cc",
-        "src/ray/raylet/scheduling/fixed_point.cc",
         "src/ray/raylet/scheduling/scheduling_ids.cc",
     ],
     hdrs = glob(
@@ -486,20 +485,17 @@ cc_binary(
 
 cc_library(
     name = "gcs_pub_sub_lib",
-    srcs = glob(
-        [
-            "src/ray/gcs/pubsub/gcs_pub_sub.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/gcs/pubsub/gcs_pub_sub.h",
-        ],
-    ),
+    srcs = [
+        "src/ray/gcs/pubsub/gcs_pub_sub.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/pubsub/gcs_pub_sub.h",
+    ],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
         ":gcs",
+        ":pubsub_lib",
         ":ray_common",
         ":redis_client",
     ],
@@ -553,6 +549,7 @@ cc_library(
         ":pubsub_lib",
         ":raylet_client_lib",
         ":worker_rpc",
+        "@com_google_absl//absl/container:btree",
     ],
 )
 
@@ -623,10 +620,12 @@ cc_library(
         "src/ray/stats/metric_exporter_client.cc",
     ],
     hdrs = [
+        "src/ray/stats/metric.h",
         "src/ray/stats/metric_defs.h",
         "src/ray/stats/metric_exporter.h",
         "src/ray/stats/metric_exporter_client.h",
         "src/ray/stats/stats.h",
+        "src/ray/stats/tag_defs.h",
     ],
     copts = COPTS,
     linkopts = select({
@@ -974,6 +973,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1002,6 +1002,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1182,6 +1183,22 @@ cc_test(
 )
 
 cc_test(
+    name = "gcs_placement_group_manager_mock_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_mock_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "placement_group_resource_manager_test",
     size = "small",
     srcs = ["src/ray/raylet/placement_group_resource_manager_test.cc"],
@@ -1191,6 +1208,7 @@ cc_test(
         "gcs_test_util_lib",
         "ray_common",
         "raylet_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1509,6 +1527,21 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_actor_scheduler_mock_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_mock_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2070,6 +2103,18 @@ cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "@boost//:asio",
+    ],
+)
+
+cc_test(
+    name = "callback_reply_test",
+    size = "small",
+    srcs = ["src/ray/gcs/test/callback_reply_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

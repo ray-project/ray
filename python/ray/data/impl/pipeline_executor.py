@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 
-@ray.remote
+@ray.remote(num_cpus=0, placement_group=None)
 def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
     try:
         prev = set_progress_bars(False)
@@ -27,12 +27,15 @@ class PipelineExecutor:
         self._iter = iter(self._pipeline._base_iterable)
         self._stages[0] = pipeline_stage.remote(next(self._iter))
 
+        if self._pipeline._length and self._pipeline._length != float("inf"):
+            length = self._pipeline._length
+        else:
+            length = 1
+
         if self._pipeline._progress_bars:
             self._bars = [
-                ProgressBar(
-                    "Stage {}".format(i),
-                    self._pipeline._length or 1,
-                    position=i) for i in range(len(self._stages))
+                ProgressBar("Stage {}".format(i), length, position=i)
+                for i in range(len(self._stages))
             ]
         else:
             self._bars = None
@@ -84,7 +87,7 @@ class PipelineExecutor:
         return output
 
 
-@ray.remote
+@ray.remote(num_cpus=0, placement_group=None)
 class PipelineSplitExecutorCoordinator:
     def __init__(self, pipeline: "DatasetPipeline[T]", n: int,
                  splitter: Callable[[Dataset], "DatasetPipeline[T]"]):

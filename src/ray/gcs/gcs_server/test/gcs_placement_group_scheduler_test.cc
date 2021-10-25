@@ -39,13 +39,14 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
     }
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_resource_manager_ =
         std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(gcs_pub_sub_, gcs_table_storage_);
+        std::make_shared<gcs::GcsNodeManager>(gcs_publisher_, gcs_table_storage_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
@@ -105,7 +106,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_resource_manager_->OnNodeAdd(*node);
 
     const auto &node_id = NodeID::FromBinary(node->node_id());
-    std::unordered_map<std::string, double> resource_map;
+    absl::flat_hash_map<std::string, double> resource_map;
     resource_map["CPU"] = cpu_num;
     gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
   }
@@ -219,7 +220,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       GUARDED_BY(placement_group_requests_mutex_);
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> failure_placement_groups_
       GUARDED_BY(placement_group_requests_mutex_);
-  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;

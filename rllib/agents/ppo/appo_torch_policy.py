@@ -25,7 +25,8 @@ from ray.rllib.models.torch.torch_action_dist import \
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import LearningRateSchedule
+from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
+    LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance,\
     global_norm, sequence_mask
@@ -55,7 +56,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     """
     target_model = policy.target_models[model]
 
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
@@ -78,7 +79,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
-    target_model_out, _ = target_model.from_batch(train_batch)
+    target_model_out, _ = target_model(train_batch)
 
     prev_action_dist = dist_class(behaviour_logits, model)
     values = model.value_function()
@@ -159,7 +160,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
             torch.clamp(logp_ratio, 1 - policy.config["clip_param"],
                         1 + policy.config["clip_param"]))
 
-        mean_kl = reduce_mean_valid(action_kl)
+        mean_kl_loss = reduce_mean_valid(action_kl)
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
@@ -188,7 +189,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
             torch.clamp(logp_ratio, 1 - policy.config["clip_param"],
                         1 + policy.config["clip_param"]))
 
-        mean_kl = reduce_mean_valid(action_kl)
+        mean_kl_loss = reduce_mean_valid(action_kl)
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
@@ -204,20 +205,21 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     # The summed weighted loss
     total_loss = mean_policy_loss + \
         mean_vf_loss * policy.config["vf_loss_coeff"] - \
-        mean_entropy * policy.config["entropy_coeff"]
+        mean_entropy * policy.entropy_coeff
 
     # Optional additional KL Loss
     if policy.config["use_kl_loss"]:
-        total_loss += policy.kl_coeff * mean_kl
+        total_loss += policy.kl_coeff * mean_kl_loss
 
-    policy._total_loss = total_loss
-    policy._mean_policy_loss = mean_policy_loss
-    # Backward compatibility: Deprecate policy._mean_kl.
-    policy._mean_kl_loss = policy._mean_kl = mean_kl
-    policy._mean_vf_loss = mean_vf_loss
-    policy._mean_entropy = mean_entropy
-    policy._value_targets = value_targets
-    policy._vf_explained_var = explained_variance(
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["total_loss"] = total_loss
+    model.tower_stats["mean_policy_loss"] = mean_policy_loss
+    model.tower_stats["mean_kl_loss"] = mean_kl_loss
+    model.tower_stats["mean_vf_loss"] = mean_vf_loss
+    model.tower_stats["mean_entropy"] = mean_entropy
+    model.tower_stats["value_targets"] = value_targets
+    model.tower_stats["vf_explained_var"] = explained_variance(
         torch.reshape(value_targets, [-1]),
         torch.reshape(
             values_time_major[:-1]
@@ -239,22 +241,29 @@ def stats(policy: Policy, train_batch: SampleBatch):
     """
     stats_dict = {
         "cur_lr": policy.cur_lr,
-        "policy_loss": policy._mean_policy_loss,
-        "entropy": policy._mean_entropy,
+        "total_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("total_loss"))),
+        "policy_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_policy_loss"))),
+        "entropy": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_entropy"))),
+        "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy._mean_vf_loss,
-        "vf_explained_var": policy._vf_explained_var,
+        "vf_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_vf_loss"))),
+        "vf_explained_var": torch.mean(
+            torch.stack(policy.get_tower_stats("vf_explained_var"))),
     }
 
     if policy.config["vtrace"]:
         is_stat_mean = torch.mean(policy._is_ratio, [0, 1])
         is_stat_var = torch.var(policy._is_ratio, [0, 1])
-        stats_dict.update({"mean_IS": is_stat_mean})
-        stats_dict.update({"var_IS": is_stat_var})
+        stats_dict["mean_IS"] = is_stat_mean
+        stats_dict["var_IS"] = is_stat_var
 
     if policy.config["use_kl_loss"]:
-        stats_dict.update({"kl": policy._mean_kl_loss})
-        stats_dict.update({"KL_Coeff": policy.kl_coeff})
+        stats_dict["kl"] = policy.get_tower_stats("mean_kl_loss")
+        stats_dict["KL_Coeff"] = policy.kl_coeff
 
     return stats_dict
 
@@ -278,6 +287,8 @@ def setup_early_mixins(policy: Policy, obs_space: gym.spaces.Space,
         config (TrainerConfigDict): The Policy's config.
     """
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
@@ -312,6 +323,6 @@ AsyncPPOTorchPolicy = build_policy_class(
     make_model=make_appo_model,
     mixins=[
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
-        ValueNetworkMixin
+        ValueNetworkMixin, EntropyCoeffSchedule
     ],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])

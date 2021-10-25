@@ -6,6 +6,7 @@ import logging
 import os
 import time
 from typing import Dict, Set
+from ray._private.utils import import_attr
 
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
@@ -17,8 +18,8 @@ from ray.experimental.internal_kv import (_initialize_internal_kv,
                                           _internal_kv_initialized)
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaManager
+from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.working_dir import WorkingDirManager
-from ray._private.runtime_env import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
 
@@ -78,13 +79,20 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         return self._per_job_logger_cache[job_id]
 
     async def CreateRuntimeEnv(self, request, context):
-        async def _setup_runtime_env(serialized_runtime_env):
+        async def _setup_runtime_env(serialized_runtime_env,
+                                     serialized_allocated_resource_instances):
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 runtime_env: dict = json.loads(serialized_runtime_env or "{}")
+                allocated_resource: dict = json.loads(
+                    serialized_allocated_resource_instances or "{}")
 
                 # Use a separate logger for each job.
                 per_job_logger = self.get_or_create_logger(request.job_id)
+                # TODO(chenk008): Add log about allocated_resource to
+                # avoid lint error. That will be moved to cgroup plugin.
+                per_job_logger.debug(f"Worker has resource :"
+                                     f"{allocated_resource}")
                 context = RuntimeEnvContext(
                     env_vars=runtime_env.get("env_vars"))
                 self._conda_manager.setup(
@@ -94,9 +102,18 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.
-                for uri in runtime_env.get("uris", []):
+                for uri in runtime_env.get("uris") or []:
                     self._working_dir_uri_to_envs[uri].add(
                         serialized_runtime_env)
+
+                # Run setup function from all the plugins
+                for plugin_class_path in runtime_env.get("plugins", {}).keys():
+                    plugin_class = import_attr(plugin_class_path)
+                    # TODO(simon): implement uri support
+                    plugin_class.create("uri not implemented", runtime_env,
+                                        context)
+                    plugin_class.modify_context("uri not implemented",
+                                                runtime_env, context)
 
                 return context
 
@@ -138,7 +155,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     runtime_env_context = await _setup_runtime_env(
-                        serialized_env)
+                        serialized_env,
+                        request.serialized_allocated_resource_instances)
                     break
                 except Exception as ex:
                     logger.exception("Runtime env creation failed.")

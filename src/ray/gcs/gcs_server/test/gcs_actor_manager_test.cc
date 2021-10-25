@@ -33,6 +33,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
   void ReleaseUnusedWorkers(
       const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) {}
+  void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) {}
 
   MOCK_METHOD1(CancelOnNode, std::vector<ActorID>(const NodeID &node_id));
   MOCK_METHOD2(CancelOnWorker, ActorID(const NodeID &node_id, const WorkerID &worker_id));
@@ -101,12 +102,13 @@ class GcsActorManagerTest : public ::testing::Test {
     worker_client_ = std::make_shared<MockWorkerClient>(io_service_);
     runtime_env_mgr_ =
         std::make_unique<ray::RuntimeEnvManager>([](auto, auto f) { f(true); });
-    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
-        mock_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_, *runtime_env_mgr_,
-        [](const ActorID &actor_id) {},
+        io_service_, mock_actor_scheduler_, gcs_table_storage_, gcs_publisher_,
+        *runtime_env_mgr_, [](const ActorID &actor_id) {},
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; },
         [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
           if (skip_delay_) {
@@ -203,7 +205,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::unordered_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
-  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
@@ -953,6 +955,7 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
 }
 
 TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
+  google::protobuf::Arena arena;
   skip_delay_ = false;
   auto job_id_1 = JobID::FromInt(1);
   auto request1 = Mocker::GenRegisterActorRequest(job_id_1, /*max_restarts=*/0,
@@ -971,7 +974,8 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
 
   {
     rpc::GetAllActorInfoRequest request;
-    rpc::GetAllActorInfoReply reply;
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
     bool called = false;
     auto callback = [&called](Status status, std::function<void()> success,
                               std::function<void()> failure) { called = true; };
@@ -981,7 +985,8 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
   }
   {
     rpc::GetAllActorInfoRequest request;
-    rpc::GetAllActorInfoReply reply;
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
     request.set_show_dead_jobs(true);
     std::promise<void> promise;
     auto callback = [&promise](Status status, std::function<void()> success,
@@ -994,7 +999,8 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
   delayed_to_run_();
   {
     rpc::GetAllActorInfoRequest request;
-    rpc::GetAllActorInfoReply reply;
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
     request.set_show_dead_jobs(true);
     std::promise<void> promise;
     auto callback = [&promise](Status status, std::function<void()> success,

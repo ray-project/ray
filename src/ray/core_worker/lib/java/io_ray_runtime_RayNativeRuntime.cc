@@ -92,7 +92,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
     jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
     jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
-    jbyteArray jobConfig) {
+    jbyteArray jobConfig, jint startupToken) {
   auto task_execution_callback =
       [](TaskType task_type, const std::string task_name, const RayFunction &ray_function,
          const std::unordered_map<std::string, double> &required_resources,
@@ -101,7 +101,13 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
          const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
          std::vector<std::shared_ptr<RayObject>> *results,
          std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
-         bool *is_application_level_error) {
+         bool *is_application_level_error,
+         const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
+         const std::string name_of_concurrency_group_to_execute) {
+        // These 2 parameters are used for Python only, and Java worker
+        // will not use them.
+        RAY_UNUSED(defined_concurrency_groups);
+        RAY_UNUSED(name_of_concurrency_group_to_execute);
         // TODO(jjyao): Support retrying application-level errors for Java
         *is_application_level_error = false;
 
@@ -254,6 +260,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
   options.num_workers = static_cast<int>(numWorkersPerProcess);
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
+  options.startup_token = startupToken;
 
   CoreWorkerProcess::Initialize(options);
 }
@@ -308,6 +315,30 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
     JNIEnv *env, jclass, jbyteArray workerId) {
   const auto worker_id = JavaByteArrayToId<WorkerID>(env, workerId);
   CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
+}
+
+JNIEXPORT jobject JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
+  auto key_converter = [](JNIEnv *env, const std::string &str) -> jstring {
+    return env->NewStringUTF(str.c_str());
+  };
+  auto value_converter =
+      [](JNIEnv *env, const std::vector<std::pair<int64_t, double>> &value) -> jobject {
+    auto elem_converter = [](JNIEnv *env,
+                             const std::pair<int64_t, double> &elem) -> jobject {
+      jobject java_item =
+          env->NewObject(java_resource_value_class, java_resource_value_init,
+                         (jlong)elem.first, (jdouble)elem.second);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      return java_item;
+    };
+    return NativeVectorToJavaList<std::pair<int64_t, double>>(env, value,
+                                                              std::move(elem_converter));
+  };
+  ResourceMappingType resource_mapping =
+      CoreWorkerProcess::GetCoreWorker().GetResourceIDs();
+  return NativeMapToJavaMap<std::string, std::vector<std::pair<int64_t, double>>>(
+      env, resource_mapping, std::move(key_converter), std::move(value_converter));
 }
 
 #ifdef __cplusplus

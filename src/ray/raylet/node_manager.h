@@ -48,7 +48,6 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::ActorTableData;
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
 using rpc::HeartbeatTableData;
@@ -81,6 +80,8 @@ struct NodeManagerConfig {
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
   WorkerCommandMap worker_commands;
+  /// The native library path which includes the core libraries.
+  std::string native_library_path;
   /// The command used to start agent.
   std::string agent_command;
   /// The time between reports resources in milliseconds.
@@ -273,13 +274,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// returned to idle.
   bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr);
 
-  /// Helper function to produce actor table data for a newly created actor.
-  ///
-  /// \param task_spec RayTask specification of the actor creation task that created the
-  /// actor.
-  /// \param worker The port that the actor is listening on.
-  std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
-      const TaskSpecification &task_spec, int port, const WorkerID &worker_id);
   /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
@@ -495,6 +489,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReportWorkerBacklog` request.
+  void HandleReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request,
+                                 rpc::ReportWorkerBacklogReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReturnWorker` request.
   void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                           rpc::ReturnWorkerReply *reply,
@@ -671,7 +670,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       remote_node_manager_addresses_;
 
   /// Map of workers leased out to direct call clients.
-  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   /// Map from owner worker ID to a list of worker IDs that the owner has a
   /// lease on.

@@ -70,9 +70,21 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
+    void ReportWorkerBacklog(
+        const WorkerID &worker_id,
+        const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {}
+
     /// WorkerLeaseInterface
     void RequestWorkerLease(
         const ray::TaskSpecification &resource_spec,
+        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
+        const int64_t backlog_size = -1) override {
+      num_workers_requested += 1;
+      callbacks.push_back(callback);
+    }
+
+    void RequestWorkerLease(
+        const rpc::TaskSpec &spec,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
         const int64_t backlog_size = -1) override {
       num_workers_requested += 1;
@@ -180,7 +192,7 @@ struct GcsServerMocker {
 
     /// ResourceReserveInterface
     void CancelResourceReserve(
-        BundleSpecification &bundle_spec,
+        const BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
         override {
       num_return_requested += 1;
@@ -414,9 +426,9 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
-                                         bool filter_dead_nodes = true) const override {
-      return absl::nullopt;
+    const rpc::GcsNodeInfo *Get(const NodeID &node_id,
+                                bool filter_dead_nodes = true) const override {
+      return nullptr;
     }
 
     const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override {
@@ -439,7 +451,7 @@ struct GcsServerMocker {
     MockGcsPubSub(std::shared_ptr<gcs::RedisClient> redis_client)
         : GcsPubSub(redis_client) {}
 
-    Status Publish(const std::string &channel, const std::string &id,
+    Status Publish(std::string_view channel, const std::string &id,
                    const std::string &data, const gcs::StatusCallback &done) override {
       return Status::OK();
     }

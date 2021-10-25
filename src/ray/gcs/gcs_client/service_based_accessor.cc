@@ -540,17 +540,17 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   });
 }
 
-absl::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
-    const NodeID &node_id, bool filter_dead_nodes) const {
+const GcsNodeInfo *ServiceBasedNodeInfoAccessor::Get(const NodeID &node_id,
+                                                     bool filter_dead_nodes) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
     if (filter_dead_nodes && entry->second.state() == rpc::GcsNodeInfo::DEAD) {
-      return absl::nullopt;
+      return nullptr;
     }
-    return entry->second;
+    return &entry->second;
   }
-  return absl::nullopt;
+  return nullptr;
 }
 
 const std::unordered_map<NodeID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
@@ -731,7 +731,7 @@ Status ServiceBasedNodeResourceInfoAccessor::AsyncUpdateResources(
         });
   };
 
-  sequencer_.Post(node_id, operation);
+  sequencer_.Post(node_id, std::move(operation));
   return Status::OK();
 }
 

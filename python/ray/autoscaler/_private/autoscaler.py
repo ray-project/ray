@@ -1,5 +1,6 @@
 from collections import defaultdict, namedtuple, Counter
-from typing import Callable, Any, Optional, Dict, List, Set, FrozenSet, Tuple
+from typing import Any, Optional, Dict, List, Set, FrozenSet, Tuple, Union, \
+    Callable
 import copy
 import logging
 import math
@@ -83,7 +84,8 @@ class StandardAutoscaler:
 
     def __init__(
             self,
-            config_path: str,
+            # TODO(ekl): require config reader to be a callable always.
+            config_reader: Union[str, Callable[[], dict]],
             load_metrics: LoadMetrics,
             max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
             max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -96,22 +98,33 @@ class StandardAutoscaler:
         """Create a StandardAutoscaler.
 
         Args:
-        config_path: Path to a Ray Autoscaler YAML.
-        load_metrics: Provides metrics for the Ray cluster.
-        max_launch_batch: Max number of nodes to launch in one request.
-        max_concurrent_launches: Max number of nodes that can be concurrently
-            launched. This value and `max_launch_batch` determine the number
-            of batches that are used to launch nodes.
-        max_failures: Number of failures that the autoscaler will tolerate
-            before exiting.
-        process_runner: Subprocess-like interface used by the CommandRunner.
-        update_interval_s: Seconds between running the autoscaling loop.
-        prefix_cluster_info: Whether to add the cluster name to info strings.
-        event_summarizer: Utility to consolidate duplicated messages.
-        prom_metrics: Prometheus metrics for autoscaler-related operations.
+            config_reader: Path to a Ray Autoscaler YAML, or a function to read
+                and return the latest config.
+            load_metrics: Provides metrics for the Ray cluster.
+            max_launch_batch: Max number of nodes to launch in one request.
+            max_concurrent_launches: Max number of nodes that can be
+                concurrently launched. This value and `max_launch_batch`
+                determine the number of batches that are used to launch nodes.
+            max_failures: Number of failures that the autoscaler will tolerate
+                before exiting.
+            process_runner: Subproc-like interface used by the CommandRunner.
+            update_interval_s: Seconds between running the autoscaling loop.
+            prefix_cluster_info: Whether to add the cluster name to info strs.
+            event_summarizer: Utility to consolidate duplicated messages.
+            prom_metrics: Prometheus metrics for autoscaler-related operations.
         """
 
-        self.config_path = config_path
+        if isinstance(config_reader, str):
+            # Auto wrap with file reader.
+            def read_fn():
+                with open(config_reader) as f:
+                    new_config = yaml.safe_load(f.read())
+                return new_config
+
+            self.config_reader = read_fn
+        else:
+            self.config_reader = config_reader
+
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
         # Keep this before self.reset (self.provider needs to be created
@@ -151,6 +164,12 @@ class StandardAutoscaler:
         # a Kubernetes operator, is responsible for Ray setup on nodes.
         self.disable_node_updaters = self.config["provider"].get(
             "disable_node_updaters", False)
+
+        # Disable launch config checking if true.
+        # This is set in the fake_multinode situations where there isn't any
+        # meaningful node "type" to enforce.
+        self.disable_launch_config_check = self.config["provider"].get(
+            "disable_launch_config_check", False)
 
         # Node launchers
         self.launch_queue = queue.Queue()
@@ -218,17 +237,32 @@ class StandardAutoscaler:
             self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])
 
-        self.terminate_nodes_to_enforce_config_constraints(now)
+        if not self.provider.is_readonly():
+            self.terminate_nodes_to_enforce_config_constraints(now)
 
-        self.launch_required_nodes()
+        # Dict[NodeType, int], List[ResourceDict]
+        to_launch, unfulfilled = (
+            self.resource_demand_scheduler.get_nodes_to_launch(
+                self.provider.non_terminated_nodes(tag_filters={}),
+                self.pending_launches.breakdown(),
+                self.load_metrics.get_resource_demand_vector(),
+                self.load_metrics.get_resource_utilization(),
+                self.load_metrics.get_pending_placement_groups(),
+                self.load_metrics.get_static_node_resources_by_ip(),
+                ensure_min_cluster_size=self.load_metrics.
+                get_resource_requests()))
+        self._report_pending_infeasible(unfulfilled)
 
-        if self.disable_node_updaters:
-            self.terminate_unhealthy_nodes(now)
-        else:
-            self.process_completed_updates()
-            self.update_nodes()
-            self.attempt_to_recover_unhealthy_nodes(now)
-            self.set_prometheus_updater_data()
+        if not self.provider.is_readonly():
+            self.launch_required_nodes(to_launch)
+
+            if self.disable_node_updaters:
+                self.terminate_unhealthy_nodes(now)
+            else:
+                self.process_completed_updates()
+                self.update_nodes()
+                self.attempt_to_recover_unhealthy_nodes(now)
+                self.set_prometheus_updater_data()
 
         logger.info(self.info_string())
         legacy_log_info_string(self, self.workers)
@@ -354,15 +388,7 @@ class StandardAutoscaler:
         self.nodes_to_terminate = []
         self.update_worker_list()
 
-    def launch_required_nodes(self):
-        to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
-            self.provider.non_terminated_nodes(tag_filters={}),
-            self.pending_launches.breakdown(),
-            self.load_metrics.get_resource_demand_vector(),
-            self.load_metrics.get_resource_utilization(),
-            self.load_metrics.get_pending_placement_groups(),
-            self.load_metrics.get_static_node_resources_by_ip(),
-            ensure_min_cluster_size=self.load_metrics.get_resource_requests())
+    def launch_required_nodes(self, to_launch: Dict[NodeType, int]) -> None:
         if to_launch:
             for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)
@@ -451,6 +477,47 @@ class StandardAutoscaler:
             if updater.for_recovery:
                 num_recovering += 1
         self.prom_metrics.recovering_nodes.set(num_recovering)
+
+    def _report_pending_infeasible(self, unfulfilled: List[ResourceDict]):
+        """Emit event messages for infeasible or unschedulable tasks.
+
+        This adds messages to the event summarizer for warning on infeasible
+        or "cluster full" resource requests.
+
+        Args:
+            unfulfilled: List of resource demands that would be unfulfilled
+                even after full scale-up.
+        """
+        pending = []
+        infeasible = []
+        for bundle in unfulfilled:
+            placement_group = any(
+                "_group_" in k or k == "bundle" for k in bundle)
+            if placement_group:
+                continue
+            if self.resource_demand_scheduler.is_feasible(bundle):
+                pending.append(bundle)
+            else:
+                infeasible.append(bundle)
+        if pending:
+            if self.load_metrics.cluster_full_of_actors_detected:
+                for request in pending:
+                    self.event_summarizer.add_once_per_interval(
+                        "Warning: The following resource request cannot be "
+                        "scheduled right now: {}. This is likely due to all "
+                        "cluster resources being claimed by actors. Consider "
+                        "creating fewer actors or adding more nodes "
+                        "to this Ray cluster.".format(request),
+                        key="pending_{}".format(sorted(request.items())),
+                        interval_s=30)
+        if infeasible:
+            for request in infeasible:
+                self.event_summarizer.add_once_per_interval(
+                    "Error: No available node types can fulfill resource "
+                    "request {}. Add suitable node types to this cluster to "
+                    "resolve this issue.".format(request),
+                    key="infeasible_{}".format(sorted(request.items())),
+                    interval_s=30)
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
@@ -567,7 +634,6 @@ class StandardAutoscaler:
 
         Return KeepOrTerminate.decide_later otherwise.
 
-
         Args:
             node_type_counts(Dict[NodeType, int]): The non_terminated node
                 types counted so far.
@@ -615,8 +681,7 @@ class StandardAutoscaler:
             sync_continuously = self.config.get(
                 "file_mounts_sync_continuously", False)
         try:
-            with open(self.config_path) as f:
-                new_config = yaml.safe_load(f.read())
+            new_config = self.config_reader()
             if new_config != getattr(self, "config", None):
                 try:
                     validate_config(new_config)
@@ -698,6 +763,8 @@ class StandardAutoscaler:
                                  "Error parsing config.")
 
     def launch_config_ok(self, node_id):
+        if self.disable_launch_config_check:
+            return True
         node_tags = self.provider.node_tags(node_id)
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)

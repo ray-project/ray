@@ -14,14 +14,13 @@
 
 #include "ray/util/logging.h"
 
+#include <cstdlib>
 #ifdef _WIN32
 #include <process.h>
 #else
 #include <execinfo.h>
 #endif
-
 #include <signal.h>
-#include <stdlib.h>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -32,16 +31,15 @@
 #include <iostream>
 #include <sstream>
 
-#include "spdlog/sinks/basic_file_sink.h"
-#include "spdlog/sinks/rotating_file_sink.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
-#include "spdlog/spdlog.h"
-
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
 #include "ray/util/event_label.h"
 #include "ray/util/filesystem.h"
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/spdlog.h"
 
 namespace ray {
 
@@ -170,7 +168,7 @@ std::vector<FatalLogCallback> RayLog::fatal_log_callbacks_;
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
-  const char *var_value = getenv("RAY_BACKEND_LOG_LEVEL");
+  const char *var_value = std::getenv("RAY_BACKEND_LOG_LEVEL");
   if (var_value != nullptr) {
     std::string data = var_value;
     std::transform(data.begin(), data.end(), data.begin(), ::tolower);
@@ -223,16 +221,16 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 #endif
     // Reset log pattern and level and we assume a log file can be rotated with
     // 10 files in max size 512M by default.
-    if (getenv("RAY_ROTATION_MAX_BYTES")) {
-      long max_size = std::atol(getenv("RAY_ROTATION_MAX_BYTES"));
+    if (std::getenv("RAY_ROTATION_MAX_BYTES")) {
+      long max_size = std::atol(std::getenv("RAY_ROTATION_MAX_BYTES"));
       // 0 means no log rotation in python, but not in spdlog. We just use the default
       // value here.
       if (max_size != 0) {
         log_rotation_max_size_ = max_size;
       }
     }
-    if (getenv("RAY_ROTATION_BACKUP_COUNT")) {
-      long file_num = std::atol(getenv("RAY_ROTATION_BACKUP_COUNT"));
+    if (std::getenv("RAY_ROTATION_BACKUP_COUNT")) {
+      long file_num = std::atol(std::getenv("RAY_ROTATION_BACKUP_COUNT"));
       if (file_num != 0) {
         log_rotation_file_num_ = file_num;
       }
@@ -327,7 +325,7 @@ bool RayLog::IsFailureSignalHandlerEnabled() {
   return is_failure_signal_handler_installed_;
 }
 
-void RayLog::InstallFailureSignalHandler() {
+void RayLog::InstallFailureSignalHandler(const char *argv0, bool call_previous_handler) {
 #ifdef _WIN32
   // If process fails to initialize, don't display an error window.
   SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
@@ -337,7 +335,9 @@ void RayLog::InstallFailureSignalHandler() {
   if (is_failure_signal_handler_installed_) {
     return;
   }
-  absl::FailureSignalHandlerOptions options{};
+  absl::InitializeSymbolizer(argv0);
+  absl::FailureSignalHandlerOptions options;
+  options.call_previous_handler = call_previous_handler;
   options.writerfn = WriteFailureMessage;
   absl::InstallFailureSignalHandler(options);
   is_failure_signal_handler_installed_ = true;

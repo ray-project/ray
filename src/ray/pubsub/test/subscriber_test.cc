@@ -13,10 +13,10 @@
 // limitations under the License.
 
 #include "ray/pubsub/subscriber.h"
-#include "ray/common/asio/instrumented_io_context.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 
 namespace ray {
 
@@ -116,9 +116,13 @@ class SubscriberTest : public ::testing::Test {
   void SetUp() {
     object_subscribed_.clear();
     object_failed_to_subscribe_.clear();
-    subscriber_ = std::make_shared<Subscriber>(self_node_id_,
-                                               /*max_command_batch_size*/ 3, client_pool,
-                                               &callback_service_);
+    subscriber_ = std::make_shared<Subscriber>(
+        self_node_id_,
+        /*channels=*/
+        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+        /*max_command_batch_size*/ 3, client_pool, &callback_service_);
   }
 
   const rpc::Address GenerateOwnerAddress(

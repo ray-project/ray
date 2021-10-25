@@ -26,6 +26,7 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
+#include "ray/pubsub/publisher.h"
 
 namespace ray {
 namespace gcs {
@@ -35,7 +36,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     : config_(config),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
-                  config.grpc_server_thread_num,
+                  config.node_ip_address == "127.0.0.1", config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service),
       raylet_client_pool_(
@@ -60,18 +61,23 @@ void GcsServer::Start() {
       main_service_, redis_client_->GetPrimaryContext(), [this]() { Stop(); });
   gcs_redis_failure_detector_->Start();
 
-  // Init gcs pub sub instance.
-  gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_client_);
-
+  // Init GCS publisher instance.
+  std::unique_ptr<pubsub::Publisher> inner_publisher;
   if (config_.grpc_pubsub_enabled) {
-    // Init grpc based pubsub
-    // TODO(before merging): Make these constants configurable.
-    grpc_pubsub_publisher_.reset(new pubsub::Publisher(
+    // Init grpc based pubsub on GCS.
+    // TODO: Move this into GcsPublisher.
+    inner_publisher = std::make_unique<pubsub::Publisher>(
+        /*channels=*/std::vector<
+            rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                              rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*periodical_runner=*/&pubsub_periodical_runner_,
         /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size()));
+        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
   }
+  gcs_publisher_ =
+      std::make_shared<GcsPublisher>(redis_client_, std::move(inner_publisher));
 
   // Init gcs table storage.
   gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
@@ -178,8 +184,9 @@ void GcsServer::Stop() {
 }
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(redis_client_ && gcs_table_storage_ && gcs_pub_sub_);
-  gcs_node_manager_ = std::make_shared<GcsNodeManager>(gcs_pub_sub_, gcs_table_storage_);
+  RAY_CHECK(redis_client_ && gcs_table_storage_ && gcs_publisher_);
+  gcs_node_manager_ =
+      std::make_shared<GcsNodeManager>(gcs_publisher_, gcs_table_storage_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -206,9 +213,9 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-      main_service_, gcs_pub_sub_, gcs_table_storage_,
+      main_service_, gcs_publisher_, gcs_table_storage_,
       !config_.grpc_based_resource_broadcast);
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -225,8 +232,8 @@ void GcsServer::InitGcsResourceScheduler() {
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
-  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_pub_sub_,
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
+  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_publisher_,
                                                      *runtime_env_manager_);
   gcs_job_manager_->Initialize(gcs_init_data);
 
@@ -237,7 +244,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
   auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor) {
     // When there are no available nodes to schedule the actor the
@@ -257,17 +264,18 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_);
     scheduler = std::make_unique<GcsBasedActorScheduler>(
-        main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
+        main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_,
         gcs_resource_manager_, gcs_resource_scheduler_, schedule_failure_handler,
         schedule_success_handler, raylet_client_pool_, client_factory);
   } else {
     scheduler = std::make_unique<RayletBasedActorScheduler>(
-        main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
+        main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_,
         schedule_failure_handler, schedule_success_handler, raylet_client_pool_,
         client_factory);
   }
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      std::move(scheduler), gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
+      main_service_, std::move(scheduler), gcs_table_storage_, gcs_publisher_,
+      *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -316,9 +324,9 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitObjectManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
   gcs_object_manager_.reset(
-      new GcsObjectManager(gcs_table_storage_, gcs_pub_sub_, *gcs_node_manager_));
+      new GcsObjectManager(gcs_table_storage_, gcs_publisher_, *gcs_node_manager_));
   // Initialize by gcs tables data.
   gcs_object_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -343,9 +351,9 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 }
 
 void GcsServer::InitTaskInfoHandler() {
-  RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   task_info_handler_.reset(
-      new rpc::DefaultTaskInfoHandler(gcs_table_storage_, gcs_pub_sub_));
+      new rpc::DefaultTaskInfoHandler(gcs_table_storage_, gcs_publisher_));
   // Register service.
   task_info_service_.reset(
       new rpc::TaskInfoGrpcService(main_service_, *task_info_handler_));
@@ -420,7 +428,7 @@ void GcsServer::InitRuntimeEnvManager() {
 
 void GcsServer::InitGcsWorkerManager() {
   gcs_worker_manager_ =
-      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_pub_sub_);
+      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_publisher_);
   // Register service.
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
@@ -478,7 +486,7 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
   });
 
-  // Install scheduling policy event listeners.
+  // Install scheduling event listeners.
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     gcs_resource_manager_->AddResourcesChangedListener([this] {
       main_service_.post([this] {
@@ -504,7 +512,7 @@ void GcsServer::PrintDebugInfo() {
          << gcs_actor_manager_->DebugString() << "\n"
          << gcs_object_manager_->DebugString() << "\n"
          << gcs_placement_group_manager_->DebugString() << "\n"
-         << gcs_pub_sub_->DebugString() << "\n"
+         << gcs_publisher_->DebugString() << "\n"
          << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
 
   if (config_.grpc_based_resource_broadcast) {
@@ -513,9 +521,10 @@ void GcsServer::PrintDebugInfo() {
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.
   RAY_LOG(INFO) << stream.str();
-  execute_after(main_service_, [this] { PrintDebugInfo(); },
-                (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
-                 60000) /* milliseconds */);
+  execute_after(
+      main_service_, [this] { PrintDebugInfo(); },
+      (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
+       60000) /* milliseconds */);
 }
 
 void GcsServer::PrintAsioStats() {
@@ -524,8 +533,9 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.StatsString() << "\n\n";
-    execute_after(main_service_, [this] { PrintAsioStats(); },
-                  event_stats_print_interval_ms /* milliseconds */);
+    execute_after(
+        main_service_, [this] { PrintAsioStats(); },
+        event_stats_print_interval_ms /* milliseconds */);
   }
 }
 
