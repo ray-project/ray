@@ -80,7 +80,7 @@ class TestPreprocessors(unittest.TestCase):
         self.assertTrue(isinstance(pp, TupleFlatteningPreprocessor))
         self.assertEqual(pp.shape, (8, ))
         self.assertEqual(
-            list(pp.transform((0, np.array([1, 2, 3])))),
+            list(pp.transform((0, np.array([1, 2, 3], np.float32)))),
             [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
 
     def test_dict_flattening_preprocessor(self):
@@ -94,7 +94,7 @@ class TestPreprocessors(unittest.TestCase):
         check(
             pp.transform({
                 "a": 1,
-                "b": (1, np.array([0.0, -0.5, 0.1, 0.6]))
+                "b": (1, np.array([0.0, -0.5, 0.1, 0.6], np.float32))
             }), [0.0, 1.0, 0.0, 1.0, 0.0, 0.0, -0.5, 0.1, 0.6])
 
     def test_one_hot_preprocessor(self):
