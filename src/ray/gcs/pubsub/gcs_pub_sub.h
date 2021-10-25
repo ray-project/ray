@@ -25,19 +25,21 @@
 #include "ray/gcs/redis_context.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
+#include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
 
+/// Channel name constants for Redis pubsub.
+/// Will be removed after migrating to GCS pubsub.
 inline constexpr std::string_view JOB_CHANNEL = "JOB";
 inline constexpr std::string_view NODE_CHANNEL = "NODE";
 inline constexpr std::string_view NODE_RESOURCE_CHANNEL = "NODE_RESOURCE";
 inline constexpr std::string_view ACTOR_CHANNEL = "ACTOR";
 inline constexpr std::string_view WORKER_CHANNEL = "WORKER";
 inline constexpr std::string_view OBJECT_CHANNEL = "OBJECT";
-inline constexpr std::string_view TASK_CHANNEL = "TASK";
 inline constexpr std::string_view TASK_LEASE_CHANNEL = "TASK_LEASE";
 inline constexpr std::string_view RESOURCES_BATCH_CHANNEL = "RESOURCES_BATCH";
 inline constexpr std::string_view ERROR_INFO_CHANNEL = "ERROR_INFO";
@@ -271,10 +273,6 @@ class GcsSubscriber {
         subscriber_(std::move(subscriber)) {}
 
   /// Uses Redis pubsub.
-  Status SubscribeAllJobs(const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
-                          const StatusCallback &done);
-
-  /// Uses Redis pubsub.
   Status SubscribeAllActors(
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done);
@@ -285,16 +283,20 @@ class GcsSubscriber {
   bool IsActorUnsubscribed(const ActorID &id);
 
   /// Uses Redis pubsub.
-  Status SubscribeAllNodes(const ItemCallback<rpc::GcsNodeInfo> &subscribe,
-                           const StatusCallback &done);
+  Status SubscribeAllJobs(const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+                          const StatusCallback &done);
 
   /// Uses Redis pubsub.
-  Status SubscribeAllWorkerFailures(const ItemCallback<rpc::WorkerDeltaData> &subscribe,
-                                    const StatusCallback &done);
+  Status SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &subscribe,
+                              const StatusCallback &done);
 
   /// Uses Redis pubsub.
   Status SubscribeAllNodeResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
                                    const StatusCallback &done);
+
+  /// Uses Redis pubsub.
+  Status SubscribeAllWorkerFailures(const ItemCallback<rpc::WorkerDeltaData> &subscribe,
+                                    const StatusCallback &done);
 
   /// Uses Redis pubsub.
   Status SubscribeTaskLease(
@@ -326,6 +328,28 @@ class GcsSubscriber {
  private:
   const std::unique_ptr<GcsPubSub> pubsub_;
   const std::unique_ptr<pubsub::Subscriber> subscriber_;
+};
+
+/// \class GcsSubscriberClient
+///
+/// Adapts GcsRpcClient to SubscriberClientInterface. Thread safe.
+class GcsSubscriberClient : public pubsub::SubscriberClientInterface {
+ public:
+  explicit GcsSubscriberClient(const std::shared_ptr<rpc::GcsRpcClient> &rpc_client)
+      : rpc_client_(rpc_client) {}
+
+  ~GcsSubscriberClient() final = default;
+
+  void PubsubLongPolling(
+      const rpc::PubsubLongPollingRequest &request,
+      const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final;
+
+  void PubsubCommandBatch(
+      const rpc::PubsubCommandBatchRequest &request,
+      const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final;
+
+ private:
+  const std::shared_ptr<rpc::GcsRpcClient> rpc_client_;
 };
 
 }  // namespace gcs

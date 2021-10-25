@@ -304,8 +304,8 @@ bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
   return pubsub_->IsUnsubscribed(ACTOR_CHANNEL, id.Hex());
 }
 
-Status GcsSubscriber::SubscribeAllNodes(const ItemCallback<rpc::GcsNodeInfo> &subscribe,
-                                        const StatusCallback &done) {
+Status GcsSubscriber::SubscribeAllNodeInfo(
+    const ItemCallback<rpc::GcsNodeInfo> &subscribe, const StatusCallback &done) {
   auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
     rpc::GcsNodeInfo node_info;
     node_info.ParseFromString(data);
@@ -383,6 +383,33 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
     subscribe(worker_failure_data);
   };
   return pubsub_->SubscribeAll(WORKER_CHANNEL, on_subscribe, done);
+}
+
+void GcsSubscriberClient::PubsubLongPolling(
+    const rpc::PubsubLongPollingRequest &request,
+    const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) {
+  rpc::GcsSubscriberPollRequest req;
+  req.set_subscriber_id(request.subscriber_id());
+  rpc_client_->GcsSubscriberPoll(
+      req,
+      [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
+        rpc::PubsubLongPollingReply reply;
+        *reply.mutable_pub_messages() = poll_reply.pub_messages();
+        callback(status, reply);
+      });
+}
+
+void GcsSubscriberClient::PubsubCommandBatch(
+    const rpc::PubsubCommandBatchRequest &request,
+    const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) {
+  rpc::GcsSubscriberCommandBatchRequest req;
+  req.set_subscriber_id(request.subscriber_id());
+  rpc_client_->GcsSubscriberCommandBatch(
+      req, [callback](const Status &status,
+                      const rpc::GcsSubscriberCommandBatchReply &batch_reply) {
+        rpc::PubsubCommandBatchReply reply;
+        callback(status, reply);
+      });
 }
 
 }  // namespace gcs

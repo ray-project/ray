@@ -517,7 +517,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                     rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
-      // /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
       /*get_client=*/
       [this](const rpc::Address &address) {
         return core_worker_client_pool_->GetOrConnect(address);

@@ -515,7 +515,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
 
   subscribe_node_operation_ = [this](const StatusCallback &done) {
     auto on_subscribe = [this](const GcsNodeInfo &data) { HandleNotification(data); };
-    return client_impl_->GetGcsSubscriber().SubscribeAllNodes(on_subscribe, done);
+    return client_impl_->GetGcsSubscriber().SubscribeAllNodeInfo(on_subscribe, done);
   };
 
   return subscribe_node_operation_([this, subscribe, done](const Status &status) {
