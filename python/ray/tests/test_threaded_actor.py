@@ -170,6 +170,108 @@ def test_threaded_actor_creation_and_kill(ray_start_cluster):
     ensure_cpu_returned(NUM_NODES * NUM_CPUS_PER_NODE)
 
 
+def test_threaded_actor_integration_test_stress(ray_start_cluster):
+    """This is a sanity test that checks threaded actors are
+        working with the nightly stress test.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    # Prepare the config
+    num_remote_nodes = 4
+    num_parents = 6
+    num_children = 6
+    death_probability = 0.95
+    max_concurrency = 10
+
+    for _ in range(num_remote_nodes):
+        cluster.add_node(num_cpus=2)
+
+    @ray.remote
+    class Child(object):
+        def __init__(self, death_probability):
+            self.death_probability = death_probability
+
+        def ping(self):
+            # Exit process with some probability.
+            exit_chance = np.random.rand()
+            if exit_chance > self.death_probability:
+                sys.exit(-1)
+
+    @ray.remote
+    class Parent(object):
+        def __init__(self, num_children, death_probability=0.95):
+            self.death_probability = death_probability
+            self.children = [
+                Child.options(
+                    max_concurrency=max_concurrency
+                ).remote(death_probability) for _ in range(num_children)
+            ]
+
+        def ping(self, num_pings):
+            children_outputs = []
+            for _ in range(num_pings):
+                children_outputs += [
+                    child.ping.remote() for child in self.children
+                ]
+            try:
+                ray.get(children_outputs)
+            except Exception:
+                # Replace the children if one of them died.
+                self.__init__(len(self.children), self.death_probability)
+
+        def kill(self):
+            # Clean up children.
+            ray.get([child.__ray_terminate__.remote() for child in self.children])
+
+    parents = [
+        Parent.options(
+            max_concurrency=max_concurrency
+        ).remote(num_children, death_probability)
+        for _ in range(num_parents)
+    ]
+
+    start = time.time()
+    loop_times = []
+    for i in range(10):
+        loop_start = time.time()
+        ray.get([parent.ping.remote(10) for parent in parents])
+
+        # Kill a parent actor with some probability.
+        exit_chance = np.random.rand()
+        if exit_chance > death_probability:
+            parent_index = np.random.randint(len(parents))
+            parents[parent_index].kill.remote()
+            parents[parent_index] = Parent.options(
+                max_concurrency=max_concurrency
+            ).remote(num_children, death_probability)
+        loop_times.append(time.time() - loop_start)
+    result = {}
+    print("Finished in: {}s".format(time.time() - start))
+    print("Average iteration time: {}s".format(
+        sum(loop_times) / len(loop_times)))
+    print("Max iteration time: {}s".format(max(loop_times)))
+    print("Min iteration time: {}s".format(min(loop_times)))
+    result["total_time"] = time.time() - start
+    result["avg_iteration_time"] = sum(loop_times) / len(loop_times)
+    result["max_iteration_time"] = max(loop_times)
+    result["min_iteration_time"] = min(loop_times)
+    result["success"] = 1
+    print(result)
+    ensure_cpu_returned(10)
+    del parents
+
+    # Make sure parents are still scheduleable.
+    parents = [
+        Parent.options(
+            max_concurrency=max_concurrency
+        ).remote(num_children, death_probability)
+        for _ in range(num_parents)
+    ]
+    ray.get([parent.ping.remote(10) for parent in parents])
+
+
 if __name__ == "__main__":
     import pytest
     # Test suite is timing out. Disable on windows for now.
