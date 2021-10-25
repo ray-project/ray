@@ -34,7 +34,6 @@ GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
       raylet_client_pool_(raylet_client_pool),
       get_resource_usage_batch_for_broadcast_(get_resource_usage_batch_for_broadcast),
       send_batch_(send_batch),
-      num_skipped_nodes_(0),
       broadcast_period_ms_(
           RayConfig::instance().raylet_report_resources_period_milliseconds()) {}
 
