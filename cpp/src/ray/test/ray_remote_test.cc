@@ -56,6 +56,7 @@ int OverloadFunc(int i, int j) {
 
 RAY_REMOTE(RAY_FUNC(OverloadFunc));
 RAY_REMOTE(RAY_FUNC(OverloadFunc, int));
+// Avoid compile optimizing
 RAY_REMOTE(RAY_FUNC(OverloadFunc, int, int));
 
 class DummyObject {
