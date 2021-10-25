@@ -88,17 +88,19 @@ void GrpcBasedResourceBroadcaster::HandleNodeRemoved(const rpc::GcsNodeInfo &nod
   {
     absl::MutexLock guard(&mutex_);
     nodes_.erase(node_id);
-    // inflight_updates_.erase(node_id);
     RAY_LOG(DEBUG) << "Node removed (node_id: " << node_id
                    << ")# of remaining nodes: " << nodes_.size();
   }
 }
 
 std::string GrpcBasedResourceBroadcaster::DebugString() {
-  absl::MutexLock guard(&mutex_);
-  std::ostringstream stream;
-  stream << "GrpcBasedResourceBroadcaster: {Tracked nodes: " << nodes_.size() << "}";
-  return stream.str();
+  size_t node_num = 0;
+  {
+
+    absl::MutexLock guard(&mutex_);
+    node_num =  nodes_.size();
+  }
+  return absl::StrCat("GrpcBasedResourceBroadcaster: {Tracked nodes: ", node_num, "}");
 }
 
 void GrpcBasedResourceBroadcaster::SendBroadcast() {
@@ -117,7 +119,6 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
 
   absl::MutexLock guard(&mutex_);
   for (const auto &pair : nodes_) {
-    const auto &node_id = pair.first;
     const auto &address = pair.second;
     double start_time = absl::GetCurrentTimeNanos();
     auto callback = [this, start_time](const Status &status,
