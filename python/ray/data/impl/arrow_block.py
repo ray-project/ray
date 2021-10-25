@@ -94,6 +94,11 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
     def num_rows(self) -> int:
         return self._builder.num_rows() if self._builder is not None else 0
 
+    def get_estimated_memory_usage(self) -> int:
+        if self._builder is None:
+            return 0
+        return self._builder.get_estimated_memory_usage()
+
 
 class ArrowBlockBuilder(BlockBuilder[T]):
     def __init__(self):
@@ -101,7 +106,9 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         self._columns = collections.defaultdict(list)
         self._tables: List["pyarrow.Table"] = []
+        self._running_mean = RunningMean()
         self._num_rows = 0
+        self._compaction_threshold = 1
 
     def add(self, item: Union[dict, ArrowRow]) -> None:
         if isinstance(item, ArrowRow):
@@ -113,11 +120,13 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         for key, value in item.items():
             self._columns[key].append(value)
         self._num_rows += 1
+        self._compact_if_needed()
 
     def add_block(self, block: "pyarrow.Table") -> None:
         assert isinstance(block, pyarrow.Table), block
         self._tables.append(block)
         self._num_rows += block.num_rows
+        self._running_mean.add(block.nbytes, weight=block.num_rows)
 
     def build(self) -> Block:
         if self._columns:
@@ -126,7 +135,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             tables = []
         tables.extend(self._tables)
         if len(tables) > 1:
-            return pyarrow.concat_tables(tables)
+            return pyarrow.concat_tables(tables, promote=True)
         elif len(tables) > 0:
             return tables[0]
         else:
@@ -134,6 +143,24 @@ class ArrowBlockBuilder(BlockBuilder[T]):
 
     def num_rows(self) -> int:
         return self._num_rows
+
+    def get_estimated_memory_usage(self) -> int:
+        if self._num_rows == 0:
+            return 0
+        return int(self._running_mean.mean * (self._num_rows / self._running_mean.n))
+
+    def _compact_if_needed(self) -> None:
+        assert self._columns
+        num_uncompacted = len(iter(self._columns.values()))
+        if num_uncompacted < self._compaction_threshold:
+            return
+        self._compaction_threshold *= 10
+        if self._compaction_threshold > 10000:
+            self._compaction_threshold = 10000
+        block = pyarrow.Table.from_pydict(self._columns)
+        tables._append(block)
+        self._running_mean.add(block.nbytes, weight=block.num_rows)
+        self._columns.clear()
 
 
 class ArrowBlockAccessor(BlockAccessor):
@@ -295,7 +322,7 @@ class ArrowBlockAccessor(BlockAccessor):
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
             _descending: bool) -> Tuple[Block[T], BlockMetadata]:
-        ret = pyarrow.concat_tables(blocks)
+        ret = pyarrow.concat_tables(blocks, promote=True)
         indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
         ret = ret.take(indices)
         return ret, ArrowBlockAccessor(ret).get_metadata(None)
