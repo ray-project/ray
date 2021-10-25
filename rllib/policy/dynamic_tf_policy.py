@@ -621,7 +621,9 @@ class DynamicTFPolicy(TFPolicy):
                 )
 
         train_batch = SampleBatch(
-            dict(self._input_dict, **self._loss_input_dict))
+            dict(self._input_dict, **self._loss_input_dict),
+            _is_training=True,
+        )
 
         if self._state_inputs:
             train_batch[SampleBatch.SEQ_LENS] = self._seq_lens

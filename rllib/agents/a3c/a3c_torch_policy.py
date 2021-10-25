@@ -39,7 +39,7 @@ def add_advantages(
 def actor_critic_loss(policy: Policy, model: ModelV2,
                       dist_class: ActionDistribution,
                       train_batch: SampleBatch) -> TensorType:
-    logits, _ = model.from_batch(train_batch)
+    logits, _ = model(train_batch)
     values = model.value_function()
 
     if policy.is_recurrent():
