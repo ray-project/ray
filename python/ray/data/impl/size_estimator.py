@@ -16,9 +16,9 @@ class SizeEstimator:
 
     def add(self, item: Any) -> None:
         self._count += 1
-        if self._count < 10:
+        if self._count <= 10:
             self._running_mean.add(self._real_size(item), weight=1)
-        elif self._count < 100:
+        elif self._count <= 100:
             if self._count % 10 == 0:
                 self._running_mean.add(self._real_size(item), weight=10)
         elif self._count % 100 == 0:
