@@ -49,8 +49,6 @@
 namespace ray {
 
 struct ObjectManagerConfig {
-  /// The IP address this object manager is running on.
-  std::string object_manager_address;
   /// The port that the object manager should use to listen for connections
   /// from other object managers. If this is 0, the object manager will choose
   /// its own port.

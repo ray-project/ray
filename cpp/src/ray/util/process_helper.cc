@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "process_helper.h"
-
 #include <boost/algorithm/string.hpp>
 
+#include "process_helper.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -28,9 +27,9 @@ using ray::core::WorkerType;
 
 void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_password,
                                  const std::vector<std::string> &head_args) {
-  std::vector<std::string> cmdargs(
-      {"ray", "start", "--head", "--port", std::to_string(redis_port), "--redis-password",
-       redis_password, "--node-ip-address", GetNodeIpAddress()});
+  std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
+                                    std::to_string(redis_port), "--redis-password",
+                                    redis_password});
   if (!head_args.empty()) {
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
