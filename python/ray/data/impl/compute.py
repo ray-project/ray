@@ -27,19 +27,17 @@ def _map_block(block_owner: ray.actor.ActorHandle, block: Block, fn: Any,
         size_bytes=accessor.size_bytes(),
         schema=accessor.schema(),
         input_files=input_files)
-    # Set the owner to the global block owner so the blocks don't fate-share
-    # with all the workers in the cluster.
-    return [ray.put(new_block, _owner=block_owner)], new_meta
+    return new_block, new_meta
 
 
 class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList) -> BlockList:
         # Handle empty datasets.
-        if blocks.num_partitions() == 0:
+        if blocks.num_blocks() == 0:
             return blocks
 
-        blocks = list(blocks.iter_executed_blocks_with_partition_metadata())
+        blocks = list(blocks.iter_blocks_with_metadata())
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         kwargs = remote_args.copy()
@@ -50,7 +48,7 @@ class TaskPool(ComputeStrategy):
         refs = [
             map_block.options(**kwargs).remote(block_owner, b, fn,
                                                m.input_files)
-            for b, m, _ in blocks
+            for b, m in blocks
         ]
         new_blocks, new_metadata = zip(*refs)
 
@@ -85,7 +83,7 @@ class ActorPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList) -> BlockList:
 
-        blocks_in = list(blocks.iter_executed_blocks_with_partition_metadata())
+        blocks_in = list(blocks.iter_blocks_with_metadata())
         orig_num_blocks = len(blocks_in)
         blocks_out = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
@@ -107,7 +105,7 @@ class ActorPool(ComputeStrategy):
                     input_files=input_files)
                 # Set the owner to the global block owner so the blocks live
                 # past the exit of this actor.
-                return [ray.put(new_block, _owner=block_owner)], new_metadata
+                return new_block, new_metadata
 
         if not remote_args:
             remote_args["num_cpus"] = 1
@@ -145,30 +143,15 @@ class ActorPool(ComputeStrategy):
 
             # Schedule a new task.
             if blocks_in:
-                block, partition_meta, _ = blocks_in.pop()
+                block, meta = blocks_in.pop()
                 block_ref, meta_ref = worker.process_block.remote(
-                    block, partition_meta.input_files)
+                    block, meta.input_files)
                 metadata_mapping[block_ref] = meta_ref
                 tasks[block_ref] = worker
 
         new_metadata = ray.get([metadata_mapping[b] for b in blocks_out])
         map_bar.close()
         return BlockList(blocks_out, new_metadata)
-
-
-@ray.remote(num_cpus=0)
-class _DesignatedBlockOwner:
-    pass
-
-
-def _get_or_create_block_owner_actor() -> ray.actor.ActorHandle:
-    name = "datasets_global_block_owner"
-    namespace = "datasets_global_namespace"
-    try:
-        return ray.get_actor(name=name, namespace=namespace)
-    except ValueError:
-        return _DesignatedBlockOwner.options(
-            name=name, namespace=namespace, lifetime="detached").remote()
 
 
 def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]

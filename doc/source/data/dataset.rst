@@ -16,7 +16,7 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 
 Concepts
 --------
-Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a set of Python or Arrow records partitioned into *blocks*. Each block is stored as a Ray object in the Ray object store, and is either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data (e.g., into :ref:`Ray Train <train-docs>` for ML training).
+Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data (e.g., into :ref:`Ray Train <train-docs>` for ML training).
 
 The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
@@ -160,7 +160,7 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
     
     # Create a Dataset of Python objects.
     ds = ray.data.range(10000)
-    # -> Dataset(num_partitions=200, num_rows=10000, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
     ds.take(5)
     # -> [0, 1, 2, 3, 4]
@@ -170,7 +170,7 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
 
     # Create a Dataset of Arrow records.
     ds = ray.data.from_items([{"col1": i, "col2": str(i)} for i in range(10000)])
-    # -> Dataset(num_partitions=200, num_rows=10000, schema={col1: int64, col2: string})
+    # -> Dataset(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
 
     ds.show(5)
     # -> {'col1': 0, 'col2': '0'}
@@ -243,7 +243,7 @@ Datasets can be transformed in parallel using ``.map()``. Transformations are ex
     ds = ray.data.range(10000)
     ds = ds.map(lambda x: x * 2)
     # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
-    # -> Dataset(num_partitions=200, num_rows=10000, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
     ds.take(5)
     # -> [0, 2, 4, 6, 8]
 
@@ -330,11 +330,11 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
     # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
 
     ds = ray.data.range(10000)
-    # -> Dataset(num_partitions=200, num_rows=10000, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
     shards = ds.split(n=16, locality_hints=workers)
-    # -> [Dataset(num_partitions=13, num_rows=650, schema=<class 'int'>),
-    #     Dataset(num_partitions=13, num_rows=650, schema=<class 'int'>), ...]
+    # -> [Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>),
+    #     Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>), ...]
 
     ray.get([w.train.remote(s) for s in shards])
     # -> [650, 650, ...]

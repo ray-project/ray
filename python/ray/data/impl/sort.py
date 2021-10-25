@@ -62,7 +62,7 @@ def sample_boundaries(blocks: BlockList, key: SortKeyT,
 
 def sort_impl(blocks: BlockList, key: SortKeyT,
               descending: bool = False) -> BlockList:
-    blocks = list(blocks.iter_executed_blocks())
+    blocks = list(blocks.iter_blocks())
     if len(blocks) == 0:
         return BlockList([], [])
 
@@ -99,7 +99,7 @@ def sort_impl(blocks: BlockList, key: SortKeyT,
     merge_bar.block_until_complete([ret[0] for ret in reduce_results])
     merge_bar.close()
 
-    blocks = [ray.put([b]) for b, _ in reduce_results]
+    blocks = [b for b, _ in reduce_results]
     metadata = ray.get([m for _, m in reduce_results])
     return BlockList(blocks, metadata)
 

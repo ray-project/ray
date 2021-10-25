@@ -57,7 +57,6 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
         for item in items[i:i + block_size]:
             builder.add(item)
         block = builder.build()
-        blocks.append(ray.put([ray.put(block)]))
         metadata.append(
             BlockAccessor.for_block(block).get_metadata(input_files=None))
         i += block_size
@@ -198,7 +197,7 @@ def read_datasource(datasource: Datasource[T],
     if metadata and metadata[0].schema is None:
         get_schema = cached_remote_fn(_get_schema)
         schema0 = ray.get(
-            get_schema.remote(next(block_list.iter_executed_blocks())))
+            get_schema.remote(next(block_list.iter_blocks())))
         block_list.set_metadata(
             0,
             BlockMetadata(
@@ -583,7 +582,6 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
-    blocks = [ray.put([x]) for x in blocks]
     return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
 
 
@@ -600,7 +598,6 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = zip(*res)
-    blocks = [ray.put([x]) for x in blocks]
     return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
 
 
@@ -641,7 +638,6 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
-    tables = [ray.put([x]) for x in tables]
     return Dataset(BlockList(tables, ray.get(metadata)), 0)
 
 

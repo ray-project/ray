@@ -271,8 +271,7 @@ class DatasetPipeline(Generic[T]):
                     # Merge windows until we meet the requested window size.
                     if self._buffer is None:
                         self._buffer = next(self._original_iter)
-                    while (self._buffer.num_partitions() <
-                           partitions_per_window):
+                    while (self._buffer.num_blocks() < partitions_per_window):
                         next_ds = next(self._original_iter)
                         if (preserve_epoch and self._buffer._get_epoch() !=
                                 next_ds._get_epoch()):
@@ -284,16 +283,15 @@ class DatasetPipeline(Generic[T]):
                     # Slice off the left-most chunk and return it.
                     res, self._buffer = self._buffer._divide(
                         partitions_per_window)
-                    assert res.num_partitions() <= partitions_per_window, res
-                    if self._buffer.num_partitions() == 0:
+                    assert res.num_blocks() <= partitions_per_window, res
+                    if self._buffer.num_blocks() == 0:
                         self._buffer = None
                     return lambda: res
                 except StopIteration:
                     # Return the left-over data as a single window.
-                    if self._buffer and self._buffer.num_partitions() > 0:
+                    if self._buffer and self._buffer.num_blocks() > 0:
                         res = self._buffer
-                        assert res.num_partitions(
-                        ) <= partitions_per_window, res
+                        assert res.num_blocks() <= partitions_per_window, res
                         self._buffer = None
                         return lambda: res
                     else:

@@ -7,6 +7,17 @@ from ray.types import ObjectRef
 from ray.data.impl.block_list import BlockList, BlockPartition, \
     BlockPartitionMetadata
 
+# A list of block references pending computation by a single task. For example,
+# this may be the output of a task reading a file.
+BlockPartition = List[ObjectRef[Block]]
+
+# The metadata that describes the output of a BlockPartition. This has the
+# same type as the metadata that describes each block in the parition.
+BlockPartitionMetadata = BlockMetadata
+
+# The number of blocks in a BlockPartition (1 or greater).
+BlockPartitionSize = int
+
 
 class LazyBlockList(BlockList):
     """A BlockList that submits tasks lazily on-demand.

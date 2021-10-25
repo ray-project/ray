@@ -7,61 +7,36 @@ import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata
 
-# A list of block references pending computation by a single task. For example,
-# this may be the output of a task reading a file.
-BlockPartition = List[ObjectRef[Block]]
-
-# The metadata that describes the output of a BlockPartition. This has the
-# same type as the metadata that describes each block in the parition.
-BlockPartitionMetadata = BlockMetadata
-
-# The number of blocks in a BlockPartition (1 or greater).
-BlockPartitionSize = int
-
 
 class BlockList:
-    """A list of blocks that may be computed or pending computation.
+    """A list of blocks that may be computed or pending computation."""
 
-    BlockList tracks a set of tasks that produce BlockPartition (List[Block])
-    object refs as output.
-
-    You can iterate over these tasks via ``.iter_partitions()``. Each task
-    produces a list of one or more Blocks, the flat list of which can be
-    accessed via ``.iter_executed_blocks()``. Note that the number of executed
-    blocks may be greater than the number of tasks, if some tasks return
-    multiple objects.
-
-    Example: suppose a BlockList is created from 10 partition object refs.
-    Then, the number of partitions in the BlockList is 10. The number of blocks
-    is not known until the tasks have been executed, but is always >10.
-    """
-
-    def __init__(self, partitions: List[ObjectRef[BlockPartition]],
-                 metadata: List[BlockPartitionMetadata]):
-        assert len(partitions) == len(metadata), (partitions, metadata)
-        self._partitions: List[ObjectRef[BlockPartition]] = partitions
-        self._num_partitions = len(self._partitions)
+    def __init__(self, blocks: List[ObjectRef[Block]],
+                 metadata: List[BlockMetadata]):
+        assert len(blocks) == len(metadata), (blocks, metadata)
+        self._blocks: List[ObjectRef[BlockPartition]] = blocks
+        self._num_blocks = len(self._blocks)
         self._metadata = metadata
 
-    def set_metadata(self, i: int, metadata: BlockPartitionMetadata) -> None:
-        """Set the metadata for a given partition."""
+    def set_metadata(self, i: int, metadata: BlockMetadata) -> None:
+        """Set the metadata for a given block."""
         self._metadata[i] = metadata
 
-    def get_metadata(self) -> List[BlockPartitionMetadata]:
-        """Get the metadata for a given partition."""
+    def get_metadata(self) -> List[BlockMetadata]:
+        """Get the metadata for a given block."""
         return self._metadata.copy()
 
     def copy(self) -> "BlockList":
         """Perform a shallow copy of this BlockList."""
-        return BlockList(self._partitions, self._metadata)
+        return BlockList(self._blocks, self._metadata)
 
     def clear(self) -> None:
         """Erase references to the tasks tracked by the BlockList."""
-        self._partitions = None
+        self._blocks = None
 
     def _check_if_cleared(self) -> None:
         """Raise an error if this BlockList has been previously cleared."""
-        if self._partitions is None:
+        if self._blocks is None:
             raise ValueError(
                 "This Dataset's blocks have been moved, which means that you "
                 "can no longer use this Dataset.")
@@ -73,8 +48,8 @@ class BlockList:
             split_size: The number of lists to split into.
         """
         self._check_if_cleared()
-        num_splits = math.ceil(len(self._partitions) / split_size)
-        blocks = np.array_split(self._partitions, num_splits)
+        num_splits = math.ceil(len(self._blocks) / split_size)
+        blocks = np.array_split(self._blocks, num_splits)
         meta = np.array_split(self._metadata, num_splits)
         output = []
         for b, m in zip(blocks, meta):
@@ -88,22 +63,20 @@ class BlockList:
             part_idx: The partition index to divide at.
         """
         self._check_if_cleared()
-        return (BlockList(self._partitions[:part_idx],
-                          self._metadata[:part_idx]),
-                BlockList(self._partitions[part_idx:],
-                          self._metadata[part_idx:]))
+        return (BlockList(self._blocks[:part_idx], self._metadata[:part_idx]),
+                BlockList(self._blocks[part_idx:], self._metadata[part_idx:]))
 
-    def iter_partitions(self) -> Iterator[ObjectRef[BlockPartition]]:
-        """Iterate over the partitions of this block list.
+    def iter_blocks(self) -> Iterator[ObjectRef[BlockPartition]]:
+        """Iterate over the blocks of this block list.
 
         This does not block on the execution of the tasks generating the
         partition outputs. The length of this iterator is equal to
-        ``self.num_partitions()``.
+        ``self.num_blocks()``.
         """
-        return iter(self._partitions)
+        return iter(self._blocks)
 
     def iter_executed_blocks(self) -> Iterator[ObjectRef[Block]]:
-        """Iterate over the block outputs of executing all partitions.
+        """Iterate over the block outputs of executing all blocks.
 
         This blocks on the execution of the tasks generating partition outputs.
         The length of this iterator is not known until execution.
@@ -127,7 +100,7 @@ class BlockList:
         return Iter()
 
     def iter_executed_blocks_with_partition_metadata(self) -> Iterator[Tuple[
-            ObjectRef[Block], BlockPartitionMetadata, BlockPartitionSize]]:
+            ObjectRef[Block], BlockPartitionMetadata, Blockblocksize]]:
         """Like ``iter_executed_blocks()``, but including partition metadata.
 
         Returns:
@@ -139,7 +112,7 @@ class BlockList:
 
         class Iter:
             def __init__(self):
-                self._base_iter = zip(outer.iter_partitions(), outer._metadata)
+                self._base_iter = zip(outer.iter_blocks(), outer._metadata)
                 self._buffer = []
 
             def __iter__(self):
@@ -161,13 +134,14 @@ class BlockList:
 
         return Iter()
 
-    def num_partitions(self) -> int:
-        """Returns the number of partitions of this BlockList."""
-        return self._num_partitions
+    def initial_num_blocks(self) -> int:
+        """Returns the number of blocks of this BlockList."""
+        return self._num_blocks
 
-    def num_executed_blocks(self) -> int:
+    def executed_num_blocks(self) -> int:
         """Returns the number of output blocks after execution.
 
-        This blocks on execution of all partition tasks."""
-        self._check_if_cleared()
-        return len(list(self.iter_executed_blocks()))
+        This may differ from initial_num_blocks() for LazyBlockList, which
+        doesn't know how many blocks will be produced until tasks finish.
+        """
+        return self.initial_num_blocks()

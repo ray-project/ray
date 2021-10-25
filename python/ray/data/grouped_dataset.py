@@ -64,10 +64,10 @@ class GroupedDataset(Generic[T]):
             and v is the corresponding aggregation result.
         """
         # Handle empty dataset.
-        if self._dataset.num_partitions() == 0:
+        if self._dataset.num_blocks() == 0:
             return self._dataset
 
-        blocks = list(self._dataset._blocks.iter_executed_blocks())
+        blocks = list(self._dataset._blocks.iter_blocks())
         num_mappers = len(blocks)
         num_reducers = num_mappers
         boundaries = sort.sample_boundaries(blocks, self._key, num_reducers)
@@ -94,7 +94,7 @@ class GroupedDataset(Generic[T]):
         reduce_bar.block_until_complete([ret[0] for ret in reduce_results])
         reduce_bar.close()
 
-        blocks = [ray.put([b]) for b, _ in reduce_results]
+        blocks = [b for b, _ in reduce_results]
         metadata = ray.get([m for _, m in reduce_results])
         return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
 

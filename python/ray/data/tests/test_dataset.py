@@ -195,7 +195,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     total_rows = 0
     for block_size in block_sizes:
         block = list(range(total_rows, total_rows + block_size))
-        blocks.append(ray.put([ray.put(block)]))
+        blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata(None))
         total_rows += block_size
     block_list = BlockList(blocks, metadata)
@@ -287,7 +287,7 @@ def test_zip_arrow(ray_start_regular_shared):
 def test_batch_tensors(ray_start_regular_shared):
     import torch
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
-    res = ("Dataset(num_partitions=40, num_rows=40, "
+    res = ("Dataset(num_blocks=40, num_rows=40, "
            "schema=<class 'torch.Tensor'>)")
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
@@ -362,7 +362,7 @@ def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.data.range_tensor(5, shape=(3, 5))
     assert str(ds) == (
-        "Dataset(num_partitions=5, num_rows=5, "
+        "Dataset(num_blocks=5, num_rows=5, "
         "schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})")
 
     # Pandas conversion.
@@ -829,7 +829,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(num_partitions=2, num_rows=None, "
+        "Dataset(num_blocks=2, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
         "[{'value': array([0])}, {'value': array([1])}]"
@@ -842,7 +842,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(num_partitions=1, num_rows=None, "
+        "Dataset(num_blocks=1, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
         "[{'value': array([0])}, {'value': array([1])}]"
@@ -921,7 +921,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x > 1)
     assert str(ds) == \
-        "Dataset(num_partitions=1, num_rows=0, schema=Unknown schema)"
+        "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
 
     # Test map on empty dataset.
     ds = ray.data.from_items([])
@@ -940,13 +940,13 @@ def test_schema(ray_start_regular_shared):
     ds3 = ds2.repartition(5)
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     assert str(ds) == \
-        "Dataset(num_partitions=10, num_rows=10, schema=<class 'int'>)"
+        "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     assert str(ds2) == \
-        "Dataset(num_partitions=10, num_rows=10, schema={value: int64})"
+        "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == \
-        "Dataset(num_partitions=5, num_rows=10, schema={value: int64})"
+        "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
     assert str(ds4) == \
-        "Dataset(num_partitions=1, num_rows=5, schema={a: string, b: double})"
+        "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
@@ -990,17 +990,17 @@ def test_from_items(ray_start_regular_shared):
 
 def test_repartition_shuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
-    assert ds.num_partitions() == 10
+    assert ds.num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_sizes() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
-    assert ds2.num_partitions() == 5
+    assert ds2.num_blocks() == 5
     assert ds2.sum() == 190
     assert ds2._block_sizes() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
-    assert ds3.num_partitions() == 20
+    assert ds3.num_blocks() == 20
     assert ds3.sum() == 190
     assert ds3._block_sizes() == [2] * 10 + [0] * 10
 
@@ -1011,22 +1011,22 @@ def test_repartition_shuffle(ray_start_regular_shared):
 
 def test_repartition_noshuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
-    assert ds.num_partitions() == 10
+    assert ds.num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_sizes() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=False)
-    assert ds2.num_partitions() == 5
+    assert ds2.num_blocks() == 5
     assert ds2.sum() == 190
     assert ds2._block_sizes() == [4, 4, 4, 4, 4]
 
     ds3 = ds2.repartition(20, shuffle=False)
-    assert ds3.num_partitions() == 20
+    assert ds3.num_blocks() == 20
     assert ds3.sum() == 190
     assert ds3._block_sizes() == [1] * 20
 
     ds4 = ray.data.range(22).repartition(4)
-    assert ds4.num_partitions() == 4
+    assert ds4.num_blocks() == 4
     assert ds4._block_sizes() == [5, 6, 5, 6]
 
     large = ray.data.range(10000, parallelism=10)
@@ -1036,17 +1036,17 @@ def test_repartition_noshuffle(ray_start_regular_shared):
 
 def test_repartition_shuffle_arrow(ray_start_regular_shared):
     ds = ray.data.range_arrow(20, parallelism=10)
-    assert ds.num_partitions() == 10
+    assert ds.num_blocks() == 10
     assert ds.count() == 20
     assert ds._block_sizes() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
-    assert ds2.num_partitions() == 5
+    assert ds2.num_blocks() == 5
     assert ds2.count() == 20
     assert ds2._block_sizes() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
-    assert ds3.num_partitions() == 20
+    assert ds3.num_blocks() == 20
     assert ds3.count() == 20
     assert ds3._block_sizes() == [2] * 10 + [0] * 10
 
@@ -1306,10 +1306,10 @@ def test_parquet_read(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert str(ds) == \
-        "Dataset(num_partitions=2, num_rows=6, " \
+        "Dataset(num_blocks=2, num_rows=6, " \
         "schema={one: int64, two: string})", ds
     assert repr(ds) == \
-        "Dataset(num_partitions=2, num_rows=6, " \
+        "Dataset(num_blocks=2, num_rows=6, " \
         "schema={one: int64, two: string})", ds
     assert ds._blocks._num_computed() == 1
 
@@ -1353,11 +1353,11 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert str(ds) == \
-        "Dataset(num_partitions=2, num_rows=6, " \
+        "Dataset(num_blocks=2, num_rows=6, " \
         "schema={two: string, " \
         "one: dictionary<values=int32, indices=int32, ordered=0>})", ds
     assert repr(ds) == \
-        "Dataset(num_partitions=2, num_rows=6, " \
+        "Dataset(num_blocks=2, num_rows=6, " \
         "schema={two: string, " \
         "one: dictionary<values=int32, indices=int32, ordered=0>})", ds
     assert ds._blocks._num_computed() == 1
@@ -1932,7 +1932,7 @@ def test_union(ray_start_regular_shared):
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
-    assert ds.num_partitions() == 50
+    assert ds.num_blocks() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
 
@@ -1984,34 +1984,29 @@ def test_split_at_indices(ray_start_regular_shared):
 
 def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
-    assert ds.num_partitions() == 10
+    assert ds.num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_sizes() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [
-        dataset._blocks.num_partitions() for dataset in datasets
-    ]
+    assert [2] * 5 == [dataset._blocks.num_blocks() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3,
-            3] == [dataset._blocks.num_partitions() for dataset in datasets]
+    assert [4, 3, 3] == [dataset._blocks.num_blocks() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [dataset._blocks.num_partitions() for dataset in datasets]
+    assert [10] == [dataset._blocks.num_blocks() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [
-        dataset._blocks.num_partitions() for dataset in datasets
-    ]
+    assert [1] * 10 == [dataset._blocks.num_blocks() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
-        dataset._blocks.num_partitions() for dataset in datasets
+        dataset._blocks.num_blocks() for dataset in datasets
     ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 

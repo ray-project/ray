@@ -23,7 +23,7 @@ def simple_shuffle(input_blocks: BlockList,
                    map_ray_remote_args: Optional[Dict[str, Any]] = None,
                    reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
                    _spread_resource_prefix: Optional[str] = None) -> BlockList:
-    input_blocks = list(input_blocks.iter_executed_blocks())
+    input_blocks = list(input_blocks.iter_blocks())
     if map_ray_remote_args is None:
         map_ray_remote_args = {}
     if reduce_ray_remote_args is None:
@@ -84,7 +84,6 @@ def simple_shuffle(input_blocks: BlockList,
     del shuffle_map_out
     new_blocks, new_metadata = zip(*shuffle_reduce_out)
     reduce_bar.block_until_complete(list(new_blocks))
-    new_blocks = [ray.put([x]) for x in new_blocks]
     new_metadata = ray.get(list(new_metadata))
     reduce_bar.close()
 
