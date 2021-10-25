@@ -77,6 +77,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   if (!node) {
     RAY_LOG(INFO) << "Node " << node_id << " is already removed";
     return;
+  }
 
   // Do the procedure to drain a node.
   node->set_state(rpc::GcsNodeInfo::DEAD);
@@ -115,7 +116,8 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
                 RAY_LOG(INFO) << "Raylet " << node_id << " is drained. Status " << status
                               << ". The information will be published to the cluster.";
                 /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
-                RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
+                RAY_CHECK_OK(
+                    gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
               });
         };
     RAY_CHECK_OK(

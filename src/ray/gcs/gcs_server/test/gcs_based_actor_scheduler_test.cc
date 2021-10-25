@@ -34,8 +34,8 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
-    gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
