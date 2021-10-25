@@ -3,6 +3,9 @@ from typing import Any
 import ray
 
 
+_ray_initialized = False
+
+
 class SizeEstimator:
     """Efficiently estimates the Ray serialized size of a stream of items.
 
@@ -28,6 +31,12 @@ class SizeEstimator:
         return int(self._running_mean.mean * self._count)
 
     def _real_size(self, item: Any) -> int:
+        # We're using an internal Ray API, and have to ensure it's initialized
+        # by calling a public API.
+        global _ray_initialized
+        if not _ray_initialized:
+            _ray_initialized = True
+            ray.put(None)
         return ray.worker.global_worker.get_serialization_context().serialize(
             item).total_bytes
 
