@@ -66,6 +66,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_logging.py",
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
