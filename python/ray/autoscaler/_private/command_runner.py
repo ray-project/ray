@@ -303,7 +303,7 @@ class SSHOptions:
         if control_path:
             self.arg_dict.update({
                 "ControlMaster": "auto",
-                "ControlPath": "{}/%C".format(control_path),
+                "ControlPath": "{}".format(control_path),
                 "ControlPersist": "10s",
             })
         self.arg_dict.update(kwargs)
@@ -322,11 +322,13 @@ class SSHCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, node_id, provider, auth_config,
                  cluster_name, process_runner, use_internal_ip):
 
-        ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
         ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
-        ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
-            ssh_user_hash[:HASH_MAX_LENGTH],
-            ssh_control_hash[:HASH_MAX_LENGTH])
+        ssh_control_path = auth_config.get("ssh_control_path", None)
+        if not ssh_control_path:
+            ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
+            ssh_control_path = "/tmp/ray_ssh_{}/{}/%C".format(
+                ssh_user_hash[:HASH_MAX_LENGTH],
+                ssh_control_hash[:HASH_MAX_LENGTH])
 
         self.cluster_name = cluster_name
         self.log_prefix = log_prefix
