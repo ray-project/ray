@@ -270,13 +270,16 @@ def test_multi_node(start_cluster, working_dir):
 
     ray.init(address, runtime_env={"working_dir": working_dir})
 
-    @ray.remote
-    def check_and_get_node_id():
-        import test_module
-        test_module.one()
-        return ray.get_runtime_context().node_id
+    @ray.remote(num_cpus=1)
+    class A:
+        def check_and_get_node_id(self):
+            import test_module
+            test_module.one()
+            return ray.get_runtime_context().node_id
 
-    object_refs = [check_and_get_node_id.remote() for _ in range(10000)]
+    num_cpus = int(ray.available_resources()["CPU"])
+    actors = [A.remote() for _ in range(num_cpus)]
+    object_refs = [a.check_and_get_node_id.remote() for a in actors]
     assert len(set(ray.get(object_refs))) == NUM_NODES
 
 
@@ -316,21 +319,15 @@ def test_job_level_gc(start_cluster, working_dir):
     else:
         assert not check_internal_kv_gced()
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class A:
         def test_import(self):
             import test_module
             test_module.one()
 
-    actors = [A.remote() for _ in range(5)]
+    num_cpus = int(ray.available_resources()["CPU"])
+    actors = [A.remote() for _ in range(num_cpus)]
     ray.get([a.test_import.remote() for a in actors])
-
-    @ray.remote
-    def test_import():
-        import test_module
-        test_module.one()
-
-    ray.get([test_import.remote() for _ in range(10000)])
 
     if working_dir == S3_PACKAGE_URI:
         assert check_internal_kv_gced()
