@@ -419,7 +419,7 @@ void GcsPlacementGroupManager::AddBundlesForPlacementGroup(
     const PlacementGroupID &placement_group_id,
     const ray::rpc::AddPlacementGroupBundlesRequest &request, StatusCallback callback) {
   RAY_CHECK(callback);
-  // TODO(loushang.ls): support reconnection when occurring network error.
+  // TODO(clay4444): support reconnection when occurring network error.
 
   // Check whether the placement group is exist or not.
   const auto placement_group_it = registered_placement_groups_.find(placement_group_id);
