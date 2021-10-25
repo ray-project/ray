@@ -20,7 +20,7 @@ class ServePPOModel:
                 # only 1 "local" worker with an env (not really used here).
                 "num_workers": 0,
             },
-            env="CartPole-v0")
+            env="CartPole-v1")
         self.trainer.restore(checkpoint_path)
 
     async def __call__(self, request: Request):
@@ -41,7 +41,7 @@ def train_ppo_model():
             "framework": "torch",
             "num_workers": 0
         },
-        env="CartPole-v0",
+        env="CartPole-v1",
     )
     # Train for one iteration
     trainer.train()
@@ -61,7 +61,7 @@ ServePPOModel.deploy(checkpoint_path)
 # __doc_query_begin__
 # That's it! Let's test it
 for _ in range(10):
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     obs = env.reset()
 
     print(f"-> Sending observation {obs}")

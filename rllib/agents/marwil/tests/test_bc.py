@@ -48,7 +48,7 @@ class TestBC(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.BCTrainer(config=config, env="CartPole-v0")
+            trainer = marwil.BCTrainer(config=config, env="CartPole-v1")
             learnt = False
             for i in range(num_iterations):
                 results = trainer.train()

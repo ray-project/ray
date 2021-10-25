@@ -13,7 +13,7 @@ if __name__ == "__main__":
 
     # Note: No ray.init(), to test it works without Ray
     trainer = A2CTrainer(
-        env="CartPole-v0",
+        env="CartPole-v1",
         config={
             "framework": "tf",
             "num_workers": 0,

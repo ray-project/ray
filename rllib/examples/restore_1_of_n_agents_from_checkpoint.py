@@ -61,7 +61,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     # Get obs- and action Spaces.
-    single_env = gym.make("CartPole-v0")
+    single_env = gym.make("CartPole-v1")
     obs_space = single_env.observation_space
     act_space = single_env.action_space
 

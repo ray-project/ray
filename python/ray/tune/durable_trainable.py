@@ -137,7 +137,7 @@ def durable(trainable: Union[str, Type[Trainable], Callable]):
 
         analysis = tune.run(
             tune.durable("PPO"),
-            config={"env": "CartPole-v0"},
+            config={"env": "CartPole-v1"},
             checkpoint_freq=1,
             sync_config=tune.SyncConfig(
                 sync_to_driver=False,

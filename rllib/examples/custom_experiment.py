@@ -11,7 +11,7 @@ parser.add_argument("--train-iterations", type=int, default=10)
 
 def experiment(config):
     iterations = config.pop("train-iterations")
-    train_agent = ppo.PPOTrainer(config=config, env="CartPole-v0")
+    train_agent = ppo.PPOTrainer(config=config, env="CartPole-v1")
     checkpoint = None
     train_results = {}
 
@@ -25,7 +25,7 @@ def experiment(config):
 
     # Manual Eval
     config["num_workers"] = 0
-    eval_agent = ppo.PPOTrainer(config=config, env="CartPole-v0")
+    eval_agent = ppo.PPOTrainer(config=config, env="CartPole-v1")
     eval_agent.restore(checkpoint)
     env = eval_agent.workers.local_worker().env
 
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     config = ppo.DEFAULT_CONFIG.copy()
     config["train-iterations"] = args.train_iterations
 
-    config["env"] = "CartPole-v0"
+    config["env"] = "CartPole-v1"
 
     tune.run(
         experiment,

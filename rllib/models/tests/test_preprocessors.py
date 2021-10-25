@@ -57,10 +57,10 @@ class TestPreprocessors(unittest.TestCase):
             trainer.stop()
 
     def test_gym_preprocessors(self):
-        p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
+        p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v1"))
         self.assertEqual(type(p1), NoPreprocessor)
 
-        p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v0"))
+        p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v1"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
         p3 = ModelCatalog.get_preprocessor(gym.make("MsPacman-ram-v0"))

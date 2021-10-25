@@ -152,7 +152,7 @@ We can create a `Trainer <#trainers>`__ and try running this policy on a toy env
         default_policy=MyTFPolicy)
 
     ray.init()
-    tune.run(MyTrainer, config={"env": "CartPole-v0", "num_workers": 2})
+    tune.run(MyTrainer, config={"env": "CartPole-v1", "num_workers": 2})
 
 
 If you run the above snippet `(runnable file here) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`__, you'll probably notice that CartPole doesn't learn so well:
@@ -166,7 +166,7 @@ If you run the above snippet `(runnable file here) <https://github.com/ray-proje
     Result logdir: /home/ubuntu/ray_results/MyAlgTrainer
     Number of trials: 1 ({'RUNNING': 1})
     RUNNING trials:
-     - MyAlgTrainer_CartPole-v0_0:	RUNNING, [3 CPUs, 0 GPUs], [pid=26784],
+     - MyAlgTrainer_CartPole-v1_0:	RUNNING, [3 CPUs, 0 GPUs], [pid=26784],
                                         32 s, 156 iter, 62400 ts, 23.1 rew
 
 Let's modify our policy loss to include rewards summed over time. To enable this advantage calculation, we need to define a *trajectory postprocessor* for the policy. This can be done by defining ``postprocess_fn``:
@@ -561,11 +561,11 @@ Here is an example of creating a set of rollout workers and using them gather ex
 .. code-block:: python
 
     # Setup policy and rollout workers
-    env = gym.make("CartPole-v0")
+    env = gym.make("CartPole-v1")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = WorkerSet(
         policy_class=CustomPolicy,
-        env_creator=lambda c: gym.make("CartPole-v0"),
+        env_creator=lambda c: gym.make("CartPole-v1"),
         num_workers=10)
 
     while True:
@@ -732,15 +732,15 @@ Example of three equivalent ways of interacting with the PPO trainer, all of whi
 
 .. code-block:: python
 
-    trainer = PPOTrainer(env="CartPole-v0", config={"train_batch_size": 4000})
+    trainer = PPOTrainer(env="CartPole-v1", config={"train_batch_size": 4000})
     while True:
         print(trainer.train())
 
 .. code-block:: bash
 
-    rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
+    rllib train --run=PPO --env=CartPole-v1 --config='{"train_batch_size": 4000}'
 
 .. code-block:: python
 
     from ray import tune
-    tune.run(PPOTrainer, config={"env": "CartPole-v0", "train_batch_size": 4000})
+    tune.run(PPOTrainer, config={"env": "CartPole-v1", "train_batch_size": 4000})

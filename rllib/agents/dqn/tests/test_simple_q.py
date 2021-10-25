@@ -35,7 +35,7 @@ class TestSimpleQ(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config):
-            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
+            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v1")
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()
@@ -57,7 +57,7 @@ class TestSimpleQ(unittest.TestCase):
 
         for fw in framework_iterator(config):
             # Generate Trainer and get its default Policy object.
-            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
+            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v1")
             policy = trainer.get_policy()
             # Batch of size=2.
             input_ = SampleBatch({

@@ -92,7 +92,7 @@ class TestExplorations(unittest.TestCase):
     def test_a2c(self):
         do_test_explorations(
             a3c.A2CTrainer,
-            "CartPole-v0",
+            "CartPole-v1",
             a3c.a2c.A2C_DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1))
@@ -100,7 +100,7 @@ class TestExplorations(unittest.TestCase):
     def test_a3c(self):
         do_test_explorations(
             a3c.A3CTrainer,
-            "CartPole-v0",
+            "CartPole-v1",
             a3c.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1))
@@ -112,24 +112,24 @@ class TestExplorations(unittest.TestCase):
         config["exploration_config"]["random_timesteps"] = 0
         do_test_explorations(
             ddpg.DDPGTrainer,
-            "Pendulum-v0",
+            "Pendulum-v1",
             config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)
 
     def test_simple_dqn(self):
-        do_test_explorations(dqn.SimpleQTrainer, "CartPole-v0",
+        do_test_explorations(dqn.SimpleQTrainer, "CartPole-v1",
                              dqn.SIMPLE_Q_DEFAULT_CONFIG,
                              np.array([0.0, 0.1, 0.0, 0.0]))
 
     def test_dqn(self):
-        do_test_explorations(dqn.DQNTrainer, "CartPole-v0", dqn.DEFAULT_CONFIG,
+        do_test_explorations(dqn.DQNTrainer, "CartPole-v1", dqn.DEFAULT_CONFIG,
                              np.array([0.0, 0.1, 0.0, 0.0]))
 
     def test_impala(self):
         do_test_explorations(
             impala.ImpalaTrainer,
-            "CartPole-v0",
+            "CartPole-v1",
             dict(impala.DEFAULT_CONFIG.copy(), num_gpus=0),
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(0))
@@ -137,7 +137,7 @@ class TestExplorations(unittest.TestCase):
     def test_pg(self):
         do_test_explorations(
             pg.PGTrainer,
-            "CartPole-v0",
+            "CartPole-v1",
             pg.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1))
@@ -145,7 +145,7 @@ class TestExplorations(unittest.TestCase):
     def test_ppo_discr(self):
         do_test_explorations(
             ppo.PPOTrainer,
-            "CartPole-v0",
+            "CartPole-v1",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(0))
@@ -153,7 +153,7 @@ class TestExplorations(unittest.TestCase):
     def test_ppo_cont(self):
         do_test_explorations(
             ppo.PPOTrainer,
-            "Pendulum-v0",
+            "Pendulum-v1",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0]),
             prev_a=np.array([0.0]),
@@ -162,7 +162,7 @@ class TestExplorations(unittest.TestCase):
     def test_sac(self):
         do_test_explorations(
             sac.SACTrainer,
-            "Pendulum-v0",
+            "Pendulum-v1",
             sac.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)
@@ -174,7 +174,7 @@ class TestExplorations(unittest.TestCase):
         config["exploration_config"]["random_timesteps"] = 0
         do_test_explorations(
             td3.TD3Trainer,
-            "Pendulum-v0",
+            "Pendulum-v1",
             config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)

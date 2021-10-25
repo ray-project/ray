@@ -17,7 +17,7 @@ class TestPolicy(unittest.TestCase):
     def test_policy_save_restore(self):
         config = DEFAULT_CONFIG.copy()
         for _ in framework_iterator(config):
-            trainer = DQNTrainer(config=config, env="CartPole-v0")
+            trainer = DQNTrainer(config=config, env="CartPole-v1")
             policy = trainer.get_policy()
             state1 = policy.get_state()
             trainer.train()

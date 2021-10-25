@@ -104,11 +104,11 @@ Example code for training is available and can be used as follows.
 ```
 # On a single machine.
 python ray/python/ray/rllib/train.py --alg=PPO \
-                                     --env=CartPole-v0
+                                     --env=CartPole-v1
 
 # On a cluster.
 python ray/python/ray/rllib/train.py --alg=PPO \
-                                     --env=CartPole-v0 \
+                                     --env=CartPole-v1 \
                                      --redis-address=<head-node-ip>:6379
 ```
 

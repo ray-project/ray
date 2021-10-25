@@ -321,7 +321,7 @@ class NestedSpacesTest(unittest.TestCase):
             ValueError,
             "Subclasses of TorchModelV2 must also inherit from nn.Module",
             lambda: PGTrainer(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "model": {
                         "custom_model": "invalid",
@@ -334,7 +334,7 @@ class NestedSpacesTest(unittest.TestCase):
         self.assertRaisesRegexp(
             ValueError, "State output is not a list",
             lambda: PGTrainer(
-                env="CartPole-v0", config={
+                env="CartPole-v1", config={
                     "model": {
                         "custom_model": "invalid2",
                     },

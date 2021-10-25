@@ -24,7 +24,7 @@ def my_train_fn(config, reporter):
     iterations = config.pop("train-iterations", 10)
 
     # Train for n iterations with high LR
-    agent1 = PPOTrainer(env="CartPole-v0", config=config)
+    agent1 = PPOTrainer(env="CartPole-v1", config=config)
     for _ in range(iterations):
         result = agent1.train()
         result["phase"] = 1
@@ -35,7 +35,7 @@ def my_train_fn(config, reporter):
 
     # Train for n iterations with low LR
     config["lr"] = 0.0001
-    agent2 = PPOTrainer(env="CartPole-v0", config=config)
+    agent2 = PPOTrainer(env="CartPole-v1", config=config)
     agent2.restore(state)
     for _ in range(iterations):
         result = agent2.train()

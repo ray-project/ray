@@ -13,7 +13,7 @@ ray.init(num_cpus=10)
 
 def train_and_export(algo_name, num_steps, model_dir, ckpt_dir, prefix):
     cls = get_trainer_class(algo_name)
-    alg = cls(config={}, env="CartPole-v0")
+    alg = cls(config={}, env="CartPole-v1")
     for _ in range(num_steps):
         alg.train()
 

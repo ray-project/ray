@@ -18,7 +18,7 @@ class LocalModeTest(unittest.TestCase):
         cf["num_workers"] = 2
 
         for _ in framework_iterator(cf):
-            agent = PGTrainer(cf, "CartPole-v0")
+            agent = PGTrainer(cf, "CartPole-v1")
             print(agent.train())
             agent.stop()
 

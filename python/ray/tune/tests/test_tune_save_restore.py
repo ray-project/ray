@@ -71,7 +71,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             checkpoint_freq=1,
             local_dir=local_dir,
             config={
-                "env": "CartPole-v0",
+                "env": "CartPole-v1",
                 "log_level": "DEBUG"
             }).trials
 
@@ -111,7 +111,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             },  # train one more iteration.
             restore=checkpoint_path,  # Restore the checkpoint
             config={
-                "env": "CartPole-v0",
+                "env": "CartPole-v1",
                 "log_level": "DEBUG"
             }).trials
         self.assertIsNone(trial.error_file)

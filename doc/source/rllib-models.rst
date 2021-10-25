@@ -226,7 +226,7 @@ Once implemented, your TF model can then be registered and used in place of a bu
     ModelCatalog.register_custom_model("my_tf_model", MyModelClass)
 
     ray.init()
-    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
+    trainer = ppo.PPOTrainer(env="CartPole-v1", config={
         "model": {
             "custom_model": "my_tf_model",
             # Extra kwargs to be passed to your model's c'tor.
@@ -286,7 +286,7 @@ Once implemented, your PyTorch model can then be registered and used in place of
     ModelCatalog.register_custom_model("my_torch_model", CustomTorchModel)
 
     ray.init()
-    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
+    trainer = ppo.PPOTrainer(env="CartPole-v1", config={
         "framework": "torch",
         "model": {
             "custom_model": "my_torch_model",
@@ -512,7 +512,7 @@ Similar to custom models and preprocessors, you can also specify a custom action
     ModelCatalog.register_custom_action_dist("my_dist", MyActionDist)
 
     ray.init()
-    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
+    trainer = ppo.PPOTrainer(env="CartPole-v1", config={
         "model": {
             "custom_action_dist": "my_dist",
         },

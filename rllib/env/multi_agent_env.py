@@ -147,7 +147,7 @@ def make_multi_agent(env_name_or_creator):
 
     Examples:
          >>> # By gym string:
-         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0")
+         >>> ma_cartpole_cls = make_multi_agent("CartPole-v1")
          >>> # Create a 2 agent multi-agent cartpole.
          >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2})
          >>> obs = ma_cartpole.reset()

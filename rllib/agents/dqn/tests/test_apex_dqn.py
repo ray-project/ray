@@ -27,7 +27,7 @@ class TestApexDQN(unittest.TestCase):
         config["min_iter_time_s"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
         for _ in framework_iterator(config):
-            trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
+            trainer = apex.ApexTrainer(config=config, env="CartPole-v1")
             results = trainer.train()
             check_train_results(results)
             print(results)
@@ -46,7 +46,7 @@ class TestApexDQN(unittest.TestCase):
 
         for _ in framework_iterator(config):
             plain_config = config.copy()
-            trainer = apex.ApexTrainer(config=plain_config, env="CartPole-v0")
+            trainer = apex.ApexTrainer(config=plain_config, env="CartPole-v1")
 
             # Test per-worker epsilon distribution.
             infos = trainer.workers.foreach_policy(
@@ -109,7 +109,7 @@ class TestApexDQN(unittest.TestCase):
         # Check eager execution frameworks here, since it's easier to control
         # exact timesteps with these frameworks.
         for _ in framework_iterator(config):
-            trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
+            trainer = apex.ApexTrainer(config=config, env="CartPole-v1")
 
             lr = _step_n_times(trainer, 5)  # 50 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.1 here.

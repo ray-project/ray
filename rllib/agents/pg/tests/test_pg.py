@@ -29,7 +29,7 @@ class TestPG(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config):
-            for env in ["FrozenLake-v0", "CartPole-v0"]:
+            for env in ["FrozenLake-v1", "CartPole-v1"]:
                 trainer = pg.PGTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
@@ -61,7 +61,7 @@ class TestPG(unittest.TestCase):
 
         for fw, sess in framework_iterator(config, session=True):
             dist_cls = (Categorical if fw != "torch" else TorchCategorical)
-            trainer = pg.PGTrainer(config=config, env="CartPole-v0")
+            trainer = pg.PGTrainer(config=config, env="CartPole-v1")
             policy = trainer.get_policy()
             vars = policy.model.trainable_variables()
             if sess:

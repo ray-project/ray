@@ -110,14 +110,14 @@ class TestSAC(unittest.TestCase):
                     "random_dict_env",
                     "random_tuple_env",
                     "MsPacmanNoFrameskip-v4",
-                    "CartPole-v0",
+                    "CartPole-v1",
             ]:
                 print("Env={}".format(env))
                 # Test making the Q-model a custom one for CartPole, otherwise,
                 # use the default model.
                 config["Q_model"]["custom_model"] = "batch_norm{}".format(
                     "_torch"
-                    if fw == "torch" else "") if env == "CartPole-v0" else None
+                    if fw == "torch" else "") if env == "CartPole-v1" else None
                 trainer = sac.SACTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
@@ -128,7 +128,7 @@ class TestSAC(unittest.TestCase):
                 # Test, whether the replay buffer is saved along with
                 # a checkpoint (no point in doing it for all frameworks since
                 # this is framework agnostic).
-                if fw == "tf" and env == "CartPole-v0":
+                if fw == "tf" and env == "CartPole-v1":
                     checkpoint = trainer.save()
                     new_trainer = sac.SACTrainer(config, env=env)
                     new_trainer.restore(checkpoint)

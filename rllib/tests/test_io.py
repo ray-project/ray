@@ -44,7 +44,7 @@ class AgentIOTest(unittest.TestCase):
 
     def writeOutputs(self, output, fw):
         agent = PGTrainer(
-            env="CartPole-v0",
+            env="CartPole-v1",
             config={
                 "output": output + (fw if output != "logdir" else ""),
                 "rollout_fragment_length": 250,
@@ -71,7 +71,7 @@ class AgentIOTest(unittest.TestCase):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             self.writeOutputs(self.test_dir, fw)
             agent = PGTrainer(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "input": self.test_dir + fw,
                     "input_evaluation": [],
@@ -113,7 +113,7 @@ class AgentIOTest(unittest.TestCase):
                         f.write(json.dumps(data))
 
             agent = PGTrainer(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "input": self.test_dir + fw,
                     "input_evaluation": [],
@@ -129,7 +129,7 @@ class AgentIOTest(unittest.TestCase):
         for fw in framework_iterator():
             self.writeOutputs(self.test_dir, fw)
             agent = PGTrainer(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "input": self.test_dir + fw,
                     "input_evaluation": ["simulation"],
@@ -146,7 +146,7 @@ class AgentIOTest(unittest.TestCase):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             self.writeOutputs(self.test_dir, fw)
             agent = PGTrainer(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "input": glob.glob(self.test_dir + fw + "/*.json"),
                     "input_evaluation": [],
@@ -161,7 +161,7 @@ class AgentIOTest(unittest.TestCase):
         for fw in framework_iterator():
             self.writeOutputs(self.test_dir, fw)
             agent = PGTrainer(
-                env="CartPole-v0",
+                env="CartPole-v1",
                 config={
                     "input": {
                         self.test_dir + fw: 0.1,
@@ -236,7 +236,7 @@ class AgentIOTest(unittest.TestCase):
             for fw in framework_iterator(frameworks=("torch", "tf")):
                 self.writeOutputs(self.test_dir, fw)
                 agent = PGTrainer(
-                    env="CartPole-v0",
+                    env="CartPole-v1",
                     config={
                         "input": input_procedure,
                         "input_config": {

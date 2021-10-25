@@ -110,7 +110,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=6, local_mode=args.local_mode)
 
     config = {
-        "env": "CartPole-v0",
+        "env": "CartPole-v1",
         # Force sub-envs to be ray.actor.ActorHandles, so we can step
         # through them in parallel.
         "remote_worker_envs": True,

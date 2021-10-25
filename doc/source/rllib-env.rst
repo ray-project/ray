@@ -98,7 +98,7 @@ There are two ways to scale experience collection with Gym environments:
 
 .. image:: throughput.png
 
-You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v0 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_worker=64``.
+You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v1 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_worker=64``.
 
 Expensive Environments
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -346,7 +346,7 @@ RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/
 Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
 This can be done for multiple concurrent episodes as well.
 
-Take a look at the examples here for a `simple "CartPole-v0" server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__
+Take a look at the examples here for a `simple "CartPole-v1" server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__
 and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__
 scripts, in which we setup an RLlib policy server that listens on one or more ports for client connections
 and connect several clients to this server to learn the env.

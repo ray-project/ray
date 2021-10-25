@@ -195,7 +195,7 @@ class TestModelImport(unittest.TestCase):
                     "vf_share_layers": True,
                 },
             },
-            env="CartPole-v0")
+            env="CartPole-v1")
 
 
 if __name__ == "__main__":

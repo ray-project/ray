@@ -1,7 +1,7 @@
 # slurm-launch.py
 # Usage:
 # python slurm-launch.py --exp-name test \
-#     --command "rllib train --run PPO --env CartPole-v0"
+#     --command "rllib train --run PPO --env CartPole-v1"
 
 import argparse
 import subprocess

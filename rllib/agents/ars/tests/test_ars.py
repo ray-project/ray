@@ -30,7 +30,7 @@ class TestARS(unittest.TestCase):
 
         for _ in framework_iterator(config):
             plain_config = config.copy()
-            trainer = ars.ARSTrainer(config=plain_config, env="CartPole-v0")
+            trainer = ars.ARSTrainer(config=plain_config, env="CartPole-v1")
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)

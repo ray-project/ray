@@ -37,7 +37,7 @@ class TestA2C(unittest.TestCase):
     def test_a2c_exec_impl(ray_start_regular):
         config = {"min_iter_time_s": 0}
         for _ in framework_iterator(config):
-            trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
+            trainer = a3c.A2CTrainer(env="CartPole-v1", config=config)
             results = trainer.train()
             check_train_results(results)
             print(results)
@@ -50,7 +50,7 @@ class TestA2C(unittest.TestCase):
             "microbatch_size": 10,
         }
         for _ in framework_iterator(config):
-            trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
+            trainer = a3c.A2CTrainer(env="CartPole-v1", config=config)
             results = trainer.train()
             check_train_results(results)
             print(results)

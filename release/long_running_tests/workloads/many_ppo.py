@@ -27,7 +27,7 @@ run_experiments(
     {
         "ppo": {
             "run": "PPO",
-            "env": "CartPole-v0",
+            "env": "CartPole-v1",
             "num_samples": 10000,
             "config": {
                 "framework": "torch",

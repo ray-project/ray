@@ -26,7 +26,7 @@ class TestErrors(unittest.TestCase):
         """
 
         config = impala.DEFAULT_CONFIG.copy()
-        env = "CartPole-v0"
+        env = "CartPole-v1"
 
         for _ in framework_iterator(config):
             self.assertRaisesRegex(

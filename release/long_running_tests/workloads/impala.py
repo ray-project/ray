@@ -41,7 +41,7 @@ run_experiments(
     {
         "impala": {
             "run": "IMPALA",
-            "env": "CartPole-v0",
+            "env": "CartPole-v1",
             "config": {
                 "num_workers": 8,
                 "num_gpus": 0,

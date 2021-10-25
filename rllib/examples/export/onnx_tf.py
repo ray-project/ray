@@ -26,7 +26,7 @@ test_data = {
 
 # Start Ray and initialize a PPO trainer
 ray.init()
-trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+trainer = ppo.PPOTrainer(config=config, env="CartPole-v1")
 
 # You could train the model here
 # trainer.train()

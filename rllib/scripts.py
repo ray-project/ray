@@ -7,7 +7,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 
 EXAMPLE_USAGE = """
 Example usage for training:
-    rllib train --run DQN --env CartPole-v0
+    rllib train --run DQN --env CartPole-v1
 
 Example usage for evaluate (aka: "rollout"):
     rllib evaluate /trial_dir/checkpoint_000001/checkpoint-1 --run DQN

@@ -76,7 +76,7 @@ class TestModelCatalog(unittest.TestCase):
         ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_preprocessor("foo", CustomPreprocessor)
         ModelCatalog.register_custom_preprocessor("bar", CustomPreprocessor2)
-        env = gym.make("CartPole-v0")
+        env = gym.make("CartPole-v1")
         p1 = ModelCatalog.get_preprocessor(env, {"custom_preprocessor": "foo"})
         self.assertEqual(str(type(p1)), str(CustomPreprocessor))
         p2 = ModelCatalog.get_preprocessor(env, {"custom_preprocessor": "bar"})

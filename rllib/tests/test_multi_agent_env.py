@@ -311,7 +311,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 return [{}]  # empty dict
 
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: gym.make("CartPole-v1"),
             policy_spec=StatefulPolicy,
             rollout_fragment_length=5)
         batch = ev.sample()

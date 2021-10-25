@@ -43,7 +43,7 @@ class RandomAgent(Trainer):
 
 if __name__ == "__main__":
     trainer = RandomAgent(
-        env="CartPole-v0", config={"rollouts_per_iteration": 10})
+        env="CartPole-v1", config={"rollouts_per_iteration": 10})
     result = trainer.train()
     assert result["episode_reward_mean"] > 10, result
     print("Test: OK")

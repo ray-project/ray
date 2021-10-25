@@ -52,7 +52,7 @@ class TuneRestoreTest(unittest.TestCase):
             checkpoint_freq=1,
             local_dir=tmpdir,
             config={
-                "env": "CartPole-v0",
+                "env": "CartPole-v1",
                 "framework": "tf",
             },
         )
@@ -75,7 +75,7 @@ class TuneRestoreTest(unittest.TestCase):
             checkpoint_freq=1,
             restore=self.checkpoint_path,  # Restore the checkpoint
             config={
-                "env": "CartPole-v0",
+                "env": "CartPole-v1",
                 "framework": "tf",
             },
         )
@@ -91,7 +91,7 @@ class TuneRestoreTest(unittest.TestCase):
             keep_checkpoints_num=1,
             restore=self.checkpoint_path,
             config={
-                "env": "CartPole-v0",
+                "env": "CartPole-v1",
                 "framework": "tf",
             },
         )
