@@ -1,7 +1,4 @@
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Union
+from typing import Dict, Union, List, Optional
 
 import ray
 from ray._raylet import ObjectRef
@@ -330,3 +327,73 @@ def check_placement_group_index(placement_group: PlacementGroup,
         raise ValueError(f"placement group bundle index {bundle_index} "
                          f"is invalid. Valid placement group indexes: "
                          f"0-{placement_group.bundle_count}")
+
+
+def configure_placement_group_based_on_context(
+        placement_group_capture_child_tasks: bool,
+        bundle_index: int,
+        resources: Dict,
+        task_or_actor_repr: str,
+        placement_group: Union[PlacementGroup, str, None] = "default")\
+            -> PlacementGroup:
+    """Configure the placement group based on the given context.
+
+    Based on the given context, this API returns the placement group instance
+    for task/actor scheduling.
+
+    Params:
+        placement_group_capture_child_tasks: Whether or not the
+            placement group needs to be captured from the global
+            context.
+        bundle_index: The bundle index for tasks/actor scheduling.
+        resources: The scheduling resources.
+        task_or_actor_repr: The repr of task or actor
+            function/class descriptor.
+        placement_group: The placement group instance.
+            - "default": Default placement group argument. Currently,
+                the default behavior is to capture the parent task'
+                placement group if placement_group_capture_child_tasks
+                is set.
+            - None: means placement group is explicitly not configured.
+            - Placement group instance: In this case, do nothing.
+
+    Returns:
+        Placement group instance based on the given context.
+
+    Raises:
+        ValueError: If the bundle index is invalid for the placement group
+    """
+    assert placement_group_capture_child_tasks is not None
+    assert resources is not None
+
+    # Placement group could be None, default, or placement group.
+    if placement_group != "default":
+        if not placement_group:
+            placement_group = PlacementGroup.empty()
+    elif placement_group == "default":
+        if placement_group_capture_child_tasks:
+            placement_group = get_current_placement_group()
+        else:
+            placement_group = PlacementGroup.empty()
+
+    if not placement_group:
+        placement_group = PlacementGroup.empty()
+
+    assert isinstance(placement_group, PlacementGroup)
+    check_placement_group_index(placement_group, bundle_index)
+
+    def resource_empty(resources):
+        if not resources:
+            return True
+        for resource_val in resources.values():
+            if resource_val > 0:
+                return False
+        return True
+
+    if placement_group != PlacementGroup.empty() and resource_empty(resources):
+        raise ValueError(
+            f"{task_or_actor_repr} specifies the placement group, but "
+            "it doesn't request resources. Placement group won't be used. "
+            "This means you might have passed num_cpus=0 as a resource "
+            "requirement for this task or actor.")
+    return placement_group

@@ -44,6 +44,43 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         placement_group_assert_no_leak([pg])
 
 
+def test_placement_group_no_resources(shutdown_only):
+    ray.init(resources={"a": 1})
+
+    @ray.remote
+    class A:
+        pass
+
+    pg = ray.util.placement_group(bundles=[{"a": 1}])
+
+    with pytest.raises(ValueError):
+        # The actor cannot be scheduled with no resource specified.
+        a = A.options(placement_group=pg).remote()
+
+    @ray.remote(resources={"a": 1})
+    class B:
+        pass
+
+    a = B.options(placement_group=pg).remote()
+    del a
+
+    @ray.remote
+    def f():
+        pass
+
+    a = f.options(placement_group=pg).remote()
+    ray.get(a)
+
+    @ray.remote(num_cpus=0)
+    def g():
+        pass
+
+    with pytest.raises(ValueError):
+        a = g.options(placement_group=pg).remote()
+
+    placement_group_assert_no_leak([pg])
+
+
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_pack(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=2)

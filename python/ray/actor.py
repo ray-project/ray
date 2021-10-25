@@ -9,8 +9,7 @@ from ray._private.runtime_env.validation import (
     override_task_or_actor_runtime_env, ParsedRuntimeEnv)
 import ray.worker
 from ray.util.annotations import PublicAPI
-from ray.util.placement_group import (
-    PlacementGroup, check_placement_group_index, get_current_placement_group)
+from ray.util.placement_group import configure_placement_group_based_on_context
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
@@ -670,22 +669,6 @@ class ActorClass:
                 "actor `lifetime` argument must be either `None` or 'detached'"
             )
 
-        if placement_group_capture_child_tasks is None:
-            placement_group_capture_child_tasks = (
-                worker.should_capture_child_tasks_in_placement_group)
-
-        if placement_group == "default":
-            if placement_group_capture_child_tasks:
-                placement_group = get_current_placement_group()
-            else:
-                placement_group = PlacementGroup.empty()
-
-        if not placement_group:
-            placement_group = PlacementGroup.empty()
-
-        check_placement_group_index(placement_group,
-                                    placement_group_bundle_index)
-
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
         # decorator. Last three conditions are to check that no resources were
@@ -730,6 +713,15 @@ class ActorClass:
             cpus_to_use, meta.num_gpus, meta.memory, meta.object_store_memory,
             meta.resources, meta.accelerator_type, num_cpus, num_gpus, memory,
             object_store_memory, resources, accelerator_type)
+        if placement_group_capture_child_tasks is None:
+            placement_group_capture_child_tasks = (
+                worker.should_capture_child_tasks_in_placement_group)
+        placement_group = configure_placement_group_based_on_context(
+            placement_group_capture_child_tasks,
+            placement_group_bundle_index,
+            resources,
+            meta.class_name,
+            placement_group=placement_group)
 
         # If the actor methods require CPU resources, then set the required
         # placement resources. If actor_placement_resources is empty, then
