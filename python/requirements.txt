@@ -47,7 +47,10 @@ starlette
 # Requirements for running tests
 pyarrow==4.0.1
 blist; platform_system != "Windows"
-azure-common
+azure-cli-core
+azure-identity
+azure-mgmt-compute
+azure-mgmt-network
 azure-mgmt-resource
 msrestazure
 boto3
