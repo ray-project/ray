@@ -1,5 +1,5 @@
 cartpole-impala:
-    env: CartPole-v1
+    env: CartPole-v0
     run: IMPALA
     stop:
         episode_reward_mean: 150

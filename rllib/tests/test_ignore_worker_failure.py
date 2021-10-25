@@ -10,7 +10,7 @@ from ray.tune.registry import register_env
 
 class FaultInjectEnv(gym.Env):
     def __init__(self, config):
-        self.env = gym.make("CartPole-v1")
+        self.env = gym.make("CartPole-v0")
         self.action_space = self.env.action_space
         self.observation_space = self.env.observation_space
         self.config = config

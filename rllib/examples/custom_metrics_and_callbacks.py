@@ -104,7 +104,7 @@ if __name__ == "__main__":
             "training_iteration": args.stop_iters,
         },
         config={
-            "env": "CartPole-v1",
+            "env": "CartPole-v0",
             "num_envs_per_worker": 2,
             "callbacks": MyCallbacks,
             "framework": args.framework,

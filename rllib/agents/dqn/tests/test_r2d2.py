@@ -40,7 +40,7 @@ class TestR2D2(unittest.TestCase):
 
         # Test building an R2D2 agent in all frameworks.
         for _ in framework_iterator(config):
-            trainer = dqn.R2D2Trainer(config=config, env="CartPole-v1")
+            trainer = dqn.R2D2Trainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)

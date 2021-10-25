@@ -1,5 +1,5 @@
 cartpole-ddppo:
-    env: CartPole-v1
+    env: CartPole-v0
     run: DDPPO
     stop:
         episode_reward_mean: 150

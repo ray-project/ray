@@ -107,7 +107,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for fw in framework_iterator(config):
-            for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
+            for env in ["FrozenLake-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
@@ -146,7 +146,7 @@ class TestPPO(unittest.TestCase):
         # Test against all frameworks.
         for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
-            trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v1")
+            trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v0")
             # explore=False, always expect the same (deterministic) action.
             a_ = trainer.compute_single_action(
                 obs,
@@ -190,7 +190,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["vf_share_layers"] = True
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPOTrainer(config=config, env="CartPole-v1")
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
 
             # Check the free log std var is created.
@@ -238,7 +238,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["vf_share_layers"] = True
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPOTrainer(config=config, env="CartPole-v1")
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
 
             # Check no free log std var by default.

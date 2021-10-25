@@ -1,5 +1,5 @@
 cartpole-ars:
-    env: CartPole-v1
+    env: CartPole-v0
     run: ARS
     stop:
         episode_reward_mean: 150

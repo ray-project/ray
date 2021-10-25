@@ -19,9 +19,9 @@ def check_support(alg, config, test_eager=False, test_trace=True):
             continue
 
         if cont:
-            config["env"] = "Pendulum-v1"
+            config["env"] = "Pendulum-v0"
         else:
-            config["env"] = "CartPole-v1"
+            config["env"] = "CartPole-v0"
 
         a = get_trainer_class(alg)
         if test_eager:

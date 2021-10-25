@@ -333,7 +333,7 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
         name="RestoredExp", # The name can be different.
         stop={"training_iteration": 10}, # train 5 more iterations than previous
         restore="~/ray_results/Original/PG_<xxx>/checkpoint_5/checkpoint-5",
-        config={"env": "CartPole-v1"},
+        config={"env": "CartPole-v0"},
     )
 
 

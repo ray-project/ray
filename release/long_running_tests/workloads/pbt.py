@@ -46,7 +46,7 @@ run_experiments(
     {
         "pbt_test": {
             "run": "PG",
-            "env": "CartPole-v1",
+            "env": "CartPole-v0",
             "num_samples": 8,
             "config": {
                 "lr": 0.01,

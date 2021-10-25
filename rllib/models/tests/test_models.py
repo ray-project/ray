@@ -65,7 +65,7 @@ class TestModels(unittest.TestCase):
 
     def test_modelv3(self):
         config = {
-            "env": "CartPole-v1",
+            "env": "CartPole-v0",
             "model": {
                 "custom_model": RNNModel,
                 "custom_model_config": {

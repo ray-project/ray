@@ -1143,7 +1143,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "Pendulum-v1",
+        "--env", "Pendulum-v0",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\"}'",
@@ -1159,7 +1159,7 @@ py_test(
     size = "small",
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "FrozenLake-v1",
+        "--env", "FrozenLake-v0",
         "--run", "DQN",
         "--config", "'{\"framework\": \"tf\"}'",
         "--stop", "'{\"training_iteration\": 1}'"
@@ -1172,7 +1172,7 @@ py_test(
     size = "small",
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "CartPole-v1",
+        "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"lr\": 1e-3, \"exploration_config\": {\"epsilon_timesteps\": 10000, \"final_epsilon\": 0.02}, \"dueling\": false, \"hiddens\": [], \"model\": {\"fcnet_hiddens\": [64], \"fcnet_activation\": \"relu\"}}'"
@@ -1184,7 +1184,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "CartPole-v1",
+        "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2}'",
@@ -1200,7 +1200,7 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     args = [
-        "--env", "CartPole-v1",
+        "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
@@ -1226,7 +1226,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "CartPole-v1",
+        "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
@@ -1240,7 +1240,7 @@ py_test(
     srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "CartPole-v1",
+        "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
@@ -1270,7 +1270,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "CartPole-v1",
+        "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"rollout_fragment_length\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
@@ -1283,7 +1283,7 @@ py_test(
     size = "small",
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "CartPole-v1",
+        "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"rollout_fragment_length\": 500, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
@@ -1346,7 +1346,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "Pendulum-v1",
+        "--env", "Pendulum-v0",
         "--run", "APPO",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"num_gpus\": 0}'",

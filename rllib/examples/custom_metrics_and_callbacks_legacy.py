@@ -64,7 +64,7 @@ if __name__ == "__main__":
             "training_iteration": args.stop_iters,
         },
         config={
-            "env": "CartPole-v1",
+            "env": "CartPole-v0",
             "callbacks": {
                 "on_episode_start": on_episode_start,
                 "on_episode_step": on_episode_step,

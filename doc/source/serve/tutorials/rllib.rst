@@ -18,7 +18,7 @@ Let's import Ray Serve and some other helpers.
     :start-after: __doc_import_begin__
     :end-before: __doc_import_end__
 
-We will train and checkpoint a simple PPO model with ``CartPole-v1`` environment.
+We will train and checkpoint a simple PPO model with ``CartPole-v0`` environment.
 We are just writing to local disk for now. In production, you might want to consider
 loading the weights from a cloud storage (S3) or shared file system.
 

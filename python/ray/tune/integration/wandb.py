@@ -462,7 +462,7 @@ class WandbLogger(Logger):
         tune.run(
             "PPO",
             config={
-                "env": "CartPole-v1",
+                "env": "CartPole-v0",
                 "logger_config": {
                     "wandb": {
                         "project": "PPO",

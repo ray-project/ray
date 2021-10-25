@@ -12,7 +12,7 @@ class CartPole:
     """
 
     def __init__(self, config=None):
-        self.env = gym.make("CartPole-v1")
+        self.env = gym.make("CartPole-v0")
         self.action_space = Discrete(2)
         self.observation_space = Dict({
             "obs": self.env.observation_space,

@@ -65,7 +65,7 @@ class TestPlacementGroups(unittest.TestCase):
         config["num_workers"] = 2
         # 3 Trials: Can only run 2 at a time (num_cpus=6; needed: 3).
         config["lr"] = tune.grid_search([0.1, 0.01, 0.001])
-        config["env"] = "CartPole-v1"
+        config["env"] = "CartPole-v0"
         config["framework"] = "tf"
 
         class DefaultResourceRequest:
@@ -101,7 +101,7 @@ class TestPlacementGroups(unittest.TestCase):
         config["num_cpus_per_worker"] = 2
         # 3 Trials: Can only run 1 at a time (num_cpus=6; needed: 5).
         config["lr"] = tune.grid_search([0.1, 0.01, 0.001])
-        config["env"] = "CartPole-v1"
+        config["env"] = "CartPole-v0"
         config["framework"] = "torch"
         config["placement_strategy"] = "SPREAD"
 
@@ -121,7 +121,7 @@ class TestPlacementGroups(unittest.TestCase):
         config = DEFAULT_CONFIG.copy()
         config["model"]["fcnet_hiddens"] = [10]
         config["num_workers"] = 0
-        config["env"] = "CartPole-v1"
+        config["env"] = "CartPole-v0"
 
         try:
             tune.run(

@@ -103,7 +103,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["lstm_use_prev_reward"] = True
 
         for _ in framework_iterator(config):
-            trainer = ppo.PPOTrainer(config, env="CartPole-v1")
+            trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
@@ -178,7 +178,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
     def test_traj_view_next_action(self):
         action_space = Discrete(2)
         rollout_worker_w_api = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v1"),
+            env_creator=lambda _: gym.make("CartPole-v0"),
             policy_config=ppo.DEFAULT_CONFIG,
             rollout_fragment_length=200,
             policy_spec=ppo.PPOTorchPolicy,

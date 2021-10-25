@@ -75,7 +75,7 @@ of each episode (arrow heads). This way, RLlib makes sure that the
 **horizon [int]**:
   Some environments are limited by default in the number of maximum timesteps
   an episode can last. This limit is called the "horizon" of an episode.
-  For example, for CartPole-v1, the maximum number of steps per episode is 200 by default.
+  For example, for CartPole-v0, the maximum number of steps per episode is 200 by default.
   You can overwrite this setting, however, by using the ``horizon`` config.
   If provided, RLlib will first try to increase the environment's built-in horizon
   setting (e.g. openAI gym Envs have a ``spec.max_episode_steps`` property), if the user
@@ -306,7 +306,7 @@ make these modifications to your batches in your postprocessing function:
         # Modify view_requirements in the Policy object.
         action_space = Discrete(2)
         rollout_worker = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v1"),
+            env_creator=lambda _: gym.make("CartPole-v0"),
             policy_config=ppo.DEFAULT_CONFIG,
             policy_spec=ppo.PPOTorchPolicy,
         )

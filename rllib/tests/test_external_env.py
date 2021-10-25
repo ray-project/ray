@@ -168,7 +168,7 @@ class TestExternalEnv(unittest.TestCase):
     def test_train_cartpole_off_policy(self):
         register_env(
             "test3", lambda _: PartOffPolicyServing(
-                gym.make("CartPole-v1"), off_pol_frac=0.2))
+                gym.make("CartPole-v0"), off_pol_frac=0.2))
         config = {
             "num_workers": 0,
             "exploration_config": {
@@ -190,7 +190,7 @@ class TestExternalEnv(unittest.TestCase):
                 raise Exception("failed to improve reward")
 
     def test_train_cartpole(self):
-        register_env("test", lambda _: SimpleServing(gym.make("CartPole-v1")))
+        register_env("test", lambda _: SimpleServing(gym.make("CartPole-v0")))
         config = {"num_workers": 0}
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             pg = PGTrainer(env="test", config=config)
@@ -208,7 +208,7 @@ class TestExternalEnv(unittest.TestCase):
 
     def test_train_cartpole_multi(self):
         register_env("test2",
-                     lambda _: MultiServing(lambda: gym.make("CartPole-v1")))
+                     lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
         config = {"num_workers": 0}
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             pg = PGTrainer(env="test2", config=config)

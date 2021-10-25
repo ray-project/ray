@@ -28,7 +28,7 @@ class TestAPPO(unittest.TestCase):
             print("w/o v-trace")
             _config = config.copy()
             _config["vtrace"] = False
-            trainer = ppo.APPOTrainer(config=_config, env="CartPole-v1")
+            trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -39,7 +39,7 @@ class TestAPPO(unittest.TestCase):
             print("w/ v-trace")
             _config = config.copy()
             _config["vtrace"] = True
-            trainer = ppo.APPOTrainer(config=_config, env="CartPole-v1")
+            trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -63,7 +63,7 @@ class TestAPPO(unittest.TestCase):
 
         # Only supported for tf so far.
         for _ in framework_iterator(config, frameworks=("tf2", "tf")):
-            trainer = ppo.APPOTrainer(config=config, env="CartPole-v1")
+            trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -105,7 +105,7 @@ class TestAPPO(unittest.TestCase):
                 LEARNER_STATS_KEY]["entropy_coeff"]
 
         for _ in framework_iterator(config):
-            trainer = ppo.APPOTrainer(config=config, env="CartPole-v1")
+            trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
 
             coeff = _step_n_times(trainer, 3)  # 60 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.001 here.

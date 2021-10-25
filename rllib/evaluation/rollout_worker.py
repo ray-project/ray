@@ -116,7 +116,7 @@ class RolloutWorker(ParallelIteratorWorker):
     Examples:
         >>> # Create a rollout worker and using it to collect experiences.
         >>> worker = RolloutWorker(
-        ...   env_creator=lambda _: gym.make("CartPole-v1"),
+        ...   env_creator=lambda _: gym.make("CartPole-v0"),
         ...   policy_spec=PGTFPolicy)
         >>> print(worker.sample())
         SampleBatch({

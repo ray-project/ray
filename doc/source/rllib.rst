@@ -31,7 +31,7 @@ Then, you can try out training in the following equivalent ways:
 
 .. code-block:: bash
 
-  rllib train --run=PPO --env=CartPole-v1  # -v [-vv] for verbose,
+  rllib train --run=PPO --env=CartPole-v0  # -v [-vv] for verbose,
                                            # --config='{"framework": "tf2", "eager_tracing": true}' for eager,
                                            # --torch to use PyTorch OR --config='{"framework": "torch"}'
 
@@ -39,7 +39,7 @@ Then, you can try out training in the following equivalent ways:
 
   from ray import tune
   from ray.rllib.agents.ppo import PPOTrainer
-  tune.run(PPOTrainer, config={"env": "CartPole-v1"})  # "log_level": "INFO" for verbose,
+  tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "log_level": "INFO" for verbose,
                                                        # "framework": "tfe"/"tf2" for eager,
                                                        # "framework": "torch" for PyTorch
 

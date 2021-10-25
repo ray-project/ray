@@ -55,7 +55,7 @@ if __name__ == "__main__":
     # Simple environment with 4 independent cartpole entities
     register_env("multi_agent_cartpole",
                  lambda _: MultiAgentCartPole({"num_agents": 4}))
-    single_dummy_env = gym.make("CartPole-v1")
+    single_dummy_env = gym.make("CartPole-v0")
     obs_space = single_dummy_env.observation_space
     act_space = single_dummy_env.action_space
 

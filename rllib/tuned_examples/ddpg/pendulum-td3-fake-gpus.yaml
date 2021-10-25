@@ -1,5 +1,5 @@
 pendulum-td3-fake-gpus:
-    env: Pendulum-v1
+    env: Pendulum-v0
     run: TD3
     stop:
         episode_reward_mean: -900

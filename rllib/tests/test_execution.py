@@ -29,12 +29,12 @@ def iter_list(values):
 
 def make_workers(n):
     local = RolloutWorker(
-        env_creator=lambda _: gym.make("CartPole-v1"),
+        env_creator=lambda _: gym.make("CartPole-v0"),
         policy_spec=PPOTFPolicy,
         rollout_fragment_length=100)
     remotes = [
         RolloutWorker.as_remote().remote(
-            env_creator=lambda _: gym.make("CartPole-v1"),
+            env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=PPOTFPolicy,
             rollout_fragment_length=100) for _ in range(n)
     ]

@@ -1,6 +1,6 @@
 # Same configs as Pendulum
 cartpole-maml:
-    env: CartPole-v1
+    env: CartPole-v0
     run: MAML
     stop:
         training_iteration: 100   

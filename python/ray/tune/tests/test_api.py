@@ -293,10 +293,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = run_experiments({
             "foo": {
                 "run": "f1",
-                "env": "CartPole-v1",
+                "env": "CartPole-v0",
             }
         })
-        self.assertEqual(trial.config["env"], "CartPole-v1")
+        self.assertEqual(trial.config["env"], "CartPole-v0")
 
     def testConfigPurity(self):
         def train(config, reporter):

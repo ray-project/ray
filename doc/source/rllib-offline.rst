@@ -21,7 +21,7 @@ In this example, we will save batches of experiences generated during online tra
 
     $ rllib train
         --run=PG \
-        --env=CartPole-v1 \
+        --env=CartPole-v0 \
         --config='{"output": "/tmp/cartpole-out", "output_max_file_size": 5000000}' \
         --stop='{"timesteps_total": 100000}'
 
@@ -41,7 +41,7 @@ Then, we can tell DQN to train using these previously generated experiences with
 
     $ rllib train \
         --run=DQN \
-        --env=CartPole-v1 \
+        --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
             "input_evaluation": [],
@@ -53,7 +53,7 @@ Then, we can tell DQN to train using these previously generated experiences with
 
     $ rllib train \
         --run=DQN \
-        --env=CartPole-v1 \
+        --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
             "input_evaluation": ["is", "wis"],
@@ -90,7 +90,7 @@ Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When the env does not support simulation (e.g., it is a web application), it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/rllib/offline/json_writer.py>`__ class to write out batches.
-This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v1 to disk:
+This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v0 to disk:
 
 .. literalinclude:: ../../rllib/examples/saving_experiences.py
    :language: python
@@ -115,7 +115,7 @@ RLlib supports multiplexing inputs from multiple input sources, including simula
 
     $ rllib train \
         --run=DQN \
-        --env=CartPole-v1 \
+        --env=CartPole-v0 \
         --config='{
             "input": {
                 "/tmp/cartpole-out": 0.4,

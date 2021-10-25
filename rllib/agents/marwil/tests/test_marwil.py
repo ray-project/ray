@@ -29,7 +29,7 @@ class TestMARWIL(unittest.TestCase):
 
         Learns from a historic-data file.
         To generate this data, first run:
-        $ ./train.py --run=PPO --env=CartPole-v1 \
+        $ ./train.py --run=PPO --env=CartPole-v0 \
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
@@ -54,7 +54,7 @@ class TestMARWIL(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.MARWILTrainer(config=config, env="CartPole-v1")
+            trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
             learnt = False
             for i in range(num_iterations):
                 results = trainer.train()
@@ -86,7 +86,7 @@ class TestMARWIL(unittest.TestCase):
 
         Learns from a historic-data file.
         To generate this data, first run:
-        $ ./train.py --run=PPO --env=Pendulum-v1 \
+        $ ./train.py --run=PPO --env=Pendulum-v0 \
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
@@ -111,7 +111,7 @@ class TestMARWIL(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.MARWILTrainer(config=config, env="Pendulum-v1")
+            trainer = marwil.MARWILTrainer(config=config, env="Pendulum-v0")
             for i in range(num_iterations):
                 print(trainer.train())
             trainer.stop()
@@ -119,7 +119,7 @@ class TestMARWIL(unittest.TestCase):
     def test_marwil_loss_function(self):
         """
         To generate the historic data used in this test case, first run:
-        $ ./train.py --run=PPO --env=CartPole-v1 \
+        $ ./train.py --run=PPO --env=CartPole-v0 \
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
@@ -137,7 +137,7 @@ class TestMARWIL(unittest.TestCase):
             reader = JsonReader(inputs=[data_file])
             batch = reader.next()
 
-            trainer = marwil.MARWILTrainer(config=config, env="CartPole-v1")
+            trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
             model = policy.model
 

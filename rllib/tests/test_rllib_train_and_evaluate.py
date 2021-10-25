@@ -10,7 +10,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
 
 
-def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
+def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
     extra_config = ""
     if algo == "ARS":
         extra_config = ",\"train_batch_size\": 10, \"noise_size\": 250000"
@@ -66,7 +66,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
 
 
-def learn_test_plus_evaluate(algo, env="CartPole-v1"):
+def learn_test_plus_evaluate(algo, env="CartPole-v0"):
     for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ", \\\"framework\\\": \\\"{}\\\"".format(fw)
 
@@ -222,7 +222,7 @@ class TestEvaluate1(unittest.TestCase):
         evaluate_test("A3C")
 
     def test_ddpg(self):
-        evaluate_test("DDPG", env="Pendulum-v1")
+        evaluate_test("DDPG", env="Pendulum-v0")
 
 
 class TestEvaluate2(unittest.TestCase):
@@ -235,15 +235,15 @@ class TestEvaluate2(unittest.TestCase):
 
 class TestEvaluate3(unittest.TestCase):
     def test_impala(self):
-        evaluate_test("IMPALA", env="CartPole-v1")
+        evaluate_test("IMPALA", env="CartPole-v0")
 
     def test_ppo(self):
-        evaluate_test("PPO", env="CartPole-v1", test_episode_rollout=True)
+        evaluate_test("PPO", env="CartPole-v0", test_episode_rollout=True)
 
 
 class TestEvaluate4(unittest.TestCase):
     def test_sac(self):
-        evaluate_test("SAC", env="Pendulum-v1")
+        evaluate_test("SAC", env="Pendulum-v0")
 
 
 class TestTrainAndEvaluate(unittest.TestCase):

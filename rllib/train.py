@@ -27,7 +27,7 @@ torch, _ = try_import_torch()
 
 EXAMPLE_USAGE = """
 Training example via RLlib CLI:
-    rllib train --run DQN --env CartPole-v1
+    rllib train --run DQN --env CartPole-v0
 
 Grid search example via RLlib CLI:
     rllib train -f tuned_examples/cartpole-grid-search-example.yaml

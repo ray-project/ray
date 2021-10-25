@@ -19,7 +19,7 @@ You can train a simple DQN trainer with the following command:
 
 .. code-block:: bash
 
-    rllib train --run DQN --env CartPole-v1  # --config '{"framework": "tf2", "eager_tracing": true}' for eager execution
+    rllib train --run DQN --env CartPole-v0  # --config '{"framework": "tf2", "eager_tracing": true}' for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
@@ -57,11 +57,11 @@ An example of evaluating a previously trained DQN policy is as follows:
 .. code-block:: bash
 
     rllib rollout \
-        ~/ray_results/default/DQN_CartPole-v1_0upjmdgr0/checkpoint_1/checkpoint-1 \
-        --run DQN --env CartPole-v1 --steps 10000
+        ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1 \
+        --run DQN --env CartPole-v0 --steps 10000
 
 The ``rollout.py`` helper script reconstructs a DQN policy from the checkpoint
-located at ``~/ray_results/default/DQN_CartPole-v1_0upjmdgr0/checkpoint_1/checkpoint-1``
+located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
 
 (Type ``rllib rollout --help`` to see the available evaluation options.)
@@ -184,7 +184,7 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
-    trainer = ppo.PPOTrainer(config=config, env="CartPole-v1")
+    trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
     # Can optionally call trainer.restore(path) to load a checkpoint.
 
@@ -226,7 +226,7 @@ All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. Th
         "PPO",
         stop={"episode_reward_mean": 200},
         config={
-            "env": "CartPole-v1",
+            "env": "CartPole-v0",
             "num_gpus": 0,
             "num_workers": 1,
             "lr": tune.grid_search([0.01, 0.001, 0.0001]),
@@ -242,10 +242,10 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
     Resources requested: 4/4 CPUs, 0/0 GPUs
     Result logdir: ~/ray_results/my_experiment
     PENDING trials:
-     - PPO_CartPole-v1_2_lr=0.0001:	PENDING
+     - PPO_CartPole-v0_2_lr=0.0001:	PENDING
     RUNNING trials:
-     - PPO_CartPole-v1_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
-     - PPO_CartPole-v1_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
+     - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
+     - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
 ``tune.run()`` returns an ExperimentAnalysis object that allows further analysis of the training results and retrieving the checkpoint(s) of the trained agent.
 It also simplifies saving the trained agent. For example:
@@ -421,7 +421,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
     # Get a reference to the policy
     >>> from ray.rllib.agents.ppo import PPOTrainer
-    >>> trainer = PPOTrainer(env="CartPole-v1", config={"framework": "tf2", "num_workers": 0})
+    >>> trainer = PPOTrainer(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
     >>> policy = trainer.get_policy()
     <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
 
@@ -476,7 +476,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
     # Get a reference to the model through the policy
     >>> from ray.rllib.agents.dqn import DQNTrainer
-    >>> trainer = DQNTrainer(env="CartPole-v1", config={"framework": "tf2"})
+    >>> trainer = DQNTrainer(env="CartPole-v0", config={"framework": "tf2"})
     >>> model = trainer.get_policy().model
     <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 
@@ -973,7 +973,7 @@ You can use the `data output API <rllib-offline.html>`__ to save episode traces 
 
 .. code-block:: bash
 
-    rllib train --run=PPO --env=CartPole-v1 \
+    rllib train --run=PPO --env=CartPole-v0 \
         --config='{"output": "/tmp/debug", "output_compress_columns": []}'
 
     # episode traces will be saved in /tmp/debug, for example

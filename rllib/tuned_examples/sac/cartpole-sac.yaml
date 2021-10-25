@@ -1,5 +1,5 @@
 cartpole-sac:
-    env: CartPole-v1
+    env: CartPole-v0
     run: SAC
     stop:
         episode_reward_mean: 100

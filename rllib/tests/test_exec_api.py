@@ -22,7 +22,7 @@ class TestDistributedExecution(unittest.TestCase):
     def test_exec_plan_stats(ray_start_regular):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             trainer = A2CTrainer(
-                env="CartPole-v1",
+                env="CartPole-v0",
                 config={
                     "min_iter_time_s": 0,
                     "framework": fw,
@@ -43,7 +43,7 @@ class TestDistributedExecution(unittest.TestCase):
     def test_exec_plan_save_restore(ray_start_regular):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             trainer = A2CTrainer(
-                env="CartPole-v1",
+                env="CartPole-v0",
                 config={
                     "min_iter_time_s": 0,
                     "framework": fw,

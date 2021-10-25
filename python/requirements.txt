@@ -27,8 +27,7 @@ requests
 ## setup.py extras
 dm_tree
 flask
-gym<=0.20; python_version < '3.7'
-gym; python_version >= '3.7'
+gym==0.20
 lz4
 scikit-image
 opencv-python-headless==4.3.0.36

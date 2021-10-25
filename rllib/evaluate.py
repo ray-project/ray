@@ -26,14 +26,14 @@ from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
 EXAMPLE_USAGE = """
 Example usage via RLlib CLI:
     rllib evaluate /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
-    --env CartPole-v1 --steps 1000000 --out rollouts.pkl
+    --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 
 Example usage via executable:
     ./evaluate.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
-    --env CartPole-v1 --steps 1000000 --out rollouts.pkl
+    --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 
 Example usage w/o checkpoint (for testing purposes):
-    ./evaluate.py --run PPO --env CartPole-v1 --episodes 500
+    ./evaluate.py --run PPO --env CartPole-v0 --episodes 500
 """
 
 # Note: if you use any custom models or envs, register them here first, e.g.:
@@ -74,7 +74,7 @@ def create_parser(parser_creator=None):
         "--env",
         type=str,
         help="The environment specifier to use. This could be an openAI gym "
-        "specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
+        "specifier (e.g. `CartPole-v0`) or a full class-path (e.g. "
         "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).")
     parser.add_argument(
         "--local-mode",

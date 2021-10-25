@@ -11,7 +11,7 @@ except Exception:
 
 
 class CartPoleWrapper(CartPoleEnv):
-    """Wrapper for the CartPole-v1 environment.
+    """Wrapper for the Cartpole-v0 environment.
 
     Adds an additional `reward` method for some model-based RL algos (e.g.
     MB-MPO).
@@ -32,7 +32,7 @@ class CartPoleWrapper(CartPoleEnv):
 
 
 class PendulumWrapper(PendulumEnv):
-    """Wrapper for the Pendulum-v1 environment.
+    """Wrapper for the Pendulum-v0 environment.
 
     Adds an additional `reward` method for some model-based RL algos (e.g.
     MB-MPO).

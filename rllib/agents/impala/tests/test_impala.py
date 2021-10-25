@@ -28,7 +28,7 @@ class TestIMPALA(unittest.TestCase):
         config["model"]["lstm_use_prev_action"] = True
         config["model"]["lstm_use_prev_reward"] = True
         num_iterations = 1
-        env = "CartPole-v1"
+        env = "CartPole-v0"
 
         for _ in framework_iterator(config):
             local_cfg = config.copy()
@@ -63,7 +63,7 @@ class TestIMPALA(unittest.TestCase):
             [10000, 0.000001],
         ]
         config["num_gpus"] = 0  # Do not use any (fake) GPUs.
-        config["env"] = "CartPole-v1"
+        config["env"] = "CartPole-v0"
 
         def get_lr(result):
             return result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][

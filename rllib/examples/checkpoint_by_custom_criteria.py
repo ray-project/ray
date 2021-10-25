@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     # Simple PPO config.
     config = {
-        "env": "CartPole-v1",
+        "env": "CartPole-v0",
         # Run 3 trials.
         "lr": tune.grid_search([0.01, 0.001, 0.0001]),
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

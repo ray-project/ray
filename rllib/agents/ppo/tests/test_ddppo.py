@@ -26,7 +26,7 @@ class TestDDPPO(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v1")
+            trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -49,7 +49,7 @@ class TestDDPPO(unittest.TestCase):
         num_iterations = 3
 
         for _ in framework_iterator(config, "torch"):
-            trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v1")
+            trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
             for _ in range(num_iterations):
                 result = trainer.train()
                 lr = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
@@ -64,11 +64,11 @@ class TestDDPPO(unittest.TestCase):
         msg = "DDPPO doesn't support KL penalties like PPO-1"
         # import ipdb; ipdb.set_trace()
         with pytest.raises(ValueError, match=msg):
-            ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v1")
+            ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
         config["kl_coeff"] = 0.
         config["kl_target"] = 1.
         with pytest.raises(ValueError, match=msg):
-            ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v1")
+            ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
 
 
 if __name__ == "__main__":

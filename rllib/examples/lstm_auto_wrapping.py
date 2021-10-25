@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     # Create the Trainer.
     trainer = ppo.PPOTrainer(
-        env="CartPole-v1",
+        env="CartPole-v0",
         config={
             "framework": "torch",
             "model": {

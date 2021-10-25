@@ -4,4 +4,4 @@ from ray.tune import tune
 
 ray.connect("localhost:50051")
 
-tune.run("PG", config={"env": "CartPole-v1"})
+tune.run("PG", config={"env": "CartPole-v0"})

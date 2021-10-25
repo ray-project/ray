@@ -81,7 +81,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     config = {
-        "env": "CartPole-v1",
+        "env": "CartPole-v0",
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": args.framework,

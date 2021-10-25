@@ -28,7 +28,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
 
     Examples:
         >>> pg = PGTrainer(
-        ...     env="CartPole-v1", config={
+        ...     env="CartPole-v0", config={
         ...         "input": lambda ioctx:
         ...             PolicyServerInput(ioctx, addr, port),
         ...         "num_workers": 0,  # Run just 1 server, in the trainer.

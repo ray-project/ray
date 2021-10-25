@@ -124,7 +124,7 @@ class TestTrainer(unittest.TestCase):
     def test_evaluation_option(self):
         config = dqn.DEFAULT_CONFIG.copy()
         config.update({
-            "env": "CartPole-v1",
+            "env": "CartPole-v0",
             "evaluation_interval": 2,
             "evaluation_num_episodes": 2,
             "evaluation_config": {
@@ -159,7 +159,7 @@ class TestTrainer(unittest.TestCase):
     def test_evaluation_wo_evaluation_worker_set(self):
         config = a3c.DEFAULT_CONFIG.copy()
         config.update({
-            "env": "CartPole-v1",
+            "env": "CartPole-v0",
             # Switch off evaluation (this should already be the default).
             "evaluation_interval": None,
             # Use a custom callback that asserts that we are running the
@@ -190,10 +190,10 @@ class TestTrainer(unittest.TestCase):
     def test_space_inference_from_remote_workers(self):
         # Expect to not do space inference if the learner has an env.
 
-        env = gym.make("CartPole-v1")
+        env = gym.make("CartPole-v0")
 
         config = pg.DEFAULT_CONFIG.copy()
-        config["env"] = "CartPole-v1"
+        config["env"] = "CartPole-v0"
         config["num_workers"] = 1
 
         # No env on driver -> expect longer build time due to space

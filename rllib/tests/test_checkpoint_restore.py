@@ -81,11 +81,11 @@ def ckpt_restore_test(alg_name,
             print("use_object_store={}".format(use_object_store))
             cls = get_trainer_class(alg_name)
             if "DDPG" in alg_name or "SAC" in alg_name:
-                alg1 = cls(config=config, env="Pendulum-v1")
-                alg2 = cls(config=config, env="Pendulum-v1")
+                alg1 = cls(config=config, env="Pendulum-v0")
+                alg2 = cls(config=config, env="Pendulum-v0")
             else:
-                alg1 = cls(config=config, env="CartPole-v1")
-                alg2 = cls(config=config, env="CartPole-v1")
+                alg1 = cls(config=config, env="CartPole-v0")
+                alg2 = cls(config=config, env="CartPole-v0")
 
             policy1 = alg1.get_policy()
 
