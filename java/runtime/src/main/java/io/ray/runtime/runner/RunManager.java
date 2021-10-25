@@ -2,6 +2,7 @@ package io.ray.runtime.runner;
 
 import com.google.common.base.Joiner;
 import io.ray.runtime.config.RayConfig;
+import io.ray.runtime.util.NetworkUtil;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -28,6 +29,8 @@ public class RunManager {
     command.add("--head");
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
+    command.add("--node-ip-address");
+    command.add(NetworkUtil.getIpAddress(null));
     command.addAll(rayConfig.headArgs);
 
     String numGpus = System.getProperty("num-gpus");
