@@ -32,8 +32,7 @@ class SizeEstimator:
             item).total_bytes
 
 
-# This is adapted from the RLlib MeanStdFilter, referencing:
-# http://www.johndcook.com/blog/standard_deviation/
+# Adapted from the RLlib MeanStdFilter.
 class RunningMean:
     def __init__(self):
         self._n = 0
@@ -43,7 +42,6 @@ class RunningMean:
         n1 = self._n
         n2 = weight
         n = n1 + n2
-        delta = self._M - x
         M = (n1 * self._M + n2 * x) / n
         self._n = n
         self._M = M
