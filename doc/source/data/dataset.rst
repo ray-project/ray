@@ -117,16 +117,19 @@ Datasource Compatibility Matrices
      - ``ds.to_mars()``
      - (todo)
    * - Arrow Table Objects
-     - ``ds.to_arrow()``
+     - ``ds.to_arrow_refs()``
      - ✅
    * - Arrow Table Iterator
      - ``ds.iter_batches(batch_format="pyarrow")``
      - ✅
-   * - Pandas Dataframe Objects
+   * - Single Pandas Dataframe
      - ``ds.to_pandas()``
      - ✅
+   * - Pandas Dataframe Objects
+     - ``ds.to_pandas_refs()``
+     - ✅
    * - NumPy ndarray Objects
-     - ``ds.to_numpy()``
+     - ``ds.to_numpy_refs()``
      - ✅
    * - Pandas Dataframe Iterator
      - ``ds.iter_batches(batch_format="pandas")``
