@@ -105,10 +105,15 @@ class ArrowBlockBuilder(BlockBuilder[T]):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
+        # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
+        # The set of compacted tables we have built so far.
         self._tables: List["pyarrow.Table"] = []
+        # Size estimator for the compacted table values.
         self._running_mean = RunningMean()
+        # Number of rows added total so far.
         self._num_rows = 0
+        # Increases 10x each compaction until reaching max size.
         self._compaction_threshold = 1
 
     def add(self, item: Union[dict, ArrowRow]) -> None:
@@ -155,14 +160,14 @@ class ArrowBlockBuilder(BlockBuilder[T]):
 
     def _compact_if_needed(self) -> None:
         assert self._columns
-        num_uncompacted = len(iter(self._columns.values()))
+        num_uncompacted = len(next(iter(self._columns.values())))
         if num_uncompacted < self._compaction_threshold:
             return
         self._compaction_threshold *= 10
         if self._compaction_threshold > 10000:
             self._compaction_threshold = 10000
         block = pyarrow.Table.from_pydict(self._columns)
-        self._tables._append(block)
+        self._tables.append(block)
         self._running_mean.add(block.nbytes, weight=block.num_rows)
         self._columns.clear()
 
