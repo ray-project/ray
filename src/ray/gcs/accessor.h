@@ -405,9 +405,12 @@ class NodeInfoAccessor {
   virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
                               const StatusCallback &callback) = 0;
 
-  /// Cancel registration of local node to GCS synchronously.
+  /// Drain (remove the information of the node from the cluster) the local node from GCS
+  /// synchronously.
   ///
-  /// \return Status
+  /// Once the RPC is replied, it is guaranteed that GCS drains the information of the
+  /// local node, and all the nodes in the cluster will "eventually" be informed that the
+  /// node is drained. \return Status
   virtual Status DrainSelf() = 0;
 
   /// Get id of local node which was registered by 'RegisterSelf'.
@@ -428,7 +431,10 @@ class NodeInfoAccessor {
   virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                const StatusCallback &callback) = 0;
 
-  /// Cancel registration of a node to GCS asynchronously.
+  /// Drain (remove the information of the node from the cluster) the local node from GCS
+  /// asynchronously.
+  ///
+  /// Check gcs_service.proto NodeInfoGcsService.DrainNode for the API spec.
   ///
   /// \param node_id The ID of node that to be unregistered.
   /// \param callback Callback that will be called when unregistration is complete.
