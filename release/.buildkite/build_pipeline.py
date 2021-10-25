@@ -76,6 +76,7 @@ CORE_NIGHTLY_TESTS = {
         "dask_on_ray_1tb_sort",
         "many_nodes_actor_test",
         "grpc_many_nodes_actor_test",
+        "raylet_many_nodes_actor_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
