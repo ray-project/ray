@@ -21,9 +21,9 @@
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
 #include "ray/rpc/client_call.h"
+#include "ray/util/sequencer.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
-#include "ray/util/sequencer.h"
 
 namespace ray {
 
@@ -197,8 +197,7 @@ class JobInfoAccessor {
   /// \param job_id ID of the job that will be make finished to GCS.
   /// \param callback Callback that will be called after update finished.
   /// \return Status
-  virtual Status AsyncMarkFinished(const JobID &job_id,
-                                   const StatusCallback &callback);
+  virtual Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback);
 
   /// Subscribe to job updates.
   ///
@@ -283,8 +282,7 @@ class TaskInfoAccessor {
   /// \param callback Callback that is called after lookup finished.
   /// \return Status
   virtual Status AsyncGetTaskLease(
-      const TaskID &task_id,
-      const OptionalItemCallback<rpc::TaskLeaseData> &callback);
+      const TaskID &task_id, const OptionalItemCallback<rpc::TaskLeaseData> &callback);
 
   /// Subscribe asynchronously to the event that the given task lease is added in GCS.
   ///
@@ -362,8 +360,7 @@ class ObjectInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(
-      const MultiItemCallback<rpc::ObjectLocationInfo> &callback);
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback);
 
   /// Add location of object to GCS asynchronously.
   ///
@@ -494,8 +491,7 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node that to be unregistered.
   /// \param callback Callback that will be called when unregistration is complete.
   /// \return Status
-  virtual Status AsyncUnregister(const NodeID &node_id,
-                                 const StatusCallback &callback);
+  virtual Status AsyncUnregister(const NodeID &node_id, const StatusCallback &callback);
 
   /// Get information of all nodes from GCS asynchronously.
   ///
@@ -522,9 +518,9 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node to look up in local cache.
   /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
   /// \return The item returned by GCS. If the item to read doesn't exist or the node is
-  virtual /// dead, this optional object is empty.
-  const rpc::GcsNodeInfo *Get(const NodeID &node_id,
-                                      bool filter_dead_nodes = true) const;
+  virtual  /// dead, this optional object is empty.
+      const rpc::GcsNodeInfo *
+      Get(const NodeID &node_id, bool filter_dead_nodes = true) const;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
@@ -548,10 +544,10 @@ class NodeInfoAccessor {
   /// \param data_ptr The heartbeat that will be reported to GCS.
   /// \param callback Callback that will be called after report finishes.
   /// \return Status
-  virtual // TODO(micafan) NodeStateAccessor will call this method to report heartbeat.
-  Status AsyncReportHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-      const StatusCallback &callback);
+  virtual  // TODO(micafan) NodeStateAccessor will call this method to report heartbeat.
+      Status
+      AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+                           const StatusCallback &callback);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -648,8 +644,7 @@ class NodeResourceInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToResources(
-      const ItemCallback<rpc::NodeResourceChange> &subscribe,
-      const StatusCallback &done);
+      const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -770,8 +765,7 @@ class StatsInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(
-      const MultiItemCallback<rpc::ProfileTableData> &callback);
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData> &callback);
 
  private:
   GcsClient *client_impl_;
@@ -794,8 +788,7 @@ class WorkerInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToWorkerFailures(
-      const ItemCallback<rpc::WorkerDeltaData> &subscribe,
-      const StatusCallback &done);
+      const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done);
 
   /// Report a worker failure to GCS asynchronously.
   ///
@@ -923,8 +916,8 @@ class InternalKVAccessor {
   ///
   /// \param key The key to lookup.
   /// \param callback Callback that will be called after get the value.
-  virtual Status AsyncInternalKVGet(
-      const std::string &key, const OptionalItemCallback<std::string> &callback);
+  virtual Status AsyncInternalKVGet(const std::string &key,
+                                    const OptionalItemCallback<std::string> &callback);
 
   /// Asynchronously set the value for a given key.
   ///
@@ -971,7 +964,7 @@ class InternalKVAccessor {
   ///     any row is added.
   /// \return Status
   virtual Status Put(const std::string &key, const std::string &value, bool overwrite,
-             bool &added);
+                     bool &added);
 
   /// Retrive the value associated with a key
   ///

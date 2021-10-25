@@ -18,17 +18,16 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "gtest/gtest_prod.h"
 
+#include "gtest/gtest_prod.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client/accessor.h"
-#include "ray/util/logging.h"
-
-#include "ray/common/asio/periodical_runner.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -81,8 +80,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   ///
   /// \param options Options for client.
   explicit GcsClient(const GcsClientOptions &options,
-                                 std::function<bool(std::pair<std::string, int> *)>
-                                     get_gcs_server_address_func = {});
+                     std::function<bool(std::pair<std::string, int> *)>
+                         get_gcs_server_address_func = {});
 
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
@@ -177,7 +176,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
  protected:
-
   GcsClientOptions options_;
 
   /// Whether this client is connected to GCS.

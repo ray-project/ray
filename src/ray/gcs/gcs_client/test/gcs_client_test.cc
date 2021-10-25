@@ -821,8 +821,7 @@ TEST_F(GcsClientTest, TestGetAllAvailableResources) {
   EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
 }
 
-TEST_F(GcsClientTest,
-       TestGetAllAvailableResourcesWithLightResourceUsageReport) {
+TEST_F(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) {
   // Subscribe batched state of all nodes from GCS.
   std::atomic<int> resource_batch_count(0);
   auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {

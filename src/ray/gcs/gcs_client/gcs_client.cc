@@ -132,8 +132,9 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() {
   return current_gcs_server_address_;
 }
 
-bool GcsClient::GetGcsServerAddressFromRedis(
-    redisContext *context, std::pair<std::string, int> *address, int max_attempts) {
+bool GcsClient::GetGcsServerAddressFromRedis(redisContext *context,
+                                             std::pair<std::string, int> *address,
+                                             int max_attempts) {
   // Get gcs server address.
   int num_attempts = 0;
   redisReply *reply = nullptr;
