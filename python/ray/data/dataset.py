@@ -352,11 +352,10 @@ class Dataset(Generic[T]):
             splits = [self]
 
         # Coalesce each split into a single block.
-        reduce_task = cached_remote_fn(_shuffle_reduce)
+        reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
         reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
         reduce_out = [
-            reduce_task.options(num_returns=2).remote(
-                *s.get_internal_block_refs()) for s in splits
+            reduce_task.remote(*s.get_internal_block_refs()) for s in splits
         ]
         del splits  # Early-release memory.
         new_blocks, new_metadata = zip(*reduce_out)
