@@ -120,7 +120,7 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
     const auto &node_id = pair.first;
     const auto &address = pair.second;
     double start_time = absl::GetCurrentTimeNanos();
-    auto callback = [this, node_id, start_time](
+    auto callback = [this, start_time](
                         const Status &status,
                         const rpc::UpdateResourceUsageReply &reply) {
       double end_time = absl::GetCurrentTimeNanos();
