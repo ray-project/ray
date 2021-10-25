@@ -381,7 +381,7 @@ cdef prepare_args(
             except TypeError as e:
                 msg = ("There was an issue serializing the object "
                        f"{repr(arg)} for a task or actor "
-                       f"{function_descriptor.repr}. Look "
+                       f"`{function_descriptor.repr}`. Look "
                        "https://docs.ray.io/en/master/serialization.html#troubleshooting " # noqa
                        "if your object is not serializable. "
                        f"Original error message: {e}")
