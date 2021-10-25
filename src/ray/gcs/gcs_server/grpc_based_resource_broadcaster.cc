@@ -96,9 +96,8 @@ void GrpcBasedResourceBroadcaster::HandleNodeRemoved(const rpc::GcsNodeInfo &nod
 std::string GrpcBasedResourceBroadcaster::DebugString() {
   size_t node_num = 0;
   {
-
     absl::MutexLock guard(&mutex_);
-    node_num =  nodes_.size();
+    node_num = nodes_.size();
   }
   return absl::StrCat("GrpcBasedResourceBroadcaster: {Tracked nodes: ", node_num, "}");
 }
