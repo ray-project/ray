@@ -3,7 +3,7 @@
 
 # Pendulum CQL can attain ~ -300 reward in 10k from that file.
 pendulum-cql:
-    env: Pendulum-v0
+    env: Pendulum-v1
     run: CQL
     stop:
         evaluation/episode_reward_mean: -700

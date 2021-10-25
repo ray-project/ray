@@ -98,7 +98,7 @@ There are two ways to scale experience collection with Gym environments:
 
 .. image:: throughput.png
 
-You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v0 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_worker=64``.
+You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v1 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_worker=64``.
 
 Expensive Environments
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -266,11 +266,11 @@ Here are two ways to implement a centralized critic compatible with the multi-ag
 
 **Strategy 1: Sharing experiences in the trajectory preprocessor**:
 
-The most general way of implementing a centralized critic involves modifying the ``postprocess_trajectory`` method of a custom policy, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
+The most general way of implementing a centralized critic involves defining the ``postprocess_fn`` method of a custom policy. ``postprocess_fn`` is called by ``Policy.postprocess_trajectory``, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
 
 .. code-block:: python
 
-    def postprocess_trajectory(policy, sample_batch, other_agent_batches, episode):
+    def postprocess_fn(policy, sample_batch, other_agent_batches, episode):
         agents = ["agent_1", "agent_2", "agent_3"]  # simple example of 3 agents
         global_obs_batch = np.stack(
             [other_agent_batches[agent_id][1]["obs"] for agent_id in agents],
