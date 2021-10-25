@@ -929,16 +929,20 @@ def test_named_actor_cache_via_another_actor(ray_start_regular_shared):
             self.count += 1
             return self.count
 
+    # The third actor to get named actor. To indicates this cache doesn't
+    # break getting from the third party.
     @ray.remote(max_restarts=0)
     class ActorGetter:
         def get_actor_count(self, name):
             actor = ray.get_actor(name)
             return ray.get(actor.inc_and_get.remote())
 
+    # Start a actor and get it by name in driver.
     a = Counter.options(name="hi").remote()
     first_get = ray.get_actor("hi")
     assert ray.get(first_get.inc_and_get.remote()) == 1
 
+    # Start another actor as the third actor to get named actor.
     actor_getter = ActorGetter.remote()
     assert ray.get(actor_getter.get_actor_count.remote("hi")) == 2
     ray.kill(a, no_restart=True)
@@ -952,10 +956,14 @@ def test_named_actor_cache_via_another_actor(ray_start_regular_shared):
 
     wait_for_condition(actor_removed)
 
-    Counter.options(name="hi").remote()
-    assert ray.get(actor_getter.get_actor_count.remote("hi")) == 1
+    # Restart the named actor.
+    get_after_restart = Counter.options(name="hi").remote()
+    assert ray.get(get_after_restart.inc_and_get.remote()) == 1
+    # Get the named actor from the third actor again.
+    assert ray.get(actor_getter.get_actor_count.remote("hi")) == 2
+    # Get the named actor by name in driver again.
     get_by_name = ray.get_actor("hi")
-    assert ray.get(get_by_name.inc_and_get.remote()) == 2
+    assert ray.get(get_by_name.inc_and_get.remote()) == 3
 
 
 def test_wrapped_actor_handle(ray_start_regular_shared):
