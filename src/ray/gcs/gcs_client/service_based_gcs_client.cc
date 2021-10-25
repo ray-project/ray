@@ -52,8 +52,10 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   redis_client_ = std::make_shared<RedisClient>(redis_client_options);
   RAY_CHECK_OK(redis_client_->Connect(io_service));
 
-  // Init gcs pub sub instance.
-  gcs_pub_sub_ = std::make_unique<GcsPubSub>(redis_client_);
+  std::unique_ptr<pubsub::Subscriber> subscriber;
+
+  // Init GCS subscriber instance.
+  gcs_subscriber_ = std::make_unique<GcsSubscriber>(redis_client_, std::move(subscriber));
 
   // Get gcs service address.
   if (get_server_address_func_) {
@@ -125,7 +127,7 @@ void ServiceBasedGcsClient::Disconnect() {
   }
   is_connected_ = false;
   periodical_runner_.reset();
-  gcs_pub_sub_.reset();
+  gcs_subscriber_.reset();
   redis_client_->Disconnect();
   redis_client_.reset();
   RAY_LOG(DEBUG) << "ServiceBasedGcsClient Disconnected.";

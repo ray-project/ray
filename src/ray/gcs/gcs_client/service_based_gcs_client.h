@@ -36,7 +36,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
 
   void Disconnect() override;
 
-  GcsPubSub &GetGcsPubSub() { return *gcs_pub_sub_; }
+  GcsSubscriber &GetGcsSubscriber() { return *gcs_subscriber_; }
 
   rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
@@ -68,7 +68,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
 
   std::shared_ptr<RedisClient> redis_client_;
 
-  std::unique_ptr<GcsPubSub> gcs_pub_sub_;
+  std::unique_ptr<GcsSubscriber> gcs_subscriber_;
 
   // Gcs rpc client
   std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
