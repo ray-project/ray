@@ -13,44 +13,48 @@ Acceptance criteria: Should run through and print "PASSED"
 import argparse
 import json
 import os
+import tempfile
 import time
 from pathlib import Path
 
 import ray
 
 
-def test_pip_requirements_files():
-    pip_file_18 = Path("/tmp/runtime_env_pip_18.txt")
-    pip_file_18.write_text("requests==2.18.0")
+def test_pip_requirements_files(tmpdir: str):
+    """Test requirements.txt with tasks and actors.
 
-    @ray.remote
+    Test specifying in @ray.remote decorator and in .options.
+    """
+    pip_file_18 = Path(os.path.join(tmpdir, "runtime_env_pip_18.txt"))
+    pip_file_18.write_text("requests==2.18.0")
+    env_18 = {"pip": str(pip_file_18)}
+
+    pip_file_16 = Path(os.path.join(tmpdir, "runtime_env_pip_16.txt"))
+    pip_file_16.write_text("requests==2.16.0")
+    env_16 = {"pip": str(pip_file_16)}
+
+    @ray.remote(runtime_env=env_16)
     def get_version():
         import requests
         return requests.__version__
 
-    env_18 = {"pip": str(pip_file_18)}
+    # TODO(architkulkarni): Uncomment after #19002 is fixed
+    # assert ray.get(get_version.remote()) == "2.16.0"
     assert ray.get(
         get_version.options(runtime_env=env_18).remote()) == "2.18.0"
 
-    @ray.remote
+    @ray.remote(runtime_env=env_18)
     class VersionActor:
         def get_version(self):
             import requests
             return requests.__version__
 
-    pip_file_16 = Path("/tmp/runtime_env_pip_16.txt")
-    pip_file_16.write_text("requests==2.16.0")
+    # TODO(architkulkarni): Uncomment after #19002 is fixed
+    # actor_18 = VersionActor.remote()
+    # assert ray.get(actor_18.get_version.remote()) == "2.18.0"
 
-    env_16 = {"pip": str(pip_file_16)}
     actor_16 = VersionActor.options(runtime_env=env_16).remote()
     assert ray.get(actor_16.get_version.remote()) == "2.16.0"
-
-    os.remove(pip_file_18)
-    os.remove(pip_file_16)
-
-
-def main():
-    test_pip_requirements_files()
 
 
 if __name__ == "__main__":
@@ -65,12 +69,17 @@ if __name__ == "__main__":
 
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "rte_ray_client")
-    if addr is not None and addr.startswith("anyscale://"):
-        ray.init(address=addr, job_name=job_name)
-    else:
-        ray.init(address="auto")
-
-    main()
+    for use_working_dir in [True, False]:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime_env = {"working_dir": tmpdir} if use_working_dir else None
+            print("Testing with use_working_dir=" + str(use_working_dir))
+            if addr is not None and addr.startswith("anyscale://"):
+                ray.init(
+                    address=addr, job_name=job_name, runtime_env=runtime_env)
+            else:
+                ray.init(address="auto", runtime_env=runtime_env)
+            test_pip_requirements_files(tmpdir)
+            ray.shutdown()
 
     taken = time.time() - start
     result = {
@@ -81,4 +90,4 @@ if __name__ == "__main__":
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
-    print("Test Successful!")
+    print("PASSED")
