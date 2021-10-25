@@ -584,17 +584,16 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
         } else {
           if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
-            RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
-                                "raylet because it is crashed. Terminating the worker.";
+            RAY_LOG(WARNING)
+                << "The worker failed to receive a response from the local "
+                   "raylet because the raylet is crashed. Terminating the worker.";
             QuickExit();
           } else {
-            RAY_LOG(ERROR)
+            RAY_LOG(INFO)
                 << "The worker failed to receive a response from the local raylet, but "
-                   "raylet is still alive. It is an unexpected issue. Please report the "
-                   "error to https://github.com/ray-project/ray/issues.";
-            // If the request to the local request has failed, but if the raylet is still
-            // alive, it is a fatal error.
-            RAY_LOG(FATAL) << status.ToString();
+                   "raylet is still alive. Try again on a local node. Error: "
+                << status;
+            RequestNewWorkerIfNeeded(scheduling_key);
           }
         }
       },
