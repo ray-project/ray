@@ -205,8 +205,8 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster):
             self.death_probability = death_probability
             self.children = [
                 Child.options(
-                    max_concurrency=max_concurrency
-                ).remote(death_probability) for _ in range(num_children)
+                    max_concurrency=max_concurrency).remote(death_probability)
+                for _ in range(num_children)
             ]
 
         def ping(self, num_pings):
@@ -223,13 +223,12 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster):
 
         def kill(self):
             # Clean up children.
-            ray.get([child.__ray_terminate__.remote() for child in self.children])
+            ray.get(
+                [child.__ray_terminate__.remote() for child in self.children])
 
     parents = [
-        Parent.options(
-            max_concurrency=max_concurrency
-        ).remote(num_children, death_probability)
-        for _ in range(num_parents)
+        Parent.options(max_concurrency=max_concurrency).remote(
+            num_children, death_probability) for _ in range(num_parents)
     ]
 
     start = time.time()
@@ -244,8 +243,8 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster):
             parent_index = np.random.randint(len(parents))
             parents[parent_index].kill.remote()
             parents[parent_index] = Parent.options(
-                max_concurrency=max_concurrency
-            ).remote(num_children, death_probability)
+                max_concurrency=max_concurrency).remote(
+                    num_children, death_probability)
         loop_times.append(time.time() - loop_start)
     result = {}
     print("Finished in: {}s".format(time.time() - start))
@@ -264,10 +263,8 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster):
 
     # Make sure parents are still scheduleable.
     parents = [
-        Parent.options(
-            max_concurrency=max_concurrency
-        ).remote(num_children, death_probability)
-        for _ in range(num_parents)
+        Parent.options(max_concurrency=max_concurrency).remote(
+            num_children, death_probability) for _ in range(num_parents)
     ]
     ray.get([parent.ping.remote(10) for parent in parents])
 
