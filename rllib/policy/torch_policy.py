@@ -244,7 +244,8 @@ class TorchPolicy(Policy):
         with torch.no_grad():
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
             input_dict = self._lazy_tensor_dict({
-                SampleBatch.CUR_OBS: obs_batch
+                SampleBatch.CUR_OBS: obs_batch,
+                "is_training": False,
             })
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
@@ -271,6 +272,7 @@ class TorchPolicy(Policy):
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
+            input_dict.is_training = False
             # Pack internal state inputs into (separate) list.
             state_batches = [
                 input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]

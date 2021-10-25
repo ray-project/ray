@@ -36,10 +36,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
  public:
   /// Create a GcsNodeManager.
   ///
-  /// \param gcs_pub_sub GCS message publisher.
+  /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsNodeManager(std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+  explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
+                          std::shared_ptr<GcsTableStorage> gcs_table_storage);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -138,9 +138,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Storage for GCS tables.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
 
   // Debug info.
   enum CountType {

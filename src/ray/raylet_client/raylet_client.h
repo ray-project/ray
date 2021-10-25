@@ -239,13 +239,16 @@ class RayletClient : public RayletClientInterface {
   /// provided by driver will be passed to Raylet. If this is a worker connection,
   /// this will be populated with the current job config.
   /// \param worker_shim_pid The PID of the process for setup worker runtime env.
+  /// \param startup_token The startup token of the process assigned to
+  /// it during startup as a command line argument.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id,
                const int &runtime_env_hash, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::string *serialized_job_config, pid_t worker_shim_pid);
+               int *port, std::string *serialized_job_config, pid_t worker_shim_pid,
+               StartupToken startup_token);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -345,12 +348,6 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status PushError(const ray::JobID &job_id, const std::string &type,
                         const std::string &error_message, double timestamp);
-
-  /// Store some profile events in the GCS.
-  ///
-  /// \param profile_events A batch of profiling event information.
-  /// \return ray::Status.
-  ray::Status PushProfileEvents(const ProfileTableData &profile_events);
 
   /// Free a list of objects from object stores.
   ///
