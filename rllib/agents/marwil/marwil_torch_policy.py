@@ -19,7 +19,7 @@ torch, _ = try_import_torch()
 
 def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
                 train_batch: SampleBatch) -> TensorType:
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
     actions = train_batch[SampleBatch.ACTIONS]
     # log\pi_\theta(a|s)
