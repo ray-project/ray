@@ -352,11 +352,10 @@ class Dataset(Generic[T]):
             splits = [self]
 
         # Coalesce each split into a single block.
-        reduce_task = cached_remote_fn(_shuffle_reduce)
+        reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
         reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
         reduce_out = [
-            reduce_task.options(num_returns=2).remote(
-                *s.get_internal_block_refs()) for s in splits
+            reduce_task.remote(*s.get_internal_block_refs()) for s in splits
         ]
         del splits  # Early-release memory.
         new_blocks, new_metadata = zip(*reduce_out)
@@ -396,13 +395,13 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
-        cur_num_blocks = self.num_blocks()
+        curr_num_blocks = self.num_blocks()
         # Handle empty dataset.
-        if cur_num_blocks == 0:
+        if curr_num_blocks == 0:
             return self
 
         if num_blocks is None:
-            num_blocks = self._blocks.executed_num_blocks()
+            num_blocks = self._blocks.executed_num_blocks()  # Blocking.
         new_blocks = simple_shuffle(
             self._move_blocks() if _move else self._blocks,
             num_blocks,
@@ -774,9 +773,9 @@ class Dataset(Generic[T]):
             if isinstance(bl, LazyBlockList):
                 calls.extend(bl._calls)
             else:
-                calls.extend([None] * bl.num_blocks())
+                calls.extend([None] * bl.executed_num_blocks())
             metadata.extend(bl._metadata)
-            blocks.extend(list(bl.iter_partitions()))
+            blocks.extend(list(bl.iter_blocks()))
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1029,9 +1028,6 @@ class Dataset(Generic[T]):
             if m.schema:
                 return m.schema
         return None
-
-    def num_blocks(self) -> int:
-        raise DeprecationWarning("Use .num_blocks() instead.")
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
@@ -1808,12 +1804,10 @@ class Dataset(Generic[T]):
         return DatasetPipeline(Iterable(self), length=times or float("inf"))
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        raise DeprecationWarning(
-            "Use .window(partitions_per_window=n) instead of "
-            ".pipeline(parallelism=n)")
+        raise DeprecationWarning("Use .window(blocks_per_window=n) instead of "
+                                 ".pipeline(parallelism=n)")
 
-    def window(self, *,
-               partitions_per_window: int = 10) -> "DatasetPipeline[T]":
+    def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
 
         Transformations prior to the call to ``window()`` are evaluated in
@@ -1842,11 +1836,11 @@ class Dataset(Generic[T]):
         Examples:
             >>> # Create an inference pipeline.
             >>> ds = ray.data.read_binary_files(dir)
-            >>> pipe = ds.window(partitions_per_window=10).map(infer)
+            >>> pipe = ds.window(blocks_per_window=10).map(infer)
             DatasetPipeline(num_windows=40, num_stages=2)
 
             >>> # The higher the stage parallelism, the shorter the pipeline.
-            >>> pipe = ds.window(partitions_per_window=20).map(infer)
+            >>> pipe = ds.window(blocks_per_window=20).map(infer)
             DatasetPipeline(num_windows=20, num_stages=2)
 
             >>> # Outputs can be incrementally read from the pipeline.
@@ -1854,7 +1848,7 @@ class Dataset(Generic[T]):
             ...    print(item)
 
         Args:
-            partitions_per_window: The window size (parallelism) in blocks.
+            blocks_per_window: The window size (parallelism) in blocks.
                 Increasing window size increases pipeline throughput, but also
                 increases the latency to initial output, since it decreases the
                 length of the pipeline. Setting this to infinity effectively
@@ -1880,7 +1874,7 @@ class Dataset(Generic[T]):
 
         class Iterable:
             def __init__(self, blocks, epoch):
-                self._splits = blocks.split(split_size=partitions_per_window)
+                self._splits = blocks.split(split_size=blocks_per_window)
                 self._epoch = epoch
 
             def __iter__(self):
@@ -1972,7 +1966,7 @@ class Dataset(Generic[T]):
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            self._blocks.num_blocks(), count, schema_str)
+            self._blocks.initial_num_blocks(), count, schema_str)
 
     def __str__(self) -> str:
         return repr(self)

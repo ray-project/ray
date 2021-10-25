@@ -33,7 +33,7 @@ from ray.data.tests.conftest import *  # noqa
 
 def maybe_pipeline(ds, enabled):
     if enabled:
-        return ds.window(partitions_per_window=1)
+        return ds.window(blocks_per_window=1)
     else:
         return ds
 
