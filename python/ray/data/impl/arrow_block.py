@@ -13,6 +13,7 @@ except ImportError:
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
+from ray.data.impl.size_estimator import RunningMean
 
 if TYPE_CHECKING:
     import pandas
@@ -147,7 +148,8 @@ class ArrowBlockBuilder(BlockBuilder[T]):
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
-        return int(self._running_mean.mean * (self._num_rows / self._running_mean.n))
+        return int(
+            self._running_mean.mean * (self._num_rows / self._running_mean.n))
 
     def _compact_if_needed(self) -> None:
         assert self._columns
@@ -158,7 +160,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         if self._compaction_threshold > 10000:
             self._compaction_threshold = 10000
         block = pyarrow.Table.from_pydict(self._columns)
-        tables._append(block)
+        self._tables._append(block)
         self._running_mean.add(block.nbytes, weight=block.num_rows)
         self._columns.clear()
 
