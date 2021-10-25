@@ -1,9 +1,8 @@
-import ray
+import pytest
 
 from ray.tests.conftest import *  # noqa
 from ray.data.impl.simple_block import SimpleBlockBuilder
 from ray.data.impl.arrow_block import ArrowBlockBuilder
-
 
 SMALL_VALUE = "a" * 100
 LARGE_VALUE = "a" * 10000
