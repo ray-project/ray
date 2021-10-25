@@ -213,8 +213,8 @@ class Dataset(Generic[T]):
                 elif isinstance(applied, pd.core.frame.DataFrame):
                     applied = pa.Table.from_pandas(applied)
                 else:
-                    raise ValueError("The map batches UDF returned a type "
-                                     f"{type(applied)}, which is not allowed. "
+                    raise ValueError("The map batches UDF returned the value "
+                                     f"{applied}, which is not allowed. "
                                      "The return type must be either list, "
                                      "pandas.DataFrame, or pyarrow.Table")
                 builder.add_block(applied)
