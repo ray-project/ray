@@ -209,35 +209,37 @@ void CoreWorkerProcess::InitializeSystemConfig() {
               const Status &status, const rpc::GetSystemConfigReply &reply) {
             RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
                            << num_attempts;
-            if (!status.ok()) {
-              if (num_attempts <= 1) {
-                if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
-                  std::ostringstream ss;
-                  ss << "Failed to get the system config from raylet becuase "
-                     << "it is dead. Worker will terminate. Status: " << status;
-                  if (options_.worker_type == WorkerType::DRIVER) {
-                    // If it is the driver, surface the issue to the user.
-                    RAY_LOG(ERROR) << ss.str();
-                  } else {
-                    // Otherwise, print the log with lower severity that doesn't print
-                    // this to the driver.
-                    RAY_LOG(WARNING) << ss.str();
-                  }
-                  QuickExit();
-                }
-
-                RAY_LOG(FATAL)
-                    << "Failed to get the system config from Raylet on time unexpectedly."
-                    << status;
-              } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(
-                    RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
-                get_once(num_attempts - 1);
-              }
-            } else {
+            if (status.ok()) {
               promise.set_value(reply.system_config());
               io_service.stop();
+              return;
             }
+
+            if (num_attempts > 1) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(
+                  RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
+              get_once(num_attempts - 1);
+              return;
+            }
+
+            // If there's no more attempt to try.
+            if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+              std::ostringstream ss;
+              ss << "Failed to get the system config from raylet becuase "
+                  << "it is dead. Worker will terminate. Status: " << status;
+              if (options_.worker_type == WorkerType::DRIVER) {
+                // If it is the driver, surface the issue to the user.
+                RAY_LOG(ERROR) << ss.str();
+              } else {
+                RAY_LOG(WARNING) << ss.str();
+              }
+              QuickExit();
+            }
+
+            // Unexpected.
+            RAY_LOG(FATAL)
+                << "Failed to get the system config from Raylet on time unexpectedly."
+                << status;
           });
     };
 

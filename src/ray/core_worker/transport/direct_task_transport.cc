@@ -586,8 +586,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
             RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
                                 "raylet because it is crashed. Terminating the worker.";
-            // Terminate the worker ungracefully.
-            _Exit(1);
+            QuickExit();
           } else {
             RAY_LOG(ERROR)
                 << "The worker failed to receive a response from the local raylet, but "
