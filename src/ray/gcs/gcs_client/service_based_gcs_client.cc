@@ -91,26 +91,32 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
       *client_call_manager_,
       [this](rpc::GcsServiceFailureType type) { GcsServiceFailureDetected(type); });
 
+  rpc::Address gcs_address;
+  gcs_address.set_ip_address(current_gcs_server_address_.first);
+  gcs_address.set_port(current_gcs_server_address_.second);
+  /// TODO: refactor pubsub::Subscriber to avoid this.
+  gcs_address.set_worker_id(UniqueID::FromRandom().Binary());
+
   std::unique_ptr<pubsub::Subscriber> subscriber;
   if (RayConfig::instance().gcs_grpc_based_pubsub()) {
     subscriber = std::make_unique<pubsub::Subscriber>(
         /*subscriber_id=*/gcs_client_id_,
         /*channels=*/
-        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+        std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                                      rpc::ChannelType::GCS_JOB_CHANNEL,
+                                      rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+                                      rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL},
         /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
         /*get_client=*/
         [this](const rpc::Address &) {
           return std::make_shared<GcsSubscriberClient>(gcs_rpc_client_);
         },
-        /*callback_service*/ &io_service
-
-    );
+        /*callback_service*/ &io_service);
   }
 
   // Init GCS subscriber instance.
-  gcs_subscriber_ = std::make_unique<GcsSubscriber>(redis_client_, std::move(subscriber));
+  gcs_subscriber_ =
+      std::make_unique<GcsSubscriber>(redis_client_, gcs_address, std::move(subscriber));
 
   job_accessor_ = std::make_unique<ServiceBasedJobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ServiceBasedActorInfoAccessor>(this);

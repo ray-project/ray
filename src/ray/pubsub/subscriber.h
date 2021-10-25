@@ -76,9 +76,15 @@ class SubscriberChannel {
   /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
   ///
   /// \param publisher_address The publisher address that it will unsubscribe to.
-  /// \param key_id The message id to unsubscribe.
+  /// \param key_id The entity id to unsubscribe.
   /// \return True if the publisher is unsubscribed.
   bool Unsubscribe(const rpc::Address &publisher_address, const std::string &key_id);
+
+  /// Checks if the entity key_id is being subscribed to.
+  ///
+  /// \param publisher_address The publisher address to check.
+  /// \param key_id The entity id to check.
+  bool IsSubscribed(const rpc::Address &publisher_address, const std::string &key_id);
 
   /// Return true if there's no metadata leak.
   bool CheckNoLeaks() const;
@@ -188,7 +194,7 @@ class SubscriberInterface {
   /// \param sub_message The subscription message.
   /// \param channel_type The channel to subscribe to.
   /// \param publisher_address Address of the publisher to subscribe the object.
-  /// \param key_id The message id to subscribe from the publisher.
+  /// \param key_id The entity id to subscribe from the publisher.
   /// \param subscription_callback A callback that is invoked whenever the given object
   /// information is published.
   /// \param subscription_failure_callback A callback that is
@@ -204,10 +210,18 @@ class SubscriberInterface {
   ///
   /// \param channel_type The channel to unsubscribe to.
   /// \param publisher_address The publisher address that it will unsubscribe to.
-  /// \param key_id The message id to unsubscribe.
+  /// \param key_id The entity id to unsubscribe.
   virtual bool Unsubscribe(const rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
                            const std::string &key_id) = 0;
+
+  /// Checks if the entity key_id is being subscribed to.
+  ///
+  /// \param channel_type The channel to check.
+  /// \param key_id The entity id to check.
+  virtual bool IsSubscribed(const rpc::ChannelType channel_type,
+                            const rpc::Address &publisher_address,
+                            const std::string &key_id) = 0;
 
   /// Return the statistics string for the subscriber.
   virtual std::string DebugString() const = 0;
@@ -274,11 +288,17 @@ class Subscriber : public SubscriberInterface {
                    const rpc::Address &publisher_address,
                    const std::string &key_id) override;
 
-  /// Return the Channel of the given channel type.
+  bool IsSubscribed(const rpc::ChannelType channel_type,
+                    const rpc::Address &publisher_address,
+                    const std::string &key_id) override;
+
+  /// Return the Channel of the given channel type. Subscriber keeps ownership.
   SubscriberChannel *Channel(const rpc::ChannelType channel_type)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     const auto it = channels_.find(channel_type);
-    RAY_CHECK(it != channels_.end()) << "Unknown channel: " << channel_type;
+    if (it == channels_.end()) {
+      return nullptr;
+    }
     return it->second.get();
   }
 

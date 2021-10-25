@@ -17,17 +17,28 @@
 namespace ray {
 namespace gcs {
 
+// Needs to use rpc::GcsSubscriberPollRequest and rpc::GcsSubscriberPollReply here,
+// and convert the reply to rpc::PubsubLongPollingReply because GCS RPC services are
+// required to have the `status` field in replies.
 void InternalPubSubHandler::HandleGcsSubscriberPoll(
     const rpc::GcsSubscriberPollRequest &request, rpc::GcsSubscriberPollReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
-  rpc::PubsubLongPollingReply pubsub_reply;
-  gcs_publisher_->GetPublisher()->ConnectToSubscriber(subscriber_id, &pubsub_reply,
-                                                      std::move(send_reply_callback));
-  reply->mutable_pub_messages()->Swap(pubsub_reply.mutable_pub_messages());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  auto pubsub_reply = std::make_shared<rpc::PubsubLongPollingReply>();
+  gcs_publisher_->GetPublisher()->ConnectToSubscriber(
+      subscriber_id, pubsub_reply.get(),
+      [reply, reply_cb = std::move(send_reply_callback),
+       pubsub_reply = std::move(pubsub_reply)](ray::Status status,
+                                               std::function<void()> success_cb,
+                                               std::function<void()> failure_cb) {
+        reply->mutable_pub_messages()->Swap(pubsub_reply->mutable_pub_messages());
+        reply_cb(std::move(status), std::move(success_cb), std::move(failure_cb));
+      });
 }
 
+// Similar for HandleGcsSubscriberPoll() above, needs to use
+// rpc::GcsSubscriberCommandBatchReply as reply type instead of using
+// rpc::GcsSubscriberCommandBatchReply directly.
 void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     const rpc::GcsSubscriberCommandBatchRequest &request,
     rpc::GcsSubscriberCommandBatchReply *reply,

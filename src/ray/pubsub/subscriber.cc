@@ -58,6 +58,21 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
   return true;
 }
 
+bool SubscriberChannel::IsSubscribed(const rpc::Address &publisher_address,
+                                     const std::string &key_id) {
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  auto subscription_it = subscription_map_.find(publisher_id);
+  if (subscription_it == subscription_map_.end()) {
+    return false;
+  }
+  auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
+  auto subscription_callback_it = subscription_callback_map.find(key_id);
+  if (subscription_callback_it == subscription_callback_map.end()) {
+    return false;
+  }
+  return true;
+}
+
 bool SubscriberChannel::CheckNoLeaks() const {
   for (const auto &subscription : subscription_map_) {
     if (subscription.second.subscription_callback_map.size() != 0) {
@@ -183,7 +198,9 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
   auto command = std::make_unique<rpc::Command>();
   command->set_channel_type(channel_type);
   command->set_key_id(key_id);
-  command->mutable_subscribe_message()->Swap(sub_message.get());
+  if (sub_message != nullptr) {
+    command->mutable_subscribe_message()->Swap(sub_message.get());
+  }
 
   absl::MutexLock lock(&mutex_);
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
@@ -212,6 +229,17 @@ bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
   SendCommandBatchIfPossible(publisher_address);
 
   return Channel(channel_type)->Unsubscribe(publisher_address, key_id);
+}
+
+bool Subscriber::IsSubscribed(const rpc::ChannelType channel_type,
+                              const rpc::Address &publisher_address,
+                              const std::string &key_id) {
+  absl::MutexLock lock(&mutex_);
+  auto *channel = Channel(channel_type);
+  if (channel == nullptr) {
+    return false;
+  }
+  return channel->IsSubscribed(publisher_address, key_id);
 }
 
 void Subscriber::MakeLongPollingConnectionIfNotConnected(

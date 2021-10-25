@@ -233,6 +233,7 @@ class GcsPublisher {
   Status PublishWorkerFailure(const WorkerID &id, const rpc::WorkerDeltaData &message,
                               const StatusCallback &done);
 
+  /// TODO: remove since this is unused.
   /// Uses Redis pubsub.
   Status PublishTaskLease(const TaskID &id, const rpc::TaskLeaseData &message,
                           const StatusCallback &done);
@@ -267,9 +268,12 @@ class GcsSubscriber {
   /// Initializes GcsSubscriber with both Redis and GCS based GcsSubscribers.
   /// Subscribe*() member functions below would be incrementally converted to use the GCS
   /// based subscriber, if available.
+  // TODO: Support restarting GCS publisher at another address.
   GcsSubscriber(const std::shared_ptr<RedisClient> &redis_client,
+                const rpc::Address &gcs_address,
                 std::unique_ptr<pubsub::Subscriber> subscriber)
       : pubsub_(std::make_unique<GcsPubSub>(redis_client)),
+        gcs_address_(gcs_address),
         subscriber_(std::move(subscriber)) {}
 
   /// Uses Redis pubsub.
@@ -298,6 +302,7 @@ class GcsSubscriber {
   Status SubscribeAllWorkerFailures(const ItemCallback<rpc::WorkerDeltaData> &subscribe,
                                     const StatusCallback &done);
 
+  /// TODO: remove since this is unused.
   /// Uses Redis pubsub.
   Status SubscribeTaskLease(
       const TaskID &id,
@@ -327,12 +332,13 @@ class GcsSubscriber {
 
  private:
   const std::unique_ptr<GcsPubSub> pubsub_;
+  const rpc::Address gcs_address_;
   const std::unique_ptr<pubsub::Subscriber> subscriber_;
 };
 
 /// \class GcsSubscriberClient
 ///
-/// Adapts GcsRpcClient to SubscriberClientInterface. Thread safe.
+/// Adapts GcsRpcClient to SubscriberClientInterface for making RPC calls. Thread safe.
 class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
  public:
   explicit GcsSubscriberClient(const std::shared_ptr<rpc::GcsRpcClient> &rpc_client)

@@ -20,7 +20,7 @@
 namespace ray {
 namespace gcs {
 
-/// This implementation class of `InternalPubsubHandler`.
+/// This is the implementation class of `InternalPubsubHandler`.
 class InternalPubSubHandler : public rpc::InternalPubSubHandler {
  public:
   explicit InternalPubSubHandler(const std::shared_ptr<gcs::GcsPublisher> &gcs_publisher)

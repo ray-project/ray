@@ -636,7 +636,7 @@ message GcsSubscriberPollRequest {
 }
 
 message GcsSubscriberPollReply {
-  /// The object ids that are published.
+  /// The messages that are published.
   repeated PubMessage pub_messages = 1;
   GcsStatus status = 100;
 }

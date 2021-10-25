@@ -217,6 +217,7 @@ proto_library(
     srcs = ["pubsub.proto"],
     deps = [
         ":common_proto",
+        ":gcs_proto",
     ],
 )
 
