@@ -265,9 +265,10 @@ def test_nested_virtual_actor(workflow_start_regular):
         def incr(self, n):
             self.n += 1
             if n - 1 > 0:
-                return self.incr.options(name="incr",
-                                         metadata={
-                                             "current_n": self.n}).step(n - 1)
+                return self.incr.options(
+                    name="incr", metadata={
+                        "current_n": self.n
+                    }).step(n - 1)
             else:
                 return self.n
 
@@ -276,11 +277,11 @@ def test_nested_virtual_actor(workflow_start_regular):
             return self.n
 
     counter = Counter.get_or_create("counter")
-    counter.incr.options(name="incr",
-                         metadata={"outer_k": "outer_v"}).run(5)
+    counter.incr.options(name="incr", metadata={"outer_k": "outer_v"}).run(5)
 
     assert workflow.get_metadata("counter", "incr")["user_metadata"] == {
-        "outer_k": "outer_v"}
+        "outer_k": "outer_v"
+    }
     assert workflow.get_metadata("counter", "incr_1")["user_metadata"] == {
         "current_n": 1
     }
