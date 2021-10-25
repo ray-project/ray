@@ -455,11 +455,7 @@ def push_and_tag_images(py_versions: List[str],
             if DEFAULT_PYTHON_VERSION in old_tag:
                 new_tags = _create_new_tags(
                     tag_mapping[old_tag],
-                    old_str=f"-"
-                    f""
-                    f""
-                    f""
-                    f"{DEFAULT_PYTHON_VERSION}",
+                    old_str=f"-{DEFAULT_PYTHON_VERSION}",
                     new_str="")
                 tag_mapping[old_tag].extend(new_tags)
 
