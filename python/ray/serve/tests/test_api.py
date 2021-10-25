@@ -85,6 +85,36 @@ def test_starlette_response(serve_instance):
     assert resp.status_code == 418
 
 
+def test_deploy_function_no_params(serve_instance):
+    @serve.deployment
+    def d():
+        return "Hello world!"
+
+    serve.start()
+    d.deploy()
+
+    assert requests.get("http://localhost:8000/d").text == "Hello world!"
+    assert ray.get(d.get_handle().remote()) == "Hello world!"
+
+
+def test_deploy_class_no_params(serve_instance):
+    @serve.deployment
+    class Counter:
+        def __init__(self):
+            self.count = 0
+        
+        def __call__(self):
+            self.count += 1
+            return {"count": self.count}
+
+    serve.start()
+    Counter.deploy()
+
+    assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 1}
+    assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 2}
+    assert ray.get(Counter.get_handle().remote()) == {"count": 3}
+
+
 def test_user_config(serve_instance):
     @serve.deployment(
         "counter", num_replicas=2, user_config={

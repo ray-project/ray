@@ -884,17 +884,6 @@ def test_input_validation():
         Base.options(max_concurrent_queries=-1)
 
 
-def test_deploy_function_no_params(serve_instance):
-    @serve.deployment
-    def d():
-        return "Hello world!"
-
-    serve.start()
-    d.deploy()
-
-    assert requests.get("http://localhost:8000/d").text == "Hello world!"
-
-
 def test_deployment_properties():
     class DClass():
         pass
