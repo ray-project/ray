@@ -240,7 +240,7 @@ py_test(
 
 py_test(
     name = "test_runtime_env",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "post_wheel_build", "team:serve"],
     deps = [":serve_lib"],
