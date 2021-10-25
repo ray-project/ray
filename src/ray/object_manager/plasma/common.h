@@ -121,6 +121,7 @@ class LocalObject {
     object->metadata_size = GetObjectInfo().metadata_size;
     object->device_num = GetAllocation().device_num;
     object->mmap_size = GetAllocation().mmap_size;
+    object->address = GetAllocation().address;
   }
 
  private:

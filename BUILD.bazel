@@ -312,11 +312,11 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":plasma_fbs",
+        ":plasma_store_server_lib",
         ":ray_common",
         ":ray_util",
         "//src/ray/protobuf:common_cc_proto",
         "@msgpack",
-        ":plasma_store_server_lib",
     ],
 )
 
@@ -680,8 +680,8 @@ cc_library(
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
-        ":plasma_store_server_lib",
         ":plasma_client",
+        ":plasma_store_server_lib",
         ":pubsub_lib",
         ":ray_common",
         ":ray_util",

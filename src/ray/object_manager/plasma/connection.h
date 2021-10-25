@@ -1,11 +1,10 @@
 #pragma once
 
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/compat.h"
-
-#include "absl/container/flat_hash_set.h"
 
 namespace plasma {
 
@@ -58,7 +57,16 @@ class Client : public ray::ClientConnection, public ClientInterface {
   std::unordered_set<ray::ObjectID> object_ids;
 };
 
-class InProcessClient : public ClientInterface {};
+class InProcessClient : public ClientInterface {
+ public:
+  ray::Status SendFd(MEMFD_TYPE fd) override { return ray::Status::OK(); }
+  const std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids_; }
+  void MarkObjectAsUsed(const ray::ObjectID &object_id) override {}
+  void MarkObjectAsUnused(const ray::ObjectID &object_id) override {}
+
+ private:
+  std::unordered_set<ray::ObjectID> object_ids_;
+};
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);
 

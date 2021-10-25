@@ -104,7 +104,7 @@ class PlasmaStore {
   }
 
   std::pair<PlasmaObject, PlasmaError> CreateObject(
-      const ObjectID &object_id, const std::shared_ptr<Client> &client,
+      const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
       size_t object_size, bool immediately, uint64_t &req_id,
       ray::ObjectInfo &object_info, flatbuf::ObjectSource &source, int device_num);
 
@@ -112,7 +112,7 @@ class PlasmaStore {
 
   void AbortObject(const ObjectID &object_id);
 
-  void GetObjects(const std::shared_ptr<Client> &client,
+  void GetObjects(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                   bool is_from_worker, RequestFinishCallback all_objects_callback);
 
@@ -120,7 +120,8 @@ class PlasmaStore {
   ///
   /// \param object_id The object ID of the object that is being released.
   /// \param client The client making this request.
-  void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client);
+  void ReleaseObject(const ObjectID &object_id,
+                     const std::shared_ptr<ClientInterface> &client);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -129,7 +130,8 @@ class PlasmaStore {
   /// \param client The client who created the object. If this does not
   ///   match the creator of the object, then the abort will fail.
   /// \return Ok if the abort succeeds.
-  Status AbortObject(const ObjectID &object_id, const std::shared_ptr<Client> &client);
+  Status AbortObject(const ObjectID &object_id,
+                     const std::shared_ptr<ClientInterface> &client);
 
   /// Seal a vector of objects. The objects are now immutable and can be accessed with
   /// get.
@@ -182,7 +184,7 @@ class PlasmaStore {
   ///    plasma_release.
   PlasmaError CreateObjectInternal(const ray::ObjectInfo &object_info,
                                    plasma::flatbuf::ObjectSource source,
-                                   const std::shared_ptr<Client> &client,
+                                   const std::shared_ptr<ClientInterface> &client,
                                    bool fallback_allocator, PlasmaObject *result);
 
   /// Process a get request from a client. This method assumes that we will
@@ -217,7 +219,7 @@ class PlasmaStore {
                         plasma::flatbuf::MessageType type,
                         const std::vector<uint8_t> &message);
 
-  PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
+  PlasmaError HandleCreateObjectRequest(const std::shared_ptr<ClientInterface> &client,
                                         const ray::ObjectInfo object_info,
                                         const flatbuf::ObjectSource source,
                                         int device_num, bool fallback_allocator,
@@ -232,7 +234,7 @@ class PlasmaStore {
   void ReturnFromGet(const std::shared_ptr<GetRequest> &get_request);
 
   int RemoveFromClientObjectIds(const ObjectID &object_id,
-                                const std::shared_ptr<Client> &client);
+                                const std::shared_ptr<ClientInterface> &client);
 
   // Start listening for clients.
   void DoAccept();

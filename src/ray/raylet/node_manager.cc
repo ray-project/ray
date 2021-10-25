@@ -247,7 +247,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             }
             return result;
           }),
-      store_client_(std::make_shared<plasma::RemotePlasmaClient>()),
+      store_client_(std::make_shared<plasma::PlasmaClient>()),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
@@ -348,7 +348,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             self_node_id_, resource_names, nullptr));
       });
 
-  RAY_CHECK_OK(store_client_->Connect(config.store_socket_name.c_str()));
+  // RAY_CHECK_OK(store_client_->Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);

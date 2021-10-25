@@ -133,7 +133,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
 }
 
 PlasmaError PlasmaStore::HandleCreateObjectRequest(
-    const std::shared_ptr<Client> &client, const ray::ObjectInfo object_info,
+    const std::shared_ptr<ClientInterface> &client, const ray::ObjectInfo object_info,
     const flatbuf::ObjectSource source, int device_num, bool fallback_allocator,
     PlasmaObject *object, bool *spilling_required) {
   if (device_num != 0) {
@@ -166,11 +166,10 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(
   return error;
 }  // namespace plasma
 
-PlasmaError PlasmaStore::CreateObjectInternal(const ray::ObjectInfo &object_info,
-                                              fb::ObjectSource source,
-                                              const std::shared_ptr<Client> &client,
-                                              bool fallback_allocator,
-                                              PlasmaObject *result) {
+PlasmaError PlasmaStore::CreateObjectInternal(
+    const ray::ObjectInfo &object_info, fb::ObjectSource source,
+    const std::shared_ptr<ClientInterface> &client, bool fallback_allocator,
+    PlasmaObject *result) {
   auto pair = object_lifecycle_mgr_.CreateObject(object_info, source, fallback_allocator);
   auto entry = pair.first;
   auto error = pair.second;
@@ -239,8 +238,8 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
       });
 }
 
-int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
-                                           const std::shared_ptr<Client> &client) {
+int PlasmaStore::RemoveFromClientObjectIds(
+    const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client) {
   auto &object_ids = client->GetObjectIDs();
   auto it = object_ids.find(object_id);
   if (it != object_ids.end()) {
@@ -257,7 +256,7 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
 }
 
 void PlasmaStore::ReleaseObject(const ObjectID &object_id,
-                                const std::shared_ptr<Client> &client) {
+                                const std::shared_ptr<ClientInterface> &client) {
   auto entry = object_lifecycle_mgr_.GetObject(object_id);
   RAY_CHECK(entry != nullptr);
   // Remove the client from the object's array of clients.
@@ -278,7 +277,7 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
 }
 
 Status PlasmaStore::AbortObject(const ObjectID &object_id,
-                                const std::shared_ptr<Client> &client) {
+                                const std::shared_ptr<ClientInterface> &client) {
   auto &object_ids = client->GetObjectIDs();
   auto it = object_ids.find(object_id);
   if (it == object_ids.end()) {
@@ -337,8 +336,8 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
 }
 
 std::pair<PlasmaObject, PlasmaError> PlasmaStore::CreateObject(
-    const ObjectID &object_id, const std::shared_ptr<Client> &client, size_t object_size,
-    bool immediately, uint64_t &req_id, ray::ObjectInfo &object_info,
+    const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
+    size_t object_size, bool immediately, uint64_t &req_id, ray::ObjectInfo &object_info,
     flatbuf::ObjectSource &source, int device_num) {
   std::lock_guard<std::recursive_mutex> guard(mutex_);
   /// absl failed analyze mutex safety for lambda
@@ -570,7 +569,7 @@ std::string PlasmaStore::GetDebugDump() const {
   return buffer.str();
 }
 
-void PlasmaStore::GetObjects(const std::shared_ptr<Client> &client,
+void PlasmaStore::GetObjects(const std::shared_ptr<ClientInterface> &client,
                              const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                              bool is_from_worker,
                              RequestFinishCallback all_objects_callback) {

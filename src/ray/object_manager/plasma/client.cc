@@ -146,7 +146,7 @@ class Impl : public std::enable_shared_from_this<Impl> {
   ///
   /// \param store_fd File descriptor to fetch from the store.
   /// \return The pointer corresponding to store_fd.
-  uint8_t *GetStoreFdAndMmap(MEMFD_TYPE store_fd, int64_t map_size);
+  uint8_t *GetStoreFdAndMmap(MEMFD_TYPE store_fd, int64_t map_size, PlasmaObject &object);
 
   /// This is a helper method for marking an object as unused by this client.
   ///
@@ -208,13 +208,19 @@ Impl::~Impl() {}
 // If the file descriptor fd has been mmapped in this client process before,
 // return the pointer that was returned by mmap, otherwise mmap it and store the
 // pointer in a hash table.
-uint8_t *Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val, int64_t map_size) {
+uint8_t *Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val, int64_t map_size,
+                                 PlasmaObject &object) {
   auto entry = mmap_table_.find(store_fd_val);
   if (entry != mmap_table_.end()) {
     return entry->second->pointer();
   } else {
     MEMFD_TYPE fd;
-    RAY_CHECK_OK(store_conn_->RecvFd(&fd.first));
+    // TODO:
+    if (store_conn_) {
+      RAY_CHECK_OK(store_conn_->RecvFd(&fd.first));
+    } else {
+      fd.first = store_fd_val.first;
+    }
     fd.second = store_fd_val.second;
     // Close and erase the old duplicated fd entry that is no longer needed.
     if (dedup_fd_table_.find(store_fd_val.first) != dedup_fd_table_.end()) {
@@ -224,7 +230,12 @@ uint8_t *Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val, int64_t map_size) {
     dedup_fd_table_[store_fd_val.first] = store_fd_val;
     RAY_LOG(INFO) << "map_size " << map_size << " fd.first " << fd.first << " fd.second "
                   << fd.second;
-    mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
+    if (store_conn_) {
+      mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
+    } else {
+      mmap_table_[store_fd_val] =
+          std::make_unique<ClientMmapTableEntry>((uint8_t *)object.address, map_size);
+    }
     return mmap_table_[store_fd_val]->pointer();
   }
 }
@@ -233,7 +244,8 @@ uint8_t *Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val, int64_t map_size) {
 // process before.
 uint8_t *Impl::LookupMmappedFile(MEMFD_TYPE store_fd_val) {
   auto entry = mmap_table_.find(store_fd_val);
-  RAY_CHECK(entry != mmap_table_.end());
+  RAY_CHECK(entry != mmap_table_.end())
+      << "store_fd " << store_fd_val.first << " " << store_fd_val.second;
   return entry->second->pointer();
 }
 
@@ -251,6 +263,8 @@ void Impl::IncrementObjectCount(const ObjectID &object_id, PlasmaObject *object,
   auto elem = objects_in_use_.find(object_id);
   ObjectInUseEntry *object_entry;
   if (elem == objects_in_use_.end()) {
+    RAY_LOG(INFO) << "IncrementObjectCount object_id " << object_id << " "
+                  << object->store_fd.first << " " << object->store_fd.second;
     // Add this object ID to the hash table of object IDs in use. The
     // corresponding call to free happens in PlasmaClient::Release.
     objects_in_use_[object_id] = std::make_unique<ObjectInUseEntry>();
@@ -278,7 +292,8 @@ Status Impl::HandleCreateReply(const ObjectID &object_id, const uint8_t *metadat
     // The metadata should come right after the data.
     RAY_CHECK(object.metadata_offset == object.data_offset + object.data_size);
     *data = std::make_shared<PlasmaMutableBuffer>(
-        client, GetStoreFdAndMmap(fd, mmap_size) + object.data_offset, object.data_size);
+        client, GetStoreFdAndMmap(fd, mmap_size, object) + object.data_offset,
+        object.data_size);
     // If plasma_create is being called from a transfer, then we will not copy the
     // metadata here. The metadata will be written along with the data streamed
     // from the transfer.
@@ -334,6 +349,7 @@ Status Impl::GetBuffers(
       std::shared_ptr<Buffer> physical_buf;
 
       if (object->device_num == 0) {
+        RAY_LOG(INFO) << "GetBuffers object_id " << object_ids[i];
         uint8_t *data = LookupMmappedFile(object->store_fd);
         physical_buf = std::make_shared<SharedMemoryBuffer>(
             data + object->data_offset, object->data_size + object->metadata_size);
@@ -367,7 +383,7 @@ Status Impl::GetBuffers(
   // in the subsequent loop based on just the store file descriptor and without
   // having to know the relevant file descriptor received from recv_fd.
   for (size_t i = 0; i < store_fds.size(); i++) {
-    GetStoreFdAndMmap(store_fds[i], mmap_sizes[i]);
+    GetStoreFdAndMmap(store_fds[i], mmap_sizes[i], object_data[i]);
   }
 
   PlasmaObject *object;
@@ -822,7 +838,8 @@ Status RemotePlasmaClient::HandleCreateReply(const ObjectID &object_id,
 
 PlasmaClient::PlasmaClient()
     : plasma_store_(plasma::plasma_store_runner->GetPlasmaStore()),
-      impl_(std::make_shared<Impl>(nullptr)) {}
+      impl_(std::make_shared<Impl>(nullptr)),
+      client_(std::make_shared<InProcessClient>()) {}
 
 PlasmaClient::~PlasmaClient() {}
 
@@ -842,7 +859,7 @@ Status PlasmaClient::CreateAndSpillIfNeeded(
   object_info.owner_port = owner_address.port();
   object_info.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   plasma_store_.ExecuteInStoreThread([&]() {
-    return plasma_store_.CreateObject(object_id, nullptr, data_size + metadata_size, true,
+    return plasma_store_.CreateObject(object_id, client_, data_size + metadata_size, true,
                                       req_id, object_info, source, device_num);
   });
   PlasmaObject result = {};
@@ -856,11 +873,17 @@ Status PlasmaClient::CreateAndSpillIfNeeded(
     RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
                    << req_id;
     plasma_store_.ExecuteInStoreThread([&]() {
-      return plasma_store_.CreateObject(object_id, nullptr, data_size + metadata_size,
+      return plasma_store_.CreateObject(object_id, client_, data_size + metadata_size,
                                         true, req_id, object_info, source, device_num);
     });
     finish = plasma_store_.TryGetObject(req_id, &result, &error);
   }
+  // PlasmaObject &object = result.first;
+
+  RAY_UNUSED(impl_->HandleCreateReply(
+      object_id, metadata, data, result,
+      std::dynamic_pointer_cast<PlasmaClient>((shared_from_this())), result.store_fd,
+      result.mmap_size));
   return Status::OK();
 }
 
@@ -878,16 +901,16 @@ Status PlasmaClient::TryCreateImmediately(
   object_info.owner_ip_address = owner_address.ip_address();
   object_info.owner_port = owner_address.port();
   object_info.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  // TODO: revert comment
-  /*auto result = */ plasma_store_.ExecuteInStoreThread([&]() {
-    return plasma_store_.CreateObject(object_id, nullptr, data_size + metadata_size, true,
+  auto result = plasma_store_.ExecuteInStoreThread([&]() {
+    return plasma_store_.CreateObject(object_id, client_, data_size + metadata_size, true,
                                       req_id, object_info, source, device_num);
   });
-  // PlasmaObject &object = result.first;
+  PlasmaObject &object = result.first;
 
-  // RAY_UNUSED(
-  //     impl_->HandleCreateReply(object_id, metadata, data, object,
-  //     std::dynamic_pointer_cast<PlasmaClient>((shared_from_this()))));
+  RAY_UNUSED(impl_->HandleCreateReply(
+      object_id, metadata, data, object,
+      std::dynamic_pointer_cast<PlasmaClient>((shared_from_this())), object.store_fd,
+      object.mmap_size));
   return Status::OK();
 }
 
@@ -903,10 +926,36 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeou
         std::promise<void> get_return;
         plasma_store_.ExecuteInStoreThread([&]() {
           return plasma_store_.GetObjects(
-              nullptr, object_ids, timeout_ms, is_from_worker,
+              client_, object_ids, timeout_ms, is_from_worker,
               [&](const std::shared_ptr<GetRequest> &get_request,
-                  std::vector<MEMFD_TYPE> &store_fds,
-                  std::vector<int64_t> &mmap_sizes) { get_return.set_value(); });
+                  std::vector<MEMFD_TYPE> &fds, std::vector<int64_t> &sizes) {
+                size_t num_objects = object_ids.size();
+                for (size_t i = 0; i < num_objects; ++i) {
+                  received_object_ids[i] = object_ids[i];
+                }
+                for (size_t i = 0; i < num_objects; ++i) {
+                  const ObjectID &object_id = object_ids[i];
+                  object_data[i].store_fd.first =
+                      get_request->objects[object_id].store_fd.first;
+                  object_data[i].store_fd.second =
+                      get_request->objects[object_id].store_fd.second;
+                  object_data[i].data_offset =
+                      get_request->objects[object_id].data_offset;
+                  object_data[i].data_size = get_request->objects[object_id].data_size;
+                  object_data[i].metadata_offset =
+                      get_request->objects[object_id].metadata_offset;
+                  object_data[i].metadata_size =
+                      get_request->objects[object_id].metadata_size;
+                  object_data[i].device_num = get_request->objects[object_id].device_num;
+                }
+
+                for (size_t i = 0; i < fds.size(); i++) {
+                  store_fds.push_back({fds[i].first, fds[i].second});
+                  mmap_sizes.push_back(sizes[i]);
+                }
+
+                get_return.set_value();
+              });
         });
         get_return.get_future().get();
         return Status::OK();
@@ -920,7 +969,7 @@ Status PlasmaClient::Release(const ObjectID &object_id) {
       object_id,
       [this, object_id]() {
         return plasma_store_.ExecuteInStoreThread([&]() {
-          plasma_store_.ReleaseObject(object_id, nullptr);
+          plasma_store_.ReleaseObject(object_id, client_);
           return Status::OK();
         });
       },
@@ -941,7 +990,7 @@ Status PlasmaClient::Abort(const ObjectID &object_id) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return impl_->Abort(object_id, [this, object_id]() {
     return plasma_store_.ExecuteInStoreThread(
-        [&]() { return plasma_store_.AbortObject(object_id, nullptr); });
+        [&]() { return plasma_store_.AbortObject(object_id, client_); });
   });
 }
 

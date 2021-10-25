@@ -3,6 +3,7 @@
 #include <cerrno>
 
 #ifndef _WIN32
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
@@ -30,10 +31,15 @@ ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd, int64_t map_size)
       mmap(NULL, length_, PROT_READ | PROT_WRITE, MAP_SHARED, fd.first, 0));
   // TODO(pcm): Don't fail here, instead return a Status.
   if (pointer_ == MAP_FAILED) {
-    RAY_LOG(FATAL) << "mmap failed";
+    RAY_LOG(FATAL) << "mmap failed: " << strerror(errno);
   }
   close(fd.first);  // Closing this fd has an effect on performance.
 #endif
+}
+
+ClientMmapTableEntry::ClientMmapTableEntry(uint8_t *address, int64_t map_size)
+    : pointer_(address) {
+  length_ = map_size - kMmapRegionsGap;
 }
 
 ClientMmapTableEntry::~ClientMmapTableEntry() {
