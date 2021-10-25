@@ -13,9 +13,10 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
-#include "ray/common/asio/instrumented_io_context.h"
 
 #include <boost/algorithm/string.hpp>
+
+#include "ray/common/asio/instrumented_io_context.h"
 
 namespace ray {
 namespace gcs {
@@ -36,7 +37,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   options.enable_sync_conn_ = true;
   options.enable_async_conn_ = false;
   options.enable_subscribe_conn_ = false;
-  gcs_client_.reset(new ServiceBasedGcsClient(options));
+  gcs_client_.reset(new GcsClient(options));
 
   io_service_.reset(new instrumented_io_context());
 

@@ -17,7 +17,7 @@
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedJobInfoAccessor : public ServiceBasedJobInfoAccessor {
+class MockJobInfoAccessor : public JobInfoAccessor {
  public:
   MOCK_METHOD(Status, AsyncAdd,
               (const std::shared_ptr<rpc::JobTableData> &data_ptr,
@@ -42,7 +42,7 @@ class MockServiceBasedJobInfoAccessor : public ServiceBasedJobInfoAccessor {
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedActorInfoAccessor : public ServiceBasedActorInfoAccessor {
+class MockActorInfoAccessor : public ActorInfoAccessor {
  public:
   MOCK_METHOD(Status, AsyncGet,
               (const ActorID &actor_id,
@@ -88,7 +88,7 @@ class MockServiceBasedActorInfoAccessor : public ServiceBasedActorInfoAccessor {
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedNodeInfoAccessor : public ServiceBasedNodeInfoAccessor {
+class MockNodeInfoAccessor : public NodeInfoAccessor {
  public:
   MOCK_METHOD(Status, RegisterSelf,
               (const rpc::GcsNodeInfo &local_node_info, const StatusCallback &callback),
@@ -127,8 +127,7 @@ class MockServiceBasedNodeInfoAccessor : public ServiceBasedNodeInfoAccessor {
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedNodeResourceInfoAccessor
-    : public ServiceBasedNodeResourceInfoAccessor {
+class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
  public:
   MOCK_METHOD(Status, AsyncGetResources,
               (const NodeID &node_id, const OptionalItemCallback<ResourceMap> &callback),
@@ -167,7 +166,7 @@ class MockServiceBasedNodeResourceInfoAccessor
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedTaskInfoAccessor : public ServiceBasedTaskInfoAccessor {
+class MockTaskInfoAccessor : public TaskInfoAccessor {
  public:
   MOCK_METHOD(Status, AsyncAdd,
               (const std::shared_ptr<rpc::TaskTableData> &data_ptr,
@@ -206,7 +205,7 @@ class MockServiceBasedTaskInfoAccessor : public ServiceBasedTaskInfoAccessor {
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedObjectInfoAccessor : public ServiceBasedObjectInfoAccessor {
+class MockObjectInfoAccessor : public ObjectInfoAccessor {
  public:
   MOCK_METHOD(Status, AsyncGetLocations,
               (const ObjectID &object_id,
@@ -244,7 +243,7 @@ class MockServiceBasedObjectInfoAccessor : public ServiceBasedObjectInfoAccessor
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedStatsInfoAccessor : public ServiceBasedStatsInfoAccessor {
+class MockStatsInfoAccessor : public StatsInfoAccessor {
  public:
   MOCK_METHOD(Status, AsyncAddProfileData,
               (const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
@@ -260,7 +259,7 @@ class MockServiceBasedStatsInfoAccessor : public ServiceBasedStatsInfoAccessor {
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedErrorInfoAccessor : public ServiceBasedErrorInfoAccessor {
+class MockErrorInfoAccessor : public ErrorInfoAccessor {
  public:
   MOCK_METHOD(Status, AsyncReportJobError,
               (const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
@@ -274,7 +273,7 @@ class MockServiceBasedErrorInfoAccessor : public ServiceBasedErrorInfoAccessor {
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedWorkerInfoAccessor : public ServiceBasedWorkerInfoAccessor {
+class MockWorkerInfoAccessor : public WorkerInfoAccessor {
  public:
   MOCK_METHOD(Status, AsyncSubscribeToWorkerFailures,
               (const ItemCallback<rpc::WorkerDeltaData> &subscribe,
@@ -303,8 +302,7 @@ class MockServiceBasedWorkerInfoAccessor : public ServiceBasedWorkerInfoAccessor
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedPlacementGroupInfoAccessor
-    : public ServiceBasedPlacementGroupInfoAccessor {
+class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
  public:
   MOCK_METHOD(Status, AsyncCreatePlacementGroup,
               (const PlacementGroupSpecification &placement_group_spec,
@@ -337,7 +335,7 @@ class MockServiceBasedPlacementGroupInfoAccessor
 namespace ray {
 namespace gcs {
 
-class MockServiceBasedInternalKVAccessor : public ServiceBasedInternalKVAccessor {
+class MockInternalKVAccessor : public InternalKVAccessor {
  public:
   MOCK_METHOD(Status, AsyncInternalKVKeys,
               (const std::string &prefix,
