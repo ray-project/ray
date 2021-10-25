@@ -702,15 +702,15 @@ ray.init(address="ray://localhost:24001", runtime_env={"working_dir": "."})
             f.write(os.urandom(size))
 
         output = run_string_as_driver(driver_script)
-        assert "Pushing local files" not in output
+        assert "Pushing local files" not in output, output
 
         size = SILENT_UPLOAD_SIZE_THRESHOLD + 1
         with open("test_file_1", "wb") as f:
             f.write(os.urandom(size))
 
         output = run_string_as_driver(driver_script)
-        assert "Pushing local files" in output
-        assert "complete" in output
+        assert "Pushing local files" in output, output
+        assert "complete" in output, output
 
         os.chdir(old_dir)
 
