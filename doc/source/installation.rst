@@ -154,6 +154,21 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 
   If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
 
+.. _apple-silcon-supprt:
+
+Apple Silicon Support
+---------------------
+
+Ray has experimental support for machines running Apple Silicon (such as M1 macs). To get started:
+
+1. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
+2. Ensure that the ``grpcio`` package is installed via forge and **not pypi**: ``pip uninstall grpcio; conda install grpcio``.
+3. Install Ray as you normally would: ``pip install ray``.
+
+.. note::
+
+  At this time, Apple Silicon ray wheels are being published for **releass only**. As support stabilizes, nightly wheels will be published in the future.
+
 .. _windows-support:
 
 Windows Support
