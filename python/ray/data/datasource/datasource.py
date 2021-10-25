@@ -161,6 +161,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 return list(builtins.range(start, start + count))
 
         i = 0
+        block_owner = _get_or_create_block_owner_actor()
         while i < n:
             count = min(block_size, n - i)
             if block_format == "arrow":
@@ -180,9 +181,6 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 schema = int
             else:
                 raise ValueError("Unsupported block type", block_format)
-            # TODO(ekl) we could set the owner of created read blocks to a
-            # designated actor, that is blocked by:
-            # https://github.com/ray-project/ray/issues/19659
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count,
@@ -191,11 +189,26 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
             read_tasks.append(
                 ReadTask(
                     lambda i=i, count=count, meta=meta: [(
-                        ray.put(make_block(i, count)), meta)],
+                        ray.put(make_block(i, count), _owner=block_owner), meta)],
                     meta))
             i += block_size
 
         return read_tasks
+
+
+@ray.remote(num_cpus=0)
+class _DesignatedBlockOwner:
+    pass
+
+
+def _get_or_create_block_owner_actor() -> ray.actor.ActorHandle:
+    name = "datasets_global_block_owner"
+    namespace = "datasets_global_namespace"
+    try:
+        return ray.get_actor(name=name, namespace=namespace)
+    except ValueError:
+        return _DesignatedBlockOwner.options(
+            name=name, namespace=namespace, lifetime="detached").remote()
 
 
 class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):

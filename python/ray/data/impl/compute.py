@@ -100,12 +100,11 @@ class ActorPool(ComputeStrategy):
                     size_bytes=accessor.size_bytes(),
                     schema=accessor.schema(),
                     input_files=input_files)
-                # Set the owner to the global block owner so the blocks live
-                # past the exit of this actor.
                 return new_block, new_metadata
 
         if not remote_args:
             remote_args["num_cpus"] = 1
+#        remote_args["runtime_env"] = {"env_vars": {"foo": "bar"}}
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
         self.workers = [BlockWorker.remote()]
