@@ -409,7 +409,7 @@ install_dependencies() {
 
   # RLlib testing with TF 1.x.
   if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym
+    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}"
   fi
 
   # Additional Tune dependency for Horovod.
