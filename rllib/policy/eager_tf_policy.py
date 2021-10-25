@@ -126,8 +126,6 @@ def traced_eager_policy(eager_policy_cls):
             return self._traced_learn_on_batch(samples)
 
         @override(Policy)
-        @convert_eager_inputs
-        @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
                             state_batches=None,
@@ -139,20 +137,42 @@ def traced_eager_policy(eager_policy_cls):
                             timestep=None,
                             **kwargs):
 
-            obs_batch = tf.convert_to_tensor(obs_batch)
-            state_batches = _convert_to_tf(state_batches)
-            prev_action_batch = _convert_to_tf(prev_action_batch)
-            prev_reward_batch = _convert_to_tf(prev_reward_batch)
-
+            # Create a traced version of `self._compute_action_helper`.
             if self._traced_compute_actions is None:
-                self._traced_compute_actions = tf.function(
-                    super(TracedEagerPolicy, self).compute_actions,
-                    autograph=False,
-                    experimental_relax_shapes=True)
+                self._traced_compute_actions = convert_eager_inputs(
+                    tf.function(
+                        super(TracedEagerPolicy, self)._compute_action_helper,
+                        autograph=False,
+                        experimental_relax_shapes=True))
 
-            return self._traced_compute_actions(
-                obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, explore, timestep, **kwargs)
+            # Build the input dict.
+            self._is_training = False
+            input_dict = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: tree.map_structure(
+                        lambda s: tf.convert_to_tensor(s), obs_batch),
+                },
+                _is_training=tf.constant(False))
+            self._lazy_tensor_dict(input_dict)
+            if prev_action_batch is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = \
+                    tf.convert_to_tensor(prev_action_batch)
+            if prev_reward_batch is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = \
+                    tf.convert_to_tensor(prev_reward_batch)
+
+            # Call the exploration before_compute_actions hook.
+            self.exploration.before_compute_actions(
+                timestep=timestep, explore=explore)
+
+            # Call the traced compute_actions method.
+            ret = self._traced_compute_actions(input_dict, state_batches,
+                                               episodes, explore, timestep)
+
+            # Update our global timestep by the batch size.
+            self.global_timestep += int(tree.flatten(ret[0])[0].shape[0])
+
+            return ret
 
         @override(eager_policy_cls)
         @convert_eager_outputs
@@ -479,8 +499,12 @@ def build_eager_tf_policy(
             self.exploration.before_compute_actions(
                 timestep=timestep, explore=explore, tf_sess=self.get_session())
 
-            return self._compute_action_helper(input_dict, state_batches,
-                                               episodes, explore, timestep)
+            ret = self._compute_action_helper(input_dict, state_batches,
+                                              episodes, explore, timestep)
+
+            # Update our global timestep by the batch size.
+            self.global_timestep += int(tree.flatten(ret[0])[0].shape[0])
+            return ret
 
         @override(Policy)
         def compute_actions_from_input_dict(
@@ -506,8 +530,11 @@ def build_eager_tf_policy(
             self.exploration.before_compute_actions(
                 timestep=timestep, explore=explore, tf_sess=self.get_session())
 
-            return self._compute_action_helper(input_dict, state_batches, None,
-                                               explore, timestep)
+            ret = self._compute_action_helper(input_dict, state_batches, None,
+                                              explore, timestep)
+            # Update our global timestep by the batch size.
+            self.global_timestep += int(tree.flatten(ret[0])[0].shape[0])
+            return ret
 
         @with_lock
         @convert_eager_outputs
@@ -525,8 +552,7 @@ def build_eager_tf_policy(
             self._is_training = False
             self._state_in = state_batches or []
             # Calculate RNN sequence lengths.
-            batch_size = int(
-                tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0])
+            batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
             seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches \
                 else None
 
@@ -605,9 +631,6 @@ def build_eager_tf_policy(
             # Custom extra fetches.
             if extra_action_out_fn:
                 extra_fetches.update(extra_action_out_fn(self))
-
-            # Update our global timestep by the batch size.
-            self.global_timestep += batch_size
 
             return actions, state_out, extra_fetches
 
