@@ -61,9 +61,21 @@ void GcsPlacementGroup::AddBundles(
     const ray::rpc::AddPlacementGroupBundlesRequest &request) {
   for (int i = GetBundles().size(), j = 0; j < request.bundles_size(); i++, j++) {
     auto message_bundle = placement_group_table_data_.add_bundles();
-    auto resource = MapFromProtobuf(request.bundles(j).unit_resources());
-    auto new_bundle = BuildBundle(resource, i, GetPlacementGroupID());
-    *message_bundle = std::move(new_bundle);
+    auto mutable_bundle_id = message_bundle->mutable_bundle_id();
+    mutable_bundle_id->set_bundle_index(i);
+    mutable_bundle_id->set_placement_group_id(GetPlacementGroupID().Binary());
+    auto mutable_unit_resources = message_bundle->mutable_unit_resources();
+
+    auto resources = MapFromProtobuf(request.bundles(j).unit_resources());
+    for (auto it = resources.begin(); it != resources.end();) {
+        auto current = it++;
+        // Remove a resource with value 0 because they are not allowed.
+        if (current->second == 0) {
+          resources.erase(current);
+        } else {
+          mutable_unit_resources->insert({current->first, current->second});
+        }
+    }
   }
 }
 
@@ -73,7 +85,7 @@ GcsPlacementGroup::GetUnplacedBundles() const {
 
   std::vector<std::shared_ptr<const BundleSpecification>> unplaced_bundles;
   for (const auto &bundle : bundle_specs) {
-    if (bundle.is_valid() && bundle->NodeId().IsNil()) {
+    if (bundle->IsValid() && bundle->NodeId().IsNil()) {
       unplaced_bundles.push_back(bundle);
     }
   }
@@ -252,7 +264,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
               state == rpc::PlacementGroupTableData::PENDING ||
               state == rpc::PlacementGroupTableData::REMOVED ||
-              state == rpc::PlacementGroupTableData::UPDATING))
+              state == rpc::PlacementGroupTableData::UPDATING)
         << "State: " << state;
 
     if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
@@ -376,7 +388,7 @@ void GcsPlacementGroupManager::HandleAddPlacementGroupBundles(
               << placement_group_id << ", detailed new bundles info: ";
     for (int index = 0; index < request.bundles_size(); index++) {
       debug_info << "{" << index << ": ";
-      const std::unordered_map<std::string, double> resources =
+      const absl::flat_hash_map<std::string, double> resources =
           MapFromProtobuf(request.bundles(index).unit_resources());
       for (const auto &resource : resources) {
         debug_info << "{" << resource.first << ":" << resource.second << "},";
@@ -438,7 +450,7 @@ void GcsPlacementGroupManager::AddBundlesForPlacementGroup(
   placement_group->UpdateState(rpc::PlacementGroupTableData::UPDATING);
 
   // Put it into the pending queue so that we can reschedule it next time.
-  pending_placement_groups_.emplace_back(placement_group);
+  AddToPendingQueue(placement_group, 0);
 
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
@@ -885,7 +897,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
         const auto &bundles = item.second.bundles();
         for (const auto &bundle : bundles) {
           // We don't need to remove the bundles that has been marked `invalid`.
-          if (!NodeID::FromBinary(bundle.node_id()).IsNil() && && bundle.is_valid()) {
+          if (!NodeID::FromBinary(bundle.node_id()).IsNil() && bundle.is_valid()) {
             node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
           }
         }

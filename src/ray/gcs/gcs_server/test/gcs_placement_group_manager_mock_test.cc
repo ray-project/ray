@@ -19,6 +19,7 @@
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "ray/gcs/test/gcs_test_util.h"
 // clang-format on
@@ -38,10 +39,11 @@ class GcsPlacementGroupManagerMockTest : public Test {
         std::make_shared<MockGcsPlacementGroupSchedulerInterface>();
     resource_manager_ =
         std::make_shared<MockGcsResourceManager>(io_context_, nullptr, nullptr, true);
+    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
 
     gcs_placement_group_manager_ = std::make_unique<GcsPlacementGroupManager>(
         io_context_, gcs_placement_group_scheduler_, gcs_table_storage_,
-        *resource_manager_, [](auto &) { return ""; });
+        *resource_manager_, gcs_pub_sub_, [](auto &) { return ""; });
   }
 
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
@@ -50,6 +52,8 @@ class GcsPlacementGroupManagerMockTest : public Test {
   std::shared_ptr<MockStoreClient> store_client_;
   std::shared_ptr<GcsResourceManager> resource_manager_;
   instrumented_io_context io_context_;
+  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<gcs::RedisClient> redis_client_;
 };
 
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {

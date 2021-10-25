@@ -402,6 +402,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+
   /// Get ray namespace.
   std::function<std::string(const JobID &)> get_ray_namespace_;
 
@@ -419,7 +421,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST = 4,
     GET_NAMED_PLACEMENT_GROUP_REQUEST = 5,
     SCHEDULING_PENDING_PLACEMENT_GROUP = 6,
-    CountType_MAX = 7,
+    ADD_PLACEMENT_GROUP_BUNDLES_REQUEST = 7,
+    CountType_MAX = 8,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 

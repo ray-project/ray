@@ -762,6 +762,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const PlacementGroupID &placement_group_id,
       const std::vector<std::unordered_map<std::string, double>> &bundles);
 
+  /// Check whether the placement group bundle index is valid or not.
+  /// It will throw a runtime exception if the bundle index is not valid.
+  ///
+  /// \param[in] placement_group_id The id of the placement group that is being used.
+  /// \param[in] bundle_index The bundle index that is being referenced by the actor or
+  /// task.
+  Status ValidatePlacementGroupBundleIndex(const PlacementGroupID &placement_group_id,
+                                           const int64_t &bundle_index);
+
   /// Remove a placement group. Note that this operation is synchronous.
   ///
   /// \param[in] placement_group_id The id of a placement group to remove.
@@ -1102,15 +1111,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
-
-  /// Check whether the placement group bundle index is valid or not.
-  /// It will throw a runtime exception if the bundle index is not valid.
-  ///
-  /// \param[in] placement_group_id The id of the placement group that is being used.
-  /// \param[in] bundle_index The bundle index that is being referenced by the actor or
-  /// task.
-  Status ValidatePlacementGroupBundleIndex(const PlacementGroupID &placement_group_id,
-                                           const int64_t &bundle_index);
 
   /// Helper method to fill in object status reply given an object.
   void PopulateObjectStatus(const ObjectID &object_id, std::shared_ptr<RayObject> obj,

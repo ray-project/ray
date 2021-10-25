@@ -77,7 +77,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
         io_service_, mock_placement_group_scheduler_, gcs_table_storage_,
-        *gcs_resource_manager_,
+        *gcs_resource_manager_, gcs_pub_sub_,
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; }));
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);

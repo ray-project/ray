@@ -1502,21 +1502,11 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncAddPlacementGroupBundles(
                 ? Status()
                 : Status(StatusCode(reply.status().code()), reply.status().message());
         if (status.ok()) {
-          std::ostringstream success_message;
-          success_message << "Finished add placement group bundles. placement group id = "
+          RAY_LOG(INFO) << "Finished add placement group bundles. placement group id = "
                           << placement_group_id;
-          RAY_LOG(INFO) << success_message.str();
-          RAY_EVENT(INFO, EVENT_LABEL_PLACEMENT_GROUP_ADD_BUNDLES_SUCCESS)
-                  .WithField("job_id", placement_group_id.JobId().Hex())
-              << success_message.str();
         } else {
-          std::ostringstream error_message;
-          error_message << "Placement group id = " << placement_group_id
+          RAY_LOG(ERROR) << "Placement group id = " << placement_group_id
                         << " failed to add bundles, cause " << status.message();
-          RAY_LOG(ERROR) << error_message.str();
-          RAY_EVENT(ERROR, EVENT_LABEL_PLACEMENT_GROUP_ADD_BUNDLES_FAILED)
-                  .WithField("job_id", placement_group_id.JobId().Hex())
-              << error_message.str();
         }
         callback(status);
       });

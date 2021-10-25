@@ -1031,47 +1031,6 @@ void CoreWorker::InternalHeartbeat() {
   }
 }
 
-Status CoreWorker::ValidatePlacementGroupBundleIndex(
-    const PlacementGroupID &placement_group_id, const int64_t &bundle_index) {
-  if (bundle_index != -1) {
-    const auto &all_bundle_indexes =
-        GetAllAndSubscribePlacementGroupBundleEvent(placement_group_id);
-    if (RAY_LOG_ENABLED(DEBUG)) {
-      std::ostringstream debug_info;
-      debug_info << "Got the latest bundles view: ";
-      for (const auto &bundle_view : all_bundle_indexes) {
-        debug_info << "{" << bundle_view.first << ":" << bundle_view.second << "},";
-      }
-      debug_info << " from placement group: " << placement_group_id;
-      RAY_LOG(DEBUG) << debug_info.str();
-    }
-
-    const auto bundle_pos =
-        std::find_if(all_bundle_indexes.begin(), all_bundle_indexes.end(),
-                     [bundle_index](const auto &index) {
-                       return index.second && index.first == bundle_index;
-                     });
-    if (bundle_pos == all_bundle_indexes.end()) {
-      std::vector<int> valid_bundle_indexes;
-      for (const auto &index : all_bundle_indexes) {
-        if (index.second) {
-          valid_bundle_indexes.push_back(index.first);
-        }
-      }
-      std::ostringstream valid_bundle_indexes_str;
-      std::copy(valid_bundle_indexes.begin(), valid_bundle_indexes.end(),
-                std::ostream_iterator<int>(valid_bundle_indexes_str, ","));
-      std::ostringstream error_msg;
-      error_msg << "Invalid bundle index: " << bundle_index << " in ["
-                << valid_bundle_indexes_str.str()
-                << "] when adding resource constraint for placement group: "
-                << placement_group_id;
-      return Status::Invalid(error_msg.str());
-    }
-  }
-  return Status::OK();
-}
-
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
 CoreWorker::GetAllReferenceCounts() const {
   auto counts = reference_counter_->GetAllReferenceCounts();
@@ -1793,16 +1752,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // ones
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-
-  // Check whether the bundle index is valid or not if the actor is using placement group.
-  const auto &placement_group_id = actor_creation_options.placement_options.first;
-  if (placement_group_id != PlacementGroupID::Nil()) {
-    const auto &status = ValidatePlacementGroupBundleIndex(
-        placement_group_id, actor_creation_options.placement_options.second);
-    if (!status.ok()) {
-      return status;
-    }
-  }
   auto new_placement_resources =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
                                   actor_creation_options.placement_options.first,
@@ -1968,6 +1917,47 @@ Status CoreWorker::AddPlacementGroupBundles(
     return Status::TimedOut(stream.str());
   }
   return status_future.get();
+}
+
+Status CoreWorker::ValidatePlacementGroupBundleIndex(
+    const PlacementGroupID &placement_group_id, const int64_t &bundle_index) {
+  if (bundle_index != -1) {
+    const auto &all_bundle_indexes =
+        GetAllAndSubscribePlacementGroupBundleEvent(placement_group_id);
+    if (RAY_LOG_ENABLED(DEBUG)) {
+      std::ostringstream debug_info;
+      debug_info << "Got the latest bundles view: ";
+      for (const auto &bundle_view : all_bundle_indexes) {
+        debug_info << "{" << bundle_view.first << ":" << bundle_view.second << "},";
+      }
+      debug_info << " from placement group: " << placement_group_id;
+      RAY_LOG(DEBUG) << debug_info.str();
+    }
+
+    const auto bundle_pos =
+        std::find_if(all_bundle_indexes.begin(), all_bundle_indexes.end(),
+                     [bundle_index](const auto &index) {
+                       return index.second && index.first == bundle_index;
+                     });
+    if (bundle_pos == all_bundle_indexes.end()) {
+      std::vector<int> valid_bundle_indexes;
+      for (const auto &index : all_bundle_indexes) {
+        if (index.second) {
+          valid_bundle_indexes.push_back(index.first);
+        }
+      }
+      std::ostringstream valid_bundle_indexes_str;
+      std::copy(valid_bundle_indexes.begin(), valid_bundle_indexes.end(),
+                std::ostream_iterator<int>(valid_bundle_indexes_str, ","));
+      std::ostringstream error_msg;
+      error_msg << "Invalid bundle index: " << bundle_index << " in ["
+                << valid_bundle_indexes_str.str()
+                << "] when adding resource constraint for placement group: "
+                << placement_group_id;
+      return Status::Invalid(error_msg.str());
+    }
+  }
+  return Status::OK();
 }
 
 Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {

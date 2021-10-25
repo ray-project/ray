@@ -1435,7 +1435,7 @@ cdef class CoreWorker:
             prepare_args(self, language, args, &args_vector)
 
             # Check whether the bundle index is valid or not if the actor is using placement group.
-            if (c_placement_group_id != CPlacementGroupID.Nil()):
+            if (not c_placement_group_id.IsNil()):
                 check_status(CCoreWorkerProcess.GetCoreWorker().ValidatePlacementGroupBundleIndex(c_placement_group_id, placement_group_bundle_index));
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1496,6 +1496,9 @@ cdef class CoreWorker:
             prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
 
+            # Check whether the bundle index is valid or not if the actor is using placement group.
+            if (not c_placement_group_id.IsNil()):
+                check_status(CCoreWorkerProcess.GetCoreWorker().ValidatePlacementGroupBundleIndex(c_placement_group_id, placement_group_bundle_index));
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
                     ray_function, args_vector,
