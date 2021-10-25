@@ -114,4 +114,4 @@ class BlockList:
         This may differ from initial_num_blocks() for LazyBlockList, which
         doesn't know how many blocks will be produced until tasks finish.
         """
-        return self.initial_num_blocks()
+        return len(list(self._iter_blocks()))

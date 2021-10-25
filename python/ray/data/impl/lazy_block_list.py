@@ -21,23 +21,23 @@ class LazyBlockList(BlockList):
     def __init__(self,
                  calls: Callable[[], ObjectRef[BlockPartition]],
                  metadata: List[BlockPartitionMetadata],
-                 tasks: List[ObjectRef[BlockPartition]] = None):
+                 blocks: List[ObjectRef[BlockPartition]] = None):
         self._calls = calls
-        self._num_tasks = len(self._calls)
+        self._num_blocks = len(self._calls)
         self._metadata = metadata
-        if tasks:
-            self._tasks = tasks
+        if blocks:
+            self._blocks = blocks
         else:
-            self._tasks = [None] * len(calls)
+            self._blocks = [None] * len(calls)
             # Immediately compute the first block at least.
             if calls:
-                self._tasks[0] = calls[0]()
+                self._blocks[0] = calls[0]()
         assert len(calls) == len(metadata), (calls, metadata)
-        assert len(calls) == len(self._tasks), (calls, self._tasks)
+        assert len(calls) == len(self._blocks), (calls, self._blocks)
 
     def copy(self) -> "LazyBlockList":
         return LazyBlockList(self._calls.copy(), self._metadata.copy(),
-                             self._tasks.copy())
+                             self._blocks.copy())
 
     def clear(self) -> None:
         super().clear()
@@ -49,7 +49,7 @@ class LazyBlockList(BlockList):
         num_splits = math.ceil(len(self._calls) / split_size)
         calls = np.array_split(self._calls, num_splits)
         meta = np.array_split(self._metadata, num_splits)
-        blocks = np.array_split(self._tasks, num_splits)
+        blocks = np.array_split(self._blocks, num_splits)
         output = []
         for c, m, b in zip(calls, meta, blocks):
             output.append(LazyBlockList(c.tolist(), m.tolist(), b.tolist()))
@@ -59,10 +59,10 @@ class LazyBlockList(BlockList):
     def divide(self, part_idx: int) -> ("LazyBlockList", "LazyBlockList"):
         self._check_if_cleared()
         left = LazyBlockList(self._calls[:part_idx], self._metadata[:part_idx],
-                             self._tasks[:part_idx])
+                             self._blocks[:part_idx])
         right = LazyBlockList(self._calls[part_idx:],
                               self._metadata[part_idx:],
-                              self._tasks[part_idx:])
+                              self._blocks[part_idx:])
         return left, right
 
     def iter_blocks_with_metadata(
@@ -110,19 +110,19 @@ class LazyBlockList(BlockList):
         self._check_if_cleared()
         assert i < len(self._calls), i
         # Check if we need to compute more blocks.
-        if not self._tasks[i]:
+        if not self._blocks[i]:
             # Exponentially increase the number of blocks computed per batch.
             for j in range(max(i + 1, i * 2)):
-                if j >= len(self._tasks):
+                if j >= len(self._blocks):
                     break
-                if not self._tasks[j]:
-                    self._tasks[j] = self._calls[j]()
-            assert self._tasks[i], self._tasks
-        return self._tasks[i]
+                if not self._blocks[j]:
+                    self._blocks[j] = self._calls[j]()
+            assert self._blocks[i], self._blocks
+        return self._blocks[i]
 
     def _num_computed(self) -> int:
         i = 0
-        for b in self._tasks:
+        for b in self._blocks:
             if b is not None:
                 i += 1
         return i
