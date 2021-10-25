@@ -213,8 +213,8 @@ class Dataset(Generic[T]):
                 elif isinstance(applied, pd.core.frame.DataFrame):
                     applied = pa.Table.from_pandas(applied)
                 else:
-                    raise ValueError("The map batches UDF returned the value "
-                                     f"{applied}, which is not allowed. "
+                    raise ValueError("The map batches UDF returned a type "
+                                     f"{type(applied)}, which is not allowed. "
                                      "The return type must be either list, "
                                      "pandas.DataFrame, or pyarrow.Table")
                 builder.add_block(applied)
@@ -352,10 +352,12 @@ class Dataset(Generic[T]):
             splits = [self]
 
         # Coalesce each split into a single block.
-        reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
+        reduce_task = cached_remote_fn(_shuffle_reduce)
         reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
         reduce_out = [
-            reduce_task.remote(*s.get_internal_block_refs()) for s in splits
+            reduce_task.options(
+                num_returns=2).remote(*s.get_internal_block_refs())
+            for s in splits
         ]
         del splits  # Early-release memory.
         new_blocks, new_metadata = zip(*reduce_out)
