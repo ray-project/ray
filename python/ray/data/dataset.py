@@ -397,13 +397,13 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
-        curr_num_blocks = self.num_partitions()
+        cur_num_parts = self.num_partitions()
         # Handle empty dataset.
-        if curr_num_blocks == 0:
+        if cur_num_parts == 0:
             return self
 
         if num_blocks is None:
-            num_blocks = curr_num_blocks
+            num_blocks = cur_num_parts
         new_blocks = simple_shuffle(
             self._move_blocks() if _move else self._blocks,
             num_blocks,
