@@ -2957,6 +2957,20 @@ def test_sort_arrow(ray_start_regular, num_items, parallelism):
 
 
 def test_sort_arrow_with_empty_blocks(ray_start_regular):
+    assert BlockAccessor.for_block(pa.Table.from_pydict({})).sample(
+        10, "A").num_rows == 0
+
+    partitions = BlockAccessor.for_block(pa.Table.from_pydict(
+        {})).sort_and_partition(
+            [1, 5, 10], "A", descending=False)
+    assert len(partitions) == 4
+    for partition in partitions:
+        assert partition.num_rows == 0
+
+    assert BlockAccessor.for_block(pa.Table.from_pydict(
+        {})).merge_sorted_blocks([pa.Table.from_pydict({})], "A",
+                                 False)[0].num_rows == 0
+
     ds = ray.data.from_items(
         [{
             "A": (x % 3),
