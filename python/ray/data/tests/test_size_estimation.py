@@ -76,6 +76,7 @@ def test_arrow_size_diff_values(ray_start_regular_shared):
     b = ArrowBlockBuilder()
     assert b.get_estimated_memory_usage() == 0
     b.add(ARROW_LARGE_VALUE)
+    assert b._num_compactions == 1
     assert_close(b.get_estimated_memory_usage(), 10000)
     b.add(ARROW_LARGE_VALUE)
     assert_close(b.get_estimated_memory_usage(), 20000)
@@ -84,10 +85,12 @@ def test_arrow_size_diff_values(ray_start_regular_shared):
     assert_close(b.get_estimated_memory_usage(), 100000)
     for _ in range(100):
         b.add(ARROW_SMALL_VALUE)
+    assert b._num_compactions == 2
     assert_close(b.get_estimated_memory_usage(), 200000)
     for _ in range(10000):
         b.add(ARROW_LARGE_VALUE)
     assert_close(b.get_estimated_memory_usage(), 100200000)
+    assert b._num_compactions == 4
 
 
 if __name__ == "__main__":

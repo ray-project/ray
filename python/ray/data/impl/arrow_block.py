@@ -115,6 +115,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         self._num_rows = 0
         # Increases 10x each compaction until reaching max size.
         self._compaction_threshold = 1
+        self._num_compactions = 0
 
     def add(self, item: Union[dict, ArrowRow]) -> None:
         if isinstance(item, ArrowRow):
@@ -170,6 +171,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         self._tables.append(block)
         self._running_mean.add(block.nbytes, weight=block.num_rows)
         self._columns.clear()
+        self._num_compactions += 1
 
 
 class ArrowBlockAccessor(BlockAccessor):
