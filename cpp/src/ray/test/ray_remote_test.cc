@@ -54,10 +54,16 @@ int OverloadFunc(int i, int j) {
   return i + j;
 }
 
+int OverloadFunc(int i, int j, int k) {
+  std::cout << "OverloadFunc with three arguments\n";
+  return i + j + k;
+}
+
 RAY_REMOTE(RAY_FUNC(OverloadFunc));
 RAY_REMOTE(RAY_FUNC(OverloadFunc, int));
 // Avoid compile optimizing
 RAY_REMOTE(RAY_FUNC(OverloadFunc, int, int));
+RAY_REMOTE(RAY_FUNC(OverloadFunc, int, int, int));
 
 class DummyObject {
  public:
@@ -208,6 +214,9 @@ TEST(RayApiTest, OverloadTest) {
   EXPECT_EQ(return0, 1);
   EXPECT_EQ(return1, 2);
   EXPECT_EQ(return2, 5);
+
+  auto rt3 = ray::Task(RAY_FUNC(OverloadFunc, int, int, int)).Remote(rt1, 3, rt0);
+  EXPECT_EQ(*rt3.Get(), 6);
 }
 
 /// We should consider the driver so is not same with the worker so, and find the error
