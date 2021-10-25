@@ -28,7 +28,8 @@ class SizeEstimator:
         return int(self._running_mean.mean * self._count)
 
     def _real_size(self, item: Any) -> int:
-        return ray.worker.global_worker.get_serialization_context().serialize(item).total_bytes
+        return ray.worker.global_worker.get_serialization_context().serialize(
+            item).total_bytes
 
 
 # This is adapted from the RLlib MeanStdFilter, referencing:
@@ -43,7 +44,6 @@ class RunningMean:
         n2 = weight
         n = n1 + n2
         delta = self._M - x
-        delta2 = delta * delta
         M = (n1 * self._M + n2 * x) / n
         self._n = n
         self._M = M
