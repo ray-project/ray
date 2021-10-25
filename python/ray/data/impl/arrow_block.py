@@ -122,6 +122,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             self._columns[key].append(value)
         self._num_rows += 1
         self._compact_if_needed()
+        assert self._running_mean.n > 0, self._running_mean
 
     def add_block(self, block: "pyarrow.Table") -> None:
         assert isinstance(block, pyarrow.Table), block
@@ -148,6 +149,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
+        assert self._num_rows >= self._running_mean.n
         return int(
             self._running_mean.mean * (self._num_rows / self._running_mean.n))
 
