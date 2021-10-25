@@ -719,19 +719,19 @@ class Trainer(Trainable):
             None, if local replay buffer is not needed.
         """
         # These are the agents that utilizes a local replay buffer.
-        if ("replay_buffer_config" not in config or
-                not config["replay_buffer_config"]):
+        if ("replay_buffer_config" not in config
+                or not config["replay_buffer_config"]):
             # Does not need a replay buffer.
             return None
 
         replay_buffer_config = config["replay_buffer_config"]
-        if ("type" not in replay_buffer_config or
-                replay_buffer_config["type"] != "LocalReplayBuffer"):
+        if ("type" not in replay_buffer_config
+                or replay_buffer_config["type"] != "LocalReplayBuffer"):
             # DistributedReplayBuffer coming soon.
             return None
 
         capacity = replay_buffer_config["capacity"]
-        if not capacity and config["buffer_size"]:
+        if not capacity and "buffer_size" in config:
             # Print a deprecation warning.
             deprecation_warning(
                 old="config['buffer_size']",
