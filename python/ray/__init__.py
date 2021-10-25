@@ -33,13 +33,14 @@ def _configure_system():
     # so provide a proactive error message if that's the case.
     if platform.system() == "Darwin" and platform.machine() == "arm64":
         try:
-            import grpcio  # noqa: F401
+            import grpc  # noqa: F401
         except ImportError:
-            logger.fatal("Failed to import grpc on Apple Silicon. On Apple "
-                         "Silicon machines, try `pip uninstall grpcio; conda "
-                         "install grpcio`. Check out "
-                         "https://docs.ray.io/en/master/installation.html"
-                         "#apple-silicon-support for more details.")
+            raise ImportError(
+                "Failed to import grpc on Apple Silicon. On Apple"
+                " Silicon machines, try `pip uninstall grpcio; conda "
+                "install grpcio`. Check out "
+                "https://docs.ray.io/en/master/installation.html"
+                "#apple-silicon-support for more details.")
 
     if "OMP_NUM_THREADS" not in os.environ:
         logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
