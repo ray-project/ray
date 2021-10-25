@@ -226,7 +226,7 @@ void CoreWorkerProcess::InitializeSystemConfig() {
             if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
               std::ostringstream ss;
               ss << "Failed to get the system config from raylet becuase "
-                  << "it is dead. Worker will terminate. Status: " << status;
+                 << "it is dead. Worker will terminate. Status: " << status;
               if (options_.worker_type == WorkerType::DRIVER) {
                 // If it is the driver, surface the issue to the user.
                 RAY_LOG(ERROR) << ss.str();
