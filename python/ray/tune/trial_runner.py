@@ -585,7 +585,7 @@ class TrialRunner:
                 search_alg=self._search_alg,
                 force=force)
 
-    def resume(self, run_errored_only=False) -> bool:
+    def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -630,8 +630,6 @@ class TrialRunner:
                 self.add_trial(new_trial)
             else:
                 self.add_trial(trial)
-
-        return True
 
     def update_pending_trial_resources(
             self, resources: Union[dict, PlacementGroupFactory]):
