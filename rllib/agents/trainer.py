@@ -708,7 +708,7 @@ class Trainer(Trainable):
         Trainable.log_result(self, result)
 
     @DeveloperAPI
-    def _maybe_create_local_replay_buffer(self, config):
+    def _create_local_replay_buffer_if_necessary(self, config):
         """Create a LocalReplayBuffer instance if necessary.
 
         Args:
@@ -719,8 +719,25 @@ class Trainer(Trainable):
             None, if local replay buffer is not needed.
         """
         # These are the agents that utilizes a local replay buffer.
-        if self._name not in ["DQN", "SimpleQTrainer", "CQL", "SlateQ"]:
+        if ("replay_buffer_config" not in config or
+                not config["replay_buffer_config"]):
+            # Does not need a replay buffer.
             return None
+
+        replay_buffer_config = config["replay_buffer_config"]
+        if ("type" not in replay_buffer_config or
+                replay_buffer_config["type"] != "LocalReplayBuffer"):
+            # DistributedReplayBuffer coming soon.
+            return None
+
+        capacity = replay_buffer_config["capacity"]
+        if not capacity and config["buffer_size"]:
+            # Print a deprecation warning.
+            deprecation_warning(
+                old="config['buffer_size']",
+                new="config['replay_buffer_config']['capacity']",
+                error=False)
+            capacity = config["buffer_size"]
 
         if config.get("prioritized_replay"):
             prio_args = {
@@ -734,7 +751,7 @@ class Trainer(Trainable):
         return LocalReplayBuffer(
             num_shards=1,
             learning_starts=config["learning_starts"],
-            capacity=config["buffer_size"],
+            capacity=capacity,
             replay_batch_size=config["train_batch_size"],
             replay_mode=config["multiagent"]["replay_mode"],
             replay_sequence_length=config.get("replay_sequence_length", 1),
@@ -817,7 +834,7 @@ class Trainer(Trainable):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # Create local replay buffer if necessary.
-        self.local_replay_buffer = self._maybe_create_local_replay_buffer(
+        self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
             self.config)
 
         self._init(self.config, self.env_creator)

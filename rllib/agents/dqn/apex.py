@@ -55,6 +55,9 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "num_gpus": 1,
         "num_workers": 32,
         "buffer_size": 2000000,
+        # TODO(jungong) : add proper replay_buffer_config after
+        #     DistributedReplayBuffer type is supported.
+        "replay_buffer_config": None,
         "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,

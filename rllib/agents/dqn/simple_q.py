@@ -62,6 +62,12 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
+    "replay_buffer_config": {
+        "type": "LocalReplayBuffer",
+        # Take buffer_size for now.
+        # TODO : deprecate buffer_size and move the default here.
+        "capacity": None,
+    },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
     # Warnings will be created if:

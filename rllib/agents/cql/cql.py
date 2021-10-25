@@ -47,6 +47,12 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # Replay buffer should be larger or equal the size of the offline
         # dataset.
         "buffer_size": int(1e6),
+        "replay_buffer_config": {
+            "type": "LocalReplayBuffer",
+            # Take buffer_size for now.
+            # TODO : deprecate buffer_size and move the default here.
+            "capacity": None,
+        },
     })
 # __sphinx_doc_end__
 # yapf: enable
