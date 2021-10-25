@@ -1,19 +1,13 @@
 import math
-from typing import Callable, List, Iterator
+from typing import Callable, List, Iterator, Tuple
 
 import numpy as np
 
+import ray
 from ray.types import ObjectRef
-from ray.data.impl.block_list import BlockList, BlockPartition, \
+from ray.data.block import Block, BlockMetadata, BlockPartition, \
     BlockPartitionMetadata
-
-# A list of block references pending computation by a single task. For example,
-# this may be the output of a task reading a file.
-BlockPartition = List[Tuple[ObjectRef[Block], BlockMetadata]]
-
-# The metadata that describes the output of a BlockPartition. This has the
-# same type as the metadata that describes each block in the parition.
-BlockPartitionMetadata = BlockMetadata
+from ray.data.impl.block_list import BlockList
 
 
 class LazyBlockList(BlockList):
@@ -78,7 +72,7 @@ class LazyBlockList(BlockList):
 
         class Iter:
             def __init__(self):
-                self._base_iter = self._iter_partitions()
+                self._base_iter = outer._iter_partitions()
                 self._buffer = []
 
             def __iter__(self):
