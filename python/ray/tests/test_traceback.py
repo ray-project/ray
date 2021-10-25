@@ -1,5 +1,6 @@
 import re
 import sys
+import threading
 
 import pytest
 import ray
@@ -307,6 +308,66 @@ RuntimeError: Failed to unpickle serialized exception"""
     except Exception as ex:
         print(repr(scrub_traceback(str(ex))))
         assert clean_noqa(expected_output) == scrub_traceback(str(ex))
+
+
+def test_serialization_error_message(shutdown_only):
+    expected_output_task = """There was an issue serializing the object <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.task_with_unserializable_arg. Look https://docs.ray.io/en/master/serialization.html#troubleshooting if your object is not serializable. Original error message: can't pickle _thread.lock objects"""  # noqa
+    expected_output_actor = """There was an issue serializing the object <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.A.__init__. Look https://docs.ray.io/en/master/serialization.html#troubleshooting if your object is not serializable. Original error message: can't pickle _thread.lock objects"""  # noqa
+    expected_capture_output_task = """There was an issue serializing the function test_traceback.test_serialization_error_message.<locals>.capture_lock for a task. Look https://docs.ray.io/en/master/serialization.html#troubleshooting if your object is not serializable. Original error message: can't pickle _thread.lock objects"""  # noqa
+    expected_capture_output_actor = """There was an issue serializing the function test_traceback.test_serialization_error_message.<locals>.B.__init__ for a task. Look https://docs.ray.io/en/master/serialization.html#troubleshooting if your object is not serializable. Original error message: can't pickle _thread.lock objects"""  # noqa
+    ray.init(num_cpus=1)
+    lock = threading.Lock()
+
+    @ray.remote
+    def task_with_unserializable_arg(lock):
+        print(lock)
+
+    @ray.remote
+    class A:
+        def __init__(self, lock):
+            print(lock)
+
+    @ray.remote
+    def capture_lock():
+        print(lock)
+
+    @ray.remote
+    class B:
+        def __init__(self):
+            print(lock)
+
+    """
+    Test a task with an unserializable object.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        task_with_unserializable_arg.remote(lock)
+
+    def scrub_traceback(ex):
+        return re.sub("object at .*> for a", "object at ADDRESS> for a", ex)
+
+    assert (clean_noqa(expected_output_task) == scrub_traceback(
+        str(excinfo.value)))
+    """
+    Test an actor with an unserializable object.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        a = A.remote(lock)
+        print(a)
+    assert (clean_noqa(expected_output_actor) == scrub_traceback(
+        str(excinfo.value)))
+    """
+    Test the case where an unserializable object is captured by tasks.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        capture_lock.remote()
+    assert (clean_noqa(expected_capture_output_task) == str(excinfo.value))
+    """
+    Test the case where an unserializable object is captured by actors.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        b = B.remote()
+        print(b)
+    assert (clean_noqa(expected_capture_output_actor) == str(excinfo.value))
 
 
 if __name__ == "__main__":

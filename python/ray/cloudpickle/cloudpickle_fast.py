@@ -99,13 +99,7 @@ else:
         """
         with io.BytesIO() as file:
             cp = CloudPickler(file, protocol=protocol)
-            try:
-                cp.dump(obj)
-            except TypeError as e:
-                if str(e) == "can't pickle _thread.lock objects":
-                    raise TypeError(f"The given object to the task or actor {repr(obj)} is not serializable because it contains a lock. To troubleshoot try https://docs.ray.io/en/master/serialization.html#troubleshooting. Original error message: {e}")
-                else:
-                    raise e
+            cp.dump(obj)
             return file.getvalue()
 
 
