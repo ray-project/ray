@@ -221,7 +221,7 @@ def test_nested_workflow(workflow_start_regular):
            outer_step_metadata["stats"]["end_time"]
 
 
-def test_virtual_actor(workflow_start_regular):
+def test_simple_virtual_actor(workflow_start_regular):
     @workflow.virtual_actor
     class Actor:
         def __init__(self, v):
@@ -254,6 +254,45 @@ def test_virtual_actor(workflow_start_regular):
            workflow.get_metadata("vid", "add_1")["stats"]["start_time"] + 1
     assert workflow.get_metadata("vid", "add_2")["stats"]["end_time"] >= \
            workflow.get_metadata("vid", "add_2")["stats"]["start_time"] + 1
+
+
+def test_nested_virtual_actor(workflow_start_regular):
+    @workflow.virtual_actor
+    class Counter:
+        def __init__(self):
+            self.n = 0
+
+        def incr(self, n):
+            self.n += 1
+            if n - 1 > 0:
+                return self.incr.options(name="incr",
+                                         metadata={
+                                             "current_n": self.n}).step(n - 1)
+            else:
+                return self.n
+
+        @workflow.virtual_actor.readonly
+        def get(self):
+            return self.n
+
+    counter = Counter.get_or_create("counter")
+    counter.incr.options(name="incr",
+                         metadata={"outer_k": "outer_v"}).run(5)
+
+    assert workflow.get_metadata("counter", "incr")["user_metadata"] == {
+        "outer_k": "outer_v"}
+    assert workflow.get_metadata("counter", "incr_1")["user_metadata"] == {
+        "current_n": 1
+    }
+    assert workflow.get_metadata("counter", "incr_2")["user_metadata"] == {
+        "current_n": 2
+    }
+    assert workflow.get_metadata("counter", "incr_3")["user_metadata"] == {
+        "current_n": 3
+    }
+    assert workflow.get_metadata("counter", "incr_4")["user_metadata"] == {
+        "current_n": 4
+    }
 
 
 def test_no_workflow_found(workflow_start_regular):
