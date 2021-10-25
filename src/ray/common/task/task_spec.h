@@ -43,6 +43,20 @@ struct ConcurrencyGroup {
   uint32_t max_concurrency;
   // Function descriptors of the actor methods in this group.
   std::vector<ray::FunctionDescriptor> function_descriptors;
+
+  ConcurrencyGroup() = default;
+
+  ConcurrencyGroup(const std::string &name, uint32_t max_concurrency,
+                   const std::vector<ray::FunctionDescriptor> &fds)
+      : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
+
+  std::string GetName() const { return name; }
+
+  uint32_t GetMaxConcurrency() const { return max_concurrency; }
+
+  std::vector<ray::FunctionDescriptor> GetFunctionDescriptors() const {
+    return function_descriptors;
+  }
 };
 
 static inline rpc::ObjectReference GetReferenceForActorDummyObject(

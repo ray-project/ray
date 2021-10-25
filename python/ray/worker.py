@@ -27,7 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
-from ray._private.runtime_env import working_dir as working_dir_pkg
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
@@ -354,8 +354,7 @@ class Worker:
         return self.deserialize_objects(data_metadata_pairs,
                                         object_refs), debugger_breakpoint
 
-    def run_function_on_all_workers(self, function,
-                                    run_on_other_drivers=False):
+    def run_function_on_all_workers(self, function):
         """Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
@@ -367,9 +366,6 @@ class Worker:
             function (Callable): The function to run on all of the workers. It
                 takes only one argument, a worker info dict. If it returns
                 anything, its return values will not be used.
-            run_on_other_drivers: The boolean that indicates whether we want to
-                run this function on other drivers. One case is we may need to
-                share objects across drivers.
         """
         # If ray.init has not been called yet, then cache the function and
         # export it when connect is called. Otherwise, run the function on all
@@ -405,7 +401,6 @@ class Worker:
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                    "run_on_other_drivers": str(run_on_other_drivers),
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
@@ -928,11 +923,6 @@ def init(
             spawn_reaper=False,
             connect_only=True)
 
-    if driver_mode == SCRIPT_MODE and job_config:
-        # Rewrite the URI. Note the package isn't uploaded to the URI until
-        # later in the connect.
-        working_dir_pkg.rewrite_runtime_env_uris(job_config)
-
     connect(
         _global_node,
         mode=driver_mode,
@@ -1384,6 +1374,16 @@ def connect(node,
 
     worker.ray_debugger_external = ray_debugger_external
 
+    # If it's a driver and it's not coming from ray client, we'll prepare the
+    # environment here. If it's ray client, the environment will be prepared
+    # at the server side.
+    if (mode == SCRIPT_MODE and not job_config.client_job
+            and job_config.runtime_env):
+        job_config.set_runtime_env(
+            upload_working_dir_if_needed(
+                job_config.runtime_env,
+                worker.node.get_runtime_env_dir_path()))
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1393,14 +1393,6 @@ def connect(node,
         serialized_job_config, node.metrics_agent_port, runtime_env_hash,
         worker_shim_pid, startup_token)
     worker.gcs_client = worker.core_worker.get_gcs_client()
-
-    # If it's a driver and it's not coming from ray client, we'll prepare the
-    # environment here. If it's ray client, the environment will be prepared
-    # at the server side.
-    if mode == SCRIPT_MODE and not job_config.client_job:
-        manager = working_dir_pkg.WorkingDirManager(
-            worker.node.get_runtime_env_dir_path())
-        manager.upload_runtime_env_package_if_needed(job_config)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
@@ -1931,7 +1923,8 @@ def make_decorator(num_returns=None,
                    runtime_env=None,
                    placement_group="default",
                    worker=None,
-                   retry_exceptions=None):
+                   retry_exceptions=None,
+                   concurrency_groups=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1986,10 +1979,10 @@ def make_decorator(num_returns=None,
                 raise ValueError(
                     "The keyword 'max_task_retries' only accepts -1, 0 or a"
                     " positive integer")
-            return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
-                                        memory, object_store_memory, resources,
-                                        accelerator_type, max_restarts,
-                                        max_task_retries, runtime_env)
+            return ray.actor.make_actor(
+                function_or_class, num_cpus, num_gpus, memory,
+                object_store_memory, resources, accelerator_type, max_restarts,
+                max_task_retries, runtime_env, concurrency_groups)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2108,10 +2101,21 @@ def remote(*args, **kwargs):
 
     # Parse the keyword arguments from the decorator.
     valid_kwargs = [
-        "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
-        "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions",
-        "placement_group"
+        "num_returns",
+        "num_cpus",
+        "num_gpus",
+        "memory",
+        "object_store_memory",
+        "resources",
+        "accelerator_type",
+        "max_calls",
+        "max_restarts",
+        "max_task_retries",
+        "max_retries",
+        "runtime_env",
+        "retry_exceptions",
+        "placement_group",
+        "concurrency_groups",
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2146,6 +2150,7 @@ def remote(*args, **kwargs):
     runtime_env = kwargs.get("runtime_env")
     placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
+    concurrency_groups = kwargs.get("concurrency_groups")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2162,4 +2167,5 @@ def remote(*args, **kwargs):
         runtime_env=runtime_env,
         placement_group=placement_group,
         worker=worker,
-        retry_exceptions=retry_exceptions)
+        retry_exceptions=retry_exceptions,
+        concurrency_groups=concurrency_groups or [])

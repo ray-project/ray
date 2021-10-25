@@ -71,7 +71,15 @@ struct CoreWorkerOptions {
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<RayObject>> *results,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-      bool *is_application_level_error)>;
+      bool *is_application_level_error,
+      // The following 2 parameters `defined_concurrency_groups` and
+      // `name_of_concurrency_group_to_execute` are used for Python
+      // asyncio actor only.
+      //
+      // Defined concurrency groups of this actor. Note this is only
+      // used for actor creation task.
+      const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
+      const std::string name_of_concurrency_group_to_execute)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -1125,6 +1133,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs,
                      bool *is_application_level_error);
+
+  /// Put an object in the local plasma store.
+  Status PutInLocalPlasmaStore(const RayObject &object, const ObjectID &object_id,
+                               bool pin_object);
 
   /// Execute a local mode task (runs normal ExecuteTask)
   ///
