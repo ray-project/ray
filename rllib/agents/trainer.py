@@ -834,8 +834,8 @@ class Trainer(Trainable):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # Create local replay buffer if necessary.
-        self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
-            self.config)
+        self.local_replay_buffer = (
+            self._create_local_replay_buffer_if_necessary(self.config))
 
         self._init(self.config, self.env_creator)
 
