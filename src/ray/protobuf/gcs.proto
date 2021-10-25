@@ -174,6 +174,14 @@ message ErrorTableData {
   double timestamp = 4;
 }
 
+message PlacementGroupBundlesChangedNotification {
+  // ID of the PlacementGroup.
+  bytes placement_group_id = 1;
+  // A list whose index is `bundle index` and value is a bool that represents the bundle
+  // index is valid or not.
+  repeated bool bundles = 2;
+}
+
 message ScheduleData {
   map<string, bytes> schedule_plan = 1;
 }

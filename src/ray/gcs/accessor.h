@@ -749,6 +749,29 @@ class PlacementGroupInfoAccessor {
       const PlacementGroupSpecification &placement_group_spec,
       const StatusCallback &callback) = 0;
 
+  /// Add bundles for the placement group asynchronously.
+  ///
+  /// \param placement_group_id Id of the placement group to add bundles.
+  /// \param bundles The bundles will be added.
+  virtual Status AsyncAddPlacementGroupBundles(
+      const ray::PlacementGroupID &placement_group_id,
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const StatusCallback &callback) = 0;
+
+  /// Subscribe to placement group bundles changed notification.
+  ///
+  /// \param ID of current placement group.
+  /// \param subscribe Callback that will be called each time when receives a bundles
+  /// update notification.
+  /// \param done Callback that will be called when subscription is
+  /// complete.
+  /// \return Status.
+  virtual Status AsyncSubscribeBundlesChangedEvent(
+      const PlacementGroupID &placement_group_id,
+      const SubscribeCallback<PlacementGroupID,
+                              rpc::PlacementGroupBundlesChangedNotification> &subscribe,
+      const StatusCallback &done) = 0;
+
   /// Get a placement group data from GCS asynchronously by id.
   ///
   /// \param placement_group_id The id of a placement group to obtain from GCS.

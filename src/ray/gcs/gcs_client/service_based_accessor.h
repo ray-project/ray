@@ -453,6 +453,17 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
       const PlacementGroupSpecification &placement_group_spec,
       const StatusCallback &callback) override;
 
+  Status AsyncAddPlacementGroupBundles(
+      const ray::PlacementGroupID &placement_group_id,
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const StatusCallback &callback) override;
+
+  Status AsyncSubscribeBundlesChangedEvent(
+      const PlacementGroupID &placement_group_id,
+      const SubscribeCallback<PlacementGroupID,
+                              rpc::PlacementGroupBundlesChangedNotification> &subscribe,
+      const StatusCallback &done) override;
+
   Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
                                    const StatusCallback &callback) override;
 

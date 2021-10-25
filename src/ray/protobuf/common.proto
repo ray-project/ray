@@ -236,6 +236,8 @@ message Bundle {
   map<string, double> unit_resources = 2;
   // The location of this bundle.
   bytes node_id = 3;
+  // Status of current bundle.
+  bool is_valid = 4;
 }
 
 message PlacementGroupSpec {

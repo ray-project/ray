@@ -78,6 +78,8 @@ NodeID BundleSpecification::NodeId() const {
   return NodeID::FromBinary(message_->node_id());
 }
 
+bool BundleSpecification::IsValid() const { return message_->is_valid(); }
+
 int64_t BundleSpecification::Index() const {
   return message_->bundle_id().bundle_index();
 }

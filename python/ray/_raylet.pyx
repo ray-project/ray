@@ -1434,6 +1434,9 @@ cdef class CoreWorker:
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
 
+            # Check whether the bundle index is valid or not if the actor is using placement group.
+            if (c_placement_group_id != CPlacementGroupID.Nil()):
+                check_status(CCoreWorkerProcess.GetCoreWorker().ValidatePlacementGroupBundleIndex(c_placement_group_id, placement_group_bundle_index));
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
             # https://github.com/ray-project/ray/pull/12803
@@ -1574,6 +1577,19 @@ cdef class CoreWorker:
                 raise Exception("Placement group {} does not exist.".format(
                     placement_group_id))
         return status.ok()
+    
+    def add_placement_group_bundles(
+                self,
+                PlacementGroupID placement_group_id,
+                c_vector[unordered_map[c_string, double]] bundles):
+        cdef CRayStatus status
+        cdef CPlacementGroupID cplacement_group_id = (
+            CPlacementGroupID.FromBinary(placement_group_id.binary()))
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .AddPlacementGroupBundles(
+                                                   cplacement_group_id,
+                                                   bundles))
 
     def submit_actor_task(self,
                           Language language,

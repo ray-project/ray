@@ -419,6 +419,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     return worker_context_.ShouldCaptureChildTasksInPlacementGroup();
   }
 
+  void OnPlacementGroupBundlesChanged(
+      const rpc::PlacementGroupBundlesChangedNotification &notification);
+
+  const absl::flat_hash_map<int32_t, bool> &GetAllAndSubscribePlacementGroupBundleEvent(
+      const PlacementGroupID &placement_group_id);
+
   bool GetCurrentTaskRetryExceptions() const {
     if (!options_.is_local_mode) {
       return worker_context_.GetCurrentTask()->GetMessage().retry_exceptions();
@@ -745,6 +751,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status CreatePlacementGroup(
       const PlacementGroupCreationOptions &placement_group_creation_options,
       PlacementGroupID *placement_group_id);
+    
+  /// Add bundles for the specific placement group.
+  ///
+  /// \param[in] placement_group_id ID of the placement group will add bundles.
+  /// \param[in] bundles Resource bundles will be added.
+  /// \return Status error if the placement group
+  /// update bundles fails, likely due to state is not `Created` or `Updated`.
+  Status AddPlacementGroupBundles(
+      const PlacementGroupID &placement_group_id,
+      const std::vector<std::unordered_map<std::string, double>> &bundles);
 
   /// Remove a placement group. Note that this operation is synchronous.
   ///
@@ -1086,6 +1102,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
+
+  /// Check whether the placement group bundle index is valid or not.
+  /// It will throw a runtime exception if the bundle index is not valid.
+  ///
+  /// \param[in] placement_group_id The id of the placement group that is being used.
+  /// \param[in] bundle_index The bundle index that is being referenced by the actor or
+  /// task.
+  Status ValidatePlacementGroupBundleIndex(const PlacementGroupID &placement_group_id,
+                                           const int64_t &bundle_index);
 
   /// Helper method to fill in object status reply given an object.
   void PopulateObjectStatus(const ObjectID &object_id, std::shared_ptr<RayObject> obj,
@@ -1437,6 +1462,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// we are shutting down and not running further tasks.
   /// when exiting_ is set to true HandlePushTask becomes no-op.
   std::atomic<bool> exiting_ = false;
+
+  // Value is a map of valid bundle index, which key is bundle index, and value is whether
+  // the index is valid or not.
+  absl::flat_hash_map<PlacementGroupID, absl::flat_hash_map<int32_t, bool>>
+      placement_group_valid_bundle_index_
+          GUARDED_BY(placement_group_valid_bundles_map_mutex_);
+
+  /// To protect accessing the `placement_group_valid_bundle_index_` map.
+  mutable absl::Mutex placement_group_valid_bundles_map_mutex_;
 
   int64_t max_direct_call_object_size_;
 

@@ -95,6 +95,9 @@ class GcsPlacementGroup {
   /// Get the bundles of this placement_group (including unplaced).
   std::vector<std::shared_ptr<const BundleSpecification>> &GetBundles() const;
 
+  /// Add a set of new bundles to this placement_group.
+  void AddBundles(const ray::rpc::AddPlacementGroupBundlesRequest &request);
+
   /// Get the unplaced bundles of this placement group.
   std::vector<std::shared_ptr<const BundleSpecification>> GetUnplacedBundles() const;
 
@@ -155,6 +158,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       GcsResourceManager &gcs_resource_manager,
+      std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<std::string(const JobID &)> get_ray_namespace);
 
   ~GcsPlacementGroupManager() = default;
@@ -162,6 +166,11 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void HandleCreatePlacementGroup(const rpc::CreatePlacementGroupRequest &request,
                                   rpc::CreatePlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleAddPlacementGroupBundles(
+      const rpc::AddPlacementGroupBundlesRequest &request,
+      rpc::AddPlacementGroupBundlesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleRemovePlacementGroup(const rpc::RemovePlacementGroupRequest &request,
                                   rpc::RemovePlacementGroupReply *reply,
@@ -178,10 +187,22 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void HandleGetAllPlacementGroup(const rpc::GetAllPlacementGroupRequest &request,
                                   rpc::GetAllPlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleWaitPlacementGroupUntilReady(
       const rpc::WaitPlacementGroupUntilReadyRequest &request,
       rpc::WaitPlacementGroupUntilReadyReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Add some new bundles for the specific placement group.
+  ///
+  /// \param placement_group_id The placement group id whose bundles will be added.
+  /// \param request The rpc request including the new bundles will be added.
+  /// \param callback Will be invoked after the `bundles` field of the specific placement
+  /// group has been modified successfully or be invoked immediately if the state of the
+  /// placement group is `Pending` or `REMOVED`.
+  void AddBundlesForPlacementGroup(
+      const PlacementGroupID &placement_group_id,
+      const ray::rpc::AddPlacementGroupBundlesRequest &request, StatusCallback callback);
 
   /// Register a callback which will be invoked after successfully created.
   ///
@@ -282,6 +303,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   ///
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
+
+  /// Publish all bundles information.
+  /// Note: We should publish all bundles of this placement group every time to prevent
+  /// publish message loss.
+  ///
+  /// \param placement_group.
+  void PublishBundlesInfo(const std::shared_ptr<GcsPlacementGroup> &placement_group);
 
   std::string DebugString() const;
 

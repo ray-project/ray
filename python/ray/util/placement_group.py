@@ -82,6 +82,22 @@ class PlacementGroup:
              True if the placement group is created. False otherwise.
         """
         return _call_placement_group_ready(self.id, timeout_seconds)
+    
+    def add_bundles(self, bundles: List[Dict[str, float]]):
+        """
+
+        Args:
+            bundles(List[Dict]): A list of bundles that will be added.
+        """
+        worker = ray.worker.global_worker
+        worker.check_connected()
+
+        validate_bundles(bundles)
+
+        assert (self.id is not None
+                ), "Can't add bundles before create the placement group."
+        worker.core_worker.add_placement_group_bundles(self.id, bundles)
+        self._fill_bundle_cache_if_needed(True)
 
     @property
     def bundle_specs(self) -> List[Dict]:
@@ -136,9 +152,38 @@ class PlacementGroup:
         bundle_cache = pg_dict["bundle_cache"]
         return PlacementGroup(pg_id, bundle_cache)
 
-    def _fill_bundle_cache_if_needed(self) -> None:
-        if not self.bundle_cache:
+    def _fill_bundle_cache_if_needed(self, bundles_changed=False) -> None:
+        if not self.bundle_cache or bundles_changed:
             self.bundle_cache = _get_bundle_cache(self.id)
+
+
+def validate_bundles(bundles: List[Dict[str, float]]):
+    """
+    validate whether the given bundles are valid or not.
+
+    Args:
+        bundles(List[Dict]): A list of bundles which
+            represent the resources requirements.
+
+    Returns:
+        Throw runtime exception if bundles and not valid.
+    """
+    if not isinstance(bundles, list):
+        raise ValueError(
+            "The type of bundles must be list, got {}".format(bundles))
+
+    # Validate bundles
+    for bundle in bundles:
+        if (len(bundle) == 0 or all(resource_value == 0
+                                    for resource_value in bundle.values())):
+            raise ValueError(
+                "Bundles cannot be an empty dictionary or "
+                f"resources with only 0 values. Bundles: {bundles}")
+
+        if "memory" in bundle.keys() and bundle["memory"] > 0:
+            # Make sure the memory resource can be
+            # transformed to memory unit.
+            to_memory_units(bundle["memory"], True)
 
 
 @client_mode_wrap
@@ -191,22 +236,7 @@ def placement_group(bundles: List[Dict[str, float]],
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    if not isinstance(bundles, list):
-        raise ValueError(
-            "The type of bundles must be list, got {}".format(bundles))
-
-    # Validate bundles
-    for bundle in bundles:
-        if (len(bundle) == 0 or all(resource_value == 0
-                                    for resource_value in bundle.values())):
-            raise ValueError(
-                "Bundles cannot be an empty dictionary or "
-                f"resources with only 0 values. Bundles: {bundles}")
-
-        if "memory" in bundle.keys() and bundle["memory"] > 0:
-            # Make sure the memory resource can be
-            # transformed to memory unit.
-            to_memory_units(bundle["memory"], True)
+    validate_bundles(bundles)
 
     if lifetime is None:
         detached = False
@@ -325,8 +355,3 @@ def check_placement_group_index(placement_group: PlacementGroup,
         if bundle_index != -1:
             raise ValueError("If placement group is not set, "
                              "the value of bundle index must be -1.")
-    elif bundle_index >= placement_group.bundle_count \
-            or bundle_index < -1:
-        raise ValueError(f"placement group bundle index {bundle_index} "
-                         f"is invalid. Valid placement group indexes: "
-                         f"0-{placement_group.bundle_count}")

@@ -372,6 +372,8 @@ class GlobalState:
                 return "PENDING"
             elif state == gcs_utils.PlacementGroupTableData.CREATED:
                 return "CREATED"
+            elif state == ray.gcs_utils.PlacementGroupTableData.UPDATING:
+                return "UPDATING"
             else:
                 return "REMOVED"
 
@@ -398,6 +400,11 @@ class GlobalState:
                 # otherwise, the payload becomes unserializable.
                 bundle.bundle_id.bundle_index:
                 MessageToDict(bundle)["unitResources"]
+                for bundle in placement_group_info.bundles
+            },
+             "bundles_status": {
+                bundle.bundle_id.bundle_index: "VALID"
+                if bundle.is_valid else "INVALID"
                 for bundle in placement_group_info.bundles
             },
             "strategy": get_strategy(placement_group_info.strategy),

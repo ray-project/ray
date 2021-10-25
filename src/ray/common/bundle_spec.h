@@ -60,6 +60,9 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   // Get a node ID that this bundle is scheduled on.
   NodeID NodeId() const;
 
+  // Whether is valid or not.
+  bool IsValid() const;
+
   // Return the index of the bundle.
   int64_t Index() const;
 

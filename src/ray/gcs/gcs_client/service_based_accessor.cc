@@ -1479,6 +1479,70 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
   return Status::OK();
 }
 
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncAddPlacementGroupBundles(
+    const ray::PlacementGroupID &placement_group_id,
+    const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const StatusCallback &callback) {
+  RAY_LOG(DEBUG) << "Adding bundles for the placement group: " << placement_group_id;
+  RAY_CHECK(callback);
+  rpc::AddPlacementGroupBundlesRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  for (size_t i = 0; i < bundles.size(); i++) {
+    auto resources = bundles[i];
+    auto message_bundle = request.add_bundles();
+    const auto &new_bundle = BuildBundle(resources, i, placement_group_id);
+    message_bundle->CopyFrom(new_bundle);
+  }
+
+  client_impl_->GetGcsRpcClient().AddPlacementGroupBundles(
+      request, [placement_group_id, callback](
+                   const Status &, const rpc::AddPlacementGroupBundlesReply &reply) {
+        auto status =
+            reply.status().code() == (int)StatusCode::OK
+                ? Status()
+                : Status(StatusCode(reply.status().code()), reply.status().message());
+        if (status.ok()) {
+          std::ostringstream success_message;
+          success_message << "Finished add placement group bundles. placement group id = "
+                          << placement_group_id;
+          RAY_LOG(INFO) << success_message.str();
+          RAY_EVENT(INFO, EVENT_LABEL_PLACEMENT_GROUP_ADD_BUNDLES_SUCCESS)
+                  .WithField("job_id", placement_group_id.JobId().Hex())
+              << success_message.str();
+        } else {
+          std::ostringstream error_message;
+          error_message << "Placement group id = " << placement_group_id
+                        << " failed to add bundles, cause " << status.message();
+          RAY_LOG(ERROR) << error_message.str();
+          RAY_EVENT(ERROR, EVENT_LABEL_PLACEMENT_GROUP_ADD_BUNDLES_FAILED)
+                  .WithField("job_id", placement_group_id.JobId().Hex())
+              << error_message.str();
+        }
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncSubscribeBundlesChangedEvent(
+    const PlacementGroupID &placement_group_id,
+    const SubscribeCallback<PlacementGroupID,
+                            rpc::PlacementGroupBundlesChangedNotification> &subscribe,
+    const StatusCallback &done) {
+  RAY_LOG(DEBUG) << "Subscribing placement group bundles changed notification.";
+  RAY_CHECK(subscribe != nullptr);
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::PlacementGroupBundlesChangedNotification bundles_change_notification;
+    bundles_change_notification.ParseFromString(data);
+    subscribe(PlacementGroupID(PlacementGroupID::FromHex(id)),
+              bundles_change_notification);
+  };
+  Status status = client_impl_->GetGcsPubSub().Subscribe(
+      PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, placement_group_id.Hex(), on_subscribe,
+      done);
+  RAY_LOG(DEBUG) << "Finished subscribing placement group bundles changed notification.";
+  return status;
+}
+
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
     const ray::PlacementGroupID &placement_group_id, const StatusCallback &callback) {
   rpc::RemovePlacementGroupRequest request;

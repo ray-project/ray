@@ -492,6 +492,15 @@ message CreatePlacementGroupReply {
   GcsStatus status = 1;
 }
 
+message AddPlacementGroupBundlesRequest {
+  bytes placement_group_id = 1;
+  repeated Bundle bundles = 2;
+}
+
+message AddPlacementGroupBundlesReply {
+  GcsStatus status = 1;
+}
+
 message RemovePlacementGroupRequest {
   bytes placement_group_id = 1;
 }
@@ -549,6 +558,9 @@ service PlacementGroupInfoGcsService {
   // Create placement group via gcs service.
   rpc CreatePlacementGroup(CreatePlacementGroupRequest)
       returns (CreatePlacementGroupReply);
+  // Add new bundles for the placement group via gcs service.
+  rpc AddPlacementGroupBundles(AddPlacementGroupBundlesRequest)
+      returns (AddPlacementGroupBundlesReply);
   // Remove placement group via gcs service.
   rpc RemovePlacementGroup(RemovePlacementGroupRequest)
       returns (RemovePlacementGroupReply);

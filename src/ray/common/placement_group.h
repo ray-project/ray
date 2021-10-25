@@ -18,6 +18,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -56,6 +57,14 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   std::vector<BundleSpecification> bundles_;
 };
 
+// Set resource for `rpc::Bundle`.
+rpc::Bundle BuildBundle(const std::unordered_map<std::string, double> &resource,
+                        const size_t &bundle_index,
+                        const PlacementGroupID &placement_group_id);
+
+void LogBundlesChangedEventDebugInfo(
+    const rpc::PlacementGroupBundlesChangedNotification &notification);
+
 class PlacementGroupSpecBuilder {
  public:
   PlacementGroupSpecBuilder() : message_(std::make_shared<rpc::PlacementGroupSpec>()) {}
@@ -88,19 +97,8 @@ class PlacementGroupSpecBuilder {
     for (size_t i = 0; i < bundles.size(); i++) {
       auto resources = bundles[i];
       auto message_bundle = message_->add_bundles();
-      auto mutable_bundle_id = message_bundle->mutable_bundle_id();
-      mutable_bundle_id->set_bundle_index(i);
-      mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
-      auto mutable_unit_resources = message_bundle->mutable_unit_resources();
-      for (auto it = resources.begin(); it != resources.end();) {
-        auto current = it++;
-        // Remove a resource with value 0 because they are not allowed.
-        if (current->second == 0) {
-          resources.erase(current);
-        } else {
-          mutable_unit_resources->insert({current->first, current->second});
-        }
-      }
+      const auto &new_bundle = BuildBundle(resources, i, placement_group_id);
+      message_bundle->CopyFrom(new_bundle);
     }
     return *this;
   }

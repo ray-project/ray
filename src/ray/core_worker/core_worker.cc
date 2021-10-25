@@ -1031,6 +1031,47 @@ void CoreWorker::InternalHeartbeat() {
   }
 }
 
+Status CoreWorker::ValidatePlacementGroupBundleIndex(
+    const PlacementGroupID &placement_group_id, const int64_t &bundle_index) {
+  if (bundle_index != -1) {
+    const auto &all_bundle_indexes =
+        GetAllAndSubscribePlacementGroupBundleEvent(placement_group_id);
+    if (RAY_LOG_ENABLED(DEBUG)) {
+      std::ostringstream debug_info;
+      debug_info << "Got the latest bundles view: ";
+      for (const auto &bundle_view : all_bundle_indexes) {
+        debug_info << "{" << bundle_view.first << ":" << bundle_view.second << "},";
+      }
+      debug_info << " from placement group: " << placement_group_id;
+      RAY_LOG(DEBUG) << debug_info.str();
+    }
+
+    const auto bundle_pos =
+        std::find_if(all_bundle_indexes.begin(), all_bundle_indexes.end(),
+                     [bundle_index](const auto &index) {
+                       return index.second && index.first == bundle_index;
+                     });
+    if (bundle_pos == all_bundle_indexes.end()) {
+      std::vector<int> valid_bundle_indexes;
+      for (const auto &index : all_bundle_indexes) {
+        if (index.second) {
+          valid_bundle_indexes.push_back(index.first);
+        }
+      }
+      std::ostringstream valid_bundle_indexes_str;
+      std::copy(valid_bundle_indexes.begin(), valid_bundle_indexes.end(),
+                std::ostream_iterator<int>(valid_bundle_indexes_str, ","));
+      std::ostringstream error_msg;
+      error_msg << "Invalid bundle index: " << bundle_index << " in ["
+                << valid_bundle_indexes_str.str()
+                << "] when adding resource constraint for placement group: "
+                << placement_group_id;
+      return Status::Invalid(error_msg.str());
+    }
+  }
+  return Status::OK();
+}
+
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
 CoreWorker::GetAllReferenceCounts() const {
   auto counts = reference_counter_->GetAllReferenceCounts();
@@ -1752,6 +1793,16 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // ones
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
+
+  // Check whether the bundle index is valid or not if the actor is using placement group.
+  const auto &placement_group_id = actor_creation_options.placement_options.first;
+  if (placement_group_id != PlacementGroupID::Nil()) {
+    const auto &status = ValidatePlacementGroupBundleIndex(
+        placement_group_id, actor_creation_options.placement_options.second);
+    if (!status.ok()) {
+      return status;
+    }
+  }
   auto new_placement_resources =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
                                   actor_creation_options.placement_options.first,
@@ -1889,6 +1940,31 @@ Status CoreWorker::CreatePlacementGroup(
            << placement_group_id
            << ". It is probably "
               "because GCS server is dead or there's a high load there.";
+    return Status::TimedOut(stream.str());
+  }
+  return status_future.get();
+}
+
+Status CoreWorker::AddPlacementGroupBundles(
+    const PlacementGroupID &placement_group_id,
+    const std::vector<std::unordered_map<std::string, double>> &bundles) {
+  std::shared_ptr<std::promise<Status>> status_promise =
+      std::make_shared<std::promise<Status>>();
+  RAY_LOG(DEBUG) << "Submitting add placement group bundes request to GCS: "
+                 << placement_group_id;
+  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncAddPlacementGroupBundles(
+      placement_group_id, bundles,
+      [status_promise](const Status &status) { status_promise->set_value(status); }));
+  auto status_future = status_promise->get_future();
+  if (status_future.wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    std::ostringstream stream;
+    stream << "There was timeout in adding bundles for the placement group: "
+           << placement_group_id
+           << ". It is probably "
+              "because GCS server is dead or there's a high load there.";
+    RAY_LOG(ERROR) << stream.str();
     return Status::TimedOut(stream.str());
   }
   return status_future.get();
@@ -3244,6 +3320,86 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());
   }
   actor_id_ = actor_id;
+}
+
+void CoreWorker::OnPlacementGroupBundlesChanged(
+    const rpc::PlacementGroupBundlesChangedNotification &notification) {
+  absl::MutexLock lock(&placement_group_valid_bundles_map_mutex_);
+  const PlacementGroupID &placement_group_id =
+      PlacementGroupID::FromBinary(notification.placement_group_id());
+  const auto bundle_index_it =
+      placement_group_valid_bundle_index_.find(placement_group_id);
+  // It can't be null because we'll get the placement group from GCS when first using it.
+  RAY_CHECK(bundle_index_it != placement_group_valid_bundle_index_.end());
+  bundle_index_it->second.clear();
+
+  LogBundlesChangedEventDebugInfo(notification);
+  for (int index = 0; index < notification.bundles_size(); index++) {
+    if (notification.bundles(index)) {
+      bundle_index_it->second.insert({index, true});
+    } else {
+      bundle_index_it->second.insert({index, false});
+    }
+  }
+}
+
+const absl::flat_hash_map<int32_t, bool>
+    &CoreWorker::GetAllAndSubscribePlacementGroupBundleEvent(
+        const PlacementGroupID &placement_group_id) {
+  absl::MutexLock lock(&placement_group_valid_bundles_map_mutex_);
+  const auto bundle_index_it =
+      placement_group_valid_bundle_index_.find(placement_group_id);
+  if (bundle_index_it == placement_group_valid_bundle_index_.end()) {
+    RAY_LOG(DEBUG) << "It's the first time occuring placement group: "
+                   << placement_group_id
+                   << ", will register the listener of bundles changed and get the "
+                      "information from GCS immediately.";
+    // Register a valid bundles index listener and get all bundles at the
+    // first time.
+    const auto bundles_changed_notification_handler =
+        [this, placement_group_id](
+            const PlacementGroupID &updated_placement_group_id,
+            const rpc::PlacementGroupBundlesChangedNotification &notification) {
+          RAY_CHECK(updated_placement_group_id == placement_group_id);
+          OnPlacementGroupBundlesChanged(notification);
+        };
+    RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncSubscribeBundlesChangedEvent(
+        placement_group_id, bundles_changed_notification_handler,
+        [placement_group_id](const ray::Status &status) {
+          RAY_CHECK_OK(status);
+          RAY_LOG(INFO)
+              << "Finished subscribing the change of bundles for placement group: "
+              << placement_group_id;
+        }));
+    // Get all placement group bundles immediately.
+    std::promise<boost::optional<rpc::PlacementGroupTableData>> promise;
+    RAY_UNUSED(gcs_client_->PlacementGroups().AsyncGet(
+        placement_group_id,
+        [&promise](const Status &status,
+                   const boost::optional<rpc::PlacementGroupTableData> &result) {
+          RAY_CHECK(result);
+          promise.set_value(result);
+        }));
+    // Wait for the get operation done.
+    const auto &result = promise.get_future().get();
+    placement_group_valid_bundle_index_.insert({placement_group_id, {}});
+    const auto valid_bundle_index_it =
+        placement_group_valid_bundle_index_.find(placement_group_id);
+
+    for (int i = 0; i < result->bundles_size(); i++) {
+      const auto &bundle = result->bundles(i);
+      int32_t bundle_index = bundle.bundle_id().bundle_index();
+      if (bundle.is_valid()) {
+        valid_bundle_index_it->second.insert({bundle_index, true});
+      } else {
+        valid_bundle_index_it->second.insert({bundle_index, false});
+      }
+    }
+  }
+  const auto valid_bundle_index_it =
+      placement_group_valid_bundle_index_.find(placement_group_id);
+  RAY_CHECK(valid_bundle_index_it != placement_group_valid_bundle_index_.end());
+  return valid_bundle_index_it->second;
 }
 
 void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &message) {
