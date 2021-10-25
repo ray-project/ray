@@ -64,7 +64,7 @@ if __name__ == "__main__":
                                           os.path.isfile(data_file)))
     config["input"] = [data_file]
     config["log_level"] = "INFO"
-    config["env"] = "Pendulum-v0"
+    config["env"] = "Pendulum-v1"
 
     # Set up evaluation.
     config["evaluation_num_workers"] = 1
