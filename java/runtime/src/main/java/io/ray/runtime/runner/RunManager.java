@@ -30,7 +30,7 @@ public class RunManager {
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
     command.add("--node-ip-address");
-    command.add(NetworkUtil.getIpAddress(null));
+    command.add(rayConfig.nodeIp);
     command.addAll(rayConfig.headArgs);
 
     String numGpus = System.getProperty("num-gpus");
