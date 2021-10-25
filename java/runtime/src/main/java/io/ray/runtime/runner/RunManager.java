@@ -2,7 +2,6 @@ package io.ray.runtime.runner;
 
 import com.google.common.base.Joiner;
 import io.ray.runtime.config.RayConfig;
-import io.ray.runtime.util.NetworkUtil;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
