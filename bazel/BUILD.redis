@@ -28,7 +28,7 @@ genrule(
         rm -r -f -- "$${tmpdir}"
     """,
     visibility = ["//visibility:public"],
-    tags = ["build"],
+    tags = ["local"],
 )
 
 # This library is for internal hiredis use, because hiredis assumes a
