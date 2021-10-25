@@ -274,22 +274,35 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
        shapes_it != tasks_to_dispatch_.end();) {
     auto &scheduling_class = shapes_it->first;
     auto &dispatch_queue = shapes_it->second;
+
+    if (info_by_sched_cls_.find(scheduling_class) == info_by_sched_cls_.end()) {
+      info_by_sched_cls_[scheduling_class].capacity = MaxRunningTasksPerSchedulingClass(scheduling_class);
+    }
+    auto &sched_cls_info = info_by_sched_cls_[scheduling_class];
+
     /// We cap the maximum running tasks of a scheduling class to avoid
     /// scheduling too many tasks of a single type/depth, when there are
     /// deeper/other functions that should be run. We need to apply back
     /// pressure here because workers don't submit their lease requests until
     /// dependencies are resolved.
-    auto max_running_tasks = MaxRunningTasksPerSchedulingClass(scheduling_class);
+    // auto max_running_tasks = MaxRunningTasksPerSchedulingClass(scheduling_class);
     bool is_infeasible = false;
+    // for (auto work_it = dispatch_queue.begin();
+    //      work_it != dispatch_queue.end() &&
+    //      (scheduling_class_backpressure_ &&
+    //       num_running_tasks_by_sched_cls_[scheduling_class] < max_running_tasks);) {
     for (auto work_it = dispatch_queue.begin();
-         work_it != dispatch_queue.end() &&
-         (scheduling_class_backpressure_ &&
-          num_running_tasks_by_sched_cls_[scheduling_class] < max_running_tasks);) {
+          work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
       if (work->status == WorkStatus::WAITING_FOR_WORKER) {
+        work_it++;
+        continue;
+      }
+
+      if (sched_cls_info.num_running_tasks >= sched_cls_info.capacity) {
         work_it++;
         continue;
       }
@@ -469,7 +482,11 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   }
   *task = worker->GetAssignedTask();
   auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
-  num_running_tasks_by_sched_cls_[sched_cls]--;
+  info_by_sched_cls_[sched_cls].num_running_tasks--;
+  if (info_by_sched_cls_[sched_cls].num_running_tasks == 0) {
+    info_by_sched_cls_.erase(sched_cls);
+  }
+
   ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
@@ -981,7 +998,10 @@ void ClusterTaskManager::Dispatch(
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
-  num_running_tasks_by_sched_cls_[task_spec.GetSchedulingClass()]++;
+  // num_running_tasks_by_sched_cls_[task_spec.GetSchedulingClass()]++;
+  const auto &sched_cls = task_spec.GetSchedulingClass();
+  info_by_sched_cls_[sched_cls].num_running_tasks++;
+
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
