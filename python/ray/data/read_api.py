@@ -23,7 +23,8 @@ from ray.data.datasource import Datasource, RangeDatasource, \
 from ray.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.data.impl.block_list import BlockList
-from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartition, \
+    BlockPartitionMetadata
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _get_spread_resources_iter
 
@@ -180,8 +181,8 @@ def read_datasource(datasource: Datasource[T],
         # If no spread resource prefix given, yield an empty dictionary.
         resource_iter = itertools.repeat({})
 
-    calls: List[Callable[[], ObjectRef[Block]]] = []
-    metadata: List[BlockMetadata] = []
+    calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
+    metadata: List[BlockPartitionMetadata] = []
 
     for task in read_tasks:
         calls.append(

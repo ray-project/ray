@@ -18,7 +18,7 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-def _map_block(block_owner: ray.actor.ActorHandle, block: Block, fn: Any,
+def _map_block(block: Block, fn: Any,
                input_files: List[str]) -> (Block, BlockMetadata):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
@@ -43,11 +43,9 @@ class TaskPool(ComputeStrategy):
         kwargs = remote_args.copy()
         kwargs["num_returns"] = 2
 
-        block_owner = _get_or_create_block_owner_actor()
         map_block = cached_remote_fn(_map_block)
         refs = [
-            map_block.options(**kwargs).remote(block_owner, b, fn,
-                                               m.input_files)
+            map_block.options(**kwargs).remote(b, fn, m.input_files)
             for b, m in blocks
         ]
         new_blocks, new_metadata = zip(*refs)
@@ -87,7 +85,6 @@ class ActorPool(ComputeStrategy):
         orig_num_blocks = len(blocks_in)
         blocks_out = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
-        block_owner = _get_or_create_block_owner_actor()
 
         class BlockWorker:
             def ready(self):

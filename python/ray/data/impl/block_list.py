@@ -9,14 +9,19 @@ from ray.data.block import Block, BlockMetadata
 
 
 class BlockList:
-    """A list of blocks that may be computed or pending computation."""
+    """A list of blocks that may be computed or pending computation.
+
+    In the basic version of BlockList, all blocks are known ahead of time. In
+    LazyBlockList, blocks are not yet computed, so the number of blocks may
+    change after execution due to block splitting.
+    """
 
     def __init__(self, blocks: List[ObjectRef[Block]],
                  metadata: List[BlockMetadata]):
         assert len(blocks) == len(metadata), (blocks, metadata)
-        self._blocks: List[ObjectRef[BlockPartition]] = blocks
+        self._blocks: List[ObjectRef[Block]] = blocks
         self._num_blocks = len(self._blocks)
-        self._metadata = metadata
+        self._metadata: List[BlockMetadata] = metadata
 
     def set_metadata(self, i: int, metadata: BlockMetadata) -> None:
         """Set the metadata for a given block."""
@@ -66,17 +71,8 @@ class BlockList:
         return (BlockList(self._blocks[:part_idx], self._metadata[:part_idx]),
                 BlockList(self._blocks[part_idx:], self._metadata[part_idx:]))
 
-    def iter_blocks(self) -> Iterator[ObjectRef[BlockPartition]]:
+    def iter_blocks(self) -> Iterator[ObjectRef[Block]]:
         """Iterate over the blocks of this block list.
-
-        This does not block on the execution of the tasks generating the
-        partition outputs. The length of this iterator is equal to
-        ``self.num_blocks()``.
-        """
-        return iter(self._blocks)
-
-    def iter_executed_blocks(self) -> Iterator[ObjectRef[Block]]:
-        """Iterate over the block outputs of executing all blocks.
 
         This blocks on the execution of the tasks generating partition outputs.
         The length of this iterator is not known until execution.
@@ -86,53 +82,27 @@ class BlockList:
 
         class Iter:
             def __init__(self):
-                self._base_iter = \
-                    outer.iter_executed_blocks_with_partition_metadata()
+                self._base_iter = outer.iter_blocks_with_metadata()
 
             def __iter__(self):
                 return self
 
             def __next__(self):
-                ref, meta, n = next(self._base_iter)
-                assert isinstance(ref, ray.ObjectRef), (ref, meta, n)
+                ref, meta = next(self._base_iter)
+                assert isinstance(ref, ray.ObjectRef), (ref, meta)
                 return ref
 
         return Iter()
 
-    def iter_executed_blocks_with_partition_metadata(self) -> Iterator[Tuple[
-            ObjectRef[Block], BlockPartitionMetadata, Blockblocksize]]:
-        """Like ``iter_executed_blocks()``, but including partition metadata.
+    def iter_blocks_with_metadata(
+            self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+        """Iterate over the blocks along with their runtime metadata.
 
-        Returns:
-            Iterator of tuples of the block ref, the metadata of the partition
-            the block comes from, and the number of blocks in that partition.
+        This blocks on the execution of the tasks generating partition outputs.
+        The length of this iterator is not known until execution.
         """
         self._check_if_cleared()
-        outer = self
-
-        class Iter:
-            def __init__(self):
-                self._base_iter = zip(outer.iter_blocks(), outer._metadata)
-                self._buffer = []
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                while not self._buffer:
-                    refs, part_meta = next(self._base_iter)
-                    refs = ray.get(refs)
-                    for ref in refs:
-                        if not isinstance(ref, ray.ObjectRef):
-                            raise AssertionError(
-                                "Expected list of block refs, but got a list "
-                                "of raw blocks elements: {}. Probably a "
-                                "task returned a block ref directly instead "
-                                "of [ray.put(block)].".format(refs))
-                        self._buffer.append((ref, part_meta, len(refs)))
-                return self._buffer.pop(0)
-
-        return Iter()
+        return zip(self._blocks, self._metadata)
 
     def initial_num_blocks(self) -> int:
         """Returns the number of blocks of this BlockList."""
