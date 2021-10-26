@@ -78,7 +78,7 @@ class TestAPPO(unittest.TestCase):
         config["train_batch_size"] = 20
         config["batch_mode"] = "truncate_episodes"
         config["rollout_fragment_length"] = 10
-        config["timesteps_per_iteration"] = 10
+        config["timesteps_per_iteration"] = 20
         # 0 metrics reporting delay, this makes sure timestep,
         # which entropy coeff depends on, is updated after each worker rollout.
         config["min_iter_time_s"] = 0
@@ -112,7 +112,7 @@ class TestAPPO(unittest.TestCase):
             self.assertLessEqual(coeff, 0.005)
             self.assertGreaterEqual(coeff, 0.0005)
 
-            coeff = _step_n_times(trainer, 6)  # 120 timesteps
+            coeff = _step_n_times(trainer, 3)  # 120 timesteps
             # PiecewiseSchedule does interpolation. So roughly 0.0001 here.
             self.assertLessEqual(coeff, 0.0005)
             self.assertGreaterEqual(coeff, 0.00005)
