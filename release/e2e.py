@@ -504,6 +504,28 @@ def has_errored(result: Dict[Any, Any]) -> bool:
     return result.get("status", "invalid") != "finished"
 
 
+def maybe_get_alert_for_result(result_dict: Dict[str, Any]) -> Optional[str]:
+    # If we get a result dict, check if any alerts should be raised
+    from alert import SUITE_TO_FN, default_handle_result
+
+    logger.info("Checking if results are valid...")
+
+    # Copy dict because we modify kwargs here
+    handle_result_kwargs = result_dict.copy()
+    handle_result_kwargs["created_on"] = None
+
+    test_suite = handle_result_kwargs.get("test_suite", None)
+
+    handle_fn = SUITE_TO_FN.get(test_suite, None)
+    if not handle_fn:
+        logger.warning(f"No handle for suite {test_suite}")
+        alert = default_handle_result(**handle_result_kwargs)
+    else:
+        alert = handle_fn(**handle_result_kwargs)
+
+    return alert
+
+
 def report_result(test_suite: str, test_name: str, status: str, last_logs: str,
                   results: Dict[Any, Any], artifacts: Dict[Any, Any],
                   category: str):
@@ -1916,6 +1938,22 @@ def run_test(test_config_file: str,
             category=category,
         )
 
+        # Check if result are met
+        alert = maybe_get_alert_for_result(report_kwargs)
+
+        if alert:
+            # If we get an alert, the test failed.
+            logger.error(f"Alert has been raised for {test_suite}/{test_name} "
+                         f"({category}): {alert}")
+            report_kwargs["status"] = "error (alert raised)"
+
+            # For printing/reporting to the database
+            report_kwargs["last_logs"] = alert
+            last_logs = alert
+        else:
+            logger.info(f"No alert raised for test {test_suite}/{test_name} "
+                        f"({category}) - the test successfully passed!")
+
         if report:
             report_result(**report_kwargs)
         else:
@@ -2012,7 +2050,7 @@ if __name__ == "__main__":
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 
-    result_dict = run_test(
+    run_test(
         test_config_file=test_config_file,
         test_name=args.test_name,
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"],
@@ -2027,30 +2065,3 @@ if __name__ == "__main__":
         keep_results_dir=args.keep_results_dir,
         app_config_id_override=args.app_config_id_override,
     )
-
-    if result_dict:
-        # If we get a result dict, check if any alerts should be raised
-        from alert import SUITE_TO_FN, default_handle_result
-
-        logger.info("Checking if results are valid...")
-
-        handle_result_kwargs = result_dict.copy()
-        handle_result_kwargs["created_on"] = None
-
-        test_suite = handle_result_kwargs.get("test_suite", None)
-        test_name = handle_result_kwargs.get("test_name", None)
-        category = handle_result_kwargs.get("category", None)
-
-        handle_fn = SUITE_TO_FN.get(test_suite, None)
-        if not handle_fn:
-            logger.warning(f"No handle for suite {test_suite}")
-            alert = default_handle_result(**handle_result_kwargs)
-        else:
-            alert = handle_fn(**handle_result_kwargs)
-
-        if alert:
-            # If we get an alert, the test failed.
-            raise RuntimeError(alert)
-        else:
-            logger.info(f"No alert raised for test {test_suite}/{test_name} "
-                        f"({category}) - the test successfully passed!")
