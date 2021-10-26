@@ -11,12 +11,8 @@ class BlockList(Iterable[ObjectRef[Block]]):
     def __init__(self, blocks: List[ObjectRef[Block]],
                  metadata: List[BlockMetadata]):
         assert len(blocks) == len(metadata), (blocks, metadata)
-        self._blocks = [
-            blocks[i] for i in range(len(blocks)) if metadata[i].num_rows
-        ]
-        self._metadata = [
-            metadata[i] for i in range(len(metadata)) if metadata[i].num_rows
-        ]
+        self._blocks = blocks
+        self._metadata = metadata
 
     def set_metadata(self, i: int, metadata: BlockMetadata) -> None:
         self._metadata[i] = metadata
