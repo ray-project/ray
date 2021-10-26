@@ -67,12 +67,15 @@ CORE_NIGHTLY_TESTS = {
         # as it hits the scalability limit.
         # "non_streaming_shuffle_1tb_5000_partitions",
         "decision_tree_autoscaling",
+        "decision_tree_autoscaling_20_runs",
+        "grpc_decision_tree_autoscaling_20_runs",
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
         "many_nodes_actor_test",
+        "grpc_many_nodes_actor_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",

@@ -491,6 +491,15 @@ def _load_config(local_dir: str, config_file: Optional[str]) -> Optional[Dict]:
     return yaml.safe_load(content)
 
 
+def _wrap_app_config_pip_installs(app_config: Dict[Any, Any]):
+    """Wrap pip package install in quotation marks"""
+    if app_config.get("python", {}).get("pip_packages"):
+        new_pip_packages = []
+        for pip_package in app_config["python"]["pip_packages"]:
+            new_pip_packages.append(f"\"{pip_package}\"")
+        app_config["python"]["pip_packages"] = new_pip_packages
+
+
 def has_errored(result: Dict[Any, Any]) -> bool:
     return result.get("status", "invalid") != "finished"
 
@@ -1230,6 +1239,9 @@ def run_test_config(
         raise ValueError(
             "'autosuspend_mins' is only supported if 'use_connect' is True.")
 
+    # Only wrap pip packages after we installed the app config packages
+    _wrap_app_config_pip_installs(app_config)
+
     # Add information to results dict
     def _update_results(results: Dict):
         if "last_update" in results:
@@ -1706,6 +1718,7 @@ def run_test_config(
             target=_check_progress, args=(logger, ))
 
     build_timeout = test_config["run"].get("build_timeout", 1800)
+    prepare_timeout = test_config["run"].get("prepare_timeout", timeout)
 
     project_url = anyscale_project_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"])
@@ -1719,7 +1732,8 @@ def run_test_config(
     logger.info(msg)
 
     logger.info(f"Starting process with timeout {timeout} "
-                f"(build timeout {build_timeout})")
+                f"(prepare timeout {prepare_timeout}, "
+                f"build timeout {build_timeout})")
     process.start()
 
     # The timeout time will be updated after the build finished
@@ -1760,7 +1774,7 @@ def run_test_config(
 
         if state.state == "CMD_PREPARE":
             # Reset timeout after build finished
-            timeout_time = state.timestamp + timeout
+            timeout_time = state.timestamp + prepare_timeout
 
         if state.state == "CMD_RUN":
             # Reset timeout after prepare command or build finished

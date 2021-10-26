@@ -16,7 +16,7 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 
 Concepts
 --------
-Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data (e.g., into :ref:`Ray SGD <sgd-v2-docs>` for ML training).
+Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data (e.g., into :ref:`Ray Train <train-docs>` for ML training).
 
 The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
@@ -117,16 +117,19 @@ Datasource Compatibility Matrices
      - ``ds.to_mars()``
      - (todo)
    * - Arrow Table Objects
-     - ``ds.to_arrow()``
+     - ``ds.to_arrow_refs()``
      - ✅
    * - Arrow Table Iterator
      - ``ds.iter_batches(batch_format="pyarrow")``
      - ✅
-   * - Pandas Dataframe Objects
+   * - Single Pandas Dataframe
      - ``ds.to_pandas()``
      - ✅
+   * - Pandas Dataframe Objects
+     - ``ds.to_pandas_refs()``
+     - ✅
    * - NumPy ndarray Objects
-     - ``ds.to_numpy()``
+     - ``ds.to_numpy_refs()``
      - ✅
    * - Pandas Dataframe Iterator
      - ``ds.iter_batches(batch_format="pandas")``

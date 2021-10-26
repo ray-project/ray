@@ -213,7 +213,6 @@ class ModelV2:
                 while "state_in_{}".format(i) in input_dict:
                     state.append(input_dict["state_in_{}".format(i)])
                     i += 1
-            input_dict["is_training"] = input_dict.is_training
         else:
             restored = input_dict.copy()
 
@@ -268,7 +267,7 @@ class ModelV2:
         """
 
         input_dict = train_batch.copy()
-        input_dict["is_training"] = is_training
+        input_dict.is_training = is_training
         states = []
         i = 0
         while "state_in_{}".format(i) in input_dict:

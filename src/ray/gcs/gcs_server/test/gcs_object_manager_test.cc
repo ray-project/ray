@@ -24,9 +24,9 @@ namespace ray {
 class MockedGcsObjectManager : public gcs::GcsObjectManager {
  public:
   explicit MockedGcsObjectManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                                  std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub,
+                                  std::shared_ptr<gcs::GcsPublisher> &gcs_publisher,
                                   gcs::GcsNodeManager &gcs_node_manager)
-      : gcs::GcsObjectManager(gcs_table_storage, gcs_pub_sub, gcs_node_manager) {}
+      : gcs::GcsObjectManager(gcs_table_storage, gcs_publisher, gcs_node_manager) {}
 
  public:
   void AddObjectsLocation(const NodeID &node_id,
@@ -56,9 +56,9 @@ class GcsObjectManagerTest : public ::testing::Test {
   void SetUp() override {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(gcs_pub_sub_, gcs_table_storage_);
+        std::make_shared<gcs::GcsNodeManager>(gcs_publisher_, gcs_table_storage_);
     gcs_object_manager_ = std::make_shared<MockedGcsObjectManager>(
-        gcs_table_storage_, gcs_pub_sub_, *gcs_node_manager_);
+        gcs_table_storage_, gcs_publisher_, *gcs_node_manager_);
     GenTestData();
   }
 
@@ -85,7 +85,7 @@ class GcsObjectManagerTest : public ::testing::Test {
  protected:
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<MockedGcsObjectManager> gcs_object_manager_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 

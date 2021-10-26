@@ -343,7 +343,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         bool did_spill = TrySpillback(work, is_infeasible);
         if (!did_spill) {
           // There must not be any other available nodes in the cluster, so the task
-          // should stay on this node. We can skip the reest of the shape because the
+          // should stay on this node. We can skip the rest of the shape because the
           // scheduler will make the same decision.
           break;
         }
@@ -1056,14 +1056,14 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
                    << " on a remote node that are no longer available";
   }
 
-  auto node_info_opt = get_node_info_(spillback_to);
-  RAY_CHECK(node_info_opt)
+  auto node_info_ptr = get_node_info_(spillback_to);
+  RAY_CHECK(node_info_ptr)
       << "Spilling back to a node manager, but no GCS info found for node "
       << spillback_to;
   auto reply = work->reply;
   reply->mutable_retry_at_raylet_address()->set_ip_address(
-      node_info_opt->node_manager_address());
-  reply->mutable_retry_at_raylet_address()->set_port(node_info_opt->node_manager_port());
+      node_info_ptr->node_manager_address());
+  reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
