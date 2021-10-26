@@ -2,6 +2,7 @@ import json
 import logging
 from pathlib import Path
 import random
+from typing import Any, Callable
 
 from azure.common.credentials import get_cli_profile
 from azure.identity import AzureCliCredential
@@ -15,6 +16,16 @@ SUBNET_NAME = "ray-subnet"
 VNET_NAME = "ray-vnet"
 
 logger = logging.getLogger(__name__)
+
+
+def get_azure_sdk_function(client: Any, function_name: str) -> Callable:
+    func = getattr(client, function_name,
+                   getattr(client, f"begin_{function_name}"))
+    if func is None:
+        raise AttributeError(
+            "'{obj}' object has no {func} or begin_{func} attribute".format(
+                obj={client.__name__}, func=function_name))
+    return func
 
 
 def bootstrap_azure(config):
@@ -71,9 +82,8 @@ def _configure_resource_group(config):
         }
     }
 
-    create_or_update = getattr(
-        resource_client.deployments, "create_or_update",
-        getattr(resource_client.deployments, "begin_create_or_update"))
+    create_or_update = get_azure_sdk_function(
+        client=resource_client.deployments, function_name="create_or_update")
     create_or_update(
         resource_group_name=resource_group,
         deployment_name="ray-config",
