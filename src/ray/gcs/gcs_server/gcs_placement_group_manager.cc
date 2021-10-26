@@ -147,13 +147,13 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    GcsResourceManager &gcs_resource_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    GcsResourceManager &gcs_resource_manager, std::shared_ptr<GcsPublisher> gcs_publisher,
     std::function<std::string(const JobID &)> get_ray_namespace)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_resource_manager_(gcs_resource_manager),
-      gcs_pub_sub_(std::move(gcs_pub_sub)),
+      gcs_publisher_(std::move(gcs_publisher)),
       get_ray_namespace_(get_ray_namespace) {
   Tick();
 }
@@ -883,10 +883,8 @@ void GcsPlacementGroupManager::PublishBundlesInfo(
   RAY_LOG(DEBUG) << "Register resizing bundles request for placement group: "
                  << placement_group->GetPlacementGroupID()
                  << " successful, will publish bundles info to workers.";
-  RAY_UNUSED(gcs_pub_sub_->Publish(PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL,
-                                   placement_group->GetPlacementGroupID().Hex(),
-                                   notification->SerializeAsString(),
-                                   [](const Status &status) {}));
+  RAY_CHECK_OK(
+            gcs_publisher_->PublishPlacementGroupBundlsChanged(placement_group->GetPlacementGroupID().Hex(), *notification, nullptr));
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {

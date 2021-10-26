@@ -310,6 +310,17 @@ class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
               (const PlacementGroupSpecification &placement_group_spec,
                const StatusCallback &callback),
               (override));
+  MOCK_METHOD(Status, AsyncAddPlacementGroupBundles,
+              (const PlacementGroupID &placement_group_id,
+               (const std::vector<std::unordered_map<std::string, double>> &bundles),
+               const StatusCallback &callback),
+              (override));
+  MOCK_METHOD(
+      Status, AsyncSubscribeBundlesChangedEvent,
+      (const PlacementGroupID &placement_group_id,
+       (const SubscribeCallback<PlacementGroupID, rpc::PlacementGroupBundlesChangedNotification> &subscribe),
+       const StatusCallback &done),
+      (override));
   MOCK_METHOD(Status, AsyncGet,
               (const PlacementGroupID &placement_group_id,
                const OptionalItemCallback<rpc::PlacementGroupTableData> &callback),
