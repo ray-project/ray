@@ -12,7 +12,7 @@ everything needed to get started with running Ray! They work for both local deve
 * `:SHA` - A specific nightly build.
 
 ### Suffixes
-* `-gpu` - These are based off of an `NVIDIA CUDA` image. They require the [Nvidia Docker Runtime](https://github.com/NVIDIA/nvidia-docker) to be installed on the host for the container to access GPUs.  
+* `-cuXXX` - These are based off of an `NVIDIA CUDA` image. They require the [Nvidia Docker Runtime](https://github.com/NVIDIA/nvidia-docker) to be installed on the host for the container to access GPUs.  
 * `-cpu`- These are based off of an `Ubuntu` image.
 * Tags without a suffix refer to `-cpu` images
 

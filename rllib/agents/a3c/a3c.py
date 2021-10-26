@@ -37,6 +37,8 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
     "entropy_coeff": 0.01,
+    # Entropy coefficient schedule
+    "entropy_coeff_schedule": None,
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
