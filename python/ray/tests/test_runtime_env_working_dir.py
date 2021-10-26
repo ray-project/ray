@@ -57,10 +57,9 @@ def tmp_working_dir():
         yield tmp_dir
 
 
-@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.parametrize("test_failure", [True, False])
+@pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_lazy_reads(start_cluster, tmp_working_dir, test_failure, option):
+def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     """Tests the case where we lazily read files or import inside a task/actor.
 
     This tests both that this fails *without* the working_dir and that it
@@ -68,23 +67,24 @@ def test_lazy_reads(start_cluster, tmp_working_dir, test_failure, option):
     """
     cluster, address = start_cluster
 
-    if test_failure:
-        # Don't pass working_dir, so it should fail!
+    if option == "failure":
+        # Don't pass the files at all, so it should fail!
         ray.init(address)
-    else:
-        if option == "working_dir":
-            ray.init(address, runtime_env={"working_dir": tmp_working_dir})
-        elif option == "py_modules":
-            ray.init(
-                address,
-                runtime_env={"py_modules": [tmp_working_dir + "/test_module"]})
+    elif option == "working_dir":
+        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+    elif option == "py_modules":
+        ray.init(
+            address,
+            runtime_env={
+                "py_modules": [os.path.join(tmp_working_dir, "test_module")]
+            })
 
     @ray.remote
     def test_import():
         import test_module
         return test_module.one()
 
-    if test_failure:
+    if option == "failure":
         with pytest.raises(ImportError):
             ray.get(test_import.remote())
     else:
@@ -94,7 +94,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, test_failure, option):
     def test_read():
         return open("hello").read()
 
-    if test_failure:
+    if option == "failure":
         with pytest.raises(FileNotFoundError):
             ray.get(test_read.remote())
     elif option == "working_dir":
@@ -110,7 +110,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, test_failure, option):
             return open("hello").read()
 
     a = Actor.remote()
-    if test_failure:
+    if option == "failure":
         with pytest.raises(ImportError):
             assert ray.get(a.test_import.remote()) == 1
         with pytest.raises(FileNotFoundError):
@@ -120,9 +120,9 @@ def test_lazy_reads(start_cluster, tmp_working_dir, test_failure, option):
         assert ray.get(a.test_read.remote()) == "world"
 
 
-@pytest.mark.parametrize("test_failure", [True, False])
+@pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_captured_import(start_cluster, tmp_working_dir, test_failure):
+def test_captured_import(start_cluster, tmp_working_dir, option: str):
     """Tests importing a module in the driver and capturing it in a task/actor.
 
     This tests both that this fails *without* the working_dir and that it
@@ -130,11 +130,17 @@ def test_captured_import(start_cluster, tmp_working_dir, test_failure):
     """
     cluster, address = start_cluster
 
-    if test_failure:
-        # Don't pass working_dir, so it should fail!
+    if option == "failure":
+        # Don't pass the files at all, so it should fail!
         ray.init(address)
-    else:
+    elif option == "working_dir":
         ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+    elif option == "py_modules":
+        ray.init(
+            address,
+            runtime_env={
+                "py_modules": [os.path.join(tmp_working_dir, "test_module")]
+            })
 
     # Import in the driver.
     sys.path.insert(0, tmp_working_dir)
@@ -144,7 +150,7 @@ def test_captured_import(start_cluster, tmp_working_dir, test_failure):
     def test_import():
         return test_module.one()
 
-    if test_failure:
+    if option == "failure":
         with pytest.raises(Exception):
             ray.get(test_import.remote())
     else:
@@ -155,10 +161,7 @@ def test_captured_import(start_cluster, tmp_working_dir, test_failure):
         def test_import(self):
             return test_module.one()
 
-        def test_read(self):
-            return open("hello").read()
-
-    if test_failure:
+    if option == "failure":
         with pytest.raises(Exception):
             a = Actor.remote()
             assert ray.get(a.test_import.remote()) == 1
@@ -190,28 +193,48 @@ def test_empty_working_dir(start_cluster):
         assert len(ray.get(a.listdir.remote())) == 0
 
 
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_invalid_working_dir(start_cluster):
-    """Tests input validation for the working_dir."""
+def test_input_validation(start_cluster, option: str):
+    """Tests input validation for working_dir and py_modules."""
     cluster, address = start_cluster
 
     with pytest.raises(TypeError):
-        ray.init(address, runtime_env={"working_dir": 10})
+        if option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": 10})
+        else:
+            ray.init(address, runtime_env={"py_modules": [10]})
 
     ray.shutdown()
 
     with pytest.raises(ValueError):
-        ray.init(address, runtime_env={"working_dir": "/does/not/exist"})
+        if option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": "/does/not/exist"})
+        else:
+            ray.init(address, runtime_env={"py_modules": ["/does/not/exist"]})
 
     ray.shutdown()
 
     with pytest.raises(ValueError):
-        ray.init(address, runtime_env={"working_dir": "does_not_exist"})
+        if option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": "does_not_exist"})
+        else:
+            ray.init(address, runtime_env={"py_modules": ["does_not_exist"]})
 
     ray.shutdown()
 
     with pytest.raises(ValueError):
-        ray.init(address, runtime_env={"working_dir": "s3://no_dot_zip"})
+        if option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": "s3://no_dot_zip"})
+        else:
+            ray.init(address, runtime_env={"py_modules": ["s3://no_dot_zip"]})
+
+    ray.shutdown()
+
+    if option == "py_modules":
+        with pytest.raises(TypeError):
+            # Must be in a list.
+            ray.init(address, runtime_env={"py_modules": "."})
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -621,7 +644,7 @@ def chdir(d: str):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_inheritance(start_cluster, option):
+def test_inheritance(start_cluster, option: str):
     """Tests that child tasks/actors inherit URIs properly."""
     cluster, address = start_cluster
     with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
@@ -653,7 +676,7 @@ def test_inheritance(start_cluster, option):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_large_file_boundary(shutdown_only, option):
+def test_large_file_boundary(shutdown_only, option: str):
     """Check that packages just under the max size work as expected."""
     with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
         size = GCS_STORAGE_MAX_SIZE - 1024 * 1024
@@ -677,7 +700,7 @@ def test_large_file_boundary(shutdown_only, option):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_large_file_error(shutdown_only, option):
+def test_large_file_error(shutdown_only, option: str):
     with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
         # Write to two separate files, each of which is below the threshold to
         # make sure the error is for the full package size.
