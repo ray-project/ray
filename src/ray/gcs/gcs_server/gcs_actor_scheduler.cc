@@ -24,9 +24,8 @@ namespace ray {
 namespace gcs {
 
 GcsActorScheduler::GcsActorScheduler(
-    instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
-    const gcs::GcsNodeManager &gcs_node_manager,
-    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
+    const GcsNodeManager &gcs_node_manager,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
         schedule_success_handler,
@@ -35,7 +34,6 @@ GcsActorScheduler::GcsActorScheduler(
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
-      gcs_pub_sub_(std::move(gcs_pub_sub)),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
       raylet_client_pool_(raylet_client_pool),

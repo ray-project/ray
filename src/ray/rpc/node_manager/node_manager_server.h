@@ -42,7 +42,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage, -1)  \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles, -1)   \
   RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig, -1)        \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetGcsServerAddress, -1)
+  RPC_SERVICE_HANDLER(NodeManagerService, GetGcsServerAddress, -1)    \
+  RPC_SERVICE_HANDLER(NodeManagerService, ShutdownRaylet, -1)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -82,6 +83,10 @@ class NodeManagerServiceHandler {
   virtual void HandleReleaseUnusedWorkers(const ReleaseUnusedWorkersRequest &request,
                                           ReleaseUnusedWorkersReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleShutdownRaylet(const ShutdownRayletRequest &request,
+                                    ShutdownRayletReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                        rpc::CancelWorkerLeaseReply *reply,

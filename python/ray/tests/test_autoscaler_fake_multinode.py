@@ -8,6 +8,7 @@ from ray.cluster_utils import AutoscalingCluster
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_fake_autoscaler_basic_e2e(shutdown_only):
+    # __example_begin__
     cluster = AutoscalingCluster(
         head_resources={"CPU": 2},
         worker_node_types={
@@ -51,6 +52,7 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
         ray.shutdown()
     finally:
         cluster.shutdown()
+    # __example_end__
 
 
 if __name__ == "__main__":

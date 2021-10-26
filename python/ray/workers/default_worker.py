@@ -125,6 +125,11 @@ parser.add_argument(
     default=0,
     help="The PID of the process for setup worker runtime env.")
 parser.add_argument(
+    "--startup-token",
+    required=True,
+    type=int,
+    help="The startup token assigned to this worker process by the raylet.")
+parser.add_argument(
     "--ray-debugger-external",
     default=False,
     action="store_true",
@@ -189,6 +194,7 @@ if __name__ == "__main__":
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
         worker_shim_pid=args.worker_shim_pid,
+        startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external)
 
     # Add code search path to sys.path, set load_code_from_local.

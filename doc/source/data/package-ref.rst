@@ -24,16 +24,26 @@ Creating a Dataset
 .. autofunction:: ray.data.from_pandas_refs
 .. autofunction:: ray.data.from_numpy
 
+.. _dataset-api:
+
 Dataset API
 -----------
 
 .. autoclass:: ray.data.Dataset
     :members:
 
+.. _dataset-pipeline-api:
+
 DatasetPipeline API
 -------------------
 
 .. autoclass:: ray.data.dataset_pipeline.DatasetPipeline
+    :members:
+
+GroupedDataset API
+------------------
+
+.. autoclass:: ray.data.grouped_dataset.GroupedDataset
     :members:
 
 Tensor Column Extension API
