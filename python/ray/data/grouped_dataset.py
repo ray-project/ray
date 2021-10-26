@@ -12,7 +12,7 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType
 
-GroupKeyT = Union[Callable[[T], KeyType], str, List[str]]
+GroupKeyT = Union[None, Callable[[T], KeyType], str, List[str]]
 
 
 @PublicAPI(stability="beta")
@@ -80,9 +80,13 @@ class GroupedDataset(Generic[T]):
 
         num_mappers = len(self._dataset._blocks)
         num_reducers = num_mappers
-        boundaries = sort.sample_boundaries(
-            self._dataset._blocks, [(self._key, "ascending")]
-            if isinstance(self._key, str) else self._key, num_reducers)
+        if self._key is None:
+            num_reducers = 1
+            boundaries = []
+        else:
+            boundaries = sort.sample_boundaries(
+                self._dataset._blocks, [(self._key, "ascending")]
+                if isinstance(self._key, str) else self._key, num_reducers)
 
         partition_and_combine_block = cached_remote_fn(
             _partition_and_combine_block).options(num_returns=num_reducers)
@@ -99,8 +103,8 @@ class GroupedDataset(Generic[T]):
 
         reduce_results = []
         for j in range(num_reducers):
-            ret = aggregate_combined_blocks.remote(agg,
-                                                   *map_results[:, j].tolist())
+            ret = aggregate_combined_blocks.remote(
+                num_reducers, self._key, agg, *map_results[:, j].tolist())
             reduce_results.append(ret)
         reduce_bar = ProgressBar("GroupBy Reduce", len(reduce_results))
         reduce_bar.block_until_complete([ret[0] for ret in reduce_results])
@@ -226,16 +230,20 @@ def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
                                  key: GroupKeyT,
                                  agg: AggregateFn) -> List[Block]:
     """Partition the block and combine rows with the same key."""
-    partitions = BlockAccessor.for_block(block).sort_and_partition(
-        boundaries, [(key, "ascending")] if isinstance(key, str) else key,
-        descending=False)
+    if key is None:
+        partitions = [block]
+    else:
+        partitions = BlockAccessor.for_block(block).sort_and_partition(
+            boundaries, [(key, "ascending")] if isinstance(key, str) else key,
+            descending=False)
     return [BlockAccessor.for_block(p).combine(key, agg) for p in partitions]
 
 
-def _aggregate_combined_blocks(agg: AggregateFn, *blocks: Tuple[Block, ...]
-                               ) -> Tuple[Block[U], BlockMetadata]:
+def _aggregate_combined_blocks(
+        num_reducers: int, key: GroupKeyT, agg: AggregateFn,
+        *blocks: Tuple[Block, ...]) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
-    if len(blocks) == 1:
-        blocks = blocks[0]  # Ray weirdness
+    if num_reducers == 1:
+        blocks = [b[0] for b in blocks]  # Ray weirdness
     return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
-        list(blocks), agg)
+        list(blocks), key, agg)

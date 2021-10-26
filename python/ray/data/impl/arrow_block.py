@@ -24,6 +24,7 @@ T = TypeVar("T")
 # An Arrow block can be sorted by a list of (column, asc/desc) pairs,
 # e.g. [("column1", "ascending"), ("column2", "descending")]
 SortKeyT = List[Tuple[str, str]]
+GroupKeyT = Union[None, str]
 
 
 class ArrowRow:
@@ -293,7 +294,7 @@ class ArrowBlockAccessor(BlockAccessor):
         ret.append(_copy_table(table.slice(prev_i)))
         return ret
 
-    def combine(self, key: str, agg: AggregateFn) -> Block[ArrowRow]:
+    def combine(self, key: GroupKeyT, agg: AggregateFn) -> Block[ArrowRow]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -307,6 +308,7 @@ class ArrowBlockAccessor(BlockAccessor):
             and v is the partially combined accumulator.
         """
         # TODO(jjyao) This can be implemented natively in Arrow
+        key_fn = (lambda r: r[key]) if key is not None else (lambda r: None)
         iter = self.iter_rows()
         next_row = None
         builder = ArrowBlockBuilder()
@@ -314,12 +316,12 @@ class ArrowBlockAccessor(BlockAccessor):
             try:
                 if next_row is None:
                     next_row = next(iter)
-                next_key = next_row[key]
+                next_key = key_fn(next_row)
 
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while next_row[key] == next_key:
+                    while key_fn(next_row) == next_key:
                         yield next_row
                         try:
                             next_row = next(iter)
@@ -330,7 +332,10 @@ class ArrowBlockAccessor(BlockAccessor):
                 accumulator = agg.init(next_key)
                 for r in gen():
                     accumulator = agg.accumulate(accumulator, r)
-                builder.add({key: next_key, agg.name: accumulator})
+                if key is None:
+                    builder.add({agg.name: accumulator})
+                else:
+                    builder.add({key: next_key, agg.name: accumulator})
             except StopIteration:
                 break
         return builder.build()
@@ -346,7 +351,7 @@ class ArrowBlockAccessor(BlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[ArrowRow]],
+            blocks: List[Block[ArrowRow]], key: GroupKeyT,
             agg: AggregateFn) -> Tuple[Block[ArrowRow], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
@@ -355,6 +360,7 @@ class ArrowBlockAccessor(BlockAccessor):
 
         Args:
             blocks: A list of partially combined and sorted blocks.
+            key: The column name of key.
             agg: The aggregation to do.
 
         Returns:
@@ -363,25 +369,26 @@ class ArrowBlockAccessor(BlockAccessor):
             and v is the corresponding aggregation result.
         """
 
-        def key(r):
-            return r[r._row.schema.names[0]]
+        key_fn = (lambda r: r[r._row.schema.names[0]]
+                  ) if key is not None else (lambda r: 0)
 
         iter = heapq.merge(
             *[ArrowBlockAccessor(block).iter_rows() for block in blocks],
-            key=key)
+            key=key_fn)
         next_row = None
         builder = ArrowBlockBuilder()
         while True:
             try:
                 if next_row is None:
                     next_row = next(iter)
-                next_key = key(next_row)
-                next_key_name = next_row._row.schema.names[0]
+                next_key = key_fn(next_row)
+                next_key_name = next_row._row.schema.names[
+                    0] if key is not None else None
 
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while key(next_row) == next_key:
+                    while key_fn(next_row) == next_key:
                         yield next_row
                         try:
                             next_row = next(iter)
@@ -397,10 +404,13 @@ class ArrowBlockAccessor(BlockAccessor):
                         first = False
                     else:
                         accumulator = agg.merge(accumulator, r[agg.name])
-                builder.add({
-                    next_key_name: next_key,
-                    agg.name: agg.finalize(accumulator)
-                })
+                if key is None:
+                    builder.add({agg.name: agg.finalize(accumulator)})
+                else:
+                    builder.add({
+                        next_key_name: next_key,
+                        agg.name: agg.finalize(accumulator)
+                    })
             except StopIteration:
                 break
 

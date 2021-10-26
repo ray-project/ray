@@ -17,6 +17,7 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata, \
 
 # A simple block can be sorted by value (None) or a lambda function (Callable).
 SortKeyT = Union[None, Callable[[T], Any]]
+GroupKeyT = Union[None, Callable[[T], KeyType]]
 
 
 class SimpleBlockBuilder(BlockBuilder[T]):
@@ -139,7 +140,7 @@ class SimpleBlockAccessor(BlockAccessor):
         ret.append(items[prev_i:])
         return ret
 
-    def combine(self, key: Callable[[T], KeyType],
+    def combine(self, key: GroupKeyT,
                 agg: AggregateFn) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator.
 
@@ -153,6 +154,7 @@ class SimpleBlockAccessor(BlockAccessor):
             A sorted block of (k, v) pairs where k is the groupby key
             and v is the partially combined accumulator.
         """
+        key_fn = key if key else lambda r: None
         iter = self.iter_rows()
         next_row = None
         # Use a bool to indicate if next_row is valid
@@ -165,14 +167,14 @@ class SimpleBlockAccessor(BlockAccessor):
                 if not has_next_row:
                     next_row = next(iter)
                     has_next_row = True
-                next_key = key(next_row)
+                next_key = key_fn(next_row)
 
                 def gen():
                     nonlocal iter
                     nonlocal next_row
                     nonlocal has_next_row
                     assert has_next_row
-                    while key(next_row) == next_key:
+                    while key_fn(next_row) == next_key:
                         yield next_row
                         try:
                             next_row = next(iter)
@@ -184,7 +186,10 @@ class SimpleBlockAccessor(BlockAccessor):
                 accumulator = agg.init(next_key)
                 for r in gen():
                     accumulator = agg.accumulate(accumulator, r)
-                ret.append((next_key, accumulator))
+                if key is None:
+                    ret.append((accumulator, ))
+                else:
+                    ret.append((next_key, accumulator))
             except StopIteration:
                 break
         return ret
@@ -199,7 +204,8 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[Tuple[KeyType, AggType]]], agg: AggregateFn
+            blocks: List[Block[Tuple[KeyType, AggType]]], key: GroupKeyT,
+            agg: AggregateFn
     ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
@@ -208,6 +214,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
         Args:
             blocks: A list of partially combined and sorted blocks.
+            key: The key function that returns the key from the row.
             agg: The aggregation to do.
 
         Returns:
@@ -215,24 +222,23 @@ class SimpleBlockAccessor(BlockAccessor):
             and v is the corresponding aggregation result.
         """
 
-        def key(r):
-            return r[0]
+        key_fn = (lambda r: r[0]) if key else (lambda r: 0)
 
         iter = heapq.merge(
             *[SimpleBlockAccessor(block).iter_rows() for block in blocks],
-            key=key)
+            key=key_fn)
         next_row = None
         ret = []
         while True:
             try:
                 if next_row is None:
                     next_row = next(iter)
-                next_key = key(next_row)
+                next_key = key_fn(next_row)
 
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while key(next_row) == next_key:
+                    while key_fn(next_row) == next_key:
                         yield next_row
                         try:
                             next_row = next(iter)
@@ -244,11 +250,15 @@ class SimpleBlockAccessor(BlockAccessor):
                 accumulator = None
                 for r in gen():
                     if first:
-                        accumulator = r[1]
+                        accumulator = r[1] if key else r[0]
                         first = False
                     else:
-                        accumulator = agg.merge(accumulator, r[1])
-                ret.append((next_key, agg.finalize(accumulator)))
+                        accumulator = agg.merge(accumulator, r[1]
+                                                if key else r[0])
+                if key is None:
+                    ret.append((agg.finalize(accumulator)))
+                else:
+                    ret.append((next_key, agg.finalize(accumulator)))
             except StopIteration:
                 break
 

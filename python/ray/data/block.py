@@ -168,7 +168,7 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     @staticmethod
-    def aggregate_combined_blocks(blocks: List[Block], agg: "AggregateFn"
+    def aggregate_combined_blocks(blocks: List[Block], key, agg: "AggregateFn"
                                   ) -> Tuple[Block[U], BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
