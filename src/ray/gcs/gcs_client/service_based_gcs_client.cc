@@ -26,6 +26,7 @@ extern "C" {
 
 namespace ray {
 namespace gcs {
+namespace {
 
 /// Adapts GcsRpcClient to SubscriberClientInterface for making RPC calls. Thread safe.
 class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
@@ -73,6 +74,8 @@ void GcsSubscriberClient::PubsubCommandBatch(
         callback(status, reply);
       });
 }
+
+}  // namespace
 
 ServiceBasedGcsClient::ServiceBasedGcsClient(
     const GcsClientOptions &options,

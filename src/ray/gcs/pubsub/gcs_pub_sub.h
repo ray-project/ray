@@ -199,6 +199,7 @@ class GcsPublisher {
   explicit GcsPublisher(std::unique_ptr<GcsPubSub> pubsub) : pubsub_(std::move(pubsub)) {}
 
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
+  /// Returns nullptr when RayConfig::instance().gcs_grpc_based_pubsub() is false.
   pubsub::Publisher *GetPublisher() const { return publisher_.get(); }
 
   /// Each publishing method below publishes to a different "channel".

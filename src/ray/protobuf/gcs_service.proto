@@ -638,6 +638,7 @@ message GcsSubscriberPollRequest {
 message GcsSubscriberPollReply {
   /// The messages that are published.
   repeated PubMessage pub_messages = 1;
+  // Not populated.
   GcsStatus status = 100;
 }
 
@@ -649,6 +650,7 @@ message GcsSubscriberCommandBatchRequest {
 }
 
 message GcsSubscriberCommandBatchReply {
+  // Not populated.
   GcsStatus status = 100;
 }
 
