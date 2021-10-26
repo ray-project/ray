@@ -85,6 +85,7 @@ void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
 }
 
 void CoreWorkerProcess::Shutdown() {
+  RAY_LOG(INFO) << "Shutdown. Core worker process will be deleted";
   if (!core_worker_process) {
     return;
   }
@@ -290,10 +291,14 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
   EnsureInitialized();
+  RAY_LOG(INFO) << "1";
   if (core_worker_process->options_.num_workers == 1) {
+    RAY_LOG(INFO) << "2";
     RAY_CHECK(core_worker_process->GetGlobalWorker()->GetWorkerID() == worker_id);
+    RAY_LOG(INFO) << "3";
     return;
   }
+  RAY_LOG(INFO) << "4";
   current_core_worker_ = core_worker_process->GetWorker(worker_id);
 }
 
@@ -307,6 +312,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::GetGlobalWorker() {
   absl::ReaderMutexLock lock(&mutex_);
+  RAY_CHECK(global_worker_) << "global_worker_ must not be NULL";
   return global_worker_;
 }
 
@@ -354,6 +360,7 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
       worker = core_worker_process->CreateWorker();
     }
     worker->RunTaskExecutionLoop();
+    RAY_LOG(INFO) << "Task execution loop terminated";
     core_worker_process->RemoveWorker(worker);
   } else {
     std::vector<std::thread> worker_threads;
@@ -362,6 +369,7 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
         SetThreadName("worker.task" + std::to_string(i));
         auto worker = core_worker_process->CreateWorker();
         worker->RunTaskExecutionLoop();
+        RAY_LOG(INFO) << "Task execution loop terminated for a thread " << std::to_string(i);
         core_worker_process->RemoveWorker(worker);
       });
     }
@@ -768,6 +776,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 void CoreWorker::Shutdown() {
   io_service_.stop();
   if (options_.worker_type == WorkerType::WORKER) {
+    direct_task_receiver_->Stop();
     task_execution_service_.stop();
   }
   if (options_.on_worker_shutdown) {
