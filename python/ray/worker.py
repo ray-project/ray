@@ -27,7 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
-from ray._private.runtime_env import working_dir as working_dir_pkg
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
@@ -191,8 +191,8 @@ class Worker:
     @property
     def runtime_env(self):
         """Get the runtime env in json format"""
-        return json.loads(
-            self.core_worker.get_job_config().runtime_env.raw_json)
+        return json.loads(self.core_worker.get_job_config()
+                          .runtime_env.serialized_runtime_env)
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
@@ -223,9 +223,6 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
-            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
-                ray.client().connect()
-                return
             raise RaySystemError("Ray has not been started yet. You can "
                                  "start Ray with 'ray.init()'.")
 
@@ -357,8 +354,7 @@ class Worker:
         return self.deserialize_objects(data_metadata_pairs,
                                         object_refs), debugger_breakpoint
 
-    def run_function_on_all_workers(self, function,
-                                    run_on_other_drivers=False):
+    def run_function_on_all_workers(self, function):
         """Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
@@ -370,9 +366,6 @@ class Worker:
             function (Callable): The function to run on all of the workers. It
                 takes only one argument, a worker info dict. If it returns
                 anything, its return values will not be used.
-            run_on_other_drivers: The boolean that indicates whether we want to
-                run this function on other drivers. One case is we may need to
-                share objects across drivers.
         """
         # If ray.init has not been called yet, then cache the function and
         # export it when connect is called. Otherwise, run the function on all
@@ -408,7 +401,6 @@ class Worker:
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                    "run_on_other_drivers": str(run_on_other_drivers),
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
@@ -479,7 +471,7 @@ class Worker:
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
 
@@ -576,7 +568,7 @@ _global_node = None
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def init(
         address: Optional[str] = None,
         *,
@@ -605,7 +597,6 @@ def init(
         _memory: Optional[int] = None,
         _redis_password: str = ray_constants.REDIS_DEFAULT_PASSWORD,
         _temp_dir: Optional[str] = None,
-        _lru_evict: bool = False,
         _metrics_export_port: Optional[int] = None,
         _system_config: Optional[Dict[str, str]] = None,
         _tracing_startup_hook: Optional[Callable] = None,
@@ -882,7 +873,6 @@ def init(
             start_initial_python_workers_for_first_job=(
                 job_config is None or job_config.runtime_env is None),
             _system_config=_system_config,
-            lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook)
@@ -924,7 +914,6 @@ def init(
             object_ref_seed=None,
             temp_dir=_temp_dir,
             _system_config=_system_config,
-            lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
@@ -933,11 +922,6 @@ def init(
             shutdown_at_exit=False,
             spawn_reaper=False,
             connect_only=True)
-
-    if driver_mode == SCRIPT_MODE and job_config:
-        # Rewrite the URI. Note the package isn't uploaded to the URI until
-        # later in the connect.
-        working_dir_pkg.rewrite_runtime_env_uris(job_config)
 
     connect(
         _global_node,
@@ -974,7 +958,7 @@ _post_init_hooks = []
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -1087,8 +1071,8 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
         if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
             if not autoscaler_log_fyi_printed:
                 yield ("Tip: use `ray status` to view detailed "
-                       "autoscaling status. To disable autoscaler event "
-                       "messages, you can set AUTOSCALER_EVENTS=0.")
+                       "cluster status. To disable these "
+                       "messages, set RAY_SCHEDULER_EVENTS=0.")
                 autoscaler_log_fyi_printed = True
             # The event text immediately follows the ":event_summary:"
             # magic token.
@@ -1128,45 +1112,52 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     def prefix_for(data: Dict[str, str]) -> str:
         """The PID prefix for this log line."""
-        if data["pid"] in ["autoscaler", "raylet"]:
+        if data.get("pid") in ["autoscaler", "raylet"]:
             return ""
         else:
             res = "pid="
-            if data["actor_name"]:
+            if data.get("actor_name"):
                 res = data["actor_name"] + " " + res
-            elif data["task_name"]:
+            elif data.get("task_name"):
                 res = data["task_name"] + " " + res
             return res
 
-    def color_for(data: Dict[str, str]) -> str:
+    def color_for(data: Dict[str, str], line: str) -> str:
         """The color for this log line."""
-        if data["pid"] == "raylet":
+        if data.get("pid") == "raylet":
             return colorama.Fore.YELLOW
-        elif data["pid"] == "autoscaler":
-            return colorama.Style.BRIGHT + colorama.Fore.CYAN
+        elif data.get("pid") == "autoscaler":
+            if "Error:" in line or "Warning:" in line:
+                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+            else:
+                return colorama.Style.BRIGHT + colorama.Fore.CYAN
         else:
             return colorama.Fore.CYAN
 
-    if data["pid"] == "autoscaler":
-        pid = "{} +{}".format(data["pid"], time_string())
-        lines = filter_autoscaler_events(data["lines"])
+    if data.get("pid") == "autoscaler":
+        pid = "scheduler +{}".format(time_string())
+        lines = filter_autoscaler_events(data.get("lines", []))
     else:
-        pid = data["pid"]
-        lines = data["lines"]
+        pid = data.get("pid")
+        lines = data.get("lines", [])
 
-    if data["ip"] == data["localhost"]:
+    if data.get("ip") == data.get("localhost"):
         for line in lines:
             print(
-                "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
-                                         prefix_for(data), pid,
-                                         colorama.Style.RESET_ALL, line),
+                "{}{}({}{}){} {}".format(colorama.Style.DIM,
+                                         color_for(data,
+                                                   line), prefix_for(data),
+                                         pid, colorama.Style.RESET_ALL, line),
                 file=print_file)
     else:
         for line in lines:
             print(
-                "{}{}({}{}, ip={}){} {}".format(
-                    colorama.Style.DIM, color_for(data), prefix_for(data), pid,
-                    data["ip"], colorama.Style.RESET_ALL, line),
+                "{}{}({}{}, ip={}){} {}".format(colorama.Style.DIM,
+                                                color_for(data, line),
+                                                prefix_for(data), pid,
+                                                data.get("ip"),
+                                                colorama.Style.RESET_ALL,
+                                                line),
                 file=print_file)
 
 
@@ -1233,7 +1224,7 @@ def listen_error_messages_raylet(worker, threads_stopped):
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def is_initialized() -> bool:
     """Check if ray.init has been called yet.
 
@@ -1253,6 +1244,7 @@ def connect(node,
             job_config=None,
             runtime_env_hash=0,
             worker_shim_pid=0,
+            startup_token=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
@@ -1269,6 +1261,8 @@ def connect(node,
         runtime_env_hash (int): The hash of the runtime env for this worker.
         worker_shim_pid (int): The PID of the process for setup worker
             runtime env.
+        startup_token (int): The startup token of the process assigned to
+            it during startup as a command line argument.
         ray_debugger_host (bool): The host to bind a Ray debugger to on
             this worker.
     """
@@ -1380,6 +1374,16 @@ def connect(node,
 
     worker.ray_debugger_external = ray_debugger_external
 
+    # If it's a driver and it's not coming from ray client, we'll prepare the
+    # environment here. If it's ray client, the environment will be prepared
+    # at the server side.
+    if (mode == SCRIPT_MODE and not job_config.client_job
+            and job_config.runtime_env):
+        job_config.set_runtime_env(
+            upload_working_dir_if_needed(
+                job_config.runtime_env,
+                worker.node.get_runtime_env_dir_path()))
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1387,16 +1391,8 @@ def connect(node,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port, runtime_env_hash,
-        worker_shim_pid)
+        worker_shim_pid, startup_token)
     worker.gcs_client = worker.core_worker.get_gcs_client()
-
-    # If it's a driver and it's not coming from ray client, we'll prepare the
-    # environment here. If it's ray client, the environment will be prepared
-    # at the server side.
-    if mode == SCRIPT_MODE and not job_config.client_job:
-        manager = working_dir_pkg.WorkingDirManager(
-            worker.node.get_runtime_env_dir_path())
-        manager.upload_runtime_env_package_if_needed(job_config)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
@@ -1552,7 +1548,7 @@ blocking_get_inside_async_warned = False
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
         *,
         timeout: Optional[float] = None) -> Union[Any, List[Any]]:
@@ -1641,7 +1637,7 @@ def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def put(value: Any, *,
         _owner: Optional["ray.actor.ActorHandle"] = None) -> ray.ObjectRef:
     """Store an object in the object store.
@@ -1695,7 +1691,7 @@ blocking_wait_inside_async_warned = False
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def wait(object_refs: List[ray.ObjectRef],
          *,
          num_returns: int = 1,
@@ -1802,7 +1798,7 @@ def wait(object_refs: List[ray.ObjectRef],
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def get_actor(name: str,
               namespace: Optional[str] = None) -> "ray.actor.ActorHandle":
     """Get a handle to a named actor.
@@ -1834,7 +1830,7 @@ def get_actor(name: str,
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     """Kill an actor forcefully.
 
@@ -1863,7 +1859,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=True)
 def cancel(object_ref: ray.ObjectRef,
            *,
            force: bool = False,
@@ -1925,8 +1921,10 @@ def make_decorator(num_returns=None,
                    max_restarts=None,
                    max_task_retries=None,
                    runtime_env=None,
+                   placement_group="default",
                    worker=None,
-                   retry_exceptions=None):
+                   retry_exceptions=None,
+                   concurrency_groups=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1956,7 +1954,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env)
+                runtime_env, placement_group)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1981,10 +1979,10 @@ def make_decorator(num_returns=None,
                 raise ValueError(
                     "The keyword 'max_task_retries' only accepts -1, 0 or a"
                     " positive integer")
-            return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
-                                        memory, object_store_memory, resources,
-                                        accelerator_type, max_restarts,
-                                        max_task_retries, runtime_env)
+            return ray.actor.make_actor(
+                function_or_class, num_cpus, num_gpus, memory,
+                object_store_memory, resources, accelerator_type, max_restarts,
+                max_task_retries, runtime_env, concurrency_groups)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2094,15 +2092,6 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        override_environment_variables (Dict[str, str]): (Deprecated in Ray
-            1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
-            field of :ref:`runtime-environments` instead.) This specifies
-            environment variables to override for the actor or task.  The
-            overrides are propagated to all child actors and tasks.  This
-            is a dictionary mapping variable names to their values.  Existing
-            variables can be overridden, new ones can be created, and an
-            existing variable can be unset by setting it to an empty string.
-            Note: can only be set via `.options()`.
     """
     worker = global_worker
 
@@ -2112,9 +2101,21 @@ def remote(*args, **kwargs):
 
     # Parse the keyword arguments from the decorator.
     valid_kwargs = [
-        "num_returns", "num_cpus", "num_gpus", "memory", "object_store_memory",
-        "resources", "accelerator_type", "max_calls", "max_restarts",
-        "max_task_retries", "max_retries", "runtime_env", "retry_exceptions"
+        "num_returns",
+        "num_cpus",
+        "num_gpus",
+        "memory",
+        "object_store_memory",
+        "resources",
+        "accelerator_type",
+        "max_calls",
+        "max_restarts",
+        "max_task_retries",
+        "max_retries",
+        "runtime_env",
+        "retry_exceptions",
+        "placement_group",
+        "concurrency_groups",
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2147,7 +2148,9 @@ def remote(*args, **kwargs):
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
     runtime_env = kwargs.get("runtime_env")
+    placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
+    concurrency_groups = kwargs.get("concurrency_groups")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2162,5 +2165,7 @@ def remote(*args, **kwargs):
         max_task_retries=max_task_retries,
         max_retries=max_retries,
         runtime_env=runtime_env,
+        placement_group=placement_group,
         worker=worker,
-        retry_exceptions=retry_exceptions)
+        retry_exceptions=retry_exceptions,
+        concurrency_groups=concurrency_groups or [])

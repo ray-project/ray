@@ -25,13 +25,16 @@ from ray.tune.suggest import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.dragonfly import DragonflySearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
-from ray.tune.suggest.flaml import CFO
+from ray.tune.suggest.flaml import CFO, BlendSearch
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
-from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
+from ray.tune.suggest.optuna import OptunaSearch
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.suggest.hebo import HEBOSearch
+from ray.tune.suggest.ax import AxSearch
+from ray.tune.suggest.bohb import TuneBOHB
+from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.trial import Trial
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils._mock_trainable import MyTrainableClass
@@ -493,6 +496,12 @@ class AbstractWarmStartTest:
     def set_basic_conf(self):
         raise NotImplementedError()
 
+    def get_scheduler(self):
+        return None
+
+    def treat_trial_config(self, trial_config):
+        return trial_config
+
     def run_part_from_scratch(self):
         np.random.seed(162)
         search_alg, cost = self.set_basic_conf()
@@ -501,6 +510,7 @@ class AbstractWarmStartTest:
             cost,
             num_samples=5,
             search_alg=search_alg,
+            scheduler=self.get_scheduler(),
             verbose=0,
             name=self.experiment_name,
             local_dir=self.tmpdir)
@@ -517,6 +527,7 @@ class AbstractWarmStartTest:
             cost,
             num_samples=5,
             search_alg=search_alg,
+            scheduler=self.get_scheduler(),
             verbose=0,
             name=self.experiment_name,
             local_dir=self.tmpdir)
@@ -527,22 +538,34 @@ class AbstractWarmStartTest:
         search_alg2, cost = self.set_basic_conf()
         search_alg2 = ConcurrencyLimiter(search_alg2, 1)
         search_alg2.restore(checkpoint_path)
-        return tune.run(cost, num_samples=5, search_alg=search_alg2, verbose=0)
+        return tune.run(
+            cost,
+            num_samples=5,
+            search_alg=search_alg2,
+            scheduler=self.get_scheduler(),
+            verbose=0)
 
     def run_full(self):
         np.random.seed(162)
         search_alg3, cost = self.set_basic_conf()
         search_alg3 = ConcurrencyLimiter(search_alg3, 1)
         return tune.run(
-            cost, num_samples=10, search_alg=search_alg3, verbose=0)
+            cost,
+            num_samples=10,
+            search_alg=search_alg3,
+            scheduler=self.get_scheduler(),
+            verbose=0)
 
     def testWarmStart(self):
         results_exp_1, r_state, checkpoint_path = self.run_part_from_scratch()
         results_exp_2 = self.run_explicit_restore(r_state, checkpoint_path)
         results_exp_3 = self.run_full()
-        trials_1_config = [trial.config for trial in results_exp_1.trials]
-        trials_2_config = [trial.config for trial in results_exp_2.trials]
-        trials_3_config = [trial.config for trial in results_exp_3.trials]
+        trials_1_config = self.treat_trial_config(
+            [trial.config for trial in results_exp_1.trials])
+        trials_2_config = self.treat_trial_config(
+            [trial.config for trial in results_exp_2.trials])
+        trials_3_config = self.treat_trial_config(
+            [trial.config for trial in results_exp_3.trials])
         self.assertEqual(trials_1_config + trials_2_config, trials_3_config)
 
     def testRestore(self):
@@ -550,9 +573,12 @@ class AbstractWarmStartTest:
         results_exp_2 = self.run_from_experiment_restore(r_state)
         results_exp_3 = self.run_full()
 
-        trials_1_config = [trial.config for trial in results_exp_1.trials]
-        trials_2_config = [trial.config for trial in results_exp_2.trials]
-        trials_3_config = [trial.config for trial in results_exp_3.trials]
+        trials_1_config = self.treat_trial_config(
+            [trial.config for trial in results_exp_1.trials])
+        trials_2_config = self.treat_trial_config(
+            [trial.config for trial in results_exp_2.trials])
+        trials_3_config = self.treat_trial_config(
+            [trial.config for trial in results_exp_3.trials])
         self.assertEqual(trials_1_config + trials_2_config, trials_3_config)
 
 
@@ -574,8 +600,8 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             mode="min",
             random_state_seed=5,
             n_initial_points=1,
-            max_concurrent=1000  # Here to avoid breaking back-compat.
         )
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
 
@@ -617,6 +643,27 @@ class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+class BlendSearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        space = {
+            "height": tune.uniform(-100, 100),
+            "width": tune.randint(0, 100),
+            "time_budget_s": 10,
+        }
+
+        def cost(param, reporter):
+            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
+
+        search_alg = BlendSearch(
+            space=space,
+            metric="loss",
+            mode="min",
+            seed=20,
+        )
+
+        return search_alg, cost
+
+
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         optimizer = skopt.Optimizer([(0, 20), (-100, 100)])
@@ -627,13 +674,12 @@ class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             reporter(loss=(space["height"]**2 + space["width"]**2))
 
         search_alg = SkOptSearch(
-            optimizer,
-            ["width", "height"],
+            optimizer, ["width", "height"],
             metric="loss",
             mode="min",
-            max_concurrent=1000,  # Here to avoid breaking back-compat.
             points_to_evaluate=previously_run_params,
             evaluated_rewards=known_rewards)
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
 
@@ -651,18 +697,18 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             parameter_names,
             metric="loss",
             mode="min",
-            max_concurrent=1000,  # Here to avoid breaking back-compat.
         )
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
 
 class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         from optuna.samplers import TPESampler
-        space = [
-            ot_param.suggest_uniform("width", 0, 20),
-            ot_param.suggest_uniform("height", -100, 100)
-        ]
+        space = OptunaSearch.convert_search_space({
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        })
 
         def cost(space, reporter):
             reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
@@ -700,20 +746,12 @@ class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             None, domain_config.domain.list_of_domains[0])
         optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
         search_alg = DragonflySearch(
-            optimizer,
-            metric="loss",
-            mode="min",
-            max_concurrent=1000,  # Here to avoid breaking back-compat.
-        )
+            optimizer, metric="loss", mode="min", random_state_seed=162)
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
         return search_alg, cost
 
-    @unittest.skip("Skip because this doesn't seem to work.")
-    def testWarmStart(self):
-        pass
-
-    @unittest.skip("Skip because this doesn't seem to work.")
-    def testRestore(self):
-        pass
+    def treat_trial_config(self, trial_config):
+        return [list(x["point"]) for x in trial_config]
 
 
 class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
@@ -790,10 +828,10 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         search_alg = SigOptSearch(
             space,
             name="SigOpt Example Experiment",
-            max_concurrent=1,
             metric="loss",
             mode="min",
             points_to_evaluate=points)
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1)
         return search_alg, cost
 
     def testWarmStart(self):
@@ -855,6 +893,70 @@ class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             space=space, metric="loss", mode="min", random_state_seed=5)
 
         return search_alg, cost
+
+
+class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        from ax.service.ax_client import AxClient
+        space = AxSearch.convert_search_space({
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        })
+
+        from ax.modelbridge.generation_strategy import (GenerationStep,
+                                                        GenerationStrategy)
+        from ax.modelbridge.registry import Models
+
+        # set generation strategy to sobol to ensure reproductibility
+        try:
+            # ax-platform>=0.2.0
+            gs = GenerationStrategy(steps=[
+                GenerationStep(
+                    model=Models.SOBOL,
+                    num_trials=-1,
+                    model_kwargs={"seed": 4321},
+                ),
+            ])
+        except TypeError:
+            # ax-platform<0.2.0
+            gs = GenerationStrategy(steps=[
+                GenerationStep(
+                    model=Models.SOBOL,
+                    num_arms=-1,
+                    model_kwargs={"seed": 4321},
+                ),
+            ])
+
+        client = AxClient(random_seed=4321, generation_strategy=gs)
+        client.create_experiment(
+            parameters=space, objective_name="loss", minimize=True)
+
+        def cost(space, reporter):
+            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
+
+        search_alg = AxSearch(ax_client=client)
+        return search_alg, cost
+
+
+class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        space = {
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        }
+
+        def cost(space, reporter):
+            for i in range(10):
+                reporter(
+                    loss=(space["height"] - 14)**2 -
+                    abs(space["width"] - 3 - i))
+
+        search_alg = TuneBOHB(space=space, metric="loss", mode="min", seed=1)
+
+        return search_alg, cost
+
+    def get_scheduler(self):
+        return HyperBandForBOHB(max_t=10, metric="loss", mode="min")
 
 
 class SearcherTest(unittest.TestCase):

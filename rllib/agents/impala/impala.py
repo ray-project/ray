@@ -7,8 +7,9 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
-from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
-    _get_global_vars, _get_shared_metrics
+from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
+                                        STEPS_TRAINED_THIS_ITER_COUNTER,
+                                        _get_global_vars, _get_shared_metrics)
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
@@ -100,6 +101,12 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
+    # Set this to true to have two separate optimizers optimize the policy-
+    # and value networks.
+    "_separate_vf_optimizer": False,
+    # If _separate_vf_optimizer is True, define separate learning rate
+    # for the value network.
+    "_lr_vf": 0.0005,
 
     # Callback for APPO to use to update KL, target network periodically.
     # The input to the callback is the learner fetches dict.
@@ -230,6 +237,23 @@ def validate_config(config):
             "`num_aggregation_workers` should be significantly smaller than"
             "`num_workers`! Try setting it to 0.5*`num_workers` or less.")
 
+    # If two separate optimizers/loss terms used for tf, must also set
+    # `_tf_policy_handles_more_than_one_loss` to True.
+    if config["_separate_vf_optimizer"] is True:
+        # Only supported to tf so far.
+        # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the models
+        #  to return separate sets of weights in order to create the different
+        #  torch optimizers).
+        if config["framework"] not in ["tf", "tf2", "tfe"]:
+            raise ValueError(
+                "`_separate_vf_optimizer` only supported to tf so far!")
+        if config["_tf_policy_handles_more_than_one_loss"] is False:
+            logger.warning(
+                "`_tf_policy_handles_more_than_one_loss` must be set to True, "
+                "for TFPolicy to support more than one loss term/optimizer! "
+                "Auto-setting it to True.")
+            config["_tf_policy_handles_more_than_one_loss"] = True
+
 
 # Update worker weights as they finish generating experiences.
 class BroadcastUpdateLearnerWeights:
@@ -261,6 +285,7 @@ def record_steps_trained(item):
     metrics = _get_shared_metrics()
     # Manually update the steps trained counter since the learner thread
     # is executing outside the pipeline.
+    metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
     metrics.counters[STEPS_TRAINED_COUNTER] += count
     return item
 

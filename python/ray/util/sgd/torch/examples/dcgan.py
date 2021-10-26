@@ -115,7 +115,7 @@ class GANOperator(TrainingOperator):
 
         with FileLock(".ray.lock"):
             dataset = datasets.MNIST(
-                root="~/data/",
+                root=config.get("data_dir", "~/data/"),
                 download=True,
                 transform=transforms.Compose([
                     transforms.Resize(32),
@@ -244,7 +244,10 @@ def download_model():
     return model_path
 
 
-def train_example(num_workers=1, use_gpu=False, test_mode=False):
+def train_example(num_workers=1,
+                  use_gpu=False,
+                  test_mode=False,
+                  data_dir="~/data/"):
     if ray.util.client.ray.is_connected():
         # If using Ray Client, make sure model is downloaded on the Server.
         model_path = ray.get(ray.remote(download_model).remote())
@@ -254,7 +257,8 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
     config = {
         "test_mode": test_mode,
         "batch_size": 16 if test_mode else 512 // num_workers,
-        "classification_model_path": model_path
+        "classification_model_path": model_path,
+        "data_dir": data_dir
     }
     trainer = TorchTrainer(
         training_operator_cls=GANOperator,
@@ -303,6 +307,11 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Enables GPU training")
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="~/data/",
+        help="Set the path of the dataset.")
     args = parser.parse_args()
     if args.smoke_test:
         ray.init(num_cpus=2)
@@ -314,5 +323,6 @@ if __name__ == "__main__":
     trainer = train_example(
         num_workers=args.num_workers,
         use_gpu=args.use_gpu,
-        test_mode=args.smoke_test)
+        test_mode=args.smoke_test,
+        data_dir=args.data_dir)
     models = trainer.get_model()

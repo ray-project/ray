@@ -13,7 +13,8 @@ import ray._private.gcs_utils as gcs_utils
 
 from ray._private.test_utils import (
     generate_system_config_map, kill_actor_and_wait_for_failure,
-    run_string_as_driver, wait_for_condition, get_error_message)
+    run_string_as_driver, wait_for_condition, get_error_message,
+    placement_group_assert_no_leak)
 from ray.util.placement_group import get_current_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
@@ -46,28 +47,20 @@ def test_check_bundle_index(ray_start_cluster, connect_to_client):
                 "CPU": 2
             }])
 
-        error_count = 0
-        try:
+        with pytest.raises(ValueError, match="bundle index 3 is invalid"):
             Actor.options(
                 placement_group=placement_group,
                 placement_group_bundle_index=3).remote()
-        except ValueError:
-            error_count = error_count + 1
-        assert error_count == 1
 
-        try:
+        with pytest.raises(ValueError, match="bundle index -2 is invalid"):
             Actor.options(
                 placement_group=placement_group,
                 placement_group_bundle_index=-2).remote()
-        except ValueError:
-            error_count = error_count + 1
-        assert error_count == 2
 
-        try:
+        with pytest.raises(ValueError, match="bundle index must be -1"):
             Actor.options(placement_group_bundle_index=0).remote()
-        except ValueError:
-            error_count = error_count + 1
-        assert error_count == 3
+
+        placement_group_assert_no_leak([placement_group])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])

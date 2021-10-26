@@ -132,7 +132,6 @@ REGISTER_REMOTE_FUNCTION_PUSH_ERROR = "register_remote_function"
 FUNCTION_TO_RUN_PUSH_ERROR = "function_to_run"
 VERSION_MISMATCH_PUSH_ERROR = "version_mismatch"
 CHECKPOINT_PUSH_ERROR = "checkpoint"
-REGISTER_ACTOR_PUSH_ERROR = "register_actor"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 WORKER_POOL_LARGE_ERROR = "worker_pool_large"
@@ -166,6 +165,9 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 # Number of attempts to ping the Redis server. See
 # `services.py:wait_for_redis_to_start`.
 START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
+
+# Only unpickle and run exported functions from the same job if it's true.
+ISOLATE_EXPORTS = env_bool("RAY_ISOLATE_EXPORTS", True)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")

@@ -160,7 +160,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_logger.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "jenkins_only"],
+    tags = ["team:ml"],
 )
 
 py_test(
@@ -223,14 +223,6 @@ py_test(
     name = "test_sync",
     size = "medium",
     srcs = ["tests/test_sync.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_track",
-    size = "small",
-    srcs = ["tests/test_track.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )

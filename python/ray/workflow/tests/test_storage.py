@@ -5,10 +5,14 @@ from ray.tests.conftest import *  # noqa
 from ray import workflow
 from ray.workflow import workflow_storage
 from ray.workflow import storage
-from ray.workflow.workflow_storage import asyncio_run, \
-    get_workflow_storage
-from ray.workflow.common import StepType
+from ray.workflow.workflow_storage import asyncio_run
+from ray.workflow.common import (
+    StepType,
+    WorkflowNotFoundError,
+)
+from ray.workflow.tests import utils
 import subprocess
+import time
 
 
 def some_func(x):
@@ -39,6 +43,91 @@ async def test_kv_storage(workflow_start_regular):
     # TODO(suquark): Test "delete" once fully implemented.
 
 
+def test_delete(workflow_start_regular):
+    _storage = storage.get_global_storage()
+
+    # Try deleting a random workflow that never existed.
+    with pytest.raises(WorkflowNotFoundError):
+        workflow.delete(workflow_id="never_existed")
+
+    # Delete a workflow that has not finished and is not running.
+    @workflow.step
+    def never_ends(x):
+        utils.set_global_mark()
+        time.sleep(1000000)
+        return x
+
+    never_ends.step("hello world").run_async("never_finishes")
+
+    # Make sure the step is actualy executing before killing the cluster
+    while not utils.check_global_mark():
+        time.sleep(0.1)
+
+    # Restart
+    ray.shutdown()
+    subprocess.check_output("ray stop --force", shell=True)
+    workflow.init(storage=_storage)
+
+    with pytest.raises(ray.exceptions.RaySystemError):
+        result = workflow.get_output("never_finishes")
+        ray.get(result)
+
+    workflow.delete("never_finishes")
+
+    with pytest.raises(ValueError):
+        ouput = workflow.get_output("never_finishes")
+
+    # TODO(Alex): Uncomment after
+    # https://github.com/ray-project/ray/issues/19481.
+    # with pytest.raises(WorkflowNotFoundError):
+    #     workflow.resume("never_finishes")
+
+    with pytest.raises(WorkflowNotFoundError):
+        workflow.delete(workflow_id="never_finishes")
+
+    # Delete a workflow which has finished.
+    @workflow.step
+    def basic_step(arg):
+        return arg
+
+    result = basic_step.step("hello world").run(workflow_id="finishes")
+    assert result == "hello world"
+    ouput = workflow.get_output("finishes")
+    assert ray.get(ouput) == "hello world"
+
+    workflow.delete(workflow_id="finishes")
+
+    with pytest.raises(ValueError):
+        ouput = workflow.get_output("finishes")
+
+    # TODO(Alex): Uncomment after
+    # https://github.com/ray-project/ray/issues/19481.
+    # with pytest.raises(ValueError):
+    #     workflow.resume("finishes")
+
+    with pytest.raises(WorkflowNotFoundError):
+        workflow.delete(workflow_id="finishes")
+
+    assert workflow.list_all() == []
+
+    # The workflow can be re-run as if it was never run before.
+    assert basic_step.step("123").run(workflow_id="finishes") == "123"
+
+    # utils.unset_global_mark()
+    # never_ends.step("123").run_async(workflow_id="never_finishes")
+    # while not utils.check_global_mark():
+    #     time.sleep(0.1)
+
+    # assert workflow.get_status("never_finishes") == \
+    #     workflow.WorkflowStatus.RUNNING
+
+    # with pytest.raises(WorkflowRunningError):
+    #     workflow.delete("never_finishes")
+
+    # assert workflow.get_status("never_finishes") == \
+    #     workflow.WorkflowStatus.RUNNING
+
+
 def test_workflow_storage(workflow_start_regular):
     workflow_id = test_workflow_storage.__name__
     wf_storage = workflow_storage.WorkflowStorage(workflow_id,
@@ -47,7 +136,6 @@ def test_workflow_storage(workflow_start_regular):
     input_metadata = {
         "name": "test_basic_workflows.append1",
         "step_type": StepType.FUNCTION,
-        "object_refs": ["abc"],
         "workflows": ["def"],
         "workflow_refs": ["some_ref"],
         "max_retries": 1,
@@ -87,7 +175,7 @@ def test_workflow_storage(workflow_start_regular):
     asyncio_run(wf_storage._put(wf_storage._key_step_output(step_id), output))
 
     assert wf_storage.load_step_output(step_id) == output
-    assert wf_storage.load_step_args(step_id, [], [], []) == args
+    assert wf_storage.load_step_args(step_id, [], []) == args
     assert wf_storage.load_step_func_body(step_id)(33) == 34
     assert ray.get(wf_storage.load_object_ref(
         obj_ref.hex())) == object_resolved
@@ -131,7 +219,6 @@ def test_workflow_storage(workflow_start_regular):
         step_type=StepType.FUNCTION,
         args_valid=True,
         func_body_valid=True,
-        object_refs=input_metadata["object_refs"],
         workflows=input_metadata["workflows"],
         workflow_refs=input_metadata["workflow_refs"],
         ray_options={})
@@ -149,7 +236,6 @@ def test_workflow_storage(workflow_start_regular):
     assert inspect_result == workflow_storage.StepInspectResult(
         step_type=StepType.FUNCTION,
         func_body_valid=True,
-        object_refs=input_metadata["object_refs"],
         workflows=input_metadata["workflows"],
         workflow_refs=input_metadata["workflow_refs"],
         ray_options={})
@@ -163,7 +249,6 @@ def test_workflow_storage(workflow_start_regular):
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         step_type=StepType.FUNCTION,
-        object_refs=input_metadata["object_refs"],
         workflows=input_metadata["workflows"],
         workflow_refs=input_metadata["workflow_refs"],
         ray_options={})
@@ -174,35 +259,6 @@ def test_workflow_storage(workflow_start_regular):
     print(inspect_result)
     assert inspect_result == workflow_storage.StepInspectResult()
     assert not inspect_result.is_recoverable()
-
-
-def test_embedded_objectrefs(workflow_start_regular):
-    workflow_id = test_workflow_storage.__name__
-
-    class ObjectRefsWrapper:
-        def __init__(self, refs):
-            self.refs = refs
-
-    wf_storage = workflow_storage.WorkflowStorage(workflow_id,
-                                                  storage.get_global_storage())
-    url = storage.get_global_storage().storage_url
-
-    wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
-
-    asyncio_run(wf_storage._put(["key"], wrapped))
-
-    # Be extremely explicit about shutting down. We want to make sure the
-    # `_get` call deserializes the full object and puts it in the object store.
-    # Shutting down the cluster should guarantee we don't accidently get the
-    # old object and pass the test.
-    ray.shutdown()
-    subprocess.check_output("ray stop --force", shell=True)
-
-    workflow.init(url)
-    storage2 = get_workflow_storage(workflow_id)
-
-    result = asyncio_run(storage2._get(["key"]))
-    assert ray.get(result.refs) == [1, 2]
 
 
 if __name__ == "__main__":

@@ -14,10 +14,11 @@ from ray.rllib.execution.replay_ops import Replay
 from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
     UpdateTargetNetwork
 from ray.rllib.offline.shuffled_input import ShuffledInput
-from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
@@ -86,7 +87,7 @@ def execution_plan(workers, config):
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
+        capacity=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
         replay_sequence_length=config.get("replay_sequence_length", 1),

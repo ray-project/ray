@@ -129,14 +129,14 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
-      cd ray-template && sh run.sh
+      cd ray-template && bash run.sh
 
     | - 2. Connect the example application to an existing Ray cluster by specifying the RAY_ADDRESS env var.
 
     .. code-block:: shell
 
       ray start --head
-      RAY_ADDRESS=127.0.0.1:6379 sh run.sh
+      RAY_ADDRESS=127.0.0.1:6379 bash run.sh
 
     | - Now you can build your own Ray C++ application based on this project template.
 
@@ -277,8 +277,9 @@ Papers
    :caption: Ray Data
 
    data/dataset.rst
-   data/dataset-tensor-support.rst
    data/dataset-pipeline.rst
+   data/examples/big_data_ingestion
+   data/dataset-tensor-support.rst
    data/package-ref.rst
    data/dask-on-ray.rst
    data/mars-on-ray.rst
@@ -294,6 +295,7 @@ Papers
    workflows/basics.rst
    workflows/management.rst
    workflows/actors.rst
+   workflows/events.rst
    workflows/comparison.rst
    workflows/package-ref.rst
 
@@ -331,13 +333,14 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray SGD
+   :caption: Ray Train
 
-   raysgd/v2/raysgd.rst
-   raysgd/v2/user_guide.rst
-   raysgd/v2/examples.rst
-   raysgd/v2/architecture.rst
-   raysgd/v2/api.rst
+   train/train.rst
+   train/user_guide.rst
+   train/examples.rst
+   train/architecture.rst
+   train/api.rst
+   train/migration-guide.rst
    RaySGD v1: Distributed Training Wrappers <raysgd/raysgd.rst>
 
 .. toctree::
@@ -365,17 +368,11 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Contributing
+   :caption: Contributor Guide
 
    getting-involved.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Development and Ray Internals
-
    development.rst
+   fake-autoscaler.rst
    whitepaper.rst
    debugging.rst
    profiling.rst
-   fault-tolerance.rst

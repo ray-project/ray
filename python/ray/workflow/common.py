@@ -4,7 +4,8 @@ from collections import deque
 from enum import Enum, unique
 import hashlib
 import re
-from typing import Dict, List, Optional, Callable, Set, Iterator, Any
+from typing import (Dict, Generic, List, Optional, Callable, Set, TypeVar,
+                    Iterator, Any)
 import unicodedata
 
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from ray import ObjectRef
 from ray.util.annotations import PublicAPI
 
 # Alias types
+Event = Any
 StepID = str
 WorkflowOutputType = ObjectRef
 
@@ -32,7 +34,8 @@ def get_qualname(f):
 
 
 def ensure_ray_initialized():
-    ray.worker.global_worker.check_connected()
+    if not ray.is_initialized():
+        ray.init()
 
 
 @dataclass
@@ -80,8 +83,6 @@ class StepType(str, Enum):
 class WorkflowInputs:
     # The object ref of the input arguments.
     args: ObjectRef
-    # The object refs in the arguments.
-    object_refs: List[ObjectRef]
     # TODO(suquark): maybe later we can replace it with WorkflowData.
     # The workflows in the arguments.
     workflows: "List[Workflow]"
@@ -94,16 +95,6 @@ def _hash(obj: Any) -> bytes:
     m = hashlib.sha256()
     m.update(cloudpickle.dumps(obj))
     return m.digest()
-
-
-def calculate_identifiers(object_refs: List[ObjectRef]) -> List[str]:
-    """
-    Calculate identifiers for an object ref based on the contents. (i.e. a hash
-    of the contents).
-    """
-    hashes = ray.get([_hash.remote(obj) for obj in object_refs])
-    encoded = map(base64.urlsafe_b64encode, hashes)
-    return [encoded_hash.decode("ascii") for encoded_hash in encoded]
 
 
 @ray.remote
@@ -139,27 +130,20 @@ class WorkflowData:
     ray_options: Dict[str, Any]
     # name of the step
     name: str
-
-    # Cache the intended locations of object refs. These are expensive
-    # calculations since they require computing the hash over a large value.
-    _cached_refs: List[ObjectRef] = None
-    _cached_locs: List[str] = None
+    # meta data to store
+    user_metadata: Dict[str, Any]
 
     def to_metadata(self) -> Dict[str, Any]:
-        if self._cached_refs != self.inputs.object_refs:
-            self._cached_refs = self.inputs.object_refs
-            self._cached_locs = calculate_identifiers(self._cached_refs)
-
         f = self.func_body
         metadata = {
             "name": get_module(f) + "." + get_qualname(f),
             "step_type": self.step_type,
-            "object_refs": self._cached_locs,
             "workflows": [w.step_id for w in self.inputs.workflows],
             "max_retries": self.max_retries,
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
+            "user_metadata": self.user_metadata
         }
         return metadata
 
@@ -200,7 +184,10 @@ def slugify(value: str, allow_unicode=False) -> str:
     return re.sub(r"[-\s]+", "-", value)
 
 
-class Workflow:
+T = TypeVar("T")
+
+
+class Workflow(Generic[T]):
     def __init__(self,
                  workflow_data: WorkflowData,
                  prepare_inputs: Optional[Callable] = None):
@@ -282,7 +269,9 @@ class Workflow:
             "remote, or stored in Ray objects.")
 
     @PublicAPI(stability="beta")
-    def run(self, workflow_id: Optional[str] = None) -> Any:
+    def run(self,
+            workflow_id: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None) -> Any:
         """Run a workflow.
 
         If the workflow with the given id already exists, it will be resumed.
@@ -309,11 +298,18 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
+            metadata: The metadata to add to the workflow. It has to be able
+                to serialize to json.
+
+        Returns:
+            The running result.
         """
-        return ray.get(self.run_async(workflow_id))
+        return ray.get(self.run_async(workflow_id, metadata))
 
     @PublicAPI(stability="beta")
-    def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
+    def run_async(self,
+                  workflow_id: Optional[str] = None,
+                  metadata: Optional[Dict[str, Any]] = None) -> ObjectRef:
         """Run a workflow asynchronously.
 
         If the workflow with the given id already exists, it will be resumed.
@@ -340,8 +336,30 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
+            metadata: The metadata to add to the workflow. It has to be able
+                to serialize to json.
+
+        Returns:
+           The running result as ray.ObjectRef.
+
         """
         # TODO(suquark): avoid cyclic importing
         from ray.workflow.execution import run
         self._step_id = None
-        return run(self, workflow_id)
+        return run(self, workflow_id, metadata)
+
+
+@PublicAPI(stability="beta")
+class WorkflowNotFoundError(Exception):
+    def __init__(self, workflow_id: str):
+        self.message = f"Workflow[id={workflow_id}] was referenced but " \
+                        "doesn't exist."
+        super().__init__(self.message)
+
+
+@PublicAPI(stability="beta")
+class WorkflowRunningError(Exception):
+    def __init__(self, operation: str, workflow_id: str):
+        self.message = f"{operation} couldn't be completed becasue " \
+                       f"Workflow[id={workflow_id}] is still running."
+        super().__init__(self.message)

@@ -81,8 +81,8 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsBasedActorScheduler(
-      instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
-      const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+      instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
+      const GcsNodeManager &gcs_node_manager,
       std::shared_ptr<GcsResourceManager> gcs_resource_manager,
       std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
@@ -92,6 +92,14 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
       rpc::ClientFactoryFn client_factory = nullptr);
 
   virtual ~GcsBasedActorScheduler() = default;
+
+  /// Handle the destruction of an actor.
+  ///
+  /// \param actor The actor to be destoryed.
+  void OnActorDestruction(std::shared_ptr<GcsActor> actor) override;
+
+  /// Add resources changed event handler.
+  void AddResourcesChangedListener(std::function<void()> listener);
 
  protected:
   /// Select a node for the actor based on cluster resources.
@@ -143,7 +151,16 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   void HandleWorkerLeaseRejectedReply(std::shared_ptr<GcsActor> actor,
                                       const rpc::RequestWorkerLeaseReply &reply);
 
+  /// Reset the actor's current assignment, while releasing acquired resources.
+  void ResetActorWorkerAssignment(GcsActor *actor);
+
+  /// Notify that the cluster resources are changed.
+  void NotifyClusterResourcesChanged();
+
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+
+  /// The resource changed listeners.
+  std::vector<std::function<void()>> resource_changed_listeners_;
 
   /// Gcs resource scheduler
   std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler_;

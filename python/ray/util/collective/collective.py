@@ -99,6 +99,14 @@ class GroupManager(object):
         # Release the communicator resources
         g.destroy_group()
 
+        # Release the detached actors spawned by `create_collective_group()`
+        name = "info_" + group_name
+        try:
+            store = ray.get_actor(name)
+            ray.kill(store)
+        except ValueError:
+            pass
+
 
 _group_mgr = GroupManager()
 
@@ -617,6 +625,21 @@ def recv_multigpu(tensor,
     opts.src_rank = src_rank
     opts.src_gpu_index = src_gpu_index
     g.recv([tensor], opts)
+
+
+def synchronize(gpu_id: int):
+    """Synchronize the current process to a give device.
+
+    Args:
+        gpu_id (int): the GPU device id to synchronize.
+
+    Returns:
+        None
+    """
+    if not types.cupy_available():
+        raise RuntimeError("synchronize call requires CUDA and NCCL.")
+    import cupy as cp
+    cp.cuda.Device(gpu_id).synchronize()
 
 
 def _check_and_get_group(group_name):

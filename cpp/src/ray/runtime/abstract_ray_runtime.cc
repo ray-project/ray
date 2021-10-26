@@ -69,6 +69,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::GetInstance() {
 }
 
 void AbstractRayRuntime::DoShutdown() {
+  abstract_ray_runtime_ = nullptr;
   if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
     ProcessHelper::GetInstance().RayStop();
   }
@@ -144,7 +145,7 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type,
   InvocationSpec invocation_spec;
   invocation_spec.task_type = task_type;
   invocation_spec.task_id =
-      TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
+      TaskID::ForFakeTask();  // TODO(SongGuyang): make it from different task
   invocation_spec.remote_function_holder = remote_function_holder;
   invocation_spec.actor_id = actor;
   invocation_spec.args = TransformArgs(args);

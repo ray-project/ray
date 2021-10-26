@@ -36,6 +36,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
+    config.node_ip_address = "127.0.0.1";
     config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
@@ -280,7 +281,7 @@ TEST_F(GlobalStateAccessorTest, TestPlacementGroupTable) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  ray::RayLog::InstallFailureSignalHandler();
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,

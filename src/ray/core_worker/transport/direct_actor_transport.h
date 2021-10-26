@@ -28,6 +28,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
+#include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -35,8 +36,6 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
-
-namespace {}  // namespace
 
 namespace ray {
 namespace core {
@@ -68,12 +67,11 @@ class CoreWorkerDirectActorTaskSubmitter
     : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
   CoreWorkerDirectActorTaskSubmitter(
-      std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-      std::shared_ptr<CoreWorkerMemoryStore> store,
-      std::shared_ptr<TaskFinisherInterface> task_finisher,
+      rpc::CoreWorkerClientPool &core_worker_client_pool, CoreWorkerMemoryStore &store,
+      TaskFinisherInterface &task_finisher, ActorCreatorInterface &actor_creator,
       std::function<void(const ActorID &, int64_t)> warn_excess_queueing)
       : core_worker_client_pool_(core_worker_client_pool),
-        resolver_(store, task_finisher),
+        resolver_(store, task_finisher, actor_creator),
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing) {
     next_queueing_warn_threshold_ =
@@ -262,7 +260,7 @@ class CoreWorkerDirectActorTaskSubmitter
   bool IsActorAlive(const ActorID &actor_id) const;
 
   /// Pool for producing new core worker clients.
-  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
+  rpc::CoreWorkerClientPool &core_worker_client_pool_;
 
   /// Mutex to protect the various maps below.
   mutable absl::Mutex mu_;
@@ -273,7 +271,7 @@ class CoreWorkerDirectActorTaskSubmitter
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
-  std::shared_ptr<TaskFinisherInterface> task_finisher_;
+  TaskFinisherInterface &task_finisher_;
 
   /// Used to warn of excessive queueing.
   std::function<void(const ActorID &, int64_t num_queued)> warn_excess_queueing_;
@@ -283,6 +281,69 @@ class CoreWorkerDirectActorTaskSubmitter
   int64_t next_queueing_warn_threshold_;
 
   friend class CoreWorkerTest;
+};
+
+/// The class that manages fiber states for Python asyncio actors.
+///
+/// We'll create one fiber state for every concurrency group. And
+/// create one default fiber state for default concurrency group if
+/// necessary.
+class FiberStateManager final {
+ public:
+  explicit FiberStateManager(const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+                             const int32_t default_group_max_concurrency = 1000) {
+    for (auto &group : concurrency_groups) {
+      const auto name = group.name;
+      const auto max_concurrency = group.max_concurrency;
+      auto fiber = std::make_shared<FiberState>(max_concurrency);
+      auto &fds = group.function_descriptors;
+      for (auto fd : fds) {
+        functions_to_fiber_index_[fd->ToString()] = fiber;
+      }
+      name_to_fiber_index_[name] = fiber;
+    }
+    /// Create default fiber state for default concurrency group.
+    if (default_group_max_concurrency >= 1) {
+      default_fiber_ = std::make_shared<FiberState>(default_group_max_concurrency);
+    }
+  }
+
+  /// Get the corresponding fiber state by the give concurrency group or function
+  /// descriptor.
+  ///
+  /// Return the corresponding fiber state of the concurrency group
+  /// if concurrency_group_name is given.
+  /// Otherwise return the corresponding fiber state by the given function descriptor.
+  std::shared_ptr<FiberState> GetFiber(const std::string &concurrency_group_name,
+                                       ray::FunctionDescriptor fd) {
+    if (!concurrency_group_name.empty()) {
+      auto it = name_to_fiber_index_.find(concurrency_group_name);
+      RAY_CHECK(it != name_to_fiber_index_.end())
+          << "Failed to look up the fiber state of the given concurrency group "
+          << concurrency_group_name << " . It might be that you didn't define "
+          << "the concurrency group " << concurrency_group_name;
+      return it->second;
+    }
+
+    /// Code path of that this task wasn't specified in a concurrency group addtionally.
+    /// Use the predefined concurrency group.
+    if (functions_to_fiber_index_.find(fd->ToString()) !=
+        functions_to_fiber_index_.end()) {
+      return functions_to_fiber_index_[fd->ToString()];
+    }
+    return default_fiber_;
+  }
+
+ private:
+  // Map from the name to their corresponding fibers.
+  absl::flat_hash_map<std::string, std::shared_ptr<FiberState>> name_to_fiber_index_;
+
+  // Map from the FunctionDescriptors to their corresponding fibers.
+  absl::flat_hash_map<std::string, std::shared_ptr<FiberState>> functions_to_fiber_index_;
+
+  // The fiber for default concurrency group. It's nullptr if its max concurrency
+  // is 1.
+  std::shared_ptr<FiberState> default_fiber_ = nullptr;
 };
 
 class BoundedExecutor;
@@ -491,6 +552,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
       instrumented_io_context &main_io_service, DependencyWaiter &waiter,
       std::shared_ptr<PoolManager> pool_manager = std::make_shared<PoolManager>(),
       bool is_asyncio = false, int fiber_max_concurrency = 1,
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
@@ -499,9 +561,16 @@ class ActorSchedulingQueue : public SchedulingQueue {
         pool_manager_(pool_manager),
         is_asyncio_(is_asyncio) {
     if (is_asyncio_) {
-      RAY_LOG(INFO) << "Setting actor as async with max_concurrency="
-                    << fiber_max_concurrency << ", creating new fiber thread.";
-      fiber_state_ = std::make_unique<FiberState>(fiber_max_concurrency);
+      std::stringstream ss;
+      ss << "Setting actor as asyncio with max_concurrency=" << fiber_max_concurrency
+         << ", and defined concurrency groups are:" << std::endl;
+      for (const auto &concurrency_group : concurrency_groups) {
+        ss << "\t" << concurrency_group.name << " : "
+           << concurrency_group.max_concurrency;
+      }
+      RAY_LOG(INFO) << ss.str();
+      fiber_state_manager_ =
+          std::make_unique<FiberStateManager>(concurrency_groups, fiber_max_concurrency);
     }
   }
 
@@ -597,7 +666,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
       if (is_asyncio_) {
         // Process async actor task.
-        fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
+        auto fiber = fiber_state_manager_->GetFiber(request.ConcurrencyGroupName(),
+                                                    request.FunctionDescriptor());
+        fiber->EnqueueFiber([request]() mutable { request.Accept(); });
       } else {
         // Process actor tasks.
         RAY_CHECK(pool_manager_ != nullptr);
@@ -663,9 +734,10 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
-  /// If is_asyncio_ is true, fiber_state_ contains the running state required
-  /// to enable continuation and work together with python asyncio.
-  std::unique_ptr<FiberState> fiber_state_;
+  /// Manage the running fiber states of actors in this worker. It works with
+  /// python asyncio if this is an asyncio actor.
+  std::unique_ptr<FiberStateManager> fiber_state_manager_;
+
   friend class SchedulingQueueTest;
 };
 
@@ -823,6 +895,10 @@ class CoreWorkerDirectTaskReceiver {
                         rpc::SendReplyCallback send_reply_callback);
 
   bool CancelQueuedNormalTask(TaskID task_id);
+
+ protected:
+  /// Cache the concurrency groups of actors.
+  absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
   // Worker context.

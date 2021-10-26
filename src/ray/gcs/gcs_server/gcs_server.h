@@ -16,7 +16,6 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -29,7 +28,6 @@
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
-#include "ray/pubsub/publisher.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -215,17 +213,15 @@ class GcsServer {
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
-  /// Grpc based pubsub.
-  std::shared_ptr<pubsub::Publisher> grpc_pubsub_publisher_;
+  std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
   PeriodicalRunner pubsub_periodical_runner_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Gcs service state flag, which is used for ut.
-  bool is_started_ = false;
-  bool is_stopped_ = false;
+  std::atomic<bool> is_started_;
+  std::atomic<bool> is_stopped_;
 };
 
 }  // namespace gcs

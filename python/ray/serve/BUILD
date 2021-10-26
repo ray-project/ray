@@ -49,6 +49,14 @@ py_test(
 )
 
 py_test(
+    name = "test_http_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_advanced",
     size = "small",
     srcs = serve_tests_srcs,
@@ -98,7 +106,7 @@ py_test(
 
 py_test(
     name = "test_ray_client",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serverless"],
     deps = [":serve_lib"],
@@ -114,6 +122,14 @@ py_test(
 
 py_test(
     name = "test_backend_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_backend_version",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -226,7 +242,7 @@ py_test(
     name = "test_runtime_env",
     size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "post_wheel_build", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -242,7 +258,7 @@ py_test(
     name = "test_autoscaling_policy",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["team:serve"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -329,4 +345,38 @@ py_test(
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
+)
+
+py_test(
+    name = "conda_env",
+    size = "medium",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive", "post_wheel_build", "team:serve"],
+    deps = [":serve_lib"]
+)
+
+pipeline_tests_srcs = glob(["pipeline/tests/**/*.py"])
+
+py_test(
+    name = "test_step",
+    size = "small",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_pipeline",
+    size = "small",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_actor_executor",
+    size = "small",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
 )

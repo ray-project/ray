@@ -106,7 +106,7 @@ def execution_plan(workers: WorkerSet,
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
     replay_buffer = LocalReplayBuffer(
         learning_starts=config["learning_starts"],
-        buffer_size=config["replay_buffer_size"],
+        capacity=config["replay_buffer_size"],
         replay_batch_size=config["train_batch_size"],
         replay_sequence_length=1,
     )

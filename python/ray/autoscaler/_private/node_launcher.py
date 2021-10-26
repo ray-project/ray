@@ -47,6 +47,8 @@ class NodeLauncher(threading.Thread):
         if node_type:
             launch_config.update(
                 config["available_node_types"][node_type]["node_config"])
+        resources = copy.deepcopy(
+            config["available_node_types"][node_type]["resources"])
         launch_hash = hash_launch_conf(launch_config, config["auth"])
         self.log("Launching {} nodes, type {}.".format(count, node_type))
         node_config = copy.deepcopy(config.get("worker_nodes", {}))
@@ -64,7 +66,8 @@ class NodeLauncher(threading.Thread):
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
         launch_start_time = time.time()
-        self.provider.create_node(node_config, node_tags, count)
+        self.provider.create_node_with_resources(node_config, node_tags, count,
+                                                 resources)
         launch_time = time.time() - launch_start_time
         for _ in range(count):
             # Note: when launching multiple nodes we observe the time it

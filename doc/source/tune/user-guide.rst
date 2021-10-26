@@ -50,7 +50,8 @@ the respective placement group. If not enough resources are available, this will
 If your trainable function starts more remote workers, you will need to pass placement groups
 factory objects to request these resources. See the
 :class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
-for further information.
+for further information. This also applies if you are using other libraries making use of Ray, such
+as Modin. Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
 
 Using GPUs
 ~~~~~~~~~~
@@ -217,6 +218,69 @@ During training, Tune will automatically log the below metrics in addition to th
 * ``trial_id``: Unique trial ID
 
 All of these metrics can be seen in the ``Trial.last_result`` dictionary.
+
+.. _tune-reproducible:
+
+Reproducible runs
+-----------------
+Exact reproducibility of machine learning runs is hard to achieve. This
+is even more true in a distributed setting, as more non-determinism is
+introduced. For instance, if two trials finish at the same time, the
+convergence of the search algorithm might be influenced by which trial
+result is processed first. This depends on the searcher - for random search,
+this shouldn't make a difference, but for most other searchers it will.
+
+If you try to achieve some amount of reproducibility, there are two
+places where you'll have to set random seeds:
+
+1. On the driver program, e.g. for the search algorithm. This will ensure
+   that at least the initial configurations suggested by the search
+   algorithms are the same.
+
+2. In the trainable (if required). Neural networks are usually initialized
+   with random numbers, and many classical ML algorithms, like GBDTs, make use of
+   randomness. Thus you'll want to make sure to set a seed here
+   so that the initialization is always the same.
+
+Here is an example that will always produce the same result (except for trial
+runtimes).
+
+.. code-block:: python
+
+    import numpy as np
+    from ray import tune
+
+
+    def train(config):
+        # Set seed for trainable random result.
+        # If you remove this line, you will get different results
+        # each time you run the trial, even if the configuration
+        # is the same.
+        np.random.seed(config["seed"])
+        random_result = np.random.uniform(0, 100, size=1).item()
+        tune.report(result=random_result)
+
+
+    # Set seed for Ray Tune's random search.
+    # If you remove this line, you will get different configurations
+    # each time you run the script.
+    np.random.seed(1234)
+    tune.run(
+        train,
+        config={
+            "seed": tune.randint(0, 1000)
+        },
+        search_alg=tune.suggest.BasicVariantGenerator(),
+        num_samples=10)
+
+Some searchers use their own random states to sample new configurations.
+These searchers usually accept a ``seed`` parameter that can be passed on
+initialization. Other searchers use Numpy's ``np.random`` interface -
+these seeds can be then set with ``np.random.seed()``. We don't offer an
+interface to do this in the searcher classes as setting a random seed
+globally could have side effects. For instance, it could influence the
+way your dataset is split. Thus, we leave it up to the user to make
+these global configuration changes.
 
 .. _tune-checkpoint:
 
@@ -807,6 +871,10 @@ These are the environment variables Ray Tune currently considers:
   Ctrl+C) to gracefully shutdown and do a final checkpoint. Setting this variable
   to ``1`` will disable signal handling and stop execution right away. Defaults to
   ``0``.
+* **TUNE_FORCE_TRIAL_CLEANUP_S**: By default, Ray Tune will gracefully terminate trials,
+  letting them finish the current training step and any user-defined cleanup. 
+  Setting this variable to a non-zero, positive integer will cause trials to be forcefully
+  terminated after a grace period of that many seconds. Defaults to ``0``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
   for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
@@ -840,6 +908,9 @@ These are the environment variables Ray Tune currently considers:
   to the driver. Enabling this might delay scheduling decisions, as trainables are speculatively
   continued. Setting this to ``0`` disables result buffering. Defaults to 1000 (results), or to 1 (no buffering)
   if used with ``checkpoint_at_end``.
+* **TUNE_RESULT_DELIM**: Delimiter used for nested entries in
+  :class:`ExperimentAnalysis <ray.tune.ExperimentAnalysis>` dataframes. Defaults to ``.`` (but will be
+  changed to ``/`` in future versions of Ray).
 * **TUNE_RESULT_BUFFER_MAX_TIME_S**: Similarly, Ray Tune buffers results up to ``number_of_trial/10`` seconds,
   but never longer than this value. Defaults to 100 (seconds).
 * **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
@@ -852,7 +923,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
   for this amount of seconds. If the Ray Tune job is stuck in this state (most likely due to insufficient resources),
-  the warning message is printed repeatedly every this amount of seconds. Defaults to 10 (seconds).
+  the warning message is printed repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning, when the autoscaler is enabled,
   if no active trials are in ``RUNNING`` state for this amount of seconds.
   If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
