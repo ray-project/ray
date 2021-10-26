@@ -1945,6 +1945,7 @@ def run_test(test_config_file: str,
             # If we get an alert, the test failed.
             logger.error(f"Alert has been raised for {test_suite}/{test_name} "
                          f"({category}): {alert}")
+            result["status"] = "error (alert raised)"
             report_kwargs["status"] = "error (alert raised)"
 
             # For printing/reporting to the database
