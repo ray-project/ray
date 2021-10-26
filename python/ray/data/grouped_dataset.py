@@ -12,7 +12,7 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType
 
-GroupKeyT = Union[Callable[[T], KeyType], str]
+GroupKeyT = Union[Callable[[T], KeyType], str, List[str]]
 
 
 @PublicAPI(stability="beta")
@@ -29,7 +29,16 @@ class GroupedDataset(Generic[T]):
         Use the ``Dataset.groupby()`` method to construct one.
         """
         self._dataset = dataset
-        self._key = key
+
+        if isinstance(key, list):
+            if len(key) > 1:
+                # TODO(jjyao) Support multi-key groupby.
+                raise NotImplementedError(
+                    "Multi-key groupby is not supported yet")
+            else:
+                self._key = key[0]
+        else:
+            self._key = key
 
     def aggregate(self, *aggs: Tuple[AggregateFn]) -> Dataset[U]:
         """Implements the accumulator-based aggregation.

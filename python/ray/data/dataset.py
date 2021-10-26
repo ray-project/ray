@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset
+    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT
 
 import collections
 import itertools
@@ -355,9 +355,8 @@ class Dataset(Generic[T]):
         reduce_task = cached_remote_fn(_shuffle_reduce)
         reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
         reduce_out = [
-            reduce_task.options(
-                num_returns=2).remote(*s.get_internal_block_refs())
-            for s in splits
+            reduce_task.options(num_returns=2).remote(
+                *s.get_internal_block_refs()) for s in splits
         ]
         del splits  # Early-release memory.
         new_blocks, new_metadata = zip(*reduce_out)
@@ -797,7 +796,7 @@ class Dataset(Generic[T]):
                 _epoch_warned = True
         return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
 
-    def groupby(self, key: Callable[[T], Any]) -> "GroupedDataset[T]":
+    def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
         """Group the dataset by the specified key function (Experimental).
 
         This is a lazy operation.
@@ -806,11 +805,15 @@ class Dataset(Generic[T]):
         Examples:
             >>> # Group by a key function and aggregate.
             >>> ray.data.range(100).groupby(lambda x: x % 3).count()
+            >>> # Group by a arrow table column and aggregate.
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").count()
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: A key function.
+            key: A key function or arrow column names.
 
         Returns:
             A lazy GroupedDataset that can be aggregated later.

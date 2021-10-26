@@ -306,6 +306,7 @@ class ArrowBlockAccessor(BlockAccessor):
             A sorted block of [k, v] columns where k is the groupby key
             and v is the partially combined accumulator.
         """
+        # TODO(jjyao) This can be implemented natively in Arrow
         iter = self.iter_rows()
         next_row = None
         builder = ArrowBlockBuilder()
