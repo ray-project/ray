@@ -292,7 +292,9 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
   EnsureInitialized();
   if (core_worker_process->options_.num_workers == 1) {
-    RAY_CHECK(core_worker_process->GetGlobalWorker()->GetWorkerID() == worker_id);
+    auto global_worker = core_worker_process->GetGlobalWorker();
+    RAY_CHECK(global_worker) << "Global worker must not be NULL.";
+    RAY_CHECK(global_worker->GetWorkerID() == worker_id);
     return;
   }
   current_core_worker_ = core_worker_process->GetWorker(worker_id);
