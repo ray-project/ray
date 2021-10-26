@@ -372,7 +372,7 @@ class GlobalState:
                 return "PENDING"
             elif state == gcs_utils.PlacementGroupTableData.CREATED:
                 return "CREATED"
-            elif state == ray.gcs_utils.PlacementGroupTableData.UPDATING:
+            elif state == gcs_utils.PlacementGroupTableData.UPDATING:
                 return "UPDATING"
             else:
                 return "REMOVED"
