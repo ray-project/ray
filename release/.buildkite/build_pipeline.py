@@ -236,20 +236,20 @@ MANUAL_TESTS = {
     ]
 }
 
-# This test suite holds "realistic" tests to test important user workflows
+# This test suite holds "user" tests to test important user workflows
 # in a particular environment.
 # All workloads in this test suite should:
 #   1. Be run in a distributed (multi-node) fashion
 #   2. Use autoscaling/scale up (no wait_cluster.py)
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
-REALISTIC_TESTS = {}
+USER_TESTS = {}
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
     "nightly": {
         **NIGHTLY_TESTS,
-        **REALISTIC_TESTS
+        **USER_TESTS
     },
     "weekly": WEEKLY_TESTS,
     "manual": MANUAL_TESTS,
