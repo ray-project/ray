@@ -73,7 +73,8 @@ def upload_py_modules_if_needed(runtime_env: Dict[str, Any],
 class PyModulesManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
-        os.makedirs(self._resources_dir)
+        if not os.path.isdir(self._resources_dir):
+            os.makedirs(self._resources_dir)
         assert _internal_kv_initialized()
 
     def delete_uri(self,
