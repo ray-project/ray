@@ -100,6 +100,7 @@ build:tsan --linkopt -fsanitize=thread
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
 build:tsan-clang --config=llvm
+test:tsan --test_env=TSAN_OPTIONS="report_atomic_races=0"
 
 # Memory sanitizer configuration
 build:asan --strip=never

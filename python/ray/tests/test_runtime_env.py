@@ -43,9 +43,29 @@ def test_get_release_wheel_url():
                 assert requests.head(url).status_code == 200, url
 
 
+@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
+def start_cluster(ray_start_cluster, request):
+    assert request.param in {"ray_client", "no_ray_client"}
+    use_ray_client: bool = request.param == "ray_client"
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    if use_ray_client:
+        cluster.head_node._ray_params.ray_client_server_port = "10003"
+        cluster.head_node.start_ray_client_server()
+        address = "ray://localhost:10003"
+    else:
+        address = cluster.address
+
+    yield cluster, address
+
+
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
-def test_decorator_task(ray_start_cluster_head):
+def test_decorator_task(start_cluster):
+    cluster, address = start_cluster
+    ray.init(address)
+
     @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
     def f():
         return os.environ.get("foo")
@@ -55,7 +75,10 @@ def test_decorator_task(ray_start_cluster_head):
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
-def test_decorator_actor(ray_start_cluster_head):
+def test_decorator_actor(start_cluster):
+    cluster, address = start_cluster
+    ray.init(address)
+
     @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
     class A:
         def g(self):
@@ -67,12 +90,9 @@ def test_decorator_actor(ray_start_cluster_head):
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
-def test_decorator_complex(shutdown_only):
-    ray.init(
-        job_config=ray.job_config.JobConfig(
-            runtime_env={"env_vars": {
-                "foo": "job"
-            }}))
+def test_decorator_complex(start_cluster):
+    cluster, address = start_cluster
+    ray.init(address, runtime_env={"env_vars": {"foo": "job"}})
 
     @ray.remote
     def env_from_job():
