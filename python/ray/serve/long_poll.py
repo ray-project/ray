@@ -10,6 +10,11 @@ from typing import (Any, Optional, Tuple, Callable, DefaultDict, Dict, Set,
 import ray
 from ray.serve.utils import logger
 
+# Each LongPollClient will send requests to LongPollHost to poll changes
+# as blocking awaitable. This doesn't scale if we have many client instances
+# that will slow down, or even block controller actor's event loop if near
+# its max_concurrency limit. Therefore we timeout a polling request after
+# a few seconds and let each client retry on their end.
 LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = 5
 
 
