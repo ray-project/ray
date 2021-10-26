@@ -27,7 +27,7 @@ RAY_CONFIG(bool, event_stats, true)
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
 /// TODO(ekl) remove this after Ray 1.8
-RAY_CONFIG(bool, legacy_scheduler_warnings, true)
+RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are only available to
