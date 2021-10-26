@@ -1,6 +1,8 @@
+import copy
 import subprocess
 import pickle
 import os
+import json
 from typing import Any, Dict, Tuple, Optional
 
 import ray
@@ -13,6 +15,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
 )
 from ray.dashboard.modules.job.data_types import JobStatus
+from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON
 
 
 class JobLogStorageClient:
@@ -80,15 +83,27 @@ class JobStatusStorageClient:
         return pickle.loads(pickled_status)
 
 
-def exec_cmd_logs_to_file(cmd: str, stdout_file: str, stderr_file: str) -> int:
+def exec_cmd_logs_to_file(
+    cmd: str,
+    runtime_env: Optional[Dict[str, Any]],
+    stdout_file: str,
+    stderr_file: str,
+) -> int:
     """
     Runs a command as a child process, streaming stderr & stdout to given
     log files.
     """
+    if runtime_env:
+        env = copy.deepcopy(os.environ)
+        env[RAY_JOB_CONFIG_JSON] = json.dumps({
+            "runtime_env": runtime_env
+        })
+
     with open(stdout_file, "a+") as stdout_in, open(stderr_file,
                                                     "a+") as stderr_in:
         child = subprocess.Popen(
             cmd,
+            env=env,
             shell=True,
             universal_newlines=True,
             stdout=stdout_in,
@@ -118,7 +133,7 @@ class JobSupervisor:
     def ready(self):
         pass
 
-    def run(self, cmd: str):
+    def run(self, cmd: str, runtime_env: Optional[Dict[str, Any]] = None):
         """Run the command, then exit afterwards.
 
         Should update state and logs.
@@ -134,7 +149,7 @@ class JobSupervisor:
             #  - RAY_JOB_CONFIG_JSON={...}
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
-            exit_code = exec_cmd_logs_to_file(cmd, stdout_path, stderr_path)
+            exit_code = exec_cmd_logs_to_file(cmd, runtime_env, stdout_path, stderr_path)
         finally:
             # 3) Once command finishes, update status to SUCCEEDED or FAILED.
             if exit_code == 0:
@@ -204,7 +219,7 @@ class JobManager:
             raise RuntimeError(f"Failed to start actor for job {job_id}.")
 
         # Kick off the job to run in the background.
-        supervisor.run.remote(entrypoint)
+        supervisor.run.remote(entrypoint, runtime_env)
 
         return job_id
 
