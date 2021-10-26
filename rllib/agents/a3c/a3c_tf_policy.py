@@ -73,7 +73,7 @@ class A3CLoss:
 def actor_critic_loss(policy: Policy, model: ModelV2,
                       dist_class: ActionDistribution,
                       train_batch: SampleBatch) -> TensorType:
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
     if policy.is_recurrent():
         max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
