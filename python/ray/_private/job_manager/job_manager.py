@@ -93,8 +93,8 @@ def exec_cmd_logs_to_file(
     Runs a command as a child process, streaming stderr & stdout to given
     log files.
     """
+    env = copy.deepcopy(os.environ)
     if runtime_env:
-        env = copy.deepcopy(os.environ)
         env[RAY_JOB_CONFIG_JSON] = json.dumps({
             "runtime_env": runtime_env
         })
@@ -188,10 +188,12 @@ class JobManager:
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
-    def submit_job(self,
-                   job_id: str,
-                   entrypoint: str,
-                   runtime_env: Optional[Dict[str, Any]] = None) -> str:
+    def submit_job(
+            self,
+            job_id: str,
+            entrypoint: str,
+            runtime_env: Optional[Dict[str, Any]] = None,
+        ) -> str:
         """
         1) Create new detached actor with same runtime_env as job spec
         2) Get task / actor level runtime_env as env var and pass into
@@ -208,6 +210,8 @@ class JobManager:
             resources={
                 get_current_node_resource_key(): 0.001,
             },
+            # For now we ensure supervisor actor and driver script have same
+            # runtime_env.
             runtime_env=runtime_env,
         ).remote(job_id)
 

@@ -108,7 +108,7 @@ class JobConfig:
         """
         Generates a JobConfig object from json.
         """
-        return JobConfig(
+        return cls(
             num_java_workers_per_process=job_config_json.get(
                 "num_java_workers_per_process", 1),
             jvm_options=job_config_json.get("jvm_options", None),
