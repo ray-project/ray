@@ -84,7 +84,8 @@ class SubscriberChannel {
   ///
   /// \param publisher_address The publisher address to check.
   /// \param key_id The entity id to check.
-  bool IsSubscribed(const rpc::Address &publisher_address, const std::string &key_id);
+  bool IsSubscribed(const rpc::Address &publisher_address,
+                    const std::string &key_id) const;
 
   /// Return true if there's no metadata leak.
   bool CheckNoLeaks() const;
@@ -221,7 +222,7 @@ class SubscriberInterface {
   /// \param key_id The entity id to check.
   virtual bool IsSubscribed(const rpc::ChannelType channel_type,
                             const rpc::Address &publisher_address,
-                            const std::string &key_id) = 0;
+                            const std::string &key_id) const = 0;
 
   /// Return the statistics string for the subscriber.
   virtual std::string DebugString() const = 0;
@@ -290,10 +291,10 @@ class Subscriber : public SubscriberInterface {
 
   bool IsSubscribed(const rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
-                    const std::string &key_id) override;
+                    const std::string &key_id) const override;
 
   /// Return the Channel of the given channel type. Subscriber keeps ownership.
-  SubscriberChannel *Channel(const rpc::ChannelType channel_type)
+  SubscriberChannel *Channel(const rpc::ChannelType channel_type) const
       EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     const auto it = channels_.find(channel_type);
     if (it == channels_.end()) {

@@ -174,7 +174,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
   bool IsSubscribed(const rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
-                    const std::string &key_id_binary) override {
+                    const std::string &key_id_binary) const override {
     return directory_->HasKeyId(key_id_binary) &&
            directory_->HasSubscriber(subscriber_id_);
   }

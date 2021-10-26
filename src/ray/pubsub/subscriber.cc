@@ -59,7 +59,7 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
 }
 
 bool SubscriberChannel::IsSubscribed(const rpc::Address &publisher_address,
-                                     const std::string &key_id) {
+                                     const std::string &key_id) const {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
@@ -233,7 +233,7 @@ bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
 
 bool Subscriber::IsSubscribed(const rpc::ChannelType channel_type,
                               const rpc::Address &publisher_address,
-                              const std::string &key_id) {
+                              const std::string &key_id) const {
   absl::MutexLock lock(&mutex_);
   auto *channel = Channel(channel_type);
   if (channel == nullptr) {

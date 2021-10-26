@@ -66,9 +66,9 @@ class MockSubscriber : public pubsub::SubscriberInterface {
                                  const rpc::Address &publisher_address,
                                  const std::string &key_id_binary));
 
-  MOCK_METHOD3(IsSubscribed, bool(const rpc::ChannelType channel_type,
-                                  const rpc::Address &publisher_address,
-                                  const std::string &key_id_binary));
+  MOCK_CONST_METHOD3(IsSubscribed, bool(const rpc::ChannelType channel_type,
+                                        const rpc::Address &publisher_address,
+                                        const std::string &key_id_binary));
 
   MOCK_CONST_METHOD0(DebugString, std::string());
 
