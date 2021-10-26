@@ -113,8 +113,9 @@ def ckpt_restore_test(alg_name,
                 # different keys, but compare all values nevertheless).
                 else:
                     for i, s2_ in enumerate(s2):
-                        check(list(s2_["state"].values()),
-                              list(optim_state[i]["state"].values()))
+                        check(
+                            list(s2_["state"].values()),
+                            list(optim_state[i]["state"].values()))
 
             # Compare buffer content with restored one.
             if replay_buffer:
@@ -126,13 +127,15 @@ def ckpt_restore_test(alg_name,
 
             for _ in range(1):
                 if "DDPG" in alg_name or "SAC" in alg_name:
-                    obs = np.clip(np.random.uniform(size=3),
-                                  policy1.observation_space.low,
-                                  policy1.observation_space.high)
+                    obs = np.clip(
+                        np.random.uniform(size=3),
+                        policy1.observation_space.low,
+                        policy1.observation_space.high)
                 else:
-                    obs = np.clip(np.random.uniform(size=4),
-                                  policy1.observation_space.low,
-                                  policy1.observation_space.high)
+                    obs = np.clip(
+                        np.random.uniform(size=4),
+                        policy1.observation_space.low,
+                        policy1.observation_space.high)
                 a1 = get_mean_action(alg1, obs)
                 a2 = get_mean_action(alg2, obs)
                 print("Checking computed actions", alg1, obs, a1, a2)

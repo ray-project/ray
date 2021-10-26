@@ -66,10 +66,11 @@ def do_test_explorations(run,
                         prev_action=prev_a,
                         prev_reward=1.0 if prev_a is not None else None,
                     ))
-            check(np.mean(actions),
-                  expected_mean_action
-                  if expected_mean_action is not None else 0.5,
-                  atol=0.4)
+            check(
+                np.mean(actions),
+                expected_mean_action
+                if expected_mean_action is not None else 0.5,
+                atol=0.4)
             # Check that the stddev is not 0.0 (values differ).
             check(np.std(actions), 0.0, false=True)
 
@@ -79,6 +80,7 @@ class TestExplorations(unittest.TestCase):
     Tests all Exploration components and the deterministic flag for
     compute_action calls.
     """
+
     @classmethod
     def setUpClass(cls):
         ray.init(num_cpus=4)
@@ -88,29 +90,32 @@ class TestExplorations(unittest.TestCase):
         ray.shutdown()
 
     def test_a2c(self):
-        do_test_explorations(a3c.A2CTrainer,
-                             "CartPole-v0",
-                             a3c.a2c.A2C_DEFAULT_CONFIG,
-                             np.array([0.0, 0.1, 0.0, 0.0]),
-                             prev_a=np.array(1))
+        do_test_explorations(
+            a3c.A2CTrainer,
+            "CartPole-v0",
+            a3c.a2c.A2C_DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0, 0.0]),
+            prev_a=np.array(1))
 
     def test_a3c(self):
-        do_test_explorations(a3c.A3CTrainer,
-                             "CartPole-v0",
-                             a3c.DEFAULT_CONFIG,
-                             np.array([0.0, 0.1, 0.0, 0.0]),
-                             prev_a=np.array(1))
+        do_test_explorations(
+            a3c.A3CTrainer,
+            "CartPole-v0",
+            a3c.DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0, 0.0]),
+            prev_a=np.array(1))
 
     def test_ddpg(self):
         # Switch off random timesteps at beginning. We want to test actual
         # GaussianNoise right away.
         config = ddpg.DEFAULT_CONFIG.copy()
         config["exploration_config"]["random_timesteps"] = 0
-        do_test_explorations(ddpg.DDPGTrainer,
-                             "Pendulum-v1",
-                             config,
-                             np.array([0.0, 0.1, 0.0]),
-                             expected_mean_action=0.0)
+        do_test_explorations(
+            ddpg.DDPGTrainer,
+            "Pendulum-v1",
+            config,
+            np.array([0.0, 0.1, 0.0]),
+            expected_mean_action=0.0)
 
     def test_simple_dqn(self):
         do_test_explorations(dqn.SimpleQTrainer, "CartPole-v0",
@@ -122,51 +127,57 @@ class TestExplorations(unittest.TestCase):
                              np.array([0.0, 0.1, 0.0, 0.0]))
 
     def test_impala(self):
-        do_test_explorations(impala.ImpalaTrainer,
-                             "CartPole-v0",
-                             dict(impala.DEFAULT_CONFIG.copy(), num_gpus=0),
-                             np.array([0.0, 0.1, 0.0, 0.0]),
-                             prev_a=np.array(0))
+        do_test_explorations(
+            impala.ImpalaTrainer,
+            "CartPole-v0",
+            dict(impala.DEFAULT_CONFIG.copy(), num_gpus=0),
+            np.array([0.0, 0.1, 0.0, 0.0]),
+            prev_a=np.array(0))
 
     def test_pg(self):
-        do_test_explorations(pg.PGTrainer,
-                             "CartPole-v0",
-                             pg.DEFAULT_CONFIG,
-                             np.array([0.0, 0.1, 0.0, 0.0]),
-                             prev_a=np.array(1))
+        do_test_explorations(
+            pg.PGTrainer,
+            "CartPole-v0",
+            pg.DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0, 0.0]),
+            prev_a=np.array(1))
 
     def test_ppo_discr(self):
-        do_test_explorations(ppo.PPOTrainer,
-                             "CartPole-v0",
-                             ppo.DEFAULT_CONFIG,
-                             np.array([0.0, 0.1, 0.0, 0.0]),
-                             prev_a=np.array(0))
+        do_test_explorations(
+            ppo.PPOTrainer,
+            "CartPole-v0",
+            ppo.DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0, 0.0]),
+            prev_a=np.array(0))
 
     def test_ppo_cont(self):
-        do_test_explorations(ppo.PPOTrainer,
-                             "Pendulum-v1",
-                             ppo.DEFAULT_CONFIG,
-                             np.array([0.0, 0.1, 0.0]),
-                             prev_a=np.array([0.0]),
-                             expected_mean_action=0.0)
+        do_test_explorations(
+            ppo.PPOTrainer,
+            "Pendulum-v1",
+            ppo.DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0]),
+            prev_a=np.array([0.0]),
+            expected_mean_action=0.0)
 
     def test_sac(self):
-        do_test_explorations(sac.SACTrainer,
-                             "Pendulum-v1",
-                             sac.DEFAULT_CONFIG,
-                             np.array([0.0, 0.1, 0.0]),
-                             expected_mean_action=0.0)
+        do_test_explorations(
+            sac.SACTrainer,
+            "Pendulum-v1",
+            sac.DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0]),
+            expected_mean_action=0.0)
 
     def test_td3(self):
         config = td3.TD3_DEFAULT_CONFIG.copy()
         # Switch off random timesteps at beginning. We want to test actual
         # GaussianNoise right away.
         config["exploration_config"]["random_timesteps"] = 0
-        do_test_explorations(td3.TD3Trainer,
-                             "Pendulum-v1",
-                             config,
-                             np.array([0.0, 0.1, 0.0]),
-                             expected_mean_action=0.0)
+        do_test_explorations(
+            td3.TD3Trainer,
+            "Pendulum-v1",
+            config,
+            np.array([0.0, 0.1, 0.0]),
+            expected_mean_action=0.0)
 
 
 if __name__ == "__main__":

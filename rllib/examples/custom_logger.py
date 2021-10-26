@@ -18,37 +18,43 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import Logger
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run",
-                    type=str,
-                    default="PPO",
-                    help="The RLlib-registered algorithm to use.")
+parser.add_argument(
+    "--run",
+    type=str,
+    default="PPO",
+    help="The RLlib-registered algorithm to use.")
 parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument("--framework",
-                    choices=["tf", "tf2", "tfe", "torch"],
-                    default="tf",
-                    help="The DL framework specifier.")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
     "be achieved within --stop-timesteps AND --stop-iters.")
-parser.add_argument("--stop-iters",
-                    type=int,
-                    default=200,
-                    help="Number of iterations to train.")
-parser.add_argument("--stop-timesteps",
-                    type=int,
-                    default=100000,
-                    help="Number of timesteps to train.")
-parser.add_argument("--stop-reward",
-                    type=float,
-                    default=150.0,
-                    help="Reward at which we stop training.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=200,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=150.0,
+    help="Reward at which we stop training.")
 
 
 class MyPrintLogger(Logger):
     """Logs results by simply printing out everything.
     """
+
     def _init(self):
         # Custom init function.
         print("Initializing ...")
@@ -124,11 +130,8 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run,
-                       config=config,
-                       stop=stop,
-                       verbose=2,
-                       loggers=[MyPrintLogger])
+    results = tune.run(
+        args.run, config=config, stop=stop, verbose=2, loggers=[MyPrintLogger])
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

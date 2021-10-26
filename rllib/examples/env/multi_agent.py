@@ -7,15 +7,17 @@ from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.annotations import Deprecated
 
 
-@Deprecated(old="ray.rllib.examples.env.multi_agent.make_multiagent",
-            new="ray.rllib.env.multi_agent_env.make_multi_agent",
-            error=False)
+@Deprecated(
+    old="ray.rllib.examples.env.multi_agent.make_multiagent",
+    new="ray.rllib.env.multi_agent_env.make_multi_agent",
+    error=False)
 def make_multiagent(env_name_or_creator):
     return make_multi_agent(env_name_or_creator)
 
 
 class BasicMultiAgent(MultiAgentEnv):
     """Env of N independent agents, each of which exits after 25 steps."""
+
     def __init__(self, num):
         self.agents = [MockEnv(25) for _ in range(num)]
         self.dones = set()
@@ -40,6 +42,7 @@ class BasicMultiAgent(MultiAgentEnv):
 
 class EarlyDoneMultiAgent(MultiAgentEnv):
     """Env for testing when the env terminates (after agent 0 does)."""
+
     def __init__(self):
         self.agents = [MockEnv(3), MockEnv(5)]
         self.dones = set()
@@ -86,6 +89,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
 
 class FlexAgentsMultiAgent(MultiAgentEnv):
     """Env of independent agents, each of which exits after n steps."""
+
     def __init__(self):
         self.agents = {}
         self.agentID = 0
@@ -143,6 +147,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
     """Env of N independent agents, each of which exits after 5 steps.
 
     On each step() of the env, only one agent takes an action."""
+
     def __init__(self, num, increment_obs=False):
         if increment_obs:
             # Observations are 0, 1, 2, 3... etc. as time advances

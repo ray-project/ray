@@ -27,17 +27,13 @@ def check_support(alg, config, test_eager=False, test_trace=True):
         if test_eager:
             print("tf-eager: alg={} cont.act={}".format(alg, cont))
             config["eager_tracing"] = False
-            tune.run(a,
-                     config=config,
-                     stop={"training_iteration": 1},
-                     verbose=1)
+            tune.run(
+                a, config=config, stop={"training_iteration": 1}, verbose=1)
         if test_trace:
             config["eager_tracing"] = True
             print("tf-eager-tracing: alg={} cont.act={}".format(alg, cont))
-            tune.run(a,
-                     config=config,
-                     stop={"training_iteration": 1},
-                     verbose=1)
+            tune.run(
+                a, config=config, stop={"training_iteration": 1}, verbose=1)
 
 
 class TestEagerSupportPG(unittest.TestCase):
@@ -79,11 +75,11 @@ class TestEagerSupportPG(unittest.TestCase):
         check_support("APPO", {"num_workers": 1, "num_gpus": 0})
 
     def test_impala(self):
-        check_support("IMPALA", {
-            "num_workers": 1,
-            "num_gpus": 0
-        },
-                      test_eager=True)
+        check_support(
+            "IMPALA", {
+                "num_workers": 1,
+                "num_gpus": 0
+            }, test_eager=True)
 
 
 class TestEagerSupportOffPolicy(unittest.TestCase):

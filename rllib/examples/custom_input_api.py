@@ -19,20 +19,23 @@ from ray.rllib.offline import JsonReader, ShuffledInput, IOContext, InputReader
 from ray.tune.registry import register_input
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run",
-                    type=str,
-                    default="CQL",
-                    help="The RLlib-registered algorithm to use.")
-parser.add_argument("--framework",
-                    choices=["tf", "tf2", "tfe", "torch"],
-                    default="tf",
-                    help="The DL framework specifier.")
+parser.add_argument(
+    "--run",
+    type=str,
+    default="CQL",
+    help="The RLlib-registered algorithm to use.")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--stop-iters", type=int, default=100)
-parser.add_argument("--input-files",
-                    type=str,
-                    default=os.path.join(
-                        os.path.dirname(os.path.abspath(__file__)),
-                        "../tests/data/pendulum/small.json"))
+parser.add_argument(
+    "--input-files",
+    type=str,
+    default=os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "../tests/data/pendulum/small.json"))
 
 
 class CustomJsonReader(JsonReader):
@@ -41,6 +44,7 @@ class CustomJsonReader(JsonReader):
 
     This gets wrapped in ShuffledInput to comply with offline rl algorithms.
     """
+
     def __init__(self, ioctx: IOContext):
         """
         The constructor must take an IOContext to be used in the input config.

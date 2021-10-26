@@ -36,8 +36,8 @@ class TestPG(unittest.TestCase):
                     check_train_results(results)
                     print(results)
 
-                check_compute_single_action(trainer,
-                                            include_prev_action_reward=True)
+                check_compute_single_action(
+                    trainer, include_prev_action_reward=True)
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""
@@ -49,8 +49,8 @@ class TestPG(unittest.TestCase):
 
         # Fake CartPole episode of n time steps.
         train_batch = SampleBatch({
-            SampleBatch.OBS: np.array([[0.1, 0.2, 0.3, 0.4],
-                                       [0.5, 0.6, 0.7, 0.8],
+            SampleBatch.OBS: np.array([[0.1, 0.2, 0.3,
+                                        0.4], [0.5, 0.6, 0.7, 0.8],
                                        [0.9, 1.0, 1.1, 1.2]]),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
             SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),
@@ -83,32 +83,35 @@ class TestPG(unittest.TestCase):
             if sess:
                 results = policy.get_session().run(
                     policy._loss,
-                    feed_dict=policy._get_loss_inputs_dict(train_batch_,
-                                                           shuffle=False))
+                    feed_dict=policy._get_loss_inputs_dict(
+                        train_batch_, shuffle=False))
             else:
-                results = (pg.pg_tf_loss if fw in ["tf2", "tfe"] else
-                           pg.pg_torch_loss)(policy,
-                                             policy.model,
-                                             dist_class=dist_cls,
-                                             train_batch=train_batch_)
+                results = (pg.pg_tf_loss
+                           if fw in ["tf2", "tfe"] else pg.pg_torch_loss)(
+                               policy,
+                               policy.model,
+                               dist_class=dist_cls,
+                               train_batch=train_batch_)
 
             # Calculate expected results.
             if fw != "torch":
-                expected_logits = fc(fc(train_batch_[SampleBatch.OBS],
-                                        vars[0],
-                                        vars[1],
-                                        framework=fw),
-                                     vars[2],
-                                     vars[3],
-                                     framework=fw)
+                expected_logits = fc(
+                    fc(train_batch_[SampleBatch.OBS],
+                       vars[0],
+                       vars[1],
+                       framework=fw),
+                    vars[2],
+                    vars[3],
+                    framework=fw)
             else:
-                expected_logits = fc(fc(train_batch_[SampleBatch.OBS],
-                                        vars[2],
-                                        vars[3],
-                                        framework=fw),
-                                     vars[0],
-                                     vars[1],
-                                     framework=fw)
+                expected_logits = fc(
+                    fc(train_batch_[SampleBatch.OBS],
+                       vars[2],
+                       vars[3],
+                       framework=fw),
+                    vars[0],
+                    vars[1],
+                    framework=fw)
             expected_logp = dist_cls(expected_logits, policy.model).logp(
                 train_batch_[SampleBatch.ACTIONS])
             adv = train_batch_[Postprocessing.ADVANTAGES]

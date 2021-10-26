@@ -16,6 +16,7 @@ class CartPoleWrapper(CartPoleEnv):
     Adds an additional `reward` method for some model-based RL algos (e.g.
     MB-MPO).
     """
+
     def reward(self, obs, action, obs_next):
         # obs = batch * [pos, vel, angle, rotation_rate]
         x = obs_next[:, 0]
@@ -36,11 +37,12 @@ class PendulumWrapper(PendulumEnv):
     Adds an additional `reward` method for some model-based RL algos (e.g.
     MB-MPO).
     """
+
     def reward(self, obs, action, obs_next):
         # obs = [cos(theta), sin(theta), dtheta/dt]
         # To get the angle back from obs: atan2(sin(theta), cos(theta)).
-        theta = np.arctan2(np.clip(obs[:, 1], -1.0, 1.0),
-                           np.clip(obs[:, 0], -1.0, 1.0))
+        theta = np.arctan2(
+            np.clip(obs[:, 1], -1.0, 1.0), np.clip(obs[:, 0], -1.0, 1.0))
         # Do everything in (B,) space (single theta-, action- and
         # reward values).
         a = np.clip(action, -self.max_torque, self.max_torque)[0]
@@ -59,6 +61,7 @@ class HalfCheetahWrapper(HalfCheetahEnv or object):
     Adds an additional `reward` method for some model-based RL algos (e.g.
     MB-MPO).
     """
+
     def reward(self, obs, action, obs_next):
         if obs.ndim == 2 and action.ndim == 2:
             assert obs.shape == obs_next.shape
@@ -79,6 +82,7 @@ class HopperWrapper(HopperEnv or object):
     Adds an additional `reward` method for some model-based RL algos (e.g.
     MB-MPO).
     """
+
     def reward(self, obs, action, obs_next):
         alive_bonus = 1.0
         assert obs.ndim == 2 and action.ndim == 2

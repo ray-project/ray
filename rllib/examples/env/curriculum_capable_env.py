@@ -69,6 +69,7 @@ class CurriculumCapableEnv(TaskSettableEnv):
         self.switch_env = True
 
     def _make_lake(self):
-        self.frozen_lake = gym.make("FrozenLake-v1",
-                                    desc=self.MAPS[self.cur_level - 1],
-                                    is_slippery=False)
+        self.frozen_lake = gym.make(
+            "FrozenLake-v1",
+            desc=self.MAPS[self.cur_level - 1],
+            is_slippery=False)

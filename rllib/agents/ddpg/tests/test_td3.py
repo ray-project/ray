@@ -72,8 +72,8 @@ class TestTD3(unittest.TestCase):
             }
             trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
-            deterministic_action = trainer.compute_single_action(obs,
-                                                                 explore=False)
+            deterministic_action = trainer.compute_single_action(
+                obs, explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
             # ts=1-29 (in random window).
             random_a = []

@@ -14,39 +14,45 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run",
-                    type=str,
-                    default="PPO",
-                    help="The RLlib-registered algorithm to use.")
-parser.add_argument("--framework",
-                    choices=["tf", "tf2", "tfe", "torch"],
-                    default="tf",
-                    help="The DL framework specifier.")
+parser.add_argument(
+    "--run",
+    type=str,
+    default="PPO",
+    help="The RLlib-registered algorithm to use.")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
     "be achieved within --stop-timesteps AND --stop-iters.")
-parser.add_argument("--stop-iters",
-                    type=int,
-                    default=200,
-                    help="Number of iterations to train.")
-parser.add_argument("--stop-timesteps",
-                    type=int,
-                    default=100000,
-                    help="Number of timesteps to train.")
-parser.add_argument("--stop-reward",
-                    type=float,
-                    default=150.0,
-                    help="Reward at which we stop training.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=200,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=150.0,
+    help="Reward at which we stop training.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
     ModelCatalog.register_custom_model(
-        "bn_model", TorchBatchNormModel if args.framework == "torch" else
-        KerasBatchNormModel if args.run != "PPO" else BatchNormModel)
+        "bn_model", TorchBatchNormModel
+        if args.framework == "torch" else KerasBatchNormModel
+        if args.run != "PPO" else BatchNormModel)
 
     config = {
         "env": "Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v0",
