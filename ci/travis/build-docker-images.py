@@ -438,6 +438,7 @@ def push_and_tag_images(py_versions: List[str],
 
         # If no device is specified, it should map to CPU image.
         # For ray-ml image, if no device specified, it should map to GPU image.
+        # There is no CPU image for ray-ml.
         # "-gpu" tag should refer to the ML_CUDA_VERSION
         for old_tag in tag_mapping.keys():
             if "cpu" in old_tag:
