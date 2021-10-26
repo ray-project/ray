@@ -98,6 +98,12 @@ class GcsPlacementGroup {
   /// Add a set of new bundles to this placement_group.
   void AddBundles(const ray::rpc::AddPlacementGroupBundlesRequest &request);
 
+  /// Marking this placement group requires rescheduling.
+  void MarkNeedReschedule() { need_reschedule_ = true; };
+
+  /// Check whether this placement group needs reschedule or not.
+  bool IsNeedReschedule() { return need_reschedule_; }
+
   /// Get the unplaced bundles of this placement group.
   std::vector<std::shared_ptr<const BundleSpecification>> GetUnplacedBundles() const;
 
@@ -136,6 +142,10 @@ class GcsPlacementGroup {
   /// formatted strings for all resources (heavy string operations). To optimize the CPU
   /// usage, we cache bundle specs.
   mutable std::vector<std::shared_ptr<const BundleSpecification>> cached_bundle_specs_;
+  /// A flag to indicate whether this placement group should be rescheduled or not.
+  /// If true, the placement group will be rescheduled when the `OnPlacementGroupCreationSuccess` 
+  /// callback is invoked instead of storing the successfully created group into the backend.
+  bool need_reschedule_ = false;
 };
 
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement

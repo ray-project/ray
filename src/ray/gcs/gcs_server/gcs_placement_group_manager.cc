@@ -282,6 +282,13 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
     const std::shared_ptr<GcsPlacementGroup> &placement_group) {
+  if (placement_group->IsNeedReschedule()) {
+    RAY_LOG(DEBUG) << "The placement group " << placement_group->GetPlacementGroupID() << " received resize request when it was scheduling, so we need to reschedule it.";
+    AddToPendingQueue(std::move(placement_group), 0);
+    SchedulePendingPlacementGroups();
+    return;
+  }
+
   RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID();
   placement_group->UpdateState(rpc::PlacementGroupTableData::CREATED);
@@ -433,17 +440,11 @@ void GcsPlacementGroupManager::AddBundlesForPlacementGroup(
     return;
   }
   auto placement_group = placement_group_it->second;
-  // Return failed directly if the placement group is not `CREATED`.
-  if (placement_group->GetState() != rpc::PlacementGroupTableData::CREATED) {
-    std::ostringstream error_message;
-    error_message
-        << "Register add bundles request for placement group: " << placement_group_id
-        << " failed, cause the placement group is in scheduling now. You should always "
-           "invoke `Pg.wait(timeout)` before resizing the bundle size to make sure the "
-           "placement group has already created successfully.";
-    RAY_LOG(WARNING) << error_message.str();
-    callback(Status::Invalid(error_message.str()));
-    return;
+  
+  if (IsSchedulingInProgress(placement_group_id)) {
+    // Mark that it needs to be rescheduled if the placement group is scheduling.
+    // so that it can be rescheduled when the successful callback is invoked.
+    placement_group->MarkNeedReschedule();
   }
 
   placement_group->AddBundles(request);
