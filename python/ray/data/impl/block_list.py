@@ -68,8 +68,10 @@ class BlockList:
             block_idx: The block index to divide at.
         """
         self._check_if_cleared()
-        return (BlockList(self._blocks[:block_idx], self._metadata[:block_idx]),
-                BlockList(self._blocks[block_idx:], self._metadata[block_idx:]))
+        return (BlockList(self._blocks[:block_idx],
+                          self._metadata[:block_idx]),
+                BlockList(self._blocks[block_idx:],
+                          self._metadata[block_idx:]))
 
     def iter_blocks(self) -> Iterator[ObjectRef[Block]]:
         """Iterate over the blocks of this block list.
