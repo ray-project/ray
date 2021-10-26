@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 def get_azure_sdk_function(client: Any, function_name: str) -> Callable:
+    """Retrieve a callable function from Azure SDK client object.
+
+       Newer versions of the various client SDKs renamed function names to
+       have a begin_ prefix. This function supports both the old and new
+       versions of the SDK by first trying the old name and falling back to
+       the prefixed new name.
+    """
     func = getattr(client, function_name,
                    getattr(client, f"begin_{function_name}"))
     if func is None:
