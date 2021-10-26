@@ -230,7 +230,7 @@ GLOBAL_CONFIG = {
     "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
     "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
-        "cld_4F7k8814aZzGG8TNUGPKnc"),  # cld_4F7k8814aZzGG8TNUGPKnc
+        "cld_4F7k8814aZzGG8TNUGPKnc"),  # anyscale_default_cloud
     "ANYSCALE_PROJECT": getenv_default("ANYSCALE_PROJECT", ""),
     "RAY_VERSION": getenv_default("RAY_VERSION", "2.0.0.dev0"),
     "RAY_REPO": getenv_default("RAY_REPO",
@@ -623,6 +623,37 @@ def search_running_session(sdk: AnyscaleSDK, project_id: str,
         logger.info("Found existing session.")
         session_id = result.results[0].id
     return session_id
+
+
+def find_cloud_by_name(sdk: AnyscaleSDK, cloud_name: str,
+                       _repeat: bool = True) -> Optional[str]:
+    cloud_id = None
+    logger.info(f"Looking up cloud with name `{cloud_name}`. ")
+
+    paging_token = None
+    while not cloud_id:
+        result = sdk.search_clouds(
+            clouds_query=dict(count=50, paging_token=paging_token))
+        paging_token = result.metadata.next_paging_token
+
+        for res in result.results:
+            if res.name == cloud_name:
+                cloud_id = res.id
+                logger.info(
+                    f"Found cloud with name `{cloud_name}` as `{cloud_id}`")
+                break
+
+        if not paging_token or cloud_id or not len(result.results):
+            break
+
+        # TODO: Currently the sdk.search_clouds API does not work
+        # and always returns the same 10 results. Thus we break here
+        # - if the cloud is not found in the first 10 results, this will
+        # throw an error downstream. Remove this comment and break in the next
+        # line once the issue is resolved.
+        break
+
+    return cloud_id
 
 
 def create_or_find_compute_template(
@@ -1155,18 +1186,6 @@ def run_test_config(
                 Key: Name
                 Value: S3 URL
     """
-    # Todo (mid-term): Support other cluster definitions
-    #  (not only cluster configs)
-    cluster_config_rel_path = test_config["cluster"].get(
-        "cluster_config", None)
-    cluster_config = _load_config(local_dir, cluster_config_rel_path)
-
-    app_config_rel_path = test_config["cluster"].get("app_config", None)
-    app_config = _load_config(local_dir, app_config_rel_path)
-
-    compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
-    compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
-
     stop_event = multiprocessing.Event()
     result_queue = multiprocessing.Queue()
 
@@ -1208,6 +1227,34 @@ def run_test_config(
         ),
         anyscale_api_client=sdk.api_client,
     )
+
+    cloud_id = test_config["cluster"].get("cloud_id", None)
+    cloud_name = test_config["cluster"].get("cloud_name", None)
+    if cloud_id and cloud_name:
+        raise RuntimeError(
+            f"You can't supply both a `cloud_name` ({cloud_name}) and a "
+            f"`cloud_id` ({cloud_id}) in the test cluster configuration. "
+            f"Please provide only one.")
+    elif cloud_name and not cloud_id:
+        cloud_id = find_cloud_by_name(sdk, cloud_name)
+        if not cloud_id:
+            raise RuntimeError(
+                f"Couldn't find cloud with name `{cloud_name}`.")
+    else:
+        cloud_id = cloud_id or GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"]
+
+    # Overwrite global config so that `_load_config` sets the correct cloud
+    GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"] = cloud_id
+
+    cluster_config_rel_path = test_config["cluster"].get(
+        "cluster_config", None)
+    cluster_config = _load_config(local_dir, cluster_config_rel_path)
+
+    app_config_rel_path = test_config["cluster"].get("app_config", None)
+    app_config = _load_config(local_dir, app_config_rel_path)
+
+    compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
+    compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
 
     timeout = test_config["run"].get("timeout", 1800)
     if "RELEASE_OVERRIDE_TIMEOUT" in os.environ:
@@ -1374,8 +1421,7 @@ def run_test_config(
                     logging.info("Starting session with cluster config")
                     cluster_config_str = json.dumps(cluster_config)
                     session_options["cluster_config"] = cluster_config_str
-                    session_options["cloud_id"] = (
-                        GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"], )
+                    session_options["cloud_id"] = cloud_id
                     session_options["uses_app_config"] = False
                 else:
                     logging.info("Starting session with app/compute config")
