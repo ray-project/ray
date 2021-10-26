@@ -120,8 +120,8 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
   for (const auto &pair : nodes_) {
     const auto &address = pair.second;
     double start_time = absl::GetCurrentTimeNanos();
-    auto callback = [this, start_time](const Status &status,
-                                       const rpc::UpdateResourceUsageReply &reply) {
+    auto callback = [start_time](const Status &status,
+                                 const rpc::UpdateResourceUsageReply &reply) {
       double end_time = absl::GetCurrentTimeNanos();
       double lapsed_time_ms = static_cast<double>(end_time - start_time) / 1e6;
       ray::stats::GcsUpdateResourceUsageTime.Record(lapsed_time_ms);
