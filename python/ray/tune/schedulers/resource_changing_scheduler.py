@@ -413,8 +413,7 @@ class ResourceChangingScheduler(TrialScheduler):
 
     def set_trial_resources(
             self, trial: Trial,
-            new_resources: Union[Dict, Callable, PlacementGroupFactory]
-    ) -> bool:
+            new_resources: Union[Dict, PlacementGroupFactory]) -> bool:
         """Returns True if new_resources were set."""
         if new_resources:
             logger.info(f"Setting trial {trial} resource to {new_resources}")

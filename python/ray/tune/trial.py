@@ -8,7 +8,7 @@ import platform
 import re
 import shutil
 import time
-from typing import Callable, Dict, Optional, Sequence, Union
+from typing import Dict, Optional, Sequence, Union
 import uuid
 
 import ray
@@ -29,7 +29,6 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory, \
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
-from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 
@@ -366,36 +365,21 @@ class Trial:
         self._state_json = None
         self._state_valid = False
 
-    def _setup_resources(self, log_always: bool = False):
+    def _setup_resources(self):
         """Set up resource and placement group requirements.
 
         This will try to convert the resource request in ``self.resources``
         to a placement group factory object. If this is unsuccessful,
-        placement groups will not be used.
-
-        Args:
-            log_always (bool): If True, this will always log a warning if
-                conversion from a resource dict to a placement group
-                definition was unsuccessful (e.g. when passing ``extra_``
-                requests).
-
+        an error will be raised.
 
         """
-        if not self.placement_group_factory and \
-           not int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
-            try:
-                self.placement_group_factory = resource_dict_to_pg_factory(
-                    self.resources)
-            except ValueError as exc:
-                if log_always or log_once("tune_pg_extra_resources"):
-                    logger.warning(exc)
-                self.placement_group_factory = None
+        if not self.placement_group_factory:
+            self.placement_group_factory = resource_dict_to_pg_factory(
+                self.resources)
 
-        # Set placement group factory flag to True in Resources object.
-        if self.placement_group_factory:
-            resource_kwargs = self.resources._asdict()
-            resource_kwargs["has_placement_group"] = True
-            self.resources = Resources(**resource_kwargs)
+        resource_kwargs = self.resources._asdict()
+        resource_kwargs["has_placement_group"] = True
+        self.resources = Resources(**resource_kwargs)
 
     def _get_default_result_or_future(self) -> Optional[dict]:
         """Calls ray.get on self._default_result_or_future and assigns back.
@@ -523,8 +507,7 @@ class Trial:
             os.makedirs(self.logdir, exist_ok=True)
         self.invalidate_json_state()
 
-    def update_resources(
-            self, resources: Union[Dict, Callable, PlacementGroupFactory]):
+    def update_resources(self, resources: Union[Dict, PlacementGroupFactory]):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
