@@ -110,6 +110,26 @@ struct Mocker {
     return builder.Build();
   }
 
+  static rpc::AddPlacementGroupBundlesRequest GenAddPlacementGroupBundlesRequest(
+      const PlacementGroupID &placement_group_id, int bundles_count = 2,
+      double cpu_num = 1.0) {
+    rpc::AddPlacementGroupBundlesRequest request;
+    request.set_placement_group_id(placement_group_id.Binary());
+    std::vector<std::unordered_map<std::string, double>> bundles;
+    std::unordered_map<std::string, double> bundle;
+    bundle["CPU"] = cpu_num;
+    for (int index = 0; index < bundles_count; ++index) {
+      bundles.push_back(bundle);
+    }
+    for (size_t i = 0; i < bundles.size(); i++) {
+      auto resources = bundles[i];
+      auto message_bundle = request.add_bundles();
+      const auto &new_bundle = BuildBundle(resources, i, placement_group_id);
+      message_bundle->CopyFrom(new_bundle);
+    }
+    return request;
+  }
+
   static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
       const std::string name = "",
       rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD,

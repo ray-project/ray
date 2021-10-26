@@ -77,6 +77,8 @@ void GcsPlacementGroup::AddBundles(
         }
     }
   }
+  // Invalidate the cache!
+  cached_bundle_specs_.clear();
 }
 
 std::vector<std::shared_ptr<const BundleSpecification>>
@@ -447,6 +449,11 @@ void GcsPlacementGroupManager::AddBundlesForPlacementGroup(
     return;
   }
   auto placement_group = placement_group_it->second;
+
+  if (placement_group->GetState() == rpc::PlacementGroupTableData::CREATED) {
+    AddToPendingQueue(placement_group, 0);
+  }
+
   placement_group->AddBundles(request);
   placement_group->UpdateState(rpc::PlacementGroupTableData::UPDATING);
   
@@ -457,10 +464,6 @@ void GcsPlacementGroupManager::AddBundlesForPlacementGroup(
     // Don't put it into the pending queue if it is scheduling right now cause it will be rescheduled when the finished callback is invoked.
   }
 
-  if (placement_group->GetState() == rpc::PlacementGroupTableData::CREATED) {
-    AddToPendingQueue(placement_group, 0);
-  }
-  
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
       [this, placement_group_id, placement_group, callback, request](Status status) {
