@@ -224,6 +224,24 @@ def test_log_monitor_backpressure(ray_start_cluster):
     assert (datetime.now() - now).seconds >= update_interval
 
 
+def test_ignore_windows_access_violation(ray_start_regular_shared):
+    @ray.remote
+    def print_msg():
+        print("Windows fatal exception: access violation\n")
+
+    @ray.remote
+    def print_after(_obj):
+        print("done")
+
+    p = init_log_pubsub()
+    print_after.remote(print_msg.remote())
+    msgs = get_log_message(
+        p, num=3, timeout=1, job_id=ray.get_runtime_context().job_id.hex())
+
+    assert len(msgs) == 1, msgs
+    assert msgs.pop() == "done"
+
+
 def test_log_redirect_to_stdout(shutdown_only):
     os.environ["GLOG_logtostderr"] = "1"
     ray.init()

@@ -233,7 +233,8 @@
       python/ray/tests/test_basic_3
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_runtime_env_ray_minimal
-    # TODO(archit)
+    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
+      python/ray/tests/test_serve_ray_minimal
 - label: ":python: (Flaky tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_RLLIB_AFFECTED", "RAY_CI_TUNE_AFFECTED"]
   commands:
@@ -543,10 +544,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=py37,-flaky,-client python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/xgboost/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/horovod/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/tests/modin/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/ray_lightning/...
-    # Dask tests and examples.
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/dask/...
 
 - label: ":octopus: Ludwig tests and examples. Python 3.7"
   conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
@@ -567,6 +565,17 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-client_unit_tests python/ray/util/sgd/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/util/xgboost/...
+
+- label: ":potable_water: Modin/Dask tests and examples. Python 3.7"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    # Because Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/tests/modin/...
+    # Dask tests and examples.
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/dask/...
 
 - label: ":potable_water: Workflow & Dataset tests (Python 3.7)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
