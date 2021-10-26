@@ -28,7 +28,7 @@ Block = Union[List[T], "pyarrow.Table", bytes]
 BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 
 # The metadata that describes the output of a BlockPartition. This has the
-# same type as the metadata that describes each block in the parition.
+# same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = "BlockMetadata"
 
 

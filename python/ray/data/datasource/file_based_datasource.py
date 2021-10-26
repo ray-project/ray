@@ -89,14 +89,14 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 num_rows = None
             else:
                 num_rows = len(read_paths) * self._rows_per_file()
+            meta = BlockMetadata(
+                num_rows=num_rows,
+                size_bytes=sum(file_sizes),
+                schema=schema,
+                input_files=read_paths)
             read_task = ReadTask(
-                lambda read_paths=read_paths: [ray.put(read_files(
-                    read_paths, filesystem))],
-                BlockMetadata(
-                    num_rows=num_rows,
-                    size_bytes=sum(file_sizes),
-                    schema=schema,
-                    input_files=read_paths)
+                lambda read_paths=read_paths, meta=meta: [(ray.put(read_files(
+                    read_paths, filesystem)), meta)], meta
             )
             read_tasks.append(read_task)
 

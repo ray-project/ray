@@ -248,8 +248,8 @@ class DatasetPipeline(Generic[T]):
 
         Changes the windowing of this pipeline to the specified size. For
         example, if the current pipeline has two blocks per dataset, and
-        `.rewindow(blocks_per_window=4)` is requested, adjacent datasets
-        will be merged until each dataset is 4 blocks. If
+        `.rewindow(blocks_per_window=4)` is requested, adjacent datasets will
+        be merged until each dataset is 4 blocks. If
         `.rewindow(blocks_per_window)` was requested the datasets will be
         split into smaller windows.
 
@@ -269,7 +269,7 @@ class DatasetPipeline(Generic[T]):
                     # Merge windows until we meet the requested window size.
                     if self._buffer is None:
                         self._buffer = next(self._original_iter)
-                    while (self._buffer.num_blocks() < blocks_per_window):
+                    while self._buffer.num_blocks() < blocks_per_window:
                         next_ds = next(self._original_iter)
                         if (preserve_epoch and self._buffer._get_epoch() !=
                                 next_ds._get_epoch()):

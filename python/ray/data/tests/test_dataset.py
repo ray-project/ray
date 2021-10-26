@@ -93,8 +93,8 @@ def test_equal_split(shutdown_only, pipelined):
     assert not all(c == 6 for c in r2), r2
 
 
-#@pytest.mark.skip(
-#    reason="OwnerDiedError: https://github.com/ray-project/ray/issues/19659")
+@pytest.mark.skip(
+    reason="OwnerDiedError: https://github.com/ray-project/ray/issues/19659")
 def test_callable_classes(shutdown_only):
     ray.init(num_cpus=1)
     ds = ray.data.range(10)
@@ -1631,9 +1631,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for blocks, meta in zip(ds2._blocks.iter_partitions(),
-                            ds2._blocks.get_metadata()):
-        [block] = ray.get(blocks)
+    for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)
@@ -1991,24 +1989,32 @@ def test_split(ray_start_regular_shared):
     assert ds._block_sizes() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [dataset._blocks.num_blocks() for dataset in datasets]
+    assert [2] * 5 == [
+        dataset._blocks.initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3, 3] == [dataset._blocks.num_blocks() for dataset in datasets]
+    assert [4, 3, 3] == [
+        dataset._blocks.initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [dataset._blocks.num_blocks() for dataset in datasets]
+    assert [10] == [
+        dataset._blocks.initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [dataset._blocks.num_blocks() for dataset in datasets]
+    assert [1] * 10 == [
+        dataset._blocks.initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
-        dataset._blocks.num_blocks() for dataset in datasets
+        dataset._blocks.initial_num_blocks() for dataset in datasets
     ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
@@ -2038,7 +2044,7 @@ def test_split_hints(ray_start_regular_shared):
         """
         num_blocks = len(block_node_ids)
         ds = ray.data.range(num_blocks, parallelism=num_blocks)
-        blocks = list(ds._blocks.iter_partitions())
+        blocks = list(ds._blocks.iter_blocks())
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
@@ -2064,7 +2070,7 @@ def test_split_hints(ray_start_regular_shared):
                 for i in range(len(actors)):
                     assert {blocks[j]
                             for j in expected_split_result[i]} == set(
-                                datasets[i]._blocks.iter_partitions())
+                                datasets[i]._blocks.iter_blocks())
 
     assert_split_assignment(["node2", "node1", "node1"], ["node1", "node2"],
                             [[1, 2], [0]])
@@ -2302,9 +2308,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for blocks, meta in zip(ds._blocks.iter_partitions(),
-                            ds._blocks.get_metadata()):
-        [block] = ray.get(blocks)
+    for block, meta in ds._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -2425,9 +2429,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
-    for blocks, meta in zip(ds._blocks.iter_partitions(),
-                            ds._blocks.get_metadata()):
-        [block] = ray.get(blocks)
+    for block, meta in ds._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes()
 
     # Directory and file, two files.
@@ -2506,9 +2508,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for blocks, meta in zip(ds2._blocks.iter_partitions(),
-                            ds2._blocks.get_metadata()):
-        [block] = ray.get(blocks)
+    for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     if fs is None:
@@ -2525,9 +2525,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for blocks, meta in zip(ds2._blocks.iter_partitions(),
-                            ds2._blocks.get_metadata()):
-        [block] = ray.get(blocks)
+    for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -2565,9 +2563,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for blocks, meta in zip(ds._blocks.iter_partitions(),
-                            ds._blocks.get_metadata()):
-        [block] = ray.get(blocks)
+    for block, meta in ds._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -2698,9 +2694,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for blocks, meta in zip(ds2._blocks.iter_partitions(),
-                            ds2._blocks.get_metadata()):
-        [block] = ray.get(blocks)
+    for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
@@ -2712,9 +2706,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for blocks, meta in zip(ds2._blocks.iter_partitions(),
-                            ds2._blocks.get_metadata()):
-        [block] = ray.get(blocks)
+    for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 

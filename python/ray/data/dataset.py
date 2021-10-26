@@ -23,7 +23,8 @@ import numpy as np
 import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U
+from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, \
+    BlockPartition, BlockPartitionMetadata
 from ray.data.datasource import (Datasource, CSVDatasource, JSONDatasource,
                                  NumpyDatasource, ParquetDatasource)
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -395,9 +396,8 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
-        curr_num_blocks = self.num_blocks()
         # Handle empty dataset.
-        if curr_num_blocks == 0:
+        if self.num_blocks() == 0:
             return self
 
         if num_blocks is None:
@@ -618,8 +618,6 @@ class Dataset(Generic[T]):
         # In the second round: fill each actor's allocation with
         # remaining unallocated blocks until we reach the limit.
 
-        ray.wait(block_refs, num_returns=len(block_refs))
-
         def build_allocation_size_map(num_blocks: int,
                                       actors: List[Any]) -> Dict[Any, int]:
             """Given the total number of blocks and a list of actors, calcuate
@@ -760,19 +758,24 @@ class Dataset(Generic[T]):
             A new dataset holding the union of their data.
         """
 
-        calls: List[Callable[[], ObjectRef[Block]]] = []
-        metadata: List[BlockMetadata] = []
-        blocks: List[ObjectRef[Block]] = []
+        calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
+        metadata: List[BlockPartitionMetadata] = []
+        blocks: List[ObjectRef[BlockPartition]] = []
 
         datasets = [self] + list(other)
         for ds in datasets:
             bl = ds._blocks
             if isinstance(bl, LazyBlockList):
                 calls.extend(bl._calls)
+                metadata.extend(bl._metadata)
+                blocks.extend(list(bl._iter_partitions()))
             else:
-                calls.extend([None] * bl.executed_num_blocks())
-            metadata.extend(bl._metadata)
-            blocks.extend(list(bl.iter_blocks()))
+                calls.extend([None] * bl.initial_num_blocks())
+                metadata.extend(bl._metadata)
+                blocks.extend([
+                    ray.put([(b, m)])
+                    for b, m in bl.iter_blocks_with_metadata()
+                ])
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1274,10 +1277,7 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
-        blocks, metadata = [], []
-        for b, m in self._blocks.iter_blocks_with_metadata():
-            blocks.append(b)
-            metadata.append(m)
+        blocks, metadata = zip(*self._blocks.iter_blocks_with_metadata())
         write_results = datasource.do_write(blocks, metadata, **write_args)
         progress = ProgressBar("Write Progress", len(write_results))
         try:
@@ -1742,10 +1742,7 @@ class Dataset(Generic[T]):
             return blocks  # Zero-copy path.
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
-        return [
-            block_to_arrow.remote(block)
-            for block in self._blocks.iter_blocks()
-        ]
+        return [block_to_arrow.remote(block) for block in blocks]
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by looping over this dataset.
