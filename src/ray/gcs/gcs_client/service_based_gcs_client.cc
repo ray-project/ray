@@ -18,6 +18,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/pubsub/subscriber.h"
 
 extern "C" {
 #include "hiredis/hiredis.h"
@@ -25,6 +26,53 @@ extern "C" {
 
 namespace ray {
 namespace gcs {
+
+/// Adapts GcsRpcClient to SubscriberClientInterface for making RPC calls. Thread safe.
+class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
+ public:
+  explicit GcsSubscriberClient(const std::shared_ptr<rpc::GcsRpcClient> &rpc_client)
+      : rpc_client_(rpc_client) {}
+
+  ~GcsSubscriberClient() final = default;
+
+  void PubsubLongPolling(
+      const rpc::PubsubLongPollingRequest &request,
+      const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final;
+
+  void PubsubCommandBatch(
+      const rpc::PubsubCommandBatchRequest &request,
+      const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final;
+
+ private:
+  const std::shared_ptr<rpc::GcsRpcClient> rpc_client_;
+};
+
+void GcsSubscriberClient::PubsubLongPolling(
+    const rpc::PubsubLongPollingRequest &request,
+    const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) {
+  rpc::GcsSubscriberPollRequest req;
+  req.set_subscriber_id(request.subscriber_id());
+  rpc_client_->GcsSubscriberPoll(
+      req,
+      [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
+        rpc::PubsubLongPollingReply reply;
+        *reply.mutable_pub_messages() = poll_reply.pub_messages();
+        callback(status, reply);
+      });
+}
+
+void GcsSubscriberClient::PubsubCommandBatch(
+    const rpc::PubsubCommandBatchRequest &request,
+    const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) {
+  rpc::GcsSubscriberCommandBatchRequest req;
+  req.set_subscriber_id(request.subscriber_id());
+  rpc_client_->GcsSubscriberCommandBatch(
+      req, [callback](const Status &status,
+                      const rpc::GcsSubscriberCommandBatchReply &batch_reply) {
+        rpc::PubsubCommandBatchReply reply;
+        callback(status, reply);
+      });
+}
 
 ServiceBasedGcsClient::ServiceBasedGcsClient(
     const GcsClientOptions &options,

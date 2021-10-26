@@ -21,6 +21,8 @@ namespace ray {
 namespace gcs {
 
 /// This is the implementation class of `InternalPubsubHandler`.
+/// It supports subscribing updates from GCS with long poll, and registering /
+/// de-registering subscribers.
 class InternalPubSubHandler : public rpc::InternalPubSubHandler {
  public:
   explicit InternalPubSubHandler(const std::shared_ptr<gcs::GcsPublisher> &gcs_publisher)

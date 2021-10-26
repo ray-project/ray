@@ -385,32 +385,5 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
   return pubsub_->SubscribeAll(WORKER_CHANNEL, on_subscribe, done);
 }
 
-void GcsSubscriberClient::PubsubLongPolling(
-    const rpc::PubsubLongPollingRequest &request,
-    const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) {
-  rpc::GcsSubscriberPollRequest req;
-  req.set_subscriber_id(request.subscriber_id());
-  rpc_client_->GcsSubscriberPoll(
-      req,
-      [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
-        rpc::PubsubLongPollingReply reply;
-        *reply.mutable_pub_messages() = poll_reply.pub_messages();
-        callback(status, reply);
-      });
-}
-
-void GcsSubscriberClient::PubsubCommandBatch(
-    const rpc::PubsubCommandBatchRequest &request,
-    const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) {
-  rpc::GcsSubscriberCommandBatchRequest req;
-  req.set_subscriber_id(request.subscriber_id());
-  rpc_client_->GcsSubscriberCommandBatch(
-      req, [callback](const Status &status,
-                      const rpc::GcsSubscriberCommandBatchReply &batch_reply) {
-        rpc::PubsubCommandBatchReply reply;
-        callback(status, reply);
-      });
-}
-
 }  // namespace gcs
 }  // namespace ray

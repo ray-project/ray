@@ -25,7 +25,6 @@
 #include "ray/gcs/redis_context.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -334,28 +333,6 @@ class GcsSubscriber {
   const std::unique_ptr<GcsPubSub> pubsub_;
   const rpc::Address gcs_address_;
   const std::unique_ptr<pubsub::Subscriber> subscriber_;
-};
-
-/// \class GcsSubscriberClient
-///
-/// Adapts GcsRpcClient to SubscriberClientInterface for making RPC calls. Thread safe.
-class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
- public:
-  explicit GcsSubscriberClient(const std::shared_ptr<rpc::GcsRpcClient> &rpc_client)
-      : rpc_client_(rpc_client) {}
-
-  ~GcsSubscriberClient() final = default;
-
-  void PubsubLongPolling(
-      const rpc::PubsubLongPollingRequest &request,
-      const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final;
-
-  void PubsubCommandBatch(
-      const rpc::PubsubCommandBatchRequest &request,
-      const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final;
-
- private:
-  const std::shared_ptr<rpc::GcsRpcClient> rpc_client_;
 };
 
 }  // namespace gcs

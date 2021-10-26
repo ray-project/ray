@@ -404,6 +404,7 @@ void GcsServer::InitKVManager() {
   rpc_server_.RegisterService(*kv_service_);
 }
 
+// TODO: Investigating optimal threading for PubSub.
 void GcsServer::InitPubSubHandler() {
   pubsub_handler_ = std::make_unique<InternalPubSubHandler>(gcs_publisher_);
   pubsub_service_ =
