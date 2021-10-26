@@ -1,7 +1,6 @@
 import sys
 import threading
 import time
-import json
 
 import pytest
 import numpy as np
@@ -176,12 +175,9 @@ def test_threaded_actor_creation_and_kill(ray_start_cluster):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 2
-    }],
-    indirect=True)
-def test_threaded_actor_integration_test_stress(
-        ray_start_cluster_head,
-        log_pubsub,
-        error_pubsub):
+    }], indirect=True)
+def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
+                                                log_pubsub, error_pubsub):
     """This is a sanity test that checks threaded actors are
         working with the nightly stress test.
     """
@@ -280,15 +276,13 @@ def test_threaded_actor_integration_test_stress(
             num_children, death_probability) for _ in range(num_parents)
     ]
     ray.get([parent.ping.remote(10) for parent in parents])
-
     """
     Make sure there are not SIGSEGV, SIGBART, or other odd check failures.
     """
     # Get logs for 20 seconds.
     logs = test_utils.get_all_log_message(p, 100000)
     for log in logs:
-        assert "SIG" not in log, (
-            "There's the segfault or SIGBART reported.")
+        assert "SIG" not in log, ("There's the segfault or SIGBART reported.")
         assert "Check failed" not in log, (
             "There's the check failure reported.")
 
