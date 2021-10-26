@@ -23,8 +23,8 @@ WorkerSet
 +++++++++
 
 A set of RolloutWorkers containing n ``@ray.remote`` workers as well as a single "local"
-RolloutWorker. Exposes some convenience methods to call methods on its individual workers in
-parallel using e.g. ``ray.get()``.
+RolloutWorker. WorkerSets expose some convenience methods to make calls on its individual
+workers' own methods in parallel using e.g. ``ray.get()``.
 
 .. autoclass:: ray.rllib.evaluation.worker_set.WorkerSet
     :members:

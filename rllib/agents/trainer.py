@@ -1300,7 +1300,7 @@ class Trainer(Trainable):
                             export_dir: str,
                             policy_id: PolicyID = DEFAULT_POLICY_ID,
                             onnx: Optional[int] = None):
-        """Export policy model with given policy_id to local directory.
+        """Exports policy model with given policy_id to a local directory.
 
         Args:
             export_dir (string): Writable local directory.
@@ -1314,15 +1314,14 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_model("/tmp/export_dir")
         """
-        self.workers.local_worker().export_policy_model(
-            export_dir, policy_id, onnx)
+        self.get_policy(policy_id).export_model(export_dir, onnx)
 
     @DeveloperAPI
     def export_policy_checkpoint(self,
                                  export_dir: str,
                                  filename_prefix: str = "model",
                                  policy_id: PolicyID = DEFAULT_POLICY_ID):
-        """Export tensorflow policy model checkpoint to local directory.
+        """Exports policy model checkpoint to a local directory.
 
         Args:
             export_dir (string): Writable local directory.
@@ -1335,8 +1334,8 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_checkpoint("/tmp/export_dir")
         """
-        self.workers.local_worker().export_policy_checkpoint(
-            export_dir, filename_prefix, policy_id)
+        self.get_policy(policy_id).export_checkpoint(
+            export_dir, filename_prefix)
 
     @DeveloperAPI
     def import_policy_model_from_h5(self,
@@ -1354,8 +1353,8 @@ class Trainer(Trainable):
             >>> for _ in range(10):
             >>>     trainer.train()
         """
-        self.workers.local_worker().import_policy_model_from_h5(
-            import_file, policy_id)
+        self.get_policy(policy_id).import_model_from_h5(import_file)
+        self._sync_weights_to_workers()
 
     @DeveloperAPI
     def collect_metrics(self,
