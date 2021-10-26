@@ -318,7 +318,8 @@ class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
   MOCK_METHOD(
       Status, AsyncSubscribeBundlesChangedEvent,
       (const PlacementGroupID &placement_group_id,
-       (const SubscribeCallback<PlacementGroupID, rpc::PlacementGroupBundlesChangedNotification> &subscribe),
+       (const SubscribeCallback<
+           PlacementGroupID, rpc::PlacementGroupBundlesChangedNotification> &subscribe),
        const StatusCallback &done),
       (override));
   MOCK_METHOD(Status, AsyncGet,

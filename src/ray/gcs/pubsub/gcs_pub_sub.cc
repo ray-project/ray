@@ -256,10 +256,11 @@ Status GcsPublisher::PublishError(const std::string &id,
   return pubsub_->Publish(ERROR_INFO_CHANNEL, id, message.SerializeAsString(), done);
 }
 
-Status GcsPublisher::PublishPlacementGroupBundlsChanged(const std::string &id,
-                                  const rpc::PlacementGroupBundlesChangedNotification &message,
-                                  const StatusCallback &done) {
-  return pubsub_->Publish(PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, id, message.SerializeAsString(), done);
+Status GcsPublisher::PublishPlacementGroupBundlsChanged(
+    const std::string &id, const rpc::PlacementGroupBundlesChangedNotification &message,
+    const StatusCallback &done) {
+  return pubsub_->Publish(PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, id,
+                          message.SerializeAsString(), done);
 }
 
 std::string GcsPublisher::DebugString() const {

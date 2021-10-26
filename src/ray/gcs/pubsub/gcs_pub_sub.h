@@ -40,7 +40,8 @@ inline constexpr std::string_view TASK_CHANNEL = "TASK";
 inline constexpr std::string_view TASK_LEASE_CHANNEL = "TASK_LEASE";
 inline constexpr std::string_view RESOURCES_BATCH_CHANNEL = "RESOURCES_BATCH";
 inline constexpr std::string_view ERROR_INFO_CHANNEL = "ERROR_INFO";
-inline constexpr std::string_view PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL = "PLACEMENT_GROUP_BUNDELS_CHANGED";
+inline constexpr std::string_view PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL =
+    "PLACEMENT_GROUP_BUNDELS_CHANGED";
 
 /// \class GcsPubSub
 ///
@@ -237,9 +238,9 @@ class GcsPublisher {
                       const StatusCallback &done);
 
   /// Uses Redis pubsub.
-  Status PublishPlacementGroupBundlsChanged(const std::string &id,
-                                  const rpc::PlacementGroupBundlesChangedNotification &message,
-                                  const StatusCallback &done);
+  Status PublishPlacementGroupBundlsChanged(
+      const std::string &id, const rpc::PlacementGroupBundlesChangedNotification &message,
+      const StatusCallback &done);
 
   /// TODO: remove once it is converted to GRPC-based push broadcasting.
   /// Uses Redis pubsub.

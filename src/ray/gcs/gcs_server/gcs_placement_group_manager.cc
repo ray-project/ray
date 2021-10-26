@@ -883,8 +883,8 @@ void GcsPlacementGroupManager::PublishBundlesInfo(
   RAY_LOG(DEBUG) << "Register resizing bundles request for placement group: "
                  << placement_group->GetPlacementGroupID()
                  << " successful, will publish bundles info to workers.";
-  RAY_CHECK_OK(
-            gcs_publisher_->PublishPlacementGroupBundlsChanged(placement_group->GetPlacementGroupID().Hex(), *notification, nullptr));
+  RAY_CHECK_OK(gcs_publisher_->PublishPlacementGroupBundlsChanged(
+      placement_group->GetPlacementGroupID().Hex(), *notification, nullptr));
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
