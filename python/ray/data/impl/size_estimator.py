@@ -1,7 +1,7 @@
 from typing import Any
 
 import ray
-
+from ray import cloudpickle
 
 _ray_initialized = False
 
@@ -31,8 +31,14 @@ class SizeEstimator:
         return int(self._running_mean.mean * self._count)
 
     def _real_size(self, item: Any) -> int:
-        # We're using an internal Ray API, and have to ensure it's initialized
-        # by calling a public API.
+        is_client = ray.util.client.ray.is_connected()
+        # In client mode, fallback to using Ray cloudpickle instead of the
+        # real serializer.
+        if is_client:
+            return len(cloudpickle.dumps(item))
+
+        # We're using an internal Ray API, and have to ensure it's
+        # initialized # by calling a public API.
         global _ray_initialized
         if not _ray_initialized:
             _ray_initialized = True
