@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 import random
 import string
@@ -10,7 +9,7 @@ import requests
 import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve.utils import logger
+
 # Global variables / constants appear only right after imports.
 # Ray serve deployment setup constants
 NUM_REPLICAS = 7
@@ -55,23 +54,23 @@ ray.init(
     namespace="serve_failure_test",
     address=cluster.address,
     dashboard_host="0.0.0.0",
-    log_to_driver=True)
+    log_to_driver=False)
 serve.start(detached=True)
 
 
 @ray.remote
 class RandomKiller:
     def __init__(self, kill_period_s=1):
-        self.client = serve.api._global_client
         self.kill_period_s = kill_period_s
 
     def _get_all_serve_actors(self):
-        controller = self.client._controller
+        controller = serve.api._get_global_client()._controller
         routers = list(ray.get(controller.get_http_proxies.remote()).values())
         all_handles = routers + [controller]
-        worker_handle_dict = ray.get(controller._all_replica_handles.remote())
-        for _, replica_dict in worker_handle_dict.items():
-            all_handles.extend(list(replica_dict.values()))
+        worker_handle_dict = ray.get(controller._all_running_replicas.remote())
+        for _, replica_info_list in worker_handle_dict.items():
+            for replica_info in replica_info_list:
+                all_handles.append(replica_info.actor_handle)
 
         return all_handles
 
@@ -95,7 +94,6 @@ class RandomTest:
 
     def create_deployment(self):
         if len(self.deployments) == self.max_deployments:
-            logger.info(f"!!!!!!!!!!!!!!! DELETE")
             deployment_to_delete = self.deployments.pop()
             serve.get_deployment(deployment_to_delete).delete()
 

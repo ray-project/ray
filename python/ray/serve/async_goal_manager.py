@@ -119,7 +119,7 @@ class AsyncGoalManager:
         Mark given goal as completed, if an exception object is provided,
         set exception instead.
         """
-        # logger.debug(f"Completing goal {goal_id}")
+        logger.debug(f"Completing goal {goal_id}")
         async_goal = self._pending_goals.pop(goal_id, None)
         if async_goal:
             if exception:

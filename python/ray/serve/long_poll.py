@@ -112,14 +112,14 @@ class LongPollClient:
             return
 
         if isinstance(updates, (ray.exceptions.RayTaskError)):
-            # Some error happened in the controller. It could be a bug or some
-            # undesired state.
-            logger.error("LongPollHost errored\n" + updates.traceback_str)
-            self._poll_next()
-            return
-
-        if updates.get("asyncio.TimeoutError"):
-            logger.info(">>>>>>>>>>>>>>>>>>>> timeout, re-polling.")
+            if isinstance(updates.as_instanceof_cause(), (asyncio.TimeoutError)):
+                logger.debug(
+                    f"LongPollClient polling timed out after "
+                    f"{LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S} secs. Retrying.")
+            else:
+                # Some error happened in the controller. It could be a bug or
+                # some undesired state.
+                logger.error("LongPollHost errored\n" + updates.traceback_str)
             self._poll_next()
             return
 
@@ -222,7 +222,7 @@ class LongPollHost:
         [task.cancel() for task in not_done]
 
         if len(done) == 0:
-            return {"asyncio.TimeoutError": True}
+            raise asyncio.TimeoutError("Polling request timed out.")
         else:
             updated_object_key: str = async_task_to_watched_keys[done.pop()]
             return {

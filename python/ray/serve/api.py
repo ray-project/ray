@@ -436,7 +436,7 @@ def start(
             get_current_node_resource_key(): 0.01
         },
         namespace=controller_namespace,
-        max_concurrency=5,
+        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
         controller_name,
         http_options,
