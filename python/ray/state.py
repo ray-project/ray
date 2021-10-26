@@ -715,6 +715,7 @@ class GlobalState:
 
     def _available_resources_per_node(self):
         """Returns a dictionary mapping node id to avaiable resources."""
+        self._check_connected()
         available_resources_by_id = {}
 
         all_available_resources = \

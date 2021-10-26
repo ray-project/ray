@@ -23,6 +23,7 @@ from ray.rllib.agents.dqn.dqn import calculate_rr_weights, \
 from ray.rllib.agents.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
+                                        STEPS_TRAINED_THIS_ITER_COUNTER,
                                         _get_global_vars, _get_shared_metrics)
 from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -168,6 +169,7 @@ def apex_execution_plan(workers: WorkerSet,
         metrics = _get_shared_metrics()
         # Manually update the steps trained counter since the learner thread
         # is executing outside the pipeline.
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
         metrics.counters[STEPS_TRAINED_COUNTER] += count
         metrics.timers["learner_dequeue"] = learner_thread.queue_timer
         metrics.timers["learner_grad"] = learner_thread.grad_timer

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+
 #include "ray/common/ray_config.h"
 #include "ray/stats/stats.h"
 
@@ -20,10 +21,10 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool redis_broadcast_enabled)
     : periodical_runner_(main_io_service),
-      gcs_pub_sub_(gcs_pub_sub),
+      gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       redis_broadcast_enabled_(redis_broadcast_enabled),
       max_broadcasting_batch_size_(
@@ -88,9 +89,8 @@ void GcsResourceManager::HandleUpdateResources(
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
       if (redis_broadcast_enabled_) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                           node_resource_change.SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(
+            gcs_publisher_->PublishNodeResource(node_id, node_resource_change, nullptr));
       } else {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
@@ -144,9 +144,8 @@ void GcsResourceManager::HandleDeleteResources(
         node_resource_change.add_deleted_resources(resource_name);
       }
       if (redis_broadcast_enabled_) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                           node_resource_change.SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(
+            gcs_publisher_->PublishNodeResource(node_id, node_resource_change, nullptr));
       } else {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
@@ -233,10 +232,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
             demand.num_infeasible_requests_queued());
-        if (RayConfig::instance().report_worker_backlog()) {
-          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                            demand.backlog_size());
-        }
+        aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                          demand.backlog_size());
       }
 
       batch->add_batch()->CopyFrom(usage.second);
@@ -322,7 +319,7 @@ void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
 
 void GcsResourceManager::UpdateResourceCapacity(
     const NodeID &node_id,
-    const std::unordered_map<std::string, double> &changed_resources) {
+    const absl::flat_hash_map<std::string, double> &changed_resources) {
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
     SchedulingResources &scheduling_resources = iter->second;
@@ -348,7 +345,7 @@ void GcsResourceManager::DeleteResources(
 void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   auto node_id = NodeID::FromBinary(node.node_id());
   if (!cluster_scheduling_resources_.contains(node_id)) {
-    std::unordered_map<std::string, double> resource_mapping(
+    absl::flat_hash_map<std::string, double> resource_mapping(
         node.resources_total().begin(), node.resources_total().end());
     // Update the cluster scheduling resources as new node is added.
     ResourceSet node_resources(resource_mapping);
@@ -422,8 +419,7 @@ void GcsResourceManager::SendBatchedResourceUsage() {
   rpc::ResourceUsageBatchData batch;
   GetResourceUsageBatchForBroadcast_Locked(batch);
   if (batch.ByteSizeLong() > 0) {
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
-                                       batch.SerializeAsString(), nullptr));
+    RAY_CHECK_OK(gcs_publisher_->PublishResourceBatch(batch, nullptr));
     stats::OutboundHeartbeatSizeKB.Record(batch.ByteSizeLong() / 1024.0);
   }
 }

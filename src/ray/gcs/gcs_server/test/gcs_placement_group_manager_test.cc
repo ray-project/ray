@@ -71,7 +71,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
  public:
   GcsPlacementGroupManagerTest()
       : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()) {
-    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    gcs_publisher_ = std::make_shared<GcsPublisher>(
+        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_resource_manager_ =
         std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
@@ -136,6 +137,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     EXPECT_TRUE(WaitForCondition(condition, 10 * 1000));
   }
 
+  ExponentialBackOff GetExpBackOff() { return ExponentialBackOff(0, 1); }
+
   std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
   std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
   std::unordered_map<JobID, std::string> job_namespace_table_;
@@ -145,7 +148,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
-  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
 };
 
@@ -197,7 +200,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   mock_placement_group_scheduler_->placement_groups_.clear();
 
-  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group);
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
+                                                               GetExpBackOff(), true);
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
   mock_placement_group_scheduler_->placement_groups_.clear();
@@ -261,7 +265,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeAdd) {
   mock_placement_group_scheduler_->placement_groups_.pop_back();
 
   // If the creation of placement group fails, it will be rescheduled after a short time.
-  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group);
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
+                                                               GetExpBackOff(), true);
   WaitForExpectedPgCount(1);
 }
 
@@ -276,7 +281,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingPendingPlacementGroup) {
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   mock_placement_group_scheduler_->placement_groups_.clear();
 
-  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group);
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
+                                                               GetExpBackOff(), true);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::PENDING);
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   gcs_placement_group_manager_->RemovePlacementGroup(placement_group_id,
@@ -312,7 +318,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroup) {
   gcs_placement_group_manager_->RemovePlacementGroup(placement_group_id,
                                                      [](const Status &status) {});
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::REMOVED);
-  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group);
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
+                                                               GetExpBackOff(), true);
 
   // Make sure it is not rescheduled
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
@@ -375,7 +382,6 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   placement_group->GetMutableBundle(0)->set_node_id(NodeID::FromRandom().Binary());
   placement_group->GetMutableBundle(1)->set_node_id(NodeID::FromRandom().Binary());
   mock_placement_group_scheduler_->placement_groups_.pop_back();
-
   // If a node dies, we will set the bundles above it to be unplaced and reschedule the
   // placement group. The placement group state is set to `RESCHEDULING` and will be
   // scheduled first.
@@ -401,7 +407,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   mock_placement_group_scheduler_->placement_groups_.pop_back();
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 0);
-  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group);
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
+                                                               GetExpBackOff(), true);
   WaitForExpectedPgCount(1);
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
             placement_group->GetPlacementGroupID());
@@ -547,7 +554,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingCanceledWhenPgIsInfeasible) {
   mock_placement_group_scheduler_->placement_groups_.clear();
 
   // Mark it non-retryable.
-  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group, false);
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
+                                                               GetExpBackOff(), false);
 
   // Schedule twice to make sure it will not be scheduled afterward.
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();

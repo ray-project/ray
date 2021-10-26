@@ -87,7 +87,7 @@ def execution_plan(workers, config):
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
+        capacity=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
         replay_sequence_length=config.get("replay_sequence_length", 1),

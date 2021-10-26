@@ -22,8 +22,7 @@
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
 /// Whether to enable Ray event stats collection.
-/// TODO(ekl) this seems to segfault Java unit tests when on by default?
-RAY_CONFIG(bool, event_stats, false)
+RAY_CONFIG(bool, event_stats, true)
 
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
@@ -97,11 +96,6 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// upfront and can slow down Ray startup.
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
-
-/// Whether to use the hybrid scheduling policy, or one of the legacy spillback
-/// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
-/// then spread via weighted (by critical resource usage).
-RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
@@ -234,8 +228,10 @@ RAY_CONFIG(uint64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
-/// Duration to wait between retries for creating placement group in gcs server.
-RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
+/// Exponential backoff params for gcs to retry creating a placement group
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_min_interval_ms, 200)
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_max_interval_ms, 5000)
+RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5);
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
@@ -304,6 +300,9 @@ RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
+/// Maximum number of pending lease requests per scheduling category
+RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 1)
+
 /// Interval to restart dashboard agent after the process exit.
 RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 
@@ -320,10 +319,6 @@ RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000);
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
-
-/// If true, the worker's queue backlog size will be propagated to the heartbeat batch
-/// data.
-RAY_CONFIG(bool, report_worker_backlog, true)
 
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
@@ -476,7 +471,11 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
 
-/// Whether to use log reporter in event framework
+/// Whether to enable register actor async.
+/// If it is false, the actor registration to GCS becomes synchronous, i.e.,
+/// core worker is blocked until GCS registers the actor and replies to it.
+/// If it is true, the actor registration is async, but actor handles cannot
+/// be passed to other worker until it is registered to GCS.
 RAY_CONFIG(bool, actor_register_async, true)
 
 /// Event severity threshold value
@@ -487,3 +486,11 @@ RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
+
+/// Whether or not use TLS.
+RAY_CONFIG(bool, USE_TLS, false)
+
+/// Location of TLS credentials
+RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
+RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
+RAY_CONFIG(std::string, TLS_CA_CERT, "")

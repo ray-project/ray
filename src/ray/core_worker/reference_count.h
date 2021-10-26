@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <boost/bind.hpp>
-
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -469,6 +467,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] borrower_address The address of borrower.
   void AddBorrowerAddress(const ObjectID &object_id, const rpc::Address &borrower_address)
       LOCKS_EXCLUDED(mutex_);
+
+  bool IsObjectReconstructable(const ObjectID &object_id) const;
 
  private:
   struct Reference {

@@ -1,13 +1,16 @@
 import sys
 import time
+
 import pytest
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve.autoscaling_policy import (BasicAutoscalingPolicy,
+                                          calculate_desired_num_replicas)
+from ray.serve.backend_state import ReplicaState
+from ray.serve.config import AutoscalingConfig
+from ray.serve.constants import CONTROL_LOOP_PERIOD_S
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
-from ray.serve.backend_state import ReplicaState
-from ray.serve.config import AutoscalingConfig
-from ray.serve.autoscaling_policy import calculate_desired_num_replicas
 
 
 class TestCalculateDesiredNumReplicas:
@@ -85,22 +88,25 @@ class TestCalculateDesiredNumReplicas:
 def test_e2e_basic_scale_up_down(serve_instance):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
+    signal = SignalActor.remote()
+
     @serve.deployment(
         _autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 2,
-            "look_back_period_s": 0.2
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 0,
+            "upscale_delay_s": 0
         },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        _graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1")
     class A:
         def __call__(self):
-            time.sleep(1)
-
-    # We will send over a lot of queries. This will make sure replicas are
-    # killed quickly during cleanup.
-    A._config.experimental_graceful_shutdown_timeout_s = 1
+            ray.get(signal.wait.remote())
 
     A.deploy()
     handle = A.get_handle()
@@ -115,9 +121,111 @@ def test_e2e_basic_scale_up_down(serve_instance):
         return len(running_replicas)
 
     wait_for_condition(lambda: get_num_running_replicas() >= 2)
+    signal.send.remote()
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(lambda: get_num_running_replicas() <= 1)
+
+
+class MockTimer:
+    def __init__(self, start_time=None):
+        if start_time is None:
+            start_time = time.time()
+        self._curr = start_time
+
+    def time(self):
+        return self._curr
+
+    def advance(self, by):
+        self._curr += by
+
+
+def test_upscale_downscale_delay():
+    """Unit test for upscale_delay_s and downscale_delay_s."""
+
+    upscale_delay_s = 30.0
+    downscale_delay_s = 600.0
+
+    config = AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=2,
+        target_num_ongoing_requests_per_replica=1,
+        upscale_delay_s=30.0,
+        downscale_delay_s=600.0)
+
+    policy = BasicAutoscalingPolicy(config)
+
+    upscale_wait_periods = int(upscale_delay_s / CONTROL_LOOP_PERIOD_S)
+    downscale_wait_periods = int(downscale_delay_s / CONTROL_LOOP_PERIOD_S)
+
+    overload_requests = [100]
+
+    # We should scale up only after enough consecutive scale-up decisions.
+    for i in range(upscale_wait_periods):
+        new_num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=overload_requests,
+            curr_num_replicas=1)
+        assert new_num_replicas == 1, i
+
+    new_num_replicas = policy.get_decision_num_replicas(
+        current_num_ongoing_requests=overload_requests, curr_num_replicas=1)
+    assert new_num_replicas == 2
+
+    no_requests = [0, 0]
+
+    # We should scale down only after enough consecutive scale-down decisions.
+    for i in range(downscale_wait_periods):
+        new_num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=no_requests, curr_num_replicas=2)
+        assert new_num_replicas == 2, i
+
+    new_num_replicas = policy.get_decision_num_replicas(
+        current_num_ongoing_requests=no_requests, curr_num_replicas=2)
+    assert new_num_replicas == 1
+
+    # Get some scale-up decisions, but not enough to trigger a scale up.
+    for i in range(int(upscale_wait_periods / 2)):
+        new_num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=overload_requests,
+            curr_num_replicas=1)
+        assert new_num_replicas == 1, i
+
+    # Interrupt with a scale-down decision.
+    policy.get_decision_num_replicas(
+        current_num_ongoing_requests=[0], curr_num_replicas=1)
+
+    # The counter should be reset, so it should require `upscale_wait_periods`
+    # more periods before we actually scale up.
+    for i in range(upscale_wait_periods):
+        new_num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=overload_requests,
+            curr_num_replicas=1)
+        assert new_num_replicas == 1, i
+
+    new_num_replicas = policy.get_decision_num_replicas(
+        current_num_ongoing_requests=overload_requests, curr_num_replicas=1)
+    assert new_num_replicas == 2
+
+    # Get some scale-down decisions, but not enough to trigger a scale down.
+    for i in range(int(downscale_wait_periods / 2)):
+        new_num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=no_requests, curr_num_replicas=2)
+        assert new_num_replicas == 2, i
+
+    # Interrupt with a scale-up decision.
+    policy.get_decision_num_replicas(
+        current_num_ongoing_requests=[100, 100], curr_num_replicas=2)
+
+    # The counter should be reset so it should require `downscale_wait_periods`
+    # more periods before we actually scale down.
+    for i in range(downscale_wait_periods):
+        new_num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=no_requests, curr_num_replicas=2)
+        assert new_num_replicas == 2, i
+
+    new_num_replicas = policy.get_decision_num_replicas(
+        current_num_ongoing_requests=no_requests, curr_num_replicas=2)
+    assert new_num_replicas == 1
 
 
 if __name__ == "__main__":
