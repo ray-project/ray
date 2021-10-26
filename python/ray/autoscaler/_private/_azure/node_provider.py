@@ -12,7 +12,8 @@ from azure.mgmt.resource.resources.models import DeploymentMode
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
-from ray.autoscaler._private._azure.config import bootstrap_azure
+from ray.autoscaler._private._azure.config import (bootstrap_azure,
+                                                   get_azure_sdk_function)
 
 VM_NAME_MAX_LEN = 64
 VM_NAME_UUID_LEN = 8
@@ -200,10 +201,9 @@ class AzureNodeProvider(NodeProvider):
         }
 
         # TODO: we could get the private/public ips back directly
-        create_or_update = getattr(
-            self.resource_client.deployments, "create_or_update",
-            getattr(self.resource_client.deployments,
-                    "begin_create_or_update"))
+        create_or_update = get_azure_sdk_function(
+            client=self.resource_client.deployments,
+            function_name="create_or_update")
         create_or_update(
             resource_group_name=resource_group,
             deployment_name="ray-vm-{}".format(name_tag),
@@ -214,9 +214,9 @@ class AzureNodeProvider(NodeProvider):
         """Sets the tag values (string dict) for the specified node."""
         node_tags = self._get_cached_node(node_id)["tags"]
         node_tags.update(tags)
-        update = getattr(
-            self.compute_client.virtual_machines, "update",
-            getattr(self.compute_client.virtual_machines, "begin_update"))
+        update = get_azure_sdk_function(
+            client=self.compute_client.virtual_machines,
+            function_name="update")
         update(
             resource_group_name=self.provider_config["resource_group"],
             vm_name=node_id,
@@ -248,19 +248,18 @@ class AzureNodeProvider(NodeProvider):
 
         try:
             # delete machine, must wait for this to complete
-            delete = getattr(
-                self.compute_client.virtual_machines, "delete",
-                getattr(self.compute_client.virtual_machines, "begin_delete"))
+            delete = get_azure_sdk_function(
+                client=self.compute_client.virtual_machines,
+                function_name="delete")
             delete(resource_group_name=resource_group, vm_name=node_id).wait()
         except Exception as e:
             logger.warning("Failed to delete VM: {}".format(e))
 
         try:
             # delete nic
-            delete = getattr(
-                self.network_client.network_interfaces, "delete",
-                getattr(self.network_client.network_interfaces,
-                        "begin_delete"))
+            delete = get_azure_sdk_function(
+                client=self.network_client.network_interfaces,
+                function_name="delete")
             delete(
                 resource_group_name=resource_group,
                 network_interface_name=metadata["nic_name"])
@@ -270,10 +269,9 @@ class AzureNodeProvider(NodeProvider):
         # delete ip address
         if "public_ip_name" in metadata:
             try:
-                delete = getattr(
-                    self.network_client.public_ip_addresses, "delete",
-                    getattr(self.network_client.public_ip_addresses,
-                            "begin_delete"))
+                delete = get_azure_sdk_function(
+                    client=self.network_client.public_ip_addresses,
+                    function_name="delete")
                 delete(
                     resource_group_name=resource_group,
                     public_ip_address_name=metadata["public_ip_name"])
@@ -283,9 +281,8 @@ class AzureNodeProvider(NodeProvider):
         # delete disks
         for disk in disks:
             try:
-                delete = getattr(
-                    self.compute_client.disks, "delete",
-                    getattr(self.compute_client.disks, "begin_delete"))
+                delete = get_azure_sdk_function(
+                    client=self.compute_client.disks, function_name="delete")
                 delete(resource_group_name=resource_group, disk_name=disk)
             except Exception as e:
                 logger.warning("Failed to delete disk: {}".format(e))
