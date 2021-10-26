@@ -169,8 +169,11 @@ std::vector<FatalLogCallback> RayLog::fatal_log_callbacks_;
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
-  RAY_CHECK(!initialized_)
-      << "Ray log is already initialized. Calling StartRayLog twice is not allowed";
+  if (initialized_) {
+    RAY_LOG(INFO)
+        << "Ray logging module is already initialized. StartRayLog will be no-op.";
+    return;
+  }
   const char *var_value = std::getenv("RAY_BACKEND_LOG_LEVEL");
   if (var_value != nullptr) {
     std::string data = var_value;
