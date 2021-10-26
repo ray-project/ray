@@ -1,44 +1,18 @@
-from typing import Any, Union, Callable, Generic, Tuple, List
+from typing import Union, Callable, Generic, Tuple, List
 import numpy as np
 import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.impl import sort
+from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, \
+    Mean, AggregateOnT
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
-    T, U, KeyType, AggType
+    T, U, KeyType
 
 GroupKeyT = Union[Callable[[T], KeyType], str]
-
-
-@PublicAPI(stability="beta")
-class Aggregator(object):
-    def __init__(self,
-                 init: Callable[[KeyType], AggType],
-                 accumulate: Callable[[AggType, T], AggType],
-                 merge: Callable[[AggType, AggType], AggType],
-                 finalize: Callable[[AggType], U] = lambda a: a,
-                 name: Union[None, str] = None):
-        """
-        Args:
-            init: This is called once for each key
-                to return the empty accumulator.
-                For example, an empty accumulator for a sum would be 0.
-            accumulate: This is called once per row of the same key.
-                This combines the accumulator and the row,
-                returns the updated accumulator.
-            merge: This may be called multiple times, each time to merge
-                two accumulators into one.
-            finalize: This is called once to compute the final aggregation
-                result from the fully merged accumulator.
-        """
-        self.init = init
-        self.accumulate = accumulate
-        self.merge = merge
-        self.finalize = finalize
-        self.name = name
 
 
 @PublicAPI(stability="beta")
@@ -57,25 +31,40 @@ class GroupedDataset(Generic[T]):
         self._dataset = dataset
         self._key = key
 
-    def aggregate(self, agg: Aggregator) -> Dataset[U]:
+    def aggregate(self, *aggs: Tuple[AggregateFn]) -> Dataset[U]:
         """Implements the accumulator-based aggregation.
 
         This is a blocking operation.
-        See https://www.sigops.org/s/conferences/sosp/2009/papers/yu-sosp09.pdf
-        for more details about accumulator-based aggregation.
 
         Examples:
-            >>> grouped_ds.aggregate(Aggregator(
+            >>> grouped_ds.aggregate(AggregateFn(
             ...     init=lambda k: [],
             ...     accumulate=lambda a, r: a.append(r),
             ...     merge=lambda a1, a2: a1 + a2,
             ...     finalize=lambda a: a
             ... ))
 
+        Args:
+            aggs: Aggregations to do.
+                Currently only single aggregation is supported.
+
         Returns:
-            A new dataset of (k, v) pairs where k is the groupby key
+            If the input dataset is simple dataset then the output is
+            a simple dataset of (k, v) pairs where k is the groupby key
             and v is the corresponding aggregation result.
+            If the input dataset is arrow dataset then the output is
+            an arrow dataset of two columns where first column is
+            the groupby key and the second column is the corresponding
+            aggregation result.
         """
+
+        if len(aggs) == 0:
+            raise ValueError("Aggregate requires at least one aggregation")
+        if len(aggs) > 1:
+            raise NotImplementedError(
+                "Multi-aggregation is not implemented yet")
+        agg = aggs[0]
+
         # Handle empty dataset.
         if self._dataset.num_blocks() == 0:
             return self._dataset
@@ -113,127 +102,120 @@ class GroupedDataset(Generic[T]):
         return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
 
     def count(self) -> Dataset[U]:
-        """Compute count of each group.
+        """Compute count aggregation.
 
         This is a blocking operation.
 
         Example:
             >>> ray.data.range(100).groupby(lambda x: x % 3).count()
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").count()
 
         Returns:
-            A new dataset of (k, v) pairs where k is the groupby key
-            and v is the number of rows with that key.
+            A simple dataset of (k, v) pairs or
+            an arrow dataset of [k, v] columns
+            where k is the groupby key and
+            v is the number of rows with that key.
         """
-        return self.aggregate(
-            Aggregator(
-                init=lambda k: 0,
-                accumulate=lambda a, r: a + 1,
-                merge=lambda a1, a2: a1 + a2,
-                name="count()"))
+        return self.aggregate(Count())
 
-    def sum(self,
-            on: Union[Callable[[T], Any], str] = lambda r: r) -> Dataset[U]:
-        """Compute sum of each group.
+    def sum(self, on: AggregateOnT = lambda r: r) -> Dataset[U]:
+        """Compute sum aggregation.
 
         This is a blocking operation.
 
         Example:
             >>> ray.data.range(100).groupby(lambda x: x % 3).sum()
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").sum("B")
+
+        Args:
+            on: The data to sum on.
+                It can be the column name for arrow dataset.
 
         Returns:
-            A new dataset of (k, v) pairs where k is the groupby key
-            and v is the sum of the group.
+            A simple dataset of (k, v) pairs or
+            an arrow dataset of [k, v] columns
+            where k is the groupby key and
+            v is the sum result.
         """
-        on_fn = on
-        if isinstance(on, str):
-            # TODO(jjyao) Check to make sure it's arrow dataset
-            on_fn = lambda r: r[on]
-        return self.aggregate(
-            Aggregator(
-                init=lambda k: 0,
-                accumulate=lambda a, r: a + on_fn(r),
-                merge=lambda a1, a2: a1 + a2,
-                name=(f"sum({on})" if isinstance(on, str) else None)))
+        return self.aggregate(Sum(on))
 
-    def min(self,
-            on: Union[Callable[[T], Any], str] = lambda r: r) -> Dataset[U]:
-        """Compute min of each group.
+    def min(self, on: AggregateOnT = lambda r: r) -> Dataset[U]:
+        """Compute min aggregation.
 
         This is a blocking operation.
 
         Example:
             >>> ray.data.range(100).groupby(lambda x: x % 3).min()
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").min("B")
+
+        Args:
+            on: The data to min on.
+                It can be the column name for arrow dataset.
 
         Returns:
-            A new dataset of (k, v) pairs where k is the groupby key
-            and v is the min of the group.
+            A simple dataset of (k, v) pairs or
+            an arrow dataset of [k, v] columns
+            where k is the groupby key and
+            v is the min result.
         """
-        on_fn = on
-        if isinstance(on, str):
-            # TODO(jjyao) Check to make sure it's arrow dataset
-            on_fn = lambda r: r[on]
-        return self.aggregate(
-            Aggregator(
-                init=lambda k: None,
-                accumulate=
-                lambda a, r: on_fn(r) if a is None else min(a, on_fn(r)),
-                merge=lambda a1, a2: min(a1, a2),
-                name=(f"min({on})" if isinstance(on, str) else None)))
+        return self.aggregate(Min(on))
 
-    def max(self,
-            on: Union[Callable[[T], Any], str] = lambda r: r) -> Dataset[U]:
-        """Compute max of each group.
+    def max(self, on: AggregateOnT = lambda r: r) -> Dataset[U]:
+        """Compute max aggregation.
 
         This is a blocking operation.
 
         Example:
             >>> ray.data.range(100).groupby(lambda x: x % 3).max()
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").max("B")
+
+        Args:
+            on: The data to max on.
+                It can be the column name for arrow dataset.
 
         Returns:
-            A new dataset of (k, v) pairs where k is the groupby key
-            and v is the max of the group.
+            A simple dataset of (k, v) pairs or
+            an arrow dataset of [k, v] columns
+            where k is the groupby key and
+            v is the max result.
         """
-        on_fn = on
-        if isinstance(on, str):
-            # TODO(jjyao) Check to make sure it's arrow dataset
-            on_fn = lambda r: r[on]
-        return self.aggregate(
-            Aggregator(
-                init=lambda k: None,
-                accumulate=
-                lambda a, r: on_fn(r) if a is None else max(a, on_fn(r)),
-                merge=lambda a1, a2: max(a1, a2),
-                name=(f"max({on})" if isinstance(on, str) else None)))
+        return self.aggregate(Max(on))
 
-    def mean(self,
-             on: Union[Callable[[T], Any], str] = lambda r: r) -> Dataset[U]:
-        """Compute mean of each group.
+    def mean(self, on: AggregateOnT = lambda r: r) -> Dataset[U]:
+        """Compute mean aggregation.
 
         This is a blocking operation.
 
         Example:
             >>> ray.data.range(100).groupby(lambda x: x % 3).mean()
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").mean("B")
+
+        Args:
+            on: The data to mean on.
+                It can be the column name for arrow dataset.
 
         Returns:
-            A new dataset of (k, v) pairs where k is the groupby key
-            and v is the mean of the group.
+            A simple dataset of (k, v) pairs or
+            an arrow dataset of [k, v] columns
+            where k is the groupby key and
+            v is the mean result.
         """
-        on_fn = on
-        if isinstance(on, str):
-            # TODO(jjyao) Check to make sure it's arrow dataset
-            on_fn = lambda r: r[on]
-        return self.aggregate(
-            Aggregator(
-                init=lambda k: [0, 0],
-                accumulate=lambda a, r: [a[0] + on_fn(r), a[1] + 1],
-                merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
-                finalize=lambda a: a[0] / a[1],
-                name=(f"mean({on})" if isinstance(on, str) else None)))
+        return self.aggregate(Mean(on))
 
 
-def _partition_and_combine_block(
-        block: Block[T], boundaries: List[KeyType], key: GroupKeyT,
-        agg: Aggregator) -> List[Block[Tuple[KeyType, AggType]]]:
+def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
+                                 key: GroupKeyT,
+                                 agg: AggregateFn) -> List[Block]:
     """Partition the block and combine rows with the same key."""
     partitions = BlockAccessor.for_block(block).sort_and_partition(
         boundaries, [(key, "ascending")] if isinstance(key, str) else key,
@@ -241,7 +223,7 @@ def _partition_and_combine_block(
     return [BlockAccessor.for_block(p).combine(key, agg) for p in partitions]
 
 
-def _aggregate_combined_blocks(agg: Aggregator, *blocks: Tuple[Block[U], ...]
+def _aggregate_combined_blocks(agg: AggregateFn, *blocks: Tuple[Block, ...]
                                ) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
     if len(blocks) == 1:

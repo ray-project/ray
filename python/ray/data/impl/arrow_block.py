@@ -14,10 +14,10 @@ except ImportError:
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
+from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
     import pandas
-    from ray.data.grouped_dataset import Aggregator
 
 T = TypeVar("T")
 
@@ -293,7 +293,19 @@ class ArrowBlockAccessor(BlockAccessor):
         ret.append(_copy_table(table.slice(prev_i)))
         return ret
 
-    def combine(self, key: str, agg):
+    def combine(self, key: str, agg: AggregateFn) -> Block[ArrowRow]:
+        """Combine rows with the same key into an accumulator.
+
+        This assumes the block is already sorted by key in ascending order.
+
+        Args:
+            key: The column name of key.
+            agg: The aggregation to do.
+
+        Returns:
+            A sorted block of [k, v] columns where k is the groupby key
+            and v is the partially combined accumulator.
+        """
         iter = self.iter_rows()
         next_row = None
         builder = ArrowBlockBuilder()
@@ -334,7 +346,22 @@ class ArrowBlockAccessor(BlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
             blocks: List[Block[ArrowRow]],
-            agg: "Aggregator") -> Tuple[Block[ArrowRow], BlockMetadata]:
+            agg: AggregateFn) -> Tuple[Block[ArrowRow], BlockMetadata]:
+        """Aggregate sorted, partially combined blocks with the same key range.
+
+        This assumes blocks are already sorted by key in ascending order,
+        so we can do merge sort to get all the rows with the same key.
+
+        Args:
+            blocks: A list of partially combined and sorted blocks.
+            agg: The aggregation to do.
+
+        Returns:
+            A block of [k, v] columns and its metadata
+            where k is the groupby key
+            and v is the corresponding aggregation result.
+        """
+
         def key(r):
             return r[r._row.schema.names[0]]
 

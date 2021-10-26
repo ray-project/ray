@@ -22,7 +22,7 @@ from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
-from ray.data.grouped_dataset import Aggregator
+from ray.data.aggregate import AggregateFn
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD)
@@ -2764,7 +2764,7 @@ def test_groupby_simple(ray_start_regular_shared):
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Mean aggregation
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
-        Aggregator(
+        AggregateFn(
             init=lambda k: (0, 0),
             accumulate=lambda a, r: (a[0] + r[1], a[1] + 1),
             merge=lambda a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
@@ -2780,7 +2780,7 @@ def test_groupby_simple(ray_start_regular_shared):
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Count aggregation
     agg_ds = ds.groupby(lambda r: str(r)).aggregate(
-        Aggregator(
+        AggregateFn(
             init=lambda k: 0,
             accumulate=lambda a, r: a + 1,
             merge=lambda a1, a2: a1 + a2))
@@ -2791,7 +2791,7 @@ def test_groupby_simple(ray_start_regular_shared):
     # Test empty dataset.
     ds = ray.data.from_items([])
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
-        Aggregator(
+        AggregateFn(
             init=lambda k: 1 / 0,  # should never reach here
             accumulate=lambda a, r: 1 / 0,
             merge=lambda a1, a2: 1 / 0,

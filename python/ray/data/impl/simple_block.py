@@ -9,9 +9,9 @@ import numpy as np
 if TYPE_CHECKING:
     import pandas
     import pyarrow
-    from ray.data.grouped_dataset import Aggregator
 
 from ray.data.impl.block_builder import BlockBuilder
+from ray.data.aggregate import AggregateFn
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType, AggType
 
@@ -140,7 +140,7 @@ class SimpleBlockAccessor(BlockAccessor):
         return ret
 
     def combine(self, key: Callable[[T], KeyType],
-                agg: "Aggregator") -> Block[Tuple[KeyType, AggType]]:
+                agg: AggregateFn) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -199,7 +199,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[Tuple[KeyType, AggType]]], agg: "Aggregator"
+            blocks: List[Block[Tuple[KeyType, AggType]]], agg: AggregateFn
     ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
