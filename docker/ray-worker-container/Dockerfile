@@ -45,7 +45,7 @@ RUN apt-get update -y && sudo apt-get upgrade -y \
         numpy==1.15.4 \
         psutil \
         blist \
-        atari-py==0.2.6 \
+        atari-py \
     # blist is needed for numpy (which is re-installed when ray is installed)
     # atari-py is built from source for Python 3.8 (requires g++ & zlib1g-dev)
     # To avoid the following error on Jenkins:

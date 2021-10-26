@@ -3,7 +3,8 @@
 # Environment adapters.
 # ---------------------
 # Atari
-atari_py==0.2.9
+atari_py==0.2.9; python_version >= '3.7'
+atari_py==0.2.6; python_version < '3.7'
 gym[atari]>=0.21.0; python_version >= '3.7'
 gym[atari]==0.19.0; python_version < '3.7'
 # Kaggle envs.
