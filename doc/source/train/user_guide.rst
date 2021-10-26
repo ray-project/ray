@@ -513,7 +513,7 @@ directory <train-log-dir>` of each run.
 
     print(trainer.latest_checkpoint_dir)
     # /home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints
-    print(trainer.latest_checkpoint_path)
+    print(trainer.best_checkpoint_path)
     # /home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints/checkpoint_000005
 
 

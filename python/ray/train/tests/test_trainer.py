@@ -479,31 +479,14 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
         checkpoint_score_attribute="loss",
         checkpoint_score_order="min")
 
-    def train():
-        sgd.save_checkpoint(loss=3)  # best
-        sgd.save_checkpoint(loss=7)  # worst, deleted
-        sgd.save_checkpoint(loss=5)
+    def train_func():
+        train.save_checkpoint(loss=3)  # best
+        train.save_checkpoint(loss=7)  # worst, deleted
+        train.save_checkpoint(loss=5)
 
     trainer = Trainer(config, num_workers=2, logdir=logdir)
     trainer.start()
-
-    with pytest.raises(ValueError):
-        trainer.run(
-            train, checkpoint_strategy=CheckpointStrategy(num_to_keep=-1))
-
-    with pytest.raises(ValueError):
-        trainer.run(
-            train,
-            checkpoint_strategy=CheckpointStrategy(
-                checkpoint_score_order="invalid_order"))
-
-    with pytest.raises(ValueError):
-        trainer.run(
-            train,
-            checkpoint_strategy=CheckpointStrategy(
-                checkpoint_score_attribute="missing_attribute"))
-
-    trainer.run(train, checkpoint_strategy=checkpoint_strategy)
+    trainer.run(train_func, checkpoint_strategy=checkpoint_strategy)
 
     assert trainer.best_checkpoint_path is not None
     if logdir is not None:
@@ -520,7 +503,7 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     assert f"checkpoint_{3:06d}" in file_names
 
     def validate():
-        checkpoint = sgd.load_checkpoint()
+        checkpoint = train.load_checkpoint()
         assert checkpoint is not None
         assert checkpoint["loss"] == 3
 
@@ -530,27 +513,29 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
 def test_persisted_checkpoint_strategy_failure(ray_start_2_cpus):
     logdir = "/tmp/test/trainer/test_persisted_checkpoint_strategy_failure"
     config = TestConfig()
-    def train():
-        sgd.save_checkpoint(epoch=0)
+
+    def train_func():
+        train.save_checkpoint(epoch=0)
 
     trainer = Trainer(config, num_workers=2, logdir=logdir)
     trainer.start()
 
     with pytest.raises(ValueError):
         trainer.run(
-            train, checkpoint_strategy=CheckpointStrategy(num_to_keep=-1))
+            train_func, checkpoint_strategy=CheckpointStrategy(num_to_keep=-1))
 
     with pytest.raises(ValueError):
         trainer.run(
-            train,
+            train_func,
             checkpoint_strategy=CheckpointStrategy(
                 checkpoint_score_order="invalid_order"))
 
     with pytest.raises(ValueError):
         trainer.run(
-            train,
+            train_func,
             checkpoint_strategy=CheckpointStrategy(
                 checkpoint_score_attribute="missing_attribute"))
+
 
 def test_world_rank(ray_start_2_cpus):
     config = TestConfig()
