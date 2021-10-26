@@ -109,7 +109,9 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
 }
 
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.
-PlasmaStore::~PlasmaStore() {}
+PlasmaStore::~PlasmaStore() {
+  RAY_LOG(INFO) << "PlasmaStore deconstructor";
+}
 
 void PlasmaStore::Start() {
   // Start listening for clients.
@@ -177,6 +179,7 @@ PlasmaError PlasmaStore::CreateObjectInternal(
     return error;
   }
   entry->ToPlasmaObject(result, /* check sealed */ false);
+  RAY_CHECK(result->address);
   // Record that this client is using this object.
   AddToClientObjectIds(object_info.object_id, client);
   return PlasmaError::OK;
@@ -244,7 +247,7 @@ int PlasmaStore::RemoveFromClientObjectIds(
   auto it = object_ids.find(object_id);
   if (it != object_ids.end()) {
     client->MarkObjectAsUnused(*it);
-    RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client";
+    RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client " << client->GetName();
     // Decrease reference count.
     object_lifecycle_mgr_.RemoveReference(object_id);
     // Return 1 to indicate that the client was removed.
@@ -531,6 +534,7 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
 
 bool PlasmaStore::TryGetObject(uint64_t req_id, PlasmaObject *result,
                                PlasmaError *error) {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   return create_request_queue_.GetRequestResult(req_id, result, error);
 }
 
@@ -555,6 +559,7 @@ void PlasmaStore::PrintDebugDump() const {
 }
 
 std::string PlasmaStore::GetDebugDump() const {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   std::stringstream buffer;
   buffer << "========== Plasma store: =================\n";
   buffer << "Current usage: " << (allocator_.Allocated() / 1e9) << " / "
@@ -573,6 +578,7 @@ void PlasmaStore::GetObjects(const std::shared_ptr<ClientInterface> &client,
                              const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                              bool is_from_worker,
                              RequestFinishCallback all_objects_callback) {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker,
                                 all_objects_callback);
 }
@@ -583,6 +589,7 @@ bool PlasmaStore::ContainsObject(const ObjectID &object_id) {
 
 std::vector<PlasmaError> PlasmaStore::DeleteObjects(
     const std::vector<ObjectID> &object_ids) {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   std::vector<PlasmaError> error_codes;
   error_codes.reserve(object_ids.size());
   for (auto &object_id : object_ids) {
@@ -592,10 +599,12 @@ std::vector<PlasmaError> PlasmaStore::DeleteObjects(
 }
 
 int64_t PlasmaStore::EvictObject(int64_t num_bytes) {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   return object_lifecycle_mgr_.RequireSpace(num_bytes);
 }
 
 std::string PlasmaStore::DebugString() {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   return object_lifecycle_mgr_.EvictionPolicyDebugString();
 }
 }  // namespace plasma

@@ -24,6 +24,7 @@
 namespace plasma {
 
 void LRUCache::Add(const ObjectID &key, int64_t size) {
+  RAY_LOG(INFO) << "LRUCache::Add " << size;
   auto it = item_map_.find(key);
   RAY_CHECK(it == item_map_.end());
   // Note that it is important to use a list so the iterators stay valid.
@@ -79,6 +80,7 @@ std::string LRUCache::DebugString() const {
 int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
                                        std::vector<ObjectID> &objects_to_evict) {
   int64_t bytes_evicted = 0;
+  RAY_LOG(INFO) << "ChooseObjectsToEvict item_list_ size: " << item_list_.size();
   auto it = item_list_.end();
   while (bytes_evicted < num_bytes_required && it != item_list_.begin()) {
     it--;

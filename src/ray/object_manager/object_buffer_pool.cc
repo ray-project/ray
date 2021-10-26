@@ -23,8 +23,7 @@ namespace ray {
 ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
                                    uint64_t chunk_size)
     : store_socket_name_(store_socket_name), default_chunk_size_(chunk_size) {
-  store_client_ = std::make_shared<plasma::RemotePlasmaClient>();
-  RAY_CHECK_OK(store_client_->Connect(store_socket_name_.c_str(), "", 0, 300));
+  store_client_ = std::make_shared<plasma::PlasmaClient>("object_buffer_pool");
 }
 
 ObjectBufferPool::~ObjectBufferPool() {
@@ -57,7 +56,6 @@ ObjectBufferPool::~ObjectBufferPool() {
   }
 
   RAY_CHECK(create_buffer_state_.empty());
-  RAY_CHECK_OK(store_client_->Disconnect());
 }
 
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) const {
@@ -128,9 +126,12 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id, const uint64_t chun
   RAY_CHECK(data.size() == chunk_info.buffer_length)
       << "size mismatch!  data size: " << data.size()
       << " chunk size: " << chunk_info.buffer_length;
+  RAY_CHECK(chunk_info.data);
+  RAY_CHECK(data.data());
   std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
   it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
   it->second.num_seals_remaining--;
+  RAY_LOG(INFO) << "ObjectBufferPool::WriteChunk " << object_id << " "<< it->second.num_seals_remaining;
   if (it->second.num_seals_remaining == 0) {
     RAY_CHECK_OK(store_client_->Seal(object_id));
     RAY_CHECK_OK(store_client_->Release(object_id));
@@ -231,6 +232,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
 
   // Read object into store.
   uint8_t *mutable_data = data->Data();
+  RAY_CHECK(mutable_data);
   uint64_t num_chunks = GetNumChunks(data_size);
   create_buffer_state_.emplace(
       std::piecewise_construct, std::forward_as_tuple(object_id),

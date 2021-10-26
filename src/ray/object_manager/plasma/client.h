@@ -208,7 +208,7 @@ class PlasmaClientInterface : public std::enable_shared_from_this<PlasmaClientIn
 class Impl;
 class PlasmaClient : public PlasmaClientInterface {
  public:
-  PlasmaClient();
+  PlasmaClient(const std::string name);
   virtual ~PlasmaClient();
 
   virtual Status CreateAndSpillIfNeeded(const ObjectID &object_id,

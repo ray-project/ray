@@ -14,7 +14,7 @@
 namespace plasma {
 
 ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd, int64_t map_size)
-    : fd_(fd), pointer_(nullptr), length_(0) {
+    : fd_(fd), pointer_(nullptr), length_(0), mapped_(true) {
   // We subtract kMmapRegionsGap from the length that was added
   // in fake_mmap in malloc.h, to make map_size page-aligned again.
   length_ = map_size - kMmapRegionsGap;
@@ -38,24 +38,26 @@ ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd, int64_t map_size)
 }
 
 ClientMmapTableEntry::ClientMmapTableEntry(uint8_t *address, int64_t map_size)
-    : pointer_(address) {
+    : pointer_(address), mapped_(false) {
   length_ = map_size - kMmapRegionsGap;
 }
 
 ClientMmapTableEntry::~ClientMmapTableEntry() {
-  // At this point it is safe to unmap the memory, as the PlasmaBuffer
-  // keeps the PlasmaClient (and therefore the ClientMmapTableEntry)
-  // alive until it is destroyed.
-  // We don't need to close the associated file, since it has
-  // already been closed in the constructor.
-  int r;
+  if (mapped_) {
+    // At this point it is safe to unmap the memory, as the PlasmaBuffer
+    // keeps the PlasmaClient (and therefore the ClientMmapTableEntry)
+    // alive until it is destroyed.
+    // We don't need to close the associated file, since it has
+    // already been closed in the constructor.
+    int r;
 #ifdef _WIN32
-  r = UnmapViewOfFile(pointer_) ? 0 : -1;
+    r = UnmapViewOfFile(pointer_) ? 0 : -1;
 #else
-  r = munmap(pointer_, length_);
+    r = munmap(pointer_, length_);
 #endif
-  if (r != 0) {
-    RAY_LOG(ERROR) << "munmap returned " << r << ", errno = " << errno;
+    if (r != 0) {
+      RAY_LOG(ERROR) << "munmap returned " << r << ", errno = " << errno;
+    }
   }
 }
 

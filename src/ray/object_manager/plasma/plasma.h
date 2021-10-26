@@ -56,7 +56,7 @@ struct PlasmaObject {
     return ((store_fd == other.store_fd) && (data_offset == other.data_offset) &&
             (metadata_offset == other.metadata_offset) &&
             (data_size == other.data_size) && (metadata_size == other.metadata_size) &&
-            (device_num == other.device_num));
+            (device_num == other.device_num) && (address == other.address));
   }
 };
 

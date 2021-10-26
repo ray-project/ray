@@ -25,6 +25,7 @@ class ClientInterface {
   virtual const std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;
   virtual void MarkObjectAsUsed(const ray::ObjectID &object_id) = 0;
   virtual void MarkObjectAsUnused(const ray::ObjectID &object_id) = 0;
+  virtual std::string GetName() = 0;
 };
 
 /// Contains all information that is associated with a Plasma store client.
@@ -45,6 +46,10 @@ class Client : public ray::ClientConnection, public ClientInterface {
     object_ids.erase(object_id);
   }
 
+  std::string GetName() override {
+    return name;
+  }
+
   std::string name = "anonymous_client";
 
  private:
@@ -59,13 +64,20 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
 class InProcessClient : public ClientInterface {
  public:
+  InProcessClient(const std::string name) : name_(name) {}
   ray::Status SendFd(MEMFD_TYPE fd) override { return ray::Status::OK(); }
   const std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids_; }
-  void MarkObjectAsUsed(const ray::ObjectID &object_id) override {}
-  void MarkObjectAsUnused(const ray::ObjectID &object_id) override {}
+  void MarkObjectAsUsed(const ray::ObjectID &object_id) override {
+    object_ids_.insert(object_id);
+  }
+  void MarkObjectAsUnused(const ray::ObjectID &object_id) override {
+    object_ids_.erase(object_id);
+  }
+  std::string GetName() { return name_; }
 
  private:
   std::unordered_set<ray::ObjectID> object_ids_;
+  std::string name_;
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);

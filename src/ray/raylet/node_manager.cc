@@ -247,7 +247,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             }
             return result;
           }),
-      store_client_(std::make_shared<plasma::PlasmaClient>()),
+      store_client_(std::make_shared<plasma::PlasmaClient>("node_manager")),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),

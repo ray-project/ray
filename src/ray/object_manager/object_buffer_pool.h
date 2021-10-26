@@ -200,7 +200,7 @@ class ObjectBufferPool {
       GUARDED_BY(pool_mutex_);
 
   /// Plasma client pool.
-  std::shared_ptr<plasma::RemotePlasmaClient> store_client_;
+  std::shared_ptr<plasma::PlasmaClient> store_client_;
 };
 
 }  // namespace ray

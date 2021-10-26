@@ -362,6 +362,7 @@ def test_fetch_local(ray_start_cluster_head):
         [remote_ref], timeout=2, fetch_local=True)
     assert (0, 1) == (len(ready_ref), len(remaining_ref))
     del local_ref
+    print("remote_ref: " + str(remote_ref))
     (ready_ref, remaining_ref) = ray.wait([remote_ref], fetch_local=True)
     assert (1, 0) == (len(ready_ref), len(remaining_ref))
 

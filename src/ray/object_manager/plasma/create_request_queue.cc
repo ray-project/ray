@@ -53,6 +53,7 @@ bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
   }
 
   *result = it->second->result;
+  // RAY_CHECK(result->address);
   *error = it->second->error;
   fulfilled_requests_.erase(it);
   return true;
@@ -74,6 +75,9 @@ Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
                                           bool *spilling_required) {
   request->error =
       request->create_callback(fallback_allocator, &request->result, spilling_required);
+  if (request->error == PlasmaError::OK) {
+    RAY_CHECK(request->result.address);
+  }
   if (request->error == PlasmaError::OutOfMemory) {
     return Status::ObjectStoreFull("");
   } else {
