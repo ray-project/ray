@@ -209,19 +209,19 @@ class Worker:
                 # Ray is not ready yet, wait a timeout
                 time.sleep(timeout)
             except grpc.FutureTimeoutError:
-                logger.info(
+                logger.debug(
                     f"Couldn't connect channel in {timeout} seconds, retrying")
                 # Note that channel_ready_future constitutes its own timeout,
                 # which is why we do not sleep here.
             except grpc.RpcError as e:
-                logger.info("Ray client server unavailable, "
-                            f"retrying in {timeout}s...")
+                logger.debug("Ray client server unavailable, "
+                             f"retrying in {timeout}s...")
                 logger.debug(f"Received when checking init: {e.details()}")
                 # Ray is not ready yet, wait a timeout.
                 time.sleep(timeout)
             # Fallthrough, backoff, and retry at the top of the loop
-            logger.info("Waiting for Ray to become ready on the server, "
-                        f"retry in {timeout}s...")
+            logger.debug("Waiting for Ray to become ready on the server, "
+                         f"retry in {timeout}s...")
             if not reconnecting:
                 # Don't increase backoff when trying to reconnect --
                 # we already know the server exists, attempt to reconnect
