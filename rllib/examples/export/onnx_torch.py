@@ -35,7 +35,7 @@ trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
 # Let's run inference on the torch model
 policy = trainer.get_policy()
-result_pytorch, _ = policy.model.from_batch({
+result_pytorch, _ = policy.model({
     "obs": torch.tensor(test_data["obs"]),
 })
 

@@ -55,8 +55,11 @@ class GcsObjectManagerTest : public ::testing::Test {
  public:
   void SetUp() override {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(gcs_publisher_, gcs_table_storage_);
+    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+        [this](const rpc::Address &addr) { return raylet_client_; });
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
     gcs_object_manager_ = std::make_shared<MockedGcsObjectManager>(
         gcs_table_storage_, gcs_publisher_, *gcs_node_manager_);
     GenTestData();
@@ -84,6 +87,8 @@ class GcsObjectManagerTest : public ::testing::Test {
 
  protected:
   instrumented_io_context io_service_;
+  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<MockedGcsObjectManager> gcs_object_manager_;
