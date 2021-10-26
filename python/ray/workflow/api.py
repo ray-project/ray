@@ -1,7 +1,9 @@
+import asyncio
 import logging
 import os
 import types
 from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
+import time
 
 import ray
 from ray.workflow import execution
@@ -11,8 +13,11 @@ from ray.workflow.step_function import WorkflowStepFunction
 from ray.workflow import virtual_actor_class
 from ray.workflow import storage as storage_base
 from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized,
-                                 WorkflowRunningError, WorkflowNotFoundError)
+                                 Workflow, Event, WorkflowRunningError,
+                                 WorkflowNotFoundError)
 from ray.workflow import serialization
+from ray.workflow.event_listener import (EventListener, EventListenerType,
+                                         TimerListener)
 from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
 from ray.workflow.workflow_storage import get_workflow_storage
@@ -320,6 +325,99 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 
 
 @PublicAPI(stability="beta")
+def wait_for_event(event_listener_type: EventListenerType, *args,
+                   **kwargs) -> Workflow[Event]:
+    if not issubclass(event_listener_type, EventListener):
+        raise TypeError(
+            f"Event listener type is {event_listener_type.__name__}"
+            ", which is not a subclass of workflow.EventListener")
+
+    @step
+    def get_message(event_listener_type: EventListenerType, *args,
+                    **kwargs) -> Event:
+        event_listener = event_listener_type()
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(
+            event_listener.poll_for_event(*args, **kwargs))
+
+    @step
+    def message_committed(event_listener_type: EventListenerType,
+                          event: Event) -> Event:
+        event_listener = event_listener_type()
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(event_listener.event_checkpointed(event))
+        return event
+
+    return message_committed.step(
+        event_listener_type,
+        get_message.step(event_listener_type, *args, **kwargs))
+
+
+@PublicAPI
+def sleep(duration: float) -> Workflow[Event]:
+    """
+    A workfow that resolves after sleeping for a given duration.
+    """
+
+    @step
+    def end_time():
+        return time.time() + duration
+
+    return wait_for_event(TimerListener, end_time.step())
+
+
+@PublicAPI(stability="beta")
+def get_metadata(workflow_id: str,
+                 name: Optional[str] = None) -> Dict[str, Any]:
+    """Get the metadata of the workflow.
+
+    This will return a dict of metadata of either the workflow (
+    if only workflow_id is given) or a specific workflow step (if
+    both workflow_id and step name are given). Exception will be
+    raised if the given workflow id or step name does not exist.
+
+    If only workflow id is given, this will return metadata on
+    workflow level, which includes running status, workflow-level
+    user metadata and workflow-level running stats (e.g. the
+    start time and end time of the workflow).
+
+    If both workflow id and step name are given, this will return
+    metadata on workflow step level, which includes step inputs,
+    step-level user metadata and step-level running stats (e.g.
+    the start time and end time of the step).
+
+
+    Args:
+        workflow_id: The workflow to get the metadata of.
+        name: If set, fetch the metadata of the specific step instead of
+            the metadata of the workflow.
+
+    Examples:
+        >>> workflow_step = trip.options(
+        ...     name="trip", metadata={"k1": "v1"}).step()
+        >>> workflow_step.run(workflow_id="trip1", metadata={"k2": "v2"})
+        >>> workflow_metadata = workflow.get_metadata("trip1")
+        >>> assert workflow_metadata["status"] == "SUCCESSFUL"
+        >>> assert workflow_metadata["user_metadata"] == {"k2": "v2"}
+        >>> assert "start_time" in workflow_metadata["stats"]
+        >>> assert "end_time" in workflow_metadata["stats"]
+        >>> step_metadata = workflow.get_metadata("trip1", "trip")
+        >>> assert step_metadata["step_type"] == "FUNCTION"
+        >>> assert step_metadata["user_metadata"] == {"k1": "v1"}
+        >>> assert "start_time" in step_metadata["stats"]
+        >>> assert "end_time" in step_metadata["stats"]
+
+    Returns:
+        A dictionary containing the metadata of the workflow.
+
+    Raises:
+        ValueError: if given workflow or workflow step does not exist.
+    """
+    ensure_ray_initialized()
+    return execution.get_metadata(workflow_id, name)
+
+
+@PublicAPI(stability="beta")
 def cancel(workflow_id: str) -> None:
     """Cancel a workflow. Workflow checkpoints will still be saved in storage. To
        clean up saved checkpoints, see `workflow.delete()`.
@@ -378,4 +476,4 @@ def delete(workflow_id: str) -> None:
 
 
 __all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor",
-           "resume_all", "get_status", "cancel")
+           "resume_all", "get_status", "get_metadata", "cancel")

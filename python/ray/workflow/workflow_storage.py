@@ -449,6 +449,83 @@ class WorkflowStorage:
         asyncio_run(
             self._put(self._key_workflow_postrun_metadata(), metadata, True))
 
+    def load_step_metadata(self, step_id: StepID) -> Dict[str, Any]:
+        """Load the metadata of the given step.
+
+        Returns:
+            The metadata of the given step.
+        """
+
+        async def _load_step_metadata():
+            if not await self._scan([self._workflow_id, "steps", step_id]):
+                if not await self._scan([self._workflow_id]):
+                    raise ValueError("No such workflow_id {}".format(
+                        self._workflow_id))
+                else:
+                    raise ValueError(
+                        "No such step_id {} in workflow {}".format(
+                            step_id, self._workflow_id))
+
+            tasks = [
+                self._get(self._key_step_input_metadata(step_id), True, True),
+                self._get(self._key_step_prerun_metadata(step_id), True, True),
+                self._get(
+                    self._key_step_postrun_metadata(step_id), True, True)
+            ]
+
+            ((input_metadata, _), (prerun_metadata, _),
+             (postrun_metadata, _)) = await asyncio.gather(*tasks)
+
+            input_metadata = input_metadata or {}
+            prerun_metadata = prerun_metadata or {}
+            postrun_metadata = postrun_metadata or {}
+
+            metadata = input_metadata
+            metadata["stats"] = {}
+            metadata["stats"].update(prerun_metadata)
+            metadata["stats"].update(postrun_metadata)
+
+            return metadata
+
+        return asyncio_run(_load_step_metadata())
+
+    def load_workflow_metadata(self) -> Dict[str, Any]:
+        """Load the metadata of the current workflow.
+
+        Returns:
+            The metadata of the current workflow.
+        """
+
+        async def _load_workflow_metadata():
+            if not await self._scan([self._workflow_id]):
+                raise ValueError("No such workflow_id {}".format(
+                    self._workflow_id))
+
+            tasks = [
+                self._get(self._key_workflow_metadata(), True, True),
+                self._get(self._key_workflow_user_metadata(), True, True),
+                self._get(self._key_workflow_prerun_metadata(), True, True),
+                self._get(self._key_workflow_postrun_metadata(), True, True)
+            ]
+
+            ((status_metadata, _), (user_metadata, _), (prerun_metadata, _),
+             (postrun_metadata, _)) = await asyncio.gather(*tasks)
+
+            status_metadata = status_metadata or {}
+            user_metadata = user_metadata or {}
+            prerun_metadata = prerun_metadata or {}
+            postrun_metadata = postrun_metadata or {}
+
+            metadata = status_metadata
+            metadata["user_metadata"] = user_metadata
+            metadata["stats"] = {}
+            metadata["stats"].update(prerun_metadata)
+            metadata["stats"].update(postrun_metadata)
+
+            return metadata
+
+        return asyncio_run(_load_workflow_metadata())
+
     def save_workflow_meta(self, metadata: WorkflowMetaData) -> None:
         """Save the metadata of the current workflow.
 
