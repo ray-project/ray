@@ -424,7 +424,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
                           "in too many objects being fetched to this node";
     }
   }
-  RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
+  RAY_LOG(DEBUG) << object_id << " OnLocationChange " << spilled_url << " num clients "
                  << client_ids.size();
 
   {
@@ -481,7 +481,8 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // TODO(ekl) should we more directly mark the object as lost in this case?
+  // TODO(swang): Store an error if this times out and the object is not
+  // pending reconstruction.
   RAY_LOG(WARNING) << "Object neither in memory nor external storage " << object_id.Hex();
 }
 

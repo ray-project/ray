@@ -129,7 +129,6 @@ analysis = tune.run(
         FailureInjectorCallback(time_between_checks=90),
         ProgressCallback()
     ],
-    queue_trials=True,
     stop={"training_iteration": 1} if args.smoke_test else None)
 
 print(analysis.get_best_config(metric="val_loss", mode="min"))

@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.impl.block_builder import BlockBuilder
+from ray.data.impl.size_estimator import SizeEstimator
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType, AggType
 
@@ -21,16 +22,23 @@ SortKeyT = Union[None, Callable[[T], Any]]
 class SimpleBlockBuilder(BlockBuilder[T]):
     def __init__(self):
         self._items = []
+        self._size_estimator = SizeEstimator()
 
     def add(self, item: T) -> None:
         self._items.append(item)
+        self._size_estimator.add(item)
 
     def add_block(self, block: List[T]) -> None:
         assert isinstance(block, list), block
         self._items.extend(block)
+        for item in block:
+            self._size_estimator.add(item)
 
     def build(self) -> Block:
         return list(self._items)
+
+    def get_estimated_memory_usage(self) -> int:
+        return self._size_estimator.size_bytes()
 
 
 class SimpleBlockAccessor(BlockAccessor):
@@ -118,9 +126,18 @@ class SimpleBlockAccessor(BlockAccessor):
         key_fn = key if key else lambda x: x
         comp_fn = lambda x, b: key_fn(x) > b \
             if descending else lambda x, b: key_fn(x) < b  # noqa E731
-        boundary_indices = [
-            len([1 for x in items if comp_fn(x, b)]) for b in boundaries
-        ]
+
+        # Compute the boundary indices in O(n) time via scan.
+        boundary_indices = []
+        remaining = boundaries.copy()
+        for i, x in enumerate(items):
+            while remaining and not comp_fn(x, remaining[0]):
+                remaining.pop(0)
+                boundary_indices.append(i)
+        for _ in remaining:
+            boundary_indices.append(len(items))
+        assert len(boundary_indices) == len(boundaries)
+
         ret = []
         prev_i = 0
         for i in boundary_indices:

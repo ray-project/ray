@@ -295,6 +295,68 @@ def test_batch_tensors(ray_start_regular_shared):
     assert df.to_dict().keys() == {0, 1}
 
 
+def test_arrow_block_slice_copy():
+    # Test that ArrowBlock slicing properly copies the underlying Arrow
+    # table.
+    def check_for_copy(table1, table2, a, b, is_copy):
+        expected_slice = table1.slice(a, b - a)
+        assert table2.equals(expected_slice)
+        assert table2.schema == table1.schema
+        assert table1.num_columns == table2.num_columns
+        for col1, col2 in zip(table1.columns, table2.columns):
+            assert col1.num_chunks == col2.num_chunks
+            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
+                bufs1 = chunk1.buffers()
+                bufs2 = chunk2.buffers()
+                expected_offset = 0 if is_copy else a
+                assert chunk2.offset == expected_offset
+                assert len(chunk2) == b - a
+                if is_copy:
+                    assert bufs2[1].address != bufs1[1].address
+                else:
+                    assert bufs2[1].address == bufs1[1].address
+
+    n = 20
+    df = pd.DataFrame({
+        "one": list(range(n)),
+        "two": ["a"] * n,
+        "three": [np.nan] + [1.5] * (n - 1)
+    })
+    table = pa.Table.from_pandas(df)
+    a, b = 5, 10
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    check_for_copy(table, table2, a, b, is_copy=True)
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    check_for_copy(table, table2, a, b, is_copy=False)
+
+
+def test_arrow_block_slice_copy_empty():
+    # Test that ArrowBlock slicing properly copies the underlying Arrow
+    # table when the table is empty.
+    df = pd.DataFrame({"one": []})
+    table = pa.Table.from_pandas(df)
+    a, b = 0, 0
+    expected_slice = table.slice(a, b - a)
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    assert table2.equals(expected_slice)
+    assert table2.schema == table.schema
+    assert table2.num_rows == 0
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    assert table2.equals(expected_slice)
+    assert table2.schema == table.schema
+    assert table2.num_rows == 0
+
+
 def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.data.range_tensor(5, shape=(3, 5))
@@ -306,7 +368,7 @@ def test_tensors(ray_start_regular_shared):
     res = ray.data.range_tensor(10).map_batches(
         lambda t: t + 2, batch_format="pandas").take(2)
     assert str(res) == \
-        "[ArrowRow({'value': array([2])}), ArrowRow({'value': array([3])})]"
+        "[{'value': array([2])}, {'value': array([3])}]"
 
 
 def test_tensor_array_ops(ray_start_regular_shared):
@@ -357,6 +419,44 @@ def test_tensor_array_reductions(ray_start_regular_shared):
             np_kwargs["ddof"] = 1
         np.testing.assert_equal(df["two"].agg(name),
                                 reducer(arr, axis=0, **np_kwargs))
+
+
+def test_tensor_array_block_slice():
+    # Test that ArrowBlock slicing workers with tensor column extension type.
+    def check_for_copy(table1, table2, a, b, is_copy):
+        expected_slice = table1.slice(a, b - a)
+        assert table2.equals(expected_slice)
+        assert table2.schema == table1.schema
+        assert table1.num_columns == table2.num_columns
+        for col1, col2 in zip(table1.columns, table2.columns):
+            assert col1.num_chunks == col2.num_chunks
+            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
+                bufs1 = chunk1.buffers()
+                bufs2 = chunk2.buffers()
+                expected_offset = 0 if is_copy else a
+                assert chunk2.offset == expected_offset
+                assert len(chunk2) == b - a
+                if is_copy:
+                    assert bufs2[1].address != bufs1[1].address
+                else:
+                    assert bufs2[1].address == bufs1[1].address
+
+    n = 20
+    df = pd.DataFrame({
+        "one": TensorArray(np.array(list(range(n)))),
+        "two": ["a"] * n
+    })
+    table = pa.Table.from_pandas(df)
+    a, b = 5, 10
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    check_for_copy(table, table2, a, b, is_copy=True)
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    check_for_copy(table, table2, a, b, is_copy=False)
 
 
 def test_arrow_tensor_array_getitem(ray_start_regular_shared):
@@ -731,7 +831,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
         "Dataset(num_blocks=2, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
-        "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
+        "[{'value': array([0])}, {'value': array([1])}]"
 
 
 def test_numpy_read(ray_start_regular_shared, tmp_path):
@@ -744,7 +844,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         "Dataset(num_blocks=1, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
-        "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
+        "[{'value': array([0])}, {'value': array([1])}]"
 
 
 @pytest.mark.parametrize("fs,data_path,endpoint_url", [
@@ -771,7 +871,7 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert len(arr2) == 5
     assert arr1.sum() == 10
     assert arr2.sum() == 35
-    assert str(ds.take(1)) == "[ArrowRow({'value': array([0])})]"
+    assert str(ds.take(1)) == "[{'value': array([0])}]"
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):
@@ -873,7 +973,7 @@ def test_convert_types(ray_start_regular_shared):
     plain_ds = ray.data.range(1)
     arrow_ds = plain_ds.map(lambda x: {"a": x})
     assert arrow_ds.take() == [{"a": 0}]
-    assert "ArrowRow" in arrow_ds.map(lambda x: str(x)).take()[0]
+    assert "ArrowRow" in arrow_ds.map(lambda x: str(type(x))).take()[0]
 
     arrow_ds = ray.data.range_arrow(1)
     assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() \
@@ -1038,12 +1138,19 @@ def test_to_pandas(ray_start_regular_shared):
     assert df.equals(dfds)
 
     # Test limit.
-    dfds = ds.to_pandas(limit=3)
-    assert df[:3].equals(dfds)
+    with pytest.raises(ValueError):
+        dfds = ds.to_pandas(limit=3)
 
     # Test limit greater than number of rows.
     dfds = ds.to_pandas(limit=6)
     assert df.equals(dfds)
+
+
+def test_take_all(ray_start_regular_shared):
+    assert ray.data.range(5).take_all() == [0, 1, 2, 3, 4]
+
+    with pytest.raises(ValueError):
+        assert ray.data.range(5).take_all(4)
 
 
 def test_to_pandas_refs(ray_start_regular_shared):
@@ -1057,17 +1164,17 @@ def test_to_pandas_refs(ray_start_regular_shared):
 def test_to_numpy(ray_start_regular_shared):
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
-    arr = np.concatenate(ray.get(ds.to_numpy(column="value")))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
     ds = ray.data.range_arrow(10)
-    arr = np.concatenate(ray.get(ds.to_numpy(column="value")))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
     # Simple Dataset
     ds = ray.data.range(10)
-    arr = np.concatenate(ray.get(ds.to_numpy()))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
 
@@ -1077,13 +1184,17 @@ def test_to_arrow(ray_start_regular_shared):
     # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.data.range_arrow(n)
-    dfds = pd.concat([t.to_pandas() for t in ds.to_arrow()], ignore_index=True)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
+        ignore_index=True)
     assert df.equals(dfds)
 
     # Conversion.
     df = pd.DataFrame({0: list(range(n))})
     ds = ray.data.range(n)
-    dfds = pd.concat([t.to_pandas() for t in ds.to_arrow()], ignore_index=True)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
+        ignore_index=True)
     assert df.equals(dfds)
 
 
