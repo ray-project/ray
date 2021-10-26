@@ -100,15 +100,15 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   }
 
   // Make placement group registration sync.
-  std::shared_ptr<gcs::GcsPlacementGroup> RegisterPlacementGroup(const ray::rpc::CreatePlacementGroupRequest &request,
-                              StatusCallback callback) {
+  std::shared_ptr<gcs::GcsPlacementGroup> RegisterPlacementGroup(
+      const ray::rpc::CreatePlacementGroupRequest &request, StatusCallback callback) {
     std::promise<void> promise;
     JobID job_id = JobID::FromBinary(request.placement_group_spec().creator_job_id());
     std::string ray_namespace = job_namespace_table_[job_id];
-    const auto &placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, ray_namespace);
+    const auto &placement_group =
+        std::make_shared<gcs::GcsPlacementGroup>(request, ray_namespace);
     gcs_placement_group_manager_->RegisterPlacementGroup(
-        placement_group,
-        [&callback, &promise](Status status) {
+        placement_group, [&callback, &promise](Status status) {
           RAY_CHECK_OK(status);
           callback(status);
           promise.set_value();
@@ -683,30 +683,39 @@ TEST_F(GcsPlacementGroupManagerTest, TestAddBundlesWhenNotScheduling) {
                            ++registered_placement_group_count;
                          });
   auto request3 = Mocker::GenCreatePlacementGroupRequest();
-  const auto &pending_but_not_scheduling_group = RegisterPlacementGroup(request3,
-                         [&registered_placement_group_count](const Status &status) {
-                           ++registered_placement_group_count;
-                         });
+  const auto &pending_but_not_scheduling_group = RegisterPlacementGroup(
+      request3, [&registered_placement_group_count](const Status &status) {
+        ++registered_placement_group_count;
+      });
   ASSERT_EQ(registered_placement_group_count, 3);
   WaitForExpectedPgCount(1);
-  auto scheduling_placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  auto scheduling_placement_group =
+      mock_placement_group_scheduler_->placement_groups_.back();
   mock_placement_group_scheduler_->placement_groups_.clear();
-  ASSERT_NE(scheduling_placement_group->GetPlacementGroupID(), pending_but_not_scheduling_group->GetPlacementGroupID());
-  
-  add_bundles_request =
-      Mocker::GenAddPlacementGroupBundlesRequest(pending_but_not_scheduling_group->GetPlacementGroupID());
-  AddBundlesForPlacementGroup(pending_but_not_scheduling_group->GetPlacementGroupID(), add_bundles_request);
-  ASSERT_EQ(pending_but_not_scheduling_group->GetState(), rpc::PlacementGroupTableData::UPDATING);
+  ASSERT_NE(scheduling_placement_group->GetPlacementGroupID(),
+            pending_but_not_scheduling_group->GetPlacementGroupID());
+
+  add_bundles_request = Mocker::GenAddPlacementGroupBundlesRequest(
+      pending_but_not_scheduling_group->GetPlacementGroupID());
+  AddBundlesForPlacementGroup(pending_but_not_scheduling_group->GetPlacementGroupID(),
+                              add_bundles_request);
+  ASSERT_EQ(pending_but_not_scheduling_group->GetState(),
+            rpc::PlacementGroupTableData::UPDATING);
   // Add twice when state is `UPDATING`.
-  AddBundlesForPlacementGroup(pending_but_not_scheduling_group->GetPlacementGroupID(), add_bundles_request);
-  AddBundlesForPlacementGroup(pending_but_not_scheduling_group->GetPlacementGroupID(), add_bundles_request);
-  ASSERT_EQ(pending_but_not_scheduling_group->GetState(), rpc::PlacementGroupTableData::UPDATING);
+  AddBundlesForPlacementGroup(pending_but_not_scheduling_group->GetPlacementGroupID(),
+                              add_bundles_request);
+  AddBundlesForPlacementGroup(pending_but_not_scheduling_group->GetPlacementGroupID(),
+                              add_bundles_request);
+  ASSERT_EQ(pending_but_not_scheduling_group->GetState(),
+            rpc::PlacementGroupTableData::UPDATING);
   ASSERT_FALSE(pending_but_not_scheduling_group->IsNeedReschedule());
 
   OnPlacementGroupCreationSuccess(scheduling_placement_group);
-  ASSERT_EQ(scheduling_placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+  ASSERT_EQ(scheduling_placement_group->GetState(),
+            rpc::PlacementGroupTableData::CREATED);
   OnPlacementGroupCreationSuccess(pending_but_not_scheduling_group);
-  ASSERT_EQ(pending_but_not_scheduling_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+  ASSERT_EQ(pending_but_not_scheduling_group->GetState(),
+            rpc::PlacementGroupTableData::CREATED);
   // Check the bundle size.
   ASSERT_EQ(pending_but_not_scheduling_group->GetBundles().size(), 8);
 }
@@ -727,20 +736,24 @@ TEST_F(GcsPlacementGroupManagerTest, TestAddBundlesWhenScheduling) {
   auto add_bundles_request =
       Mocker::GenAddPlacementGroupBundlesRequest(placement_group->GetPlacementGroupID());
   // Add twice for test!
-  AddBundlesForPlacementGroup(placement_group->GetPlacementGroupID(), add_bundles_request);
-  AddBundlesForPlacementGroup(placement_group->GetPlacementGroupID(), add_bundles_request);
+  AddBundlesForPlacementGroup(placement_group->GetPlacementGroupID(),
+                              add_bundles_request);
+  AddBundlesForPlacementGroup(placement_group->GetPlacementGroupID(),
+                              add_bundles_request);
   WaitForExpectedPgCount(0);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::UPDATING);
   // It should be marked as 'need to be reschedule' now;
   ASSERT_TRUE(placement_group->IsNeedReschedule());
   // Check bundle size.
   ASSERT_EQ(placement_group->GetBundles().size(), 6);
-  // Invoke the successful callback, it should be rescheduled immediately instead of transforming into `UPDATING` state!
+  // Invoke the successful callback, it should be rescheduled immediately instead of
+  // transforming into `UPDATING` state!
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::UPDATING);
   WaitForExpectedPgCount(1);
   mock_placement_group_scheduler_->placement_groups_.clear();
-  AddBundlesForPlacementGroup(placement_group->GetPlacementGroupID(), add_bundles_request);
+  AddBundlesForPlacementGroup(placement_group->GetPlacementGroupID(),
+                              add_bundles_request);
   WaitForExpectedPgCount(0);
   ASSERT_EQ(placement_group->GetBundles().size(), 8);
   // Re-invoke the successful callback, it will re-execute the schedule.

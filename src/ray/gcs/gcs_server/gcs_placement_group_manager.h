@@ -146,8 +146,9 @@ class GcsPlacementGroup {
   /// usage, we cache bundle specs.
   mutable std::vector<std::shared_ptr<const BundleSpecification>> cached_bundle_specs_;
   /// A flag to indicate whether this placement group should be rescheduled or not.
-  /// If true, the placement group will be rescheduled when the `OnPlacementGroupCreationSuccess` 
-  /// callback is invoked instead of storing the successfully created group into the backend.
+  /// If true, the placement group will be rescheduled when the
+  /// `OnPlacementGroupCreationSuccess` callback is invoked instead of storing the
+  /// successfully created group into the backend.
   bool need_reschedule_ = false;
 };
 

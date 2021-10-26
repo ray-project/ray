@@ -260,7 +260,7 @@ class GcsRpcClient {
   /// Create placement group via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, CreatePlacementGroup,
                              placement_group_info_grpc_client_, )
- 
+
   /// Add placement group bundles via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, AddPlacementGroupBundles,
                              placement_group_info_grpc_client_, )

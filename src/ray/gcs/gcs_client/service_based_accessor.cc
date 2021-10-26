@@ -1503,10 +1503,10 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncAddPlacementGroupBundles(
                 : Status(StatusCode(reply.status().code()), reply.status().message());
         if (status.ok()) {
           RAY_LOG(INFO) << "Finished add placement group bundles. placement group id = "
-                          << placement_group_id;
+                        << placement_group_id;
         } else {
           RAY_LOG(ERROR) << "Placement group id = " << placement_group_id
-                        << " failed to add bundles, cause " << status.message();
+                         << " failed to add bundles, cause " << status.message();
         }
         callback(status);
       });

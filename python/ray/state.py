@@ -402,7 +402,7 @@ class GlobalState:
                 MessageToDict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
-             "bundles_status": {
+            "bundles_status": {
                 bundle.bundle_id.bundle_index: "VALID"
                 if bundle.is_valid else "INVALID"
                 for bundle in placement_group_info.bundles

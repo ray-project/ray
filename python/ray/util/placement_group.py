@@ -82,7 +82,7 @@ class PlacementGroup:
              True if the placement group is created. False otherwise.
         """
         return _call_placement_group_ready(self.id, timeout_seconds)
-    
+
     def add_bundles(self, bundles: List[Dict[str, float]]):
         """
 

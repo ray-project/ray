@@ -68,13 +68,13 @@ void GcsPlacementGroup::AddBundles(
 
     auto resources = MapFromProtobuf(request.bundles(j).unit_resources());
     for (auto it = resources.begin(); it != resources.end();) {
-        auto current = it++;
-        // Remove a resource with value 0 because they are not allowed.
-        if (current->second == 0) {
-          resources.erase(current);
-        } else {
-          mutable_unit_resources->insert({current->first, current->second});
-        }
+      auto current = it++;
+      // Remove a resource with value 0 because they are not allowed.
+      if (current->second == 0) {
+        resources.erase(current);
+      } else {
+        mutable_unit_resources->insert({current->first, current->second});
+      }
     }
   }
   // Invalidate the cache!
@@ -256,7 +256,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     bool is_feasible) {
   if (placement_group->IsNeedReschedule()) {
     // Cancel the reschedule mark!
-    placement_group->MarkRescheduleDone(); 
+    placement_group->MarkRescheduleDone();
   }
   RAY_LOG(DEBUG) << "Failed to create placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
@@ -289,9 +289,13 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
     const std::shared_ptr<GcsPlacementGroup> &placement_group) {
   if (placement_group->IsNeedReschedule()) {
-    RAY_LOG(DEBUG) << "The placement group " << placement_group->GetPlacementGroupID() << " received resize request when it was scheduling, so we need to reschedule it.";
+    RAY_LOG(DEBUG) << "The placement group " << placement_group->GetPlacementGroupID()
+                   << " received resize request when it was scheduling, so we need to "
+                      "reschedule it.";
     // Mark the current scheduling done and reschedule it.
-    // TODO(@clay4444): We should clear the previous scheduling decision info in some cases, for instance, we selected an exactly suitable node in strict pack strategy, update this later.
+    // TODO(@clay4444): We should clear the previous scheduling decision info in some
+    // cases, for instance, we selected an exactly suitable node in strict pack strategy,
+    // update this later.
     MarkSchedulingDone();
     AddToPendingQueue(placement_group, 0);
     SchedulePendingPlacementGroups();
@@ -402,7 +406,7 @@ void GcsPlacementGroupManager::HandleAddPlacementGroupBundles(
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::ostringstream debug_info;
     debug_info << "Registering add bundles request for placement group: "
-              << placement_group_id << ", detailed new bundles info: ";
+               << placement_group_id << ", detailed new bundles info: ";
     for (int index = 0; index < request.bundles_size(); index++) {
       debug_info << "{" << index << ": ";
       const absl::flat_hash_map<std::string, double> resources =
@@ -457,12 +461,13 @@ void GcsPlacementGroupManager::AddBundlesForPlacementGroup(
 
   placement_group->AddBundles(request);
   placement_group->UpdateState(rpc::PlacementGroupTableData::UPDATING);
-  
+
   if (IsSchedulingInProgress(placement_group_id)) {
     // Mark that it needs to be rescheduled if the placement group is scheduling.
     // so that it can be rescheduled when the successful callback is invoked.
     placement_group->MarkNeedReschedule();
-    // Don't put it into the pending queue if it is scheduling right now cause it will be rescheduled when the finished callback is invoked.
+    // Don't put it into the pending queue if it is scheduling right now cause it will be
+    // rescheduled when the finished callback is invoked.
   }
 
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
@@ -834,8 +839,7 @@ void GcsPlacementGroupManager::Tick() {
   // Note that we don't currently have a known race condition that requires this, but we
   // added as a safety check. https://github.com/ray-project/ray/pull/18419
   SchedulePendingPlacementGroups();
-  execute_after(
-      io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+  execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {

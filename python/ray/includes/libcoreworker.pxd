@@ -101,7 +101,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerType GetWorkerType()
         CLanguage GetLanguage()
 
-        CRayStatus ValidatePlacementGroupBundleIndex(const CPlacementGroupID &placement_group_id, int64_t &bundle_index)
+        CRayStatus ValidatePlacementGroupBundleIndex(
+            const CPlacementGroupID &placement_group_id,
+            const int64_t &bundle_index)
         c_vector[CObjectReference] SubmitTask(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,

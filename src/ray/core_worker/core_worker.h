@@ -751,7 +751,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status CreatePlacementGroup(
       const PlacementGroupCreationOptions &placement_group_creation_options,
       PlacementGroupID *placement_group_id);
-    
+
   /// Add bundles for the specific placement group.
   ///
   /// \param[in] placement_group_id ID of the placement group will add bundles.
