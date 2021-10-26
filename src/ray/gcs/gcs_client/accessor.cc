@@ -466,8 +466,8 @@ Status NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
   return Status::OK();
 }
 
-Status InfoAccessor::AsyncDrainNode(const NodeID &node_id,
-                                    const StatusCallback &callback) {
+Status NodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
+                                        const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Draining node, node id = " << node_id;
   rpc::DrainNodeRequest request;
   auto draining_request = request.add_drain_node_data();

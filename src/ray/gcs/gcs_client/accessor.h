@@ -471,7 +471,7 @@ class NodeInfoAccessor {
   /// Once the RPC is replied, it is guaranteed that GCS drains the information of the
   /// local node, and all the nodes in the cluster will "eventually" be informed that the
   /// node is drained. \return Status
-  virtual Status DrainSelf() = 0;
+  virtual Status DrainSelf();
 
   /// Get id of local node which was registered by 'RegisterSelf'.
   ///
@@ -499,8 +499,7 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node that to be unregistered.
   /// \param callback Callback that will be called when unregistration is complete.
   /// \return Status
-  virtual Status AsyncDrainNode(const NodeID &node_id,
-                                const StatusCallback &callback) = 0;
+  virtual Status AsyncDrainNode(const NodeID &node_id, const StatusCallback &callback);
 
   /// Get information of all nodes from GCS asynchronously.
   ///
