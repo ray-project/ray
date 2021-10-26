@@ -10,6 +10,7 @@ from typing import (Any, Optional, Tuple, Callable, DefaultDict, Dict, Set,
 import ray
 from ray.serve.utils import logger
 
+LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = 5
 
 class LongPollNamespace(Enum):
     def __repr__(self):
@@ -117,6 +118,12 @@ class LongPollClient:
             self._poll_next()
             return
 
+        if updates.get("asyncio.TimeoutError"):
+            logger.info(">>>>>>>>>>>>>>>>>>>> timeout, re-polling.")
+            self._poll_next()
+            return
+
+
         logger.debug(f"LongPollClient {self} received updates for keys: "
                      f"{list(updates.keys())}.")
         for key, update in updates.items():
@@ -208,15 +215,21 @@ class LongPollHost:
 
         done, not_done = await asyncio.wait(
             async_task_to_watched_keys.keys(),
-            return_when=asyncio.FIRST_COMPLETED)
+            return_when=asyncio.FIRST_COMPLETED,
+            timeout=LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S
+        )
+
         [task.cancel() for task in not_done]
 
-        updated_object_key: str = async_task_to_watched_keys[done.pop()]
-        return {
-            updated_object_key: UpdatedObject(
-                self.object_snapshots[updated_object_key],
-                self.snapshot_ids[updated_object_key])
-        }
+        if len(done) == 0:
+            return {"asyncio.TimeoutError": True}
+        else:
+            updated_object_key: str = async_task_to_watched_keys[done.pop()]
+            return {
+                updated_object_key: UpdatedObject(
+                    self.object_snapshots[updated_object_key],
+                    self.snapshot_ids[updated_object_key])
+            }
 
     def notify_changed(
             self,
