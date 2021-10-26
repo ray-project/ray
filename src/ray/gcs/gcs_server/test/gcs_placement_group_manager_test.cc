@@ -771,6 +771,5 @@ TEST_F(GcsPlacementGroupManagerTest, TestAddBundlesWhenScheduling) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ::testing::GTEST_FLAG(filter) = "*TestAddBundlesWhenScheduling*";
   return RUN_ALL_TESTS();
 }
