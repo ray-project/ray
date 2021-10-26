@@ -57,7 +57,7 @@ class ArrowRow:
         return self.as_pydict() == other
 
     def __str__(self):
-        return "ArrowRow({})".format(self.as_pydict())
+        return str(self.as_pydict())
 
     def __repr__(self):
         return str(self)
