@@ -35,8 +35,11 @@ namespace raylet {
 /// This includes the task, the information we need to communicate to
 /// dispatch/spillback and the callback to trigger it.
 enum WorkStatus {
+  /// Waiting to be scheduled.
   WAITING,
+  /// Waiting for a worker to start.
   WAITING_FOR_WORKER,
+  /// Queued task has been cancelled.
   CANCELLED,
 };
 

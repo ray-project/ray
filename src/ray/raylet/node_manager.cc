@@ -702,8 +702,7 @@ void NodeManager::WarnResourceDeadlock() {
 
   // Check if any progress is being made on this raylet.
   for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
-    if (!worker->IsDead() && !worker->GetAssignedTaskId().IsNil() &&
-        !worker->IsBlocked() && worker->GetActorId().IsNil()) {
+    if (worker->IsAvailableForScheduling()) {
       // Progress is being made in a task, don't warn.
       resource_deadlock_warned_ = 0;
       return;
@@ -717,7 +716,6 @@ void NodeManager::WarnResourceDeadlock() {
     resource_deadlock_warned_ = 0;
     return;
   }
-  available_resources = cluster_resource_scheduler_->GetLocalResourceViewString();
 
   // Push an warning to the driver that a task is blocked trying to acquire resources.
   // To avoid spurious triggers, only take action starting with the second time.
@@ -746,8 +744,9 @@ void NodeManager::WarnResourceDeadlock() {
         << "Required resources for this actor or task: "
         << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
         << "\n"
-        << "Available resources on this node: " << available_resources
-        << "In total there are " << pending_tasks << " pending tasks and "
+        << "Available resources on this node: "
+        << cluster_resource_scheduler_->GetLocalResourceViewString()
+        << " In total there are " << pending_tasks << " pending tasks and "
         << pending_actor_creations << " pending actors on this node.";
 
     std::string error_message_str = error_message.str();
