@@ -53,7 +53,7 @@ class ConnectTest(ReleaseTest):
     def __init__(self,
                  *args,
                  setup_commands: Optional[List[str]] = None,
-                 requirements_file: str = None,
+                 requirements_file: Optional[str] = None,
                  **kwargs):
 
         # Commands to run on the driver before kicking off the test.
@@ -243,15 +243,16 @@ MANUAL_TESTS = {
 #   2. Use autoscaling/scale up (no wait_cluster.py)
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
-
 REALISTIC_TESTS = {}
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
-    "nightly": NIGHTLY_TESTS,
+    "nightly": {
+        **NIGHTLY_TESTS,
+        **REALISTIC_TESTS
+    },
     "weekly": WEEKLY_TESTS,
     "manual": MANUAL_TESTS,
-    "realistic": REALISTIC_TESTS,
 }
 
 DEFAULT_STEP_TEMPLATE = {
@@ -475,10 +476,12 @@ def create_test_step(
 
     if isinstance(test_name, ConnectTest):
         # Add driver side setup commands to the step.
+        pip_requirements_command = [f"pip install -U -r "
+                                    f"{test_name.requirements_file}"] if \
+            test_name.requirements_file else []
         step_conf["commands"] = test_name.setup_commands \
-                                + [f"pip install -U -r "
-                                   f"{test_name.requirements_file}"] \
-                                + step_conf["commands"]
+            + pip_requirements_command \
+            + step_conf["commands"]
 
     step_conf["label"] = f"{ray_wheels_str}{test_name} ({ray_branch}) - " \
                          f"{ray_test_branch}/{ray_test_repo}"
