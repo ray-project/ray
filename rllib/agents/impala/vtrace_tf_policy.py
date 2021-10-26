@@ -161,7 +161,7 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
 
 
 def build_vtrace_loss(policy, model, dist_class, train_batch):
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):

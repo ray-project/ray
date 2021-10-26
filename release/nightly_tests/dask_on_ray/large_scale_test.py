@@ -14,6 +14,7 @@ import numpy as np
 import dask.array
 import xarray
 from ray.util.dask import ray_dask_get
+from ray._private.test_utils import monitor_memory_usage
 import math
 import json
 """
@@ -442,6 +443,7 @@ def main():
 
     # Connect to the Ray cluster
     ray.init(address="auto")
+    monitor_actor = monitor_memory_usage()
 
     # Save all the Xarrays to disk; this will trigger
     # Dask computations on Ray.
@@ -452,9 +454,18 @@ def main():
         batch_size=test_spec.batch_size,
         ray_scheduler=ray_dask_get,
     )
+    ray.get(monitor_actor.stop_run.remote())
+    used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
+    print(f"Peak memory usage: {round(used_gb, 2)}GB")
+    print(f"Peak memory usage per processes:\n {usage}")
     print(ray.internal.internal_api.memory_summary(stats_only=True))
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
-        f.write(json.dumps({"success": 1}))
+        f.write(
+            json.dumps({
+                "success": 1,
+                "_peak_memory": round(used_gb, 2),
+                "_peak_process_memory": usage
+            }))
 
 
 if __name__ == "__main__":

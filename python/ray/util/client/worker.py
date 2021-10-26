@@ -730,6 +730,7 @@ class Worker:
                 "object_store_memory": md.object_store_memory,
                 "resources": md.resources,
                 "accelerator_type": md.accelerator_type,
+                "runtime_env": md.runtime_env
             })
         return key
 
@@ -747,7 +748,8 @@ class Worker:
                 "resources": func._resources,
                 "accelerator_type": func._accelerator_type,
                 "num_returns": func._num_returns,
-                "memory": func._memory
+                "memory": func._memory,
+                "runtime_env": func._runtime_env,
             })
         return key
 
