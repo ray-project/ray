@@ -23,7 +23,7 @@ class LazyBlockList(BlockList):
                  metadata: List[BlockPartitionMetadata],
                  block_partitions: List[ObjectRef[BlockPartition]] = None):
         self._calls = calls
-        self._num_block_partitions = len(self._calls)
+        self._num_blocks = len(self._calls)
         self._metadata = metadata
         if block_partitions:
             self._block_partitions = block_partitions
