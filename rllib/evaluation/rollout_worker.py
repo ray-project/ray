@@ -257,19 +257,18 @@ class RolloutWorker(ParallelIteratorWorker):
             count_steps_by: The unit in which to count fragment
                 lengths. One of env_steps or agent_steps.
             batch_mode: One of the following batch modes:
-                "truncate_episodes": Each call to sample() will return a batch
-                    of at most `rollout_fragment_length * num_envs` in size.
-                    The batch will be exactly
-                    `rollout_fragment_length * num_envs` in size if
-                    postprocessing does not change batch sizes. Episodes may be
-                    truncated in order to meet this size requirement.
-                "complete_episodes": Each call to sample() will return a batch
-                    of at least `rollout_fragment_length * num_envs` in size.
-                    Episodes will not be truncated, but multiple episodes may
-                    be packed within one batch to meet the batch size. Note
-                    that when `num_envs > 1`, episode steps will be buffered
-                    until the episode completes, and hence batches may contain
-                    significant amounts of off-policy data.
+                - "truncate_episodes": Each call to sample() will return a batch
+                of at most `rollout_fragment_length * num_envs` in size.
+                The batch will be exactly `rollout_fragment_length * num_envs`
+                in size if postprocessing does not change batch sizes. Episodes
+                may be truncated in order to meet this size requirement.
+                - "complete_episodes": Each call to sample() will return a batch
+                of at least `rollout_fragment_length * num_envs` in size.
+                Episodes will not be truncated, but multiple episodes may
+                be packed within one batch to meet the batch size. Note
+                that when `num_envs > 1`, episode steps will be buffered
+                until the episode completes, and hence batches may contain
+                significant amounts of off-policy data.
             episode_horizon: Horizon at which to stop episodes (even if the
                 environment itself has not retured a "done" signal).
             preprocessor_pref: Whether to use RLlib preprocessors
@@ -314,10 +313,10 @@ class RolloutWorker(ParallelIteratorWorker):
             input_evaluation: How to evaluate the policy
                 performance. This only makes sense to set when the input is
                 reading offline data. The possible values include:
-                  - "is": the step-wise importance sampling estimator.
-                  - "wis": the weighted step-wise is estimator.
-                  - "simulation": run the environment in the background, but
-                    use this data for evaluation only and never for learning.
+                - "is": the step-wise importance sampling estimator.
+                - "wis": the weighted step-wise is estimator.
+                - "simulation": run the environment in the background, but
+                use this data for evaluation only and never for learning.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
             remote_worker_envs: If using num_envs_per_worker > 1,
@@ -879,8 +878,9 @@ class RolloutWorker(ParallelIteratorWorker):
             standardize_fields: List of sample fields to normalize.
 
         Returns:
-            info: Dictionary of extra metadata from learn_on_batch().
-            count: Number of samples learned on.
+            A tuple consisting of a dictionary of extra metadata returned from
+                the policies' `learn_on_batch()` and the number of samples
+                learned on.
         """
         batch = self.sample()
         assert batch.count == expected_batch_size, \
@@ -906,10 +906,13 @@ class RolloutWorker(ParallelIteratorWorker):
                 for using this worker's policies.
 
         Returns:
-            (grads, info): A list of gradients that can be applied on a
-            compatible worker. In the multi-agent case, returns a dict
-            of gradients keyed by policy ids. An info dictionary of
-            extra metadata is also returned.
+            In the single-agent case, a tuple consisting of ModelGradients and
+            info dict of the worker's policy.
+            In the multi-agent case, a tuple consisting of a dict mapping
+            PolicyID to ModelGradients and a dict mapping PolicyID to extra
+            metadata info.
+            Note that the first return value (grads) can be applied as is to a
+            compatible worker using the worker's `apply_gradients()` method.
 
         Examples:
             >>> batch = worker.sample()

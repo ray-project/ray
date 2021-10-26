@@ -20,10 +20,10 @@ class VectorEnv:
         """Initializes a VectorEnv object.
 
         Args:
-            observation_space (Space): The observation Space of a single
+            observation_space: The observation Space of a single
                 sub-env.
-            action_space (Space): The action Space of a single sub-env.
-            num_envs (int): The number of clones to make of the given sub-env.
+            action_space: The action Space of a single sub-env.
+            num_envs: The number of clones to make of the given sub-env.
         """
         self.observation_space = observation_space
         self.action_space = action_space
@@ -52,7 +52,7 @@ class VectorEnv:
         """Resets all sub-environments.
 
         Returns:
-            obs (List[any]): List of observations from each environment.
+            List of observations from each environment.
         """
         raise NotImplementedError
 
@@ -61,10 +61,10 @@ class VectorEnv:
         """Resets a single environment.
 
         Args:
-            index (Optional[int]): An optional sub-env index to reset.
+            index: An optional sub-env index to reset.
 
         Returns:
-            obs (obj): Observations from the reset sub environment.
+            Observations from the reset sub environment.
         """
         raise NotImplementedError
 
@@ -75,13 +75,14 @@ class VectorEnv:
         """Performs a vectorized step on all sub environments using `actions`.
 
         Args:
-            actions (List[any]): List of actions (one for each sub-env).
+            actions: List of actions (one for each sub-env).
 
         Returns:
-            obs (List[any]): New observations for each sub-env.
-            rewards (List[any]): Reward values for each sub-env.
-            dones (List[any]): Done values for each sub-env.
-            infos (List[any]): Info values for each sub-env.
+            A tuple consisting of
+            1) New observations for each sub-env.
+            2) Reward values for each sub-env.
+            3) Done values for each sub-env.
+            4) Info values for each sub-env.
         """
         raise NotImplementedError
 
@@ -90,7 +91,7 @@ class VectorEnv:
         """Returns the underlying sub environments.
 
         Returns:
-            List[Env]: List of all underlying sub environments.
+            List of all underlying sub environments.
         """
         return []
 
@@ -100,12 +101,11 @@ class VectorEnv:
         """Renders a single environment.
 
         Args:
-            index (Optional[int]): An optional sub-env index to render.
+            index: An optional sub-env index to render.
 
         Returns:
-            Optional[np.ndarray]: Either a numpy RGB image
-                (shape=(w x h x 3) dtype=uint8) or None in case
-                rendering is handled directly by this method.
+            Either a numpy RGB image (shape=(w x h x 3) dtype=uint8) or
+            None in case rendering is handled directly by this method.
         """
         pass
 

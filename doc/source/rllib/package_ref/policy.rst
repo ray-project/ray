@@ -8,6 +8,7 @@ Base Policy class (ray.rllib.policy.policy.Policy)
 ++++++++++++++++++++++++++++++++++++++++++++++++++
 
 .. autoclass:: ray.rllib.policy.policy.Policy
+    :special-members: __init__
     :members:
 
 
@@ -18,18 +19,21 @@ TFPolicy
 --------
 
 .. autoclass:: ray.rllib.policy.tf_policy.TFPolicy
+    :special-members: __init__
     :members:
 
 DynamicTFPolicy
 ---------------
 
 .. autoclass:: ray.rllib.policy.dynamic_tf_policy.DynamicTFPolicy
+    :special-members: __init__
     :members:
 
 TorchPolicy
 -----------
 
 .. autoclass:: ray.rllib.policy.torch_policy.TorchPolicy
+    :special-members: __init__
     :members:
 
 

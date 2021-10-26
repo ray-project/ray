@@ -1,9 +1,9 @@
 .. _evaluation-docs:
 
-
 RLlib's Evaluation/Rollout APIs
 ===============================
 
+.. _rolloutworker-docs:
 
 RolloutWorker
 +++++++++++++
@@ -11,13 +11,15 @@ RolloutWorker
 RolloutWorkers are used as ``@ray.remote`` actors to collect and return samples
 from environments or offline files in parallel. An RLlib Trainer usually has
 ``num_workers`` RolloutWorkers plus a single "local" RolloutWorker (not ``@ray.remote``) in
-its WorkerSet (see below) under ``self.workers``.
+its WorkerSet (`see below <WorkerSet>`_) under ``self.workers``.
 Depending on its evaluation config settings, an additional ``WorkerSet`` with
 RolloutWorkers for evaluation may be present in the Trainer under ``self.evaluation_workers``.
 
 .. autoclass:: ray.rllib.evaluation.rollout_worker.RolloutWorker
+    :special-members: __init__
     :members:
 
+.. _workerset-docs:
 
 WorkerSet
 +++++++++
@@ -27,23 +29,25 @@ RolloutWorker. WorkerSets expose some convenience methods to make calls on its i
 workers' own methods in parallel using e.g. ``ray.get()``.
 
 .. autoclass:: ray.rllib.evaluation.worker_set.WorkerSet
+    :special-members: __init__
     :members:
 
 
-InputReaders
-++++++++++++
+.. _sampler-docs:
 
-The InputReader API is used by individual RolloutWorkers to produce batches of experiences
-from an env or an offline source (e.g. a file):
+Environment Samplers
+++++++++++++++++++++
 
-.. autoclass:: ray.rllib.offline.input_reader.InputReader
-    :members:
+When a simulator (environment) is available, ``Samplers`` - child classes
+of ``InputReader`` - are used to collect and return experiences from the envs.
+For more details on InputReader used for offline RL (e.g. reading files of
+pre-recorded data), see the :ref:`offline RL API reference here<offline-docs>`.
+
+The base sampler API (SamplerInput) is defined as follows:
 
 Base Sampler class (ray.rllib.evaluation.sampler.SamplerInput)
 --------------------------------------------------------------
 
-When a simulator (environment) is available, ``Samplers`` - child classes
-of ``InputReader`` - are used to collect and return experiences from the envs.
 
 .. autoclass:: ray.rllib.evaluation.sampler.SamplerInput
     :members:
@@ -56,6 +60,7 @@ environment only when its ``next()`` method is called. Calling this method block
 until a ``SampleBatch`` has been built and is returned.
 
 .. autoclass:: ray.rllib.evaluation.sampler.SyncSampler
+    :special-members: __init__
     :members:
 
 AsyncSampler (ray.rllib.evaluation.sampler.AsyncSampler)
@@ -66,36 +71,5 @@ collecting samples from an environment in the background. Calling its ``next()``
 gets the next enqueued SampleBatch from a queue and returns it immediately.
 
 .. autoclass:: ray.rllib.evaluation.sampler.AsyncSampler
-    :members:
-
-JsonReader (ray.rllib.offline.json_reader.JsonReader)
------------------------------------------------------
-
-For reading data from offline files (for example when no simulator/environment is available),
-you can use the built-in JsonReader class. You will have to change the "input" config setting
-from "sampler" (default) to a JSON file name (str) or a list of JSON files.
-Alternatively, you can specify a callable that returns a new InputReader object.
-
-.. autoclass:: ray.rllib.offline.json_reader.JsonReader
-    :members:
-
-MixedInput  (ray.rllib.offline.mixed_input.MixedInput)
-------------------------------------------------------
-
-In order to mix different input readers with each other in different custom ratios, you can use
-the MixedInput reader. This reader is chosen automatically by RLlib when you provide a dict under
-the "input" config key that maps input reader specifiers to probabilities, e.g.:
-
-.. code-block:: python
-
-    "input": {
-       "sampler": 0.4,  # 40% of samples will come from environment
-       "/tmp/experiences/*.json": 0.4,  # the rest from different JSON files
-       "s3://bucket/expert.json": 0.2,
-    }
-
-D4RLReader (ray.rllib.offline.d4rl_reader.D4RLReader)
------------------------------------------------------
-
-.. autoclass:: ray.rllib.offline.d4rl_reader.D4RLReader
+    :special-members: __init__
     :members:
