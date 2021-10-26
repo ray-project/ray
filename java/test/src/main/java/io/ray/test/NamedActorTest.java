@@ -53,8 +53,7 @@ public class NamedActorTest extends BaseTest {
 
     if (!TestUtils.isSingleProcessMode()) {
       // Get the global actor from another driver.
-      ProcessBuilder builder =
-          TestUtils.buildDriver(NamedActorTest.class, new String[] {name}, false);
+      ProcessBuilder builder = TestUtils.buildDriver(NamedActorTest.class, new String[] {name});
       builder.redirectError(ProcessBuilder.Redirect.INHERIT);
       Process driver = builder.start();
       Assert.assertTrue(driver.waitFor(60, TimeUnit.SECONDS));

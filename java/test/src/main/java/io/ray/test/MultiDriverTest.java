@@ -103,7 +103,7 @@ public class MultiDriverTest extends BaseTest {
 
   private Process startDriver() throws IOException {
     RayConfig rayConfig = TestUtils.getRuntime().getRayConfig();
-    ProcessBuilder builder = TestUtils.buildDriver(MultiDriverTest.class, null, false);
+    ProcessBuilder builder = TestUtils.buildDriver(MultiDriverTest.class, null);
     builder.redirectError(Redirect.INHERIT);
     return builder.start();
   }

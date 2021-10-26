@@ -11,6 +11,7 @@ import io.ray.runtime.config.RunMode;
 import io.ray.runtime.task.ArgumentsBuilder;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
 import org.testng.Assert;
@@ -102,8 +103,7 @@ public class TestUtils {
     return Ray.task(TestUtils::getNumWorkersPerProcessRemoteFunction).remote().get();
   }
 
-  public static ProcessBuilder buildDriver(
-      Class<?> mainClass, String[] args, boolean useDefaultDriver) {
+  public static ProcessBuilder buildDriver(Class<?> mainClass, String[] args) {
     RayConfig rayConfig = TestUtils.getRuntime().getRayConfig();
 
     List<String> fullArgs = new ArrayList<>();
@@ -114,9 +114,6 @@ public class TestUtils {
     fullArgs.add("-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName);
     fullArgs.add("-Dray.raylet.socket-name=" + rayConfig.rayletSocketName);
     fullArgs.add("-Dray.raylet.node-manager-port=" + rayConfig.getNodeManagerPort());
-    if (useDefaultDriver) {
-      fullArgs.add(DefaultDriver.class.getName());
-    }
     fullArgs.add(mainClass.getName());
     if (args != null) {
       fullArgs.addAll(Arrays.asList(args));
