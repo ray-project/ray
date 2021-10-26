@@ -1,0 +1,17 @@
+{
+  "args_time": 17.48939115500002,
+  "num_args": 10000,
+  "returns_time": 5.7533572459999505,
+  "num_returns": 3000,
+  "get_time": 27.151423333000025,
+  "num_get_args": 10000,
+  "queued_time": 156.664555652,
+  "num_queued": 1000000,
+  "large_object_time": 302.74005043500006,
+  "large_object_size": 107374182400,
+  "success": "1",
+  "_runtime": 555.2891094684601,
+  "_session_url": "https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_mCcTS1b91fdjSCva3t7D7zRX",
+  "_commit_url": "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.8.0/2ebfdb9780cc7b6adf4bfeff401f7deb585fb76a/ray-1.8.0-cp37-cp37m-manylinux2014_x86_64.whl",
+  "_stable": true
+}

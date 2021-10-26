@@ -1,0 +1,134 @@
+{
+  "single_client_get_calls": [
+    29585.27290565454,
+    228.86835384810752
+  ],
+  "single_client_put_calls": [
+    48201.90714629877,
+    285.10174630565746
+  ],
+  "multi_client_put_calls": [
+    194234.46026984073,
+    1673.6746993828488
+  ],
+  "single_client_get_calls_Plasma_Store": [
+    6616.357463866351,
+    94.60482364431181
+  ],
+  "single_client_put_calls_Plasma_Store": [
+    6185.049796547948,
+    32.22414356795357
+  ],
+  "multi_client_put_calls_Plasma_Store": [
+    9666.2992877594,
+    93.26779765330289
+  ],
+  "single_client_put_gigabytes": [
+    18.595704508966737,
+    6.171618875655576
+  ],
+  "single_client_tasks_and_get_batch": [
+    13.617701718158502,
+    0.19268337547057157
+  ],
+  "multi_client_put_gigabytes": [
+    37.11534046248547,
+    2.459596970332109
+  ],
+  "single_client_get_object_containing_10k_refs": [
+    12.344095384940445,
+    0.19755449896630062
+  ],
+  "single_client_tasks_sync": [
+    1636.282445250624,
+    20.0140923665069
+  ],
+  "single_client_tasks_async": [
+    13718.294713617586,
+    105.19497478085484
+  ],
+  "multi_client_tasks_async": [
+    39034.85591077648,
+    1724.9111435572995
+  ],
+  "1_1_actor_calls_sync": [
+    2534.052635882154,
+    93.57098689158363
+  ],
+  "1_1_actor_calls_async": [
+    6341.764559162934,
+    142.53200493181123
+  ],
+  "1_1_actor_calls_concurrent": [
+    5377.604971871906,
+    107.20574767244408
+  ],
+  "1_n_actor_calls_async": [
+    15891.877010659093,
+    443.2081638831464
+  ],
+  "n_n_actor_calls_async": [
+    46124.675773980496,
+    4255.070845973472
+  ],
+  "n_n_actor_calls_with_arg_async": [
+    3337.3822186631346,
+    34.280819713522796
+  ],
+  "1_1_async_actor_calls_sync": [
+    1864.1288768504314,
+    4.985142763893494
+  ],
+  "1_1_async_actor_calls_async": [
+    3809.0775336963566,
+    389.710070594276
+  ],
+  "1_1_async_actor_calls_with_args_async": [
+    2551.290436899581,
+    73.5801715645302
+  ],
+  "1_n_async_actor_calls_async": [
+    14520.442365347637,
+    490.60072945953243
+  ],
+  "n_n_async_actor_calls_async": [
+    39040.02451009248,
+    693.3156128154599
+  ],
+  "client__get_calls": [
+    1688.1958812723503,
+    16.089727260108265
+  ],
+  "client__put_calls": [
+    947.8092386816043,
+    29.287776799931653
+  ],
+  "client__put_gigabytes": [
+    0.13336855762462346,
+    0.003770648239365762
+  ],
+  "client__tasks_and_put_batch": [
+    65933.88544576654,
+    1537.4371832502438
+  ],
+  "client__1_1_actor_calls_sync": [
+    544.963728336865,
+    24.76874868676616
+  ],
+  "client__1_1_actor_calls_async": [
+    894.9434419749248,
+    27.777034708132046
+  ],
+  "client__1_1_actor_calls_concurrent": [
+    909.5462776666492,
+    5.432369024887974
+  ],
+  "client__tasks_and_get_batch": [
+    0.8006711964268183,
+    0.027593735820730853
+  ],
+  "_runtime": 523.0622253417969,
+  "_session_url": "https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_PSj1ZS576XuHMiMa5nUCTG5M",
+  "_commit_url": "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.8.0/2ebfdb9780cc7b6adf4bfeff401f7deb585fb76a/ray-1.8.0-cp37-cp37m-manylinux2014_x86_64.whl",
+  "_stable": true
+}

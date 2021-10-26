@@ -1,0 +1,10 @@
+{
+  "actors_per_second": 527.222036766534,
+  "num_actors": 10000,
+  "time": 18.96734070777893,
+  "success": "1",
+  "_runtime": 36.88866329193115,
+  "_session_url": "https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_KDbRpFRQ8pPYJje3aCg9dAPf",
+  "_commit_url": "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.8.0/2ebfdb9780cc7b6adf4bfeff401f7deb585fb76a/ray-1.8.0-cp37-cp37m-manylinux2014_x86_64.whl",
+  "_stable": true
+}

@@ -1,0 +1,10 @@
+{
+  "broadcast_time": 1433.294835273,
+  "object_size": 1073741824,
+  "num_nodes": 50,
+  "success": "1",
+  "_runtime": 1454.0751464366913,
+  "_session_url": "https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_cZ23v44bAwhGQNMKsHXnEhiH",
+  "_commit_url": "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.8.0/2ebfdb9780cc7b6adf4bfeff401f7deb585fb76a/ray-1.8.0-cp37-cp37m-manylinux2014_x86_64.whl",
+  "_stable": true
+}
