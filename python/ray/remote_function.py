@@ -287,7 +287,7 @@ class RemoteFunction:
             placement_group_bundle_index,
             resources,
             self._function_descriptor.function_name,
-            placement_group=self._placement_group)
+            placement_group=placement_group)
 
         if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
             runtime_env = ParsedRuntimeEnv(runtime_env)

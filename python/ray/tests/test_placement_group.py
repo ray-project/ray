@@ -45,38 +45,79 @@ def test_placement_ready(ray_start_regular, connect_to_client):
 
 
 def test_placement_group_no_resources(shutdown_only):
+    """
+    Tests the Placement group API's behavior;
+    - raises an exception if empty resources are specified.
+    - doesn't raise an exceptoin if empty resources are given,
+        but bundle index is also given.
+    """
     ray.init(resources={"a": 1})
+    pg = ray.util.placement_group(bundles=[{"CPU": 1, "a": 1}])
+    """
+    Test an actor with 0 cpu.
+    """
 
     @ray.remote
     class A:
-        pass
-
-    pg = ray.util.placement_group(bundles=[{"a": 1}])
+        def ready(self):
+            pass
 
     with pytest.raises(ValueError):
         # The actor cannot be scheduled with no resource specified.
+        # Note that the default actor has 0 cpu.
         a = A.options(placement_group=pg).remote()
+    # If bundle index is given, it should work.
+    a = A.options(placement_group=pg, placement_group_bundle_index=0).remote()
+    ray.get(a.ready.remote())
+    del a
+    # If resources are given, it should work.
+    a = A.options(num_cpus=1, placement_group=pg).remote()
+    ray.get(a.ready.remote())
+    del a
+    """
+    Test an actor with non-0 resources.
+    """
 
     @ray.remote(resources={"a": 1})
     class B:
-        pass
+        def ready(self):
+            pass
 
-    a = B.options(placement_group=pg).remote()
-    del a
+    # If resources are given, it should work.
+    b = B.options(placement_group=pg).remote()
+    ray.get(b.ready.remote())
+    del b
+    # If resources are not given, it shouldn't work.
+    with pytest.raises(ValueError):
+        # The actor cannot be scheduled with no resource specified.
+        # Note that the default actor has 0 cpu.
+        B.options(num_cpus=0, resources={}, placement_group=pg).remote()
+    """
+    Test a function with 1 CPU.
+    """
 
     @ray.remote
     def f():
         pass
 
+    # 1 CPU should work.
     a = f.options(placement_group=pg).remote()
     ray.get(a)
+    """
+    Test a function with 0 CPU.
+    """
 
     @ray.remote(num_cpus=0)
     def g():
         pass
 
+    # 0 CPU should raise an error.
     with pytest.raises(ValueError):
         a = g.options(placement_group=pg).remote()
+    # If bundle index is given, it should work although
+    # resources are not specified.
+    ray.get(
+        g.options(placement_group=pg, placement_group_bundle_index=0).remote())
 
     placement_group_assert_no_leak([pg])
 

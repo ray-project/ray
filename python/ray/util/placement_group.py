@@ -43,6 +43,10 @@ class PlacementGroup:
         self.id = id
         self.bundle_cache = bundle_cache
 
+    @property
+    def is_empty(self):
+        return self.id.is_nil()
+
     def ready(self) -> ObjectRef:
         """Returns an ObjectRef to check ready status.
 
@@ -181,6 +185,11 @@ def placement_group(bundles: List[Dict[str, float]],
             will fate share with its creator and will be deleted once its
             creator is dead, or "detached", which means the placement group
             will live as a global object independent of the creator.
+
+    Raises:
+        ValueError if bundle type is not a list.
+        ValueError if empty bundle or empty resource bundles are given.
+        ValueError if the wrong lifetime arguments are given.
 
     Return:
         PlacementGroup: Placement group object.
@@ -390,7 +399,8 @@ def configure_placement_group_based_on_context(
                 return False
         return True
 
-    if placement_group != PlacementGroup.empty() and resource_empty(resources):
+    if (not placement_group.is_empty
+            and (resource_empty(resources) and bundle_index == -1)):
         raise ValueError(
             f"{task_or_actor_repr} specifies the placement group, but "
             "it doesn't request resources. Placement group won't be used. "
