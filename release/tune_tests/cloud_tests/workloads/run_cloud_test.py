@@ -413,6 +413,9 @@ def clear_bucket_contents(bucket: str):
         print("Clearing bucket contents:", bucket)
         subprocess.check_call(
             ["aws", "s3", "rm", "--recursive", "--quiet", bucket])
+    elif bucket.startswith("gs://"):
+        print("Clearing bucket contents:", bucket)
+        subprocess.check_call(["gsutil", "rm", "-f", "-r", bucket])
     else:
         raise ValueError(f"Invalid bucket URL: {bucket}")
 
@@ -423,6 +426,8 @@ def fetch_bucket_contents_to_tmp_dir(bucket: str) -> str:
     if bucket.startswith("s3://"):
         subprocess.check_call(
             ["aws", "s3", "cp", "--recursive", "--quiet", bucket, tmpdir])
+    elif bucket.startswith("s3://"):
+        subprocess.check_call(["gsutil", "cp", "-r", bucket, tmpdir])
     else:
         raise ValueError(f"Invalid bucket URL: {bucket}")
 
