@@ -167,7 +167,7 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 
 .. note::
 
-  At this time, Apple Silicon ray wheels are being published for **releass only**. As support stabilizes, nightly wheels will be published in the future.
+  At this time, Apple Silicon ray wheels are being published for **releases only**. As support stabilizes, nightly wheels will be published in the future.
 
 .. _windows-support:
 

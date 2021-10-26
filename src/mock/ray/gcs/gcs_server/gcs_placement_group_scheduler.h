@@ -43,11 +43,6 @@ class MockGcsPlacementGroupSchedulerInterface
       void, ReleaseUnusedBundles,
       ((const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles)),
       (override));
-  MOCK_METHOD(void, Initialize,
-              ((const std::unordered_map<
-                  PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
-                    &group_to_bundles)),
-              (override));
 };
 
 }  // namespace gcs
