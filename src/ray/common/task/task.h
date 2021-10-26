@@ -53,21 +53,6 @@ class RayTask {
   /// `TaskExecutionSpecification`.
   RayTask(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec);
 
-  /// Override dispatch behaviour.
-  void OnDispatchInstead(const DispatchTaskCallback &callback) {
-    on_dispatch_ = callback;
-  }
-
-  /// Override spillback behaviour.
-  void OnSpillbackInstead(const SpillbackTaskCallback &callback) {
-    on_spillback_ = callback;
-  }
-
-  /// Override cancellation behaviour.
-  void OnCancellationInstead(const CancelTaskCallback &callback) {
-    on_cancellation_ = callback;
-  }
-
   /// Get the mutable specification for the task. This specification may be
   /// updated at runtime.
   ///
@@ -91,15 +76,6 @@ class RayTask {
   /// Update the dynamic/mutable information for this task.
   /// \param task RayTask structure with updated dynamic information.
   void CopyTaskExecutionSpec(const RayTask &task);
-
-  /// Returns the override dispatch task callback, or nullptr.
-  const DispatchTaskCallback &OnDispatch() const { return on_dispatch_; }
-
-  /// Returns the override spillback task callback, or nullptr.
-  const SpillbackTaskCallback &OnSpillback() const { return on_spillback_; }
-
-  /// Returns the cancellation task callback, or nullptr.
-  const CancelTaskCallback &OnCancellation() const { return on_cancellation_; }
 
   std::string DebugString() const;
 

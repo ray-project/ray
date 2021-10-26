@@ -687,11 +687,6 @@ void NodeManager::HandleReleaseUnusedBundles(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-// TODO(edoakes): this function is problematic because it both sends warnings spuriously
-// under normal conditions and sometimes doesn't send a warning under actual deadlock
-// conditions. The current logic is to push a warning when: all running tasks are
-// blocked, there is at least one ready task, and a warning hasn't been pushed in
-// debug_dump_period_ milliseconds.
 // See https://github.com/ray-project/ray/issues/5790 for details.
 void NodeManager::WarnResourceDeadlock() {
   ray::RayTask exemplar;

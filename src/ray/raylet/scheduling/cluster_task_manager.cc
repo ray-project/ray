@@ -232,6 +232,10 @@ bool ClusterTaskManager::PoppedWorkerHandler(
         // could be re-dispatched.
         work->status = WorkStatus::WAITING;
         // Return here because we shouldn't remove task dependencies.
+        // SANG-TODO Empty worker popped. 3 cases.
+        // Worker registration timeout.
+        // Job config wasn't updated from GCS.
+        // Worker processes rate limited.
         return dispatched;
       }
     } else if (not_detached_with_owner_failed) {
@@ -280,6 +284,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       TaskID task_id = spec.TaskId();
       if (work->status == WorkStatus::WAITING_FOR_WORKER) {
         work_it++;
+        // SANG-TODO Queued because it is waiting for workers.
         continue;
       }
 
@@ -309,6 +314,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
               << "Cannot dispatch task " << task_id
               << " until another task finishes and releases its arguments, but no other "
                  "task is running";
+          // SANG-TODO Queued because it is waiting for memory resources.
           work_it++;
         }
         continue;
@@ -345,6 +351,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // There must not be any other available nodes in the cluster, so the task
           // should stay on this node. We can skip the rest of the shape because the
           // scheduler will make the same decision.
+          // SANG-TODO Queued because it is not spillable because there are no resources.
           break;
         }
         if (!spec.GetDependencies().empty()) {
