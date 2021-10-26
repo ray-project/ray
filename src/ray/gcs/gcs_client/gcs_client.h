@@ -83,6 +83,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
                      std::function<bool(std::pair<std::string, int> *)>
                          get_gcs_server_address_func = {});
 
+  virtual ~GcsClient() = default;
+
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
   ///
