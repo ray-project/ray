@@ -230,7 +230,8 @@ bool ClusterTaskManager::PoppedWorkerHandler(
       } else {
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
-        internal::UnscheduledWorkCause cause;
+        internal::UnscheduledWorkCause cause =
+            internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
         if (status == PopWorkerStatus::JobConfigMissing) {
           cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
         } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
