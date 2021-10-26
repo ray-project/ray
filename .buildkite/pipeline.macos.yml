@@ -119,3 +119,10 @@ steps:
       --test_env=CI
       python/ray/tests/... python/ray/serve/...
     - *epilogue_commands
+
+- label: ":mac: :apple: Java"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - ./java/test.sh
+    - *epilogue_commands
