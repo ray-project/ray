@@ -12,6 +12,7 @@ from ray.serve.utils import logger
 
 LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = 5
 
+
 class LongPollNamespace(Enum):
     def __repr__(self):
         return f"{self.__class__.__name__}.{self.name}"
@@ -112,7 +113,8 @@ class LongPollClient:
             return
 
         if isinstance(updates, (ray.exceptions.RayTaskError)):
-            if isinstance(updates.as_instanceof_cause(), (asyncio.TimeoutError)):
+            if isinstance(updates.as_instanceof_cause(),
+                          (asyncio.TimeoutError)):
                 logger.debug(
                     f"LongPollClient polling timed out after "
                     f"{LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S} secs. Retrying.")
@@ -122,7 +124,6 @@ class LongPollClient:
                 logger.error("LongPollHost errored\n" + updates.traceback_str)
             self._poll_next()
             return
-
 
         logger.debug(f"LongPollClient {self} received updates for keys: "
                      f"{list(updates.keys())}.")
@@ -216,8 +217,7 @@ class LongPollHost:
         done, not_done = await asyncio.wait(
             async_task_to_watched_keys.keys(),
             return_when=asyncio.FIRST_COMPLETED,
-            timeout=LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S
-        )
+            timeout=LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S)
 
         [task.cancel() for task in not_done]
 
