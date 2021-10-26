@@ -91,8 +91,10 @@ def _zip_module(root: Path,
             file_size = path.stat().st_size
             if file_size >= FILE_SIZE_WARNING:
                 logger.warning(
-                    f"File {path} is very large ({file_size} bytes). "
-                    "Consider excluding this file from the working directory.")
+                    f"File {path} is very large ({file_size/(1024 * 1024):.2f}"
+                    " MiB). Consider adding this file to the 'excludes' list "
+                    "to skip uploading it: `ray.init(..., "
+                    f"runtime_env={{'excludes': ['{path}']}})`")
             to_path = path.relative_to(relative_path)
             zip_handler.write(path, to_path)
 
@@ -187,14 +189,22 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return None
 
 
-def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
+def _store_package_in_gcs(
+        gcs_key: str,
+        data: bytes,
+        logger: Optional[logging.Logger] = default_logger) -> int:
+    file_size = len(data)
+    file_size_str = f"{file_size/(1024 * 1024):.1f} MiB"
     if len(data) >= GCS_STORAGE_MAX_SIZE:
         raise RuntimeError(
-            "working_dir package exceeds the maximum size of 100MiB. You "
-            "can exclude large files using the 'excludes' option to the "
-            "runtime_env.")
-
+            f"working_dir package has size {file_size_str}, which exceeds the "
+            "maximum size of 100 MiB. You can exclude large files using the "
+            "'excludes' field of the runtime_env.")
+    if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
+        logger.info(f"Pushing local files to cluster ({file_size_str})...")
     _internal_kv_put(gcs_key, data)
+    if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
+        logger.info("Pushing local files complete.")
     return len(data)
 
 
@@ -226,7 +236,9 @@ def _zip_directory(directory: str,
             logger=logger)
 
 
-def _push_package(pkg_uri: str, pkg_path: str) -> int:
+def _push_package(pkg_uri: str,
+                  pkg_path: str,
+                  logger: Optional[logging.Logger] = default_logger) -> int:
     """Push a package to a given URI.
 
     This function is to push a local file to remote URI. Right now, only
@@ -242,7 +254,7 @@ def _push_package(pkg_uri: str, pkg_path: str) -> int:
     protocol, pkg_name = parse_uri(pkg_uri)
     data = Path(pkg_path).read_bytes()
     if protocol == Protocol.GCS:
-        return _store_package_in_gcs(pkg_uri, data)
+        return _store_package_in_gcs(pkg_uri, data, logger)
     elif protocol == Protocol.S3:
         raise RuntimeError("push_package should not be called with s3 path.")
     else:
@@ -333,7 +345,7 @@ def upload_package_if_needed(pkg_uri: str,
             logger.info(f"Creating a new package for directory {directory}.")
             _zip_directory(directory, excludes, pkg_file, logger=logger)
         # Push the data to remote storage
-        pkg_size = _push_package(pkg_uri, pkg_file)
+        pkg_size = _push_package(pkg_uri, pkg_file, logger=logger)
         logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes.")
         uploaded = True
 

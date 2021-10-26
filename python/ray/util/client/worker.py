@@ -692,7 +692,9 @@ class Worker:
                 with tempfile.TemporaryDirectory() as tmp_dir:
                     job_config.set_runtime_env(
                         upload_working_dir_if_needed(
-                            job_config.runtime_env or {}, tmp_dir))
+                            job_config.runtime_env or {},
+                            tmp_dir,
+                            logger=logger))
 
                 serialized_job_config = pickle.dumps(job_config)
 
