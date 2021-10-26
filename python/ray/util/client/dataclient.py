@@ -107,7 +107,7 @@ class DataClient:
         except Exception as e:
             self._last_exception = e
         finally:
-            logger.info("Shutting down data channel")
+            logger.info("Shutting down data channel.")
             self._shutdown()
 
     def _process_response(self, response: Any) -> None:

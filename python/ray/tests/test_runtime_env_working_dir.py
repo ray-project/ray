@@ -6,7 +6,7 @@ import tempfile
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from python.ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver
 
 import ray
 import ray.experimental.internal_kv as kv
@@ -683,36 +683,28 @@ def test_large_file_error(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 24001 --port 0"],
-    indirect=True)
-def test_large_dir_upload_output(call_ray_start):
+def test_large_dir_upload_message(start_cluster):
+    cluster, address = start_cluster
     with tempfile.TemporaryDirectory() as tmp_dir:
-        old_dir = os.getcwd()
-        os.chdir(tmp_dir)
-
-        driver_script = """
+        filepath = os.path.join(tmp_dir, "test_file.txt")
+        driver_script = f"""
 import ray
-ray.init(address="ray://localhost:24001", runtime_env={"working_dir": "."})
+ray.init("{address}", runtime_env={{"working_dir": "{tmp_dir}"}})
 """
 
         size = SILENT_UPLOAD_SIZE_THRESHOLD - 1024
-        with open("test_file_1", "wb") as f:
+        with open(filepath, "wb") as f:
             f.write(os.urandom(size))
 
         output = run_string_as_driver(driver_script)
-        assert "Pushing local files" not in output, output
+        assert "Pushing large local file package" not in output
 
         size = SILENT_UPLOAD_SIZE_THRESHOLD + 1
-        with open("test_file_1", "wb") as f:
+        with open(filepath, "wb") as f:
             f.write(os.urandom(size))
 
         output = run_string_as_driver(driver_script)
-        assert "Pushing local files" in output, output
-        assert "complete" in output, output
-
-        os.chdir(old_dir)
+        assert "Pushed local files" in output
 
 
 if __name__ == "__main__":

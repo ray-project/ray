@@ -91,7 +91,7 @@ def _zip_module(root: Path,
             file_size = path.stat().st_size
             if file_size >= FILE_SIZE_WARNING:
                 logger.warning(
-                    f"File {path} is very large ({file_size/(1024 * 1024):.2f}"
+                    f"File {path} is very large ({file_size/(1024 * 1024):.1f}"
                     " MiB). Consider adding this file to the 'excludes' list "
                     "to skip uploading it: `ray.init(..., "
                     f"runtime_env={{'excludes': ['{path}']}})`")
@@ -201,10 +201,11 @@ def _store_package_in_gcs(
             "maximum size of 100 MiB. You can exclude large files using the "
             "'excludes' field of the runtime_env.")
     if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
-        logger.info(f"Pushing local files to cluster ({file_size_str})...")
+        logger.info(f"Pushing large local file package ({file_size_str}) "
+                    "to Ray cluster...")
     _internal_kv_put(gcs_key, data)
     if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
-        logger.info("Pushing local files complete.")
+        logger.info("Pushed local files.")
     return len(data)
 
 
@@ -342,11 +343,11 @@ def upload_package_if_needed(pkg_uri: str,
         pkg_file = Path(_get_local_path(base_directory, pkg_uri))
         if not pkg_file.exists():
             created = True
-            logger.info(f"Creating a new package for directory {directory}.")
+            logger.debug(f"Creating a new package for directory {directory}.")
             _zip_directory(directory, excludes, pkg_file, logger=logger)
         # Push the data to remote storage
         pkg_size = _push_package(pkg_uri, pkg_file, logger=logger)
-        logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes.")
+        logger.debug(f"{pkg_uri} has been pushed with {pkg_size} bytes.")
         uploaded = True
 
     return created, uploaded
