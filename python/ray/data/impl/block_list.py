@@ -61,20 +61,20 @@ class BlockList:
             output.append(BlockList(b.tolist(), m.tolist()))
         return output
 
-    def divide(self, part_idx: int) -> ("BlockList", "BlockList"):
-        """Divide into two BlockLists by the given partition index.
+    def divide(self, block_idx: int) -> ("BlockList", "BlockList"):
+        """Divide into two BlockLists by the given block index.
 
         Args:
-            part_idx: The partition index to divide at.
+            block_idx: The block index to divide at.
         """
         self._check_if_cleared()
-        return (BlockList(self._blocks[:part_idx], self._metadata[:part_idx]),
-                BlockList(self._blocks[part_idx:], self._metadata[part_idx:]))
+        return (BlockList(self._blocks[:block_idx], self._metadata[:block_idx]),
+                BlockList(self._blocks[block_idx:], self._metadata[block_idx:]))
 
     def iter_blocks(self) -> Iterator[ObjectRef[Block]]:
         """Iterate over the blocks of this block list.
 
-        This blocks on the execution of the tasks generating partition outputs.
+        This blocks on the execution of the tasks generating block outputs.
         The length of this iterator is not known until execution.
         """
         self._check_if_cleared()
@@ -98,7 +98,7 @@ class BlockList:
             self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Iterate over the blocks along with their runtime metadata.
 
-        This blocks on the execution of the tasks generating partition outputs.
+        This blocks on the execution of the tasks generating block outputs.
         The length of this iterator is not known until execution.
         """
         self._check_if_cleared()
