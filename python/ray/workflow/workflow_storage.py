@@ -337,7 +337,7 @@ class WorkflowStorage:
                 func_body_valid=(STEP_FUNC_BODY in keys),
                 workflows=metadata["workflows"],
                 workflow_refs=metadata["workflow_refs"],
-                step_options=WorkflowStepOptions.from_metadata(
+                step_options=WorkflowStepOptions.from_dict(
                     metadata["step_options"]),
                 step_raised_exception=(STEP_EXCEPTION in keys),
             )

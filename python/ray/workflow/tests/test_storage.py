@@ -143,7 +143,7 @@ def test_workflow_storage(workflow_start_regular):
         "name": "test_basic_workflows.append1",
         "workflows": ["def"],
         "workflow_refs": ["some_ref"],
-        "step_options": step_options.to_metadata(),
+        "step_options": step_options.to_dict(),
     }
     output_metadata = {
         "output_step_id": "a12423",

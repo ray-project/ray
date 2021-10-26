@@ -125,7 +125,7 @@ class WorkflowStepOptions:
     # ray_remote options
     ray_options: Dict[str, Any]
 
-    def to_metadata(self) -> Dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "step_type": self.step_type,
             "max_retries": self.max_retries,
@@ -134,7 +134,7 @@ class WorkflowStepOptions:
         }
 
     @classmethod
-    def from_metadata(cls, metadata: Dict[str, Any]):
+    def from_dict(cls, metadata: Dict[str, Any]):
         return cls(
             step_type=StepType[metadata["step_type"]],
             max_retries=metadata["max_retries"],
@@ -164,7 +164,7 @@ class WorkflowData:
             "name": get_module(f) + "." + get_qualname(f),
             "workflows": [w.step_id for w in self.inputs.workflows],
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
-            "step_options": self.step_options.to_metadata(),
+            "step_options": self.step_options.to_dict(),
             "user_metadata": self.user_metadata,
         }
         return metadata

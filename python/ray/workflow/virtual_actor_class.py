@@ -274,7 +274,6 @@ class VirtualActorMetadata:
                 else:
                     _actor_method = _wrap_actor_method(self.cls, method_name)
                     step_type = StepType.ACTOR_METHOD
-                # TODO(suquark): Support actor options.
                 _step_options = WorkflowStepOptions(
                     step_type=step_type,
                     max_retries=step_options.get("max_retries", 1),
