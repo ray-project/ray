@@ -17,7 +17,7 @@ from ray._raylet import GlobalStateAccessor
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(30)
 def test_replenish_resources(ray_start_regular):
     cluster_resources = ray.cluster_resources()
     available_resources = ray.available_resources()
@@ -39,7 +39,7 @@ def test_replenish_resources(ray_start_regular):
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(30)
 def test_uses_resources(ray_start_regular):
     cluster_resources = ray.cluster_resources()
 
