@@ -39,8 +39,12 @@ def upload_working_dir_if_needed(runtime_env: Dict[str, Any],
 
     excludes = runtime_env.get("excludes", None)
     working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
-    upload_package_if_needed(working_dir_uri, scratch_dir, working_dir,
-                             excludes)
+    upload_package_if_needed(
+        working_dir_uri,
+        scratch_dir,
+        working_dir,
+        include_parent_dir=False,
+        excludes=excludes)
     runtime_env["working_dir"] = working_dir_uri
     return runtime_env
 

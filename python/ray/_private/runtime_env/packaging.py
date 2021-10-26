@@ -275,13 +275,13 @@ def get_uri_for_directory(directory: str,
         protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex())
 
 
-def upload_package_if_needed(pkg_uri: str,
-                             base_directory: str,
-                             directory: str,
-                             include_parent_dir: bool = False,
-                             excludes: Optional[List[str]] = None,
-                             logger: Optional[logging.Logger] = default_logger
-                             ) -> Tuple[bool, bool]:
+def upload_package_if_needed(
+        pkg_uri: str,
+        base_directory: str,
+        directory: str,
+        include_parent_dir: bool = False,
+        excludes: Optional[List[str]] = None,
+        logger: Optional[logging.Logger] = default_logger) -> bool:
     """Upload the contents of the directory under the given URI.
 
     This will first create a temporary zip file under the passed
