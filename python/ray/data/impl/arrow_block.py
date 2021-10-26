@@ -15,6 +15,7 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
 from ray.data.aggregate import AggregateFn
+from ray.data.impl.size_estimator import SizeEstimator
 
 if TYPE_CHECKING:
     import pandas
@@ -25,6 +26,10 @@ T = TypeVar("T")
 # e.g. [("column1", "ascending"), ("column2", "descending")]
 SortKeyT = List[Tuple[str, str]]
 GroupKeyT = Union[None, str]
+
+# The max size of Python tuples to buffer before compacting them into an Arrow
+# table in the BlockBuilder.
+MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
 
 
 class ArrowRow:
@@ -60,7 +65,7 @@ class ArrowRow:
         return self.as_pydict() == other
 
     def __str__(self):
-        return "ArrowRow({})".format(self.as_pydict())
+        return str(self.as_pydict())
 
     def __repr__(self):
         return str(self)
@@ -97,14 +102,25 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
     def num_rows(self) -> int:
         return self._builder.num_rows() if self._builder is not None else 0
 
+    def get_estimated_memory_usage(self) -> int:
+        if self._builder is None:
+            return 0
+        return self._builder.get_estimated_memory_usage()
+
 
 class ArrowBlockBuilder(BlockBuilder[T]):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
+        # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
+        # The set of compacted tables we have built so far.
         self._tables: List["pyarrow.Table"] = []
+        self._tables_nbytes = 0
+        # Size estimator for un-compacted table values.
+        self._uncompacted_size = SizeEstimator()
         self._num_rows = 0
+        self._num_compactions = 0
 
     def add(self, item: Union[dict, ArrowRow]) -> None:
         if isinstance(item, ArrowRow):
@@ -116,10 +132,13 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         for key, value in item.items():
             self._columns[key].append(value)
         self._num_rows += 1
+        self._compact_if_needed()
+        self._uncompacted_size.add(item)
 
     def add_block(self, block: "pyarrow.Table") -> None:
         assert isinstance(block, pyarrow.Table), block
         self._tables.append(block)
+        self._tables_nbytes += block.nbytes
         self._num_rows += block.num_rows
 
     def build(self) -> Block:
@@ -129,7 +148,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             tables = []
         tables.extend(self._tables)
         if len(tables) > 1:
-            return pyarrow.concat_tables(tables)
+            return pyarrow.concat_tables(tables, promote=True)
         elif len(tables) > 0:
             return tables[0]
         else:
@@ -137,6 +156,22 @@ class ArrowBlockBuilder(BlockBuilder[T]):
 
     def num_rows(self) -> int:
         return self._num_rows
+
+    def get_estimated_memory_usage(self) -> int:
+        if self._num_rows == 0:
+            return 0
+        return self._tables_nbytes + self._uncompacted_size.size_bytes()
+
+    def _compact_if_needed(self) -> None:
+        assert self._columns
+        if self._uncompacted_size.size_bytes() < MAX_UNCOMPACTED_SIZE_BYTES:
+            return
+        block = pyarrow.Table.from_pydict(self._columns)
+        self._tables.append(block)
+        self._tables_nbytes += block.nbytes
+        self._uncompacted_size = SizeEstimator()
+        self._columns.clear()
+        self._num_compactions += 1
 
 
 class ArrowBlockAccessor(BlockAccessor):
@@ -242,6 +277,10 @@ class ArrowBlockAccessor(BlockAccessor):
         if key is None or callable(key):
             raise NotImplementedError(
                 "Arrow sort key must be a column name, was: {}".format(key))
+        if self._table.num_rows == 0:
+            # If the pyarrow table is empty we may not have schema
+            # so calling table.select() will raise an error.
+            return pyarrow.Table.from_pydict({})
         k = min(n_samples, self._table.num_rows)
         indices = random.sample(range(self._table.num_rows), k)
         return self._table.select([k[0] for k in key]).take(indices)
@@ -251,6 +290,14 @@ class ArrowBlockAccessor(BlockAccessor):
         if len(key) > 1:
             raise NotImplementedError(
                 "sorting by multiple columns is not supported yet")
+
+        if self._table.num_rows == 0:
+            # If the pyarrow table is empty we may not have schema
+            # so calling sort_indices() will raise an error.
+            return [
+                pyarrow.Table.from_pydict({})
+                for _ in range(len(boundaries) + 1)
+            ]
 
         import pyarrow.compute as pac
 
@@ -344,9 +391,13 @@ class ArrowBlockAccessor(BlockAccessor):
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
             _descending: bool) -> Tuple[Block[T], BlockMetadata]:
-        ret = pyarrow.concat_tables(blocks)
-        indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
-        ret = ret.take(indices)
+        blocks = [b for b in blocks if b.num_rows > 0]
+        if len(blocks) == 0:
+            ret = pyarrow.Table.from_pydict({})
+        else:
+            ret = pyarrow.concat_tables(blocks, promote=True)
+            indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
+            ret = ret.take(indices)
         return ret, ArrowBlockAccessor(ret).get_metadata(None)
 
     @staticmethod

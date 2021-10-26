@@ -81,23 +81,62 @@ class ActorMethod(ActorMethodBase):
         """
         return self._run(args, kwargs)
 
-    def options(self, **options) -> ActorMethodBase:
-        """Convenience method for executing an actor method call with options.
+    def options(self,
+                *,
+                max_retries: int = None,
+                catch_exceptions: bool = None,
+                name: str = None,
+                metadata: Dict[str, Any] = None,
+                **ray_options) -> ActorMethodBase:
+        """This function set how the actor method is going to be executed.
 
-        Same arguments as func._run(), but returns a wrapped function
-        that a non-underscore .run() can be called on.
+        Args:
+            max_retries: num of retries the step for an application
+                level error.
+            catch_exceptions: Whether the user want to take care of the
+                failure manually.
+                If it's set to be true, (Optional[R], Optional[E]) will be
+                returned.
+                If it's false, the normal result will be returned.
+            name: The name of this step, which will be used to
+                generate the step_id of the step. The name will be used
+                directly as the step id if possible, otherwise deduplicated by
+                appending .N suffixes.
+            metadata: metadata to add to the step.
+            **ray_options: All parameters in this fields will be passed
+                to ray remote function options.
 
-        Examples:
-            # The following two calls are equivalent.
-            >>> actor.my_method._run(args=[x, y], num_cpus=2)
-            >>> actor.my_method.options(num_cpus=2).run(x, y)
+        Returns:
+            The actor method itself.
         """
+
+        if max_retries is not None:
+            if not isinstance(max_retries, int) or max_retries < 1:
+                raise ValueError(
+                    "max_retries should be greater or equal to 1.")
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                raise ValueError("metadata must be a dict.")
+            for k, v in metadata.items():
+                try:
+                    json.dumps(v)
+                except TypeError as e:
+                    raise ValueError(
+                        "metadata values must be JSON serializable, "
+                        "however '{}' has a value whose {}.".format(k, e))
 
         func_cls = self
 
         class FuncWrapper(ActorMethodBase):
             def run_async(self, *args, **kwargs):
-                return func_cls._run(args=args, kwargs=kwargs, **options)
+                return func_cls._run(
+                    args=args,
+                    kwargs=kwargs,
+                    max_retries=max_retries,
+                    catch_exceptions=catch_exceptions,
+                    name=name,
+                    metadata=metadata,
+                    **ray_options)
 
         return FuncWrapper()
 
@@ -113,7 +152,7 @@ class ActorMethod(ActorMethodBase):
                                "actor.method.run()' instead.")
         try:
             return actor._actor_method_call(
-                self._method_name, args=args, kwargs=kwargs)
+                self._method_name, args=args, kwargs=kwargs, options=options)
         except TypeError as exc:  # capture a friendlier stacktrace
             raise TypeError(
                 "Invalid input arguments for virtual actor "
@@ -185,7 +224,36 @@ class VirtualActorMetadata:
 
         for method_name, method in actor_methods:
 
-            def step(method_name, method, *args, **kwargs):
+            def step(method_name, method, options, *args, **kwargs):
+                options = options or {}
+                step_options = {}
+                max_retries = options.pop("max_retries", None)
+                if max_retries is not None:
+                    if not isinstance(max_retries, int) or max_retries < 1:
+                        raise ValueError(
+                            "max_retries should be greater or equal to 1.")
+                    step_options["max_retries"] = max_retries
+                catch_exceptions = options.pop("catch_exceptions", None)
+                if catch_exceptions is not None:
+                    step_options["catch_exceptions"] = catch_exceptions
+                name = options.pop("name", None)
+                if name is not None:
+                    step_options["name"] = name
+                metadata = options.pop("metadata", None)
+                if metadata is not None:
+                    if not isinstance(metadata, dict):
+                        raise ValueError("metadata must be a dict.")
+                    for k, v in metadata.items():
+                        try:
+                            json.dumps(v)
+                        except TypeError as e:
+                            raise ValueError(
+                                "metadata values must be JSON serializable, "
+                                "however '{}' has a value whose {}.".format(
+                                    k, e))
+                    step_options["metadata"] = metadata
+                if len(options) != 0:
+                    step_options["ray_options"] = options
                 readonly = getattr(method, "__virtual_actor_readonly__", False)
                 flattened_args = self.flatten_args(method_name, args, kwargs)
                 actor_id = workflow_context.get_current_workflow_id()
@@ -213,16 +281,27 @@ class VirtualActorMetadata:
                     func_body=_actor_method,
                     step_type=step_type,
                     inputs=workflow_inputs,
-                    max_retries=1,
-                    catch_exceptions=False,
-                    ray_options={},
-                    name=None,
-                    user_metadata=None,
+                    max_retries=step_options.get("max_retries", 1),
+                    catch_exceptions=step_options.get("catch_exceptions",
+                                                      False),
+                    ray_options=step_options.get("ray_options", {}),
+                    name=step_options.get("name", None),
+                    user_metadata=step_options.get("metadata", {}),
                 )
                 wf = Workflow(workflow_data)
                 return wf
 
-            method.step = functools.partial(step, method_name, method)
+            method.step = functools.partial(step, method_name, method, None)
+
+            def _options(method_name, method, **options):
+                def _method(*args, **kwargs):
+                    return method(*args, **kwargs)
+
+                _method.step = functools.partial(step, method_name, method,
+                                                 options)
+                return _method
+
+            method.options = functools.partial(_options, method_name, method)
 
     def generate_random_actor_id(self) -> str:
         """Generate random actor ID."""
@@ -458,15 +537,16 @@ class VirtualActor:
             return ActorMethod(self, item)
         raise AttributeError(f"No method with name '{item}'")
 
-    def _actor_method_call(self, method_name: str, args,
-                           kwargs) -> "ObjectRef":
+    def _actor_method_call(self, method_name: str, args, kwargs,
+                           options=None) -> "ObjectRef":
+        options = options or {}
         cls = self._metadata.cls
         method = getattr(cls, method_name, None)
         if method is None:
             raise AttributeError(f"Method '{method_name}' does not exist.")
         with workflow_context.workflow_step_context(self._actor_id,
                                                     self._storage.storage_url):
-            wf = method.step(*args, **kwargs)
+            wf = method.options(**options).step(*args, **kwargs)
             readonly = getattr(method, "__virtual_actor_readonly__", False)
             if readonly:
                 return execute_workflow(wf).volatile_output

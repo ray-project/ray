@@ -26,7 +26,7 @@ def test_client_data_get(call_ray_start):
     ray.util.connect(f"{ip}:10002")
 
     ray_pipeline = ray.data.from_items(list(range(1_000)))
-    ray.get(ray_pipeline.to_numpy()[0])
+    ray.get(ray_pipeline.to_numpy_refs()[0])
 
 
 if __name__ == "__main__":
