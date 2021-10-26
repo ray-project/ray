@@ -369,7 +369,8 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
         SetThreadName("worker.task" + std::to_string(i));
         auto worker = core_worker_process->CreateWorker();
         worker->RunTaskExecutionLoop();
-        RAY_LOG(INFO) << "Task execution loop terminated for a thread " << std::to_string(i);
+        RAY_LOG(INFO) << "Task execution loop terminated for a thread "
+                      << std::to_string(i);
         core_worker_process->RemoveWorker(worker);
       });
     }

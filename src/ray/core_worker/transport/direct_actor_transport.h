@@ -364,14 +364,10 @@ class BoundedExecutor {
       num_running_ -= 1;
     });
   }
-  
-  void Stop() {
-    pool_.stop();
-  }
 
-  void Join() {
-    pool_.join();
-  }
+  void Stop() { pool_.stop(); }
+
+  void Join() { pool_.join(); }
 
  private:
   bool ThreadsAvailable() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
