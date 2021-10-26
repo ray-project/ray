@@ -385,21 +385,7 @@ class Worker:
             raise err
         return loads_from_server(resp.data)
 
-    def put(self, vals, *, client_ref_id: bytes = None):
-        to_put = []
-        single = False
-        if isinstance(vals, list):
-            to_put = vals
-        else:
-            single = True
-            to_put.append(vals)
-
-        out = [self._put(x, client_ref_id=client_ref_id) for x in to_put]
-        if single:
-            out = out[0]
-        return out
-
-    def _put(self, val, client_ref_id: bytes):
+    def put(self, val, *, client_ref_id: bytes = None):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
                 "Calling 'put' on an ObjectRef is not allowed "
