@@ -88,6 +88,21 @@ class PlacementGroupFactory:
     could be used e.g. if you had one learner running in the main trainable
     that schedules two remote workers that need access to 2 CPUs each.
 
+    If the trainable itself doesn't require resources.
+    You can specify it as:
+
+    .. code-block:: python
+
+        from ray import tune
+
+        tune.run(
+            train,
+            resources_per_trial=tune.PlacementGroupFactory([
+                {},
+                {"CPU": 2},
+                {"CPU": 2},
+            ], strategy="PACK"))
+
     Args:
         bundles(List[Dict]): A list of bundles which
             represent the resources requirements.
@@ -108,6 +123,13 @@ class PlacementGroupFactory:
                  strategy: str = "PACK",
                  *args,
                  **kwargs):
+        if len(bundles) > 0 and not bundles[0]:
+            # This is when trainable itself doesn't need CPU resources.
+            self._first_bundle_is_empty = True
+            bundles.pop(0)
+        else:
+            self._first_bundle_is_empty = False
+
         self._bundles = [{k: float(v)
                           for k, v in bundle.items()} for bundle in bundles]
         self._strategy = strategy
@@ -120,8 +142,8 @@ class PlacementGroupFactory:
         self._bind()
 
     @property
-    def head_cpus(self):
-        return self._bundles[0].get("CPU", None)
+    def first_bundle_is_empty(self):
+        return self._first_bundle_is_empty
 
     @property
     def required_resources(self) -> Dict[str, float]:
@@ -429,18 +451,18 @@ class PlacementGroupManager:
         self._in_use_trials[trial] = pg
 
         # We still have to pass resource specs
-        # Pass the full resource specs of the first bundle per default
-        first_bundle = pg.bundle_specs[0].copy()
-        num_cpus = first_bundle.pop("CPU", None)
-        num_gpus = first_bundle.pop("GPU", None)
+        if not pgf.first_bundle_is_empty:
+            # Pass the full resource specs of the first bundle per default
+            first_bundle = pg.bundle_specs[0].copy()
+            num_cpus = first_bundle.pop("CPU", None)
+            num_gpus = first_bundle.pop("GPU", None)
 
-        # Only custom resources remain in `first_bundle`
-        resources = first_bundle or None
-
-        if num_cpus is None:
-            # If the placement group specifically set the number
-            # of CPUs to 0, use this.
-            num_cpus = pgf.head_cpus
+            # Only custom resources remain in `first_bundle`
+            resources = first_bundle or None
+        else:
+            num_cpus = None
+            num_gpus = None
+            resources = None
 
         logger.debug(f"For trial {trial} use pg {pg.id}")
 
@@ -495,9 +517,6 @@ class PlacementGroupManager:
                 no placement group was replaced.
 
         """
-        if not trial.uses_placement_groups:
-            return None
-
         pgf = trial.placement_group_factory
 
         staged_pg = self._unstage_unused_pg(pgf)
@@ -578,9 +597,6 @@ class PlacementGroupManager:
         Returns:
             Boolean indicating if the placement group was returned.
         """
-        if not trial.uses_placement_groups:
-            return True
-
         pgf = trial.placement_group_factory
 
         pg = self._in_use_trials.pop(trial)
@@ -701,9 +717,6 @@ class PlacementGroupManager:
         # Count number of expected placement groups
         pgf_expected: Dict[PlacementGroupFactory, int] = defaultdict(int)
         for trial in trials:
-            if not trial.uses_placement_groups:
-                continue
-
             # Count in-use placement groups
             if trial in self._in_use_trials:
                 current_counts[trial.placement_group_factory] += 1

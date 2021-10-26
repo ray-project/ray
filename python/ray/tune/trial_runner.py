@@ -787,14 +787,6 @@ class TrialRunner:
         ]
         return delim.join(messages)
 
-    def has_resources_for_trial(self, trial: "Trial"):
-        """Returns whether this runner has at least the specified resources."""
-        return self.trial_executor.has_resources_for_trial(trial)
-
-    def has_resources(self, resources):
-        """Returns whether this runner has at least the specified resources."""
-        return self.trial_executor.has_resources(resources)
-
     def _stop_experiment_if_needed(self):
         """Stops all trials."""
         fail_fast = self._fail_fast and self._has_errored

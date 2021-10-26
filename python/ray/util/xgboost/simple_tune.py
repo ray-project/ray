@@ -1,6 +1,7 @@
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.xgboost import RayDMatrix, RayParams, train
 
 # __train_begin__
@@ -68,10 +69,11 @@ def main():
         metric="eval-error",
         mode="min",
         num_samples=4,
-        resources_per_trial={
-            "cpu": 1,
-            "extra_cpu": num_actors * num_cpus_per_actor
-        })
+        resources_per_trial=PlacementGroupFactory([{
+            "CPU": 1.0
+        }] + [{
+            "CPU": float(num_cpus_per_actor)
+        }] * num_actors))
 
     # Load in the best performing model.
     best_bst = load_best_model(analysis.best_logdir)

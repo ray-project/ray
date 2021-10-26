@@ -20,7 +20,7 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 class Trial(
         namedtuple("MockTrial", [
             "config", "trial_id", "trial_name", "trainable_name",
-            "uses_placement_groups", "placement_group_factory"
+            "placement_group_factory"
         ])):
     def __hash__(self):
         return hash(self.trial_id)
