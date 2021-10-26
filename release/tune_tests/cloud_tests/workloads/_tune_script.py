@@ -1,6 +1,7 @@
 from typing import Optional
 
 import argparse
+from collections import Counter
 import json
 import os
 import time
@@ -51,7 +52,8 @@ def run_tune(
     else:
         trainable = train
 
-    tune.run(
+    start_time = time.monotonic()
+    analysis = tune.run(
         trainable,
         name=experiment_name,
         resume="AUTO",
@@ -71,6 +73,20 @@ def run_tune(
         resources_per_trial={"cpu": 2},
         callbacks=[IndicatorCallback(indicator_file=indicator_file)],
         verbose=2)
+
+    time_taken = time.monotonic() - start_time
+
+    result = {
+        "time_taken": time_taken,
+        "trial_states": dict(
+            Counter([trial.status for trial in analysis.trials])),
+        "last_update": time.time()
+    }
+
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/tune_test.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
 
 
 if __name__ == "__main__":
