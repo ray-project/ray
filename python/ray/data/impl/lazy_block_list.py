@@ -21,27 +21,34 @@ class LazyBlockList(BlockList):
     def __init__(self,
                  calls: Callable[[], ObjectRef[BlockPartition]],
                  metadata: List[BlockPartitionMetadata],
-                 blocks: List[ObjectRef[BlockPartition]] = None):
+                 block_partitions: List[ObjectRef[BlockPartition]] = None):
         self._calls = calls
-        self._num_blocks = len(self._calls)
+        self._num_block_partitions = len(self._calls)
         self._metadata = metadata
-        if blocks:
-            self._blocks = blocks
+        if block_partitions:
+            self._block_partitions = block_partitions
         else:
-            self._blocks = [None] * len(calls)
+            self._block_partitions = [None] * len(calls)
             # Immediately compute the first block at least.
             if calls:
-                self._blocks[0] = calls[0]()
+                self._block_partitions[0] = calls[0]()
         assert len(calls) == len(metadata), (calls, metadata)
-        assert len(calls) == len(self._blocks), (calls, self._blocks)
+        assert len(calls) == len(
+            self._block_partitions), (calls, self._block_partitions)
 
     def copy(self) -> "LazyBlockList":
         return LazyBlockList(self._calls.copy(), self._metadata.copy(),
-                             self._blocks.copy())
+                             self._block_partitions.copy())
 
     def clear(self) -> None:
-        super().clear()
+        self._block_partitions = None
         self._calls = None
+
+    def _check_if_cleared(self) -> None:
+        if self._block_partitions is None:
+            raise ValueError(
+                "This Dataset's blocks have been moved, which means that you "
+                "can no longer use this Dataset.")
 
     # Note: does not force execution prior to splitting.
     def split(self, split_size: int) -> List["LazyBlockList"]:
@@ -49,9 +56,9 @@ class LazyBlockList(BlockList):
         num_splits = math.ceil(len(self._calls) / split_size)
         calls = np.array_split(self._calls, num_splits)
         meta = np.array_split(self._metadata, num_splits)
-        blocks = np.array_split(self._blocks, num_splits)
+        block_partitions = np.array_split(self._block_partitions, num_splits)
         output = []
-        for c, m, b in zip(calls, meta, blocks):
+        for c, m, b in zip(calls, meta, block_partitions):
             output.append(LazyBlockList(c.tolist(), m.tolist(), b.tolist()))
         return output
 
@@ -59,10 +66,10 @@ class LazyBlockList(BlockList):
     def divide(self, part_idx: int) -> ("LazyBlockList", "LazyBlockList"):
         self._check_if_cleared()
         left = LazyBlockList(self._calls[:part_idx], self._metadata[:part_idx],
-                             self._blocks[:part_idx])
+                             self._block_partitions[:part_idx])
         right = LazyBlockList(self._calls[part_idx:],
                               self._metadata[part_idx:],
-                              self._blocks[part_idx:])
+                              self._block_partitions[part_idx:])
         return left, right
 
     def iter_blocks_with_metadata(
@@ -72,7 +79,7 @@ class LazyBlockList(BlockList):
 
         class Iter:
             def __init__(self):
-                self._base_iter = outer._iter_partitions()
+                self._base_iter = outer._iter_block_partitions()
                 self._buffer = []
 
             def __iter__(self):
@@ -87,7 +94,7 @@ class LazyBlockList(BlockList):
 
         return Iter()
 
-    def _iter_partitions(self) -> Iterator[ObjectRef[BlockPartition]]:
+    def _iter_block_partitions(self) -> Iterator[ObjectRef[BlockPartition]]:
         self._check_if_cleared()
         outer = self
 
@@ -109,20 +116,20 @@ class LazyBlockList(BlockList):
     def _get_or_compute(self, i: int) -> ObjectRef[BlockPartition]:
         self._check_if_cleared()
         assert i < len(self._calls), i
-        # Check if we need to compute more blocks.
-        if not self._blocks[i]:
-            # Exponentially increase the number of blocks computed per batch.
+        # Check if we need to compute more block_partitions.
+        if not self._block_partitions[i]:
+            # Exponentially increase the number computed per batch.
             for j in range(max(i + 1, i * 2)):
-                if j >= len(self._blocks):
+                if j >= len(self._block_partitions):
                     break
-                if not self._blocks[j]:
-                    self._blocks[j] = self._calls[j]()
-            assert self._blocks[i], self._blocks
-        return self._blocks[i]
+                if not self._block_partitions[j]:
+                    self._block_partitions[j] = self._calls[j]()
+            assert self._block_partitions[i], self._block_partitions
+        return self._block_partitions[i]
 
     def _num_computed(self) -> int:
         i = 0
-        for b in self._blocks:
+        for b in self._block_partitions:
             if b is not None:
                 i += 1
         return i

@@ -760,7 +760,7 @@ class Dataset(Generic[T]):
 
         calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
         metadata: List[BlockPartitionMetadata] = []
-        blocks: List[ObjectRef[BlockPartition]] = []
+        block_partitions: List[ObjectRef[BlockPartition]] = []
 
         datasets = [self] + list(other)
         for ds in datasets:
@@ -768,11 +768,11 @@ class Dataset(Generic[T]):
             if isinstance(bl, LazyBlockList):
                 calls.extend(bl._calls)
                 metadata.extend(bl._metadata)
-                blocks.extend(list(bl._iter_partitions()))
+                block_partitions.extend(bl._block_partitions)
             else:
                 calls.extend([None] * bl.initial_num_blocks())
                 metadata.extend(bl._metadata)
-                blocks.extend([
+                block_partitions.extend([
                     ray.put([(b, m)])
                     for b, m in bl.iter_blocks_with_metadata()
                 ])
@@ -788,7 +788,8 @@ class Dataset(Generic[T]):
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch))
                 _epoch_warned = True
-        return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
+        return Dataset(
+            LazyBlockList(calls, metadata, block_partitions), max_epoch)
 
     def groupby(self, key: Callable[[T], Any]) -> "GroupedDataset[T]":
         """Group the dataset by the specified key function (Experimental).
