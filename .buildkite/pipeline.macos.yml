@@ -66,8 +66,8 @@ steps:
 
 
 - label: ":mac: :apple: Ray C++ and Libraries"
-  conditions: [ "RAY_CI_CPP_AFFECTED" ]
   <<: *common
+  conditions: [ "RAY_CI_CPP_AFFECTED" ]
   commands:
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
@@ -76,8 +76,8 @@ steps:
     - *epilogue_commands
 
 - label: ":mac: :apple: Worker"
-  conditions: [ "RAY_CI_CPP_AFFECTED" ]
   <<: *common
+  conditions: [ "RAY_CI_CPP_AFFECTED" ]
   commands:
     - *prelude_commands
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
