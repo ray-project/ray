@@ -368,7 +368,7 @@ def test_tensors(ray_start_regular_shared):
     res = ray.data.range_tensor(10).map_batches(
         lambda t: t + 2, batch_format="pandas").take(2)
     assert str(res) == \
-        "[ArrowRow({'value': array([2])}), ArrowRow({'value': array([3])})]"
+        "[{'value': array([2])}, {'value': array([3])}]"
 
 
 def test_tensor_array_ops(ray_start_regular_shared):
@@ -831,7 +831,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
         "Dataset(num_blocks=2, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
-        "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
+        "[{'value': array([0])}, {'value': array([1])}]"
 
 
 def test_numpy_read(ray_start_regular_shared, tmp_path):
@@ -844,7 +844,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         "Dataset(num_blocks=1, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})")
     assert str(ds.take(2)) == \
-        "[ArrowRow({'value': array([0])}), ArrowRow({'value': array([1])})]"
+        "[{'value': array([0])}, {'value': array([1])}]"
 
 
 @pytest.mark.parametrize("fs,data_path,endpoint_url", [
@@ -871,7 +871,7 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert len(arr2) == 5
     assert arr1.sum() == 10
     assert arr2.sum() == 35
-    assert str(ds.take(1)) == "[ArrowRow({'value': array([0])})]"
+    assert str(ds.take(1)) == "[{'value': array([0])}]"
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):
@@ -973,7 +973,7 @@ def test_convert_types(ray_start_regular_shared):
     plain_ds = ray.data.range(1)
     arrow_ds = plain_ds.map(lambda x: {"a": x})
     assert arrow_ds.take() == [{"a": 0}]
-    assert "ArrowRow" in arrow_ds.map(lambda x: str(x)).take()[0]
+    assert "ArrowRow" in arrow_ds.map(lambda x: str(type(x))).take()[0]
 
     arrow_ds = ray.data.range_arrow(1)
     assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() \
@@ -1164,17 +1164,17 @@ def test_to_pandas_refs(ray_start_regular_shared):
 def test_to_numpy(ray_start_regular_shared):
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
-    arr = np.concatenate(ray.get(ds.to_numpy(column="value")))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
     ds = ray.data.range_arrow(10)
-    arr = np.concatenate(ray.get(ds.to_numpy(column="value")))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
     # Simple Dataset
     ds = ray.data.range(10)
-    arr = np.concatenate(ray.get(ds.to_numpy()))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
 
@@ -1184,13 +1184,17 @@ def test_to_arrow(ray_start_regular_shared):
     # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.data.range_arrow(n)
-    dfds = pd.concat([t.to_pandas() for t in ds.to_arrow()], ignore_index=True)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
+        ignore_index=True)
     assert df.equals(dfds)
 
     # Conversion.
     df = pd.DataFrame({0: list(range(n))})
     ds = ray.data.range(n)
-    dfds = pd.concat([t.to_pandas() for t in ds.to_arrow()], ignore_index=True)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
+        ignore_index=True)
     assert df.equals(dfds)
 
 
