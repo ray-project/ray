@@ -1339,8 +1339,8 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_checkpoint("/tmp/export_dir")
         """
-        self.get_policy(policy_id).export_checkpoint(
-            export_dir, filename_prefix)
+        self.get_policy(policy_id).export_checkpoint(export_dir,
+                                                     filename_prefix)
 
     @DeveloperAPI
     def import_policy_model_from_h5(self,
