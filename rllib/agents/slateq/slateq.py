@@ -26,6 +26,7 @@ from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainOneStep
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -81,12 +82,10 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
-    "buffer_size": 50000,
+    "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "type": "LocalReplayBuffer",
-        # Take buffer_size for now.
-        # TODO : deprecate buffer_size and move the default here.
-        "capacity": None,
+        "capacity": 50000,
     },
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.

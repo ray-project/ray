@@ -16,6 +16,7 @@ from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
@@ -46,12 +47,10 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         "min_q_weight": 5.0,
         # Replay buffer should be larger or equal the size of the offline
         # dataset.
-        "buffer_size": int(1e6),
+        "buffer_size": DEPRECATED_VALUE,
         "replay_buffer_config": {
             "type": "LocalReplayBuffer",
-            # Take buffer_size for now.
-            # TODO : deprecate buffer_size and move the default here.
-            "capacity": None,
+            "capacity": int(1e6),
         },
     })
 # __sphinx_doc_end__

@@ -730,14 +730,16 @@ class Trainer(Trainable):
             # DistributedReplayBuffer coming soon.
             return None
 
-        capacity = replay_buffer_config["capacity"]
-        if not capacity and "buffer_size" in config:
+        capacity = config.get("buffer_size", DEPRECATED_VALUE)
+        if capacity != DEPRECATED_VALUE:
             # Print a deprecation warning.
             deprecation_warning(
                 old="config['buffer_size']",
                 new="config['replay_buffer_config']['capacity']",
                 error=False)
-            capacity = config["buffer_size"]
+        else:
+            # Get capacity out of replay_buffer_config.
+            capacity = replay_buffer_config["capacity"]
 
         if config.get("prioritized_replay"):
             prio_args = {
