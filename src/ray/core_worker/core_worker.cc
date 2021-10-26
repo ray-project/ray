@@ -85,7 +85,7 @@ void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
 }
 
 void CoreWorkerProcess::Shutdown() {
-  RAY_LOG(INFO) << "Shutdown. Core worker process will be deleted";
+  RAY_LOG(DEBUG) << "Shutdown. Core worker process will be deleted";
   if (!core_worker_process) {
     return;
   }
@@ -291,14 +291,10 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
   EnsureInitialized();
-  RAY_LOG(INFO) << "1";
   if (core_worker_process->options_.num_workers == 1) {
-    RAY_LOG(INFO) << "2";
     RAY_CHECK(core_worker_process->GetGlobalWorker()->GetWorkerID() == worker_id);
-    RAY_LOG(INFO) << "3";
     return;
   }
-  RAY_LOG(INFO) << "4";
   current_core_worker_ = core_worker_process->GetWorker(worker_id);
 }
 
@@ -360,7 +356,7 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
       worker = core_worker_process->CreateWorker();
     }
     worker->RunTaskExecutionLoop();
-    RAY_LOG(INFO) << "Task execution loop terminated";
+    RAY_LOG(DEBUG) << "Task execution loop terminated. Removing the global worker.";
     core_worker_process->RemoveWorker(worker);
   } else {
     std::vector<std::thread> worker_threads;
@@ -370,7 +366,7 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
         auto worker = core_worker_process->CreateWorker();
         worker->RunTaskExecutionLoop();
         RAY_LOG(INFO) << "Task execution loop terminated for a thread "
-                      << std::to_string(i);
+                      << std::to_string(i) << ". Removing a worker.";
         core_worker_process->RemoveWorker(worker);
       });
     }

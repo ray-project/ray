@@ -365,8 +365,10 @@ class BoundedExecutor {
     });
   }
 
+  /// Stop the thread pool.
   void Stop() { pool_.stop(); }
 
+  /// Join the thread pool.
   void Join() { pool_.join(); }
 
  private:
@@ -426,11 +428,16 @@ class PoolManager final {
     return default_thread_pool_;
   }
 
+  /// Stop and join the thread pools that the pool manager owns.
   void Stop() {
     if (default_thread_pool_) {
-      RAY_LOG(INFO) << "Thread pool stopped";
+      RAY_LOG(DEBUG) << "Default pool is stopping.";
       default_thread_pool_->Stop();
+      RAY_LOG(INFO) << "Default pool is joining. If the 'Default pool is joined.' "
+                       "message is not printed after this, the worker is probably "
+                       "hanging because the actor task is running an infinite loop.";
       default_thread_pool_->Join();
+      RAY_LOG(INFO) << "Default pool is joined.";
     }
 
     for (const auto &it : name_to_thread_pool_index_) {
