@@ -290,9 +290,10 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
     const std::shared_ptr<GcsPlacementGroup> &placement_group) {
   if (placement_group->IsNeedReschedule()) {
     RAY_LOG(DEBUG) << "The placement group " << placement_group->GetPlacementGroupID() << " received resize request when it was scheduling, so we need to reschedule it.";
-    AddToPendingQueue(std::move(placement_group), 0);
-    // Continue scheduling it.
+    // Mark the current scheduling done and reschedule it.
     // TODO(@clay4444): We should clear the previous scheduling decision info in some cases, for instance, we selected an exactly suitable node in strict pack strategy, update this later.
+    MarkSchedulingDone();
+    AddToPendingQueue(placement_group, 0);
     SchedulePendingPlacementGroups();
     placement_group->MarkRescheduleDone();
     return;

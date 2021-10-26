@@ -738,15 +738,19 @@ TEST_F(GcsPlacementGroupManagerTest, TestAddBundlesWhenScheduling) {
   // Invoke the successful callback, it should be rescheduled immediately instead of transforming into `UPDATING` state!
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::UPDATING);
-  // WaitForExpectedPgCount(1);
-  // mock_placement_group_scheduler_->placement_groups_.clear();
-  // AddBundlesForPlacementGroup(placement_group->GetPlacementGroupID(), add_bundles_request);
-  // WaitForExpectedPgCount(0);
-  // ASSERT_EQ(placement_group->GetBundles().size(), 8);
-  // // Re-invoke the successful callback, it will re-execute the schedule.
-  // gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
-  // ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::UPDATING);
-  // WaitForExpectedPgCount(1);
+  WaitForExpectedPgCount(1);
+  mock_placement_group_scheduler_->placement_groups_.clear();
+  AddBundlesForPlacementGroup(placement_group->GetPlacementGroupID(), add_bundles_request);
+  WaitForExpectedPgCount(0);
+  ASSERT_EQ(placement_group->GetBundles().size(), 8);
+  // Re-invoke the successful callback, it will re-execute the schedule.
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::UPDATING);
+  WaitForExpectedPgCount(1);
+  mock_placement_group_scheduler_->placement_groups_.clear();
+  // Successful created eventually.
+  OnPlacementGroupCreationSuccess(placement_group);
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
 }
 
 }  // namespace gcs
