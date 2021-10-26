@@ -273,7 +273,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     int count = 0;
     for (const auto &pair : task_manager_.tasks_to_dispatch_) {
       for (const auto &work : pair.second) {
-        if (work->status == WorkStatus::WAITING_FOR_WORKER) {
+        if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
           count++;
         }
       }

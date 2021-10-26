@@ -187,6 +187,11 @@ class MockWorker : public WorkerInterface {
     return nullptr;
   }
 
+  bool IsAvailableForScheduling() const {
+    RAY_CHECK(false) << "Method unused";
+    return true;
+  }
+
  protected:
   void SetStartupToken(StartupToken startup_token) {
     RAY_CHECK(false) << "Method unused";

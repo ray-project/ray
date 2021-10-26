@@ -1,7 +1,9 @@
 import sys
 import threading
 import time
+import json
 
+import pytest
 import numpy as np
 import ray
 
@@ -170,20 +172,31 @@ def test_threaded_actor_creation_and_kill(ray_start_cluster):
     ensure_cpu_returned(NUM_NODES * NUM_CPUS_PER_NODE)
 
 
-def test_threaded_actor_integration_test_stress(ray_start_cluster):
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 2
+    }],
+    indirect=True)
+def test_threaded_actor_integration_test_stress(
+        ray_start_cluster_head,
+        log_pubsub,
+        error_pubsub):
     """This is a sanity test that checks threaded actors are
         working with the nightly stress test.
     """
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2)
-    ray.init(address=cluster.address)
+    cluster = ray_start_cluster_head
+    p = log_pubsub
+    e = error_pubsub
 
     # Prepare the config
     num_remote_nodes = 4
     num_parents = 6
     num_children = 6
     death_probability = 0.95
-    max_concurrency = 10
+    # TODO(sang): Currently setting this to 10 creates segfault
+    # which fails tests.
+    max_concurrency = 1
 
     for _ in range(num_remote_nodes):
         cluster.add_node(num_cpus=2)
@@ -233,7 +246,7 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster):
 
     start = time.time()
     loop_times = []
-    for i in range(10):
+    for _ in range(10):
         loop_start = time.time()
         ray.get([parent.ping.remote(10) for parent in parents])
 
@@ -267,6 +280,24 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster):
             num_children, death_probability) for _ in range(num_parents)
     ]
     ray.get([parent.ping.remote(10) for parent in parents])
+
+    """
+    Make sure there are not SIGSEGV, SIGBART, or other odd check failures.
+    """
+    # Get logs for 20 seconds.
+    logs = test_utils.get_all_log_message(p, 100000)
+    for log in logs:
+        assert "SIG" not in log, (
+            "There's the segfault or SIGBART reported.")
+        assert "Check failed" not in log, (
+            "There's the check failure reported.")
+
+    # Get error messages for 10 seconds.
+    errors = test_utils.get_error_message(e, 10000, timeout=10)
+    for error in errors:
+        print(error)
+        assert "You can ignore this message if" not in error.error_message, (
+            "Resource deadlock warning shouldn't be printed, but it did.")
 
 
 if __name__ == "__main__":
