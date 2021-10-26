@@ -12,7 +12,7 @@ import pytest
 from ray.experimental.internal_kv import (_internal_kv_del,
                                           _internal_kv_exists)
 from ray._private.runtime_env.packaging import (
-    _dir_travel, get_uri_for_directory, _get_excludes, _get_local_path,
+    _dir_travel, get_uri_for_directory, _get_excludes,
     upload_package_if_needed)
 
 

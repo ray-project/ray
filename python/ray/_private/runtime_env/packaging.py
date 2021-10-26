@@ -206,7 +206,8 @@ def _zip_directory(directory: str,
                 file_size = path.stat().st_size
                 if file_size >= FILE_SIZE_WARNING:
                     logger.warning(
-                        f"File {path} is very large ({_mib_string(file_size)}). "
+                        f"File {path} is very large "
+                        f"({_mib_string(file_size)}). "
                         "Consider excluding this file using 'excludes'.")
                 to_path = path.relative_to(dir_path)
                 if include_parent_dir:
