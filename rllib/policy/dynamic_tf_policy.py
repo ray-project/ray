@@ -36,16 +36,6 @@ class DynamicTFPolicy(TFPolicy):
     Do not sub-class this class directly (neither should you sub-class
     TFPolicy), but rather use rllib.policy.tf_policy_template.build_tf_policy
     to generate your custom tf (graph-mode or eager) Policy classes.
-
-    Initialization of this class occurs in two phases.
-
-    Phase 1: The model is created and model variables are initialized.
-    Phase 2: A fake batch of data is created, sent to the trajectory
-        postprocessor, and then used to create placeholders for the loss
-        function. The loss and stats functions are initialized with these
-        placeholders.
-
-    Initialization defines the static graph.
     """
 
     @DeveloperAPI
@@ -81,6 +71,16 @@ class DynamicTFPolicy(TFPolicy):
                                                           int]] = None,
             obs_include_prev_action_reward=DEPRECATED_VALUE):
         """Initializes a DynamicTFPolicy instance.
+
+        Initialization oxf this class occurs in two phases and defines the
+        static graph.
+
+        Phase 1: The model is created and model variables are initialized.
+
+        Phase 2: A fake batch of data is created, sent to the trajectory
+        postprocessor, and then used to create placeholders for the loss
+        function. The loss and stats functions are initialized with these
+        placeholders.
 
         Args:
             observation_space: Observation space of the policy.

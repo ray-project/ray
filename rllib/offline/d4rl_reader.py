@@ -20,8 +20,8 @@ class D4RLReader(InputReader):
         """Initialize a D4RLReader.
 
         Args:
-            inputs (str): String corresponding to D4RL environment name
-            ioctx (IOContext): Current IO context object.
+            inputs: String corresponding to D4RL environment name
+            ioctx: Current IO context object.
         """
         import d4rl
         self.env = gym.make(inputs)

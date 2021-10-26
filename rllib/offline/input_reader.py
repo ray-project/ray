@@ -2,8 +2,9 @@ from abc import ABCMeta, abstractmethod
 import logging
 import numpy as np
 import threading
+from typing import Union
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 from typing import Dict, List
@@ -16,15 +17,16 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI
 class InputReader(metaclass=ABCMeta):
-    """Input object for loading experiences in policy evaluation."""
+    """API for collecting and returning experiences during policy evaluation.
+    """
 
     @abstractmethod
     @PublicAPI
-    def next(self):
+    def next(self) -> Union[SampleBatch, MultiAgentBatch]:
         """Returns the next batch of experiences read.
 
         Returns:
-            Union[SampleBatch, MultiAgentBatch]: The experience read.
+            The experience read.
         """
         raise NotImplementedError
 
@@ -40,7 +42,7 @@ class InputReader(metaclass=ABCMeta):
         reader repeatedly to feed the TensorFlow queue.
 
         Args:
-            queue_size (int): Max elements to allow in the TF queue.
+            queue_size: Max elements to allow in the TF queue.
 
         Example:
             >>> class MyModel(rllib.model.Model):
@@ -56,7 +58,7 @@ class InputReader(metaclass=ABCMeta):
         You can find a runnable version of this in examples/custom_loss.py.
 
         Returns:
-            dict of Tensors, one for each column of the read SampleBatch.
+            Dict of Tensors, one for each column of the read SampleBatch.
         """
 
         if hasattr(self, "_queue_runner"):
