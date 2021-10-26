@@ -201,17 +201,20 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
 
 @ray.remote(num_cpus=0)
 class _DesignatedBlockOwner:
-    pass
+    def ping(self):
+        return "ok"
 
 
 def _get_or_create_block_owner_actor() -> ray.actor.ActorHandle:
     name = "datasets_global_block_owner"
     namespace = "datasets_global_namespace"
     try:
-        return ray.get_actor(name=name, namespace=namespace)
+        actor = ray.get_actor(name=name, namespace=namespace)
     except ValueError:
-        return _DesignatedBlockOwner.options(
+        actor = _DesignatedBlockOwner.options(
             name=name, namespace=namespace, lifetime="detached").remote()
+    ray.get(actor.ping.remote())
+    return actor
 
 
 class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
