@@ -101,6 +101,9 @@ class GcsPlacementGroup {
   /// Marking this placement group requires rescheduling.
   void MarkNeedReschedule() { need_reschedule_ = true; };
 
+  /// Marking this placement group reschedule done.
+  void MarkRescheduleDone() { need_reschedule_ = false; };
+
   /// Check whether this placement group needs reschedule or not.
   bool IsNeedReschedule() { return need_reschedule_; }
 

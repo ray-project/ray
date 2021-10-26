@@ -252,6 +252,10 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group, ExponentialBackOff backoff,
     bool is_feasible) {
+  if (placement_group->IsNeedReschedule()) {
+    // Cancel the reschedule mark!
+    placement_group->MarkRescheduleDone(); 
+  }
   RAY_LOG(DEBUG) << "Failed to create placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
 
@@ -285,7 +289,10 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   if (placement_group->IsNeedReschedule()) {
     RAY_LOG(DEBUG) << "The placement group " << placement_group->GetPlacementGroupID() << " received resize request when it was scheduling, so we need to reschedule it.";
     AddToPendingQueue(std::move(placement_group), 0);
+    // Continue scheduling it.
+    // TODO(@clay4444): We should clear the previous scheduling decision info in some cases, for instance, we selected an exactly suitable node in strict pack strategy, update this later.
     SchedulePendingPlacementGroups();
+    placement_group->MarkRescheduleDone();
     return;
   }
 
@@ -440,19 +447,20 @@ void GcsPlacementGroupManager::AddBundlesForPlacementGroup(
     return;
   }
   auto placement_group = placement_group_it->second;
+  placement_group->AddBundles(request);
+  placement_group->UpdateState(rpc::PlacementGroupTableData::UPDATING);
   
   if (IsSchedulingInProgress(placement_group_id)) {
     // Mark that it needs to be rescheduled if the placement group is scheduling.
     // so that it can be rescheduled when the successful callback is invoked.
     placement_group->MarkNeedReschedule();
+    // Don't put it into the pending queue if it is scheduling right now cause it will be rescheduled when the finished callback is invoked.
   }
 
-  placement_group->AddBundles(request);
-  placement_group->UpdateState(rpc::PlacementGroupTableData::UPDATING);
-
-  // Put it into the pending queue so that we can reschedule it next time.
-  AddToPendingQueue(placement_group, 0);
-
+  if (placement_group->GetState() == rpc::PlacementGroupTableData::CREATED) {
+    AddToPendingQueue(placement_group, 0);
+  }
+  
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
       [this, placement_group_id, placement_group, callback, request](Status status) {
