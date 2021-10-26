@@ -271,7 +271,7 @@ def test_actor_repr_in_traceback(ray_start_regular):
         assert label_dict["repr"] == actor_repr
 
 
-def test_unpickleable_stacktrace():
+def test_unpickleable_stacktrace(shutdown_only):
     expected_output = """System error: Failed to unpickle serialized exception
 traceback: Traceback (most recent call last):
   File "FILE", line ZZ, in from_bytes
