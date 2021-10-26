@@ -55,12 +55,12 @@ class ClusterTaskManagerInterface {
   /// \param readyIds: The tasks which are now ready to be dispatched.
   virtual void TasksUnblocked(const std::vector<TaskID> &ready_ids) = 0;
 
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// Populate the relevant parts of the resources. This is intended for
+  /// sending resources usage to gcs. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
-  /// fields used.
+  /// \param data the data to be filled.
+  /// \param last_reported_resources used to check if resources are changed.
   virtual void FillResourceUsage(rpc::ResourcesData &data,
                                  const SchedulingResources &last_reported_resources) = 0;
 

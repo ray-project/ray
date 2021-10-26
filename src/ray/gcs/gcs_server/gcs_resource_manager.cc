@@ -270,18 +270,17 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     node_resource_usages_[node_id] = *resources_data;
   } else {
     if (resources.resources_total_size() > 0) {
-      (*iter->second.mutable_resources_total()) = resources.resources_total();
+      *iter->second.mutable_resources_total() = resources.resources_total();
     }
     if (resources.resources_available_changed()) {
-      (*iter->second.mutable_resources_available()) = resources.resources_available();
+      *iter->second.mutable_resources_available() = resources.resources_available();
     }
     if (resources.resource_load_changed()) {
-      (*iter->second.mutable_resource_load()) = resources.resource_load();
-      (*iter->second.mutable_resource_load_by_shape()) =
-          resources.resource_load_by_shape();
+      *iter->second.mutable_resource_load() = resources.resource_load();
+      *iter->second.mutable_resource_load_by_shape() = resources.resource_load_by_shape();
     }
     if (resources.resources_normal_task_changed()) {
-      (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
+      *iter->second.mutable_resources_normal_task() = resources.resources_normal_task();
     }
     if (resources.cluster_full_of_actors_detected_changed()) {
       iter->second.set_cluster_full_of_actors_detected(

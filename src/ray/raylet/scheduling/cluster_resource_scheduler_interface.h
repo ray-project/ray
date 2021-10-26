@@ -43,6 +43,8 @@ class ClusterResourceSchedulerInterface {
   virtual bool UpdateNode(const std::string &node_id_string,
                           const rpc::ResourcesData &resource_data) = 0;
 
+  /// Update node resources. The updated resources can be total or partial.
+  ///
   /// \param node_id_string Node whose resource we want to update.
   /// \param resources Resources which we want to update.
   virtual void UpdateResources(
@@ -63,12 +65,12 @@ class ClusterResourceSchedulerInterface {
   virtual void UpdateLastResourceUsage(
       const std::shared_ptr<SchedulingResources> gcs_resources) {}
 
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// Populate the relevant parts of the resources. This is intended for
+  /// sending resources usage to gcs. In particular, this should fill in
   /// resources_available and resources_total.
   ///
-  /// \param Output parameter. `resources_available` and `resources_total` are the only
-  /// fields used.
+  /// \param data the data to be filled.
+  /// \param last_reported_resources used to check if resources are changed.
   virtual void FillResourceUsage(rpc::ResourcesData &data,
                                  const SchedulingResources &last_reported_resources) = 0;
 

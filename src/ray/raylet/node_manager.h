@@ -588,12 +588,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
 
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
-  /// resource_load and resource_load_by_shape.
+  /// Populate the relevant parts of the resources. This is intended for
+  /// sending resources usage to gcs.
   ///
-  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
-  /// fields used.
+  /// \param data the data to be filled.
   void FillResourceUsage(rpc::ResourcesData &data);
 
   /// Disconnect a client.

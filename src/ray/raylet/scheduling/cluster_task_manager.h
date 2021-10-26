@@ -144,12 +144,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param Output parameter.
   void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const override;
 
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending resource usage of raylet to gcs. In particular, this should fill in
+  /// Populate the relevant parts of the resources. This is intended for
+  /// sending resources usage to gcs. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
-  /// fields used.
+  /// \param data the data to be filled.
+  /// \param last_reported_resources used to check if resources are changed.
   void FillResourceUsage(rpc::ResourcesData &data,
                          const SchedulingResources &last_reported_resources) override;
 

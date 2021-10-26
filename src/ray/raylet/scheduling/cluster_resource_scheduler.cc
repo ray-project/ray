@@ -1009,16 +1009,16 @@ void ClusterResourceScheduler::FillResourceUsage(
     capacity.available = FixedPoint(capacity.total.Double() - used);
   }
 
-  bool avail_changed = !resources.AvailableEquals(last_report_node_resources);
+  bool available_changed = !resources.AvailableEquals(last_report_node_resources);
   bool total_changed = !resources.TotalEquals(last_report_node_resources);
 
-  resources_data.set_resources_available_changed(avail_changed);
+  resources_data.set_resources_available_changed(available_changed);
 
   for (int i = 0; i < PredefinedResources_MAX; i++) {
     const auto &label = ResourceEnumToString((PredefinedResources)i);
     const auto &capacity = resources.predefined_resources[i];
     // Note: available may be negative, but only report positive to GCS.
-    if (avail_changed && capacity.available > 0) {
+    if (available_changed && capacity.available > 0) {
       (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
@@ -1031,7 +1031,7 @@ void ClusterResourceScheduler::FillResourceUsage(
     const auto &capacity = it.second;
     const auto &label = string_to_int_map_.Get(custom_id);
     // Note: available may be negative, but only report positive to GCS.
-    if (avail_changed && capacity.available > 0) {
+    if (available_changed && capacity.available > 0) {
       (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }

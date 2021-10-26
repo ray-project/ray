@@ -75,9 +75,8 @@ void GcsResourceReportPoller::HandleNodeAdded(const rpc::GcsNodeInfo &node_info)
   address.set_ip_address(node_info.node_manager_address());
   address.set_port(node_info.node_manager_port());
 
-  auto state =
-      std::make_shared<PullState>(NodeID::FromBinary(node_info.node_id()),
-                                  std::move(address), -1, get_current_time_milli_());
+  auto state = std::make_shared<PullState>(NodeID::FromBinary(node_info.node_id()),
+                                           std::move(address), -1);
 
   const auto &node_id = state->node_id;
 
@@ -126,7 +125,7 @@ void GcsResourceReportPoller::TryPullResourceReport() {
 void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState> state) {
   inflight_pulls_++;
 
-  const bool &initial_report = state->last_pull_time == -1 ? true : false;
+  const bool &initial_report = state->next_pull_time == -1 ? true : false;
   request_report_(
       state->address, raylet_client_pool_, initial_report,
       [this, state](const Status &status, const rpc::RequestResourceReportReply &reply) {
@@ -142,8 +141,8 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
           if (status.ToString() == "Resources not changed") {
             RAY_LOG(DEBUG) << "Resource of raylet " << state->node_id << " unchanged.";
           } else {
-            RAY_LOG(INFO) << "Couldn't get resource request from raylet "
-                          << state->node_id << ": " << status.ToString();
+            RAY_LOG(ERROR) << "Couldn't get resource request from raylet "
+                           << state->node_id << ": " << status.ToString();
           }
         }
         polling_service_.post([this, state]() { NodeResourceReportReceived(state); });
@@ -157,7 +156,6 @@ void GcsResourceReportPoller::NodeResourceReportReceived(
 
   // Schedule the next pull. The scheduling `TryPullResourceReport` loop will handle
   // validating that this node is still in the cluster.
-  state->last_pull_time = state->next_pull_time;
   state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
   to_pull_queue_.push_back(state);
 

@@ -359,12 +359,12 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   // resources availabile at that node is 0.2 + 0.3 + 0.1 + 1. = 1.6
   void UpdateLocalAvailableResourcesFromResourceInstances();
 
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending resource usage of raylet to gcs. In particular, this should fill in
+  /// Populate the relevant parts of the resources. This is intended for
+  /// sending resources usage to gcs. In particular, this should fill in
   /// resources_available and resources_total.
   ///
-  /// \param Output parameter. `resources_available` and `resources_total` are the only
-  /// fields used.
+  /// \param data the data to be filled.
+  /// \param last_reported_resources used to check if resources are changed.
   void FillResourceUsage(rpc::ResourcesData &resources_data,
                          const SchedulingResources &last_report_resources) override;
 
@@ -448,7 +448,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
 
-  // Whether object pulls was queued in last report.
+  // Whether object pulls was queued in last report. Used to check whether
+  // the `object_pulls_queued` changed.
   bool last_report_object_pulls_queued_;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
