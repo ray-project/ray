@@ -1120,8 +1120,12 @@ if __name__ == "__main__":
             "no_sync_down", "ssh_sync", "durable_upload", "no_durable_upload"
         ])
     parser.add_argument("--bucket", type=str, default=None)
+    parser.add_argument(
+        "--cpus-per-trial", required=False, default=2, type=int)
 
     args = parser.parse_args()
+
+    os.environ["TUNE_NUM_CPUS_PER_TRIAL"] = str(args.cpus_per_trial)
 
     ray.init()
 

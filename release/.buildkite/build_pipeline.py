@@ -146,11 +146,11 @@ NIGHTLY_TESTS = {
         "sgd_gpu",
     ],
     "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
-        "no_sync_down",
-        "ssh_sync",
-        "durable_upload",
+        "aws_no_sync_down",
+        "aws_ssh_sync",
+        "aws_durable_upload",
         # Disabled until #19637 is fixed
-        # "no_durable_upload",
+        # "aws_no_durable_upload",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "bookkeeping_overhead",
@@ -240,7 +240,15 @@ MANUAL_TESTS = {
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("serve"),
         SmokeTest("serve_failure"),
-    ]
+    ],
+    # Dev
+    "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
+        "gcp_k8s_no_sync_down",
+        "gcp_k8s_ssh_sync",
+        "gcp_k8s_durable_upload",
+        # Disabled until #19637 is fixed
+        # "gcp_k8s_no_durable_upload",
+    ],
 }
 
 # This test suite holds "user" tests to test important user workflows

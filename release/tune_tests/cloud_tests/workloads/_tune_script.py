@@ -47,6 +47,8 @@ def run_tune(
         experiment_name: str = "cloud_test",
         indicator_file: str = "/tmp/tune_cloud_indicator",
 ):
+    num_cpus_per_trial = int(os.environ.get("TUNE_NUM_CPUS_PER_TRIAL", "2"))
+
     if durable:
         trainable = tune.durable(train)
     else:
@@ -70,7 +72,7 @@ def run_tune(
             sync_on_checkpoint=True,
         ),
         keep_checkpoints_num=2,
-        resources_per_trial={"cpu": 2},
+        resources_per_trial={"cpu": num_cpus_per_trial},
         callbacks=[IndicatorCallback(indicator_file=indicator_file)],
         verbose=2)
 
