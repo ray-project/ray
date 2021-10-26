@@ -388,7 +388,7 @@ def build_eager_tf_policy(
                 )
 
             self._is_training = True
-            postprocessed_batch["is_training"] = True
+            postprocessed_batch.is_training = True
             stats = self._learn_on_batch_eager(postprocessed_batch)
             stats.update({"custom_metrics": learn_stats})
             return stats
@@ -412,7 +412,7 @@ def build_eager_tf_policy(
             )
 
             self._is_training = True
-            samples["is_training"] = True
+            samples.is_training = True
             return self._compute_gradients_eager(samples)
 
         @convert_eager_inputs

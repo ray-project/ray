@@ -115,6 +115,13 @@ message ReleaseUnusedWorkersRequest {
 message ReleaseUnusedWorkersReply {
 }
 
+message ShutdownRayletRequest {
+  /// Whether the shutdown request is graceful or not.
+  bool graceful = 1;
+}
+
+message ShutdownRayletReply {}
+
 message CancelWorkerLeaseRequest {
   // The task to cancel.
   bytes task_id = 1;
@@ -283,6 +290,8 @@ service NodeManagerService {
   // are still needed. And Raylet will release other leased workers.
   rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
       returns (ReleaseUnusedWorkersReply);
+  /// Shutdown the raylet (node manager) gracefully.
+  rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
   // Request a raylet to lock resources for a bundle.
   // This is the first phase of 2PC protocol for atomic placement group creation.
   rpc PrepareBundleResources(PrepareBundleResourcesRequest)

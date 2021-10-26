@@ -22,8 +22,7 @@
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
 /// Whether to enable Ray event stats collection.
-/// TODO(ekl) this seems to segfault Java unit tests when on by default?
-RAY_CONFIG(bool, event_stats, false)
+RAY_CONFIG(bool, event_stats, true)
 
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
@@ -97,11 +96,6 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// upfront and can slow down Ray startup.
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
-
-/// Whether to use the hybrid scheduling policy, or one of the legacy spillback
-/// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
-/// then spread via weighted (by critical resource usage).
-RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
