@@ -207,13 +207,11 @@ class ParsedRuntimeEnv(dict):
     All options in the resulting dictionary will have non-None values.
 
     Currently supported options:
-        py_modules (List[URL]): List of URIs (either in the GCS or external
+        py_modules (List[URI]): List of URIs (either in the GCS or external
             storage), each of which is a zip file that will be unpacked and
             inserted into the PYTHONPATH of the workers.
-
         working_dir (URI): URI (either in the GCS or external storage) of a zip
             file that will be unpacked in the directory of each task/actor.
-
         pip (List[str] | str): Either a list of pip packages, or a string
             containing the path to a pip requirements.txt file.
         conda (dict | str): Either the conda YAML config, the name of a

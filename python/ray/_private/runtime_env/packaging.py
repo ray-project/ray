@@ -78,32 +78,6 @@ def _dir_travel(
         excludes.pop()
 
 
-def _zip_module(root: Path,
-                relative_path: Path,
-                excludes: Optional[Callable],
-                zip_handler: ZipFile,
-                include_parent_dir: bool = False,
-                logger: Optional[logging.Logger] = default_logger) -> None:
-    """Go through all files and zip them into a zip file."""
-
-    def handler(path: Path):
-        # Pack this path if it's an empty directory or it's a file.
-        if path.is_dir() and next(path.iterdir(),
-                                  None) is None or path.is_file():
-            file_size = path.stat().st_size
-            if file_size >= FILE_SIZE_WARNING:
-                logger.warning(
-                    f"File {path} is very large ({_mib_string(file_size)}). "
-                    "Consider excluding this file using 'excludes'.")
-            to_path = path.relative_to(relative_path)
-            if include_parent_dir:
-                to_path = root.name / to_path
-            zip_handler.write(path, to_path)
-
-    excludes = [] if excludes is None else [excludes]
-    _dir_travel(root, excludes, handler, logger=logger)
-
-
 def _hash_directory(
         root: Path,
         relative_path: Path,
@@ -214,22 +188,33 @@ def _zip_directory(directory: str,
                    logger: Optional[logging.Logger] = default_logger) -> None:
     """Zip the target directory and write it to the output_path.
 
-    Args:
         directory (str): The directory to zip.
         excludes (List(str)): The directories or file to be excluded.
         output_path (str): The output path for the zip file.
+        include_parent_dir: If true, includes the top-level directory as a
+            directory inside the zip file.
     """
     pkg_file = Path(output_path).absolute()
     with ZipFile(pkg_file, "w") as zip_handler:
-        # Put all files in /path/directory into the zip file.
-        working_path = Path(directory).absolute()
-        _zip_module(
-            working_path,
-            working_path,
-            _get_excludes(working_path, excludes),
-            zip_handler,
-            include_parent_dir=include_parent_dir,
-            logger=logger)
+        # Put all files in the directory into the zip file.
+        dir_path = Path(directory).absolute()
+
+        def handler(path: Path):
+            # Pack this path if it's an empty directory or it's a file.
+            if path.is_dir() and next(path.iterdir(),
+                                      None) is None or path.is_file():
+                file_size = path.stat().st_size
+                if file_size >= FILE_SIZE_WARNING:
+                    logger.warning(
+                        f"File {path} is very large ({_mib_string(file_size)}). "
+                        "Consider excluding this file using 'excludes'.")
+                to_path = path.relative_to(dir_path)
+                if include_parent_dir:
+                    to_path = dir_path.name / to_path
+                zip_handler.write(path, to_path)
+
+        excludes = [_get_excludes(dir_path, excludes)]
+        _dir_travel(dir_path, excludes, handler, logger=logger)
 
 
 def _package_exists(pkg_uri: str) -> bool:
@@ -302,6 +287,14 @@ def upload_package_if_needed(pkg_uri: str,
     base_directory.
 
     If the package already exists in storage, this is a no-op.
+
+    Args:
+        pkg_uri: URI of the package to upload.
+        base_directory: Directory where package files are stored.
+        directory: Directory to be uploaded.
+        include_parent_dir: If true, includes the top-level directory as a
+            directory inside the zip file.
+        excludes: List specifying files to exclude.
     """
     if excludes is None:
         excludes = []
@@ -309,38 +302,36 @@ def upload_package_if_needed(pkg_uri: str,
     if logger is None:
         logger = default_logger
 
-    created, uploaded = False, False
-    if not _package_exists(pkg_uri):
-        pkg_file = Path(_get_local_path(base_directory, pkg_uri))
-        if not pkg_file.exists():
-            created = True
-            logger.info(f"Creating a new package for directory {directory}.")
-            _zip_directory(
-                directory,
-                excludes,
-                pkg_file,
-                include_parent_dir=include_parent_dir,
-                logger=logger)
+    if _package_exists(pkg_uri):
+        return False
 
-        # Push the data to remote storage
-        protocol, pkg_name = parse_uri(pkg_uri)
-        data = Path(pkg_file).read_bytes()
-        logger.info(f"Pushing package {pkg_uri} ({_mib_string(len(data))}).")
-        if protocol == Protocol.GCS:
-            return _store_package_in_gcs(pkg_uri, data)
-        elif protocol == Protocol.S3:
-            raise RuntimeError(
-                "push_package should not be called with s3 path.")
-        else:
-            raise NotImplementedError(f"Protocol {protocol} is not supported")
+    pkg_file = Path(_get_local_path(base_directory, pkg_uri))
+    if not pkg_file.exists():
+        logger.info(f"Creating a new package for directory {directory}.")
+        _zip_directory(
+            directory,
+            excludes,
+            pkg_file,
+            include_parent_dir=include_parent_dir,
+            logger=logger)
 
-        logger.info(f"{pkg_uri} pushed successfully.")
+    # Push the data to remote storage
+    protocol, pkg_name = parse_uri(pkg_uri)
+    data = Path(pkg_file).read_bytes()
+    logger.info(f"Pushing package {pkg_uri} ({_mib_string(len(data))}).")
+    if protocol == Protocol.GCS:
+        _store_package_in_gcs(pkg_uri, data)
+    elif protocol == Protocol.S3:
+        raise RuntimeError("push_package should not be called with s3 path.")
+    else:
+        raise NotImplementedError(f"Protocol {protocol} is not supported")
 
-        uploaded = True
-        # Remove the local file to avoid accumulating temporary zip files.
-        pkg_file.unlink()
+    logger.info(f"{pkg_uri} pushed successfully.")
 
-    return created, uploaded
+    # Remove the local file to avoid accumulating temporary zip files.
+    pkg_file.unlink()
+
+    return True
 
 
 def download_and_unpack_package(

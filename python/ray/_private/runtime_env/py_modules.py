@@ -44,6 +44,10 @@ def upload_py_modules_if_needed(runtime_env: Dict[str, Any],
         if isinstance(module, str):
             module_path = module
         elif isinstance(module, ModuleType):
+            # NOTE(edoakes): Python allows some installed Python packages to
+            # be split into multiple directories. We could probably handle
+            # this, but it seems tricky & uncommon. If it's a problem for
+            # users, we can add this support on demand.
             if len(module.__path__) > 1:
                 raise ValueError("py_modules only supports modules whose "
                                  "__path__ has length 1.")
