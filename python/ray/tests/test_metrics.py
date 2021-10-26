@@ -134,11 +134,16 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
         # Make sure we can ping Prometheus endpoints.
         def test_prometheus_endpoint():
             response = requests.get(
-                "http://localhost:{}".format(metrics_export_port))
+                "http://localhost:{}".format(metrics_export_port),
+                # Fail the request early on if connection timeout
+                timeout=0.01)
             return response.status_code == 200
 
         assert wait_until_succeeded_without_exception(
-            test_prometheus_endpoint, (requests.exceptions.ConnectionError, ))
+            test_prometheus_endpoint,
+            (requests.exceptions.ConnectionError, ),
+            # The dashboard takes more than 2s to startup.
+            timeout_ms=5000)
 
 
 if __name__ == "__main__":

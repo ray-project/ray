@@ -158,7 +158,7 @@ def client_mode_convert_function(func_cls, in_args, in_kwargs, **kwargs):
     The common case for this is to transparently convert that RemoteFunction
     to a ClientRemoteFunction. This happens in circumstances where the
     RemoteFunction is declared early, in a library and only then is Ray used in
-    client mode -- nescessitating a conversion.
+    client mode -- necessitating a conversion.
     """
     from ray.util.client import ray
 

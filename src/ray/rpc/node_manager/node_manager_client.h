@@ -88,6 +88,9 @@ class NodeManagerWorkerClient
   /// Release unused workers.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedWorkers, grpc_client_, )
 
+  /// Shutdown the raylet gracefully.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ShutdownRaylet, grpc_client_, )
+
   /// Cancel a pending worker lease request.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
 

@@ -308,7 +308,7 @@ class MAMLLoss(object):
 
 
 def maml_loss(policy, model, dist_class, train_batch):
-    logits, state = model.from_batch(train_batch)
+    logits, state = model(train_batch)
     policy.cur_lr = policy.config["lr"]
 
     if policy.config["worker_index"]:
