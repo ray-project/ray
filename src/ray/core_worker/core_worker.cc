@@ -308,7 +308,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::GetGlobalWorker() {
   absl::ReaderMutexLock lock(&mutex_);
-  RAY_CHECK(global_worker_) << "global_worker_ must not be NULL";
   return global_worker_;
 }
 
