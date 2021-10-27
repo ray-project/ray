@@ -439,7 +439,7 @@ def send_local_file_to_remote_file(local_path: str, remote_path: str, ip: str):
         with open(path, "wb") as f:
             f.write(stream)
 
-    with open(local_path, "wb") as f:
+    with open(local_path, "rb") as f:
         stream = f.read()
 
     _remote_write = ray.remote(resources={f"node:{ip}": 0.01})(_write)
