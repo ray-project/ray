@@ -28,7 +28,7 @@ import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON
+from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
@@ -801,10 +801,10 @@ def init(
         if job_config is None:
             job_config = ray.job_config.JobConfig()
         job_config.set_runtime_env(runtime_env)
-    elif RAY_JOB_CONFIG_JSON in os.environ:
+    elif RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         # Set runtime_env in job_config if passed as env variable, such as
         # ray job submission with driver script executed in subprocess
-        job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON))
+        job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
         job_config = ray.job_config.JobConfig.from_json(job_config_json)
 
     # Convert hostnames to numerical IP address.

@@ -15,7 +15,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
 )
 from ray.dashboard.modules.job.data_types import JobStatus
-from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON
+from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
 
 class JobLogStorageClient:
@@ -85,7 +85,6 @@ class JobStatusStorageClient:
 
 def exec_cmd_logs_to_file(
     cmd: str,
-    runtime_env: Optional[Dict[str, Any]],
     stdout_file: str,
     stderr_file: str,
 ) -> int:
@@ -93,17 +92,11 @@ def exec_cmd_logs_to_file(
     Runs a command as a child process, streaming stderr & stdout to given
     log files.
     """
-    env = copy.deepcopy(os.environ)
-    if runtime_env:
-        env[RAY_JOB_CONFIG_JSON] = json.dumps({
-            "runtime_env": runtime_env
-        })
 
     with open(stdout_file, "a+") as stdout_in, open(stderr_file,
                                                     "a+") as stderr_in:
         child = subprocess.Popen(
             cmd,
-            env=env,
             shell=True,
             universal_newlines=True,
             stdout=stdout_in,
@@ -133,7 +126,7 @@ class JobSupervisor:
     def ready(self):
         pass
 
-    def run(self, cmd: str, runtime_env: Optional[Dict[str, Any]] = None):
+    def run(self, cmd: str):
         """Run the command, then exit afterwards.
 
         Should update state and logs.
@@ -146,10 +139,15 @@ class JobSupervisor:
         try:
             # 2) Run the command until it finishes, appending logs as it goes.
             # Set JobConfig for the child process (runtime_env, metadata).
-            #  - RAY_JOB_CONFIG_JSON={...}
+            #  - RAY_JOB_CONFIG_JSON_ENV_VAR={...}
+            os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps({
+                "runtime_env": ray.get_runtime_context().runtime_env
+            })
+
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
-            exit_code = exec_cmd_logs_to_file(cmd, runtime_env, stdout_path, stderr_path)
+
+            exit_code = exec_cmd_logs_to_file(cmd, stdout_path, stderr_path)
         finally:
             # 3) Once command finishes, update status to SUCCEEDED or FAILED.
             if exit_code == 0:
@@ -210,7 +208,7 @@ class JobManager:
             resources={
                 get_current_node_resource_key(): 0.001,
             },
-            # For now we ensure supervisor actor and driver script have same
+            # For now we assume supervisor actor and driver script have same
             # runtime_env.
             runtime_env=runtime_env,
         ).remote(job_id)
@@ -223,7 +221,7 @@ class JobManager:
             raise RuntimeError(f"Failed to start actor for job {job_id}.")
 
         # Kick off the job to run in the background.
-        supervisor.run.remote(entrypoint, runtime_env)
+        supervisor.run.remote(entrypoint)
 
         return job_id
 
