@@ -2,7 +2,6 @@ package io.ray.test;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
-import io.ray.runtime.config.RayConfig;
 import java.io.IOException;
 import java.util.NoSuchElementException;
 import java.util.concurrent.TimeUnit;
@@ -72,18 +71,7 @@ public class NamespaceTest {
   }
 
   private Process startDriverWithNamespace() throws IOException {
-    RayConfig rayConfig = TestUtils.getRuntime().getRayConfig();
-
-    ProcessBuilder builder =
-        new ProcessBuilder(
-            "java",
-            "-cp",
-            System.getProperty("java.class.path"),
-            "-Dray.address=" + rayConfig.getRedisAddress(),
-            "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
-            "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
-            "-Dray.raylet.node-manager-port=" + String.valueOf(rayConfig.getNodeManagerPort()),
-            NamespaceTest.class.getName());
+    ProcessBuilder builder = TestUtils.buildDriver(NamespaceTest.class, null);
     builder.redirectError(ProcessBuilder.Redirect.INHERIT);
     return builder.start();
   }
