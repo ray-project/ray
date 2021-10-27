@@ -5,6 +5,17 @@
 # The main reason that forced the Ray team to have Jenkings is
 # the travis limitation of two cores per environment.
 
+parameters:
+- name: ImageName
+  displayName: 'OS Image'
+  type: string
+  default: ubuntu-18.04
+  values:
+  - ubuntu-latest
+  - ubuntu-20.04
+  - ubuntu-18.04
+  - ubuntu-16.04
+
 name: $(BuildDefinitionName)_$(SourceBranchName)_$(BuildID)
 stages:
   - stage: RayBuild1
@@ -17,7 +28,7 @@ stages:
         strategy:
           matrix:
             linux_python36:
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -62,7 +73,7 @@ stages:
         strategy:
           matrix:
             linux_python36:
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -107,7 +118,7 @@ stages:
         strategy:
           matrix:
             linux_python36:
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -150,7 +161,7 @@ stages:
         strategy:
           matrix:
             linux_python36:
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -190,7 +201,7 @@ stages:
           matrix:
             linux_python36:
               # poolName: 'ADORayTests'
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -219,7 +230,7 @@ stages:
           matrix:
             linux_python36:
               # poolName: 'ADORayTests'
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -248,7 +259,7 @@ stages:
           matrix:
             linux_python36:
               # poolName: 'ADORayTests'
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -305,7 +316,7 @@ stages:
           matrix:
             python36:
               # poolName: 'ADORayTests'
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -437,7 +448,7 @@ stages:
         strategy:
           matrix:
             linux_python36:
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.7'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -468,7 +479,7 @@ stages:
         strategy:
           matrix:
             linux_python36:
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -495,7 +506,7 @@ stages:
         strategy:
           matrix:
             linux_python36:
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -522,7 +533,7 @@ stages:
         strategy:
           matrix:
             linux_python36:
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -552,7 +563,7 @@ stages:
           matrix:
             linux_python36:
               # poolName: 'ADORayTests'
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -581,7 +592,7 @@ stages:
           matrix:
             linux_python36:
               # poolName: 'ADORayTests'
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -610,7 +621,7 @@ stages:
           matrix:
             linux_python36:
               # poolName: 'ADORayTests'
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -639,7 +650,7 @@ stages:
           matrix:
             linux_python36:
               # poolName: 'ADORayTests'
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -671,7 +682,7 @@ stages:
         strategy:
           matrix:
             linux_python36:
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
@@ -723,7 +734,7 @@ stages:
         strategy:
           matrix:
             linux_python36:
-              imageName: 'ubuntu-16.04'
+              imageName: ${{ parameters.ImageName }}
               python.version: '3.6'
               bazel.outputRoot: $(Agent.TempDirectory)/_bazel_*
               TEST_TMPDIR: $(Agent.TempDirectory)
