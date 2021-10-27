@@ -11,8 +11,10 @@ from ray._private.runtime_env.packaging import (
 default_logger = logging.getLogger(__name__)
 
 
-def upload_working_dir_if_needed(runtime_env: Dict[str, Any],
-                                 scratch_dir: str) -> Dict[str, Any]:
+def upload_working_dir_if_needed(
+        runtime_env: Dict[str, Any],
+        scratch_dir: str,
+        logger: Optional[logging.Logger] = default_logger) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
 
     If the working_dir is already a URI, this is a no-op.
@@ -40,8 +42,8 @@ def upload_working_dir_if_needed(runtime_env: Dict[str, Any],
     # Remove excludes, it isn't relevant after the upload step.
     excludes = runtime_env.pop("excludes", None)
     working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
-    upload_package_if_needed(working_dir_uri, scratch_dir, working_dir,
-                             excludes)
+    upload_package_if_needed(
+        working_dir_uri, scratch_dir, working_dir, excludes, logger=logger)
     runtime_env["working_dir"] = working_dir_uri
     return runtime_env
 
