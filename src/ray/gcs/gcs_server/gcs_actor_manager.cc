@@ -712,7 +712,7 @@ void GcsActorManager::OnWorkerDead(
     const rpc::WorkerExitType disconnect_type,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   std::string message = absl::StrCat(
-      "Worker ", worker_id, " on node ", node_id,
+      "Worker ", worker_id.Hex(), " on node ", node_id.Hex(),
       " exits, type=", rpc::WorkerExitType_Name(disconnect_type),
       ", has creation_task_exception = ", (creation_task_exception != nullptr));
   if (creation_task_exception != nullptr) {
