@@ -157,12 +157,12 @@ public class ServeProtoUtil {
     return endpointSet.getEndpointsMap();
   }
 
-  public static DeploymentVersion parseDeploymentVersion(byte[] backendVersionBytes) {
-    if (backendVersionBytes == null) {
+  public static DeploymentVersion parseDeploymentVersion(byte[] deploymentVersionBytes) {
+    if (deploymentVersionBytes == null) {
       return null;
     }
     try {
-      return DeploymentVersion.parseFrom(backendVersionBytes);
+      return DeploymentVersion.parseFrom(deploymentVersionBytes);
     } catch (InvalidProtocolBufferException e) {
       throw new RayServeException("Failed to parse DeploymentVersion from protobuf bytes.", e);
     }

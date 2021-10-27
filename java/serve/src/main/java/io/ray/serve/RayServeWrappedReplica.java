@@ -28,7 +28,7 @@ public class RayServeWrappedReplica {
       String backendDef,
       byte[] initArgsbytes,
       byte[] backendConfigBytes,
-      byte[] backendVersionBytes,
+      byte[] deploymentVersionBytes,
       String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
@@ -58,7 +58,7 @@ public class RayServeWrappedReplica {
         new RayServeReplica(
             callable,
             backendConfig,
-            ServeProtoUtil.parseDeploymentVersion(backendVersionBytes),
+            ServeProtoUtil.parseDeploymentVersion(deploymentVersionBytes),
             optional.get());
   }
 
@@ -132,8 +132,8 @@ public class RayServeWrappedReplica {
   }
 
   public byte[] reconfigure(Object userConfig) {
-    DeploymentVersion backendVersion = backend.reconfigure(userConfig);
-    return backendVersion.toByteArray();
+    DeploymentVersion deploymentVersion = backend.reconfigure(userConfig);
+    return deploymentVersion.toByteArray();
   }
 
   public byte[] getVersion() {
