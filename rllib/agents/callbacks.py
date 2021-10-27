@@ -36,14 +36,9 @@ class DefaultCallbacks:
                 "a class extending rllib.agents.callbacks.DefaultCallbacks")
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
-    def on_episode_start(self,
-                         *,
-                         worker: "RolloutWorker",
-                         base_env: BaseEnv,
+    def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode,
-                         env_index: Optional[int] = None,
-                         **kwargs) -> None:
+                         episode: MultiAgentEpisode, **kwargs) -> None:
         """Callback run on the rollout worker before each episode starts.
 
         Args:
@@ -56,8 +51,6 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index: Obsoleted: The ID of the environment, which the
-                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -74,7 +67,6 @@ class DefaultCallbacks:
                         base_env: BaseEnv,
                         policies: Optional[Dict[PolicyID, Policy]] = None,
                         episode: MultiAgentEpisode,
-                        env_index: Optional[int] = None,
                         **kwargs) -> None:
         """Runs on each episode step.
 
@@ -89,8 +81,6 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index (EnvID): Obsoleted: The ID of the environment, which the
-                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -100,14 +90,9 @@ class DefaultCallbacks:
                 "episode": episode
             })
 
-    def on_episode_end(self,
-                       *,
-                       worker: "RolloutWorker",
-                       base_env: BaseEnv,
+    def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode,
-                       env_index: Optional[int] = None,
-                       **kwargs) -> None:
+                       episode: MultiAgentEpisode, **kwargs) -> None:
         """Runs when an episode is done.
 
         Args:
@@ -121,8 +106,6 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index (EnvID): Obsoleted: The ID of the environment, which the
-                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
