@@ -276,7 +276,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     auto &dispatch_queue = shapes_it->second;
 
     if (info_by_sched_cls_.find(scheduling_class) == info_by_sched_cls_.end()) {
-      info_by_sched_cls_[scheduling_class].capacity = MaxRunningTasksPerSchedulingClass(scheduling_class);
+      info_by_sched_cls_[scheduling_class].capacity =
+          MaxRunningTasksPerSchedulingClass(scheduling_class);
     }
     auto &sched_cls_info = info_by_sched_cls_[scheduling_class];
 
@@ -291,8 +292,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     //      work_it != dispatch_queue.end() &&
     //      (scheduling_class_backpressure_ &&
     //       num_running_tasks_by_sched_cls_[scheduling_class] < max_running_tasks);) {
-    for (auto work_it = dispatch_queue.begin();
-          work_it != dispatch_queue.end();) {
+    for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
@@ -303,8 +303,15 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       }
 
       if (sched_cls_info.num_running_tasks >= sched_cls_info.capacity) {
+        RAY_LOG(ERROR) << "Hit cap!";
         work_it++;
-        continue;
+        if (absl::GetCurrentTimeNanos() > sched_cls_info.next_update_time) {
+          double wait_time = 1e-3 * (1 << sched_cls_info.num_updates++);
+          sched_cls_info.next_update_time = absl::GetCurrentTimeNanos() + wait_time;
+        }
+        else {
+          continue;
+        }
       }
 
       bool args_missing = false;
@@ -887,7 +894,6 @@ std::string ClusterTaskManager::DebugStr() const {
       stream << "\t" << task.DebugString() << "\n";
     }
   }
-  RAY_LOG(ERROR) << stream.str();
   // TODO(Shanly): This method will be replaced with `DebugString` once we remove the
   // legacy scheduler.
   auto accumulator = [](size_t state,
@@ -1001,7 +1007,6 @@ void ClusterTaskManager::Dispatch(
   // num_running_tasks_by_sched_cls_[task_spec.GetSchedulingClass()]++;
   const auto &sched_cls = task_spec.GetSchedulingClass();
   info_by_sched_cls_[sched_cls].num_running_tasks++;
-
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;

@@ -1,6 +1,7 @@
 # coding: utf-8
 import collections
 import logging
+import os
 import platform
 import subprocess
 import sys
@@ -563,6 +564,33 @@ def test_recursion(shutdown_only):
         return n + ray.get(summer.remote(n - 1))
 
     assert ray.get(summer.remote(10)) == sum(range(11))
+
+
+def test_out_of_order_scheduling(shutdown_only):
+    """Ensure that when a task runs before its dependency, and they're of the same
+       scheduling class, the dependency is eventually able to run."""
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def foo(arg):
+        ref, = arg
+        path = "/Users/alex/anyscale/ray/t.txt"
+        should_die = not os.path.exists(path)
+        with open(path, "w") as f:
+            f.write("")
+        if should_die:
+            print("dying!!!")
+            os._exit(-1)
+
+        if ref:
+            print("hogging the only available slot for a while")
+            ray.get(ref)
+            return "done!"
+
+    first = foo.remote((None, ))
+    second = foo.remote((first, ))
+
+    print(ray.get(first))
 
 
 def test_limit_concurrency(shutdown_only):

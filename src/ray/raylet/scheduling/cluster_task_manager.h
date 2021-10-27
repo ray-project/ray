@@ -100,9 +100,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
-      size_t max_pinned_task_arguments_bytes,
-      std::function<double()> get_time
-                     );
+      size_t max_pinned_task_arguments_bytes);
 
   void SetWorkerBacklog(SchedulingClass scheduling_class, const WorkerID &worker_id,
                         int64_t backlog_size) override;
@@ -278,12 +276,13 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       tasks_to_schedule_;
 
   struct SchedulingClassInfo {
+  SchedulingClassInfo() : num_running_tasks(0), capacity(0), next_update_time(0), num_updates(0) {}
     /// The current total number of running tasks fo this scheduling class.
     int64_t num_running_tasks;
     /// The total number of tasks that can run from this scheduling class.
     int64_t capacity;
     /// The next tie to update the class's capacity.
-    int64_t next_update_time;
+    double next_update_time;
     /// The number of consecutive times the scheduling class has been updated.
     int64_t num_updates;
   };
