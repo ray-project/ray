@@ -81,6 +81,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":gcs_proto",
+        ":pubsub_proto",
     ],
 )
 
@@ -217,7 +218,6 @@ proto_library(
     deps = [
         ":common_proto",
         ":gcs_proto",
-        ":gcs_service_proto",
     ],
 )
 
