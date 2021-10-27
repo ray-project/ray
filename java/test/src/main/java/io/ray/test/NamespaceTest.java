@@ -18,44 +18,24 @@ public class NamespaceTest {
   }
 
   /// This case tests that actor cannot be accessed in different namespaces.
-  public void testIsolationBetweenDiffrentNamespaces() throws IOException, InterruptedException {
+  public void testIsolationBetweenNamespaces() throws IOException, InterruptedException {
     System.setProperty("ray.job.namespace", "test2");
-    Process driver = null;
-    try {
-      Ray.init();
-      driver = startDriverWithNamespace();
-      // Wait for driver to start.
-      TimeUnit.SECONDS.sleep(3);
-      Assert.assertThrows(
-          NoSuchElementException.class,
-          () -> {
-            Ray.getGlobalActor("a").get();
-          });
-    } finally {
-      if (driver != null) {
-        driver.waitFor(1, TimeUnit.SECONDS);
-      }
-      Ray.shutdown();
-    }
+    testIsolation(
+        () -> Assert.assertThrows(
+            NoSuchElementException.class,
+            () -> {
+              Ray.getGlobalActor("a").get();
+            }));
   }
 
   /// This case tests that actor can be accessed between different jobs but in the same namespace.
   public void testIsolationInTheSameNamespaces() throws IOException, InterruptedException {
     System.setProperty("ray.job.namespace", "test1");
-    Process driver = null;
-    try {
-      Ray.init();
-      driver = startDriverWithNamespace();
-      // Wait for driver to start.
-      TimeUnit.SECONDS.sleep(3);
-      ActorHandle<A> a = (ActorHandle<A>) Ray.getGlobalActor("a").get();
-      Assert.assertEquals("hello", a.task(A::hello).remote().get());
-    } finally {
-      if (driver != null) {
-        driver.waitFor(1, TimeUnit.SECONDS);
-      }
-      Ray.shutdown();
-    }
+    testIsolation(
+        () -> {
+          ActorHandle<A> a = (ActorHandle<A>) Ray.getGlobalActor("a").get();
+          Assert.assertEquals("hello", a.task(A::hello).remote().get());
+        });
   }
 
   public static void main(String[] args) throws IOException, InterruptedException {
@@ -70,9 +50,21 @@ public class NamespaceTest {
     Ray.shutdown();
   }
 
-  private Process startDriverWithNamespace() throws IOException {
-    ProcessBuilder builder = TestUtils.buildDriver(NamespaceTest.class, null);
-    builder.redirectError(ProcessBuilder.Redirect.INHERIT);
-    return builder.start();
+  private void testIsolation(Runnable runnable) throws IOException, InterruptedException {
+    Process driver;
+    try {
+      Ray.init();
+      ProcessBuilder builder = TestUtils.buildDriver(NamespaceTest.class, null);
+      builder.redirectError(ProcessBuilder.Redirect.INHERIT);
+      driver = builder.start();
+      // Wait for driver to start.
+      TimeUnit.SECONDS.sleep(3);
+      runnable.run();
+    } finally {
+      if (driver != null) {
+        driver.waitFor(1, TimeUnit.SECONDS);
+      }
+      Ray.shutdown();
+    }
   }
 }
