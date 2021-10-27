@@ -378,6 +378,7 @@ def commit_or_url(commit_or_url: str) -> str:
         if "s3-us-west-2.amazonaws" in commit_or_url:
             return commit_or_url
         # Resolve the redirects for buildkite artifacts
+        # This is needed because otherwise pip won't recognize the file name.
         if "buildkite.com" in commit_or_url and "artifacts" in commit_or_url:
             return requests.head(commit_or_url, allow_redirects=True).url
 
