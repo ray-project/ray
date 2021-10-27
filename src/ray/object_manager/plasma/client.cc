@@ -35,7 +35,6 @@
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/object_manager/plasma/shared_memory.h"
-#include "ray/object_manager/plasma/store_runner.h"
 
 namespace fb = plasma::flatbuf;
 
@@ -353,7 +352,8 @@ Status Impl::GetBuffers(
 
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
-        RAY_LOG(INFO) << "GetBuffers object_id " << object_ids[i] << " " << static_cast<void*>(data);
+        RAY_LOG(INFO) << "GetBuffers object_id " << object_ids[i] << " "
+                      << static_cast<void *>(data);
         physical_buf = std::make_shared<SharedMemoryBuffer>(
             data + object->data_offset, object->data_size + object->metadata_size);
       } else {
@@ -840,8 +840,7 @@ Status RemotePlasmaClient::HandleCreateReply(const ObjectID &object_id,
 }
 
 PlasmaClient::PlasmaClient(const std::string name)
-    : plasma_store_(plasma::plasma_store_runner->GetPlasmaStore()),
-      impl_(std::make_shared<Impl>(nullptr)),
+    : impl_(std::make_shared<Impl>(nullptr)),
       client_(std::make_shared<InProcessClient>(name)) {}
 
 PlasmaClient::~PlasmaClient() {}
@@ -850,7 +849,7 @@ Status PlasmaClient::CreateAndSpillIfNeeded(
     const ObjectID &object_id, const ray::rpc::Address &owner_address, int64_t data_size,
     const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
     plasma::flatbuf::ObjectSource source, int device_num) {
-  RAY_LOG(INFO) << "CreateAndSpillIfNeeded "<< object_id;
+  RAY_LOG(INFO) << "CreateAndSpillIfNeeded " << object_id;
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   /// TODO: Using TryCreateImmediately
   uint64_t req_id;
@@ -864,10 +863,12 @@ Status PlasmaClient::CreateAndSpillIfNeeded(
   object_info.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   PlasmaObject result = {};
   PlasmaError error;
-  bool finish = plasma_store_.ExecuteInStoreThread([&]() {
-    plasma_store_.CreateObject(object_id, client_, data_size + metadata_size, false,
-                                      req_id, object_info, source, device_num);
-    return plasma_store_.TryGetObject(req_id, &result, &error);
+  bool finish = GetPlasmaStore()->ExecuteInStoreThread([&]() {
+    GetPlasmaStore()->CreateObject(object_id, client_, data_size + metadata_size, false,
+                                   req_id, object_info, source, device_num);
+    bool rst = GetPlasmaStore()->TryGetObject(req_id, &result, &error);
+    RAY_LOG(INFO) << "TryGetObject return " << rst;
+    return rst;
   });
 
   while (!finish) {
@@ -876,24 +877,26 @@ Status PlasmaClient::CreateAndSpillIfNeeded(
         std::chrono::milliseconds(RayConfig::instance().object_store_full_delay_ms()));
     RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
                    << req_id;
-    plasma_store_.ExecuteInStoreThread([&]() {
-      plasma_store_.CreateObject(object_id, client_, data_size + metadata_size,
-                                        false, req_id, object_info, source, device_num);
-      finish = plasma_store_.TryGetObject(req_id, &result, &error);
+    GetPlasmaStore()->ExecuteInStoreThread([&]() {
+      // GetPlasmaStore()->CreateObject(object_id, client_, data_size + metadata_size,
+      //                                   false, req_id, object_info, source,
+      //                                   device_num);
+      finish = GetPlasmaStore()->TryGetObject(req_id, &result, &error);
+      RAY_LOG(INFO) << "TryGetObject return " << finish;
     });
   }
   // PlasmaObject &object = result.first;
   if (error == PlasmaError::OK) {
     RAY_CHECK(result.address);
   } else {
-    RAY_LOG(INFO) << "CreateAndSpillIfNeeded return "<< PlasmaErrorStatus(error);
+    RAY_LOG(INFO) << "CreateAndSpillIfNeeded return " << PlasmaErrorStatus(error);
     return PlasmaErrorStatus(error);
   }
   RAY_UNUSED(impl_->HandleCreateReply(
       object_id, metadata, data, result,
       std::dynamic_pointer_cast<PlasmaClient>((shared_from_this())), result.store_fd,
       result.mmap_size));
-  RAY_LOG(INFO) << "CreateAndSpillIfNeeded done "<< object_id;
+  RAY_LOG(INFO) << "CreateAndSpillIfNeeded done " << object_id;
   return Status::OK();
 }
 
@@ -912,9 +915,9 @@ Status PlasmaClient::TryCreateImmediately(
   object_info.owner_ip_address = owner_address.ip_address();
   object_info.owner_port = owner_address.port();
   object_info.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  auto result = plasma_store_.ExecuteInStoreThread([&]() {
-    return plasma_store_.CreateObject(object_id, client_, data_size + metadata_size, true,
-                                      req_id, object_info, source, device_num);
+  auto result = GetPlasmaStore()->ExecuteInStoreThread([&]() {
+    return GetPlasmaStore()->CreateObject(object_id, client_, data_size + metadata_size,
+                                          true, req_id, object_info, source, device_num);
   });
   if (result.second != PlasmaError::OK) {
     return PlasmaErrorStatus(result.second);
@@ -938,8 +941,8 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeou
           std::vector<ObjectID> &received_object_ids,
           std::vector<PlasmaObject> &object_data) {
         std::promise<void> get_return;
-        plasma_store_.ExecuteInStoreThread([&]() {
-          return plasma_store_.GetObjects(
+        GetPlasmaStore()->ExecuteInStoreThread([&]() {
+          return GetPlasmaStore()->GetObjects(
               client_, object_ids, timeout_ms, is_from_worker,
               [&](const std::shared_ptr<GetRequest> &get_request,
                   std::vector<MEMFD_TYPE> &fds, std::vector<int64_t> &sizes) {
@@ -980,13 +983,13 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeou
 
 Status PlasmaClient::Release(const ObjectID &object_id) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
-  RAY_LOG(INFO)<< "PlasmaClient::Release 1 " << object_id;
+  RAY_LOG(INFO) << "PlasmaClient::Release 1 " << object_id;
   return impl_->Release(
       object_id,
       [this, object_id]() {
-        return plasma_store_.ExecuteInStoreThread([&]() {
-          RAY_LOG(INFO)<< "PlasmaClient::Release 2 " << object_id;
-          plasma_store_.ReleaseObject(object_id, client_);
+        return GetPlasmaStore()->ExecuteInStoreThread([&]() {
+          RAY_LOG(INFO) << "PlasmaClient::Release 2 " << object_id;
+          GetPlasmaStore()->ReleaseObject(object_id, client_);
           return Status::OK();
         });
       },
@@ -996,8 +999,8 @@ Status PlasmaClient::Release(const ObjectID &object_id) {
 Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return impl_->Contains(object_id, has_object, [this, object_id, has_object]() {
-    return plasma_store_.ExecuteInStoreThread([&]() {
-      *has_object = plasma_store_.ContainsObject(object_id);
+    return GetPlasmaStore()->ExecuteInStoreThread([&]() {
+      *has_object = GetPlasmaStore()->ContainsObject(object_id);
       return Status::OK();
     });
   });
@@ -1006,8 +1009,8 @@ Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
 Status PlasmaClient::Abort(const ObjectID &object_id) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return impl_->Abort(object_id, [this, object_id]() {
-    return plasma_store_.ExecuteInStoreThread(
-        [&]() { return plasma_store_.AbortObject(object_id, client_); });
+    return GetPlasmaStore()->ExecuteInStoreThread(
+        [&]() { return GetPlasmaStore()->AbortObject(object_id, client_); });
   });
 }
 
@@ -1016,8 +1019,8 @@ Status PlasmaClient::Seal(const ObjectID &object_id) {
   return impl_->Seal(
       object_id,
       [this, object_id]() {
-        return plasma_store_.ExecuteInStoreThread([&]() {
-          plasma_store_.SealObjects({object_id});
+        return GetPlasmaStore()->ExecuteInStoreThread([&]() {
+          GetPlasmaStore()->SealObjects({object_id});
           return Status::OK();
         });
       },
@@ -1033,9 +1036,11 @@ Status PlasmaClient::Delete(const ObjectID &object_id) {
 Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return impl_->Delete(object_ids, [this](std::vector<ObjectID> &not_in_use_ids) {
-    return plasma_store_.ExecuteInStoreThread([this, not_in_use_ids]() {
+    // GetPlasmaStore()->DeleteObjects(object_ids);
+    // return Status::OK();
+    return GetPlasmaStore()->ExecuteInStoreThread([this, not_in_use_ids]() {
       RAY_LOG(INFO) << "PlasmaClient::Delete 1";
-      RAY_UNUSED(plasma_store_.DeleteObjects(not_in_use_ids));
+      RAY_UNUSED(GetPlasmaStore()->DeleteObjects(not_in_use_ids));
       RAY_LOG(INFO) << "PlasmaClient::Delete 2";
       return Status::OK();
     });
@@ -1046,8 +1051,8 @@ Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   return impl_->Evict(num_bytes, num_bytes_evicted,
                       [this, num_bytes, &num_bytes_evicted]() {
-                        return plasma_store_.ExecuteInStoreThread([&]() {
-                          num_bytes_evicted = plasma_store_.EvictObject(num_bytes);
+                        return GetPlasmaStore()->ExecuteInStoreThread([&]() {
+                          num_bytes_evicted = GetPlasmaStore()->EvictObject(num_bytes);
                           return Status::OK();
                         });
                       });
@@ -1055,8 +1060,8 @@ Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
 
 std::string PlasmaClient::DebugString() {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
-  return plasma_store_.ExecuteInStoreThread(
-      [&]() { return plasma_store_.DebugString(); });
+  return GetPlasmaStore()->ExecuteInStoreThread(
+      [&]() { return GetPlasmaStore()->DebugString(); });
 }
 
 }  // namespace plasma

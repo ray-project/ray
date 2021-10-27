@@ -109,9 +109,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
 }
 
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.
-PlasmaStore::~PlasmaStore() {
-  RAY_LOG(INFO) << "PlasmaStore deconstructor";
-}
+PlasmaStore::~PlasmaStore() { RAY_LOG(INFO) << "PlasmaStore deconstructor"; }
 
 void PlasmaStore::Start() {
   // Start listening for clients.
@@ -247,7 +245,8 @@ int PlasmaStore::RemoveFromClientObjectIds(
   auto it = object_ids.find(object_id);
   if (it != object_ids.end()) {
     client->MarkObjectAsUnused(*it);
-    RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client " << client->GetName();
+    RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client "
+                   << client->GetName();
     // Decrease reference count.
     object_lifecycle_mgr_.RemoveReference(object_id);
     // Return 1 to indicate that the client was removed.
@@ -260,6 +259,7 @@ int PlasmaStore::RemoveFromClientObjectIds(
 
 void PlasmaStore::ReleaseObject(const ObjectID &object_id,
                                 const std::shared_ptr<ClientInterface> &client) {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   auto entry = object_lifecycle_mgr_.GetObject(object_id);
   RAY_CHECK(entry != nullptr);
   // Remove the client from the object's array of clients.
@@ -267,6 +267,7 @@ void PlasmaStore::ReleaseObject(const ObjectID &object_id,
 }
 
 void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   for (size_t i = 0; i < object_ids.size(); ++i) {
     RAY_LOG(DEBUG) << "sealing object " << object_ids[i];
     auto entry = object_lifecycle_mgr_.SealObject(object_ids[i]);
@@ -281,6 +282,7 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
 
 Status PlasmaStore::AbortObject(const ObjectID &object_id,
                                 const std::shared_ptr<ClientInterface> &client) {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   auto &object_ids = client->GetObjectIDs();
   auto it = object_ids.find(object_id);
   if (it == object_ids.end()) {

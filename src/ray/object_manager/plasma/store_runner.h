@@ -31,7 +31,7 @@ class PlasmaStoreRunner {
                        "PlasmaStoreRunner.GetAvailableMemory");
   }
 
-  PlasmaStore &GetPlasmaStore() { return *store_; }
+  std::shared_ptr<PlasmaStore> GetPlasmaStore() { return store_; }
 
  private:
   void Shutdown();
@@ -43,7 +43,7 @@ class PlasmaStoreRunner {
   std::string fallback_directory_;
   mutable instrumented_io_context main_service_;
   std::unique_ptr<PlasmaAllocator> allocator_;
-  std::unique_ptr<PlasmaStore> store_;
+  std::shared_ptr<PlasmaStore> store_;
 };
 
 // We use a global variable for Plasma Store instance here because:

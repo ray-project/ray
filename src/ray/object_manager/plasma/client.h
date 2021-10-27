@@ -27,6 +27,7 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/store.h"
+#include "ray/object_manager/plasma/store_runner.h"
 #include "ray/util/visibility.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -239,7 +240,13 @@ class PlasmaClient : public PlasmaClientInterface {
   virtual std::string DebugString() override;
 
  private:
-  PlasmaStore &plasma_store_;
+  inline std::shared_ptr<PlasmaStore> GetPlasmaStore() {
+    auto store = plasma::plasma_store_runner->GetPlasmaStore();
+    RAY_CHECK(store);
+    return store;
+  }
+
+ private:
   std::shared_ptr<Impl> impl_;
   /// A mutex which protects this class.
   std::recursive_mutex client_mutex_;
