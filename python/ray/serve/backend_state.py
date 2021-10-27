@@ -623,6 +623,11 @@ class BackendState:
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
 
+        # Grace period to prevent forcing updates on long polling host to all
+        # existing long polling clients on each HTTPProxy upon controller
+        # actor failure.
+        self._long_poll_host_update_time = None
+
     def get_target_state_checkpoint_data(self):
         """
         Return deployment's target state submitted by user's deployment call.
@@ -686,9 +691,8 @@ class BackendState:
                 f"{new_backend_replica.replica_tag}, backend_tag: {self._name}"
             )
 
-        # Blocking grace period to avoid controller thrashing when cover
-        # from replica actor names
-        time.sleep(CONTROLLER_STARTUP_GRACE_PERIOD_S)
+        self._long_poll_host_update_time = time.time() + CONTROLLER_STARTUP_GRACE_PERIOD_S # noqa: E501
+
         # This halts all traffic in cluster.
         self._notify_running_replicas_changed()
 
@@ -707,10 +711,12 @@ class BackendState:
         ]
 
     def _notify_running_replicas_changed(self):
-        self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNNING_REPLICAS, self._name),
-            self.get_running_replica_infos(),
-        )
+        if (self._long_poll_host_update_time and
+                time.time() > self._long_poll_host_update_time):
+            self._long_poll_host.notify_changed(
+                (LongPollNamespace.RUNNING_REPLICAS, self._name),
+                self.get_running_replica_infos(),
+            )
 
     def _set_backend_goal(self, backend_info: Optional[BackendInfo]) -> None:
         """
