@@ -161,6 +161,9 @@ Random Distributions API
 
 This section covers the functions you can use to define your search spaces.
 
+Please note that not all searchers support all distributions. In particular, ``tune.sample_from`` and ``tune.grid_search`` are often unsupported.
+The default :ref:`tune-basicvariant` supports all distributions.
+
 For a high-level overview, see this example:
 
 .. code-block :: python
