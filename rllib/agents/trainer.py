@@ -19,7 +19,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -1086,7 +1086,7 @@ class Trainer(Trainable):
             full_fetch: bool = False,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            episode: Optional[MultiAgentEpisode] = None,
+            episode: Optional[Episode] = None,
             unsquash_action: Optional[bool] = None,
             clip_action: Optional[bool] = None,
 
@@ -1240,7 +1240,7 @@ class Trainer(Trainable):
             full_fetch: bool = False,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List[MultiAgentEpisode]] = None,
+            episodes: Optional[List[Episode]] = None,
             unsquash_actions: Optional[bool] = None,
             clip_actions: Optional[bool] = None,
             # Deprecated.

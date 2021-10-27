@@ -23,7 +23,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode
+    from ray.rllib.evaluation import Episode
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ class Policy(metaclass=ABCMeta):
             prev_reward_batch: Union[List[TensorStructType],
                                      TensorStructType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List["Episode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -148,8 +148,8 @@ class Policy(metaclass=ABCMeta):
             prev_action_batch: Batch of previous action values.
             prev_reward_batch: Batch of previous rewards.
             info_batch (Optional[Dict[str, list]]): Batch of info objects.
-            episodes (Optional[List[MultiAgentEpisode]] ): List of
-                MultiAgentEpisode, one for each obs in obs_batch. This provides
+            episodes (Optional[List[Episode]] ): List of
+                Episode, one for each obs in obs_batch. This provides
                 access to all of the internal episode state, which may be
                 useful for model-based or multiagent algorithms.
             explore (Optional[bool]): Whether to pick an exploitation or
@@ -182,7 +182,7 @@ class Policy(metaclass=ABCMeta):
             prev_reward: Optional[TensorStructType] = None,
             info: dict = None,
             input_dict: Optional[SampleBatch] = None,
-            episode: Optional["MultiAgentEpisode"] = None,
+            episode: Optional["Episode"] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             # Kwars placeholder for future compatibility.
@@ -270,7 +270,7 @@ class Policy(metaclass=ABCMeta):
             input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
             explore: bool = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List["Episode"]] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -363,7 +363,7 @@ class Policy(metaclass=ABCMeta):
             sample_batch: SampleBatch,
             other_agent_batches: Optional[Dict[AgentID, Tuple[
                 "Policy", SampleBatch]]] = None,
-            episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
+            episode: Optional["Episode"] = None) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 
         This will be called on each trajectory fragment computed during policy
@@ -375,7 +375,7 @@ class Policy(metaclass=ABCMeta):
             other_agent_batches (dict): In a multi-agent env, this contains a
                 mapping of agent ids to (policy, agent_batch) tuples
                 containing the policy and experiences of the other agents.
-            episode (Optional[MultiAgentEpisode]): An optional multi-agent
+            episode (Optional[Episode]): An optional multi-agent
                 episode object to provide access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.

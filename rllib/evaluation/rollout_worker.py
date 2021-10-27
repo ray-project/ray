@@ -18,7 +18,7 @@ from ray.rllib.env.utils import record_env_wrapper
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
-from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
+from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
@@ -50,7 +50,7 @@ from ray.util.debug import log_once, disable_log_once_globally, \
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.episode import MultiAgentEpisode
+    from ray.rllib.evaluation.episode import Episode
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
 
@@ -186,8 +186,8 @@ class RolloutWorker(ParallelIteratorWorker):
                                             None]] = None,
             policy_spec: Optional[Union[type, Dict[PolicyID,
                                                    PolicySpec]]] = None,
-            policy_mapping_fn: Optional[Callable[
-                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID, "Episode"],
+                                                 PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             rollout_fragment_length: int = 100,
@@ -1080,8 +1080,8 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
-            policy_mapping_fn: Optional[Callable[
-                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID, "Episode"],
+                                                 PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
     ) -> Policy:
         """Adds a new policy to this RolloutWorker.
@@ -1162,8 +1162,8 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def set_policy_mapping_fn(
             self,
-            policy_mapping_fn: Optional[Callable[
-                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID, "Episode"],
+                                                 PolicyID]] = None,
     ) -> None:
         """Sets `self.policy_mapping_fn` to a new callable (if provided).
 

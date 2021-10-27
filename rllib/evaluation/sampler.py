@@ -14,8 +14,8 @@ from ray.rllib.evaluation.collectors.sample_collector import \
     SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
-from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
+from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
@@ -576,7 +576,7 @@ def _env_runner(
             return None
 
     def new_episode(env_id):
-        episode = MultiAgentEpisode(
+        episode = Episode(
             worker.policy_map,
             worker.policy_mapping_fn,
             get_batch_builder,
@@ -606,7 +606,7 @@ def _env_runner(
         )
         return episode
 
-    active_episodes: Dict[EnvID, MultiAgentEpisode] = \
+    active_episodes: Dict[EnvID, Episode] = \
         NewEpisodeDefaultDict(new_episode)
 
     while True:
@@ -714,7 +714,7 @@ def _process_observations(
         *,
         worker: "RolloutWorker",
         base_env: BaseEnv,
-        active_episodes: Dict[EnvID, MultiAgentEpisode],
+        active_episodes: Dict[EnvID, Episode],
         unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
         rewards: Dict[EnvID, Dict[AgentID, float]],
         dones: Dict[EnvID, Dict[AgentID, bool]],
@@ -734,7 +734,7 @@ def _process_observations(
         worker: Reference to the current rollout worker.
         base_env: Env implementing BaseEnv.
         active_episodes: Mapping from
-            episode ID to currently ongoing MultiAgentEpisode object.
+            episode ID to currently ongoing Episode object.
         unfiltered_obs: Doubly keyed dict of env-ids -> agent ids
             -> unfiltered observation tensor, returned by a `BaseEnv.poll()`
             call.
@@ -773,7 +773,7 @@ def _process_observations(
     # types: EnvID, Dict[AgentID, EnvObsType]
     for env_id, all_agents_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
-        episode: MultiAgentEpisode = active_episodes[env_id]
+        episode: Episode = active_episodes[env_id]
 
         if not is_new_episode:
             sample_collector.episode_step(episode)
@@ -883,9 +883,11 @@ def _process_observations(
                     # Next observation.
                     SampleBatch.NEXT_OBS: filtered_obs,
                 }
-                # Add extra-action-fetches to collectors.
+                # Add extra-action-fetches (policy-inference infos) to
+                # collectors.
                 pol = worker.policy_map[policy_id]
-                for key, value in episode.last_pi_info_for(agent_id).items():
+                for key, value in episode.last_extra_action_outs_for(
+                        agent_id).items():
                     if key in pol.view_requirements:
                         values_dict[key] = value
                 # Env infos for this agent.
@@ -976,7 +978,7 @@ def _process_observations(
             # Creates a new episode if this is not async return.
             # If reset is async, we will get its result in some future poll.
             elif resetted_obs != ASYNC_RESET_RETURN:
-                new_episode: MultiAgentEpisode = active_episodes[env_id]
+                new_episode: Episode = active_episodes[env_id]
                 if observation_fn:
                     resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
                         agent_obs=resetted_obs,
@@ -1024,7 +1026,7 @@ def _do_policy_eval(
         to_eval: Dict[PolicyID, List[PolicyEvalData]],
         policies: PolicyMap,
         sample_collector,
-        active_episodes: Dict[EnvID, MultiAgentEpisode],
+        active_episodes: Dict[EnvID, Episode],
 ) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
     """Call compute_actions on collected episode/model data to get next action.
 
@@ -1080,7 +1082,7 @@ def _process_policy_eval_results(
         to_eval: Dict[PolicyID, List[PolicyEvalData]],
         eval_results: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
                                            dict]],
-        active_episodes: Dict[EnvID, MultiAgentEpisode],
+        active_episodes: Dict[EnvID, Episode],
         active_envs: Set[int],
         off_policy_actions: MultiEnvDict,
         policies: Dict[PolicyID, Policy],
@@ -1097,7 +1099,7 @@ def _process_policy_eval_results(
         eval_results: Mapping of policy IDs to list of
             actions, rnn-out states, extra-action-fetches dicts.
         active_episodes: Mapping from episode ID to currently ongoing
-            MultiAgentEpisode object.
+            Episode object.
         active_envs: Set of non-terminated env ids.
         off_policy_actions: Doubly keyed dict of env-ids -> agent ids ->
             off-policy-action, returned by a `BaseEnv.poll()` call.
@@ -1124,7 +1126,7 @@ def _process_policy_eval_results(
         actions = convert_to_numpy(actions)
 
         rnn_out_cols: StateBatch = eval_results[policy_id][1]
-        pi_info_cols: dict = eval_results[policy_id][2]
+        extra_action_out_cols: dict = eval_results[policy_id][2]
 
         # In case actions is a list (representing the 0th dim of a batch of
         # primitive actions), try converting it first.
@@ -1133,7 +1135,7 @@ def _process_policy_eval_results(
 
         # Store RNN state ins/outs and extra-action fetches to episode.
         for f_i, column in enumerate(rnn_out_cols):
-            pi_info_cols["state_out_{}".format(f_i)] = column
+            extra_action_out_cols["state_out_{}".format(f_i)] = column
 
         policy: Policy = _get_or_raise(policies, policy_id)
         # Split action-component batches into single action rows.
@@ -1153,11 +1155,11 @@ def _process_policy_eval_results(
 
             env_id: int = eval_data[i].env_id
             agent_id: AgentID = eval_data[i].agent_id
-            episode: MultiAgentEpisode = active_episodes[env_id]
+            episode: Episode = active_episodes[env_id]
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
-            episode._set_last_pi_info(
+            episode._set_last_extra_action_outs(
                 agent_id, {k: v[i]
-                           for k, v in pi_info_cols.items()})
+                           for k, v in extra_action_out_cols.items()})
             if env_id in off_policy_actions and \
                     agent_id in off_policy_actions[env_id]:
                 episode._set_last_action(agent_id,
