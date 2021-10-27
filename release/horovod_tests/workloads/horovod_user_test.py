@@ -9,7 +9,7 @@ if __name__ == "__main__":
     start = time.time()
 
     addr = os.environ.get("RAY_ADDRESS")
-    job_name = os.environ.get("RAY_JOB_NAME", "horovod_releastic_test")
+    job_name = os.environ.get("RAY_JOB_NAME", "horovod_user_test")
     if addr is not None and addr.startswith("anyscale://"):
         ray.init(address=addr, job_name=job_name)
     else:
