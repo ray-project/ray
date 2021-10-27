@@ -126,7 +126,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return address_;
   }
-  
+
   void DirectActorCallArgWaitComplete(int64_t tag) {
     RAY_CHECK(false) << "Method unused";
   }
