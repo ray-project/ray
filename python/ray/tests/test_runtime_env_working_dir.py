@@ -11,9 +11,12 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 import ray.experimental.internal_kv as kv
 from ray._private.test_utils import wait_for_condition
-from ray._private.runtime_env import RAY_LIBRARY_DEV_EXCLUDES
+from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 
+# This package contains a subdirectory called `test_module`.
+# Calling `test_module.one()` should return `2`.
+# If you find that confusing, take it up with @jiaodong...
 S3_PACKAGE_URI = "s3://runtime-env-test/remote_runtime_env.zip"
 
 
@@ -239,9 +242,9 @@ def test_input_validation(start_cluster, option: str):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("test_failure", [True, False])
+@pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
 @pytest.mark.parametrize("per_task_actor", [True, False])
-def test_s3_uri(start_cluster, test_failure, per_task_actor):
+def test_s3_uri(start_cluster, option, per_task_actor):
     """Tests the case where we lazily read files or import inside a task/actor.
 
     In this case, the files come from an S3 URI.
@@ -251,8 +254,12 @@ def test_s3_uri(start_cluster, test_failure, per_task_actor):
     """
     cluster, address = start_cluster
 
-    env = {"working_dir": S3_PACKAGE_URI}
-    if test_failure or per_task_actor:
+    if option == "working_dir":
+        env = {"working_dir": S3_PACKAGE_URI}
+    elif option == "py_modules":
+        env = {"py_modules": [S3_PACKAGE_URI]}
+
+    if option == "failure" or per_task_actor:
         ray.init(address)
     else:
         ray.init(address, runtime_env=env)
@@ -262,10 +269,10 @@ def test_s3_uri(start_cluster, test_failure, per_task_actor):
         import test_module
         return test_module.one()
 
-    if not test_failure and per_task_actor:
+    if option != "failure" and per_task_actor:
         test_import = test_import.options(runtime_env=env)
 
-    if test_failure:
+    if option == "failure":
         with pytest.raises(ImportError):
             ray.get(test_import.remote())
     else:
@@ -277,11 +284,11 @@ def test_s3_uri(start_cluster, test_failure, per_task_actor):
             import test_module
             return test_module.one()
 
-    if not test_failure and per_task_actor:
+    if option != "failure" and per_task_actor:
         Actor = Actor.options(runtime_env=env)
 
     a = Actor.remote()
-    if test_failure:
+    if option == "failure":
         with pytest.raises(ImportError):
             assert ray.get(a.test_import.remote()) == 2
     else:
@@ -289,17 +296,20 @@ def test_s3_uri(start_cluster, test_failure, per_task_actor):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize(
-    "working_dir",
-    [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
-def test_multi_node(start_cluster, working_dir):
+    "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+def test_multi_node(start_cluster, option: str, source: str):
     """Tests that the working_dir is propagated across multi-node clusters."""
     NUM_NODES = 3
     cluster, address = start_cluster
     for _ in range(NUM_NODES - 1):  # Head node already added.
         cluster.add_node(num_cpus=1)
 
-    ray.init(address, runtime_env={"working_dir": working_dir})
+    if option == "working_dir":
+        ray.init(address, runtime_env={"working_dir": source})
+    elif option == "py_modules":
+        ray.init(address, runtime_env={"py_modules": [source]})
 
     @ray.remote(num_cpus=1)
     class A:
@@ -333,22 +343,25 @@ def check_local_files_gced(cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize(
-    "working_dir",
-    [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
-def test_job_level_gc(start_cluster, working_dir):
+    "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+def test_job_level_gc(start_cluster, option: str, source: str):
     """Tests that job-level working_dir is GC'd when the job exits."""
     NUM_NODES = 3
     cluster, address = start_cluster
     for _ in range(NUM_NODES - 1):  # Head node already added.
         cluster.add_node(num_cpus=1)
 
-    ray.init(address, runtime_env={"working_dir": working_dir})
+    if option == "working_dir":
+        ray.init(address, runtime_env={"working_dir": source})
+    elif option == "py_modules":
+        ray.init(address, runtime_env={"py_modules": [source]})
 
     # For a local directory, the package should be in the GCS.
     # For an S3 URI, there should be nothing in the GCS because
     # it will be downloaded from S3 directly on each node.
-    if working_dir == S3_PACKAGE_URI:
+    if source == S3_PACKAGE_URI:
         assert check_internal_kv_gced()
     else:
         assert not check_internal_kv_gced()
@@ -363,7 +376,7 @@ def test_job_level_gc(start_cluster, working_dir):
     actors = [A.remote() for _ in range(num_cpus)]
     ray.get([a.test_import.remote() for a in actors])
 
-    if working_dir == S3_PACKAGE_URI:
+    if source == S3_PACKAGE_URI:
         assert check_internal_kv_gced()
     else:
         assert not check_internal_kv_gced()
@@ -380,7 +393,8 @@ def test_job_level_gc(start_cluster, working_dir):
 # TODO(edoakes): fix this bug and enable test.
 @pytest.mark.skip("Currently failing.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_actor_level_gc(start_cluster):
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+def test_actor_level_gc(start_cluster, option: str):
     """Tests that actor-level working_dir is GC'd when the actor exits."""
     NUM_NODES = 3
     cluster, address = start_cluster
@@ -394,8 +408,10 @@ def test_actor_level_gc(start_cluster):
         def check(self):
             assert "test_module" in os.listdir()
 
-    # TODO(edoakes): this doesn't work in decorator with ray client.
-    A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
+    if option == "working_dir":
+        A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
+    else:
+        A = A.options(runtime_env={"py_modules": [S3_PACKAGE_URI]})
 
     actors = [A.remote() for _ in range(5)]
     ray.get([a.check.remote() for a in actors])
@@ -408,19 +424,24 @@ def test_actor_level_gc(start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize(
-    "working_dir",
-    [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
-def test_detached_actor_gc(start_cluster, working_dir):
+    "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+def test_detached_actor_gc(start_cluster, option: str, source: str):
     """Tests that URIs for detached actors are GC'd only when they exit."""
     cluster, address = start_cluster
-    ray.init(
-        address, namespace="test", runtime_env={"working_dir": working_dir})
+
+    if option == "working_dir":
+        ray.init(
+            address, namespace="test", runtime_env={"working_dir": source})
+    elif option == "py_modules":
+        ray.init(
+            address, namespace="test", runtime_env={"py_modules": [source]})
 
     # For a local directory, the package should be in the GCS.
     # For an S3 URI, there should be nothing in the GCS because
     # it will be downloaded from S3 directly on each node.
-    if working_dir == S3_PACKAGE_URI:
+    if source == S3_PACKAGE_URI:
         assert check_internal_kv_gced()
     else:
         assert not check_internal_kv_gced()
@@ -434,7 +455,7 @@ def test_detached_actor_gc(start_cluster, working_dir):
     a = A.options(name="test", lifetime="detached").remote()
     ray.get(a.test_import.remote())
 
-    if working_dir == S3_PACKAGE_URI:
+    if source == S3_PACKAGE_URI:
         assert check_internal_kv_gced()
     else:
         assert not check_internal_kv_gced()
@@ -444,7 +465,7 @@ def test_detached_actor_gc(start_cluster, working_dir):
 
     ray.init(address, namespace="test")
 
-    if working_dir == S3_PACKAGE_URI:
+    if source == S3_PACKAGE_URI:
         assert check_internal_kv_gced()
     else:
         assert not check_internal_kv_gced()
@@ -683,6 +704,7 @@ def chdir(d: str):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_inheritance(start_cluster, option: str):
     """Tests that child tasks/actors inherit URIs properly."""
     cluster, address = start_cluster
@@ -690,27 +712,45 @@ def test_inheritance(start_cluster, option: str):
         with open("hello", "w") as f:
             f.write("world")
 
-        ray.init(address, runtime_env={"working_dir": "."})
-
-        # Make sure we aren't reading the original file.
-        os.unlink("hello")
+        if option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": "."})
+        elif option == "py_modules":
+            ray.init(address, runtime_env={"py_modules": ["."]})
 
         @ray.remote
-        class Test:
-            def f(self):
-                return open("hello").read()
+        def get_env():
+            return ray.get_runtime_context().runtime_env
 
-        # Passing working_dir URI through directly should work.
-        env1 = ray.get_runtime_context().runtime_env
-        assert "working_dir" in env1
-        t = Test.options(runtime_env=env1).remote()
-        assert ray.get(t.f.remote()) == "world"
+        @ray.remote
+        class EnvGetter:
+            def get(self):
+                return ray.get_runtime_context().runtime_env
+
+        job_env = ray.get_runtime_context().runtime_env
+        assert ray.get(get_env.remote()) == job_env
+        eg = EnvGetter.remote()
+        assert ray.get(eg.get.remote()) == job_env
+
+        # Passing a new URI should work.
+        if option == "working_dir":
+            env = {"working_dir": S3_PACKAGE_URI}
+        elif option == "py_modules":
+            env = {"py_modules": [S3_PACKAGE_URI]}
+
+        new_env = ray.get(get_env.options(runtime_env=env).remote())
+        assert new_env != job_env
+        eg = EnvGetter.options(runtime_env=env).remote()
+        assert ray.get(eg.get.remote()) != job_env
 
         # Passing a local directory should not work.
-        env2 = ray.get_runtime_context().runtime_env
-        env2["working_dir"] = "."
+        if option == "working_dir":
+            env = {"working_dir": "."}
+        elif option == "py_modules":
+            env = {"py_modules": ["."]}
         with pytest.raises(ValueError):
-            t = Test.options(runtime_env=env2).remote()
+            get_env.options(runtime_env=env).remote()
+        with pytest.raises(ValueError):
+            EnvGetter.options(runtime_env=env).remote()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -758,13 +798,13 @@ def test_large_file_error(shutdown_only, option: str):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_ray_library_dev_flow(start_cluster):
+def test_ray_worker_dev_flow(start_cluster):
     cluster, address = start_cluster
     ray.init(
         address,
         runtime_env={
             "py_modules": [ray],
-            "excludes": RAY_LIBRARY_DEV_EXCLUDES
+            "excludes": RAY_WORKER_DEV_EXCLUDES
         })
 
     @ray.remote
