@@ -21,11 +21,12 @@ public class NamespaceTest {
   public void testIsolationBetweenNamespaces() throws IOException, InterruptedException {
     System.setProperty("ray.job.namespace", "test2");
     testIsolation(
-        () -> Assert.assertThrows(
-            NoSuchElementException.class,
-            () -> {
-              Ray.getGlobalActor("a").get();
-            }));
+        () ->
+            Assert.assertThrows(
+                NoSuchElementException.class,
+                () -> {
+                  Ray.getGlobalActor("a").get();
+                }));
   }
 
   /// This case tests that actor can be accessed between different jobs but in the same namespace.
