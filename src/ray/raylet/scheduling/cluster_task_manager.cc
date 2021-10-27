@@ -57,8 +57,7 @@ ClusterTaskManager::ClusterTaskManager(
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       metric_tasks_queued_(0),
       metric_tasks_dispatched_(0),
-      metric_tasks_spilled_(0)
-      {}
+      metric_tasks_spilled_(0) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -309,7 +308,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         RAY_LOG(ERROR) << "Hit cap!";
         work_it++;
         if (absl::GetCurrentTimeNanos() > sched_cls_info.next_update_time) {
-          double wait_time = (1e-3 * sched_cls_cap_interval_ms_) * (1 << sched_cls_info.num_updates++);
+          double wait_time =
+              (1e-3 * sched_cls_cap_interval_ms_) * (1 << sched_cls_info.num_updates++);
           sched_cls_info.next_update_time = absl::GetCurrentTimeNanos() + wait_time;
         }
         continue;
