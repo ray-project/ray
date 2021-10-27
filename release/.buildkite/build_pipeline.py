@@ -250,7 +250,11 @@ MANUAL_TESTS = {
 #   2. Use autoscaling/scale up (no wait_cluster.py)
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
-USER_TESTS = {}
+USER_TESTS = {
+    "~/ray/release/rllib_tests/rllib_tests.yaml": [
+        "connect_tests",
+    ],
+}
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
