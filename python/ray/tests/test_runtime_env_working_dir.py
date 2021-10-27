@@ -840,7 +840,8 @@ ray.init("{address}", runtime_env={{"py_modules": ["{tmp_dir}"]}})
         assert "Successfully pushed file package" in output
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.skipif(
+    sys.platform != "darwin", reason="Package exceeds max size.")
 def test_ray_worker_dev_flow(start_cluster):
     cluster, address = start_cluster
     ray.init(
