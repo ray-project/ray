@@ -28,7 +28,7 @@ import ray._private.gcs_utils as gcs_utils
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
-from ray.tests.conftest import ray_start_with_dashboard
+from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
 
 
 @pytest.fixture
@@ -550,7 +550,8 @@ def test_local_store_recovery():
     "ray_start_with_dashboard", [{
         "num_cpus": 4
     }], indirect=True)
-def test_snapshot_always_written_to_internal_kv(ray_start_with_dashboard):
+def test_snapshot_always_written_to_internal_kv(
+        ray_start_with_dashboard):  # noqa: F811
     # https://github.com/ray-project/ray/issues/19752
     _, tmp_path = mkstemp()
 
