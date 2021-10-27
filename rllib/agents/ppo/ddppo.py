@@ -146,8 +146,8 @@ def validate_config(config):
         raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the DD-PPO algorithm. Defines the distributed dataflow.
 
     Args:
@@ -159,6 +159,9 @@ def execution_plan(workers: WorkerSet,
         LocalIterator[dict]: The Policy class to use with PGTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
+    assert len(kwargs) == 0, (
+        "DDPPO execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="raw")
 
     # Setup the distributed processes.

@@ -22,14 +22,6 @@
 
 namespace ray {
 
-typedef std::function<void(const std::shared_ptr<void>, const std::string &, int,
-                           const WorkerID &, const ResourceIdSet &)>
-    DispatchTaskCallback;
-/// Arguments are the raylet ID to spill back to, the raylet's
-/// address and the raylet's port.
-typedef std::function<void(const NodeID &, const std::string &, int)>
-    SpillbackTaskCallback;
-
 typedef std::function<void()> CancelTaskCallback;
 
 /// \class RayTask
@@ -93,16 +85,6 @@ class RayTask {
   /// the TaskSpecification and execution dependencies from the
   /// TaskExecutionSpecification.
   std::vector<rpc::ObjectReference> dependencies_;
-
-  /// For direct task calls, overrides the dispatch behaviour to send an RPC
-  /// back to the submitting worker.
-  mutable DispatchTaskCallback on_dispatch_ = nullptr;
-  /// For direct task calls, overrides the spillback behaviour to send an RPC
-  /// back to the submitting worker.
-  mutable SpillbackTaskCallback on_spillback_ = nullptr;
-  /// For direct task calls, overrides the cancellation behaviour to send an
-  /// RPC back to the submitting worker.
-  mutable CancelTaskCallback on_cancellation_ = nullptr;
 };
 
 }  // namespace ray

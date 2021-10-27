@@ -51,15 +51,6 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(const std::shared_ptr<ClientConnection>, Connection, (), (const, override));
   MOCK_METHOD(void, SetOwnerAddress, (const rpc::Address &address), (override));
   MOCK_METHOD(const rpc::Address &, GetOwnerAddress, (), (const, override));
-  MOCK_METHOD(const ResourceIdSet &, GetLifetimeResourceIds, (), (const, override));
-  MOCK_METHOD(void, SetLifetimeResourceIds, (ResourceIdSet & resource_ids), (override));
-  MOCK_METHOD(void, ResetLifetimeResourceIds, (), (override));
-  MOCK_METHOD(const ResourceIdSet &, GetTaskResourceIds, (), (const, override));
-  MOCK_METHOD(void, SetTaskResourceIds, (ResourceIdSet & resource_ids), (override));
-  MOCK_METHOD(void, ResetTaskResourceIds, (), (override));
-  MOCK_METHOD(ResourceIdSet, ReleaseTaskCpuResources, (), (override));
-  MOCK_METHOD(void, AcquireTaskCpuResources, (const ResourceIdSet &cpu_resources),
-              (override));
   MOCK_METHOD(void, DirectActorCallArgWaitComplete, (int64_t tag), (override));
   MOCK_METHOD(const BundleID &, GetBundleId, (), (const, override));
   MOCK_METHOD(void, SetBundleId, (const BundleID &bundle_id), (override));

@@ -127,39 +127,6 @@ class MockWorker : public WorkerInterface {
     return address_;
   }
 
-  const ResourceIdSet &GetLifetimeResourceIds() const {
-    RAY_CHECK(false) << "Method unused";
-    auto *t = new ResourceIdSet();
-    return *t;
-  }
-  void SetLifetimeResourceIds(ResourceIdSet &resource_ids) {
-    RAY_CHECK(false) << "Method unused";
-  }
-  void ResetLifetimeResourceIds() { RAY_CHECK(false) << "Method unused"; }
-
-  const ResourceIdSet &GetTaskResourceIds() const {
-    RAY_CHECK(false) << "Method unused";
-    auto *t = new ResourceIdSet();
-    return *t;
-  }
-  void SetTaskResourceIds(ResourceIdSet &resource_ids) {
-    RAY_CHECK(false) << "Method unused";
-  }
-  void ResetTaskResourceIds() { RAY_CHECK(false) << "Method unused"; }
-  ResourceIdSet ReleaseTaskCpuResources() {
-    RAY_CHECK(false) << "Method unused";
-    auto *t = new ResourceIdSet();
-    return *t;
-  }
-  void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
-    RAY_CHECK(false) << "Method unused";
-  }
-
-  Status AssignTask(const RayTask &task, const ResourceIdSet &resource_id_set) {
-    RAY_CHECK(false) << "Method unused";
-    Status s;
-    return s;
-  }
   void DirectActorCallArgWaitComplete(int64_t tag) {
     RAY_CHECK(false) << "Method unused";
   }
