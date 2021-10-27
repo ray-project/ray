@@ -300,6 +300,9 @@ USER_TESTS = {
             requirements_file="release/train_tests"
             "/driver_requirements.txt")
     ],
+    "~/ray/release/rllib_tests/rllib_tests.yaml": [
+        "connect_tests",
+    ],
 }
 
 SUITES = {
