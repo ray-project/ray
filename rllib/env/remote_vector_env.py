@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class RemoteVectorEnv(BaseEnv):
+class RemoteBaseEnv(BaseEnv):
     """Vector env that executes envs in remote workers.
 
     This provides dynamic batching of inference as observations are returned
@@ -220,3 +220,8 @@ class _RemoteSingleAgentEnv:
         } for x in [obs, rew, done, info]]
         done["__all__"] = done[_DUMMY_AGENT_ID]
         return obs, rew, done, info
+
+
+@Deprecated(new="ray.rllib.env.remote_base_env.RemoteBaseEnv", error=False)
+class RemoteVectorEnv(RemoteBaseEnv):
+    pass

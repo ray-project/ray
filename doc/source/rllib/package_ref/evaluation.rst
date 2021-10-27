@@ -1,7 +1,7 @@
 .. _evaluation-docs:
 
-RLlib's Evaluation/Rollout APIs
-===============================
+Evaluation/Rollout APIs
+=======================
 
 .. _rolloutworker-docs:
 

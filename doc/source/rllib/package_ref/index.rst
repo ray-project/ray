@@ -18,6 +18,6 @@ If you think there is anything missing, please open an issue on `Github`_.
    policy.rst
    models.rst
    evaluation.rst
-   execution.rst
    offline.rst
+   execution.rst
    utils.rst

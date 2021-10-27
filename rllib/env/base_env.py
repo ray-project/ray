@@ -173,6 +173,7 @@ class BaseEnv:
                 )
             # Sub-envs are not ray.remote actors.
             else:
+                # Convert gym.Env to VectorEnv ...
                 env = VectorEnv.vectorize_gym_envs(
                     make_env=make_env,
                     existing_envs=[env],
@@ -180,6 +181,7 @@ class BaseEnv:
                     action_space=env.action_space,
                     observation_space=env.observation_space,
                 )
+                # ... then the resulting VectorEnv to a BaseEnv.
                 env = _VectorEnvToBaseEnv(env)
 
         # Make sure conversion went well.
