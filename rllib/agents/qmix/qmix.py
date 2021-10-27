@@ -7,6 +7,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 # yapf: disable
 # __sphinx_doc_begin__
