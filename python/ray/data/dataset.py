@@ -24,6 +24,7 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U
+from ray.data.aggregate import AggregateOnT, AggregateFn, Max, Min, Mean
 from ray.data.datasource import (Datasource, CSVDatasource, JSONDatasource,
                                  NumpyDatasource, ParquetDatasource)
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -814,6 +815,79 @@ class Dataset(Generic[T]):
         """
         from ray.data.grouped_dataset import GroupedDataset
         return GroupedDataset(self, key)
+
+    def aggregate(self, *aggs: Tuple[AggregateFn]) -> U:
+        """Aggregate the entire dataset as one group.
+
+        This is a blocking operation.
+
+        Examples:
+            >>> ray.data.range(100).aggregate(Max())
+            >>> ray.data.range_arrow(100).aggregate(Max("value"))
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            aggs: Aggregations to do.
+                Currently only single aggregation is supported.
+
+        Returns:
+            If the input dataset is simple dataset then the output is
+            a tuple of (agg1, agg2, ...) where each tuple element is
+            the corresponding aggregation result.
+            If the input dataset is arrow dataset then the output is
+            an ArrowRow where each column is the corresponding
+            aggregation result.
+        """
+        return self.groupby(None).aggregate(*aggs).take(1)[0]
+
+    def min(self, on: AggregateOnT = lambda r: r) -> U:
+        """Compute min aggregation with the entire dataset as one group.
+
+        Examples:
+            >>> ray.data.range(100).min()
+            >>> ray.data.range_arrow(100).min("value")
+
+        Args:
+            on: The data to min on.
+                It can be the column name for arrow dataset.
+
+        Returns:
+            The min result.
+        """
+        return self.aggregate(Min(on))[0]
+
+    def max(self, on: AggregateOnT = lambda r: r) -> U:
+        """Compute max aggregation with the entire dataset as one group.
+
+        Examples:
+            >>> ray.data.range(100).max()
+            >>> ray.data.range_arrow(100).max("value")
+
+        Args:
+            on: The data to max on.
+                It can be the column name for arrow dataset.
+
+        Returns:
+            The max result.
+        """
+        return self.aggregate(Max(on))[0]
+
+    def mean(self, on: AggregateOnT = lambda r: r) -> U:
+        """Compute mean aggregation with the entire dataset as one group.
+
+        Examples:
+            >>> ray.data.range(100).mean()
+            >>> ray.data.range_arrow(100).mean("value")
+
+        Args:
+            on: The data to mean on.
+                It can be the column name for arrow dataset.
+
+        Returns:
+            The mean result.
+        """
+        return self.aggregate(Mean(on))[0]
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,

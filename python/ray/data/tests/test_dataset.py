@@ -2734,6 +2734,8 @@ def test_groupby_arrow(ray_start_regular_shared):
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "min(B)": 0}, {"A": 1, "min(B)": 1},
          {"A": 2, "min(B)": 2}]
+    # Test built-in global min aggregation
+    assert ray.data.from_items([{"A": x} for x in xs]).min("A") == 0
 
     # Test built-in max aggregation
     xs = list(range(100))
@@ -2746,6 +2748,8 @@ def test_groupby_arrow(ray_start_regular_shared):
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "max(B)": 99}, {"A": 1, "max(B)": 97},
          {"A": 2, "max(B)": 98}]
+    # Test built-in global max aggregation
+    assert ray.data.from_items([{"A": x} for x in xs]).max("A") == 99
 
     # Test built-in mean aggregation
     xs = list(range(100))
@@ -2758,6 +2762,8 @@ def test_groupby_arrow(ray_start_regular_shared):
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "mean(B)": 49.5}, {"A": 1, "mean(B)": 49.0},
          {"A": 2, "mean(B)": 50.0}]
+    # Test built-in global mean aggregation
+    assert ray.data.from_items([{"A": x} for x in xs]).mean("A") == 49.5
 
 
 def test_groupby_simple(ray_start_regular_shared):
@@ -2810,7 +2816,6 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2,
                                                                           33)]
-
     # Test built-in sum aggregation
     xs = list(range(100))
     random.shuffle(xs)
@@ -2825,6 +2830,8 @@ def test_groupby_simple(ray_start_regular_shared):
     agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).min()
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
+    # Test built-in global min aggregation
+    assert ray.data.from_items(xs).min() == 0
 
     # Test built-in max aggregation
     xs = list(range(100))
@@ -2833,6 +2840,8 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2,
                                                                           98)]
+    # Test built-in global max aggregation
+    assert ray.data.from_items(xs).max() == 99
 
     # Test built-in mean aggregation
     xs = list(range(100))
@@ -2841,6 +2850,8 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5), (1, 49.0),
                                                        (2, 50.0)]
+    # Test built-in global mean aggregation
+    assert ray.data.from_items(xs).mean() == 49.5
 
 
 def test_sort_simple(ray_start_regular_shared):

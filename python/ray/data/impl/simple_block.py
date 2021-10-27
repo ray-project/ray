@@ -264,7 +264,7 @@ class SimpleBlockAccessor(BlockAccessor):
                         accumulator = agg.merge(accumulator, r[1]
                                                 if key else r[0])
                 if key is None:
-                    ret.append((agg.finalize(accumulator)))
+                    ret.append((agg.finalize(accumulator), ))
                 else:
                     ret.append((next_key, agg.finalize(accumulator)))
             except StopIteration:

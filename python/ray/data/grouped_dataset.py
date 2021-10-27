@@ -119,7 +119,7 @@ class GroupedDataset(Generic[T]):
 
         This is a blocking operation.
 
-        Example:
+        Examples:
             >>> ray.data.range(100).groupby(lambda x: x % 3).count()
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
@@ -138,7 +138,7 @@ class GroupedDataset(Generic[T]):
 
         This is a blocking operation.
 
-        Example:
+        Examples:
             >>> ray.data.range(100).groupby(lambda x: x % 3).sum()
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
@@ -161,7 +161,7 @@ class GroupedDataset(Generic[T]):
 
         This is a blocking operation.
 
-        Example:
+        Examples:
             >>> ray.data.range(100).groupby(lambda x: x % 3).min()
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
@@ -184,7 +184,7 @@ class GroupedDataset(Generic[T]):
 
         This is a blocking operation.
 
-        Example:
+        Examples:
             >>> ray.data.range(100).groupby(lambda x: x % 3).max()
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
@@ -207,7 +207,7 @@ class GroupedDataset(Generic[T]):
 
         This is a blocking operation.
 
-        Example:
+        Examples:
             >>> ray.data.range(100).groupby(lambda x: x % 3).mean()
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
