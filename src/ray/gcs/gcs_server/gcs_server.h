@@ -26,6 +26,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
+#include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/rpc/client_call.h"
@@ -121,6 +122,9 @@ class GcsServer {
   /// Initialize KV manager.
   void InitKVManager();
 
+  /// Initializes PubSub handler.
+  void InitPubSubHandler();
+
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
 
@@ -210,6 +214,9 @@ class GcsServer {
   /// Global KV storage handler and service.
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
+  /// GCS PubSub handler and service.
+  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  std::unique_ptr<rpc::InternalPubSubGrpcService> pubsub_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
