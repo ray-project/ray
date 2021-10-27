@@ -36,14 +36,9 @@ class DefaultCallbacks:
                 "a class extending rllib.agents.callbacks.DefaultCallbacks")
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
-    def on_episode_start(self,
-                         *,
-                         worker: "RolloutWorker",
-                         base_env: BaseEnv,
+    def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
-                         episode: Episode,
-                         env_index: Optional[int] = None,
-                         **kwargs) -> None:
+                         episode: Episode, **kwargs) -> None:
         """Callback run on the rollout worker before each episode starts.
 
         Args:
@@ -56,8 +51,6 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index: Obsoleted: The ID of the environment, which the
-                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -73,24 +66,21 @@ class DefaultCallbacks:
                         worker: "RolloutWorker",
                         base_env: BaseEnv,
                         policies: Optional[Dict[PolicyID, Policy]] = None,
-                        episode: Episode,
-                        env_index: Optional[int] = None,
+                        episode: Episode,                        env_index: Optional[int] = None,
                         **kwargs) -> None:
         """Runs on each episode step.
 
         Args:
-            worker (RolloutWorker): Reference to the current rollout worker.
-            base_env (BaseEnv): BaseEnv running the episode. The underlying
+            worker: Reference to the current rollout worker.
+            base_env: BaseEnv running the episode. The underlying
                 env object can be gotten by calling base_env.get_unwrapped().
-            policies (Optional[Dict[PolicyID, Policy]]): Mapping of policy id
+            policies: Mapping of policy id
                 to policy objects. In single agent mode there will only be a
                 single "default_policy".
-            episode (Episode): Episode object which contains episode
+            episode: Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index (EnvID): Obsoleted: The ID of the environment, which the
-                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -100,29 +90,22 @@ class DefaultCallbacks:
                 "episode": episode
             })
 
-    def on_episode_end(self,
-                       *,
-                       worker: "RolloutWorker",
-                       base_env: BaseEnv,
+    def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
-                       episode: Episode,
-                       env_index: Optional[int] = None,
-                       **kwargs) -> None:
+                       episode: Episode, **kwargs) -> None:
         """Runs when an episode is done.
 
         Args:
-            worker (RolloutWorker): Reference to the current rollout worker.
+            worker: Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
                 env object can be gotten by calling base_env.get_unwrapped().
-            policies (Dict[PolicyID, Policy]): Mapping of policy id to policy
+            policies: Mapping of policy id to policy
                 objects. In single agent mode there will only be a single
                 "default_policy".
-            episode (Episode): Episode object which contains episode
+            episode: Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index (EnvID): Obsoleted: The ID of the environment, which the
-                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -173,8 +156,8 @@ class DefaultCallbacks:
         """Called at the end of RolloutWorker.sample().
 
         Args:
-            worker (RolloutWorker): Reference to the current rollout worker.
-            samples (SampleBatch): Batch to be returned. You can mutate this
+            worker: Reference to the current rollout worker.
+            samples: Batch to be returned. You can mutate this
                 object to modify the samples generated.
             kwargs: Forward compatibility placeholder.
         """
@@ -193,10 +176,10 @@ class DefaultCallbacks:
         `pad_batch_to_sequences_of_same_size`.
 
         Args:
-            policy (Policy): Reference to the current Policy object.
-            train_batch (SampleBatch): SampleBatch to be trained on. You can
+            policy: Reference to the current Policy object.
+            train_batch: SampleBatch to be trained on. You can
                 mutate this object to modify the samples generated.
-            result (dict): A results dict to add custom metrics to.
+            result: A results dict to add custom metrics to.
             kwargs: Forward compatibility placeholder.
         """
 

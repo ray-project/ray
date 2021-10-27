@@ -531,12 +531,19 @@ def with_common_config(
 class Trainer(Trainable):
     """An RLlib algorithm responsible for optimizing one or more Policies.
 
-    Trainers contain a WorkerSet (self.workers), normally used to generate
-    environment samples in parallel (`self.workers.remote_workers()`) and
-    to compute and apply learning updates (`self.workers.local_worker()`).
+    Trainers contain a WorkerSet under `self.workers`. A WorkerSet is
+    normally composed of a single local worker
+    (self.workers.local_worker()), used to compute and apply learning updates,
+    and optionally one or more remote workers (self.workers.remote_workers()),
+    used to generate environment samples in parallel.
 
-    Each worker (remotes and local) contains a full PolicyMap (1 Policy
-    for single-agent training, 1 or more policies for multi-agent training).
+    Each worker (remotes or local) contains a PolicyMap, which itself
+    may contain either one policy for single-agent training or one or more
+    policies for multi-agent training. Policies are synchronized
+    automatically from time to time using ray.remote calls. The exact
+    synchronization logic depends on the specific algorithm (Trainer) used,
+    but this usually happens from local worker to all remote workers and
+    after each training update.
 
     You can write your own Trainer sub-classes by using the
     rllib.agents.trainer_template.py::build_traing() utility function.
@@ -705,6 +712,8 @@ class Trainer(Trainable):
         self.local_replay_buffer = (
             self._create_local_replay_buffer_if_necessary(self.config))
 
+        # Make the call to self._init. Sub-classes should override this
+        # method to implement custom initialization logic.
         self._init(self.config, self.env_creator)
 
         # Evaluation setup.
@@ -740,6 +749,21 @@ class Trainer(Trainable):
                 policy_class=self._policy_class,
                 config=evaluation_config,
                 num_workers=self.config["evaluation_num_workers"])
+
+    @DeveloperAPI
+    def _init(self, config: TrainerConfigDict,
+              env_creator: Callable[[EnvContext], EnvType]) -> None:
+        """Subclasses should override this for custom initialization.
+
+        In the case of Trainer, this is called from inside `self.setup()`.
+
+        Args:
+            config: Algorithm-specific configuration dict.
+            env_creator: A callable taking an EnvContext as only arg and
+                returning an environment (of any type: e.g. gym.Env, RLlib
+                BaseEnv, MultiAgentEnv, etc..).
+        """
+        raise NotImplementedError
 
     @override(Trainable)
     @PublicAPI
@@ -1304,34 +1328,38 @@ class Trainer(Trainable):
     def export_policy_model(self,
                             export_dir: str,
                             policy_id: PolicyID = DEFAULT_POLICY_ID,
-                            onnx: Optional[int] = None):
+                            onnx: Optional[int] = None) -> None:
         """Exports policy model with given policy_id to a local directory.
 
         Args:
-            export_dir (string): Writable local directory.
-            policy_id (string): Optional policy id to export.
-            onnx (int): If given, will export model in ONNX format. The
+            export_dir: Writable local directory.
+            policy_id: Optional policy id to export.
+            onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
+                If None, the output format will be DL framework specific.
 
         Example:
             >>> trainer = MyTrainer()
             >>> for _ in range(10):
             >>>     trainer.train()
-            >>> trainer.export_policy_model("/tmp/export_dir")
+            >>> trainer.export_policy_model("/tmp/dir")
+            >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1)
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
     @DeveloperAPI
-    def export_policy_checkpoint(self,
-                                 export_dir: str,
-                                 filename_prefix: str = "model",
-                                 policy_id: PolicyID = DEFAULT_POLICY_ID):
+    def export_policy_checkpoint(
+            self,
+            export_dir: str,
+            filename_prefix: str = "model",
+            policy_id: PolicyID = DEFAULT_POLICY_ID,
+    ) -> None:
         """Exports policy model checkpoint to a local directory.
 
         Args:
-            export_dir (string): Writable local directory.
-            filename_prefix (string): file name prefix of checkpoint files.
-            policy_id (string): Optional policy id to export.
+            export_dir: Writable local directory.
+            filename_prefix: file name prefix of checkpoint files.
+            policy_id: Optional policy id to export.
 
         Example:
             >>> trainer = MyTrainer()
@@ -1339,18 +1367,20 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_checkpoint("/tmp/export_dir")
         """
-        self.get_policy(policy_id).export_checkpoint(
-            export_dir, filename_prefix)
+        self.get_policy(policy_id).export_checkpoint(export_dir,
+                                                     filename_prefix)
 
     @DeveloperAPI
-    def import_policy_model_from_h5(self,
-                                    import_file: str,
-                                    policy_id: PolicyID = DEFAULT_POLICY_ID):
+    def import_policy_model_from_h5(
+            self,
+            import_file: str,
+            policy_id: PolicyID = DEFAULT_POLICY_ID,
+    ) -> None:
         """Imports a policy's model with given policy_id from a local h5 file.
 
         Args:
-            import_file (str): The h5 file to import from.
-            policy_id (string): Optional policy id to import into.
+            import_file: The h5 file to import from.
+            policy_id: Optional policy id to import into.
 
         Example:
             >>> trainer = MyTrainer()
@@ -1359,6 +1389,7 @@ class Trainer(Trainable):
             >>>     trainer.train()
         """
         self.get_policy(policy_id).import_model_from_h5(import_file)
+        # Sync new weights to remote workers.
         self._sync_weights_to_workers()
 
     @DeveloperAPI
@@ -1382,39 +1413,51 @@ class Trainer(Trainable):
         return checkpoint_path
 
     @override(Trainable)
-    def load_checkpoint(self, checkpoint_path: str):
+    def load_checkpoint(self, checkpoint_path: str) -> None:
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
     @override(Trainable)
-    def log_result(self, result: ResultDict):
+    def log_result(self, result: ResultDict) -> None:
+        # Log after the callback is invoked, so that the user has a chance
+        # to mutate the result.
         self.callbacks.on_train_result(trainer=self, result=result)
-        # log after the callback is invoked, so that the user has a chance
-        # to mutate the result
+        # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
 
     @override(Trainable)
-    def cleanup(self):
+    def cleanup(self) -> None:
+        # Stop all workers.
         if hasattr(self, "workers"):
             self.workers.stop()
+        # Stop all optimizers.
         if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
+        # Then stop according to Trainable's logic.
+        Trainable.stop(self)
 
     @classmethod
     @override(Trainable)
     def default_resource_request(
             cls, config: PartialTrainerConfigDict) -> \
             Union[Resources, PlacementGroupFactory]:
-        cf = dict(cls._default_config, **config)
 
-        eval_config = cf["evaluation_config"]
+        # Default logic for RLlib algorithms (Trainers):
+        # Create one bundle per individual worker (local or remote).
+        # Use `num_cpus_for_driver` and `num_gpus` for the local worker and
+        # `num_cpus_per_worker` and `num_gpus_per_worker` for the remote
+        # workers to determine their CPU/GPU resource needs.
+
+        # Convenience config handles.
+        cf = dict(cls._default_config, **config)
+        eval_cf = cf["evaluation_config"]
 
         # TODO(ekl): add custom resources here once tune supports them
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
         return PlacementGroupFactory(
             bundles=[{
-                # Driver.
+                # Local worker.
                 "CPU": cf["num_cpus_for_driver"],
                 "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
             }] + [
@@ -1427,10 +1470,10 @@ class Trainer(Trainable):
                 {
                     # Evaluation workers.
                     # Note: The local eval worker is located on the driver CPU.
-                    "CPU": eval_config.get("num_cpus_per_worker",
-                                           cf["num_cpus_per_worker"]),
-                    "GPU": eval_config.get("num_gpus_per_worker",
-                                           cf["num_gpus_per_worker"]),
+                    "CPU": eval_cf.get("num_cpus_per_worker",
+                                       cf["num_cpus_per_worker"]),
+                    "GPU": eval_cf.get("num_gpus_per_worker",
+                                       cf["num_gpus_per_worker"]),
                 } for _ in range(cf["evaluation_num_workers"])
             ] if cf["evaluation_interval"] else []),
             strategy=config.get("placement_strategy", "PACK"))
@@ -1441,32 +1484,32 @@ class Trainer(Trainable):
         pass
 
     @DeveloperAPI
-    def _init(self, config: TrainerConfigDict,
-              env_creator: Callable[[EnvContext], EnvType]):
-        """Subclasses should override this for custom initialization."""
-        raise NotImplementedError
-
-    @DeveloperAPI
     def _make_workers(
-            self, *, env_creator: Callable[[EnvContext], EnvType],
+            self,
+            *,
+            env_creator: Callable[[EnvContext], EnvType],
             validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-            policy_class: Type[Policy], config: TrainerConfigDict,
-            num_workers: int) -> WorkerSet:
+            policy_class: Type[Policy],
+            config: TrainerConfigDict,
+            num_workers: int,
+    ) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
         Override this method by passing a custom `make_workers` into
         `build_trainer`.
 
         Args:
-            env_creator (callable): A function that return and Env given an env
+            env_creator: A function that return and Env given an env
                 config.
-            validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
-                Optional callable to validate the generated environment (only
-                on worker=0).
-            policy (Type[Policy]): The Policy class to use for creating the
-                policies of the workers.
-            config (TrainerConfigDict): The Trainer's config.
-            num_workers (int): Number of remote rollout workers to create.
+            validate_env: Optional callable to validate the generated
+                environment. The env to be checked is the one returned from
+                the env creator, which may be a (single, not-yet-vectorized)
+                gym.Env or your custom RLlib env type (e.g. MultiAgentEnv,
+                VectorEnv, BaseEnv, etc..).
+            policy_class: The Policy class to use for creating the policies
+                of the workers.
+            config: The Trainer's config.
+            num_workers: Number of remote rollout workers to create.
                 0 for local only.
 
         Returns:
