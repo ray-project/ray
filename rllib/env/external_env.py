@@ -178,7 +178,7 @@ class ExternalEnv(threading.Thread):
         episode.done(observation)
 
     def _get(self, episode_id: str) -> "_ExternalEnvEpisode":
-        """Get a started episode or raise an error."""
+        """Get a started episode by its ID or raise an error."""
 
         if episode_id in self._finished:
             raise ValueError(
