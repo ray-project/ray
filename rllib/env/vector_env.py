@@ -3,9 +3,9 @@ import gym
 import numpy as np
 from typing import Callable, List, Optional, Tuple
 
-from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import EnvActionType, EnvConfigDict, EnvInfoDict, \
-    EnvObsType, EnvType, PartialTrainerConfigDict
+from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
+from ray.rllib.utils.typing import EnvActionType, EnvInfoDict, \
+    EnvObsType, EnvType
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class VectorEnv:
 
     def __init__(self, observation_space: gym.Space, action_space: gym.Space,
                  num_envs: int):
-        """Initializes a VectorEnv object.
+        """Initializes a VectorEnv instance.
 
         Args:
             observation_space: The observation Space of a single
@@ -30,21 +30,38 @@ class VectorEnv:
         self.num_envs = num_envs
 
     @staticmethod
-    def wrap(make_env: Optional[Callable[[int], EnvType]] = None,
-             existing_envs: Optional[List[gym.Env]] = None,
-             num_envs: int = 1,
-             action_space: Optional[gym.Space] = None,
-             observation_space: Optional[gym.Space] = None,
-             env_config: Optional[EnvConfigDict] = None,
-             policy_config: Optional[PartialTrainerConfigDict] = None):
+    def vectorize_gym_envs(
+            make_env: Optional[Callable[[int], EnvType]] = None,
+            existing_envs: Optional[List[gym.Env]] = None,
+            num_envs: int = 1,
+            action_space: Optional[gym.Space] = None,
+            observation_space: Optional[gym.Space] = None,
+            # Deprecated. These seem to have never been used.
+            env_config=None,
+            policy_config=None) -> "_VectorizedGymEnv":
+        """Translates any given gym.Env(s) into a VectorizedEnv object.
+
+        Args:
+            make_env: Factory that produces a new gym.Env taking the sub-env's
+                vector index as only arg. Must be defined if the
+                number of `existing_envs` is less than `num_envs`.
+            existing_envs: Optional list of already instantiated sub
+                environments.
+            num_envs: Total number of sub environments in this VectorEnv.
+            action_space: The action space. If None, use existing_envs[0]'s
+                action space.
+            observation_space: The observation space. If None, use
+                existing_envs[0]'s action space.
+
+        Returns:
+            The resulting _VectorizedGymEnv object (subclass of VectorEnv).
+        """
         return _VectorizedGymEnv(
             make_env=make_env,
             existing_envs=existing_envs or [],
             num_envs=num_envs,
             observation_space=observation_space,
             action_space=action_space,
-            env_config=env_config,
-            policy_config=policy_config,
         )
 
     @PublicAPI
@@ -109,6 +126,10 @@ class VectorEnv:
         """
         pass
 
+    @Deprecated(new="vectorize_gym_envs", error=False)
+    def wrap(self, *args, **kwargs):
+        return self.vectorize_gym_envs(*args, **kwargs)
+
 
 class _VectorizedGymEnv(VectorEnv):
     """Internal wrapper to translate any gym.Envs into a VectorEnv object.
@@ -116,32 +137,29 @@ class _VectorizedGymEnv(VectorEnv):
 
     def __init__(
             self,
-            make_env=None,
-            existing_envs=None,
-            num_envs=1,
+            make_env: Optional[Callable[[int], EnvType]] = None,
+            existing_envs: Optional[List[gym.Env]] = None,
+            num_envs: int = 1,
             *,
-            observation_space=None,
-            action_space=None,
+            observation_space: Optional[gym.Space] = None,
+            action_space: Optional[gym.Space] = None,
+            # Deprecated. These seem to have never been used.
             env_config=None,
             policy_config=None,
     ):
         """Initializes a _VectorizedGymEnv object.
 
         Args:
-            make_env (Optional[callable]): Factory that produces a new gym env
-                taking a single `config` dict arg. Must be defined if the
+            make_env: Factory that produces a new gym.Env taking the sub-env's
+                vector index as only arg. Must be defined if the
                 number of `existing_envs` is less than `num_envs`.
-            existing_envs (Optional[List[Env]]): Optional list of already
-                instantiated sub environments.
-            num_envs (int): Total number of sub environments in this VectorEnv.
-            action_space (Optional[Space]): The action space. If None, use
+            existing_envs: Optional list of already instantiated sub
+                environments.
+            num_envs: Total number of sub environments in this VectorEnv.
+            action_space: The action space. If None, use existing_envs[0]'s
+                action space.
+            observation_space: The observation space. If None, use
                 existing_envs[0]'s action space.
-            observation_space (Optional[Space]): The observation space.
-                If None, use existing_envs[0]'s action space.
-            env_config (Optional[dict]): Additional sub env config to pass to
-                make_env as first arg.
-            policy_config (Optional[PartialTrainerConfigDict]): An optional
-                trainer/policy config dict.
         """
         self.envs = existing_envs
 

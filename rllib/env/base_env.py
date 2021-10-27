@@ -108,7 +108,8 @@ class BaseEnv:
                 You can set this behavior in your config via the
                 "remote_worker_envs" option.
             remote_env_batch_wait_ms: The wait time (in ms) to poll remote
-                sub-envs for, if applicable. Only used if `remote_envs` is True.
+                sub-envs for, if applicable. Only used if `remote_envs` is
+                True.
             policy_config: Optional policy config dict.
 
         Returns:
@@ -139,9 +140,7 @@ class BaseEnv:
             # Sub-envs are not ray.remote actors.
             else:
                 env = _MultiAgentEnvToBaseEnv(
-                    make_env=make_env,
-                    existing_envs=[env],
-                    num_envs=num_envs)
+                    make_env=make_env, existing_envs=[env], num_envs=num_envs)
         # ExternalEnv.
         elif isinstance(env, ExternalEnv):
             if num_envs != 1:
@@ -174,13 +173,12 @@ class BaseEnv:
                 )
             # Sub-envs are not ray.remote actors.
             else:
-                env = VectorEnv.wrap(
+                env = VectorEnv.vectorize_gym_envs(
                     make_env=make_env,
                     existing_envs=[env],
                     num_envs=num_envs,
                     action_space=env.action_space,
                     observation_space=env.observation_space,
-                    policy_config=policy_config,
                 )
                 env = _VectorEnvToBaseEnv(env)
 
