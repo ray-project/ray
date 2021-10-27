@@ -252,7 +252,7 @@ USER_TESTS = {
     "~/ray/release/horovod_tests/horovod_tests.yaml": [
         ConnectTest(
             "horovod_user_test",
-            requirements_file="../horovod_tests"
+            requirements_file="~/ray/release/horovod_tests"
             "/driver_requirements.txt")
     ]
 }
