@@ -122,11 +122,33 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
     @abstractmethod
     @DeveloperAPI
     def get_metrics(self) -> List[RolloutMetrics]:
+        """Returns list of episode metrics since the last call to this method.
+
+        The list will contain one RolloutMetrics object per completed episode.
+
+        Returns:
+            List of RolloutMetrics objects, one per completed episode since
+            the last call to this method.
+        """
         raise NotImplementedError
 
     @abstractmethod
     @DeveloperAPI
     def get_extra_batches(self) -> List[SampleBatchType]:
+        """Returns list of extra batches since the last call to this method.
+
+        The list will contain all SampleBatches or
+        MultiAgentBatches that the user has provided thus-far. Users can
+        add these "extra batches" to an episode by calling the episode's
+        `add_extra_batch([SampleBatchType])` method. This can be done from
+        inside an overridden `Policy.compute_actions_from_input_dict(...,
+        episodes)` or from a custom callback's `on_episode_[start|step|end]()`
+        methods.
+
+        Returns:
+            List of SamplesBatches or MultiAgentBatches provided thus-far by
+            the user since the last call to this method.
+        """
         raise NotImplementedError
 
 
@@ -150,7 +172,7 @@ class SyncSampler(SamplerInput):
             clip_actions: bool = False,
             soft_horizon: bool = False,
             no_done_at_end: bool = False,
-            observation_fn: "ObservationFunction" = None,
+            observation_fn: Optional["ObservationFunction"] = None,
             sample_collector_class: Optional[Type[SampleCollector]] = None,
             render: bool = False,
             # Obsolete.
@@ -160,41 +182,44 @@ class SyncSampler(SamplerInput):
             obs_filters=None,
             tf_sess=None,
     ):
-        """Initializes a SyncSampler object.
+        """Initializes a SyncSampler instance.
 
         Args:
-            worker (RolloutWorker): The RolloutWorker that will use this
-                Sampler for sampling.
-            env (Env): Any Env object. Will be converted into an RLlib BaseEnv.
-            clip_rewards (Union[bool, float]): True for +/-1.0 clipping,
+            worker: The RolloutWorker that will use this Sampler for sampling.
+            env: Any Env object. Will be converted into an RLlib BaseEnv.
+            clip_rewards: True for +/-1.0 clipping,
                 actual float value for +/- value clipping. False for no
                 clipping.
-            rollout_fragment_length (int): The length of a fragment to collect
+            rollout_fragment_length: The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
-            callbacks (Callbacks): The Callbacks object to use when episode
+            count_steps_by: One of "env_steps" (default) or "agent_steps".
+                Use "agent_steps", if you want rollout lengths to be counted
+                by individual agent steps. In a multi-agent env,
+                a single env_step contains one or more agent_steps, depending
+                on how many agents are present at any given time in the
+                ongoing episode.
+            callbacks: The Callbacks object to use when episode
                 events happen during rollout.
-            horizon (Optional[int]): Hard-reset the Env
-            multiple_episodes_in_batch (bool): Whether to pack multiple
+            horizon: Hard-reset the Env after this many timesteps.
+            multiple_episodes_in_batch: Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
-            normalize_actions (bool): Whether to normalize actions to the
+            normalize_actions: Whether to normalize actions to the
                 action space's bounds.
-            clip_actions (bool): Whether to clip actions according to the
+            clip_actions: Whether to clip actions according to the
                 given action_space's bounds.
-            soft_horizon (bool): If True, calculate bootstrapped values as if
+            soft_horizon: If True, calculate bootstrapped values as if
                 episode had ended, but don't physically reset the environment
                 when the horizon is hit.
-            no_done_at_end (bool): Ignore the done=True at the end of the
+            no_done_at_end: Ignore the done=True at the end of the
                 episode and instead record done=False.
-            observation_fn (Optional[ObservationFunction]): Optional
-                multi-agent observation func to use for preprocessing
-                observations.
-            sample_collector_class (Optional[Type[SampleCollector]]): An
-                optional Samplecollector sub-class to use to collect, store,
-                and retrieve environment-, model-, and sampler data.
-            render (bool): Whether to try to render the environment after each
-                step.
+            observation_fn: Optional multi-agent observation func to use for
+                preprocessing observations.
+            sample_collector_class: An optional Samplecollector sub-class to
+                use to collect, store, and retrieve environment-, model-,
+                and sampler data.
+            render: Whether to try to render the environment after each step.
         """
         # All of the following arguments are deprecated. They will instead be
         # provided via the passed in `worker` arg, e.g. `worker.policy_map`.
@@ -269,8 +294,9 @@ class SyncSampler(SamplerInput):
 class AsyncSampler(threading.Thread, SamplerInput):
     """Async SamplerInput that collects experiences in thread and queues them.
 
-    Once started, experiences are continuously collected and put into a Queue,
-    from where they can be unqueued by the caller of `get_data()`.
+    Once started, experiences are continuously collected in the background
+    and put into a Queue, from where they can be unqueued by the caller
+    of `get_data()`.
     """
 
     def __init__(
@@ -286,12 +312,12 @@ class AsyncSampler(threading.Thread, SamplerInput):
             multiple_episodes_in_batch: bool = False,
             normalize_actions: bool = True,
             clip_actions: bool = False,
-            blackhole_outputs: bool = False,
             soft_horizon: bool = False,
             no_done_at_end: bool = False,
             observation_fn: Optional["ObservationFunction"] = None,
             sample_collector_class: Optional[Type[SampleCollector]] = None,
             render: bool = False,
+            blackhole_outputs: bool = False,
             # Obsolete.
             policies=None,
             policy_mapping_fn=None,
@@ -299,45 +325,44 @@ class AsyncSampler(threading.Thread, SamplerInput):
             obs_filters=None,
             tf_sess=None,
     ):
-        """Initializes a AsyncSampler object.
+        """Initializes an AsyncSampler instance.
 
         Args:
-            worker (RolloutWorker): The RolloutWorker that will use this
-                Sampler for sampling.
-            env (Env): Any Env object. Will be converted into an RLlib BaseEnv.
-            clip_rewards (Union[bool, float]): True for +/-1.0 clipping,
+            worker: The RolloutWorker that will use this Sampler for sampling.
+            env: Any Env object. Will be converted into an RLlib BaseEnv.
+            clip_rewards: True for +/-1.0 clipping,
                 actual float value for +/- value clipping. False for no
                 clipping.
-            rollout_fragment_length (int): The length of a fragment to collect
+            rollout_fragment_length: The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
-            count_steps_by (str): Either "env_steps" or "agent_steps".
-                Refers to the unit of `rollout_fragment_length`.
-            callbacks (Callbacks): The Callbacks object to use when episode
-                events happen during rollout.
+            count_steps_by: One of "env_steps" (default) or "agent_steps".
+                Use "agent_steps", if you want rollout lengths to be counted
+                by individual agent steps. In a multi-agent env,
+                a single env_step contains one or more agent_steps, depending
+                on how many agents are present at any given time in the
+                ongoing episode.
             horizon: Hard-reset the Env after this many timesteps.
-            multiple_episodes_in_batch (bool): Whether to pack multiple
+            multiple_episodes_in_batch: Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
-            normalize_actions (bool): Whether to normalize actions to the
+            normalize_actions: Whether to normalize actions to the
                 action space's bounds.
-            clip_actions (bool): Whether to clip actions according to the
+            clip_actions: Whether to clip actions according to the
                 given action_space's bounds.
-            blackhole_outputs (bool): Whether to collect samples, but then
+            blackhole_outputs: Whether to collect samples, but then
                 not further process or store them (throw away all samples).
-            soft_horizon (bool): If True, calculate bootstrapped values as if
+            soft_horizon: If True, calculate bootstrapped values as if
                 episode had ended, but don't physically reset the environment
                 when the horizon is hit.
-            no_done_at_end (bool): Ignore the done=True at the end of the
+            no_done_at_end: Ignore the done=True at the end of the
                 episode and instead record done=False.
-            observation_fn (Optional[ObservationFunction]): Optional
-                multi-agent observation func to use for preprocessing
-                observations.
-            sample_collector_class (Optional[Type[SampleCollector]]): An
-                optional Samplecollector sub-class to use to collect, store,
-                and retrieve environment-, model-, and sampler data.
-            render (bool): Whether to try to render the environment after each
-                step.
+            observation_fn: Optional multi-agent observation func to use for
+                preprocessing observations.
+            sample_collector_class: An optional SampleCollector sub-class to
+                use to collect, store, and retrieve environment-, model-,
+                and sampler data.
+            render: Whether to try to render the environment after each step.
         """
         # All of the following arguments are deprecated. They will instead be
         # provided via the passed in `worker` arg, e.g. `worker.policy_map`.
@@ -474,32 +499,32 @@ def _env_runner(
     """This implements the common experience collection logic.
 
     Args:
-        worker (RolloutWorker): Reference to the current rollout worker.
-        base_env (BaseEnv): Env implementing BaseEnv.
-        extra_batch_callback (fn): function to send extra batch data to.
+        worker: Reference to the current rollout worker.
+        base_env: Env implementing BaseEnv.
+        extra_batch_callback: function to send extra batch data to.
         horizon: Horizon of the episode.
-        multiple_episodes_in_batch (bool): Whether to pack multiple
+        multiple_episodes_in_batch: Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
-        normalize_actions (bool): Whether to normalize actions to the action
+        normalize_actions: Whether to normalize actions to the action
             space's bounds.
-        clip_actions (bool): Whether to clip actions to the space range.
-        callbacks (DefaultCallbacks): User callbacks to run on episode events.
-        perf_stats (_PerfStats): Record perf stats into this object.
-        soft_horizon (bool): Calculate rewards but don't reset the
+        clip_actions: Whether to clip actions to the space range.
+        callbacks: User callbacks to run on episode events.
+        perf_stats: Record perf stats into this object.
+        soft_horizon: Calculate rewards but don't reset the
             environment when the horizon is hit.
-        no_done_at_end (bool): Ignore the done=True at the end of the episode
+        no_done_at_end: Ignore the done=True at the end of the episode
             and instead record done=False.
-        observation_fn (ObservationFunction): Optional multi-agent
+        observation_fn: Optional multi-agent
             observation func to use for preprocessing observations.
-        sample_collector (Optional[SampleCollector]): An optional
+        sample_collector: An optional
             SampleCollector object to use.
-        render (bool): Whether to try to render the environment after each
+        render: Whether to try to render the environment after each
             step.
 
     Yields:
-        rollout (SampleBatch): Object containing state, action, reward,
-            terminal condition, and other fields as dictated by `policy`.
+        Object containing state, action, reward, terminal condition,
+        and other fields as dictated by `policy`.
     """
 
     # May be populated with used for image rendering
@@ -706,38 +731,37 @@ def _process_observations(
     """Record new data from the environment and prepare for policy evaluation.
 
     Args:
-        worker (RolloutWorker): Reference to the current rollout worker.
-        base_env (BaseEnv): Env implementing BaseEnv.
-        active_episodes (Dict[EnvID, MultiAgentEpisode]): Mapping from
+        worker: Reference to the current rollout worker.
+        base_env: Env implementing BaseEnv.
+        active_episodes: Mapping from
             episode ID to currently ongoing MultiAgentEpisode object.
-        unfiltered_obs (dict): Doubly keyed dict of env-ids -> agent ids
+        unfiltered_obs: Doubly keyed dict of env-ids -> agent ids
             -> unfiltered observation tensor, returned by a `BaseEnv.poll()`
             call.
-        rewards (dict): Doubly keyed dict of env-ids -> agent ids ->
+        rewards: Doubly keyed dict of env-ids -> agent ids ->
             rewards tensor, returned by a `BaseEnv.poll()` call.
-        dones (dict): Doubly keyed dict of env-ids -> agent ids ->
+        dones: Doubly keyed dict of env-ids -> agent ids ->
             boolean done flags, returned by a `BaseEnv.poll()` call.
-        infos (dict): Doubly keyed dict of env-ids -> agent ids ->
+        infos: Doubly keyed dict of env-ids -> agent ids ->
             info dicts, returned by a `BaseEnv.poll()` call.
-        horizon (int): Horizon of the episode.
-        multiple_episodes_in_batch (bool): Whether to pack multiple
+        horizon: Horizon of the episode.
+        multiple_episodes_in_batch: Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
-        callbacks (DefaultCallbacks): User callbacks to run on episode events.
-        soft_horizon (bool): Calculate rewards but don't reset the
+        callbacks: User callbacks to run on episode events.
+        soft_horizon: Calculate rewards but don't reset the
             environment when the horizon is hit.
-        no_done_at_end (bool): Ignore the done=True at the end of the episode
+        no_done_at_end: Ignore the done=True at the end of the episode
             and instead record done=False.
-        observation_fn (ObservationFunction): Optional multi-agent
+        observation_fn: Optional multi-agent
             observation func to use for preprocessing observations.
-        sample_collector (SampleCollector): The SampleCollector object
+        sample_collector: The SampleCollector object
             used to store and retrieve environment samples.
 
     Returns:
-        Tuple:
-            - active_envs: Set of non-terminated env ids.
-            - to_eval: Map of policy_id to list of agent PolicyEvalData.
-            - outputs: List of metrics and samples to return from the sampler.
+        Tuple consisting of 1) active_envs: Set of non-terminated env ids.
+        2) to_eval: Map of policy_id to list of agent PolicyEvalData.
+        3) outputs: List of metrics and samples to return from the sampler.
     """
 
     # Output objects.
@@ -1005,16 +1029,15 @@ def _do_policy_eval(
     """Call compute_actions on collected episode/model data to get next action.
 
     Args:
-        to_eval (Dict[PolicyID, List[PolicyEvalData]]): Mapping of policy
-            IDs to lists of PolicyEvalData objects (items in these lists will
-            be the batch's items for the model forward pass).
-        policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy
-            obj.
-        sample_collector (SampleCollector): The SampleCollector object to use.
-        active_episodes (Dict[EnvID, MultiAgentEpisode]): Mapping of
+        to_eval: Mapping of policy IDs to lists of PolicyEvalData objects
+            (items in these lists will be the batch's items for the model
+            forward pass).
+        policies: Mapping from policy ID to Policy obj.
+        sample_collector: The SampleCollector object to use.
+        active_episodes: Mapping of EnvID to its currently active episode.
 
     Returns:
-        eval_results: dict of policy to compute_action() outputs.
+        Dict mapping PolicyIDs to compute_actions_from_input_dict() outputs.
     """
 
     eval_results: Dict[PolicyID, TensorStructType] = {}
@@ -1070,24 +1093,22 @@ def _process_policy_eval_results(
     returns replies to send back to agents in the env.
 
     Args:
-        to_eval (Dict[PolicyID, List[PolicyEvalData]]): Mapping of policy IDs
-            to lists of PolicyEvalData objects.
-        eval_results (Dict[PolicyID, List]): Mapping of policy IDs to list of
+        to_eval: Mapping of policy IDs to lists of PolicyEvalData objects.
+        eval_results: Mapping of policy IDs to list of
             actions, rnn-out states, extra-action-fetches dicts.
-        active_episodes (Dict[EnvID, MultiAgentEpisode]): Mapping from
-            episode ID to currently ongoing MultiAgentEpisode object.
-        active_envs (Set[int]): Set of non-terminated env ids.
-        off_policy_actions (dict): Doubly keyed dict of env-ids -> agent ids ->
+        active_episodes: Mapping from episode ID to currently ongoing
+            MultiAgentEpisode object.
+        active_envs: Set of non-terminated env ids.
+        off_policy_actions: Doubly keyed dict of env-ids -> agent ids ->
             off-policy-action, returned by a `BaseEnv.poll()` call.
-        policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy.
-        normalize_actions (bool): Whether to normalize actions to the action
+        policies: Mapping from policy ID to Policy.
+        normalize_actions: Whether to normalize actions to the action
             space's bounds.
-        clip_actions (bool): Whether to clip actions to the action space's
-            bounds.
+        clip_actions: Whether to clip actions to the action space's bounds.
 
     Returns:
-        actions_to_send: Nested dict of env id -> agent id -> actions to be
-            sent to Env (np.ndarrays).
+        Nested dict of env id -> agent id -> actions to be sent to
+        Env (np.ndarrays).
     """
 
     actions_to_send: Dict[EnvID, Dict[AgentID, EnvActionType]] = \
