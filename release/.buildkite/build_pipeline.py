@@ -479,22 +479,21 @@ def create_test_step(
             }]
         }
 
-    step_conf["commands"] = [
-        "pip install -q -r release/requirements.txt",
-        "pip install -U boto3 botocore",
-        f"git clone -b {ray_test_branch} {ray_test_repo} ~/ray", cmd,
-        "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
-        "|| true"
-    ]
-
     if isinstance(test_name, ConnectTest):
         # Add driver side setup commands to the step.
         pip_requirements_command = [f"pip install -U -r "
                                     f"{test_name.requirements_file}"] if \
             test_name.requirements_file else []
         step_conf["commands"] = test_name.setup_commands \
-            + pip_requirements_command \
-            + step_conf["commands"]
+            + pip_requirements_command
+
+    step_conf["commands"] += [
+        "pip install -q -r release/requirements.txt",
+        "pip install -U boto3 botocore",
+        f"git clone -b {ray_test_branch} {ray_test_repo} ~/ray", cmd,
+        "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
+        "|| true"
+    ]
 
     step_conf["label"] = (
         f"{test_name} "
