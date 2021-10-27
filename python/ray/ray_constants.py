@@ -160,6 +160,9 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 # `services.py:wait_for_redis_to_start`.
 START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
 
+# Only unpickle and run exported functions from the same job if it's true.
+ISOLATE_EXPORTS = env_bool("RAY_ISOLATE_EXPORTS", True)
+
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
 LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
