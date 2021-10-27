@@ -860,9 +860,8 @@ bool ClusterTaskManager::AnyPendingTasks(RayTask *exemplar, bool *any_pending,
                                          int *num_pending_actor_creation,
                                          int *num_pending_tasks) const {
   // We are guaranteed that these tasks are blocked waiting for resources after a
-  // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
-  // this should be a transient condition only.
-  for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
+  // call to ScheduleAndDispatchTasks().
+  for (const auto &shapes_it : tasks_to_schedule_) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
       const auto &task = work_it->task;
