@@ -89,6 +89,11 @@ class TestGetURIForDirectory:
             os.rmdir("d1")
             os.rmdir("d2")
 
+    def test_uri_hash_length(self, random_dir):
+        uri = get_uri_for_directory(random_dir)
+        hex_hash = uri.split("_")[-1][:-len(".zip")]
+        assert len(hex_hash) == 16
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 class TestUploadPackageIfNeeded:

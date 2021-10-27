@@ -313,7 +313,7 @@ class Policy(metaclass=ABCMeta):
             prev_action_batch: Batch of previous action values.
             prev_reward_batch: Batch of previous rewards.
             info_batch: Batch of info objects.
-            episodes: List of Episodes, one for each obs in
+            episodes: List of Episode objects, one for each obs in
                 obs_batch. This provides access to all of the internal
                 episode state, which may be useful for model-based or
                 multi-agent algorithms.

@@ -66,7 +66,7 @@ class DefaultCallbacks:
                         worker: "RolloutWorker",
                         base_env: BaseEnv,
                         policies: Optional[Dict[PolicyID, Policy]] = None,
-                        episode: Episode,                        env_index: Optional[int] = None,
+                        episode: Episode,
                         **kwargs) -> None:
         """Runs on each episode step.
 

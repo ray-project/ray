@@ -13,9 +13,10 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
-#include "ray/common/asio/instrumented_io_context.h"
 
 #include <boost/algorithm/string.hpp>
+
+#include "ray/common/asio/instrumented_io_context.h"
 
 namespace ray {
 namespace gcs {
@@ -36,18 +37,18 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   options.enable_sync_conn_ = true;
   options.enable_async_conn_ = false;
   options.enable_subscribe_conn_ = false;
-  gcs_client_.reset(new ServiceBasedGcsClient(options));
+  gcs_client_ = std::make_unique<ServiceBasedGcsClient>(options);
 
-  io_service_.reset(new instrumented_io_context());
+  io_service_ = std::make_unique<instrumented_io_context>();
 
   std::promise<bool> promise;
-  thread_io_service_.reset(new std::thread([this, &promise] {
+  thread_io_service_ = std::make_unique<std::thread>([this, &promise] {
     SetThreadName("global.accessor");
     std::unique_ptr<boost::asio::io_service::work> work(
         new boost::asio::io_service::work(*io_service_));
     promise.set_value(true);
     io_service_->run();
-  }));
+  });
   promise.get_future().get();
 }
 
@@ -58,10 +59,9 @@ bool GlobalStateAccessor::Connect() {
   if (!is_connected_) {
     is_connected_ = true;
     return gcs_client_->Connect(*io_service_).ok();
-  } else {
-    RAY_LOG(DEBUG) << "Duplicated connection for GlobalStateAccessor.";
-    return true;
   }
+  RAY_LOG(DEBUG) << "Duplicated connection for GlobalStateAccessor.";
+  return true;
 }
 
 void GlobalStateAccessor::Disconnect() {
@@ -143,7 +143,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
                      const boost::optional<rpc::ObjectLocationInfo> &result) {
     RAY_CHECK_OK(status);
     if (result) {
-      object_info.reset(new std::string(result->SerializeAsString()));
+      object_info = std::make_unique<std::string>(result->SerializeAsString());
     }
     promise.set_value(true);
   };
