@@ -379,12 +379,11 @@ cdef prepare_args(
                 serialized_arg = worker.get_serialization_context(
                 ).serialize(arg)
             except TypeError as e:
-                msg = ("There was an issue serializing the object "
-                       f"{repr(arg)} for a task or actor "
-                       f"`{function_descriptor.repr}`. Look "
-                       "https://docs.ray.io/en/master/serialization.html#troubleshooting " # noqa
-                       "if your object is not serializable. "
-                       f"Original error message: {e}")
+                msg = ("Could not serialize the task argument "
+                        f"{repr(arg)} for a task or actor "
+                        f"{function_descriptor.repr}. Check "
+                        "https://docs.ray.io/en/master/serialization.html#troubleshooting " # noqa
+                        "for more information.")
                 raise TypeError(msg) from e
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:

@@ -266,11 +266,10 @@ class RemoteFunction:
                 self._pickled_function = pickle.dumps(self._function)
             except TypeError as e:
                 msg = (
-                    "There was an issue serializing the function "
-                    f"{self._function_descriptor.repr} for a task. Look "
+                    "Could not serialize the function "
+                    f"{self._function_descriptor.repr}. Check "
                     "https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
-                    "if your object is not serializable. "
-                    f"Original error message: {e}")
+                    "for more information.")
                 raise TypeError(msg) from e
 
             self._last_export_session_and_job = worker.current_session_and_job

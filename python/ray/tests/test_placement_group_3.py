@@ -466,7 +466,7 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
 
     actor_num = 1000
     pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(actor_num)]
-    actors = [A.options(placement_group=pg).remote() for pg in pgs]
+    actors = [A.options(num_cpus=1, placement_group=pg).remote() for pg in pgs]
     refs = [actor.ready.remote() for actor in actors]
 
     expected_created_num = 1

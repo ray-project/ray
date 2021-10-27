@@ -311,10 +311,10 @@ RuntimeError: Failed to unpickle serialized exception"""
 
 
 def test_serialization_error_message(shutdown_only):
-    expected_output_task = """There was an issue serializing the object <unlocked _thread.lock object at ADDRESS> for a task or actor `test_traceback.test_serialization_error_message.<locals>.task_with_unserializable_arg`. Look https://docs.ray.io/en/master/serialization.html#troubleshooting if your object is not serializable. Original error message: can't pickle _thread.lock objects"""  # noqa
-    expected_output_actor = """There was an issue serializing the object <unlocked _thread.lock object at ADDRESS> for a task or actor `test_traceback.test_serialization_error_message.<locals>.A.__init__`. Look https://docs.ray.io/en/master/serialization.html#troubleshooting if your object is not serializable. Original error message: can't pickle _thread.lock objects"""  # noqa
-    expected_capture_output_task = """There was an issue serializing the function test_traceback.test_serialization_error_message.<locals>.capture_lock for a task. Look https://docs.ray.io/en/master/serialization.html#troubleshooting if your object is not serializable. Original error message: can't pickle _thread.lock objects"""  # noqa
-    expected_capture_output_actor = """There was an issue serializing the actor class test_traceback.test_serialization_error_message.<locals>.B.__init__ for a task. Look https://docs.ray.io/en/master/serialization.html#troubleshooting if your object is not serializable. Original error message: can't pickle _thread.lock objects"""  # noqa
+    expected_output_task = """Could not serialize the task argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.task_with_unserializable_arg. Check https://docs.ray.io/en/master/serialization.html#troubleshooting for more information."""  # noqa
+    expected_output_actor = """Could not serialize the task argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.A.__init__. Check https://docs.ray.io/en/master/serialization.html#troubleshooting for more information."""  # noqa
+    expected_capture_output_task = """Could not serialize the function test_traceback.test_serialization_error_message.<locals>.capture_lock. Check https://docs.ray.io/en/master/serialization.html#troubleshooting for more information."""  # noqa
+    expected_capture_output_actor = """Could not serialize the actor class test_traceback.test_serialization_error_message.<locals>.B.__init__. Check https://docs.ray.io/en/master/serialization.html#troubleshooting for more information."""  # noqa
     ray.init(num_cpus=1)
     lock = threading.Lock()
 

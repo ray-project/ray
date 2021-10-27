@@ -389,11 +389,10 @@ class FunctionActorManager:
             serialized_actor_class = pickle.dumps(Class)
         except TypeError as e:
             msg = (
-                "There was an issue serializing the actor class "
-                f"{actor_creation_function_descriptor.repr} for a task. Look "
-                "https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
-                "if your object is not serializable. "
-                f"Original error message: {e}")
+                "Could not serialize the actor class "
+                f"{actor_creation_function_descriptor.repr}. "
+                "Check https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
+                "for more information.")
             raise TypeError(msg) from e
         actor_class_info = {
             "class_name": actor_creation_function_descriptor.class_name.split(
