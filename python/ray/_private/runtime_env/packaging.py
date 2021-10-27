@@ -15,6 +15,10 @@ from ray._private.thirdparty.pathspec import PathSpec
 
 default_logger = logging.getLogger(__name__)
 
+# If the working_dir is beyond this size, print a progress message to prevent
+# the appearance of hanging.
+SILENT_UPLOAD_SIZE_THRESHOLD = 1 * 1024 * 1024  # 1MiB
+# If an individual file is beyond this size, print a warning.
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
 # limit, but for some reason that causes failures when downloading.
@@ -165,14 +169,24 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return None
 
 
-def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
+def _store_package_in_gcs(
+        pkg_uri: str,
+        data: bytes,
+        logger: Optional[logging.Logger] = default_logger) -> int:
+    file_size = len(data)
+    size_str = _mib_string(file_size)
     if len(data) >= GCS_STORAGE_MAX_SIZE:
         raise RuntimeError(
-            f"Package size ({_mib_string(len(data))}) exceeds the maximum "
-            f"size of {_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude "
-            "large files using the 'excludes' option to the runtime_env.")
+            f"Package size ({size_str}) exceeds the maximum size of "
+            f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
+            "files using the 'excludes' option to the runtime_env.")
 
-    _internal_kv_put(gcs_key, data)
+    if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
+        logger.info(f"Pushing local file package {pkg_uri} ({size_str}) to "
+                    "Ray cluster...")
+    _internal_kv_put(pkg_uri, data)
+    if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
+        logger.info("Successfully pushed local file package {pkg_uri}.")
     return len(data)
 
 
@@ -207,8 +221,10 @@ def _zip_directory(directory: str,
                 if file_size >= FILE_SIZE_WARNING:
                     logger.warning(
                         f"File {path} is very large "
-                        f"({_mib_string(file_size)}). "
-                        "Consider excluding this file using 'excludes'.")
+                        f"({_mib_string(file_size)}). Consider adding this "
+                        "file to the 'excludes' list to skip uploading it: "
+                        "`ray.init(..., "
+                        f"runtime_env={{'excludes': ['{path}']}})`")
                 to_path = path.relative_to(dir_path)
                 if include_parent_dir:
                     to_path = dir_path.name / to_path
@@ -319,15 +335,12 @@ def upload_package_if_needed(
     # Push the data to remote storage
     protocol, pkg_name = parse_uri(pkg_uri)
     data = Path(pkg_file).read_bytes()
-    logger.info(f"Pushing package {pkg_uri} ({_mib_string(len(data))}).")
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, data)
     elif protocol == Protocol.S3:
         raise RuntimeError("push_package should not be called with s3 path.")
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
-
-    logger.info(f"{pkg_uri} pushed successfully.")
 
     # Remove the local file to avoid accumulating temporary zip files.
     pkg_file.unlink()

@@ -7,12 +7,14 @@ import tempfile
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
+from ray._private.test_utils import run_string_as_driver
 
 import ray
 import ray.experimental.internal_kv as kv
 from ray._private.test_utils import wait_for_condition
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
-from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
+from ray._private.runtime_env.packaging import (GCS_STORAGE_MAX_SIZE,
+                                                SILENT_UPLOAD_SIZE_THRESHOLD)
 
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
@@ -795,6 +797,38 @@ def test_large_file_error(shutdown_only, option: str):
                 ray.init(runtime_env={"working_dir": "."})
             else:
                 ray.init(runtime_env={"py_modules": ["."]})
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+def test_large_dir_upload_message(start_cluster, option):
+    cluster, address = start_cluster
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        filepath = os.path.join(tmp_dir, "test_file.txt")
+        if option == "working_dir":
+            driver_script = f"""
+import ray
+ray.init("{address}", runtime_env={{"working_dir": "{tmp_dir}"}})
+"""
+        else:
+            driver_script = f"""
+import ray
+ray.init("{address}", runtime_env={{"py_modules": ["{tmp_dir}"]}})
+"""
+
+        size = SILENT_UPLOAD_SIZE_THRESHOLD - 1024
+        with open(filepath, "wb") as f:
+            f.write(os.urandom(size))
+
+        output = run_string_as_driver(driver_script)
+        assert "Pushing large local file package" not in output
+
+        size = SILENT_UPLOAD_SIZE_THRESHOLD + 1
+        with open(filepath, "wb") as f:
+            f.write(os.urandom(size))
+
+        output = run_string_as_driver(driver_script)
+        assert "Pushed local files" in output
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

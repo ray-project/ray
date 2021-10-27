@@ -24,8 +24,10 @@ def _check_is_uri(s: str) -> bool:
     return protocol is not None
 
 
-def upload_py_modules_if_needed(runtime_env: Dict[str, Any],
-                                scratch_dir: str) -> Dict[str, Any]:
+def upload_py_modules_if_needed(
+        runtime_env: Dict[str, Any],
+        scratch_dir: str,
+        logger: Optional[logging.Logger] = default_logger) -> Dict[str, Any]:
     """Uploads the entries in py_modules and replaces them with a URI.
 
     If an entry is already a URI, this is a no-op.
@@ -66,7 +68,8 @@ def upload_py_modules_if_needed(runtime_env: Dict[str, Any],
                 scratch_dir,
                 module_path,
                 excludes=excludes,
-                include_parent_dir=True)
+                include_parent_dir=True,
+                logger=logger)
 
         py_modules_uris.append(module_uri)
 

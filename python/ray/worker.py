@@ -583,7 +583,7 @@ def init(
         dashboard_port: Optional[int] = None,
         job_config: "ray.job_config.JobConfig" = None,
         configure_logging: bool = True,
-        logging_level: int = logging.INFO,
+        logging_level: int = ray_constants.LOGGER_LEVEL,
         logging_format: str = ray_constants.LOGGER_FORMAT,
         log_to_driver: bool = True,
         namespace: Optional[str] = None,
@@ -1381,8 +1381,10 @@ def connect(node,
             and job_config.runtime_env):
         scratch_dir: str = worker.node.get_runtime_env_dir_path()
         runtime_env = job_config.runtime_env or {}
-        runtime_env = upload_py_modules_if_needed(runtime_env, scratch_dir)
-        runtime_env = upload_working_dir_if_needed(runtime_env, scratch_dir)
+        runtime_env = upload_py_modules_if_needed(
+            runtime_env, scratch_dir, logger=logger)
+        runtime_env = upload_working_dir_if_needed(
+            runtime_env, scratch_dir, logger=logger)
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)

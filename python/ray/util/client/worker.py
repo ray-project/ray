@@ -210,19 +210,19 @@ class Worker:
                 # Ray is not ready yet, wait a timeout
                 time.sleep(timeout)
             except grpc.FutureTimeoutError:
-                logger.info(
+                logger.debug(
                     f"Couldn't connect channel in {timeout} seconds, retrying")
                 # Note that channel_ready_future constitutes its own timeout,
                 # which is why we do not sleep here.
             except grpc.RpcError as e:
-                logger.info("Ray client server unavailable, "
-                            f"retrying in {timeout}s...")
+                logger.debug("Ray client server unavailable, "
+                             f"retrying in {timeout}s...")
                 logger.debug(f"Received when checking init: {e.details()}")
                 # Ray is not ready yet, wait a timeout.
                 time.sleep(timeout)
             # Fallthrough, backoff, and retry at the top of the loop
-            logger.info("Waiting for Ray to become ready on the server, "
-                        f"retry in {timeout}s...")
+            logger.debug("Waiting for Ray to become ready on the server, "
+                         f"retry in {timeout}s...")
             if not reconnecting:
                 # Don't increase backoff when trying to reconnect --
                 # we already know the server exists, attempt to reconnect
@@ -386,21 +386,7 @@ class Worker:
             raise err
         return loads_from_server(resp.data)
 
-    def put(self, vals, *, client_ref_id: bytes = None):
-        to_put = []
-        single = False
-        if isinstance(vals, list):
-            to_put = vals
-        else:
-            single = True
-            to_put.append(vals)
-
-        out = [self._put(x, client_ref_id=client_ref_id) for x in to_put]
-        if single:
-            out = out[0]
-        return out
-
-    def _put(self, val, client_ref_id: bytes):
+    def put(self, val, *, client_ref_id: bytes = None):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
                 "Calling 'put' on an ObjectRef is not allowed "
@@ -693,9 +679,9 @@ class Worker:
                 with tempfile.TemporaryDirectory() as tmp_dir:
                     runtime_env = job_config.runtime_env or {}
                     runtime_env = upload_py_modules_if_needed(
-                        runtime_env, tmp_dir)
+                        runtime_env, tmp_dir, logger=logger)
                     runtime_env = upload_working_dir_if_needed(
-                        runtime_env, tmp_dir)
+                        runtime_env, tmp_dir, logger=logger)
                     # Remove excludes, it isn't relevant after the upload step.
                     runtime_env.pop("excludes", None)
                     job_config.set_runtime_env(runtime_env)
