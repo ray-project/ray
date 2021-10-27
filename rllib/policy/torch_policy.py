@@ -77,17 +77,36 @@ class TorchPolicy(Policy):
             loss: Callable that returns one or more (a list of) scalar loss
                 terms.
             action_distribution_class: Class for a torch action distribution.
-            action_sampler_fn: A callable returning a sampled action and
-                its log-likelihood given Policy, ModelV2, input_dict,
-                explore, timestep, and is_training.
+            action_sampler_fn: A callable returning a sampled action and its
+                log-likelihood given Policy, ModelV2, input_dict, state batches
+                (optional), explore, and timestep.
+                Provide `action_sampler_fn` if you would like to have full
+                control over the action computation step, including the
+                model forward pass, possible sampling from a distribution,
+                and exploration logic.
+                Note: If `action_sampler_fn` is given, `action_distribution_fn`
+                must be None. If both `action_sampler_fn` and
+                `action_distribution_fn` are None, RLlib will simply pass
+                inputs through `self.model` to get distribution inputs, create
+                the distribution object, sample from it, and apply some
+                exploration logic to the results.
+                The callable takes as inputs: Policy, ModelV2, input_dict
+                (SampleBatch), state_batches (optional), explore, and timestep.
             action_distribution_fn: A callable returning distribution inputs
                 (parameters), a dist-class to generate an action distribution
                 object from, and internal-state outputs (or an empty list if
-                not applicable). Note: No Exploration hooks have to be called
-                from within `action_distribution_fn`. It's should only perform
-                a simple forward pass through some model.
-                If None, pass inputs through `self.model()` to get distribution
-                inputs.
+                not applicable).
+                Provide `action_distribution_fn` if you would like to only
+                customize the model forward pass call. The resulting
+                distribution parameters are then used by RLlib to create a
+                distribution object, sample from it, and execute any
+                exploration logic.
+                Note: If `action_distribution_fn` is given, `action_sampler_fn`
+                must be None. If both `action_sampler_fn` and
+                `action_distribution_fn` are None, RLlib will simply pass
+                inputs through `self.model` to get distribution inputs, create
+                the distribution object, sample from it, and apply some
+                exploration logic to the results.
                 The callable takes as inputs: Policy, ModelV2, ModelInputDict,
                 explore, timestep, is_training.
             max_seq_len: Max sequence length for LSTM training.

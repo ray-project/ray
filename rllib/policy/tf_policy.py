@@ -106,7 +106,9 @@ class TFPolicy(Policy):
                 These keys will be read from postprocessed sample batches and
                 fed into the specified placeholders during loss computation.
             model: The optional ModelV2 to use for calculating actions and
-                losses.
+                losses. If not None, TFPolicy will provide functionality for
+                getting variables, calling the model's custom loss (if
+                provided), and importing weights into the model.
             sampled_action_logp: log probability of the sampled action.
             action_input: Input placeholder for actions for
                 logp/log-likelihood calculations.
@@ -559,6 +561,9 @@ class TFPolicy(Policy):
     @DeveloperAPI
     def import_model_from_h5(self, import_file: str) -> None:
         """Imports weights into tf model."""
+        if self.model is None:
+            raise NotImplementedError("No `self.model` to import into!")
+
         # Make sure the session is the right one (see issue #7046).
         with self.get_session().graph.as_default():
             with self.get_session().as_default():
@@ -571,7 +576,9 @@ class TFPolicy(Policy):
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
-        if isinstance(self.model, tf.keras.Model):
+        if self.model is None:
+            raise NotImplementedError("No `self.model` to get variables for!")
+        elif isinstance(self.model, tf.keras.Model):
             return self.model.variables
         else:
             return self.model.variables()
