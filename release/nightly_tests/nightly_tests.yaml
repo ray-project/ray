@@ -245,7 +245,7 @@
 
 - name: grpc_stress_test_placement_group
   cluster:
-    app_config: stress_tests/stress_tests_app_config.yaml
+    app_config: stress_tests/stress_tests_app_config_grpc.yaml
     compute_template: stress_tests/placement_group_tests_compute.yaml
 
   run:
