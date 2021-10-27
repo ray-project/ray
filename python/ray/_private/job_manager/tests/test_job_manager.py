@@ -140,7 +140,7 @@ class TestRuntimeEnv:
 
         job_manager.submit_job(
             job_id_1,
-            f"python command_scripts/ray_script_prints_env_var.py",
+            "python command_scripts/ray_script_prints_env_var.py",
             runtime_env={
                 "env_vars": {
                     "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"
@@ -157,7 +157,7 @@ class TestRuntimeEnv:
 
         job_manager.submit_job(
             job_id_2,
-            f"python command_scripts/ray_script_prints_env_var.py",
+            "python command_scripts/ray_script_prints_env_var.py",
             runtime_env={
                 "env_vars": {
                     "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_2_VAR"
@@ -177,7 +177,7 @@ class TestRuntimeEnv:
 
         job_manager.submit_job(
             job_id_1,
-            f"python command_scripts/ray_script_overrides_env_var.py",
+            "python command_scripts/ray_script_overrides_env_var.py",
             runtime_env={
                 "env_vars": {
                     "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"

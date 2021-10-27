@@ -1,4 +1,3 @@
-import copy
 import subprocess
 import pickle
 import os
@@ -6,6 +5,7 @@ import json
 from typing import Any, Dict, Tuple, Optional
 
 import ray
+import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.serve.utils import get_current_node_resource_key
@@ -143,7 +143,11 @@ class JobSupervisor:
             os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps({
                 "runtime_env": ray.get_runtime_context().runtime_env
             })
-
+            ray_redis_address = ray._private.services.find_redis_address_or_die(  # noqa: E501
+            )
+            os.environ[ray_constants.
+                       RAY_ADDRESS_ENVIRONMENT_VARIABLE] = ray_redis_address
+            # print(os.environ["RAY_ADDRESS"])
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
 

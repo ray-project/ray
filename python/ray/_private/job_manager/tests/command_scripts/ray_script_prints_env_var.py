@@ -7,7 +7,7 @@ for job submission API testing.
 def run():
     import ray
     import os
-    ray.init(address="auto")
+    ray.init(address=os.environ["RAY_ADDRESS"])
 
     @ray.remote
     def foo():

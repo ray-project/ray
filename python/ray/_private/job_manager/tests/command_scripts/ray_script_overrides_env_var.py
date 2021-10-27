@@ -8,7 +8,7 @@ def run():
     import ray
     import os
     ray.init(
-        address="auto",
+        address=os.environ["RAY_ADDRESS"],
         runtime_env={
             "env_vars": {
                 "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "SHOULD_BE_OVERRIDEN"
