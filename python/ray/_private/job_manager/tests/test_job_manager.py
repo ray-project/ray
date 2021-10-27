@@ -130,32 +130,10 @@ class TestRuntimeEnv:
 
     def test_multiple_runtime_envs(self, job_manager):
         # Test that you can run two jobs in different envs without conflict.
-        job_1_script = f"""
-import ray
-ray.init(address='auto')
-
-@ray.remote
-def foo():
-    return 'job_1!'
-
-print(ray.get(foo.remote()))
-        """
-
-        job_2_script = f"""
-import ray
-ray.init(address='auto')
-
-@ray.remote
-def foo():
-    return 'job_2!'
-
-print(ray.get(foo.remote()))
-        """
-
         job_id_1 = str(uuid4())
         job_id_2 = str(uuid4())
 
-        job_id = job_manager.submit_job(
+        job_manager.submit_job(
             job_id_1, f"python command_scripts/ray_script_prints_env_var.py",
             runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"}})
 
@@ -166,6 +144,30 @@ print(ray.get(foo.remote()))
 
         wait_for_condition(check_job_finished)
         assert job_manager.get_job_stdout(job_id_1) == b"JOB_1_VAR"
-        # job_id = job_manager.submit_job(
-        #     job_id_2, "echo $TEST_SUBPROCESS_JOB_CONFIG",
-        #     runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG": job_id_2}})
+
+        job_manager.submit_job(
+            job_id_2, f"python command_scripts/ray_script_prints_env_var.py",
+            runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_2_VAR"}})
+
+        def check_job_finished():
+            status = job_manager.get_job_status(job_id_2)
+            assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
+            return status == JobStatus.SUCCEEDED
+
+        wait_for_condition(check_job_finished)
+        assert job_manager.get_job_stdout(job_id_2) == b"JOB_2_VAR"
+
+    def test_ensure_env_var_job_config_priority(self, job_manager):
+        job_id_1 = str(uuid4())
+
+        job_manager.submit_job(
+            job_id_1, f"python command_scripts/ray_script_overrides_env_var.py",
+            runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"}})
+
+        def check_job_finished():
+            status = job_manager.get_job_status(job_id_1)
+            assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
+            return status == JobStatus.SUCCEEDED
+
+        wait_for_condition(check_job_finished)
+        assert job_manager.get_job_stdout(job_id_1) == b"JOB_1_VAR"

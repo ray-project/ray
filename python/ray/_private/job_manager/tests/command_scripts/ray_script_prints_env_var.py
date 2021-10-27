@@ -1,3 +1,8 @@
+"""
+A dummy ray driver script that executes in subprocess. Prints env var
+for job submission API testing.
+"""
+
 def run():
     import ray
     import os
@@ -5,9 +10,11 @@ def run():
 
     @ray.remote
     def foo():
-        return os.environ.get("TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR", None)
+        return "bar"
 
-    print(ray.get(foo.remote()))
+    ray.get(foo.remote())
+    print(os.environ.get("TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR", None)
+)
 
 if __name__ == "__main__":
     run()
