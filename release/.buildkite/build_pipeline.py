@@ -252,8 +252,9 @@ USER_TESTS = {
     "~/ray/release/horovod_tests/horovod_tests.yaml": [
         ConnectTest(
             "horovod_user_test",
-            requirements_file="~/ray/release/horovod_tests"
-            "/driver_requirements.txt")
+            requirements_file=os.path.abspath(
+                os.path.expanduser("~/ray/release/horovod_tests"
+                                   "/driver_requirements.txt")))
     ]
 }
 
