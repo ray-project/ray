@@ -905,7 +905,40 @@ std::string ClusterTaskManager::DebugStr() const {
   buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
-  buffer << "==================================================";
+  buffer << "Resource usage {\n";
+  /// Calculates how much resources are occupied by tasks or actors.
+  for (const auto &worker :
+       worker_pool_.GetAllRegisteredWorkers(/*filter_dead_workers*/ true)) {
+    if (worker->IsDead()                        // worker is dead
+        || worker->IsBlocked()                  // worker is blocked by blocking Ray API
+        || worker->GetAssignedTaskId().IsNil()  // No tasks assigned
+        || worker->GetActorId().IsNil()) {      // No actor assigned
+      // Then this shouldn't have allocated resources.
+      continue;
+    }
+
+    const auto worker_pid = worker->GetProcess().GetId();
+    const auto &task_or_actor_name = worker->GetAssignedTask()
+                                         .GetTaskSpecification()
+                                         .FunctionDescriptor()
+                                         ->CallString();
+    std::shared_ptr<TaskResourceInstances> allocated_resources;
+    if (worker->GetAssignedTask().GetTaskSpecification().IsActorCreationTask()) {
+      allocated_resources = worker->GetLifetimeAllocatedInstances();
+    } else {
+      allocated_resources = worker->GetAllocatedInstances();
+    }
+    buffer << "    - (language="
+           << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
+           << " actor_or_task=" << task_or_actor_name << " pid=" << worker_pid << "): "
+           << worker->GetAssignedTask()
+                  .GetTaskSpecification()
+                  .GetRequiredResources()
+                  .ToString()
+           << "\n";
+  }
+  buffer << "}\n";
+  buffer << "==================================================\n";
   return buffer.str();
 }
 
