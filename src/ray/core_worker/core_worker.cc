@@ -824,7 +824,8 @@ void CoreWorker::Exit(
     task_execution_service_.post(
         [this, exit_type, creation_task_exception_pb_bytes]() {
           if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR ||
-              exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
+              exit_type == rpc::WorkerExitType::INTENDED_EXIT ||
+              exit_type == rpc::WorkerExitType::IDLE_EXIT) {
             // Notify the raylet about this exit.
             // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect
             // manually.

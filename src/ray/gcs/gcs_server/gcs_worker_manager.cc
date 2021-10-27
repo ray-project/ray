@@ -32,7 +32,8 @@ void GcsWorkerManager::HandleReportWorkerFailure(
              << rpc::WorkerExitType_Name(request.worker_failure().exit_type())
              << ", has creation task exception = "
              << request.worker_failure().has_creation_task_exception();
-  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT) {
+  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT ||
+      request.worker_failure().exit_type() == rpc::WorkerExitType::IDLE_EXIT) {
     RAY_LOG(INFO) << log_stream.str();
   } else {
     RAY_LOG(WARNING) << log_stream.str()
