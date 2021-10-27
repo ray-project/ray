@@ -7,6 +7,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -57,8 +58,11 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Replay buffer ===
     # Size of the replay buffer in batches (not timesteps!).
-    "buffer_size": 1000,
-
+    "buffer_size": DEPRECATED_VALUE,
+    "replay_buffer_config": {
+        "type": "LocalReplayBuffer",
+        "capacity": 1000,
+    },
     # === Optimization ===
     # Learning rate for RMSProp optimizer
     "lr": 0.0005,
