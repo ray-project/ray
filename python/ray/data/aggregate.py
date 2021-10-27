@@ -21,10 +21,10 @@ class AggregateFn(object):
         for more details about accumulator-based aggregation.
 
         Args:
-            init: This is called once for each key
+            init: This is called once for each group
                 to return the empty accumulator.
                 For example, an empty accumulator for a sum would be 0.
-            accumulate: This is called once per row of the same key.
+            accumulate: This is called once per row of the same group.
                 This combines the accumulator and the row,
                 returns the updated accumulator.
             merge: This may be called multiple times, each time to merge
@@ -56,12 +56,7 @@ class Sum(AggregateFn):
     """Defines sum aggregation."""
 
     def __init__(self, on: AggregateOnT = None):
-        if on is None:
-            on_fn = lambda r: r  # noqa E731
-        elif isinstance(on, str):
-            on_fn = lambda r: r[on]  # noqa E731
-        else:
-            on_fn = on
+        on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: 0,
             accumulate=lambda a, r: a + on_fn(r),
@@ -73,12 +68,7 @@ class Min(AggregateFn):
     """Defines min aggregation."""
 
     def __init__(self, on: AggregateOnT = None):
-        if on is None:
-            on_fn = lambda r: r  # noqa E731
-        elif isinstance(on, str):
-            on_fn = lambda r: r[on]  # noqa E731
-        else:
-            on_fn = on
+        on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
             accumulate=(
@@ -91,12 +81,7 @@ class Max(AggregateFn):
     """Defines max aggregation."""
 
     def __init__(self, on: AggregateOnT = None):
-        if on is None:
-            on_fn = lambda r: r  # noqa E731
-        elif isinstance(on, str):
-            on_fn = lambda r: r[on]  # noqa E731
-        else:
-            on_fn = on
+        on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
             accumulate=(
@@ -109,15 +94,19 @@ class Mean(AggregateFn):
     """Defines mean aggregation."""
 
     def __init__(self, on: AggregateOnT = None):
-        if on is None:
-            on_fn = lambda r: r  # noqa E731
-        elif isinstance(on, str):
-            on_fn = lambda r: r[on]  # noqa E731
-        else:
-            on_fn = on
+        on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: [0, 0],
             accumulate=lambda a, r: [a[0] + on_fn(r), a[1] + 1],
             merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
             finalize=lambda a: a[0] / a[1],
             name=(f"mean({str(on)})"))
+
+
+def _to_on_fn(on: AggregateOnT):
+    if on is None:
+        return lambda r: r
+    elif isinstance(on, str):
+        return lambda r: r[on]
+    else:
+        return on
