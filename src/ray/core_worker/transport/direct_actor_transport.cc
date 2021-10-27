@@ -152,43 +152,51 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                                                       int64_t num_restarts) {
   RAY_LOG(DEBUG) << "Connecting to actor " << actor_id << " at worker "
                  << WorkerID::FromBinary(address.worker_id());
-  absl::ReleasableMutexLock lock1(&mu_);
+
+  std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+      inflight_task_callbacks;
+  {
+    absl::MutexLock lock(&mu_);
+
+    auto queue = client_queues_.find(actor_id);
+    RAY_CHECK(queue != client_queues_.end());
+    if (num_restarts < queue->second.num_restarts) {
+      // This message is about an old version of the actor and the actor has
+      // already restarted since then. Skip the connection.
+      RAY_LOG(INFO) << "Skip actor connection that has already been restarted, actor_id="
+                    << actor_id;
+      return;
+    }
+
+    if (queue->second.rpc_client &&
+        queue->second.rpc_client->Addr().ip_address() == address.ip_address() &&
+        queue->second.rpc_client->Addr().port() == address.port()) {
+      RAY_LOG(DEBUG) << "Skip actor that has already been connected, actor_id="
+                     << actor_id;
+      return;
+    }
+
+    if (queue->second.state == rpc::ActorTableData::DEAD) {
+      // This message is about an old version of the actor and the actor has
+      // already died since then. Skip the connection.
+      return;
+    }
+
+    queue->second.num_restarts = num_restarts;
+    if (queue->second.rpc_client) {
+      // Clear the client to the old version of the actor.
+      DisconnectRpcClient(queue->second);
+      inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
+      queue->second.inflight_task_callbacks.clear();
+    }
+  }
+  // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
+  FailInflightTasks(inflight_task_callbacks);
+
+  absl::MutexLock lock(&mu_);
 
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
-  if (num_restarts < queue->second.num_restarts) {
-    // This message is about an old version of the actor and the actor has
-    // already restarted since then. Skip the connection.
-    RAY_LOG(INFO) << "Skip actor connection that has already been restarted, actor_id="
-                  << actor_id;
-    return;
-  }
-
-  if (queue->second.rpc_client &&
-      queue->second.rpc_client->Addr().ip_address() == address.ip_address() &&
-      queue->second.rpc_client->Addr().port() == address.port()) {
-    RAY_LOG(DEBUG) << "Skip actor that has already been connected, actor_id=" << actor_id;
-    return;
-  }
-
-  if (queue->second.state == rpc::ActorTableData::DEAD) {
-    // This message is about an old version of the actor and the actor has
-    // already died since then. Skip the connection.
-    return;
-  }
-
-  queue->second.num_restarts = num_restarts;
-  if (queue->second.rpc_client) {
-    // Clear the client to the old version of the actor.
-    DisconnectRpcClient(queue->second);
-    auto inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
-    lock1.Release();
-    FailInflightTasks(inflight_task_callbacks);
-  } else {
-    lock1.Release();
-  }
-  absl::MutexLock lock2(&mu_);
-
   queue->second.state = rpc::ActorTableData::ALIVE;
   // Update the mapping so new RPCs go out with the right intended worker id.
   queue->second.worker_id = address.worker_id();
@@ -212,29 +220,39 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     const ActorID &actor_id, int64_t num_restarts, bool dead,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id;
-  absl::ReleasableMutexLock lock1(&mu_);
+
+  std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+      inflight_task_callbacks;
+  {
+    absl::MutexLock lock(&mu_);
+    auto queue = client_queues_.find(actor_id);
+    RAY_CHECK(queue != client_queues_.end());
+    if (!dead) {
+      RAY_CHECK(num_restarts > 0);
+    }
+    if (num_restarts <= queue->second.num_restarts && !dead) {
+      // This message is about an old version of the actor that has already been
+      // restarted successfully. Skip the message handling.
+      RAY_LOG(INFO)
+          << "Skip actor disconnection that has already been restarted, actor_id="
+          << actor_id;
+      return;
+    }
+
+    // The actor failed, so erase the client for now. Either the actor is
+    // permanently dead or the new client will be inserted once the actor is
+    // restarted.
+    DisconnectRpcClient(queue->second);
+    inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
+    queue->second.inflight_task_callbacks.clear();
+  }
+  // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
+  FailInflightTasks(inflight_task_callbacks);
+
+  absl::MutexLock lock(&mu_);
+
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
-  if (!dead) {
-    RAY_CHECK(num_restarts > 0);
-  }
-  if (num_restarts <= queue->second.num_restarts && !dead) {
-    // This message is about an old version of the actor that has already been
-    // restarted successfully. Skip the message handling.
-    RAY_LOG(INFO) << "Skip actor disconnection that has already been restarted, actor_id="
-                  << actor_id;
-    return;
-  }
-
-  // The actor failed, so erase the client for now. Either the actor is
-  // permanently dead or the new client will be inserted once the actor is
-  // restarted.
-  DisconnectRpcClient(queue->second);
-  auto inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
-  lock1.Release();
-  FailInflightTasks(inflight_task_callbacks);
-  absl::MutexLock lock2(&mu_);
-
   if (dead) {
     queue->second.state = rpc::ActorTableData::DEAD;
     queue->second.creation_task_exception = creation_task_exception;
@@ -450,19 +468,21 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
       [this, task_id, actor_id](const Status &status, const rpc::PushTaskReply &reply) {
-        absl::ReleasableMutexLock lock(&mu_);
-        auto it = client_queues_.find(actor_id);
-        RAY_CHECK(it != client_queues_.end());
-        auto &queue = it->second;
-        auto callback_it = queue.inflight_task_callbacks.find(task_id);
-        if (callback_it == queue.inflight_task_callbacks.end()) {
-          RAY_LOG(DEBUG) << "The task " << task_id
-                         << " has already been marked as failed. Ingore the reply.";
-          return;
+        rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
+        {
+          absl::MutexLock lock(&mu_);
+          auto it = client_queues_.find(actor_id);
+          RAY_CHECK(it != client_queues_.end());
+          auto &queue = it->second;
+          auto callback_it = queue.inflight_task_callbacks.find(task_id);
+          if (callback_it == queue.inflight_task_callbacks.end()) {
+            RAY_LOG(DEBUG) << "The task " << task_id
+                           << " has already been marked as failed. Ingore the reply.";
+            return;
+          }
+          reply_callback = std::move(callback_it->second);
+          queue.inflight_task_callbacks.erase(callback_it);
         }
-        auto reply_callback = std::move(callback_it->second);
-        queue.inflight_task_callbacks.erase(callback_it);
-        lock.Release();
         reply_callback(status, reply);
       };
 
