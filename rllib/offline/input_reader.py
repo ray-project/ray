@@ -16,15 +16,16 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI
 class InputReader(metaclass=ABCMeta):
-    """Input object for loading experiences in policy evaluation."""
+    """API for collecting and returning experiences during policy evaluation.
+    """
 
     @abstractmethod
     @PublicAPI
-    def next(self):
-        """Returns the next batch of experiences read.
+    def next(self) -> SampleBatchType:
+        """Returns the next batch of read experiences.
 
         Returns:
-            Union[SampleBatch, MultiAgentBatch]: The experience read.
+            The experience read (SampleBatch or MultiAgentBatch).
         """
         raise NotImplementedError
 
@@ -40,7 +41,7 @@ class InputReader(metaclass=ABCMeta):
         reader repeatedly to feed the TensorFlow queue.
 
         Args:
-            queue_size (int): Max elements to allow in the TF queue.
+            queue_size: Max elements to allow in the TF queue.
 
         Example:
             >>> class MyModel(rllib.model.Model):
@@ -56,7 +57,7 @@ class InputReader(metaclass=ABCMeta):
         You can find a runnable version of this in examples/custom_loss.py.
 
         Returns:
-            dict of Tensors, one for each column of the read SampleBatch.
+            Dict of Tensors, one for each column of the read SampleBatch.
         """
 
         if hasattr(self, "_queue_runner"):
