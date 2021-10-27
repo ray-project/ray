@@ -222,7 +222,10 @@ def start_run(
 
     tune_script = os.environ.get("OVERWRITE_TUNE_SCRIPT", TUNE_SCRIPT)
 
-    process = subprocess.Popen(["python", tune_script] + args, env=env)
+    full_command = ["python", tune_script] + args
+
+    print(f"Running command: {' '.join(full_command)}")
+    process = subprocess.Popen(full_command, env=env)
 
     return process
 
@@ -1233,8 +1236,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    os.environ["TUNE_NUM_CPUS_PER_TRIAL"] = str(args.cpus_per_trial)
-
     # Check if test should be run using Ray client
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "client_cloud_test")
@@ -1254,7 +1255,10 @@ if __name__ == "__main__":
 
     def _run_test(variant: str,
                   bucket: str = "",
+                  cpus_per_trial: int = 2,
                   overwrite_tune_script: Optional[str] = None):
+        os.environ["TUNE_NUM_CPUS_PER_TRIAL"] = str(cpus_per_trial)
+
         if overwrite_tune_script:
             os.environ["OVERWRITE_TUNE_SCRIPT"] = overwrite_tune_script
 
@@ -1269,7 +1273,7 @@ if __name__ == "__main__":
 
     if not uses_ray_client:
         print("This test will *not* use Ray client.")
-        _run_test(args.variant, args.bucket)
+        _run_test(args.variant, args.bucket, args.cpus_per_trial)
     else:
         print("This test will run using Ray client.")
 
@@ -1291,10 +1295,10 @@ if __name__ == "__main__":
         print("Starting remote cloud test using Ray client")
 
         _run_test_remote = ray.remote(
-            resources={f"node:{ip}": 0.01})(_run_test)
+            resources={f"node:{ip}": 0.01}, num_cpus=0)(_run_test)
         ray.get(
             _run_test_remote.remote(args.variant, args.bucket,
-                                    remote_tune_script))
+                                    args.cpus_per_trial, remote_tune_script))
 
         print("Fetching remote release test result file")
         fetch_remote_file_to_local_file("/tmp/release_test_out.json", ip,
