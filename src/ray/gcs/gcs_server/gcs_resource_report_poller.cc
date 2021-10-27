@@ -129,6 +129,7 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
   request_report_(
       state->address, raylet_client_pool_, initial_report,
       [this, state](const Status &status, const rpc::RequestResourceReportReply &reply) {
+        bool need_full_report = false;
         if (status.ok()) {
           // TODO (Alex): This callback is always posted onto the main thread. Since most
           // of the work is in the callback we should move this callback's execution to
@@ -141,22 +142,31 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
           if (status.ToString() == "Resources not changed") {
             RAY_LOG(DEBUG) << "Resource of raylet " << state->node_id << " unchanged.";
           } else {
+            need_full_report = true;
             RAY_LOG(INFO) << "Couldn't get resource request from raylet "
                           << state->node_id << ": " << status.ToString();
           }
         }
-        polling_service_.post([this, state]() { NodeResourceReportReceived(state); });
+        polling_service_.post([this, state, need_full_report]() {
+          NodeResourceReportReceived(state, need_full_report);
+        });
       });
 }
 
 void GcsResourceReportPoller::NodeResourceReportReceived(
-    const std::shared_ptr<PullState> state) {
+    const std::shared_ptr<PullState> state, bool need_full_report) {
   absl::MutexLock guard(&mutex_);
   inflight_pulls_--;
 
   // Schedule the next pull. The scheduling `TryPullResourceReport` loop will handle
   // validating that this node is still in the cluster.
-  state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
+  if (need_full_report) {
+    // To avoid inconsistent state in GCS because of polling failure, we request a full
+    // report again if there's an error in last response.
+    state->next_pull_time = -1;
+  } else {
+    state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
+  }
   to_pull_queue_.push_back(state);
 
   polling_service_.post([this] { TryPullResourceReport(); });

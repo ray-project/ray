@@ -99,8 +99,9 @@ TEST_F(GcsResourceReportPollerTest, TestBasic) {
 
 TEST_F(GcsResourceReportPollerTest, TestFailedRpc) {
   bool rpc_sent = false;
+  bool ok_response = false;
   request_report_ =
-      [&rpc_sent](
+      [&rpc_sent, &ok_response](
           const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
           const bool &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
@@ -108,7 +109,14 @@ TEST_F(GcsResourceReportPollerTest, TestFailedRpc) {
         RAY_LOG(ERROR) << "Requesting";
         rpc_sent = true;
         rpc::RequestResourceReportReply temp;
-        callback(Status::TimedOut("error"), temp);
+        if (ok_response) {
+          callback(Status::OK(), temp);
+        } else {
+          callback(Status::TimedOut("error"), temp);
+          // We need to set this to true after one `TimedOut`,
+          // or `polling_service_` will loop forever.
+          ok_response = true;
+        }
       };
 
   auto node_info = Mocker::GenNodeInfo();
@@ -125,6 +133,7 @@ TEST_F(GcsResourceReportPollerTest, TestFailedRpc) {
   ASSERT_FALSE(rpc_sent);
 
   // Now enough time has passed.
+  ok_response = false;
   Tick(100);
   RunPollingService();
   ASSERT_TRUE(rpc_sent);

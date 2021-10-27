@@ -140,8 +140,8 @@ class GcsResourceReportPoller {
   void PullResourceReport(const std::shared_ptr<PullState> state);
   /// A resource report was successfully pulled (and the resource manager was already
   /// updated). This method is thread safe.
-  void NodeResourceReportReceived(const std::shared_ptr<PullState> state)
-      LOCKS_EXCLUDED(mutex_);
+  void NodeResourceReportReceived(const std::shared_ptr<PullState> state,
+                                  bool need_full_report) LOCKS_EXCLUDED(mutex_);
 
   friend class GcsResourceReportPollerTest;
 };
