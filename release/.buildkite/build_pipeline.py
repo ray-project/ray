@@ -79,6 +79,7 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
         SmokeTest("dask_on_ray_large_scale_test_spilling"),
         "stress_test_placement_group",
+        "grpc_stress_test_placement_group",
         "shuffle_1tb_1000_partition",
         "non_streaming_shuffle_1tb_1000_partition",
         "shuffle_1tb_5000_partitions",
@@ -124,6 +125,7 @@ NIGHTLY_TESTS = {
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
+        "grpc_pg_autoscaling_regression_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
