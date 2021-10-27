@@ -71,7 +71,7 @@ class InProcessClient : public ClientInterface {
   void MarkObjectAsUnused(const ray::ObjectID &object_id) override {
     object_ids_.erase(object_id);
   }
-  std::string GetName() { return name_; }
+  std::string GetName() override { return name_; }
 
  private:
   std::unordered_set<ray::ObjectID> object_ids_;
