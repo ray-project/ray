@@ -130,5 +130,5 @@ class _VectorizedModelGymEnv(VectorEnv):
             dones_batch), info_batch
 
     @override(VectorEnv)
-    def get_unwrapped(self):
+    def get_sub_environments(self):
         return self.envs

@@ -43,8 +43,9 @@ class DefaultCallbacks:
 
         Args:
             worker: Reference to the current rollout worker.
-            base_env: BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
+            base_env (BaseEnv): BaseEnv running the episode. The underlying
+                sub environment objects can be gotten by calling
+                `base_env.get_sub_environments()`.
             policies: Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default" policy.
             episode: Episode object which contains episode
@@ -73,7 +74,8 @@ class DefaultCallbacks:
         Args:
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
+                sub environment objects can be gotten by calling
+                `base_env.get_sub_environments()`.
             policies (Optional[Dict[PolicyID, Policy]]): Mapping of policy id
                 to policy objects. In single agent mode there will only be a
                 single "default_policy".
@@ -98,7 +100,8 @@ class DefaultCallbacks:
         Args:
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
+                sub environment objects can be retrieved by calling
+                `base_env.get_sub_environments()`.
             policies (Dict[PolicyID, Policy]): Mapping of policy id to policy
                 objects. In single agent mode there will only be a single
                 "default_policy".

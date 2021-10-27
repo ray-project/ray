@@ -176,7 +176,7 @@ class RemoteVectorEnv(BaseEnv):
 
     @override(BaseEnv)
     @PublicAPI
-    def get_unwrapped(self):
+    def get_sub_environments(self):
         return self.actors
 
 
