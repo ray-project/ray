@@ -1417,7 +1417,6 @@ cdef class CoreWorker:
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env,
-                    runtime_env_uris,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1425,7 +1424,6 @@ cdef class CoreWorker:
             c_vector[unique_ptr[CTaskArg]] args_vector
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
-            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             c_vector[CObjectReference] return_refs
 
         with self.profile_event(b"submit_task"):
@@ -1441,8 +1439,7 @@ cdef class CoreWorker:
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
                     b"",
-                    serialized_runtime_env,
-                    c_runtime_env_uris),
+                    serialized_runtime_env),
                 max_retries, retry_exceptions,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1469,7 +1466,6 @@ cdef class CoreWorker:
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
                      c_string serialized_runtime_env,
-                     runtime_env_uris,
                      concurrency_groups_dict,
                      ):
         cdef:
@@ -1481,7 +1477,6 @@ cdef class CoreWorker:
             CActorID c_actor_id
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
-            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             c_vector[CConcurrencyGroup] c_concurrency_groups
 
         with self.profile_event(b"submit_task"):
@@ -1507,7 +1502,6 @@ cdef class CoreWorker:
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
                         serialized_runtime_env,
-                        c_runtime_env_uris,
                         c_concurrency_groups),
                     extension_data,
                     &c_actor_id))
@@ -1981,21 +1975,6 @@ cdef class CoreWorker:
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
-
-    def get_current_runtime_env(self) -> ParsedRuntimeEnv:
-        # This should never change, so we can safely cache it to avoid ser/de
-        if self.current_runtime_env is None:
-            if self.is_driver:
-                job_config = self.get_job_config()
-                serialized_env = job_config.runtime_env.serialized_runtime_env
-            else:
-                serialized_env = CCoreWorkerProcess.GetCoreWorker() \
-                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv()
-
-            self.current_runtime_env = ParsedRuntimeEnv.deserialize(
-                    serialized_env)
-
-        return self.current_runtime_env
 
     def is_exiting(self):
         return CCoreWorkerProcess.GetCoreWorker().IsExiting()

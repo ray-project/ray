@@ -8,8 +8,11 @@ from typing import Any, Dict, List, Optional, Set, Union
 import yaml
 
 import ray
+from ray.core.generated.common_pb2 import RuntimeEnv
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import import_attr
+from ray._private.runtime_env.pip import get_proto_pip_runtime_env
+from ray._private.runtime_env.conda import get_proto_conda_runtime_env
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +240,7 @@ class ParsedRuntimeEnv(dict):
 
     def __init__(self, runtime_env: Dict[str, Any], _validate: bool = True):
         super().__init__()
+        self._cached_pb = None
 
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the
@@ -314,13 +318,33 @@ class ParsedRuntimeEnv(dict):
         # TODO(edoakes): this should be extended with other resource URIs.
         return [self["working_dir"]] if "working_dir" in self else []
 
+    def get_proto_runtime_env(self):
+        """Return the protobuf structure of RuntimeEnv."""
+        if self._cached_pb is None:
+            pb = RuntimeEnv()
+            pb.working_dir = self.get("working_dir", "")
+            pb.uris.extend(self.get("uris", ""))
+            pb.env_vars.update(self.get("env_vars", ""))
+            if "_inject_current_ray" in self:
+                pb.extensions["_inject_current_ray"] = self[
+                    "_inject_current_ray"]
+            if self.get("pip"):
+                pb.pip_runtime_env.CopyFrom(get_proto_pip_runtime_env(self))
+            elif self.get("conda"):
+                pb.conda_runtime_env.CopyFrom(
+                    get_proto_conda_runtime_env(self))
+            self._cached_pb = pb
+
+        return self._cached_pb
+
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
         return cls(json.loads(serialized), _validate=False)
 
     def serialize(self) -> str:
         # Sort the keys we can compare the serialized string for equality.
-        return json.dumps(self, sort_keys=True)
+        # return json.dumps(self, sort_keys=True)
+        return self.get_proto_runtime_env().SerializeToString()
 
 
 def override_task_or_actor_runtime_env(

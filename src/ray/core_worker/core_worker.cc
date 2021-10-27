@@ -435,6 +435,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Parse job config from serialized string.
   job_config_.reset(new rpc::JobConfig());
   job_config_->ParseFromString(serialized_job_config);
+  auto job_serialized_runtime_env = job_config_->serialized_runtime_env().serialized_runtime_env();
+  RAY_LOG(INFO) << "job_serialized_runtime_env " << job_serialized_runtime_env;
+  if (!job_serialized_runtime_env.empty()) {
+    job_runtime_env_.reset(new rpc::RuntimeEnv());
+    job_runtime_env_->ParseFromString(job_config_->serialized_runtime_env().serialized_runtime_env());
+  }
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
@@ -1660,6 +1666,57 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   return resources;
 }
 
+
+static rpc::RuntimeEnv OverrideRuntimeEnv(const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent) {
+  //     By default, the child runtime env inherits non-specified options from the
+  //     parent. There are two exceptions to this:
+  //         - working_dir is not inherited (only URIs).
+  //         - The env_vars dictionaries are merged, so environment variables
+  //           not specified by the child are still inherited from the parent.
+
+  // Override environment variables.
+  google::protobuf::Map<std::string, std::string> result_env_vars(parent->env_vars());
+  result_env_vars.insert(child.env_vars().begin(), child.env_vars().end());
+  // Inherit all other non-specified options from the parent.
+  rpc::RuntimeEnv result_runtime_env(*parent);
+  result_runtime_env.MergeFrom(child);
+  if (!result_env_vars.empty()) {
+    result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(), result_env_vars.end());
+  }
+  // working_dir should not be in child env.
+  result_runtime_env.clear_working_dir();
+  return result_runtime_env;
+}
+
+std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(const std::string &serialized_runtime_env) {
+    RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: " << serialized_runtime_env << ", job config " << job_config_->serialized_runtime_env().serialized_runtime_env();
+    std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
+    if (options_.worker_type == WorkerType::DRIVER) {
+      if (serialized_runtime_env == "") {
+        RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 00000 " << job_config_->serialized_runtime_env().serialized_runtime_env();
+        return job_config_->serialized_runtime_env().serialized_runtime_env();
+      }
+      parent = job_runtime_env_;
+    } else {
+      if (serialized_runtime_env == "") {
+        RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 11111 " << worker_context_.GetCurrentSerializedRuntimeEnv();
+        return worker_context_.GetCurrentSerializedRuntimeEnv();
+      }
+      parent = worker_context_.GetCurrentRuntimeEnv();
+    }
+    if (parent) {
+      rpc::RuntimeEnv child_runtime_env;
+      child_runtime_env.ParseFromString(serialized_runtime_env);
+      std::string result;
+      RAY_CHECK(OverrideRuntimeEnv(child_runtime_env, parent).SerializeToString(&result));
+      RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 22222 " << result;
+      return result;
+    } else {
+      RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 33333 " << serialized_runtime_env;
+      return serialized_runtime_env;
+    }
+}
+
 void CoreWorker::BuildCommonTaskSpec(
     TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
     const std::string &name, const TaskID &current_task_id, uint64_t task_index,
@@ -1669,22 +1726,14 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_placement_resources,
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
     const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
-    const std::vector<std::string> &runtime_env_uris,
     const std::string &concurrency_group_name) {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint,
-      // TODO(SongGuyang): Move the logic of `prepare_runtime_env` from Python to Core
-      // Worker. A common process is needed.
-      // If runtime env is not provided, use job config. Only for Java and C++ because it
-      // has been set in Python by `prepare_runtime_env`.
-      (serialized_runtime_env.empty() || serialized_runtime_env == "{}")
-          ? job_config_->serialized_runtime_env().serialized_runtime_env()
-          : serialized_runtime_env,
-      runtime_env_uris, concurrency_group_name);
+      debugger_breakpoint, OverrideTaskOrActorRuntimeEnv(serialized_runtime_env),
+      concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1714,7 +1763,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, placement_options,
                       placement_group_capture_child_tasks, debugger_breakpoint,
-                      task_options.serialized_runtime_env, task_options.runtime_env_uris);
+                      task_options.serialized_runtime_env);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
@@ -1770,8 +1819,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       new_placement_resources, actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
                       "", /* debugger_breakpoint */
-                      actor_creation_options.serialized_runtime_env,
-                      actor_creation_options.runtime_env_uris);
+                      actor_creation_options.serialized_runtime_env);
 
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id,
@@ -1957,8 +2005,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
                       required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
                       true, /* placement_group_capture_child_tasks */
                       "",   /* debugger_breakpoint */
-                      "{}", /* serialized_runtime_env */
-                      {},   /* runtime_env_uris */
+                      "", /* serialized_runtime_env */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.

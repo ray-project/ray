@@ -1054,6 +1054,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
+  std::string OverrideTaskOrActorRuntimeEnv(const std::string &serialized_runtime_env);
+
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
       const std::string &name, const TaskID &current_task_id, uint64_t task_index,
@@ -1063,7 +1065,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::unordered_map<std::string, double> &required_placement_resources,
       const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
-      const std::vector<std::string> &runtime_env_uris,
       const std::string &concurrency_group_name = "");
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -1443,6 +1444,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   friend class CoreWorkerTest;
 
   std::unique_ptr<rpc::JobConfig> job_config_;
+
+  std::shared_ptr<rpc::RuntimeEnv> job_runtime_env_;
 
   /// Simple container for per function task counters. The counters will be
   /// keyed by the function name in task spec.

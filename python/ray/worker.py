@@ -1385,6 +1385,7 @@ def connect(node,
                 worker.node.get_runtime_env_dir_path()))
 
     serialized_job_config = job_config.serialize()
+    print(f"serialized_job_config: {serialized_job_config}")
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,

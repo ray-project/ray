@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import sys
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
 from ray.core.generated.common_pb2 import Language
@@ -18,7 +18,8 @@ class RuntimeEnvContext:
                  command_prefix: List[str] = None,
                  env_vars: Dict[str, str] = None,
                  py_executable: Optional[str] = None,
-                 resources_dir: Optional[str] = None):
+                 resources_dir: Optional[str] = None,
+                 container: Dict[str, Any] = None):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable
@@ -27,6 +28,7 @@ class RuntimeEnvContext:
         # the legacy Ray client codepath to pass the resources dir to the shim
         # process. We should remove it once Ray client uses the agent.
         self.resources_dir: str = resources_dir
+        self.container = container or {}
 
     def serialize(self) -> str:
         return json.dumps(self.__dict__)

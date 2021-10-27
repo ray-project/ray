@@ -172,7 +172,12 @@ bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
 
 const std::string &WorkerContext::GetCurrentSerializedRuntimeEnv() const {
   absl::ReaderMutexLock lock(&mutex_);
-  return runtime_env_.serialized_runtime_env();
+  return serialized_runtime_env_.serialized_runtime_env();
+}
+
+std::shared_ptr<rpc::RuntimeEnv> WorkerContext::GetCurrentRuntimeEnv() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return runtime_env_;
 }
 
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
@@ -194,10 +199,6 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
-    // TODO(architkulkarni): Once workers are cached by runtime env, we should
-    // only set runtime_env_ once and then RAY_CHECK that we
-    // never see a new one.
-    runtime_env_ = task_spec.SerializedRuntimeEnv();
   } else if (task_spec.IsActorCreationTask()) {
     if (!current_actor_id_.IsNil()) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
@@ -209,11 +210,20 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     is_detached_actor_ = task_spec.IsDetachedActor();
     current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
-    runtime_env_ = task_spec.SerializedRuntimeEnv();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {
     RAY_CHECK(false);
+  }
+  if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
+    // TODO(architkulkarni): Once workers are cached by runtime env, we should
+    // only set runtime_env_ once and then RAY_CHECK that we
+    // never see a new one.
+    serialized_runtime_env_ = task_spec.SerializedRuntimeEnv();
+    if (!serialized_runtime_env_.serialized_runtime_env().empty()) {
+      runtime_env_.reset(new rpc::RuntimeEnv());
+      runtime_env_->ParseFromString(serialized_runtime_env_.serialized_runtime_env());
+    }
   }
 }
 

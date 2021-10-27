@@ -305,9 +305,9 @@ class RemoteFunction:
         else:
             runtime_env = self._runtime_env
 
-        parent_runtime_env = worker.core_worker.get_current_runtime_env()
-        parsed_runtime_env = override_task_or_actor_runtime_env(
-            runtime_env, parent_runtime_env)
+        # parent_runtime_env = worker.core_worker.get_current_runtime_env()
+        # parsed_runtime_env = override_task_or_actor_runtime_env(
+        #     runtime_env, parent_runtime_env)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -322,13 +322,13 @@ class RemoteFunction:
                 assert not self._is_cross_language, \
                     "Cross language remote function " \
                     "cannot be executed locally."
+            print(f"submit_task with {runtime_env.serialize()}")
             object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args, name,
                 num_returns, resources, max_retries, retry_exceptions,
                 placement_group.id, placement_group_bundle_index,
                 placement_group_capture_child_tasks,
-                worker.debugger_breakpoint, parsed_runtime_env.serialize(),
-                parsed_runtime_env.get_uris())
+                worker.debugger_breakpoint, runtime_env.serialize())
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""

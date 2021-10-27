@@ -65,11 +65,11 @@ class WorkingDirManager:
               runtime_env: dict,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
-        if not runtime_env.get("working_dir"):
+        if not runtime_env.working_dir:
             return
 
         working_dir = download_and_unpack_package(
-            runtime_env["working_dir"], self._resources_dir, logger=logger)
+            runtime_env.working_dir, self._resources_dir, logger=logger)
         if working_dir is None:
             return
         context.command_prefix += [f"cd {working_dir}"]

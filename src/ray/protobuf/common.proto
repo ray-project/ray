@@ -192,12 +192,15 @@ message ContainerRuntimeEnv {
   repeated string run_options = 3;
 }
 
-/// The custom runtime env.
-message CustomRuntimeEnv {
-  /// The runtime env type which is defined in runtime env plugin.
-  string type = 1;
-  /// The custom attributes in the runtime env plugin.
-  map<string, string> attributes = 2;
+/// A set of plugin runtime envs.
+message PluginRuntimeEnv {
+  message Plugin {
+    /// The python class which implements the runtime env plugin.
+    string plugin_class = 1;
+    /// The serialized config.
+    string config = 2;
+  }
+  repeated Plugin plugins = 1;
 }
 
 /// The jars type runtime env.
@@ -219,27 +222,29 @@ message RuntimeEnv {
   repeated string uris = 2;
   /// Environment variables to set.
   map<string, string> env_vars = 3;
+  /// The extension fields.
+  map<string, string> extensions = 4;
   /// One of typed runtime env of python
   oneof python_runtime_env {
     /// pip runtime env
-    PipRuntimeEnv pip_runtime_env = 4;
+    PipRuntimeEnv pip_runtime_env = 5;
     /// conda runtime env
-    CondaRuntimeEnv conda_runtime_env = 5;
+    CondaRuntimeEnv conda_runtime_env = 6;
     /// container runtime env
-    ContainerRuntimeEnv py_container_runtime_env = 6;
-    /// custom runtime env
-    CustomRuntimeEnv py_custom_runtime_env = 7;
+    ContainerRuntimeEnv py_container_runtime_env = 7;
+    /// plugin runtime env
+    PluginRuntimeEnv py_plugin_runtime_env = 8;
   }
   /// One of typed runtime env of java
   oneof java_runtime_env {
     /// jars runtime env
-    JarsRuntimeEnv jars_runtime_env = 8;
+    JarsRuntimeEnv jars_runtime_env = 9;
     /// maven runtime env
-    MavenRuntimeEnv maven_runtime_env = 9;
+    MavenRuntimeEnv maven_runtime_env = 10;
     /// container runtime env
-    ContainerRuntimeEnv java_container_runtime_env = 10;
-    /// custom runtime env
-    CustomRuntimeEnv java_custom_runtime_env = 11;
+    ContainerRuntimeEnv java_container_runtime_env = 11;
+    /// plugin runtime env
+    PluginRuntimeEnv java_plugin_runtime_env = 12;
   }
 }
 

@@ -11,6 +11,7 @@ from ray._private.utils import import_attr
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
+from ray.core.generated.common_pb2 import RuntimeEnv
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
@@ -83,7 +84,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                                      serialized_allocated_resource_instances):
             # This function will be ran inside a thread
             def run_setup_with_logger():
-                runtime_env: dict = json.loads(serialized_runtime_env or "{}")
+                runtime_env = RuntimeEnv()
+                RuntimeEnv.FromString(bytes(serialized_runtime_env, 'utf-8'))
                 allocated_resource: dict = json.loads(
                     serialized_allocated_resource_instances or "{}")
 
@@ -93,8 +95,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 # avoid lint error. That will be moved to cgroup plugin.
                 per_job_logger.debug(f"Worker has resource :"
                                      f"{allocated_resource}")
-                context = RuntimeEnvContext(
-                    env_vars=runtime_env.get("env_vars"))
+                context = RuntimeEnvContext(env_vars=runtime_env.env_vars)
                 self._conda_manager.setup(
                     runtime_env, context, logger=per_job_logger)
                 self._working_dir_manager.setup(
@@ -102,18 +103,19 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.
-                for uri in runtime_env.get("uris") or []:
+                for uri in runtime_env.uris or []:
                     self._working_dir_uri_to_envs[uri].add(
                         serialized_runtime_env)
 
                 # Run setup function from all the plugins
-                for plugin_class_path in runtime_env.get("plugins", {}).keys():
+                for plugin in runtime_env.py_plugin_runtime_env.plugins:
+                    plugin_class_path = plugin.plugin_class()
+                    config = json.loads(plugin.config() or "{}")
                     plugin_class = import_attr(plugin_class_path)
                     # TODO(simon): implement uri support
-                    plugin_class.create("uri not implemented", runtime_env,
-                                        context)
-                    plugin_class.modify_context("uri not implemented",
-                                                runtime_env, context)
+                    plugin_class.create("uri not implemented", config, context)
+                    plugin_class.modify_context("uri not implemented", config,
+                                                context)
 
                 return context
 

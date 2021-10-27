@@ -753,9 +753,9 @@ class ActorClass:
         else:
             runtime_env = meta.runtime_env
 
-        parent_runtime_env = worker.core_worker.get_current_runtime_env()
-        parsed_runtime_env = override_task_or_actor_runtime_env(
-            runtime_env, parent_runtime_env)
+        # parent_runtime_env = worker.core_worker.get_current_runtime_env()
+        # parsed_runtime_env = override_task_or_actor_runtime_env(
+        #     runtime_env, parent_runtime_env)
 
         concurrency_groups_dict = {}
         for cg_name in meta.concurrency_groups:
@@ -776,6 +776,7 @@ class ActorClass:
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
                 PythonFunctionDescriptor(module_name, method_name, class_name))
 
+        print(f"create_actor with {runtime_env.serialize()}")
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -794,8 +795,7 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            serialized_runtime_env=parsed_runtime_env.serialize(),
-            runtime_env_uris=parsed_runtime_env.get_uris(),
+            serialized_runtime_env=runtime_env.serialize(),
             concurrency_groups_dict=concurrency_groups_dict or dict())
 
         actor_handle = ActorHandle(
