@@ -30,6 +30,7 @@ More details on the expected results can be found in the scenario descriptions.
 
 import argparse
 import csv
+import tarfile
 from dataclasses import dataclass
 import json
 import os
@@ -372,6 +373,36 @@ def get_trial_node_syncer(trial: TrialStub, tmpdir: str) -> NodeSyncer:
     return _trial_node_syncers[trial]
 
 
+def fetch_remote_directory_content(
+        node_ip: str,
+        remote_dir: str,
+        local_dir: str,
+):
+    def _pack(dir: str):
+        tmpfile = tempfile.mktemp()
+        with tarfile.open(tmpfile, "w:gz") as tar:
+            tar.add(dir, arcname="")
+
+        with open(tmpfile, "rb") as f:
+            stream = f.read()
+
+        return stream
+
+    def _unpack(stream: str, dir: str):
+        tmpfile = tempfile.mktemp()
+
+        with open(tmpfile, "wb") as f:
+            f.write(stream)
+
+        with tarfile.open(tmpfile) as tar:
+            tar.extractall(dir)
+
+    packed = ray.get(
+        ray.remote(
+            resources={f"node:{node_ip}": 0.01})(_pack).remote(remote_dir))
+    _unpack(packed, local_dir)
+
+
 def fetch_trial_node_dirs_to_tmp_dir(
         trials: List[TrialStub]) -> Dict[TrialStub, str]:
     dirmap = {}
@@ -398,6 +429,15 @@ def fetch_trial_node_dirs_to_tmp_dir(
             print("Synced remote node experiment dir from", trial.hostname,
                   "to", tmpdir, "for trial", trial.trial_id)
 
+            if not os.listdir(tmpdir):
+                print(f"Synced directory is empty: {tmpdir}, trying "
+                      f"function-based sync instead...")
+
+                fetch_remote_directory_content(
+                    trial.node_ip,
+                    remote_dir=trial.local_dir,
+                    local_dir=tmpdir)
+
         dirmap[trial] = tmpdir
 
     return dirmap
@@ -414,7 +454,7 @@ def clear_bucket_contents(bucket: str):
     elif bucket.startswith("gs://"):
         print("Clearing bucket contents:", bucket)
         try:
-            subprocess.check_call(["gsutil", "rm", "-f", "-r", bucket])
+            subprocess.check_call(["gsutil", "-m", "rm", "-f", "-r", bucket])
         except subprocess.CalledProcessError:
             # If empty, ignore error
             pass
@@ -424,14 +464,19 @@ def clear_bucket_contents(bucket: str):
 
 def fetch_bucket_contents_to_tmp_dir(bucket: str) -> str:
     tmpdir = tempfile.mkdtemp(prefix="tune_cloud_test")
+    subfolder = None
 
     if bucket.startswith("s3://"):
         subprocess.check_call(
             ["aws", "s3", "cp", "--recursive", "--quiet", bucket, tmpdir])
-    elif bucket.startswith("s3://"):
-        subprocess.check_call(["gsutil", "cp", "-r", bucket, tmpdir])
+    elif bucket.startswith("gs://"):
+        subprocess.check_call(["gsutil", "-m", "cp", "-r", bucket, tmpdir])
+        subfolder = "durable_upload"
     else:
         raise ValueError(f"Invalid bucket URL: {bucket}")
+
+    if subfolder:
+        tmpdir = os.path.join(tmpdir, subfolder)
 
     print("Copied bucket data from", bucket, "to", tmpdir)
 
