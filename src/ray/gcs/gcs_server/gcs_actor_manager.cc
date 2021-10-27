@@ -711,13 +711,19 @@ void GcsActorManager::OnWorkerDead(
     const ray::NodeID &node_id, const ray::WorkerID &worker_id,
     const rpc::WorkerExitType disconnect_type,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
-  RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
-                << " exited, type=" << rpc::WorkerExitType_Name(disconnect_type)
-                << ", has creation_task_exception = "
-                << (creation_task_exception != nullptr);
+  std::string message = absl::StrCat(
+      "Worker ", worker_id, " on node ", node_id,
+      " exits, type=", rpc::WorkerExitType_Name(disconnect_type),
+      ", has creation_task_exception = ", (creation_task_exception != nullptr));
   if (creation_task_exception != nullptr) {
-    RAY_LOG(INFO) << "Formatted creation task exception: "
-                  << creation_task_exception->formatted_exception_string();
+    absl::StrAppend(&message, " Formatted creation task exception: ",
+                    creation_task_exception->formatted_exception_string());
+  }
+  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT ||
+      request.worker_failure().exit_type() == rpc::WorkerExitType::IDLE_EXIT) {
+    RAY_LOG(DEBUG) << message;
+  } else {
+    RAY_LOG(ERROR) << message;
   }
 
   bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_EXIT &&
