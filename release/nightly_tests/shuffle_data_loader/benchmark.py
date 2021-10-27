@@ -125,6 +125,11 @@ def run_trials(num_epochs,
     """
     print("Using from-memory shuffler.")
     all_stats = []
+    pg = ray.util.placement_group(
+        [{
+            "CPU": 0.1
+        } for _ in range(num_trainers)], strategy="SPREAD")
+    ray.get(pg.ready())
     if collect_stats:
         stats_collector = TrialStatsCollector.remote(
             num_epochs, len(filenames), num_reducers, num_trainers)
@@ -137,7 +142,7 @@ def run_trials(num_epochs,
         except AttributeError:
             # Python 3.6 doesn't support nullcontext().
             object_store_stats_collector = contextlib.suppress()
-    batch_consumer = BatchConsumer(num_trainers, num_epochs, None,
+    batch_consumer = BatchConsumer(num_trainers, num_epochs, pg,
                                    max_concurrent_epochs, stats_collector)
     # Wait until batch consumer actors have been created.
     batch_consumer.actors_ready()

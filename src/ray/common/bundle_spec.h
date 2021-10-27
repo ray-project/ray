@@ -32,6 +32,9 @@ typedef std::function<void(const ResourceIdSet &)> ScheduleBundleCallback;
 /// address and the raylet's port.
 typedef std::function<void()> SpillbackBundleCallback;
 
+const std::string kGroupKeyword = "_group_";
+const size_t kGroupKeywordSize = kGroupKeyword.size();
+
 class BundleSpecification : public MessageWrapper<rpc::Bundle> {
  public:
   /// Construct from a protobuf message object.
@@ -54,6 +57,9 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   // Return the Placement Group id which the Bundle belong to.
   PlacementGroupID PlacementGroupId() const;
 
+  // Get a node ID that this bundle is scheduled on.
+  NodeID NodeId() const;
+
   // Return the index of the bundle.
   int64_t Index() const;
 
@@ -73,7 +79,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   }
 
   /// Get all placement group bundle resource labels.
-  const std::unordered_map<std::string, double> &GetFormattedResources() const {
+  const absl::flat_hash_map<std::string, double> &GetFormattedResources() const {
     return bundle_resource_labels_;
   }
 
@@ -100,7 +106,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// or task specifies placement group without bundle id.
   /// 2) `CPU_group_${bundle_index}_${group_id}`: this is the requested resource
   /// when the actor or task specifies placement group with bundle id.
-  std::unordered_map<std::string, double> bundle_resource_labels_;
+  absl::flat_hash_map<std::string, double> bundle_resource_labels_;
 
   mutable ScheduleBundleCallback on_schedule_ = nullptr;
 

@@ -67,9 +67,14 @@ DEFAULT_ACTOR_CREATION_CPU_SPECIFIED = 1
 # Default number of return values for each actor method.
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
+# Wait 30 seconds for client to reconnect after unexpected disconnection
+DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 30
+
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
-PICKLE_OBJECT_WARNING_SIZE = 10**7
+FUNCTION_SIZE_WARN_THRESHOLD = 10**7
+FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD",
+                                            (10**8))
 
 # If remote functions with the same source are imported this many times, then
 # print a warning.
@@ -127,7 +132,6 @@ REGISTER_REMOTE_FUNCTION_PUSH_ERROR = "register_remote_function"
 FUNCTION_TO_RUN_PUSH_ERROR = "function_to_run"
 VERSION_MISMATCH_PUSH_ERROR = "version_mismatch"
 CHECKPOINT_PUSH_ERROR = "checkpoint"
-REGISTER_ACTOR_PUSH_ERROR = "register_actor"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 WORKER_POOL_LARGE_ERROR = "worker_pool_large"
@@ -142,6 +146,7 @@ DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
+EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
@@ -154,6 +159,9 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 # Number of attempts to ping the Redis server. See
 # `services.py:wait_for_redis_to_start`.
 START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
+
+# Only unpickle and run exported functions from the same job if it's true.
+ISOLATE_EXPORTS = env_bool("RAY_ISOLATE_EXPORTS", True)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
@@ -205,6 +213,13 @@ WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE = (
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
+# Autoscaler events are denoted by the ":event_summary:" magic token.
+LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"
+# Actor names are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_ACTOR_NAME = ":actor_name:"
+# Task names are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_TASK_NAME = ":task_name:"
+
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
 # type of the object (see types below) or an integer, which is interpreted
@@ -234,13 +249,6 @@ AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 # Hex for ray.
 REDIS_DEFAULT_PASSWORD = "5241590000000000"
 
-# The default module path to a Python function that sets up the worker env.
-DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup_worker"
-
-# The default module path to a Python function that sets up runtime envs.
-DEFAULT_RUNTIME_ENV_SETUP_HOOK = \
-    "ray.workers.setup_runtime_env.setup_runtime_env"
-
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
 
@@ -262,3 +270,11 @@ HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
 SETUP_WORKER_FILENAME = "setup_worker.py"
+
+# Used to separate lines when formatting the call stack where an ObjectRef was
+# created.
+CALL_STACK_LINE_DELIMITER = " | "
+
+# The default gRPC max message size is 4 MiB, we use a larger number of 100 MiB
+# NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
+GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024

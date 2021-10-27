@@ -153,7 +153,7 @@ class TestCuriosity(unittest.TestCase):
         config["lr"] = 0.001
 
         num_iterations = 10
-        for fw in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             # W/ Curiosity. Expect to learn something.
             config["exploration_config"] = {
                 "type": "Curiosity",

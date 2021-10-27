@@ -136,12 +136,23 @@ define_java_module(
 
 define_java_module(
     name = "serve",
+    additional_srcs = [
+        ":serve_java_proto",
+    ],
     define_test_lib = True,
+    exclude_srcs = [
+        "serve/src/main/java/io/ray/serve/generated/*.java",
+    ],
     test_deps = [
         ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
         ":io_ray_ray_serve",
-        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
+        "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_httpcomponents_client5_httpclient5",
+        "@maven//:org_apache_httpcomponents_core5_httpcore5",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
     ],
@@ -149,8 +160,11 @@ define_java_module(
     deps = [
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
+        "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_httpcomponents_core5_httpcore5",
         "@maven//:org_slf4j_slf4j_api",
     ],
 )
@@ -178,6 +192,11 @@ java_proto_compile(
     deps = ["@//src/ray/protobuf:gcs_proto"],
 )
 
+java_proto_compile(
+    name = "serve_java_proto",
+    deps = ["@//src/ray/protobuf:serve_proto"],
+)
+
 filegroup(
     name = "all_java_proto",
     srcs = [
@@ -201,6 +220,7 @@ genrule(
     srcs = [
         ":all_java_proto",
         ":copy_pom_file",
+        ":serve_java_proto",
     ],
     outs = ["cp_java_generated.out"],
     cmd = """
@@ -209,6 +229,10 @@ genrule(
         rm -rf "$$WORK_DIR/java/runtime/src/main/java/io/ray/runtime/generated"
         for f in $(locations //java:all_java_proto); do
             unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
+        done
+        rm -rf "$$WORK_DIR/java/serve/src/main/java/io/ray/serve/generated"
+        for f in $(locations //java:serve_java_proto); do
+            unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/serve/src/main/java"
         done
         date > $@
     """,

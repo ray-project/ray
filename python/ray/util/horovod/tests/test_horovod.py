@@ -12,21 +12,12 @@ except ImportError:
     pass  # This shouldn't be reached - the test should be skipped.
 
 
-# For each test, run it once with ray.init() and again with ray.util.connect().
+# For each test, run it once with ray.init() and again with ray client.
 @pytest.fixture(params=[False, True])
 def ray_start_4_cpus(request):
     if request.param:
-
-        def ray_connect_handler(job_config=None):
-            # Ray client will disconnect from ray when
-            # num_clients == 0.
-            if ray.is_initialized():
-                return
-            else:
-                return ray.init(job_config=job_config, num_cpus=4)
-
         assert not ray.util.client.ray.is_connected()
-        with ray_start_client_server(ray_connect_handler=ray_connect_handler):
+        with ray_start_client_server(ray_init_kwargs={"num_cpus": 3}):
             assert ray.util.client.ray.is_connected()
             yield
     else:

@@ -19,6 +19,7 @@
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
+namespace core {
 
 class GcsServerAddressUpdater {
  public:
@@ -43,6 +44,8 @@ class GcsServerAddressUpdater {
   instrumented_io_context updater_io_service_;
   std::unique_ptr<std::thread> updater_thread_;
   std::unique_ptr<PeriodicalRunner> updater_runner_;
+  int32_t failed_ping_count_ = 0;
 };
 
+}  // namespace core
 }  // namespace ray

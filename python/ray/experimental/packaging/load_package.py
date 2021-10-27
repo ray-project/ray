@@ -19,7 +19,8 @@ import tempfile
 import yaml
 
 import ray
-import ray._private.runtime_env as runtime_support
+from ray._private.runtime_env.packaging import (get_uri_for_directory,
+                                                upload_package_if_needed)
 
 
 def load_package(config_path: str) -> "_RuntimePackage":
@@ -67,31 +68,19 @@ def load_package(config_path: str) -> "_RuntimePackage":
     runtime_env = config["runtime_env"]
 
     # Autofill working directory by uploading to GCS storage.
-    if "_packaging_uri" not in runtime_env:
-        pkg_name = runtime_support.get_project_package_name(
-            working_dir=base_dir, py_modules=[], excludes=[])
-        pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
+    if "working_dir" not in runtime_env:
+        pkg_uri = get_uri_for_directory(base_dir, excludes=[])
 
         def do_register_package():
-            if not runtime_support.package_exists(pkg_uri):
-                tmp_path = os.path.join(_pkg_tmp(), "_tmp{}".format(pkg_name))
-                runtime_support.create_project_package(
-                    working_dir=base_dir,
-                    py_modules=[],
-                    excludes=[],
-                    output_path=tmp_path)
-                # TODO(ekl) does this get garbage collected correctly with the
-                # current job id?
-                runtime_support.push_package(pkg_uri, tmp_path)
-                if not runtime_support.package_exists(pkg_uri):
-                    raise RuntimeError(
-                        "Failed to upload package {}".format(pkg_uri))
+            # TODO(ekl) does this get garbage collected correctly with the
+            # current job id?
+            upload_package_if_needed(pkg_uri, _pkg_tmp(), base_dir)
 
         if ray.is_initialized():
             do_register_package()
         else:
             ray.worker._post_init_hooks.append(do_register_package)
-        runtime_env["_packaging_uri"] = pkg_uri
+        runtime_env["working_dir"] = pkg_uri
 
     # Autofill conda config.
     conda_yaml = os.path.join(base_dir, "conda.yaml")

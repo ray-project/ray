@@ -1,23 +1,24 @@
-import sys
 import asyncio
 import re
 import logging
 import json
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
-import ray.gcs_utils
-from ray.new_dashboard.modules.node import node_consts
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.consts as dashboard_consts
-from ray.new_dashboard.utils import async_loop_forever
-from ray.new_dashboard.memory_utils import GroupByType, SortingType
+import ray._private.utils
+import ray._private.gcs_utils as gcs_utils
+from ray.dashboard.modules.node import node_consts
+from ray.dashboard.modules.node.node_consts import (MAX_LOGS_TO_CACHE,
+                                                    LOG_PRUNE_THREASHOLD)
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
+from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource, DataOrganizer
+from ray.dashboard.datacenter import DataSource, DataOrganizer
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
@@ -53,7 +54,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         # NodeInfoGcsService
         self._gcs_node_info_stub = None
-        self._gcs_rpc_error_counter = 0
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
 
@@ -67,7 +67,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
             options = (("grpc.enable_http_proxy", 0), )
-            channel = aiogrpc.insecure_channel(address, options=options)
+            channel = ray._private.utils.init_grpc_channel(
+                address, options, asynchronous=True)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 
@@ -126,20 +127,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.node_id_to_hostname.reset(node_id_to_hostname)
                 DataSource.agents.reset(agents)
                 DataSource.nodes.reset(nodes)
-
-                self._gcs_rpc_error_counter = 0
-            except aiogrpc.AioRpcError:
-                # TODO(fyrestone): Use a dedicated RPC to check if gcs
-                # is alive.
-                logger.exception("Got AioRpcError when updating nodes.")
-                self._gcs_rpc_error_counter += 1
-                if self._gcs_rpc_error_counter > \
-                        node_consts.MAX_COUNT_OF_GCS_RPC_ERROR:
-                    logger.error(
-                        "Dashboard suicide, the GCS RPC error count %s > %s",
-                        self._gcs_rpc_error_counter,
-                        node_consts.MAX_COUNT_OF_GCS_RPC_ERROR)
-                    sys.exit(-1)
             except Exception:
                 logger.exception("Error updating nodes.")
             finally:
@@ -255,7 +242,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
 
-        channel = receiver.channel(ray.gcs_utils.LOG_FILE_CHANNEL)
+        channel = receiver.channel(gcs_utils.LOG_FILE_CHANNEL)
         await aioredis_client.subscribe(channel)
         logger.info("Subscribed to %s", channel)
 
@@ -264,11 +251,20 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 data = json.loads(ray._private.utils.decode(msg))
                 ip = data["ip"]
                 pid = str(data["pid"])
-                logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))
-                logs_for_pid = list(logs_for_ip.get(pid, []))
-                logs_for_pid.extend(data["lines"])
-                logs_for_ip[pid] = logs_for_pid
-                DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
+                if pid != "autoscaler":
+                    logs_for_ip = dict(
+                        DataSource.ip_and_pid_to_logs.get(ip, {}))
+                    logs_for_pid = list(logs_for_ip.get(pid, []))
+                    logs_for_pid.extend(data["lines"])
+
+                    # Only cache upto MAX_LOGS_TO_CACHE
+                    logs_length = len(logs_for_pid)
+                    if logs_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
+                        offset = logs_length - MAX_LOGS_TO_CACHE
+                        del logs_for_pid[:offset]
+
+                    logs_for_ip[pid] = logs_for_pid
+                    DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
                 logger.info(f"Received a log for {ip} and {pid}")
             except Exception:
                 logger.exception("Error receiving log info.")
@@ -277,7 +273,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
 
-        key = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+        key = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
         pattern = receiver.pattern(key)
         await aioredis_client.psubscribe(pattern)
         logger.info("Subscribed to %s", key)
@@ -285,8 +281,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         async for sender, msg in receiver.iter():
             try:
                 _, data = msg
-                pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(data)
-                error_data = ray.gcs_utils.ErrorTableData.FromString(
+                pubsub_msg = gcs_utils.PubSubMessage.FromString(data)
+                error_data = gcs_utils.ErrorTableData.FromString(
                     pubsub_msg.data)
                 message = error_data.error_message
                 message = re.sub(r"\x1b\[\d+m", "", message)
@@ -294,8 +290,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 if match:
                     pid = match.group(1)
                     ip = match.group(2)
-                    errs_for_ip = DataSource.ip_and_pid_to_errors.get(ip, {})
-                    pid_errors = errs_for_ip.get(pid, [])
+                    errs_for_ip = dict(
+                        DataSource.ip_and_pid_to_errors.get(ip, {}))
+                    pid_errors = list(errs_for_ip.get(pid, []))
                     pid_errors.append({
                         "message": message,
                         "timestamp": error_data.timestamp,

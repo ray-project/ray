@@ -140,7 +140,7 @@ Here's an example covering all search space functions. Again,
         "uniform": tune.uniform(-5, -1),  # Uniform float between -5 and -1
         "quniform": tune.quniform(3.2, 5.4, 0.2),  # Round to increments of 0.2
         "loguniform": tune.loguniform(1e-4, 1e-1),  # Uniform float in log space
-        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-4),  # Round to increments of 0.0005
+        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),  # Round to increments of 0.00005
         "randn": tune.randn(10, 2),  # Normal distribution with mean 10 and sd 2
         "qrandn": tune.qrandn(10, 2, 0.2),  # Round to increments of 0.2
         "randint": tune.randint(-9, 15),  # Random integer between -9 and 15

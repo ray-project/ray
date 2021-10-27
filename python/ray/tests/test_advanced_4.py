@@ -35,6 +35,67 @@ def test_ray_memory(shutdown_only):
     subprocess.check_call(["ray", "memory"])
 
 
+def test_jemalloc_env_var_propagate():
+    """Test `propagate_jemalloc_env_var`"""
+    gcs_ptype = ray.ray_constants.PROCESS_TYPE_GCS_SERVER
+    """
+    If the shared library path is not specified,
+    it should return an empty dict.
+    """
+    expected = {}
+    actual = ray._private.services.propagate_jemalloc_env_var(
+        jemalloc_path="",
+        jemalloc_conf="",
+        jemalloc_comps=[],
+        process_type=gcs_ptype)
+    assert actual == expected
+    actual = ray._private.services.propagate_jemalloc_env_var(
+        jemalloc_path=None,
+        jemalloc_conf="a,b,c",
+        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
+        process_type=gcs_ptype)
+    assert actual == expected
+    """
+    When the shared library is specified
+    """
+    library_path = "/abc"
+    expected = {"LD_PRELOAD": library_path}
+    actual = ray._private.services.propagate_jemalloc_env_var(
+        jemalloc_path=library_path,
+        jemalloc_conf="",
+        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
+        process_type=gcs_ptype)
+    assert actual == expected
+
+    # comps should be a list type.
+    with pytest.raises(AssertionError):
+        ray._private.services.propagate_jemalloc_env_var(
+            jemalloc_path=library_path,
+            jemalloc_conf="",
+            jemalloc_comps="ray.ray_constants.PROCESS_TYPE_GCS_SERVER,",
+            process_type=gcs_ptype)
+
+    # When comps don't match the process_type, it should return an empty dict.
+    expected = {}
+    actual = ray._private.services.propagate_jemalloc_env_var(
+        jemalloc_path=library_path,
+        jemalloc_conf="",
+        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_RAYLET],
+        process_type=gcs_ptype)
+    """
+    When the malloc config is specified
+    """
+    library_path = "/abc"
+    malloc_conf = "a,b,c"
+    expected = {"LD_PRELOAD": library_path, "MALLOC_CONF": malloc_conf}
+    actual = ray._private.services.propagate_jemalloc_env_var(
+        jemalloc_path=library_path,
+        jemalloc_conf=malloc_conf,
+        jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
+        process_type=gcs_ptype)
+    assert actual == expected
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

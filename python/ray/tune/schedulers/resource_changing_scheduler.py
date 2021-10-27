@@ -217,11 +217,18 @@ class ResourceChangingScheduler(TrialScheduler):
     An example of such a function can be found in
     :doc:`/tune/examples/xgboost_dynamic_resources_example`.
 
-    Currently, only supports the Trainable (class) API. If resources of a
+    If the functional API is used, the current trial resources can be obtained
+    by calling `tune.get_trial_resources()` inside the training function.
+    The function should be able to
+    :ref:`load and save checkpoints <tune-checkpoint>`
+    (the latter preferably every iteration).
+
+    If the Trainable (class) API is used, when the resources of a
     trial are updated with new values, the ``update_resources`` method in
     the Trainable will be called. This method needs to be overwritten by the
     user in order to let the trained model take advantage of newly allocated
-    resources.
+    resources. You can also obtain the current trial resources by calling
+    ``Trainable.trial_resources``.
 
     Cannot be used if ``reuse_actors`` is True in ``tune.run``. A ValueError
     will be raised in that case.

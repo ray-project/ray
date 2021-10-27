@@ -14,11 +14,14 @@ from ray.tune.integration.wandb import WandbLoggerCallback, \
     wandb_mixin
 from ray.tune.result import TRIAL_INFO
 from ray.tune.trial import TrialInfo
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
 class Trial(
-        namedtuple("MockTrial",
-                   ["config", "trial_id", "trial_name", "trainable_name"])):
+        namedtuple("MockTrial", [
+            "config", "trial_id", "trial_name", "trainable_name",
+            "uses_placement_groups", "placement_group_factory"
+        ])):
     def __hash__(self):
         return hash(self.trial_id)
 
@@ -86,7 +89,10 @@ class WandbIntegrationTest(unittest.TestCase):
 
     def testWandbLegacyLoggerConfig(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
-        trial = Trial(trial_config, 0, "trial_0", "trainable")
+        trial = Trial(trial_config, 0, "trial_0", "trainable", True,
+                      PlacementGroupFactory([{
+                          "CPU": 1
+                      }]))
 
         if WANDB_ENV_VAR in os.environ:
             del os.environ[WANDB_ENV_VAR]
@@ -169,7 +175,10 @@ class WandbIntegrationTest(unittest.TestCase):
 
     def testWandbLegacyLoggerReporting(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
-        trial = Trial(trial_config, 0, "trial_0", "trainable")
+        trial = Trial(trial_config, 0, "trial_0", "trainable", True,
+                      PlacementGroupFactory([{
+                          "CPU": 1
+                      }]))
 
         trial_config["wandb"] = {
             "project": "test_project",
@@ -201,7 +210,10 @@ class WandbIntegrationTest(unittest.TestCase):
 
     def testWandbLoggerConfig(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
-        trial = Trial(trial_config, 0, "trial_0", "trainable")
+        trial = Trial(trial_config, 0, "trial_0", "trainable", True,
+                      PlacementGroupFactory([{
+                          "CPU": 1
+                      }]))
 
         if WANDB_ENV_VAR in os.environ:
             del os.environ[WANDB_ENV_VAR]
@@ -276,7 +288,10 @@ class WandbIntegrationTest(unittest.TestCase):
 
     def testWandbLoggerReporting(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
-        trial = Trial(trial_config, 0, "trial_0", "trainable")
+        trial = Trial(trial_config, 0, "trial_0", "trainable", True,
+                      PlacementGroupFactory([{
+                          "CPU": 1
+                      }]))
 
         logger = WandbTestExperimentLogger(
             project="test_project", api_key="1234", excludes=["metric2"])
@@ -305,7 +320,10 @@ class WandbIntegrationTest(unittest.TestCase):
 
     def testWandbMixinConfig(self):
         config = {"par1": 4, "par2": 9.12345678}
-        trial = Trial(config, 0, "trial_0", "trainable")
+        trial = Trial(config, 0, "trial_0", "trainable", True,
+                      PlacementGroupFactory([{
+                          "CPU": 1
+                      }]))
         trial_info = TrialInfo(trial)
 
         config[TRIAL_INFO] = trial_info
@@ -363,7 +381,10 @@ class WandbIntegrationTest(unittest.TestCase):
 
     def testWandbDecoratorConfig(self):
         config = {"par1": 4, "par2": 9.12345678}
-        trial = Trial(config, 0, "trial_0", "trainable")
+        trial = Trial(config, 0, "trial_0", "trainable", True,
+                      PlacementGroupFactory([{
+                          "CPU": 1
+                      }]))
         trial_info = TrialInfo(trial)
 
         @wandb_mixin

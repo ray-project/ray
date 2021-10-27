@@ -17,7 +17,11 @@ from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TrainerConfigDict
+
+tf1, tf, tfv = try_import_tf()
+tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +97,14 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer (in time steps).
     "buffer_size": int(1e6),
+    # Set this to True, if you want the contents of your buffer(s) to be
+    # stored in any saved checkpoints as well.
+    # Warnings will be created if:
+    # - This is True AND restoring from a checkpoint that contains no buffer
+    #   data.
+    # - This is False AND restoring from a checkpoint that does contain
+    #   buffer data.
+    "store_buffer_in_checkpoints": False,
     # If True prioritized replay buffer will be used.
     "prioritized_replay": False,
     "prioritized_replay_alpha": 0.6,
@@ -174,9 +186,6 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    if config["num_gpus"] > 1 and config["framework"] != "torch":
-        raise ValueError("`num_gpus` > 1 not yet supported for tf-SAC!")
-
     if config["use_state_preprocessor"] != DEPRECATED_VALUE:
         deprecation_warning(
             old="config['use_state_preprocessor']", error=False)
@@ -185,10 +194,13 @@ def validate_config(config: TrainerConfigDict) -> None:
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")
 
-    if config["simple_optimizer"] != DEPRECATED_VALUE or \
-            config["simple_optimizer"] is False:
-        logger.warning("`simple_optimizer` must be True (or unset) for SAC!")
-        config["simple_optimizer"] = True
+    if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        logger.warning(
+            "You need `tensorflow_probability` in order to run SAC! "
+            "Install it via `pip install tensorflow_probability`. Your "
+            f"tf.__version__={tf.__version__ if tf else None}."
+            "Trying to import tfp results in the following error:")
+        try_import_tfp(error=True)
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
@@ -215,4 +227,5 @@ SACTrainer = GenericOffPolicyTrainer.with_updates(
     validate_config=validate_config,
     default_policy=SACTFPolicy,
     get_policy_class=get_policy_class,
+    allow_unknown_subkeys=["Q_model", "policy_model"],
 )

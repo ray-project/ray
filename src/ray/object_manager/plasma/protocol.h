@@ -22,7 +22,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
+#include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -81,11 +84,8 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID 
                          int64_t metadata_size, flatbuf::ObjectSource source,
                          int device_num, bool try_immediately);
 
-void ReadCreateRequest(uint8_t *data, size_t size, ObjectID *object_id,
-                       NodeID *owner_raylet_id, std::string *owner_ip_address,
-                       int *owner_port, WorkerID *owner_worker_id, int64_t *data_size,
-                       int64_t *metadata_size, flatbuf::ObjectSource *source,
-                       int *device_num);
+void ReadCreateRequest(uint8_t *data, size_t size, ray::ObjectInfo *object_info,
+                       flatbuf::ObjectSource *source, int *device_num);
 
 Status SendUnfinishedCreateReply(const std::shared_ptr<Client> &client,
                                  ObjectID object_id, uint64_t retry_with_request_id);
@@ -126,7 +126,7 @@ Status ReadGetRequest(uint8_t *data, size_t size, std::vector<ObjectID> &object_
                       int64_t *timeout_ms, bool *is_from_worker);
 
 Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[],
-                    std::unordered_map<ObjectID, PlasmaObject> &plasma_objects,
+                    absl::flat_hash_map<ObjectID, PlasmaObject> &plasma_objects,
                     int64_t num_objects, const std::vector<MEMFD_TYPE> &store_fds,
                     const std::vector<int64_t> &mmap_sizes);
 

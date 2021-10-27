@@ -162,7 +162,7 @@ class SUMOConnector(object):
             return True
         return False
 
-    def step(self, until_end=False, agents=set()):
+    def step(self, until_end=False, agents=None):
         """
             Runs a "learning" step and returns if the simulation has finished.
             This function in meant to be called by the RLLIB Environment.
@@ -176,6 +176,9 @@ class SUMOConnector(object):
             Return:
                 Bool. True iff the simulation is still ongoing.
         """
+        if agents is None:
+            agents = set()
+
         # Execute SUMO steps until the learning needs to happen
         current_step_counter = 0
         logger.debug(

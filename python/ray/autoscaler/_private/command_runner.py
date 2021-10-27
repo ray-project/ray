@@ -651,10 +651,22 @@ class DockerCommandRunner(CommandRunnerInterface):
                 # Adding a "." means that docker copies the *contents*
                 # Without it, docker copies the source *into* the target
                 host_destination += "/."
+
+            # This path may not exist inside the container. This ensures
+            # that the path is created!
+            prefix = with_docker_exec(
+                [
+                    "mkdir -p {}".format(
+                        os.path.dirname(self._docker_expand_user(target)))
+                ],
+                container_name=self.container_name,
+                with_interactive=is_using_login_shells(),
+                docker_cmd=self.docker_cmd)[0]
+
             self.ssh_command_runner.run(
-                "{} cp {} {}:{}".format(self.docker_cmd, host_destination,
-                                        self.container_name,
-                                        self._docker_expand_user(target)),
+                "{} && rsync -e '{} exec -i' -avz {} {}:{}".format(
+                    prefix, self.docker_cmd, host_destination,
+                    self.container_name, self._docker_expand_user(target)),
                 silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target, options=None):
@@ -672,10 +684,12 @@ class DockerCommandRunner(CommandRunnerInterface):
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
         if not options.get("docker_mount_if_possible", False):
+            # NOTE: `--delete` is okay here because the container is the source
+            # of truth.
             self.ssh_command_runner.run(
-                "{} cp {}:{} {}".format(self.docker_cmd, self.container_name,
-                                        self._docker_expand_user(source),
-                                        host_source),
+                "rsync -e '{} exec -i' -avz --delete {}:{} {}".format(
+                    self.docker_cmd, self.container_name,
+                    self._docker_expand_user(source), host_source),
                 silent=is_rsync_silent())
         self.ssh_command_runner.run_rsync_down(
             host_source, target, options=options)
@@ -779,7 +793,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "differ from those on the running container.")
         return re_init_required
 
-    def run_init(self, *, as_head, file_mounts, sync_run_yet):
+    def run_init(self, *, as_head: bool, file_mounts: Dict[str, str],
+                 sync_run_yet: bool):
         BOOTSTRAP_MOUNTS = [
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]
@@ -820,6 +835,12 @@ class DockerCommandRunner(CommandRunnerInterface):
                     run_env="host")
 
         if (not container_running) or requires_re_init:
+            if not sync_run_yet:
+                # Do not start the actual image as we need to run file_sync
+                # first to ensure that all folders are created with the
+                # correct ownership. Docker will create the folders with
+                # `root` as the owner.
+                return True
             # Get home directory
             image_env = self.ssh_command_runner.run(
                 f"{self.docker_cmd} " + "inspect -f '{{json .Config.Env}}' " +
@@ -853,7 +874,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                     # is called before the first `file_sync` happens
                     self.run_rsync_up(file_mounts[mount], mount)
                 self.ssh_command_runner.run(
-                    "{cmd} cp {src} {container}:{dst}".format(
+                    "rsync -e '{cmd} exec -i' -avz {src} {container}:{dst}".
+                    format(
                         cmd=self.docker_cmd,
                         src=os.path.join(
                             self._get_docker_host_mount_location(

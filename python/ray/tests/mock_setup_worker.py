@@ -21,9 +21,17 @@ parser.add_argument(
     type=str,
     help="the serialized runtime env context")
 
+parser.add_argument(
+    "--allocated-instances-serialized-json",
+    type=str,
+    help="the worker allocated resource")
+
 # The worker is not set up yet, so we can't get session_dir from the worker.
 parser.add_argument(
     "--session-dir", type=str, help="the directory for the current session")
+
+parser.add_argument(
+    "--language", type=str, help="the language type of the worker")
 
 args, remaining_args = parser.parse_known_args()
 

@@ -13,12 +13,10 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.cluster_utils import Cluster
-from ray.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tune import register_trainable
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
-from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.syncer import CloudSyncer, SyncerCallback, get_node_syncer
 from ray.tune.utils.trainable import TrainableUtil
@@ -32,6 +30,7 @@ from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer,
 os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
 # Block for results even when placement groups are pending
 os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "9999"
 
 
 def _check_trial_running(trial):
@@ -189,7 +188,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     running_trials = _get_running_trials(runner)
     assert len(running_trials) == 1
     assert _check_trial_running(running_trials[0])
-    assert not trial.last_result
+    assert not trial.has_reported_at_least_once
     assert trial.status == Trial.RUNNING
     cluster.remove_node(node)
     cluster.add_node(num_cpus=1)
@@ -215,60 +214,6 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
 
     with pytest.raises(TuneError):
         runner.step()
-
-
-def test_queue_trials(start_connected_emptyhead_cluster):
-    """Tests explicit oversubscription for autoscaling.
-
-    Tune oversubscribes a trial when `queue_trials=True`, but
-    does not block other trials from running.
-    """
-    os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
-
-    cluster = start_connected_emptyhead_cluster
-    runner = TrialRunner()
-
-    def create_trial(cpu, gpu=0):
-        kwargs = {
-            "resources": Resources(cpu=cpu, gpu=gpu),
-            "stopping_criterion": {
-                "training_iteration": 3
-            }
-        }
-        return Trial("__fake", **kwargs)
-
-    runner.add_trial(create_trial(cpu=1))
-    with pytest.raises(TuneError):
-        runner.step()  # run 1
-
-    del runner
-
-    executor = RayTrialExecutor(queue_trials=True)
-    runner = TrialRunner(trial_executor=executor)
-    cluster.add_node(num_cpus=2)
-    cluster.wait_for_nodes()
-
-    cpu_only = create_trial(cpu=1)
-    runner.add_trial(cpu_only)
-    runner.step()  # add cpu_only trial
-
-    gpu_trial = create_trial(cpu=1, gpu=1)
-    runner.add_trial(gpu_trial)
-    runner.step()  # queue gpu_trial
-
-    # This tests that the cpu_only trial should bypass the queued trial.
-    for i in range(3):
-        runner.step()
-    assert cpu_only.status == Trial.TERMINATED
-    assert gpu_trial.status == Trial.RUNNING
-
-    # Scale up
-    cluster.add_node(num_cpus=1, num_gpus=1)
-    cluster.wait_for_nodes()
-
-    for i in range(3):
-        runner.step()
-    assert gpu_trial.status == Trial.TERMINATED
 
 
 @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])

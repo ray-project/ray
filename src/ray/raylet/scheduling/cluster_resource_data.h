@@ -64,7 +64,10 @@ class ResourceRequest {
   /// List of predefined resources required by the task.
   std::vector<FixedPoint> predefined_resources;
   /// List of custom resources required by the task.
-  std::unordered_map<int64_t, FixedPoint> custom_resources;
+  absl::flat_hash_map<int64_t, FixedPoint> custom_resources;
+  /// Whether this task requires object store memory.
+  /// TODO(swang): This should be a quantity instead of a flag.
+  bool requires_object_store_memory = false;
   /// Check whether the request contains no resources.
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
@@ -135,7 +138,7 @@ class TaskResourceInstances {
   /// Check whether there are no resource instances.
   bool IsEmpty() const;
   /// Returns human-readable string for these resources.
-  std::string DebugString() const;
+  [[nodiscard]] std::string DebugString(const StringIdMap &string_id_map) const;
 };
 
 /// Total and available capacities of each resource of a node.
@@ -144,18 +147,22 @@ class NodeResources {
   NodeResources() {}
   NodeResources(const NodeResources &other)
       : predefined_resources(other.predefined_resources),
-        custom_resources(other.custom_resources) {}
+        custom_resources(other.custom_resources),
+        object_pulls_queued(other.object_pulls_queued) {}
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
+  bool object_pulls_queued = false;
+
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
   /// of each resource and return the highest.
   float CalculateCriticalResourceUtilization() const;
   /// Returns true if the node has the available resources to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
-  bool IsAvailable(const ResourceRequest &resource_request) const;
+  bool IsAvailable(const ResourceRequest &resource_request,
+                   bool ignore_at_capacity = false) const;
   /// Returns true if the node's total resources are enough to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;
@@ -182,7 +189,7 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString(StringIdMap string_to_int_map) const;
+  [[nodiscard]] std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 struct Node {
@@ -214,12 +221,13 @@ struct Node {
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map_total,
-    const std::unordered_map<std::string, double> &resource_map_available);
+    const absl::flat_hash_map<std::string, double> &resource_map_total,
+    const absl::flat_hash_map<std::string, double> &resource_map_available);
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map);
+    const absl::flat_hash_map<std::string, double> &resource_map,
+    bool requires_object_store_memory);
 
 }  // namespace ray

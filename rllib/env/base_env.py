@@ -1,5 +1,6 @@
 from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING
 
+import ray
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -121,11 +122,17 @@ class BaseEnv:
                 env = _VectorEnvToBaseEnv(env)
             else:
                 if remote_envs:
+                    # Determine, whether the already existing sub-env (could
+                    # be a ray.actor) is multi-agent or not.
+                    multiagent = ray.get(env._is_multi_agent.remote()) if \
+                        hasattr(env, "_is_multi_agent") else False
                     env = RemoteVectorEnv(
                         make_env,
                         num_envs,
-                        multiagent=False,
-                        remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+                        multiagent=multiagent,
+                        remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                        existing_envs=[env],
+                    )
                 else:
                     env = VectorEnv.wrap(
                         make_env=make_env,
@@ -257,7 +264,7 @@ class _ExternalEnvToBaseEnv(BaseEnv):
             while len(results[0]) == 0:
                 self.external_env._results_avail_condition.wait()
                 results = self._poll()
-                if not self.external_env.isAlive():
+                if not self.external_env.is_alive():
                     raise Exception("Serving thread has stopped.")
         limit = self.external_env._max_concurrent_episodes
         assert len(results[0]) < limit, \
@@ -384,15 +391,18 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
     """
 
     def __init__(self, make_env: Callable[[int], EnvType],
-                 existing_envs: List[MultiAgentEnv], num_envs: int):
-        """Wrap existing multi-agent envs.
+                 existing_envs: List["MultiAgentEnv"], num_envs: int):
+        """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
         Args:
-            make_env (func|None): Factory that produces a new multiagent env.
-                Must be defined if the number of existing envs is less than
-                num_envs.
-            existing_envs (list): List of existing multiagent envs.
-            num_envs (int): Desired num multiagent envs to keep total.
+            make_env (Callable[[int], EnvType]): Factory that produces a new
+                MultiAgentEnv intance. Must be defined, if the number of
+                existing envs is less than num_envs.
+            existing_envs (List[MultiAgentEnv]): List of already existing
+                multi-agent envs.
+            num_envs (int): Desired num multiagent envs to have at the end in
+                total. This will include the given (already created)
+                `existing_envs`.
         """
         self.make_env = make_env
         self.envs = existing_envs
@@ -461,8 +471,9 @@ class _MultiAgentEnvState:
         self.env = env
         self.initialized = False
 
-    def poll(self) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict,
-                            MultiAgentDict, MultiAgentDict]:
+    def poll(
+            self
+    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
         if not self.initialized:
             self.reset()
             self.initialized = True
@@ -496,7 +507,6 @@ class _MultiAgentEnvState:
                     del self.last_infos[ag]
 
         self.last_dones["__all__"] = False
-        self.last_infos = {}
         return observations, rewards, dones, infos
 
     def observe(self, obs: MultiAgentDict, rewards: MultiAgentDict,

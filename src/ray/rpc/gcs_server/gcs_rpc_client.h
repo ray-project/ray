@@ -162,7 +162,7 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, node_info_grpc_client_, )
 
   /// Unregister a node from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, UnregisterNode, node_info_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, DrainNode, node_info_grpc_client_, )
 
   /// Get information of all nodes from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, node_info_grpc_client_, )
@@ -197,6 +197,10 @@ class GcsRpcClient {
 
   /// Report heartbeat of a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, ReportHeartbeat,
+                             heartbeat_info_grpc_client_, )
+
+  /// Check GCS is alive.
+  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, CheckAlive,
                              heartbeat_info_grpc_client_, )
 
   /// Get object's locations from GCS Service.

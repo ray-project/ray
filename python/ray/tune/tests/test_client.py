@@ -81,7 +81,8 @@ def test_xgboost_dynamic_resources_example(start_client_server):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.xgboost_dynamic_resources_example import \
         tune_xgboost
-    tune_xgboost()
+    tune_xgboost(use_class_trainable=True)
+    tune_xgboost(use_class_trainable=False)
 
 
 def test_mlflow_example(start_client_server):

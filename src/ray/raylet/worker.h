@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "gtest/gtest_prod.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -48,6 +49,8 @@ class WorkerInterface {
   virtual WorkerID WorkerId() const = 0;
   /// Return the worker process.
   virtual Process GetProcess() const = 0;
+  /// Return the worker process's startup token
+  virtual StartupToken GetStartupToken() const = 0;
   virtual void SetProcess(Process proc) = 0;
   /// Return the worker shim process.
   virtual Process GetShimProcess() const = 0;
@@ -93,25 +96,33 @@ class WorkerInterface {
 
   // Setter, geter, and clear methods  for allocated_instances_.
   virtual void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
 
   virtual std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() = 0;
 
   virtual void ClearAllocatedInstances() = 0;
 
   virtual void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
   virtual std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() = 0;
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual Task &GetAssignedTask() = 0;
+  virtual RayTask &GetAssignedTask() = 0;
 
-  virtual void SetAssignedTask(const Task &assigned_task) = 0;
+  virtual void SetAssignedTask(const RayTask &assigned_task) = 0;
 
   virtual bool IsRegistered() = 0;
 
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
+
+ protected:
+  virtual void SetStartupToken(StartupToken startup_token) = 0;
+
+  FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
+  FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker
@@ -124,7 +135,7 @@ class Worker : public WorkerInterface {
   Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
          const Language &language, rpc::WorkerType worker_type,
          const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
-         rpc::ClientCallManager &client_call_manager);
+         rpc::ClientCallManager &client_call_manager, StartupToken startup_token);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   rpc::WorkerType GetWorkerType() const;
@@ -137,6 +148,8 @@ class Worker : public WorkerInterface {
   WorkerID WorkerId() const;
   /// Return the worker process.
   Process GetProcess() const;
+  /// Return the worker process's startup token
+  StartupToken GetStartupToken() const;
   void SetProcess(Process proc);
   /// Return this worker shim process.
   Process GetShimProcess() const;
@@ -182,7 +195,7 @@ class Worker : public WorkerInterface {
 
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     allocated_instances_ = allocated_instances;
   };
 
@@ -193,7 +206,7 @@ class Worker : public WorkerInterface {
   void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
 
   void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
@@ -203,9 +216,9 @@ class Worker : public WorkerInterface {
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
 
-  Task &GetAssignedTask() { return assigned_task_; };
+  RayTask &GetAssignedTask() { return assigned_task_; };
 
-  void SetAssignedTask(const Task &assigned_task) { assigned_task_ = assigned_task; };
+  void SetAssignedTask(const RayTask &assigned_task) { assigned_task_ = assigned_task; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
@@ -214,11 +227,16 @@ class Worker : public WorkerInterface {
     return rpc_client_.get();
   }
 
+ protected:
+  void SetStartupToken(StartupToken startup_token);
+
  private:
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's process.
   Process proc_;
+  /// The worker's process's startup_token
+  StartupToken startup_token_;
   /// The worker's shim process. The shim process PID is the same with worker process PID,
   /// except starting worker process in container.
   Process shim_proc_;
@@ -240,7 +258,7 @@ class Worker : public WorkerInterface {
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
-  JobID assigned_job_id_;
+  const JobID assigned_job_id_;
   /// The hash of the worker's assigned runtime env.  We use this in the worker
   /// pool to cache and reuse workers with the same runtime env, because
   /// installing runtime envs from scratch can be slow.
@@ -279,8 +297,8 @@ class Worker : public WorkerInterface {
   /// The capacity of each resource instance allocated to this worker
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
-  /// Task being assigned to this worker.
-  Task assigned_task_;
+  /// RayTask being assigned to this worker.
+  RayTask assigned_task_;
 };
 
 }  // namespace raylet

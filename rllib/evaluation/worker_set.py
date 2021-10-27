@@ -16,7 +16,7 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
+from ray.rllib.utils.typing import EnvType, PolicyID, TrainerConfigDict
 from ray.tune.registry import registry_contains_input, registry_get_input
 
 tf1, tf, tfv = try_import_tf()
@@ -77,9 +77,13 @@ class WorkerSet:
             self._remote_workers = []
             self.add_workers(num_workers)
 
-            # If num_workers > 0, get the action_spaces and observation_spaces
-            # to not be forced to create an Env on the local worker.
-            if self._remote_workers:
+            # If num_workers > 0 and we don't have an env on the local worker,
+            # get the observation- and action spaces for each policy from
+            # the first remote worker (which does have an env).
+            if self._remote_workers and \
+                    not trainer_config.get("create_env_on_driver") and \
+                    (not trainer_config.get("observation_space") or
+                     not trainer_config.get("action_space")):
                 remote_spaces = ray.get(self.remote_workers(
                 )[0].foreach_policy.remote(
                     lambda p, pid: (pid, p.observation_space, p.action_space)))
@@ -87,6 +91,18 @@ class WorkerSet:
                     e[0]: (getattr(e[1], "original_space", e[1]), e[2])
                     for e in remote_spaces
                 }
+                # Try to add the actual env's obs/action spaces.
+                try:
+                    env_spaces = ray.get(self.remote_workers(
+                    )[0].foreach_env.remote(
+                        lambda env: (env.observation_space, env.action_space))
+                                         )[0]
+                    spaces["__env__"] = env_spaces
+                except Exception:
+                    pass
+
+                logger.info("Inferred observation/action spaces from remote "
+                            f"worker (local worker has no env): {spaces}")
             else:
                 spaces = None
 
@@ -110,15 +126,15 @@ class WorkerSet:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
-    def sync_weights(self) -> None:
+    def sync_weights(self, policies: Optional[List[PolicyID]] = None) -> None:
         """Syncs weights from the local worker to all remote workers."""
         if self.remote_workers():
-            weights = ray.put(self.local_worker().get_weights())
+            weights = ray.put(self.local_worker().get_weights(policies))
             for e in self.remote_workers():
                 e.set_weights.remote(weights)
 
     def add_workers(self, num_workers: int) -> None:
-        """Creates and add a number of remote workers to this worker set.
+        """Creates and adds a number of remote workers to this worker set.
 
         Args:
             num_workers (int): The number of remote Workers to add to this
@@ -409,7 +425,6 @@ class WorkerSet:
             normalize_actions=config["normalize_actions"],
             clip_actions=config["clip_actions"],
             env_config=config["env_config"],
-            model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
             num_workers=num_workers,

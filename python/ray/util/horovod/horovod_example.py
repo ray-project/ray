@@ -118,7 +118,8 @@ def train_fn(data_dir=None,
 def main(num_workers, use_gpu, **kwargs):
     settings = RayExecutor.create_settings(timeout_s=30)
     executor = RayExecutor(settings, use_gpu=use_gpu, num_workers=num_workers)
-    executor.run(train_fn, kwargs=kwargs)
+    executor.start()
+    executor.run(train_fn, **kwargs)
 
 
 if __name__ == "__main__":
@@ -133,7 +134,7 @@ if __name__ == "__main__":
         metavar="N",
         help="input batch size for training (default: 64)")
     parser.add_argument(
-        "--epochs",
+        "--num-epochs",
         type=int,
         default=5,
         metavar="N",
@@ -151,10 +152,10 @@ if __name__ == "__main__":
         metavar="M",
         help="SGD momentum (default: 0.5)")
     parser.add_argument(
-        "--no-cuda",
+        "--use-cuda",
         action="store_true",
         default=False,
-        help="disables CUDA training")
+        help="enables CUDA training")
     parser.add_argument(
         "--seed",
         type=int,
@@ -183,17 +184,10 @@ if __name__ == "__main__":
         "will be downloaded if needed)")
     parser.add_argument(
         "--address",
-        require=False,
-        types=str,
-        default=None,
-        help="Address of Ray cluster.")
-    parser.add_argument(
-        "--server-address",
+        required=False,
         type=str,
         default=None,
-        required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="Address of Ray cluster.")
 
     args = parser.parse_args()
 
@@ -201,8 +195,6 @@ if __name__ == "__main__":
 
     if args.address:
         ray.init(args.address)
-    elif args.server_address:
-        ray.util.connect(args.server_address)
     else:
         ray.init()
 

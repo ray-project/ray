@@ -2,7 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 
-from libc.stdint cimport int64_t
+from libc.stdint cimport int64_t, uint64_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.pair cimport pair as c_pair
@@ -26,10 +26,12 @@ from ray.includes.gcs_client cimport CGcsClient
 
 from ray.includes.common cimport (
     CAddress,
+    CObjectReference,
     CActorCreationOptions,
     CBuffer,
     CPlacementGroupCreationOptions,
     CObjectLocation,
+    CObjectReference,
     CRayFunction,
     CRayObject,
     CRayStatus,
@@ -41,6 +43,7 @@ from ray.includes.common cimport (
     CGcsClientOptions,
     LocalMemoryBuffer,
     CJobConfig,
+    CConcurrencyGroup,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -62,47 +65,48 @@ ctypedef void (*plasma_callback_function) \
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
-    cdef cppclass CProfiler "ray::worker::Profiler":
+    cdef cppclass CProfiler "ray::core::worker::Profiler":
         void Start()
 
-    cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
+    cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         CProfileEvent(const shared_ptr[CProfiler] profiler,
                       const c_string &event_type)
         void SetExtraData(const c_string &extra_data)
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
-    cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
+    cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
 cdef extern from "ray/core_worker/fiber.h" nogil:
-    cdef cppclass CFiberEvent "ray::FiberEvent":
+    cdef cppclass CFiberEvent "ray::core::FiberEvent":
         CFiberEvent()
         void Wait()
         void Notify()
 
 cdef extern from "ray/core_worker/context.h" nogil:
-    cdef cppclass CWorkerContext "ray::WorkerContext":
+    cdef cppclass CWorkerContext "ray::core::WorkerContext":
         c_bool CurrentActorIsAsync()
         const c_string &GetCurrentSerializedRuntimeEnv()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
-    cdef cppclass CActorHandle "ray::ActorHandle":
+    cdef cppclass CActorHandle "ray::core::ActorHandle":
         CActorID GetActorID() const
         CJobID CreationJobID() const
         CLanguage ActorLanguage() const
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
         c_string ExtensionData() const
 
-    cdef cppclass CCoreWorker "ray::CoreWorker":
+    cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()
         CWorkerType GetWorkerType()
         CLanguage GetLanguage()
 
-        void SubmitTask(
+        c_vector[CObjectReference] SubmitTask(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
-            const CTaskOptions &options, c_vector[CObjectID] *return_ids,
+            const CTaskOptions &options,
             int max_retries,
+            c_bool retry_exceptions,
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
             c_string debugger_breakpoint)
@@ -117,12 +121,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus RemovePlacementGroup(
             const CPlacementGroupID &placement_group_id)
         CRayStatus WaitPlacementGroupReady(
-            const CPlacementGroupID &placement_group_id, int timeout_ms)
-        void SubmitActorTask(
+            const CPlacementGroupID &placement_group_id, int timeout_seconds)
+        c_vector[CObjectReference] SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
-            const CTaskOptions &options,
-            c_vector[CObjectID] *return_ids)
+            const CTaskOptions &options)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)
@@ -136,6 +139,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const size_t &data_size,
             const shared_ptr[CBuffer] &metadata,
             const c_vector[CObjectID] &contained_object_id,
+            int64_t &task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
             const CObjectID& return_id,
@@ -145,6 +149,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
         CNodeID GetCurrentNodeId()
+        c_bool GetCurrentTaskRetryExceptions()
         CPlacementGroupID GetCurrentPlacementGroupId()
         CWorkerID GetWorkerID()
         c_bool ShouldCaptureChildTasksInPlacementGroup()
@@ -161,7 +166,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                         CObjectID *c_actor_handle_id)
         ActorHandleSharedPtr GetActorHandle(const CActorID &actor_id) const
         pair[ActorHandleSharedPtr, CRayStatus] GetNamedActorHandle(
-            const c_string &name)
+            const c_string &name, const c_string &ray_namespace)
         pair[c_vector[c_pair[c_string, c_string]], CRayStatus] ListNamedActors(
             c_bool all_namespaces)
         void AddLocalReference(const CObjectID &object_id)
@@ -170,7 +175,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
         CAddress GetOwnerAddress(const CObjectID &object_id) const
-        void PromoteObjectToPlasma(const CObjectID &object_id)
+        c_vector[CObjectReference] GetObjectRefs(
+                const c_vector[CObjectID] &object_ids) const
+
         void GetOwnershipInfo(const CObjectID &object_id,
                               CAddress *owner_address,
                               c_string *object_status)
@@ -190,18 +197,21 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const size_t data_size,
                                const c_vector[CObjectID] &contained_object_ids,
                                CObjectID *object_id, shared_ptr[CBuffer] *data,
-                               c_bool created_by_worker)
+                               c_bool created_by_worker,
+                               const unique_ptr[CAddress] &owner_address,
+                               c_bool inline_small_object)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,
                                   const CAddress &owner_address,
                                   shared_ptr[CBuffer] *data,
                                   c_bool created_by_worker)
-        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
-        CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
+                             const unique_ptr[CAddress] &owner_address)
+        CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
+                                const unique_ptr[CAddress] &owner_address)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
-                       c_vector[shared_ptr[CRayObject]] *results,
-                       c_bool plasma_objects_only)
+                       c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus GetIfLocal(
             const c_vector[CObjectID] &ids,
             c_vector[shared_ptr[CRayObject]] *results)
@@ -233,7 +243,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CNodeID &client_Id)
-        CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
 
         CJobConfig GetJobConfig()
 
@@ -241,7 +250,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         c_bool IsExiting() const
 
-    cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
+        int64_t GetNumTasksSubmitted() const
+
+        int64_t GetNumLeasesRequested() const
+
+        unordered_map[c_string, c_vector[uint64_t]] GetActorCallStats() const
+
+    cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language
         c_string store_socket
@@ -264,21 +279,23 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CRayFunction &ray_function,
             const unordered_map[c_string, double] &resources,
             const c_vector[shared_ptr[CRayObject]] &args,
-            const c_vector[CObjectID] &arg_reference_ids,
+            const c_vector[CObjectReference] &arg_refs,
             const c_vector[CObjectID] &return_ids,
             const c_string debugger_breakpoint,
             c_vector[shared_ptr[CRayObject]] *returns,
             shared_ptr[LocalMemoryBuffer]
-            &creation_task_exception_pb_bytes) nogil
+            &creation_task_exception_pb_bytes,
+            c_bool *is_application_level_error,
+            const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
+            const c_string name_of_concurrency_group_to_execute) nogil
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
         (c_vector[c_string](
-            const c_vector[CObjectID] &,
-            const c_vector[c_string] &) nogil) spill_objects
+            const c_vector[CObjectReference] &) nogil) spill_objects
         (int64_t(
-            const c_vector[CObjectID] &,
+            const c_vector[CObjectReference] &,
             const c_vector[c_string] &) nogil) restore_spilled_objects
         (void(
             const c_vector[c_string]&,
@@ -288,7 +305,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[c_string]&) nogil) run_on_util_worker_handler
         (void(const CRayObject&) nogil) unhandled_exception_handler
         (void(c_string *stack_out) nogil) get_lang_stack
-        c_bool ref_counting_enabled
         c_bool is_local_mode
         int num_workers
         (c_bool() nogil) kill_main
@@ -299,8 +315,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool connect_on_start
         int runtime_env_hash
         int worker_shim_pid
+        int startup_token
 
-    cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
+    cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod
         void Initialize(const CCoreWorkerOptions &options)
         # Only call this in CoreWorker.__cinit__,

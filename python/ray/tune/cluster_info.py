@@ -1,7 +1,9 @@
+from functools import lru_cache
 import getpass
 import os
 
 
+@lru_cache()
 def is_ray_cluster():
     """Checks if the bootstrap config file exists.
 

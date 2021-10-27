@@ -23,12 +23,16 @@ service using ``serve.start(detached=True)``. In this case, the Serve instance w
 run on the Ray cluster even after the script that calls it exits. If you want to run another script
 to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
 
+All non-detached Serve instances will be started in the current namespace that was specified when connecting to the cluster. If a namespace is specified for a detached Serve instance, it will be used. Otherwise if the current namespace is anonymous, the Serve instance will be started in the ``serve`` namespace.
+
+If ``serve.start()`` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster with the same namespace that was specified when starting the instance and run ``serve.start()``.
+
 Deploying on a Single Node
 ==========================
 
 While Ray Serve makes it easy to scale out on a multi-node Ray cluster, in some scenarios a single node may suite your needs.
 There are two ways you can run Ray Serve on a single node, shown below.
-In general, **Option 2 is recommended for most users** because it allows you to fully make use of Serve's ability to dynamically update running backends.
+In general, **Option 2 is recommended for most users** because it allows you to fully make use of Serve's ability to dynamically update running deployments.
 
 1. Start Ray and deploy with Ray Serve all in a single Python file.
 
@@ -36,6 +40,7 @@ In general, **Option 2 is recommended for most users** because it allows you to 
 
   import ray
   from ray import serve
+  import time
 
   # This will start Ray locally and start Serve on top of it.
   serve.start()
@@ -157,7 +162,7 @@ Now, we just need to start the cluster:
       Session Affinity:  None
       Events:            <none>
 
-With the cluster now running, we can run a simple script to start Ray Serve and deploy a "hello world" backend:
+With the cluster now running, we can run a simple script to start Ray Serve and deploy a "hello world" deployment:
 
   .. code-block:: python
 
@@ -203,6 +208,61 @@ Please refer to the Kubernetes documentation for more information.
 .. _`NodePort`: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 
 
+Failure Recovery
+================
+Ray Serve is resilient to any component failures within the Ray cluster out of the box.
+You can checkout the detail of how process and worker node failure handled at :ref:`serve-ft-detail`.
+However, when the Ray head node goes down, you would need to recover the state by creating a new
+Ray cluster and re-deploys all Serve deployments into that cluster.
+
+.. note::
+  Ray currently cannot survive head node failure and we recommend using application specific
+  failure recovery solutions. Although Ray is not currently highly available (HA), it is on
+  the long term roadmap and being actively worked on.
+
+Ray Serve added an experimental feature to help recovering the state.
+This features enables Serve to write all your deployment configuration and code into a storage location. 
+Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state. 
+
+Here is how to use it:
+
+.. warning::
+  The API is experimental and subject to change. We welcome you to test it out
+  and leave us feedback through github issues or discussion forum!
+
+
+You can use both the start argument and the CLI to specify it:
+
+.. code-block:: python
+
+    serve.start(_checkpoint_path=...)
+
+or 
+
+.. code-block:: shell
+
+    serve start --checkpoint-path ...
+
+
+The checkpoint path argument accepts the following format:
+
+- ``file://local_file_path``
+- ``s3://bucket/path``
+- ``custom://importable.custom_python.Class/path``
+
+While we have native support for on disk and AWS S3 storage, there is no reason we cannot support more. 
+
+In Kubernetes environment, we recommend using `Persistent Volumes`_ to create a disk and mount it into the Ray head node.
+For example, you can provision Azure Disk, AWS Elastic Block Store, or GCP Persistent Disk using the K8s `Persistent Volumes`_ API.
+Alternatively, you can also directly write to object store like S3.
+
+You can easily try to plug into your own implementation using the ``custom://`` path and inherit the `KVStoreBase`_ class.
+Feel free to open new github issues and contribute more storage backends!
+
+.. _`Persistent Volumes`: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
+
+.. _`KVStoreBase`: https://github.com/ray-project/ray/blob/master/python/ray/serve/storage/kv_store_base.py
+
 .. _serve-monitoring:
 
 Monitoring
@@ -219,7 +279,7 @@ Below is an example of what the Ray Dashboard might look like for a Serve deploy
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/serve-dashboard.png
     :align: center
 
-Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve backend in the deployment.
+Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve deployment.
 To learn about the function of the controller and proxy actors, see the `Serve Architecture page <architecture.html>`__.
 In this example pictured above, we have a single-node cluster with a deployment named Counter with ``num_replicas=2``.
 
@@ -235,18 +295,17 @@ Logging in Ray Serve uses Python's standard logging facility.
 Tracing Backends and Replicas
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-When looking through log files of your Ray Serve application, it is useful to know which backend and replica each log line originated from.
-To automatically include the current backend tag and replica tag in your logs, simply call
-``logger = logging.getLogger("ray")``, and use ``logger`` within your backend code:
+When looking through log files of your Ray Serve application, it is useful to know which deployment and replica each log line originated from.
+To automatically include the current deployment and replica in your logs, simply call
+``logger = logging.getLogger("ray")``, and use ``logger`` within your deployment code:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
-  :lines: 1, 9, 11-13, 15-16
 
-Querying a Serve endpoint with the above backend will produce a log line like the following:
+Querying a Serve endpoint with the above deployment will produce a log line like the following:
 
 .. code-block:: bash
 
-  (pid=42161) 2021-02-26 11:05:21,709     INFO snippet_logger.py:13 -- Some info! component=serve backend=f replica=f#jZlnUI
+  (pid=42161) 2021-02-26 11:05:21,709     INFO snippet_logger.py:13 -- Some info! component=serve deployment=f replica=f#jZlnUI
 
 To write your own custom logger using Python's ``logging`` package, use the following method:
 
@@ -286,7 +345,7 @@ Save the following file as ``promtail-local-config.yaml``:
       job: ray
       __path__: /tmp/ray/session_latest/logs/*.*
 
-The relevant part for Ray is the ``static_configs`` field, where we have indicated the location of our log files with ``__path__``.  
+The relevant part for Ray is the ``static_configs`` field, where we have indicated the location of our log files with ``__path__``.
 The expression ``*.*`` will match all files, but not directories, which cause an error with Promtail.
 
 We will run Loki locally.  Grab the default config file for Loki with the following command in your terminal:
@@ -319,20 +378,20 @@ Now we are ready to start our Ray Serve deployment.  Start a long-running Ray cl
   ray start --head
   serve start
 
-Now run the following Python script to deploy a basic Serve backend with a Serve backend logger:
+Now run the following Python script to deploy a basic Serve deployment with a Serve deployment logger:
 
-.. literalinclude:: ../../../python/ray/serve/examples/doc/backend_logger.py
+.. literalinclude:: ../../../python/ray/serve/examples/doc/deployment_logger.py
 
 Now `install and run Grafana <https://grafana.com/docs/grafana/latest/installation/>`__ and navigate to ``http://localhost:3000``, where you can log in with the default username "admin" and default password "admin".
 On the welcome page, click "Add your first data source" and click "Loki" to add Loki as a data source.
 
 Now click "Explore" in the left-side panel.  You are ready to run some queries!
 
-To filter all these Ray logs for the ones relevant to our backend, use the following `LogQL <https://grafana.com/docs/loki/latest/logql/>`__ query:
+To filter all these Ray logs for the ones relevant to our deployment, use the following `LogQL <https://grafana.com/docs/loki/latest/logql/>`__ query:
 
-.. code-block:: shell 
+.. code-block:: shell
 
-  {job="ray"} |= "backend=Counter"
+  {job="ray"} |= "deployment=Counter"
 
 You should see something similar to the following:
 
@@ -353,18 +412,18 @@ The following metrics are exposed by Ray Serve:
 
    * - Name
      - Description
-   * - ``serve_backend_request_counter``
+   * - ``serve_deployment_request_counter``
      - The number of queries that have been processed in this replica.
-   * - ``serve_backend_error_counter``
-     - The number of exceptions that have occurred in the backend.
-   * - ``serve_backend_replica_starts``
+   * - ``serve_deployment_error_counter``
+     - The number of exceptions that have occurred in the deployment.
+   * - ``serve_deployment_replica_starts``
      - The number of times this replica has been restarted due to failure.
-   * - ``serve_backend_queuing_latency_ms``
+   * - ``serve_deployment_queuing_latency_ms``
      - The latency for queries in the replica's queue waiting to be processed.
-   * - ``serve_backend_processing_latency_ms``
+   * - ``serve_deployment_processing_latency_ms``
      - The latency for queries to be processed.
    * - ``serve_replica_queued_queries``
-     - The current number of queries queued in the backend replicas.
+     - The current number of queries queued in the deployment replicas.
    * - ``serve_replica_processing_queries``
      - The current number of queries being processed.
    * - ``serve_num_http_requests``
@@ -373,8 +432,8 @@ The following metrics are exposed by Ray Serve:
      - The number of requests processed by the router.
    * - ``serve_handle_request_counter``
      - The number of requests processed by this ServeHandle.
-   * - ``backend_queued_queries`` 
-     - The number of queries for this backend waiting to be assigned to a replica.
+   * - ``serve_deployment_queued_queries``
+     - The number of queries for this deployment waiting to be assigned to a replica.
 
 To see this in action, run ``ray start --head --metrics-export-port=8080`` in your terminal, and then run the following script:
 
@@ -386,16 +445,17 @@ The metrics are updated once every ten seconds, and you will need to refresh the
 
 For example, after running the script for some time and refreshing ``localhost:8080`` you might see something that looks like::
 
-  ray_serve_backend_processing_latency_ms_count{...,backend="f",...} 99.0
-  ray_serve_backend_processing_latency_ms_sum{...,backend="f",...} 99279.30498123169
+  ray_serve_deployment_processing_latency_ms_count{...,deployment="f",...} 99.0
+  ray_serve_deployment_processing_latency_ms_sum{...,deployment="f",...} 99279.30498123169
 
 which indicates that the average processing latency is just over one second, as expected.
 
-You can even define a `custom metric <..ray-metrics.html#custom-metrics>`__ to use in your backend, and tag it with the current backend or replica.
+You can even define a :ref:`custom metric <ray-metrics>` to use in your deployment, and tag it with the current deployment or replica.
 Here's an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
-  :lines: 11-23
+  :start-after: __custom_metrics_deployment_start__
+  :end-before: __custom_metrics_deployment_end__
 
 See the
-`Ray Metrics documentation <../ray-metrics.html>`__ for more details, including instructions for scraping these metrics using Prometheus.
+:ref:`Ray Metrics documentation <ray-metrics>` for more details, including instructions for scraping these metrics using Prometheus.

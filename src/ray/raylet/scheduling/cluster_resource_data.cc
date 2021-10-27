@@ -1,4 +1,19 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/raylet/scheduling/cluster_resource_data.h"
+
 #include "ray/common/bundle_spec.h"
 #include "ray/common/task/scheduling_resources.h"
 
@@ -41,7 +56,7 @@ std::string VectorToString(const std::vector<FixedPoint> &vector) {
   return buffer.str();
 }
 
-std::string UnorderedMapToString(const std::unordered_map<std::string, double> &map) {
+std::string UnorderedMapToString(const absl::flat_hash_map<std::string, double> &map) {
   std::stringstream buffer;
 
   buffer << "[";
@@ -75,9 +90,11 @@ std::vector<double> VectorFixedPointToVectorDouble(
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map) {
+    const absl::flat_hash_map<std::string, double> &resource_map,
+    bool requires_object_store_memory) {
   ResourceRequest resource_request;
 
+  resource_request.requires_object_store_memory = requires_object_store_memory;
   resource_request.predefined_resources.resize(PredefinedResources_MAX);
 
   for (auto const &resource : resource_map) {
@@ -146,8 +163,8 @@ ResourceRequest TaskResourceInstances::ToResourceRequest() const {
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map_total,
-    const std::unordered_map<std::string, double> &resource_map_available) {
+    const absl::flat_hash_map<std::string, double> &resource_map_total,
+    const absl::flat_hash_map<std::string, double> &resource_map_available) {
   NodeResources node_resources;
   node_resources.predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
@@ -200,7 +217,13 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
   return highest;
 }
 
-bool NodeResources::IsAvailable(const ResourceRequest &resource_request) const {
+bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
+                                bool ignore_pull_manager_at_capacity) const {
+  if (!ignore_pull_manager_at_capacity && resource_request.requires_object_store_memory &&
+      object_pulls_queued) {
+    RAY_LOG(DEBUG) << "At pull manager capacity";
+    return false;
+  }
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
@@ -214,6 +237,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request) const {
     const auto &demand = resource_request.predefined_resources[i];
 
     if (resource < demand) {
+      RAY_LOG(DEBUG) << "At resource capacity";
       return false;
     }
   }
@@ -227,6 +251,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request) const {
       return false;
     }
   }
+
   return true;
 }
 
@@ -439,7 +464,8 @@ std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) co
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << "\t" << it->first << ":(" << VectorToString(it->second.total) << ":"
+    buffer << "\t" << string_to_int_map.Get(it->first) << ":("
+           << VectorToString(it->second.total) << ":"
            << VectorToString(it->second.available) << ")\n";
   }
   buffer << "}" << std::endl;
@@ -511,7 +537,7 @@ bool TaskResourceInstances::IsEmpty() const {
   return true;
 }
 
-std::string TaskResourceInstances::DebugString() const {
+std::string TaskResourceInstances::DebugString(const StringIdMap &string_id_map) const {
   std::stringstream buffer;
   buffer << std::endl << "  Allocation: {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -522,7 +548,7 @@ std::string TaskResourceInstances::DebugString() const {
   buffer << "  [";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << it->first << ":" << VectorToString(it->second) << ", ";
+    buffer << string_id_map.Get(it->first) << ":" << VectorToString(it->second) << ", ";
   }
 
   buffer << "]" << std::endl;

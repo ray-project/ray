@@ -7,7 +7,7 @@ import redis
 import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
-from ray import profiling
+import ray._private.profiling as profiling
 
 import logging
 
@@ -148,6 +148,11 @@ class ImportThread:
             # exported so that we know it is safe to turn this worker
             # into an actor of that class.
             self.worker.function_actor_manager.imported_actor_classes.add(key)
+            with self.worker.function_actor_manager.cv:
+                # Function manager may be waiting on actor class to be
+                # loaded for deserialization, notify it to wake up and
+                # check if the actor class it was looking for is loaded
+                self.worker.function_actor_manager.cv.notify_all()
         # TODO(rkn): We may need to bring back the case of
         # fetching actor classes here.
         else:
@@ -155,14 +160,15 @@ class ImportThread:
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
-        (job_id, serialized_function,
-         run_on_other_drivers) = self.redis_client.hmget(
-             key, ["job_id", "function", "run_on_other_drivers"])
+        (job_id, serialized_function) = self.redis_client.hmget(
+            key, ["job_id", "function"])
 
         if self.worker.mode == ray.SCRIPT_MODE:
-            if (run_on_other_drivers == b"False"
-                    or job_id == self.worker.current_job_id.binary()):
-                return
+            return
+
+        if ray_constants.ISOLATE_EXPORTS and \
+                job_id != self.worker.current_job_id.binary():
+            return
 
         try:
             # FunctionActorManager may call pickle.loads at the same time.

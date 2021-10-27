@@ -3,23 +3,22 @@ import os
 import sys
 import time
 
-import grpc
 import pytest
 import numpy as np
 
 import ray
-import ray.test_utils
 from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
-from ray.test_utils import (wait_for_condition, run_string_as_driver,
-                            run_string_as_driver_nonblocking)
+from ray._private.test_utils import (wait_for_condition, run_string_as_driver,
+                                     run_string_as_driver_nonblocking)
+from ray._private.utils import init_grpc_channel
 
 
 def get_workers():
     raylet = ray.nodes()[0]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     raylet["NodeManagerPort"])
-    channel = grpc.insecure_channel(raylet_address)
+    channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     return [
         worker for worker in stub.GetNodeStats(
@@ -112,12 +111,14 @@ ray.shutdown()
                     all_worker_pids.add(worker_pid)
 
 
-def test_worker_env(shutdown_only):
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_runtime_env(shutdown_only):
     ray.init(
-        job_config=ray.job_config.JobConfig(worker_env={
-            "foo1": "bar1",
-            "foo2": "bar2"
-        }))
+        job_config=ray.job_config.JobConfig(
+            runtime_env={"env_vars": {
+                "foo1": "bar1",
+                "foo2": "bar2"
+            }}))
 
     @ray.remote
     def get_env(key):

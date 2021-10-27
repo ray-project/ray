@@ -7,7 +7,8 @@ import time
 
 import ray
 import ray.ray_constants
-import ray.test_utils
+import ray._private.gcs_utils as gcs_utils
+from ray._private.test_utils import wait_for_condition
 
 from ray._raylet import GlobalStateAccessor
 
@@ -16,7 +17,7 @@ from ray._raylet import GlobalStateAccessor
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(30)
 def test_replenish_resources(ray_start_regular):
     cluster_resources = ray.cluster_resources()
     available_resources = ray.available_resources()
@@ -38,7 +39,7 @@ def test_replenish_resources(ray_start_regular):
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(30)
 def test_uses_resources(ray_start_regular):
     cluster_resources = ray.cluster_resources()
 
@@ -101,7 +102,7 @@ def test_global_state_actor_table(ray_start_regular):
     def get_state():
         return list(ray.state.actors().values())[0]["State"]
 
-    dead_state = ray.gcs_utils.ActorTableData.DEAD
+    dead_state = gcs_utils.ActorTableData.DEAD
     for _ in range(10):
         if get_state() == dead_state:
             break
@@ -136,10 +137,10 @@ def test_global_state_actor_entry(ray_start_regular):
     b_actor_id = b._actor_id.hex()
     assert ray.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
     assert ray.state.actors(
-        actor_id=a_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
+        actor_id=a_actor_id)["State"] == gcs_utils.ActorTableData.ALIVE
     assert ray.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
     assert ray.state.actors(
-        actor_id=b_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
+        actor_id=b_actor_id)["State"] == gcs_utils.ActorTableData.ALIVE
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])
@@ -175,7 +176,7 @@ def test_load_report(shutdown_only, max_shapes):
             if message is None:
                 return False
 
-            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            resource_usage = gcs_utils.ResourceUsageBatchData.FromString(
                 message)
             self.report = \
                 resource_usage.resource_load_by_shape.resource_demands
@@ -188,7 +189,7 @@ def test_load_report(shutdown_only, max_shapes):
 
     # Wait for load information to arrive.
     checker = Checker()
-    ray.test_utils.wait_for_condition(checker.check_load_report)
+    wait_for_condition(checker.check_load_report)
 
     # Check that we respect the max shapes limit.
     if max_shapes != -1:
@@ -258,7 +259,7 @@ def test_placement_group_load_report(ray_start_cluster):
             if message is None:
                 return False
 
-            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            resource_usage = gcs_utils.ResourceUsageBatchData.FromString(
                 message)
             return resource_usage
 
@@ -270,24 +271,25 @@ def test_placement_group_load_report(ray_start_cluster):
     _, unready = ray.wait(
         [pg_feasible.ready(), pg_infeasible.ready()], timeout=0)
     assert len(unready) == 2
-    ray.test_utils.wait_for_condition(checker.nothing_is_ready)
+    wait_for_condition(checker.nothing_is_ready)
 
     # Add a node that makes pg feasible. Make sure load include this change.
     cluster.add_node(resources={"A": 1})
     ray.get(pg_feasible.ready())
-    ray.test_utils.wait_for_condition(checker.only_first_one_ready)
+    wait_for_condition(checker.only_first_one_ready)
     # Create one more infeasible pg and make sure load is properly updated.
     pg_infeasible_second = ray.util.placement_group([{"C": 1}])
     _, unready = ray.wait([pg_infeasible_second.ready()], timeout=0)
     assert len(unready) == 1
-    ray.test_utils.wait_for_condition(checker.two_infeasible_pg)
+    wait_for_condition(checker.two_infeasible_pg)
     global_state_accessor.disconnect()
 
 
 def test_backlog_report(shutdown_only):
     cluster = ray.init(
-        num_cpus=1, _system_config={
-            "report_worker_backlog": True,
+        num_cpus=1,
+        _system_config={
+            "max_pending_lease_requests_per_scheduling_category": 1
         })
     global_state_accessor = GlobalStateAccessor(
         cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
@@ -304,8 +306,7 @@ def test_backlog_report(shutdown_only):
         if message is None:
             return False
 
-        resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
-            message)
+        resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
         aggregate_resource_load = \
             resource_usage.resource_load_by_shape.resource_demands
         if len(aggregate_resource_load) == 1:
@@ -328,15 +329,12 @@ def test_backlog_report(shutdown_only):
     # First request finishes, second request is now running, third lease
     # request is sent to the raylet with backlog=7
 
-    ray.test_utils.wait_for_condition(backlog_size_set, timeout=2)
+    wait_for_condition(backlog_size_set, timeout=2)
     global_state_accessor.disconnect()
 
 
 def test_heartbeat_ip(shutdown_only):
-    cluster = ray.init(
-        num_cpus=1, _system_config={
-            "report_worker_backlog": True,
-        })
+    cluster = ray.init(num_cpus=1)
     global_state_accessor = GlobalStateAccessor(
         cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     global_state_accessor.connect()
@@ -348,12 +346,11 @@ def test_heartbeat_ip(shutdown_only):
         if message is None:
             return False
 
-        resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
-            message)
+        resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
         resources_data = resource_usage.batch[0]
         return resources_data.node_manager_address == self_ip
 
-    ray.test_utils.wait_for_condition(self_ip_is_set, timeout=2)
+    wait_for_condition(self_ip_is_set, timeout=2)
     global_state_accessor.disconnect()
 
 
