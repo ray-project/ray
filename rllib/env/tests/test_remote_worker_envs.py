@@ -9,7 +9,7 @@ from ray.rllib.agents.pg import pg
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
 from ray.rllib.examples.remote_vector_env_with_custom_api import \
-    NonVectorizedEnvToBeVectorizedIntoRemoteVectorEnv
+    NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv
 from ray import tune
 
 
@@ -62,7 +62,7 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
 
         # Using class directly: Sub-class of gym.Env,
         # which implements its own API.
-        config["env"] = NonVectorizedEnvToBeVectorizedIntoRemoteVectorEnv
+        config["env"] = NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv
         trainer = pg.PGTrainer(config=config)
         print(trainer.train())
         trainer.stop()

@@ -116,7 +116,7 @@ class BaseEnv:
             The resulting BaseEnv object.
         """
 
-        from ray.rllib.env.remote_vector_env import RemoteVectorEnv
+        from ray.rllib.env.remote_vector_env import RemoteBaseEnv
         if remote_envs and num_envs == 1:
             raise ValueError(
                 "Remote envs only make sense to use if num_envs > 1 "
@@ -132,7 +132,7 @@ class BaseEnv:
         if isinstance(env, MultiAgentEnv):
             # Sub-envs are ray.remote actors:
             if remote_envs:
-                env = RemoteVectorEnv(
+                env = RemoteBaseEnv(
                     make_env,
                     num_envs,
                     multiagent=True,
@@ -164,7 +164,7 @@ class BaseEnv:
                 # be a ray.actor) is multi-agent or not.
                 multiagent = ray.get(env._is_multi_agent.remote()) if \
                     hasattr(env, "_is_multi_agent") else False
-                env = RemoteVectorEnv(
+                env = RemoteBaseEnv(
                     make_env,
                     num_envs,
                     multiagent=multiagent,
