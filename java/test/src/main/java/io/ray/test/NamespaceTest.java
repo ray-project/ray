@@ -51,7 +51,7 @@ public class NamespaceTest {
   }
 
   private void testIsolation(Runnable runnable) throws IOException, InterruptedException {
-    Process driver;
+    Process driver = null;
     try {
       Ray.init();
       ProcessBuilder builder = TestUtils.buildDriver(NamespaceTest.class, null);
