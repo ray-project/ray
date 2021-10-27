@@ -65,6 +65,18 @@ def get_commit_range():
     return commit_range
 
 
+def check_ml_deps_in_sync(all_changed_files):
+    file_set = set(all_changed_files)
+    if "python/requirements/ml/requirements_dl.txt" in file_set != \
+            "python/requirements/requirements_ml_docker.txt" in file_set:
+        raise RuntimeError("A change was identified in either "
+                           "requirements_dl.txt or in "
+                           "requirements_ml_docker.txt, but not in both. "
+                           "If the dependencies in one file is changed, "
+                           "then they should be reflected in the other as "
+                           "well.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -96,6 +108,8 @@ if __name__ == "__main__":
         print(pformat(commit_range), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
 
+        check_ml_deps_in_sync(all_changed_files=files)
+
         # Dry run py_dep_analysis.py to see which tests we would have run.
         try:
             graph = pda.build_dep_graph()
@@ -122,6 +136,7 @@ if __name__ == "__main__":
         ]
 
         for changed_file in files:
+
             if changed_file.startswith("python/ray/tune"):
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
