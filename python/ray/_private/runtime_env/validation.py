@@ -14,6 +14,39 @@ from ray._private.utils import import_attr
 logger = logging.getLogger(__name__)
 
 
+def validate_uri(uri: str):
+    if not isinstance(uri, str):
+        raise TypeError("URIs for working_dir and py_modules must be "
+                        f"strings, got {type(uri)}.")
+
+    try:
+        from ray._private.runtime_env.packaging import parse_uri, Protocol
+        protocol, path = parse_uri(uri)
+    except ValueError:
+        raise ValueError(
+            f"{uri} is not a valid URI. Passing directories or modules to "
+            "be dynamically uploaded is only supported at the job level "
+            "(i.e., passed to `ray.init`).")
+
+    if protocol == Protocol.S3 and not path.endswith(".zip"):
+        raise ValueError("Only .zip files supported for S3 URIs.")
+
+
+def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
+    """Parses and validates a user-provided 'py_modules' option.
+
+    This should be a list of URIs.
+    """
+    if not isinstance(py_modules, list):
+        raise TypeError("`py_modules` must be a list of strings, got "
+                        f"{type(py_modules)}.")
+
+    for uri in py_modules:
+        validate_uri(uri)
+
+    return py_modules
+
+
 def parse_and_validate_working_dir(working_dir: str) -> str:
     """Parses and validates a user-provided 'working_dir' option.
 
@@ -25,18 +58,7 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
         raise TypeError("`working_dir` must be a string, got "
                         f"{type(working_dir)}.")
 
-    try:
-        from ray._private.runtime_env.packaging import parse_uri, Protocol
-        protocol, path = parse_uri(working_dir)
-
-    except ValueError:
-        raise ValueError(
-            f"working_dir must be a valid URI, got {working_dir}. Passing "
-            "directories to be dynamically uploaded is only supported at "
-            "the job level (i.e., passed to `ray.init`).")
-
-    if protocol == Protocol.S3 and not path.endswith(".zip"):
-        raise ValueError("Only .zip files supported for S3 URIs.")
+    validate_uri(working_dir)
 
     return working_dir
 
@@ -166,6 +188,7 @@ def parse_and_validate_env_vars(
 # Dictionary mapping runtime_env options with the function to parse and
 # validate them.
 OPTION_TO_VALIDATION_FN = {
+    "py_modules": parse_and_validate_py_modules,
     "working_dir": parse_and_validate_working_dir,
     "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,
@@ -184,12 +207,11 @@ class ParsedRuntimeEnv(dict):
     All options in the resulting dictionary will have non-None values.
 
     Currently supported options:
-        working_dir (Path): Specifies the working directory of the worker.
-            This can either be a local directory or a remote URI.
-            Examples:
-                "."  # Dynamically uploaded and unpacked into the directory.
-                ""s3://bucket/local_project.zip" # Downloaded and unpacked.
-
+        py_modules (List[URI]): List of URIs (either in the GCS or external
+            storage), each of which is a zip file that will be unpacked and
+            inserted into the PYTHONPATH of the workers.
+        working_dir (URI): URI (either in the GCS or external storage) of a zip
+            file that will be unpacked in the directory of each task/actor.
         pip (List[str] | str): Either a list of pip packages, or a string
             containing the path to a pip requirements.txt file.
         conda (dict | str): Either the conda YAML config, the name of a
@@ -222,6 +244,7 @@ class ParsedRuntimeEnv(dict):
     """
 
     known_fields: Set[str] = {
+        "py_modules",
         "working_dir",
         "conda",
         "pip",
