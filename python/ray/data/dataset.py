@@ -792,15 +792,14 @@ class Dataset(Generic[T]):
         return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
 
     def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
-        """Group the dataset by the specified key function (Experimental).
+        """Group the dataset by the key function or column name (Experimental).
 
         This is a lazy operation.
-        Currently only simple block datasets are supported.
 
         Examples:
             >>> # Group by a key function and aggregate.
             >>> ray.data.range(100).groupby(lambda x: x % 3).count()
-            >>> # Group by a arrow table column and aggregate.
+            >>> # Group by an Arrow table column and aggregate.
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
             ...     "A").count()
@@ -808,7 +807,7 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: A key function or arrow column names.
+            key: A key function or Arrow column name.
 
         Returns:
             A lazy GroupedDataset that can be aggregated later.
@@ -835,14 +834,14 @@ class Dataset(Generic[T]):
             If the input dataset is simple dataset then the output is
             a tuple of (agg1, agg2, ...) where each tuple element is
             the corresponding aggregation result.
-            If the input dataset is arrow dataset then the output is
+            If the input dataset is Arrow dataset then the output is
             an ArrowRow where each column is the corresponding
             aggregation result.
         """
         return self.groupby(None).aggregate(*aggs).take(1)[0]
 
-    def min(self, on: AggregateOnT = lambda r: r) -> U:
-        """Compute min aggregation with the entire dataset as one group.
+    def min(self, on: AggregateOnT = None) -> U:
+        """Compute minimum over entire dataset.
 
         Examples:
             >>> ray.data.range(100).min()
@@ -857,8 +856,8 @@ class Dataset(Generic[T]):
         """
         return self.aggregate(Min(on))[0]
 
-    def max(self, on: AggregateOnT = lambda r: r) -> U:
-        """Compute max aggregation with the entire dataset as one group.
+    def max(self, on: AggregateOnT = None) -> U:
+        """Compute maximum over entire dataset.
 
         Examples:
             >>> ray.data.range(100).max()
@@ -873,8 +872,8 @@ class Dataset(Generic[T]):
         """
         return self.aggregate(Max(on))[0]
 
-    def mean(self, on: AggregateOnT = lambda r: r) -> U:
-        """Compute mean aggregation with the entire dataset as one group.
+    def mean(self, on: AggregateOnT = None) -> U:
+        """Compute mean over entire dataset.
 
         Examples:
             >>> ray.data.range(100).mean()

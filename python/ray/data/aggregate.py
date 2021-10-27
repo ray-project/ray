@@ -2,7 +2,7 @@ from typing import Callable, Optional, Union, Any
 from ray.util.annotations import PublicAPI
 from ray.data.block import T, U, KeyType, AggType
 
-AggregateOnT = Union[Callable[[T], Any], str]
+AggregateOnT = Union[None, Callable[[T], Any], str]
 
 
 @PublicAPI(stability="beta")
@@ -32,7 +32,7 @@ class AggregateFn(object):
             finalize: This is called once to compute the final aggregation
                 result from the fully merged accumulator.
             name: The name of the aggregation. This will be used as the output
-                column name in the case of arrow dataset.
+                column name in the case of Arrow dataset.
         """
         self.init = init
         self.accumulate = accumulate
@@ -55,14 +55,13 @@ class Count(AggregateFn):
 class Sum(AggregateFn):
     """Defines sum aggregation."""
 
-    def __init__(self, on: AggregateOnT = lambda r: r):
-        on_fn = on
-        if isinstance(on, str):
-
-            def func(r):
-                return r[on]
-
-            on_fn = func
+    def __init__(self, on: AggregateOnT = None):
+        if on is None:
+            on_fn = lambda r: r  # noqa E731
+        elif isinstance(on, str):
+            on_fn = lambda r: r[on]  # noqa E731
+        else:
+            on_fn = on
         super().__init__(
             init=lambda k: 0,
             accumulate=lambda a, r: a + on_fn(r),
@@ -73,18 +72,17 @@ class Sum(AggregateFn):
 class Min(AggregateFn):
     """Defines min aggregation."""
 
-    def __init__(self, on: AggregateOnT = lambda r: r):
-        on_fn = on
-        if isinstance(on, str):
-
-            def func(r):
-                return r[on]
-
-            on_fn = func
+    def __init__(self, on: AggregateOnT = None):
+        if on is None:
+            on_fn = lambda r: r  # noqa E731
+        elif isinstance(on, str):
+            on_fn = lambda r: r[on]  # noqa E731
+        else:
+            on_fn = on
         super().__init__(
             init=lambda k: None,
-            accumulate=  # noqa: E251
-            lambda a, r: on_fn(r) if a is None else min(a, on_fn(r)),
+            accumulate=(
+                lambda a, r: (on_fn(r) if a is None else min(a, on_fn(r)))),
             merge=lambda a1, a2: min(a1, a2),
             name=(f"min({on})" if isinstance(on, str) else None))
 
@@ -92,18 +90,17 @@ class Min(AggregateFn):
 class Max(AggregateFn):
     """Defines max aggregation."""
 
-    def __init__(self, on: AggregateOnT = lambda r: r):
-        on_fn = on
-        if isinstance(on, str):
-
-            def func(r):
-                return r[on]
-
-            on_fn = func
+    def __init__(self, on: AggregateOnT = None):
+        if on is None:
+            on_fn = lambda r: r  # noqa E731
+        elif isinstance(on, str):
+            on_fn = lambda r: r[on]  # noqa E731
+        else:
+            on_fn = on
         super().__init__(
             init=lambda k: None,
-            accumulate=  # noqa: E251
-            lambda a, r: on_fn(r) if a is None else max(a, on_fn(r)),
+            accumulate=(
+                lambda a, r: (on_fn(r) if a is None else max(a, on_fn(r)))),
             merge=lambda a1, a2: max(a1, a2),
             name=(f"max({on})" if isinstance(on, str) else None))
 
@@ -111,14 +108,13 @@ class Max(AggregateFn):
 class Mean(AggregateFn):
     """Defines mean aggregation."""
 
-    def __init__(self, on: AggregateOnT = lambda r: r):
-        on_fn = on
-        if isinstance(on, str):
-
-            def func(r):
-                return r[on]
-
-            on_fn = func
+    def __init__(self, on: AggregateOnT = None):
+        if on is None:
+            on_fn = lambda r: r  # noqa E731
+        elif isinstance(on, str):
+            on_fn = lambda r: r[on]  # noqa E731
+        else:
+            on_fn = on
         super().__init__(
             init=lambda k: [0, 0],
             accumulate=lambda a, r: [a[0] + on_fn(r), a[1] + 1],

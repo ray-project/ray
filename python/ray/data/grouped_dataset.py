@@ -61,8 +61,8 @@ class GroupedDataset(Generic[T]):
             If the input dataset is simple dataset then the output is
             a simple dataset of (k, v) pairs where k is the groupby key
             and v is the corresponding aggregation result.
-            If the input dataset is arrow dataset then the output is
-            an arrow dataset of two columns where first column is
+            If the input dataset is Arrow dataset then the output is
+            an Arrow dataset of two columns where first column is
             the groupby key and the second column is the corresponding
             aggregation result.
         """
@@ -127,13 +127,13 @@ class GroupedDataset(Generic[T]):
 
         Returns:
             A simple dataset of (k, v) pairs or
-            an arrow dataset of [k, v] columns
+            an Arrow dataset of [k, v] columns
             where k is the groupby key and
             v is the number of rows with that key.
         """
         return self.aggregate(Count())
 
-    def sum(self, on: AggregateOnT = lambda r: r) -> Dataset[U]:
+    def sum(self, on: AggregateOnT = None) -> Dataset[U]:
         """Compute sum aggregation.
 
         This is a blocking operation.
@@ -146,17 +146,17 @@ class GroupedDataset(Generic[T]):
 
         Args:
             on: The data to sum on.
-                It can be the column name for arrow dataset.
+                It can be the column name for Arrow dataset.
 
         Returns:
             A simple dataset of (k, v) pairs or
-            an arrow dataset of [k, v] columns
+            an Arrow dataset of [k, v] columns
             where k is the groupby key and
             v is the sum result.
         """
         return self.aggregate(Sum(on))
 
-    def min(self, on: AggregateOnT = lambda r: r) -> Dataset[U]:
+    def min(self, on: AggregateOnT = None) -> Dataset[U]:
         """Compute min aggregation.
 
         This is a blocking operation.
@@ -169,17 +169,17 @@ class GroupedDataset(Generic[T]):
 
         Args:
             on: The data to min on.
-                It can be the column name for arrow dataset.
+                It can be the column name for Arrow dataset.
 
         Returns:
             A simple dataset of (k, v) pairs or
-            an arrow dataset of [k, v] columns
+            an Arrow dataset of [k, v] columns
             where k is the groupby key and
             v is the min result.
         """
         return self.aggregate(Min(on))
 
-    def max(self, on: AggregateOnT = lambda r: r) -> Dataset[U]:
+    def max(self, on: AggregateOnT = None) -> Dataset[U]:
         """Compute max aggregation.
 
         This is a blocking operation.
@@ -192,17 +192,17 @@ class GroupedDataset(Generic[T]):
 
         Args:
             on: The data to max on.
-                It can be the column name for arrow dataset.
+                It can be the column name for Arrow dataset.
 
         Returns:
             A simple dataset of (k, v) pairs or
-            an arrow dataset of [k, v] columns
+            an Arrow dataset of [k, v] columns
             where k is the groupby key and
             v is the max result.
         """
         return self.aggregate(Max(on))
 
-    def mean(self, on: AggregateOnT = lambda r: r) -> Dataset[U]:
+    def mean(self, on: AggregateOnT = None) -> Dataset[U]:
         """Compute mean aggregation.
 
         This is a blocking operation.
@@ -215,11 +215,11 @@ class GroupedDataset(Generic[T]):
 
         Args:
             on: The data to mean on.
-                It can be the column name for arrow dataset.
+                It can be the column name for Arrow dataset.
 
         Returns:
             A simple dataset of (k, v) pairs or
-            an arrow dataset of [k, v] columns
+            an Arrow dataset of [k, v] columns
             where k is the groupby key and
             v is the mean result.
         """
