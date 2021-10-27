@@ -110,6 +110,13 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
     @abstractmethod
     @DeveloperAPI
     def get_data(self) -> SampleBatchType:
+        """Called by `self.next()` to return the next batch of data.
+
+        Override this in child classes.
+
+        Returns:
+            The next batch of data.
+        """
         raise NotImplementedError
 
     @abstractmethod
