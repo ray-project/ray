@@ -28,6 +28,7 @@ class MockClient : public ClientInterface {
   MOCK_METHOD0(GetObjectIDs, const std::unordered_set<ray::ObjectID> &());
   MOCK_METHOD1(MarkObjectAsUsed, void(const ObjectID &object_id));
   MOCK_METHOD1(MarkObjectAsUnused, void(const ObjectID &object_id));
+  MOCK_METHOD0(GetName, std::string());
 };
 
 class MockObjectLifecycleManager : public IObjectLifecycleManager {

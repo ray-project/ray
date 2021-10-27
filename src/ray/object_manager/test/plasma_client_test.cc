@@ -14,7 +14,6 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/object_manager/plasma/client.h"
 
 namespace plasma {
@@ -23,7 +22,7 @@ class MyImpl : public std::enable_shared_from_this<MyImpl> {
  public:
   MyImpl(  /// The connection to the store service.
       std::shared_ptr<StoreConn> store_conn);
-  ~MyImpl() {};
+  ~MyImpl(){};
 
   int64_t store_capacity_;
   /// The connection to the store service.
@@ -37,8 +36,9 @@ MyImpl::MyImpl(  /// The connection to the store service.
 class MyClient {
  public:
   MyClient() : impl_(std::make_shared<MyImpl>(store_conn_)) {}
-  
+
   void Fun() {}
+
  private:
   std::shared_ptr<StoreConn> store_conn_;
   std::shared_ptr<MyImpl> impl_;
@@ -46,18 +46,16 @@ class MyClient {
 
 class MyClass {
  public:
-  ~MyClass() {
-    std::cout << "~MyClass\n";
-  }
+  ~MyClass() { std::cout << "~MyClass\n"; }
 };
 
 TEST(RemotePlasmaClientTest, ConstructorTest) {
   RemotePlasmaClient client;
   client.Connect("kkk");
-//   std::shared_ptr<StoreConn> store_conn = nullptr;
-//   std::make_shared<MyImpl>(store_conn);
-//   MyClient client;
-//   client.Fun();
+  //   std::shared_ptr<StoreConn> store_conn = nullptr;
+  //   std::make_shared<MyImpl>(store_conn);
+  //   MyClient client;
+  //   client.Fun();
 }
 
 TEST(RemotePlasmaClientTest, SharedPtrTest) {

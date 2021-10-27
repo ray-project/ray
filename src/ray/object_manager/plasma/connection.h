@@ -46,9 +46,7 @@ class Client : public ray::ClientConnection, public ClientInterface {
     object_ids.erase(object_id);
   }
 
-  std::string GetName() override {
-    return name;
-  }
+  std::string GetName() override { return name; }
 
   std::string name = "anonymous_client";
 

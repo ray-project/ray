@@ -131,7 +131,8 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id, const uint64_t chun
   std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
   it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
   it->second.num_seals_remaining--;
-  RAY_LOG(INFO) << "ObjectBufferPool::WriteChunk " << object_id << " "<< it->second.num_seals_remaining;
+  RAY_LOG(INFO) << "ObjectBufferPool::WriteChunk " << object_id << " "
+                << it->second.num_seals_remaining;
   if (it->second.num_seals_remaining == 0) {
     RAY_CHECK_OK(store_client_->Seal(object_id));
     RAY_CHECK_OK(store_client_->Release(object_id));
