@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,20 @@ def _configure_system():
                            "an internal component by another module). Please "
                            "make sure you are using pickle5 >= 0.0.10 because "
                            "previous versions may leak memory.")
+
+    # Check that grpc can actually be imported on Apple Silicon. Some package
+    # managers (such as `pip`) can't properly install the grpcio library yet,
+    # so provide a proactive error message if that's the case.
+    if platform.system() == "Darwin" and platform.machine() == "arm64":
+        try:
+            import grpc  # noqa: F401
+        except ImportError:
+            raise ImportError(
+                "Failed to import grpc on Apple Silicon. On Apple"
+                " Silicon machines, try `pip uninstall grpcio; conda "
+                "install grpcio`. Check out "
+                "https://docs.ray.io/en/master/installation.html"
+                "#apple-silicon-support for more details.")
 
     if "OMP_NUM_THREADS" not in os.environ:
         logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
@@ -88,8 +102,8 @@ from ray.state import (  # noqa: E402
 )
 from ray.worker import (  # noqa: E402,F401
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
-    UTIL_WORKER_MODE, SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids,
-    init, is_initialized, put, kill, remote, shutdown, wait,
+    SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids, init,
+    is_initialized, put, kill, remote, shutdown, wait,
 )
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
@@ -101,6 +115,7 @@ from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import data  # noqa: E402,F401
 from ray import util  # noqa: E402
 from ray import _private  # noqa: E402,F401
+from ray import workflow  # noqa: E402,F401
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
 
@@ -153,11 +168,6 @@ __all__ += [
     "UniqueID",
     "PlacementGroupID",
 ]
-
-# Add an alias so we can point to the final location in docs.
-# TODO(yic) remove this once workflow is out of alpha.
-from ray.experimental import workflow  # noqa
-__all__.append(workflow)
 
 
 # Remove modules from top-level ray

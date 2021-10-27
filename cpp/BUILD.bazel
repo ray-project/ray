@@ -79,17 +79,15 @@ genrule(
     outs = ["ray_cpp_pkg.out"],
     cmd = """
         WORK_DIR="$$(pwd)" &&
-        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
-        cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        cp -f $(locations libray_api.so) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         PY_CPP_DIR="$$WORK_DIR/python/ray/cpp" &&
         rm -rf $$PY_CPP_DIR &&
         BOOST_DIR="$$PY_CPP_DIR/include/boost/" &&
         mkdir -p "$$BOOST_DIR" &&
         mkdir -p "$$PY_CPP_DIR/lib/" &&
+        cp -f $(location default_worker) "$$PY_CPP_DIR/" &&
         cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
+        cp -f -r "$$WORK_DIR/external/boost/boost/assert" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/callable_traits" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/concept" "$$BOOST_DIR" &&
@@ -119,8 +117,8 @@ genrule(
         THIRDPARTY_DIR="$$WORK_DIR/cpp/example/thirdparty" &&
         rm -rf $$THIRDPARTY_DIR &&
         mkdir $$THIRDPARTY_DIR &&
-        ln -s "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
-        ln -s "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
+        cp -f -r "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
+        cp -f -r "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
         cp -f -r "$$WORK_DIR/cpp/example" "$$PY_CPP_DIR" &&
         echo "$$WORK_DIR" > $@
     """,
@@ -152,6 +150,7 @@ cc_test(
     ]),
     args = [
         "--ray_code_search_path=$(location plus.so):$(location counter.so)",
+        "--ray_head_args '--include-dashboard false'",
     ],
     copts = COPTS,
     data = [
@@ -194,5 +193,33 @@ cc_binary(
     linkstatic = True,
     deps = [
         "ray_api",
+    ],
+)
+
+cc_test(
+    name = "simple_kv_store",
+    srcs = glob([
+        "src/ray/test/examples/*.cc",
+    ]),
+    data = [
+        "simple_kv_store.so",
+    ],
+    linkstatic = True,
+    tags = ["team:serverless"],
+    deps = [
+        ":ray_api",
+    ],
+)
+
+cc_binary(
+    name = "simple_kv_store.so",
+    testonly = True,
+    srcs = glob([
+        "src/ray/test/examples/*.cc",
+    ]),
+    linkopts = ["-shared"],
+    linkstatic = True,
+    deps = [
+        ":ray_api",
     ],
 )

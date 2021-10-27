@@ -8,6 +8,7 @@ import ray
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -211,12 +212,12 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
 
 def get_distribution_inputs_and_class(policy: Policy,
                                       model: ModelV2,
-                                      obs_batch: TensorType,
+                                      input_dict: SampleBatch,
                                       *,
                                       explore=True,
                                       **kwargs):
     q_vals = compute_q_values(
-        policy, model, {"obs": obs_batch}, state_batches=None, explore=explore)
+        policy, model, input_dict, state_batches=None, explore=explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
@@ -341,7 +342,6 @@ def compute_q_values(policy: Policy,
 
     config = policy.config
 
-    input_dict["is_training"] = policy._get_is_training_placeholder()
     model_out, state = model(input_dict, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
@@ -378,51 +378,23 @@ def compute_q_values(policy: Policy,
     return value, logits, dist, state
 
 
-def _adjust_nstep(n_step: int, gamma: int, obs: TensorType,
-                  actions: TensorType, rewards: TensorType,
-                  new_obs: TensorType, dones: TensorType):
-    """Rewrites the given trajectory fragments to encode n-step rewards.
-
-    reward[i] = (
-        reward[i] * gamma**0 +
-        reward[i+1] * gamma**1 +
-        ... +
-        reward[i+n_step-1] * gamma**(n_step-1))
-
-    The ith new_obs is also adjusted to point to the (i+n_step-1)'th new obs.
-
-    At the end of the trajectory, n is truncated to fit in the traj length.
-    """
-
-    assert not any(dones[:-1]), "Unexpected done in middle of trajectory"
-
-    traj_length = len(rewards)
-    for i in range(traj_length):
-        for j in range(1, n_step):
-            if i + j < traj_length:
-                new_obs[i] = new_obs[i + j]
-                dones[i] = dones[i + j]
-                rewards[i] += gamma**j * rewards[i + j]
-
-
 def postprocess_nstep_and_prio(policy: Policy,
                                batch: SampleBatch,
                                other_agent=None,
                                episode=None) -> SampleBatch:
     # N-step Q adjustments.
     if policy.config["n_step"] > 1:
-        _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
-                      batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
-                      batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
-                      batch[SampleBatch.DONES])
+        adjust_nstep(policy.config["n_step"], policy.config["gamma"], batch)
 
+    # Create dummy prio-weights (1.0) in case we don't have any in
+    # the batch.
     if PRIO_WEIGHTS not in batch:
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
     # Prioritize on the worker side.
     if batch.count > 0 and policy.config["worker_side_prioritization"]:
         td_errors = policy.compute_td_error(
-            batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+            batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (np.abs(convert_to_numpy(td_errors)) +

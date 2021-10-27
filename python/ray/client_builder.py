@@ -14,6 +14,7 @@ from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 from ray.job_config import JobConfig
 import ray.util.client_connect
 from ray.worker import init as ray_driver_init
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ class ClientBuilder:
         # Whether to allow connections to multiple clusters"
         # " (allow_multiple=True).
         self._allow_multiple_connections = False
+        self._credentials = None
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -137,9 +139,10 @@ class ClientBuilder:
         client_info_dict = ray.util.client_connect.connect(
             self.address,
             job_config=self._job_config,
+            _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs)
-        dashboard_url = ray.get(
-            ray.remote(ray.worker.get_dashboard_url).remote())
+        get_dashboard_url = ray.remote(ray.worker.get_dashboard_url)
+        dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
         cxt = ClientContext(
             dashboard_url=dashboard_url,
             python_version=client_info_dict["python_version"],
@@ -166,9 +169,9 @@ class ClientBuilder:
         """
         When a client builder is constructed through ray.init, for example
         `ray.init(ray://..., namespace=...)`, all of the
-        arguments passed into ray.init are passed again into this method.
-        Custom client builders can override this method to do their own
-        handling/validation of arguments.
+        arguments passed into ray.init with non-default values are passed
+        again into this method. Custom client builders can override this method
+        to do their own handling/validation of arguments.
         """
         # Use namespace and runtime_env from ray.init call
         if kwargs.get("namespace") is not None:
@@ -181,6 +184,10 @@ class ClientBuilder:
         if kwargs.get("allow_multiple") is True:
             self._allow_multiple_connections = True
             del kwargs["allow_multiple"]
+
+        if "_credentials" in kwargs.keys():
+            self._credentials = kwargs["_credentials"]
+            del kwargs["_credentials"]
 
         if kwargs:
             expected_sig = inspect.signature(ray_driver_init)
@@ -254,6 +261,7 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     return module.ClientBuilder(inner_address)
 
 
+@Deprecated
 def client(address: Optional[str] = None) -> ClientBuilder:
     """
     Creates a ClientBuilder based on the provided address. The address can be

@@ -264,7 +264,6 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
 def test_wait_timing(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -554,20 +553,20 @@ def test_keyword_args(ray_start_shared_local_modes):
         return
 
     # Make sure we get an exception if too many arguments are passed in.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f1.remote(3)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f1.remote(x=3)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(0, w=0)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(3, x=3)
 
     # Make sure we get an exception if too many arguments are passed in.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(1, 2, 3, 4)
 
     @ray.remote
@@ -639,9 +638,8 @@ def test_args_named_and_star(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_oversized_function(ray_start_shared_local_modes):
-    bar = np.zeros(100 * 1024 * 1024)
+    bar = np.zeros(100 * 1024 * 125)
 
     @ray.remote
     class Actor:
@@ -652,10 +650,11 @@ def test_oversized_function(ray_start_shared_local_modes):
     def f():
         return len(bar)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(
+            ValueError, match="The remote function .*f is too large"):
         f.remote()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="The actor Actor is too large"):
         Actor.remote()
 
 

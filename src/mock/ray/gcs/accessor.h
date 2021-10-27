@@ -41,7 +41,8 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
                const StatusCallback &callback),
               (override));
   MOCK_METHOD(Status, AsyncCreateActor,
-              (const TaskSpecification &task_spec, const StatusCallback &callback),
+              (const TaskSpecification &task_spec,
+               const rpc::ClientCallback<rpc::CreateActorReply> &callback),
               (override));
   MOCK_METHOD(Status, AsyncSubscribeAll,
               ((const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe),
@@ -171,13 +172,13 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
   MOCK_METHOD(Status, RegisterSelf,
               (const rpc::GcsNodeInfo &local_node_info, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status, UnregisterSelf, (), (override));
+  MOCK_METHOD(Status, DrainSelf, (), (override));
   MOCK_METHOD(const NodeID &, GetSelfId, (), (const, override));
   MOCK_METHOD(const rpc::GcsNodeInfo &, GetSelfInfo, (), (const, override));
   MOCK_METHOD(Status, AsyncRegister,
               (const rpc::GcsNodeInfo &node_info, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status, AsyncUnregister,
+  MOCK_METHOD(Status, AsyncDrainNode,
               (const NodeID &node_id, const StatusCallback &callback), (override));
   MOCK_METHOD(Status, AsyncGetAll, (const MultiItemCallback<rpc::GcsNodeInfo> &callback),
               (override));
@@ -185,8 +186,8 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               ((const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe),
                const StatusCallback &done),
               (override));
-  // MOCK_METHOD(boost::optional<rpc::GcsNodeInfo>, Get, (const NodeID &node_id, bool
-  // filter_dead_nodes), (const, override));
+  MOCK_METHOD(const rpc::GcsNodeInfo *, Get,
+              (const NodeID &node_id, bool filter_dead_nodes), (const, override));
   MOCK_METHOD((const std::unordered_map<NodeID, rpc::GcsNodeInfo> &), GetAll, (),
               (const, override));
   MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));

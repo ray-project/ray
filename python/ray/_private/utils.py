@@ -13,9 +13,11 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional
+from typing import Optional, Sequence, Tuple, Any
 import uuid
+import grpc
 import warnings
+from grpc.experimental import aio as aiogrpc
 
 import inspect
 from inspect import signature
@@ -25,6 +27,7 @@ import numpy as np
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
+from ray._private.tls_utils import load_certs_from_env
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -602,7 +605,8 @@ def get_shared_memory_bytes():
     return shm_avail
 
 
-def check_oversized_function(pickled, name, obj_type, worker):
+def check_oversized_function(pickled: bytes, name: str, obj_type: str,
+                             worker: "ray.Worker") -> None:
     """Send a warning message if the pickled function is too large.
 
     Args:
@@ -610,7 +614,8 @@ def check_oversized_function(pickled, name, obj_type, worker):
         name: name of the pickled object.
         obj_type: type of the pickled object, can be 'function',
             'remote function', or 'actor'.
-        worker: the worker used to send warning message.
+        worker: the worker used to send warning message. message will be logged
+            locally if None.
     """
     length = len(pickled)
     if length <= ray_constants.FUNCTION_SIZE_WARN_THRESHOLD:
@@ -622,11 +627,12 @@ def check_oversized_function(pickled, name, obj_type, worker):
             "array or other object in scope. Tip: use ray.put() to put large "
             "objects in the Ray object store.").format(obj_type, name,
                                                        length // (1024 * 1024))
-        push_error_to_driver(
-            worker,
-            ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-            "Warning: " + warning_message,
-            job_id=worker.current_job_id)
+        if worker:
+            push_error_to_driver(
+                worker,
+                ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+                "Warning: " + warning_message,
+                job_id=worker.current_job_id)
     else:
         error = (
             "The {} {} is too large ({} MiB > FUNCTION_SIZE_ERROR_THRESHOLD={}"
@@ -1104,3 +1110,38 @@ def validate_namespace(namespace: str):
     elif namespace == "":
         raise ValueError("\"\" is not a valid namespace. "
                          "Pass None to not specify a namespace.")
+
+
+def init_grpc_channel(address: str,
+                      options: Optional[Sequence[Tuple[str, Any]]] = None,
+                      asynchronous: bool = False):
+    grpc_module = aiogrpc if asynchronous else grpc
+    if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
+        server_cert_chain, private_key, ca_cert = load_certs_from_env()
+        credentials = grpc.ssl_channel_credentials(
+            certificate_chain=server_cert_chain,
+            private_key=private_key,
+            root_certificates=ca_cert)
+        channel = grpc_module.secure_channel(
+            address, credentials, options=options)
+    else:
+        channel = grpc_module.insecure_channel(address, options=options)
+
+    return channel
+
+
+def check_dashboard_dependencies_installed() -> bool:
+    """Returns True if Ray Dashboard dependencies are installed.
+
+    Checks to see if we should start the dashboard agent or not based on the
+    Ray installation version the user has installed (ray vs. ray[default]).
+    Unfortunately there doesn't seem to be a cleaner way to detect this other
+    than just blindly importing the relevant packages.
+
+    """
+    try:
+        import ray.dashboard.optional_deps  # noqa: F401
+
+        return True
+    except ImportError:
+        return False

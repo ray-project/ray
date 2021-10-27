@@ -1,8 +1,9 @@
 import pytest
+from pydantic import ValidationError
 
 from ray.serve.config import (BackendConfig, DeploymentMode, HTTPOptions,
                               ReplicaConfig)
-from pydantic import ValidationError
+from ray.serve.config import AutoscalingConfig
 
 
 def test_backend_config_validation():
@@ -52,6 +53,8 @@ def test_replica_config_validation():
     # Check ray_actor_options validation.
     ReplicaConfig(
         Class,
+        tuple(),
+        dict(),
         ray_actor_options={
             "num_cpus": 1.0,
             "num_gpus": 10,
@@ -101,6 +104,36 @@ def test_http_options():
     assert HTTPOptions(location=None).location == "NoServer"
     assert HTTPOptions(
         location=DeploymentMode.EveryNode).location == "EveryNode"
+
+
+def test_with_proto():
+    # Test roundtrip
+    config = BackendConfig(num_replicas=100, max_concurrent_queries=16)
+    assert config == BackendConfig.from_proto_bytes(config.to_proto_bytes())
+
+    # Test user_config object
+    config = BackendConfig(user_config={"python": ("native", ["objects"])})
+    assert config == BackendConfig.from_proto_bytes(config.to_proto_bytes())
+
+
+def test_zero_default_proto():
+    # Test that options set to zero (protobuf default value) still retain their
+    # original value after being serialized and deserialized.
+    config = BackendConfig(
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "smoothing_factor": 0.123,
+            "downscale_delay_s": 0
+        })
+    serialized_config = config.to_proto_bytes()
+    deserialized_config = BackendConfig.from_proto_bytes(serialized_config)
+    new_delay_s = deserialized_config.autoscaling_config.downscale_delay_s
+    assert new_delay_s == 0
+
+    # Check that this test is not spuriously passing.
+    default_downscale_delay_s = AutoscalingConfig().downscale_delay_s
+    assert new_delay_s != default_downscale_delay_s
 
 
 if __name__ == "__main__":

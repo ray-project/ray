@@ -47,6 +47,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.redis_address = "127.0.0.1";
+    config_.node_ip_address = "127.0.0.1";
     config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
     // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
@@ -273,8 +274,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return status.ok();
   }
 
-  bool UnregisterSelf() {
-    Status status = gcs_client_->Nodes().UnregisterSelf();
+  bool DrainSelf() {
+    Status status = gcs_client_->Nodes().DrainSelf();
     return status.ok();
   }
 
@@ -298,9 +299,9 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return nodes;
   }
 
-  bool UnregisterNode(const NodeID &node_id) {
+  bool DrainNode(const NodeID &node_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncUnregister(
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncDrainNode(
         node_id, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -550,7 +551,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
       auto node_info = Mocker::GenNodeInfo();
       auto node_id = NodeID::FromBinary(node_info->node_id());
       EXPECT_TRUE(RegisterNode(*node_info));
-      EXPECT_TRUE(UnregisterNode(node_id));
+      EXPECT_TRUE(DrainNode(node_id));
       node_ids.insert(node_id);
     }
     return node_ids;
@@ -686,10 +687,10 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
   EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
 
   // Cancel registration of local node to GCS.
-  ASSERT_TRUE(UnregisterSelf());
+  ASSERT_TRUE(DrainSelf());
 
   // Cancel registration of a node to GCS.
-  ASSERT_TRUE(UnregisterNode(node2_id));
+  ASSERT_TRUE(DrainNode(node2_id));
   WaitForExpectedCount(unregister_count, 2);
 
   // Get information of all nodes from GCS.

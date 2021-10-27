@@ -1,5 +1,7 @@
+import copy
 import gym
 import logging
+import numpy as np
 import platform
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
@@ -18,7 +20,7 @@ from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
+from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
@@ -32,7 +34,8 @@ from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.error import EnvError
+from ray.rllib.utils.error import EnvError, ERR_MSG_NO_GPUS, \
+    HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -41,7 +44,7 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
     MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
-    SampleBatchType, TrainerConfigDict
+    SampleBatchType
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
@@ -165,7 +168,8 @@ class RolloutWorker(ParallelIteratorWorker):
             env_creator: Callable[[EnvContext], EnvType],
             validate_env: Optional[Callable[[EnvType, EnvContext],
                                             None]] = None,
-            policy_spec: Union[type, Dict[PolicyID, PolicySpec]] = None,
+            policy_spec: Optional[Union[type, Dict[PolicyID,
+                                                   PolicySpec]]] = None,
             policy_mapping_fn: Optional[Callable[
                 [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -173,24 +177,24 @@ class RolloutWorker(ParallelIteratorWorker):
             rollout_fragment_length: int = 100,
             count_steps_by: str = "env_steps",
             batch_mode: str = "truncate_episodes",
-            episode_horizon: int = None,
+            episode_horizon: Optional[int] = None,
             preprocessor_pref: str = "deepmind",
             sample_async: bool = False,
             compress_observations: bool = False,
             num_envs: int = 1,
-            observation_fn: "ObservationFunction" = None,
+            observation_fn: Optional["ObservationFunction"] = None,
             observation_filter: str = "NoFilter",
             clip_rewards: Optional[Union[bool, float]] = None,
             normalize_actions: bool = True,
             clip_actions: bool = False,
-            env_config: EnvConfigDict = None,
-            model_config: ModelConfigDict = None,
-            policy_config: TrainerConfigDict = None,
+            env_config: Optional[EnvConfigDict] = None,
+            model_config: Optional[ModelConfigDict] = None,
+            policy_config: Optional[PartialTrainerConfigDict] = None,
             worker_index: int = 0,
             num_workers: int = 0,
             record_env: Union[bool, str] = False,
-            log_dir: str = None,
-            log_level: str = None,
+            log_dir: Optional[str] = None,
+            log_level: Optional[str] = None,
             callbacks: Type["DefaultCallbacks"] = None,
             input_creator: Callable[[
                 IOContext
@@ -203,7 +207,7 @@ class RolloutWorker(ParallelIteratorWorker):
             soft_horizon: bool = False,
             no_done_at_end: bool = False,
             seed: int = None,
-            extra_python_environs: dict = None,
+            extra_python_environs: Optional[dict] = None,
             fake_sampler: bool = False,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
@@ -255,9 +259,10 @@ class RolloutWorker(ParallelIteratorWorker):
                     that when `num_envs > 1`, episode steps will be buffered
                     until the episode completes, and hence batches may contain
                     significant amounts of off-policy data.
-            episode_horizon (int): Whether to stop episodes at this horizon.
-            preprocessor_pref (str): Whether to prefer RLlib preprocessors
-                ("rllib") or deepmind ("deepmind") when applicable.
+            episode_horizon: Horizon at which to stop episodes (even if the
+                environment itself has not retured a "done" signal).
+            preprocessor_pref (str): Whether to use RLlib preprocessors
+                ("rllib") or deepmind ("deepmind"), when applicable.
             sample_async (bool): Whether to compute samples asynchronously in
                 the background, which improves throughput but can cause samples
                 to be slightly off-policy.
@@ -280,9 +285,9 @@ class RolloutWorker(ParallelIteratorWorker):
             env_config (EnvConfigDict): Config to pass to the env creator.
             model_config (ModelConfigDict): Config to use when creating the
                 policy model.
-            policy_config (TrainerConfigDict): Config to pass to the policy.
-                In the multi-agent case, this config will be merged with the
-                per-policy configs specified by `policy_spec`.
+            policy_config: Config to pass to the
+                policy. In the multi-agent case, this config will be merged
+                with the per-policy configs specified by `policy_spec`.
             worker_index (int): For remote workers, this should be set to a
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
@@ -374,7 +379,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
-        policy_config: TrainerConfigDict = policy_config or {}
+        policy_config = policy_config or {}
         if (tf1 and policy_config.get("framework") in ["tf2", "tfe"]
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.
@@ -390,9 +395,13 @@ class RolloutWorker(ParallelIteratorWorker):
             enable_periodic_logging()
 
         env_context = EnvContext(
-            env_config or {}, worker_index, num_workers=num_workers)
+            env_config or {},
+            worker_index=worker_index,
+            vector_index=0,
+            num_workers=num_workers,
+        )
         self.env_context = env_context
-        self.policy_config: TrainerConfigDict = policy_config
+        self.policy_config: PartialTrainerConfigDict = policy_config
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
@@ -405,7 +414,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
         # independent on the agent ID and the episode passed in.
-        self.policy_mapping_fn = lambda aid, ep, **kwargs: DEFAULT_POLICY_ID
+        self.policy_mapping_fn = \
+            lambda agent_id, episode, worker, **kwargs: DEFAULT_POLICY_ID
         # If provided, set it here.
         self.set_policy_mapping_fn(policy_mapping_fn)
 
@@ -414,10 +424,11 @@ class RolloutWorker(ParallelIteratorWorker):
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
-        self.preprocessing_enabled: bool = True
+        self.preprocessing_enabled: bool = False \
+            if policy_config.get("_disable_preprocessor_api") else True
         self.observation_filter = observation_filter
-        self.last_batch: SampleBatchType = None
-        self.global_vars: dict = None
+        self.last_batch: Optional[SampleBatchType] = None
+        self.global_vars: Optional[dict] = None
         self.fake_sampler: bool = fake_sampler
 
         # Update the global seed for numpy/random/tf-eager/torch if we are not
@@ -442,7 +453,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if not (worker_index == 0 and num_workers > 0
                 and not policy_config.get("create_env_on_driver")):
             # Run the `env_creator` function passing the EnvContext.
-            self.env = env_creator(env_context)
+            self.env = env_creator(copy.deepcopy(self.env_context))
 
         if self.env is not None:
             # Validate environment (general validation function).
@@ -549,16 +560,16 @@ class RolloutWorker(ParallelIteratorWorker):
                 ray.worker._mode() != ray.worker.LOCAL_MODE and \
                 not policy_config.get("_fake_gpus"):
 
+            devices = []
             if policy_config.get("framework") in ["tf2", "tf", "tfe"]:
-                if len(get_tf_gpu_devices()) < num_gpus:
-                    raise RuntimeError(
-                        f"Not enough GPUs found for num_gpus={num_gpus}! "
-                        f"Found only these IDs: {get_tf_gpu_devices()}.")
+                devices = get_tf_gpu_devices()
             elif policy_config.get("framework") == "torch":
-                if torch.cuda.device_count() < num_gpus:
-                    raise RuntimeError(
-                        f"Not enough GPUs found ({torch.cuda.device_count()}) "
-                        f"for num_gpus={num_gpus}!")
+                devices = list(range(torch.cuda.device_count()))
+
+            if len(devices) < num_gpus:
+                raise RuntimeError(
+                    ERR_MSG_NO_GPUS.format(len(devices), devices) +
+                    HOWTO_CHANGE_CONFIG)
         # Warn, if running in local-mode and actual GPUs (not faked) are
         # requested.
         elif ray.is_initialized() and \
@@ -849,14 +860,15 @@ class RolloutWorker(ParallelIteratorWorker):
                 summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             grad_out, info_out = {}, {}
-            if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "compute_gradients")
+            if self.policy_config.get("framework") == "tf":
                 for pid, batch in samples.policy_batches.items():
                     if pid not in self.policies_to_train:
                         continue
+                    policy = self.policy_map[pid]
+                    builder = TFRunBuilder(policy.get_session(),
+                                           "compute_gradients")
                     grad_out[pid], info_out[pid] = (
-                        self.policy_map[pid]._build_compute_gradients(
-                            builder, batch))
+                        policy._build_compute_gradients(builder, batch))
                 grad_out = {k: builder.get(v) for k, v in grad_out.items()}
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
@@ -886,14 +898,21 @@ class RolloutWorker(ParallelIteratorWorker):
         if log_once("apply_gradients"):
             logger.info("Apply gradients:\n\n{}\n".format(summarize(grads)))
         if isinstance(grads, dict):
-            if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "apply_gradients")
-                outputs = {
-                    pid: self.policy_map[pid]._build_apply_gradients(
-                        builder, grad)
-                    for pid, grad in grads.items()
+            if self.policy_config.get("framework") == "tf":
+                builders = {}
+                outputs = {}
+                for pid, grad in grads.items():
+                    if pid not in self.policies_to_train:
+                        continue
+                    policy = self.policy_map[pid]
+                    builders[pid] = TFRunBuilder(policy.get_session(),
+                                                 "apply_gradients")
+                    outputs[pid] = policy._build_apply_gradients(
+                        builders[pid], grad)
+                return {
+                    pid: builders[pid].get(op)
+                    for pid, op in outputs.items()
                 }
-                return {k: builder.get(v) for k, v in outputs.items()}
             else:
                 return {
                     pid: self.policy_map[pid].apply_gradients(g)
@@ -1066,10 +1085,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 space of the policy to add.
             action_space (Optional[gym.spaces.Space]): The action space
                 of the policy to add.
-            config (Optional[PartialTrainerConfigDict]): The config
-                overrides for the policy to add.
-            policy_config (Optional[TrainerConfigDict]): The base config of the
-                Trainer object owning this RolloutWorker.
+            config: The config overrides for the policy to add.
+            policy_config: The base config of the Trainer object owning this
+                RolloutWorker.
             policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
                 PolicyID]]): An optional (updated) policy mapping function to
                 use from here on. Note that already ongoing episodes will not
@@ -1330,7 +1348,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def _build_policy_map(
             self,
             policy_dict: MultiAgentPolicyConfigDict,
-            policy_config: TrainerConfigDict,
+            policy_config: PartialTrainerConfigDict,
             session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             seed: Optional[int] = None,
     ) -> Tuple[Dict[PolicyID, Policy], Dict[PolicyID, Preprocessor]]:
@@ -1358,15 +1376,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model"))
                 self.preprocessors[name] = preprocessor
-                obs_space = preprocessor.observation_space
+                if preprocessor is not None:
+                    obs_space = preprocessor.observation_space
             else:
-                self.preprocessors[name] = NoPreprocessor(obs_space)
-
-            if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
-                raise ValueError(
-                    "Found raw Tuple|Dict space as input to policy. "
-                    "Please preprocess these observations with a "
-                    "Tuple|DictFlatteningPreprocessor.")
+                self.preprocessors[name] = None
 
             self.policy_map.create_policy(name, orig_cls, obs_space, act_space,
                                           conf, merged_conf)
@@ -1509,6 +1522,14 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
             env, "action_space")
         # Get a dummy observation by resetting the env.
         dummy_obs = env.reset()
+        # Convert lists to np.ndarrays.
+        if type(dummy_obs) is list and isinstance(env.observation_space,
+                                                  gym.spaces.Box):
+            dummy_obs = np.array(dummy_obs)
+        # Ignore float32/float64 diffs.
+        if isinstance(env.observation_space, gym.spaces.Box) and \
+                env.observation_space.dtype != dummy_obs.dtype:
+            dummy_obs = dummy_obs.astype(env.observation_space.dtype)
         # Check, if observation is ok (part of the observation space). If not,
         # error.
         if not env.observation_space.contains(dummy_obs):

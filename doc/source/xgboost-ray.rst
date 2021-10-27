@@ -1,5 +1,3 @@
-.. _xgboost-ray:
-
 ..
   This part of the docs is generated from the XGBoost-Ray readme using m2r
   To update:
@@ -11,6 +9,8 @@
   - Adjust some link targets (e.g. for "Ray Tune") to anonymous references
     by adding a second underscore (use `target <link>`__)
   - Search for `\ **` and delete this from the links (bold links are not supported)
+
+.. _xgboost-ray:
 
 Distributed XGBoost on Ray
 ==========================
@@ -37,13 +37,13 @@ You can install the latest XGBoost-Ray release from PIP:
 
 .. code-block:: bash
 
-   pip install xgboost_ray
+   pip install "xgboost_ray"
 
 If you'd like to install the latest master, use this command instead:
 
 .. code-block:: bash
 
-   pip install git+https://github.com/ray-project/xgboost_ray.git#xgboost_ray
+   pip install "git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray"
 
 Usage
 -----

@@ -8,18 +8,20 @@ import platform
 import re
 import shutil
 import time
-from typing import Callable, Dict, Sequence, Union
+from typing import Callable, Dict, Optional, Sequence, Union
 import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
-from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
+from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, NODE_IP, PID,
+                             TRAINING_ITERATION, TRIAL_ID, DEBUG_METRICS)
 from ray.tune.resources import Resources, \
     json_to_resources, resources_to_json
 from ray.tune.utils.placement_groups import PlacementGroupFactory, \
@@ -80,21 +82,33 @@ class ExportFormat:
                                 formats[i])
 
 
-def checkpoint_deleter(trial_id, runner):
-    """Returns a checkpoint deleter callback for a runner."""
-    if not runner:
-        return lambda checkpoint: None
+class CheckpointDeleter:
+    """Checkpoint deleter callback for a runner."""
 
-    def delete(checkpoint):
+    def __init__(self, trial_id, runner):
+        self.trial_id = trial_id
+        self.runner = runner
+
+    def __call__(self, checkpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
             checkpoint (Checkpoint): Checkpoint to delete.
         """
+        if not self.runner:
+            return
+
         if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
-            logger.debug("Trial %s: Deleting checkpoint %s", trial_id,
-                         checkpoint.value)
             checkpoint_path = checkpoint.value
+
+            logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
+                         checkpoint_path)
+
+            # TODO(ujvl): Batch remote deletes.
+            # We first delete the remote checkpoint. If it is on the same
+            # node as the driver, it will also remove the local copy.
+            ray.get(self.runner.delete_checkpoint.remote(checkpoint_path))
+
             # Delete local copy, if any exists.
             if os.path.exists(checkpoint_path):
                 try:
@@ -102,12 +116,8 @@ def checkpoint_deleter(trial_id, runner):
                         checkpoint_path)
                     shutil.rmtree(checkpoint_dir)
                 except FileNotFoundError:
-                    logger.warning("Checkpoint dir not found during deletion.")
-
-            # TODO(ujvl): Batch remote deletes.
-            runner.delete_checkpoint.remote(checkpoint.value)
-
-    return delete
+                    logger.debug(
+                        "Local checkpoint dir not found during deletion.")
 
 
 class TrialInfo:
@@ -275,7 +285,9 @@ class Trial:
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
-        self.last_result = {}
+        self._last_result = {}
+        self._default_result_or_future: Union[ray.ObjectRef, dict, None] = (
+            None)
         self.last_update_time = -float("inf")
 
         # stores in memory max/min/avg/last-n-avg/last result for each
@@ -312,7 +324,7 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(self._trainable_name(), self.runner))
+            CheckpointDeleter(self._trainable_name(), self.runner))
 
         # Restoration fields
         self.restore_path = restore_path
@@ -369,6 +381,52 @@ class Trial:
             resource_kwargs["has_placement_group"] = True
             self.resources = Resources(**resource_kwargs)
 
+    def _get_default_result_or_future(self) -> Optional[dict]:
+        """Calls ray.get on self._default_result_or_future and assigns back.
+
+        Returns None in case of exceptions.
+        Will also set the trial location if runner is set.
+        """
+        if self._default_result_or_future and isinstance(
+                self._default_result_or_future, ray.ObjectRef):
+            try:
+                self._default_result_or_future = ray.get(
+                    self._default_result_or_future)
+            except RayActorError:  # error during initialization
+                self._default_result_or_future = None
+        if self._default_result_or_future and self.runner:
+            self.set_location(
+                Location(
+                    self._default_result_or_future.get(NODE_IP),
+                    self._default_result_or_future.get(PID)))
+        return self._default_result_or_future
+
+    @property
+    def last_result(self) -> dict:
+        # The logic in here is as follows:
+        # 1. If the trial has reported at least once, last_result would have
+        #    been set and therefore would not be empty. We can just return it.
+        # 2. If the trial has not reported at least once but we have the
+        #    future for the default results dict, (obtained through
+        #    Trainable.get_auto_filled_metrics), we get that future
+        #    and return it.
+        # 3. In the worst case where we have nothing, we just set the
+        #    trial_id and return that.
+        result = self._last_result
+        if not {k for k in result if k != TRIAL_ID}:
+            self._get_default_result_or_future()
+            result = self._default_result_or_future or result
+        result.setdefault(TRIAL_ID, self.trial_id)
+        return result
+
+    @last_result.setter
+    def last_result(self, val: dict):
+        self._last_result = val
+
+    @property
+    def has_reported_at_least_once(self) -> bool:
+        return bool(self._last_result)
+
     @property
     def node_ip(self):
         return self.location.hostname
@@ -405,6 +463,18 @@ class Trial:
         return bool(self.placement_group_factory)
 
     def reset(self):
+        # If there is `default_resource_request` associated with the trainable,
+        # clear `resources` and `placement_group_factory`.
+        # This is mainly relevant for RLlib tuning jobs, where we save users
+        # of the trouble to specify the resources themselves by having some
+        # default resources for popular RLlib algorithms.
+        trainable_cls = self.get_trainable_cls()
+        clear_resources = (trainable_cls and
+                           trainable_cls.default_resource_request(self.config))
+        resources = self.resources if not clear_resources else None
+        placement_group_factory = (self.placement_group_factory
+                                   if not clear_resources else None)
+
         return Trial(
             self.trainable_name,
             config=self.config,
@@ -412,8 +482,8 @@ class Trial:
             local_dir=self.local_dir,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
-            resources=self.resources,
-            placement_group_factory=self.placement_group_factory,
+            resources=resources,
+            placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             remote_checkpoint_dir=self.remote_checkpoint_dir,
             checkpoint_freq=self.checkpoint_freq,
@@ -462,7 +532,12 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
-        self.checkpoint_manager.delete = checkpoint_deleter(
+        if runner:
+            # Do not block here, the result will be gotten when last_result
+            # property is accessed
+            self._default_result_or_future = (
+                runner.get_auto_filled_metrics.remote(debug_metrics_only=True))
+        self.checkpoint_manager.delete = CheckpointDeleter(
             self._trainable_name(), runner)
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
@@ -564,11 +639,15 @@ class Trial:
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
 
-        self.set_location(Location(result.get("node_ip"), result.get("pid")))
+        self.set_location(Location(result.get(NODE_IP), result.get(PID)))
         self.last_result = result
         self.last_update_time = time.time()
 
-        for metric, value in flatten_dict(result).items():
+        metric_result = self.last_result.copy()
+        for remove_metric in DEBUG_METRICS:
+            metric_result.pop(remove_metric, None)
+
+        for metric, value in flatten_dict(metric_result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
                     self.metric_analysis[metric] = {
@@ -690,6 +769,7 @@ class Trial:
 
         state["_state_json"] = None
         state["_state_valid"] = False
+        state["_default_result_or_future"] = None
 
         return copy.deepcopy(state)
 

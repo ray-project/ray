@@ -26,13 +26,6 @@ else:
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.parametrize(
-    "shutdown_only", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
 def test_variable_number_of_args(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -60,9 +53,9 @@ def test_variable_number_of_args(shutdown_only):
     assert ray.get(f1.remote()) == ()
     assert ray.get(f1.remote(1)) == (1, )
     assert ray.get(f1.remote(1, 2, 3)) == (1, 2, 3)
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote()
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         f2.remote(1)
     assert ray.get(f2.remote(1, 2)) == (1, 2, ())
     assert ray.get(f2.remote(1, 2, 3)) == (1, 2, (3, ))
@@ -78,13 +71,6 @@ def test_variable_number_of_args(shutdown_only):
         ray.get(no_op.remote())
 
 
-@pytest.mark.parametrize(
-    "shutdown_only", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
 def test_defining_remote_functions(shutdown_only):
     ray.init(num_cpus=3)
 
@@ -133,13 +119,6 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(m.remote(1)) == 2
 
 
-@pytest.mark.parametrize(
-    "shutdown_only", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
 def test_redefining_remote_functions(shutdown_only):
     ray.init(num_cpus=1)
 

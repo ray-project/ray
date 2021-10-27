@@ -8,33 +8,38 @@ import os
 import pickle
 import tempfile
 import time
-from typing import Callable, Dict, List, Optional, Type, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
     PublicAPI
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
-from ray.rllib.utils.framework import try_import_tf, TensorStructType
+from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
-    PartialTrainerConfigDict, PolicyID, ResultDict, TrainerConfigDict
+    PartialTrainerConfigDict, PolicyID, ResultDict, TensorStructType, \
+    TensorType, TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.resources import Resources
@@ -187,15 +192,17 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Tuple[value1, value2]: Clip at value1 and value2.
     "clip_rewards": None,
     # If True, RLlib will learn entirely inside a normalized action space
-    # (0.0 centered with small stddev; only affecting Box components) and
-    # only unsquash actions (and clip just in case) to the bounds of
-    # env's action space before sending actions back to the env.
+    # (0.0 centered with small stddev; only affecting Box components).
+    # We will unsquash actions (and clip, just in case) to the bounds of
+    # the env's action space before sending actions back to the env.
     "normalize_actions": True,
     # If True, RLlib will clip actions according to the env's bounds
     # before sending them back to the env.
     # TODO: (sven) This option should be obsoleted and always be False.
     "clip_actions": False,
     # Whether to use "rllib" or "deepmind" preprocessors by default
+    # Set to None for using no preprocessor. In this case, the model will have
+    # to handle possibly complex observations from the environment.
     "preprocessor_pref": "deepmind",
 
     # === Debug Settings ===
@@ -252,8 +259,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Note that evaluation is currently not parallelized, and that for Ape-X
     # metrics are already only reported for the lowest epsilon workers.
     "evaluation_interval": None,
-    # Number of episodes to run per evaluation period. If using multiple
-    # evaluation workers, we will run at least this many episodes total.
+    # Number of episodes to run in total per evaluation period.
+    # If using multiple evaluation workers (evaluation_num_workers > 1),
+    # episodes will be split amongst these.
+    # If "auto":
+    # - evaluation_parallel_to_training=True: Will run as many episodes as the
+    #   training step takes.
+    # - evaluation_parallel_to_training=False: Error.
     "evaluation_num_episodes": 10,
     # Whether to run evaluation in parallel to a Trainer.train() call
     # using threading. Default=False.
@@ -470,6 +482,20 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
 
+    # === API deprecations/simplifications/changes ===
+    # Experimental flag.
+    # If True, TFPolicy will handle more than one loss/optimizer.
+    # Set this to True, if you would like to return more than
+    # one loss term from your `loss_fn` and an equal number of optimizers
+    # from your `optimizer_fn`.
+    # In the future, the default for this will be True.
+    "_tf_policy_handles_more_than_one_loss": False,
+    # Experimental flag.
+    # If True, no (observation) preprocessor will be created and
+    # observations will arrive in model as they are returned by the env.
+    # In the future, the default for this will be True.
+    "_disable_preprocessor_api": False,
+
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
     # usually slower, but you might want to try it if you run into issues with
@@ -681,6 +707,67 @@ class Trainer(Trainable):
         # to mutate the result
         Trainable.log_result(self, result)
 
+    @DeveloperAPI
+    def _create_local_replay_buffer_if_necessary(self, config):
+        """Create a LocalReplayBuffer instance if necessary.
+
+        Args:
+            config (dict): Algorithm-specific configuration data.
+
+        Returns:
+            LocalReplayBuffer instance based on trainer config.
+            None, if local replay buffer is not needed.
+        """
+        # These are the agents that utilizes a local replay buffer.
+        if ("replay_buffer_config" not in config
+                or not config["replay_buffer_config"]):
+            # Does not need a replay buffer.
+            return None
+
+        replay_buffer_config = config["replay_buffer_config"]
+        if ("type" not in replay_buffer_config
+                or replay_buffer_config["type"] != "LocalReplayBuffer"):
+            # DistributedReplayBuffer coming soon.
+            return None
+
+        capacity = config.get("buffer_size", DEPRECATED_VALUE)
+        if capacity != DEPRECATED_VALUE:
+            # Print a deprecation warning.
+            deprecation_warning(
+                old="config['buffer_size']",
+                new="config['replay_buffer_config']['capacity']",
+                error=False)
+        else:
+            # Get capacity out of replay_buffer_config.
+            capacity = replay_buffer_config["capacity"]
+
+        if config.get("prioritized_replay"):
+            prio_args = {
+                "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+                "prioritized_replay_beta": config["prioritized_replay_beta"],
+                "prioritized_replay_eps": config["prioritized_replay_eps"],
+            }
+        else:
+            prio_args = {}
+
+        return LocalReplayBuffer(
+            num_shards=1,
+            learning_starts=config["learning_starts"],
+            capacity=capacity,
+            replay_batch_size=config["train_batch_size"],
+            replay_mode=config["multiagent"]["replay_mode"],
+            replay_sequence_length=config.get("replay_sequence_length", 1),
+            replay_burn_in=config.get("burn_in", 0),
+            replay_zero_init_states=config.get("zero_init_states", True),
+            **prio_args)
+
+    @DeveloperAPI
+    def _kwargs_for_execution_plan(self):
+        kwargs = {}
+        if self.local_replay_buffer:
+            kwargs["local_replay_buffer"] = self.local_replay_buffer
+        return kwargs
+
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
@@ -691,8 +778,16 @@ class Trainer(Trainable):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
             # A class specifier.
             elif "." in env:
-                self.env_creator = \
-                    lambda env_context: from_config(env, env_context)
+
+                def env_creator_from_classpath(env_context):
+                    try:
+                        env_obj = from_config(env, env_context)
+                    except ValueError:
+                        raise EnvError(
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env))
+                    return env_obj
+
+                self.env_creator = env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
                 self.env_creator = functools.partial(
@@ -739,6 +834,10 @@ class Trainer(Trainable):
                         "-vv flags.".format(log_level))
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
+
+        # Create local replay buffer if necessary.
+        self.local_replay_buffer = (
+            self._create_local_replay_buffer_if_necessary(self.config))
 
         self._init(self.config, self.env_creator)
 
@@ -841,11 +940,18 @@ class Trainer(Trainable):
         return self.evaluate()
 
     @PublicAPI
-    def evaluate(self) -> dict:
+    def evaluate(self, episodes_left_fn: Optional[Callable[[int], int]] = None
+                 ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
+
+        Args:
+            episodes_left_fn (Optional[Callable[[int], int]]): An optional
+                callable taking the already run num episodes as only arg
+                and returning the number of episodes left to run. It's used
+                to find out whether evaluation should continue.
         """
         # In case we are evaluating (in a thread) parallel to training,
         # we may have to re-enable eager mode here (gets disabled in the
@@ -871,15 +977,30 @@ class Trainer(Trainable):
                 raise ValueError("Custom eval function must return "
                                  "dict of metrics, got {}.".format(metrics))
         else:
-            logger.info("Evaluating current policy for {} episodes.".format(
-                self.config["evaluation_num_episodes"]))
+            # How many episodes do we need to run?
+            # In "auto" mode (only for parallel eval + training): Run one
+            # episode per eval worker.
+            num_episodes = self.config["evaluation_num_episodes"] if \
+                self.config["evaluation_num_episodes"] != "auto" else \
+                (self.config["evaluation_num_workers"] or 1)
+
+            # Default done-function returns True, whenever num episodes
+            # have been completed.
+            if episodes_left_fn is None:
+
+                def episodes_left_fn(num_episodes_done):
+                    return num_episodes - num_episodes_done
+
+            logger.info(
+                f"Evaluating current policy for {num_episodes} episodes.")
+
             metrics = None
             # No evaluation worker set ->
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
             if self.evaluation_workers is None:
                 try:
-                    for _ in range(self.config["evaluation_num_episodes"]):
+                    for _ in range(num_episodes):
                         self.workers.local_worker().sample()
                     metrics = collect_metrics(self.workers.local_worker())
                 except ValueError as e:
@@ -899,18 +1020,20 @@ class Trainer(Trainable):
 
             # Evaluation worker set only has local worker.
             elif self.config["evaluation_num_workers"] == 0:
-                for _ in range(self.config["evaluation_num_episodes"]):
+                for _ in range(num_episodes):
                     self.evaluation_workers.local_worker().sample()
+
             # Evaluation worker set has n remote workers.
             else:
-                # How many episodes do we need to run?
-                num_episodes = self.config["evaluation_num_episodes"]
-                # How many have we run (across all evaluation workers)?
+                # How many episodes have we run (across all eval workers)?
                 num_episodes_done = 0
                 round_ = 0
-                while num_episodes_done < num_episodes:
+                while True:
+                    episodes_left_to_do = episodes_left_fn(num_episodes_done)
+                    if episodes_left_to_do <= 0:
+                        break
+
                     round_ += 1
-                    episodes_left_to_do = num_episodes - num_episodes_done
                     batches = ray.get([
                         w.sample.remote() for i, w in enumerate(
                             self.evaluation_workers.remote_workers())
@@ -952,17 +1075,29 @@ class Trainer(Trainable):
     @PublicAPI
     def compute_single_action(
             self,
-            observation: TensorStructType,
-            state: List[TensorStructType] = None,
-            prev_action: TensorStructType = None,
-            prev_reward: float = None,
-            info: EnvInfoDict = None,
+            observation: Optional[TensorStructType] = None,
+            state: Optional[List[TensorStructType]] = None,
+            *,
+            prev_action: Optional[TensorStructType] = None,
+            prev_reward: Optional[float] = None,
+            info: Optional[EnvInfoDict] = None,
+            input_dict: Optional[SampleBatch] = None,
             policy_id: PolicyID = DEFAULT_POLICY_ID,
             full_fetch: bool = False,
-            explore: bool = None,
-            unsquash_actions: Optional[bool] = None,
-            clip_actions: Optional[bool] = None,
-    ) -> TensorStructType:
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
+            episode: Optional[MultiAgentEpisode] = None,
+            unsquash_action: Optional[bool] = None,
+            clip_action: Optional[bool] = None,
+
+            # Deprecated args.
+            unsquash_actions=DEPRECATED_VALUE,
+            clip_actions=DEPRECATED_VALUE,
+
+            # Kwargs placeholder for future compatibility.
+            **kwargs,
+    ) -> Union[TensorStructType, Tuple[TensorStructType, List[TensorType],
+                                       Dict[str, TensorType]]]:
         """Computes an action for the specified policy on the local worker.
 
         Note that you can also access the policy object through
@@ -970,70 +1105,123 @@ class Trainer(Trainable):
         directly.
 
         Args:
-            observation (TensorStructType): observation from the environment.
-            state (List[TensorStructType]): RNN hidden state, if any. If state
-                is not None, then all of compute_single_action(...) is returned
-                (computed action, rnn state(s), logits dictionary).
-                Otherwise compute_single_action(...)[0] is returned
-                (computed action).
-            prev_action (TensorStructType): Previous action value, if any.
-            prev_reward (float): Previous reward, if any.
-            info (EnvInfoDict): info object, if any
-            policy_id (PolicyID): Policy to query (only applies to
-                multi-agent).
-            full_fetch (bool): Whether to return extra action fetch results.
-                This is always set to True if RNN state is specified.
-            explore (bool): Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
-            unsquash_actions (bool): Should actions be unsquashed according to
-                 the env's/Policy's action space?
-            clip_actions (bool): Should actions be clipped according to the
-                env's/Policy's action space?
+            observation: Single (unbatched) observation from the
+                environment.
+            state: List of all RNN hidden (single, unbatched) state tensors.
+            prev_action: Single (unbatched) previous action value.
+            prev_reward: Single (unbatched) previous reward value.
+            info: Env info dict, if any.
+            input_dict: An optional SampleBatch that holds all the values
+                for: obs, state, prev_action, and prev_reward, plus maybe
+                custom defined views of the current env trajectory. Note
+                that only one of `obs` or `input_dict` must be non-None.
+            policy_id: Policy to query (only applies to multi-agent).
+                Default: "default_policy".
+            full_fetch: Whether to return extra action fetch results.
+                This is always set to True if `state` is specified.
+            explore: Whether to apply exploration to the action.
+                Default: None -> use self.config["explore"].
+            timestep: The current (sampling) time step.
+            episode: This provides access to all of the internal episodes'
+                state, which may be useful for model-based or multi-agent
+                algorithms.
+            unsquash_action: Should actions be unsquashed according to the
+                env's/Policy's action space? If None, use the value of
+                self.config["normalize_actions"].
+            clip_action: Should actions be clipped according to the
+                env's/Policy's action space? If None, use the value of
+                self.config["clip_actions"].
+
+        Keyword Args:
+            kwargs: forward compatibility placeholder
 
         Returns:
-            any: The computed action if full_fetch=False, or
-            tuple: The full output of policy.compute_actions() if
-                full_fetch=True or we have an RNN-based Policy.
+            The computed action if full_fetch=False, or a tuple of a) the
+                full output of policy.compute_actions() if full_fetch=True
+                or we have an RNN-based Policy.
 
         Raises:
             KeyError: If the `policy_id` cannot be found in this Trainer's
                 local worker.
         """
+        if clip_actions != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Trainer.compute_single_action(`clip_actions`=...)",
+                new="Trainer.compute_single_action(`clip_action`=...)",
+                error=False)
+            clip_action = clip_actions
+        if unsquash_actions != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Trainer.compute_single_action(`unsquash_actions`=...)",
+                new="Trainer.compute_single_action(`unsquash_action`=...)",
+                error=False)
+            unsquash_action = unsquash_actions
+
+        # User provided an input-dict: Assert that `obs`, `prev_a|r`, `state`
+        # are all None.
+        err_msg = "Provide either `input_dict` OR [`observation`, ...] as " \
+                  "args to Trainer.compute_single_action!"
+        if input_dict is not None:
+            assert observation is None and prev_action is None and \
+                   prev_reward is None and state is None, err_msg
+            observation = input_dict[SampleBatch.OBS]
+        else:
+            assert observation is not None, err_msg
+
+        # Get the policy to compute the action for (in the multi-agent case,
+        # Trainer may hold >1 policies).
         policy = self.get_policy(policy_id)
         if policy is None:
             raise KeyError(
                 f"PolicyID '{policy_id}' not found in PolicyMap of the "
                 f"Trainer's local worker!")
-
         local_worker = self.workers.local_worker()
-
-        if state is None:
-            state = []
 
         # Check the preprocessor and preprocess, if necessary.
         pp = local_worker.preprocessors[policy_id]
-        if type(pp).__name__ != "NoPreprocessor":
+        if pp and type(pp).__name__ != "NoPreprocessor":
             observation = pp.transform(observation)
-        filtered_observation = local_worker.filters[policy_id](
+        observation = local_worker.filters[policy_id](
             observation, update=False)
 
-        # Compute the action.
-        result = policy.compute_single_action(
-            filtered_observation,
-            state,
-            prev_action,
-            prev_reward,
-            info,
-            unsquash_actions=unsquash_actions,
-            clip_actions=clip_actions,
-            explore=explore)
+        # Input-dict.
+        if input_dict is not None:
+            input_dict[SampleBatch.OBS] = observation
+            action, state, extra = policy.compute_single_action(
+                input_dict=input_dict,
+                explore=explore,
+                timestep=timestep,
+                episode=episode,
+            )
+        # Individual args.
+        else:
+            action, state, extra = policy.compute_single_action(
+                obs=observation,
+                state=state,
+                prev_action=prev_action,
+                prev_reward=prev_reward,
+                info=info,
+                explore=explore,
+                timestep=timestep,
+                episode=episode,
+            )
+
+        # If we work in normalized action space (normalize_actions=True),
+        # we re-translate here into the env's action space.
+        if unsquash_action:
+            action = space_utils.unsquash_action(action,
+                                                 policy.action_space_struct)
+        # Clip, according to env's action space.
+        elif clip_action:
+            action = space_utils.clip_action(action,
+                                             policy.action_space_struct)
 
         # Return 3-Tuple: Action, states, and extra-action fetches.
         if state or full_fetch:
-            return result
+            return action, state, extra
         # Ensure backward compatibility.
         else:
-            return result[0]
+            return action
 
     @Deprecated(new="compute_single_action", error=False)
     def compute_action(self, *args, **kwargs):
@@ -1043,15 +1231,21 @@ class Trainer(Trainable):
     def compute_actions(
             self,
             observations: TensorStructType,
-            state: List[TensorStructType] = None,
-            prev_action: TensorStructType = None,
-            prev_reward: TensorStructType = None,
-            info=None,
-            policy_id=DEFAULT_POLICY_ID,
-            full_fetch=False,
-            explore=None,
+            state: Optional[List[TensorStructType]] = None,
+            *,
+            prev_action: Optional[TensorStructType] = None,
+            prev_reward: Optional[TensorStructType] = None,
+            info: Optional[EnvInfoDict] = None,
+            policy_id: PolicyID = DEFAULT_POLICY_ID,
+            full_fetch: bool = False,
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
+            episodes: Optional[List[MultiAgentEpisode]] = None,
+            unsquash_actions: Optional[bool] = None,
+            clip_actions: Optional[bool] = None,
+            # Deprecated.
             normalize_actions=None,
-            clip_actions=None,
+            **kwargs,
     ):
         """Computes an action for the specified policy on the local Worker.
 
@@ -1059,32 +1253,48 @@ class Trainer(Trainable):
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
         Args:
-            observation (obj): observation from the environment.
-            state (dict): RNN hidden state, if any. If state is not None,
+            observation: observation from the environment.
+            state: RNN hidden state, if any. If state is not None,
                 then all of compute_single_action(...) is returned
                 (computed action, rnn state(s), logits dictionary).
                 Otherwise compute_single_action(...)[0] is returned
                 (computed action).
-            prev_action (obj): previous action value, if any
-            prev_reward (int): previous reward, if any
-            info (dict): info object, if any
-            policy_id (str): Policy to query (only applies to multi-agent).
-            full_fetch (bool): Whether to return extra action fetch results.
+            prev_action: Previous action value, if any.
+            prev_reward: Previous reward, if any.
+            info: Env info dict, if any.
+            policy_id: Policy to query (only applies to multi-agent).
+            full_fetch: Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
-            explore (bool): Whether to pick an exploitation or exploration
+            explore: Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            normalize_actions (bool): Should actions be unsquashed according
-                to the env's/Policy's action space?
-            clip_actions (bool): Should actions be clipped according to the
-                env's/Policy's action space?
+            timestep: The current (sampling) time step.
+            episodes: This provides access to all of the internal episodes'
+                state, which may be useful for model-based or multi-agent
+                algorithms.
+            unsquash_actions: Should actions be unsquashed according
+                to the env's/Policy's action space? If None, use
+                self.config["normalize_actions"].
+            clip_actions: Should actions be clipped according to the
+                env's/Policy's action space? If None, use
+                self.config["clip_actions"].
+
+        Keyword Args:
+            kwargs: forward compatibility placeholder
 
         Returns:
             any: The computed action if full_fetch=False, or
             tuple: The full output of policy.compute_actions() if
                 full_fetch=True or we have an RNN-based Policy.
         """
-        # Preprocess obs and states
-        stateDefined = state is not None
+        if normalize_actions is not None:
+            deprecation_warning(
+                old="Trainer.compute_actions(`normalize_actions`=...)",
+                new="Trainer.compute_actions(`unsquash_actions`=...)",
+                error=False)
+            unsquash_actions = normalize_actions
+
+        # Preprocess obs and states.
+        state_defined = state is not None
         policy = self.get_policy(policy_id)
         filtered_obs, filtered_state = [], []
         for agent_id, ob in observations.items():
@@ -1107,29 +1317,44 @@ class Trainer(Trainable):
             state = list(zip(*filtered_state))
             state = [np.stack(s) for s in state]
 
+        input_dict = {SampleBatch.OBS: obs_batch}
+        if prev_action:
+            input_dict[SampleBatch.PREV_ACTIONS] = prev_action
+        if prev_reward:
+            input_dict[SampleBatch.PREV_REWARDS] = prev_reward
+        if info:
+            input_dict[SampleBatch.INFOS] = info
+        for i, s in enumerate(state):
+            input_dict[f"state_in_{i}"] = s
+
         # Batch compute actions
-        actions, states, infos = policy.compute_actions(
-            obs_batch,
-            state,
-            prev_action,
-            prev_reward,
-            info,
-            normalize_actions=normalize_actions,
-            clip_actions=clip_actions,
-            explore=explore)
+        actions, states, infos = policy.compute_actions_from_input_dict(
+            input_dict=input_dict,
+            explore=explore,
+            timestep=timestep,
+            episodes=episodes,
+        )
 
-        # Unbatch actions for the environment
-        atns, actions = space_utils.unbatch(actions), {}
-        for key, atn in zip(observations, atns):
-            actions[key] = atn
+        # Unbatch actions for the environment into a multi-agent dict.
+        single_actions = space_utils.unbatch(actions)
+        actions = {}
+        for key, a in zip(observations, single_actions):
+            # If we work in normalized action space (normalize_actions=True),
+            # we re-translate here into the env's action space.
+            if unsquash_actions:
+                a = space_utils.unsquash_action(a, policy.action_space_struct)
+            # Clip, according to env's action space.
+            elif clip_actions:
+                a = space_utils.clip_action(a, policy.action_space_struct)
+            actions[key] = a
 
-        # Unbatch states into a dict
+        # Unbatch states into a multi-agent dict.
         unbatched_states = {}
         for idx, agent_id in enumerate(observations):
             unbatched_states[agent_id] = [s[idx] for s in states]
 
         # Return only actions or full tuple
-        if stateDefined or full_fetch:
+        if state_defined or full_fetch:
             return actions, unbatched_states, infos
         else:
             return actions
@@ -1184,6 +1409,7 @@ class Trainer(Trainable):
             policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
                                                  PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
+            evaluation_workers: bool = True,
     ) -> Policy:
         """Adds a new policy to this Trainer.
 
@@ -1206,6 +1432,8 @@ class Trainer(Trainable):
                 policy IDs to be trained. If None, will keep the existing list
                 in place. Policies, whose IDs are not in the list will not be
                 updated.
+            evaluation_workers (bool): Whether to add the new policy also
+                to the evaluation WorkerSet.
 
         Returns:
             Policy: The newly added policy (the copy that got added to the
@@ -1227,7 +1455,7 @@ class Trainer(Trainable):
 
         # Run foreach_worker fn on all workers (incl. evaluation workers).
         self.workers.foreach_worker(fn)
-        if self.evaluation_workers is not None:
+        if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(fn)
 
         # Return newly added policy (from the local rollout worker).
@@ -1240,6 +1468,7 @@ class Trainer(Trainable):
             *,
             policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
+            evaluation_workers: bool = True,
     ) -> None:
         """Removes a new policy from this Trainer.
 
@@ -1254,6 +1483,8 @@ class Trainer(Trainable):
                 policy IDs to be trained. If None, will keep the existing list
                 in place. Policies, whose IDs are not in the list will not be
                 updated.
+            evaluation_workers (bool): Whether to also remove the policy from
+                the evaluation WorkerSet.
         """
 
         def fn(worker):
@@ -1264,7 +1495,7 @@ class Trainer(Trainable):
             )
 
         self.workers.foreach_worker(fn)
-        if self.evaluation_workers is not None:
+        if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(fn)
 
     @DeveloperAPI
@@ -1342,6 +1573,7 @@ class Trainer(Trainable):
             selected_workers=selected_workers)
 
     @classmethod
+    @override(Trainable)
     def resource_help(cls, config: TrainerConfigDict) -> str:
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
                 "setting `num_workers`, `num_gpus`, and other configs. See "
@@ -1476,6 +1708,12 @@ class Trainer(Trainable):
                     config["input_evaluation"]))
 
         # Check model config.
+        # If no preprocessing, propagate into model's config as well
+        # (so model will know, whether inputs are preprocessed or not).
+        if config["_disable_preprocessor_api"] is True:
+            model_config["_disable_preprocessor_api"] = True
+
+        # Prev_a/r settings.
         prev_a_r = model_config.get("lstm_use_prev_action_reward",
                                     DEPRECATED_VALUE)
         if prev_a_r != DEPRECATED_VALUE:
@@ -1501,8 +1739,9 @@ class Trainer(Trainable):
                 "`count_steps_by` must be one of [env_steps|agent_steps]! "
                 "Got {}".format(config["multiagent"]["count_steps_by"]))
 
-        # If evaluation_num_workers > 0, warn if evaluation_interval is None
-        # (also set it to 1).
+        # Evaluation settings.
+        # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
+        # None (also set `evaluation_interval` to 1).
         if config["evaluation_num_workers"] > 0 and \
                 not config["evaluation_interval"]:
             logger.warning(
@@ -1511,6 +1750,10 @@ class Trainer(Trainable):
                 "If this is too frequent, set `evaluation_interval` to some "
                 "larger value.".format(config["evaluation_num_workers"]))
             config["evaluation_interval"] = 1
+        # If `evaluation_num_workers=0` and
+        # `evaluation_parallel_to_training=True`, warn that you need
+        # at least one remote eval worker for parallel training and
+        # evaluation, and set `evaluation_parallel_to_training` to False.
         elif config["evaluation_num_workers"] == 0 and \
                 config.get("evaluation_parallel_to_training", False):
             logger.warning(
@@ -1518,6 +1761,19 @@ class Trainer(Trainable):
                 "`evaluation_num_workers` > 0! Setting "
                 "`evaluation_parallel_to_training` to False.")
             config["evaluation_parallel_to_training"] = False
+
+        # If `evaluation_num_episodes=auto`, error if
+        # `evaluation_parallel_to_training=False`.
+        if config["evaluation_num_episodes"] == "auto":
+            if not config["evaluation_parallel_to_training"]:
+                raise ValueError(
+                    "`evaluation_num_episodes=auto` not supported for "
+                    "`evaluation_parallel_to_training=False`!")
+        # Make sure, it's an int otherwise.
+        elif not isinstance(config["evaluation_num_episodes"], int):
+            raise ValueError(
+                "`evaluation_num_episodes` ({}) must be an int and "
+                ">0!".format(config["evaluation_num_episodes"]))
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.
@@ -1557,7 +1813,8 @@ class Trainer(Trainable):
 
         logger.warning("Recreating execution plan after failure")
         workers.reset(healthy_workers)
-        self.train_exec_impl = self.execution_plan(workers, self.config)
+        self.train_exec_impl = self.execution_plan(
+            workers, self.config, **self._kwargs_for_execution_plan())
 
     @override(Trainable)
     def _export_model(self, export_formats: List[str],
@@ -1653,25 +1910,27 @@ class Trainer(Trainable):
             "build_trainer()` function!")
 
     def _register_if_needed(self, env_object: Union[str, EnvType, None],
-                            config):
+                            config) -> Optional[str]:
         if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__
 
-            # Add convenience `_get_spaces` method.
-
-            def _get_spaces(s):
-                return s.observation_space, s.action_space
-
-            env_object._get_spaces = _get_spaces
-
             if config.get("remote_worker_envs"):
-                register_env(
-                    name,
-                    lambda cfg: ray.remote(num_cpus=0)(env_object).remote(cfg))
+
+                @ray.remote(num_cpus=0)
+                class _wrapper(env_object):
+                    # Add convenience `_get_spaces` and `_is_multi_agent`
+                    # methods.
+                    def _get_spaces(self):
+                        return self.observation_space, self.action_space
+
+                    def _is_multi_agent(self):
+                        return isinstance(self, MultiAgentEnv)
+
+                register_env(name, lambda cfg: _wrapper.remote(cfg))
             else:
-                register_env(name, lambda config: env_object(config))
+                register_env(name, lambda cfg: env_object(cfg))
             return name
         elif env_object is None:
             return None

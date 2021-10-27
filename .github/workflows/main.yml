@@ -26,7 +26,7 @@ jobs:
             os: windows-2019
             python-version: 3.8
             # Can be 'msvc' or 'clang-cl'
-            config: msvc
+            config: msvc-cl
     env:
       BAZEL_CONFIG: ${{ matrix.config }}
       PYTHON: ${{ matrix.python-version }}

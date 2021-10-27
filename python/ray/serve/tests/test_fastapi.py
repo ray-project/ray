@@ -11,6 +11,9 @@ from fastapi import (Cookie, Depends, FastAPI, Header, Query, Request,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.applications import Starlette
+import starlette.responses
+from starlette.routing import Route
 
 import ray
 from ray import serve
@@ -389,6 +392,23 @@ def test_fastapi_duplicate_routes(serve_instance):
         assert resp.status_code == 404
 
 
+def test_asgi_compatible(serve_instance):
+    async def homepage(_):
+        return starlette.responses.JSONResponse({"hello": "world"})
+
+    app = Starlette(routes=[Route("/", homepage)])
+
+    @serve.deployment
+    @serve.ingress(app)
+    class MyApp:
+        pass
+
+    MyApp.deploy()
+
+    resp = requests.get("http://localhost:8000/MyApp/")
+    assert resp.json() == {"hello": "world"}
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("route_prefix", [None, "/", "/subpath"])
 def test_doc_generation(serve_instance, route_prefix):
@@ -533,6 +553,49 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
     TestDeployment.deploy()
     resp = requests.get("http://localhost:8000/")
     assert resp.json()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_fastapi_shutdown_hook(serve_instance):
+    # https://github.com/ray-project/ray/issues/18349
+    shutdown_signal = SignalActor.remote()
+    del_signal = SignalActor.remote()
+
+    app = FastAPI()
+
+    @app.on_event("shutdown")
+    def call_signal():
+        shutdown_signal.send.remote()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        def __del__(self):
+            del_signal.send.remote()
+
+    A.deploy()
+    A.delete()
+    ray.get(shutdown_signal.wait.remote(), timeout=20)
+    ray.get(del_signal.wait.remote(), timeout=20)
+
+
+def test_fastapi_method_redefinition(serve_instance):
+    app = FastAPI()
+
+    @serve.deployment(route_prefix="/a")
+    @serve.ingress(app)
+    class A:
+        @app.get("/")
+        def method(self):
+            return "hi get"
+
+        @app.post("/")  # noqa: F811 method redefinition
+        def method(self):
+            return "hi post"
+
+    A.deploy()
+    assert requests.get("http://localhost:8000/a/").json() == "hi get"
+    assert requests.post("http://localhost:8000/a/").json() == "hi post"
 
 
 if __name__ == "__main__":

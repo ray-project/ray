@@ -59,7 +59,7 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=1000,
-        buffer_size=50000,
+        capacity=50000,
         replay_batch_size=64)
 
     def add_ppo_metrics(batch):
@@ -133,7 +133,7 @@ if __name__ == "__main__":
                        if args.torch else DQNTFPolicy, None, None, DQN_CONFIG),
     }
 
-    def policy_mapping_fn(agent_id, episode, **kwargs):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         if agent_id % 2 == 0:
             return "ppo_policy"
         else:

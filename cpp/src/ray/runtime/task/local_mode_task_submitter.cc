@@ -32,7 +32,7 @@ LocalModeTaskSubmitter::LocalModeTaskSubmitter(
 
 ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                                         const ActorCreationOptions &options) {
-  /// TODO(Guyang Song): Make the information of TaskSpecification more reasonable
+  /// TODO(SongGuyang): Make the information of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.
@@ -82,7 +82,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
   AbstractRayRuntime *runtime = &local_mode_ray_tuntime_;
   if (invocation.task_type == TaskType::ACTOR_CREATION_TASK ||
       invocation.task_type == TaskType::ACTOR_TASK) {
-    /// TODO(Guyang Song): Handle task dependencies.
+    /// TODO(SongGuyang): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
     /// task executed by calling order.
     TaskExecutor::Invoke(task_specification, actor, runtime, actor_contexts_,
@@ -142,7 +142,7 @@ ActorID LocalModeTaskSubmitter::GetActor(bool global,
 }
 
 ray::PlacementGroup LocalModeTaskSubmitter::CreatePlacementGroup(
-    const ray::internal::PlacementGroupCreationOptions &create_options) {
+    const ray::PlacementGroupCreationOptions &create_options) {
   ray::PlacementGroup placement_group{ray::PlacementGroupID::FromRandom().Binary(),
                                       create_options};
   placement_group.SetWaitCallbak([this](const std::string &id, int timeout_seconds) {
@@ -154,6 +154,19 @@ ray::PlacementGroup LocalModeTaskSubmitter::CreatePlacementGroup(
 
 void LocalModeTaskSubmitter::RemovePlacementGroup(const std::string &group_id) {
   placement_groups_.erase(group_id);
+}
+
+std::vector<PlacementGroup> LocalModeTaskSubmitter::GetAllPlacementGroups() {
+  throw RayException("Ray doesn't support placement group operations in local mode.");
+}
+
+PlacementGroup LocalModeTaskSubmitter::GetPlacementGroupById(const std::string &id) {
+  throw RayException("Ray doesn't support placement group operations in local mode.");
+}
+
+PlacementGroup LocalModeTaskSubmitter::GetPlacementGroup(const std::string &name,
+                                                         bool global) {
+  throw RayException("Ray doesn't support placement group operations in local mode.");
 }
 
 }  // namespace internal

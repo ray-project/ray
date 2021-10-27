@@ -256,8 +256,9 @@ install_node() {
   (
     set +x # suppress set -x since it'll get very noisy here
     . "${HOME}/.nvm/nvm.sh"
-    nvm install node
-    nvm use --silent node
+    NODE_VERSION="14"
+    nvm install $NODE_VERSION
+    nvm use --silent $NODE_VERSION
     npm config set loglevel warn  # make NPM quieter
   )
 }
@@ -265,6 +266,11 @@ install_node() {
 install_toolchains() {
   if [ -z "${BUILDKITE-}" ]; then
     "${ROOT_DIR}"/install-toolchains.sh
+  fi
+  if [[ "${OSTYPE}" = linux* ]]; then
+    pushd "${WORKSPACE_DIR}"
+      "${ROOT_DIR}"/install-llvm-binaries.sh
+    popd
   fi
 }
 
@@ -346,7 +352,9 @@ install_dependencies() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/rllib/requirements_rllib.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
+    #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch version.
+    pip install mlagents==0.27
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
 
@@ -360,13 +368,13 @@ install_dependencies() {
 
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_tune.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
     download_mnist
   fi
 
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_upstream.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
   fi
 
   # Additional dependency for Ludwig.
@@ -401,7 +409,7 @@ install_dependencies() {
 
   # RLlib testing with TF 1.x.
   if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym
+    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym==0.19
   fi
 
   # Additional Tune dependency for Horovod.

@@ -100,8 +100,9 @@ Ray can be built from the repository as follows.
   git clone https://github.com/ray-project/ray.git
 
   # Install Bazel.
-  # (Windows users: please manually place Bazel in your PATH, and point BAZEL_SH to MSYS2's Bash.)
   ray/ci/travis/install-bazel.sh
+  # (Windows users: please manually place Bazel in your PATH, and point
+  # BAZEL_SH to MSYS2's Bash: ``set BAZEL_SH=C:\Program Files\Git\bin\bash.exe``)
 
   # Build the dashboard
   # (requires Node.js, see https://nodejs.org/ for more information).
@@ -126,7 +127,7 @@ Building Ray on Windows (full)
 
 The following links were correct during the writing of this section. In case the URLs changed, search at the organizations' sites.
 
-- bazel 3.4 (https://github.com/bazelbuild/bazel/releases/tag/3.4.0)
+- bazel 4.2 (https://github.com/bazelbuild/bazel/releases/tag/4.2.1)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
 - JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
 - Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
@@ -149,7 +150,11 @@ The following links were correct during the writing of this section. In case the
 
 3. Define an environment variable BAZEL_SH to point to bash.exe. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
-4. Bazel 3.4 installation. Go to bazel 3.4 release web page and download bazel-3.4.0-windows-x86_64.exe. Copy the exe into the directory of your choice. Define an environment variable BAZEL_PATH to full exe path (example: ``C:\bazel\bazel-3.4.0-windows-x86_64.exe``) 
+4. Bazel 4.2 installation. Go to bazel 4.2 release web page and download
+bazel-4.2.1-windows-x86_64.exe. Copy the exe into the directory of your choice.
+Define an environment variable BAZEL_PATH to full exe path (example:
+``set BAZEL_PATH=C:\bazel\bazel.exe``). Also add the bazel directory to the
+``PATH`` (example: ``set PATH=%PATH%;C:\bazel``)
 
 5. Install cython and pytest:
 

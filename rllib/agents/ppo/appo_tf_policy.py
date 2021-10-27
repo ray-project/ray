@@ -20,7 +20,8 @@ from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
+from ray.rllib.policy.tf_policy import EntropyCoeffSchedule, \
+    LearningRateSchedule, TFPolicy
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -98,7 +99,7 @@ def appo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
@@ -122,7 +123,7 @@ def appo_surrogate_loss(
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
-    target_model_out, _ = policy.target_model.from_batch(train_batch)
+    target_model_out, _ = policy.target_model(train_batch)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
     values_time_major = make_time_major(values)
@@ -205,7 +206,7 @@ def appo_surrogate_loss(
 
         action_kl = tf.reduce_mean(mean_kl, axis=0) \
             if is_multidiscrete else mean_kl
-        mean_kl = reduce_mean_valid(action_kl)
+        mean_kl_loss = reduce_mean_valid(action_kl)
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
@@ -237,7 +238,7 @@ def appo_surrogate_loss(
 
         action_kl = tf.reduce_mean(mean_kl, axis=0) \
             if is_multidiscrete else mean_kl
-        mean_kl = reduce_mean_valid(action_kl)
+        mean_kl_loss = reduce_mean_valid(action_kl)
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
@@ -250,24 +251,33 @@ def appo_surrogate_loss(
         mean_entropy = reduce_mean_valid(
             make_time_major(action_dist.multi_entropy()))
 
-    # The summed weighted loss
-    total_loss = mean_policy_loss + \
-        mean_vf_loss * policy.config["vf_loss_coeff"] - \
-        mean_entropy * policy.config["entropy_coeff"]
-
-    # Optional additional KL Loss
+    # The summed weighted loss.
+    total_loss = mean_policy_loss - \
+        mean_entropy * policy.entropy_coeff
+    # Optional KL loss.
     if policy.config["use_kl_loss"]:
-        total_loss += policy.kl_coeff * mean_kl
+        total_loss += policy.kl_coeff * mean_kl_loss
+    # Optional vf loss (or in a separate term due to separate
+    # optimizers/networks).
+    loss_wo_vf = total_loss
+    if not policy.config["_separate_vf_optimizer"]:
+        total_loss += mean_vf_loss * policy.config["vf_loss_coeff"]
 
+    # Store stats in policy for stats_fn.
     policy._total_loss = total_loss
+    policy._loss_wo_vf = loss_wo_vf
     policy._mean_policy_loss = mean_policy_loss
-    policy._mean_kl = mean_kl
+    # Backward compatibility: Deprecate policy._mean_kl.
+    policy._mean_kl_loss = policy._mean_kl = mean_kl_loss
     policy._mean_vf_loss = mean_vf_loss
     policy._mean_entropy = mean_entropy
     policy._value_targets = value_targets
 
-    # Store stats in policy for stats_fn.
-    return total_loss
+    # Return one total loss or two losses: vf vs rest (policy + kl).
+    if policy.config["_separate_vf_optimizer"]:
+        return loss_wo_vf, mean_vf_loss
+    else:
+        return total_loss
 
 
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
@@ -288,6 +298,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
 
     stats_dict = {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+        "total_loss": policy._total_loss,
         "policy_loss": policy._mean_policy_loss,
         "entropy": policy._mean_entropy,
         "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
@@ -295,6 +306,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         "vf_explained_var": explained_variance(
             tf.reshape(policy._value_targets, [-1]),
             tf.reshape(values_batched, [-1])),
+        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
     }
 
     if policy.config["vtrace"]:
@@ -303,7 +315,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         stats_dict["var_IS"] = is_stat_var
 
     if policy.config["use_kl_loss"]:
-        stats_dict["kl"] = policy._mean_kl
+        stats_dict["kl"] = policy._mean_kl_loss
         stats_dict["KL_Coeff"] = policy.kl_coeff
 
     return stats_dict
@@ -390,6 +402,8 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
@@ -420,7 +434,10 @@ AsyncPPOTFPolicy = build_tf_policy(
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
     mixins=[
-        LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
-        ValueNetworkMixin
+        LearningRateSchedule,
+        KLCoeffMixin,
+        TargetNetworkMixin,
+        ValueNetworkMixin,
+        EntropyCoeffSchedule,
     ],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])

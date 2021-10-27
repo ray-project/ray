@@ -4,20 +4,21 @@ import logging
 import json
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
-from ray.new_dashboard.modules.node import node_consts
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.consts as dashboard_consts
-from ray.new_dashboard.utils import async_loop_forever
-from ray.new_dashboard.memory_utils import GroupByType, SortingType
+from ray.dashboard.modules.node import node_consts
+from ray.dashboard.modules.node.node_consts import (MAX_LOGS_TO_CACHE,
+                                                    LOG_PRUNE_THREASHOLD)
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
+from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource, DataOrganizer
+from ray.dashboard.datacenter import DataSource, DataOrganizer
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
@@ -66,7 +67,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
             options = (("grpc.enable_http_proxy", 0), )
-            channel = aiogrpc.insecure_channel(address, options=options)
+            channel = ray._private.utils.init_grpc_channel(
+                address, options, asynchronous=True)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 
@@ -249,11 +251,20 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 data = json.loads(ray._private.utils.decode(msg))
                 ip = data["ip"]
                 pid = str(data["pid"])
-                logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))
-                logs_for_pid = list(logs_for_ip.get(pid, []))
-                logs_for_pid.extend(data["lines"])
-                logs_for_ip[pid] = logs_for_pid
-                DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
+                if pid != "autoscaler":
+                    logs_for_ip = dict(
+                        DataSource.ip_and_pid_to_logs.get(ip, {}))
+                    logs_for_pid = list(logs_for_ip.get(pid, []))
+                    logs_for_pid.extend(data["lines"])
+
+                    # Only cache upto MAX_LOGS_TO_CACHE
+                    logs_length = len(logs_for_pid)
+                    if logs_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
+                        offset = logs_length - MAX_LOGS_TO_CACHE
+                        del logs_for_pid[:offset]
+
+                    logs_for_ip[pid] = logs_for_pid
+                    DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
                 logger.info(f"Received a log for {ip} and {pid}")
             except Exception:
                 logger.exception("Error receiving log info.")

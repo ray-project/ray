@@ -34,8 +34,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   if (!owned_by_us) {
     RAY_LOG(DEBUG) << "Reconstruction for borrowed objects (" << object_id
                    << ") is not supported";
-    reconstruction_failure_callback_(object_id, /*pin_object=*/false);
-    return true;
+    return false;
   }
 
   bool already_pending_recovery = true;
@@ -77,11 +76,9 @@ void ObjectRecoveryManager::PinOrReconstructObject(
     const auto location = locations_copy.back();
     locations_copy.pop_back();
     PinExistingObjectCopy(object_id, location, locations_copy);
-  } else if (lineage_reconstruction_enabled_) {
+  } else {
     // There are no more copies to pin, try to reconstruct the object.
     ReconstructObject(object_id);
-  } else {
-    reconstruction_failure_callback_(object_id, /*pin_object=*/true);
   }
 }
 
@@ -129,6 +126,14 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
+  if (!reference_counter_->IsObjectReconstructable(object_id)) {
+    RAY_LOG(DEBUG) << "Object " << object_id << " is not reconstructable";
+    recovery_failure_callback_(object_id, rpc::ErrorType::OBJECT_LOST,
+                               /*pin_object=*/true);
+    return;
+  }
+
+  RAY_LOG(DEBUG) << "Attempting to reconstruct object " << object_id;
   // Notify the task manager that we are retrying the task that created this
   // object.
   const auto task_id = object_id.TaskId();
@@ -143,12 +148,14 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
         RAY_LOG(INFO) << "Failed to reconstruct object " << dep << ": "
                       << status.message();
         // We do not pin the dependency because we may not be the owner.
-        reconstruction_failure_callback_(dep, /*pin_object=*/false);
+        recovery_failure_callback_(dep, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                                   /*pin_object=*/false);
       }
     }
   } else {
     RAY_LOG(INFO) << "Failed to reconstruct object " << object_id;
-    reconstruction_failure_callback_(object_id, /*pin_object=*/true);
+    recovery_failure_callback_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                               /*pin_object=*/true);
   }
 }
 

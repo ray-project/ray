@@ -8,7 +8,7 @@ exclude =
   python/build/
   python/.eggs/
   python/ray/_private/thirdparty/*
-  python/ray/experimental/workflow/tests/mock_server.py
+  python/ray/workflow/tests/mock_server.py
 max-line-length = 79
 inline-quotes = "
 ignore =
@@ -24,4 +24,20 @@ ignore =
   W605
   I
   N
+  B001
+  B002
+  B003
+  B004
+  B005
+  B007
+  B008
+  B009
+  B010
+  B011
+  B012
+  B013
+  B014
+  B015
+  B016
+  B017
 avoid-escape = no

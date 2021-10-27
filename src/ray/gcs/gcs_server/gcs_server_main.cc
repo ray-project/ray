@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO, /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string redis_address = FLAGS_redis_address;
@@ -80,20 +80,20 @@ int main(int argc, char *argv[]) {
         storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
     boost::asio::io_service::work work(service);
     service.run();
-  })
-      .detach();
+  }).detach();
   promise->get_future().get();
 
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
-      {ray::stats::VersionKey, "2.0.0.dev0"},
+      {ray::stats::VersionKey, kRayVersion},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(global_tags, metrics_agent_port);
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
     ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
-                      std::unordered_map<std::string, std::string>(), log_dir);
+                      std::unordered_map<std::string, std::string>(), log_dir,
+                      RayConfig::instance().event_level());
   }
 
   // IO Service for main loop.

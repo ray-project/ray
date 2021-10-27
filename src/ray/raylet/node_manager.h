@@ -48,7 +48,6 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::ActorTableData;
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
 using rpc::HeartbeatTableData;
@@ -81,6 +80,8 @@ struct NodeManagerConfig {
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
   WorkerCommandMap worker_commands;
+  /// The native library path which includes the core libraries.
+  std::string native_library_path;
   /// The command used to start agent.
   std::string agent_command;
   /// The time between reports resources in milliseconds.
@@ -273,13 +274,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// returned to idle.
   bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr);
 
-  /// Helper function to produce actor table data for a newly created actor.
-  ///
-  /// \param task_spec RayTask specification of the actor creation task that created the
-  /// actor.
-  /// \param worker The port that the actor is listening on.
-  std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
-      const TaskSpecification &task_spec, int port, const WorkerID &worker_id);
   /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
@@ -495,6 +489,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReportWorkerBacklog` request.
+  void HandleReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request,
+                                 rpc::ReportWorkerBacklogReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReturnWorker` request.
   void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                           rpc::ReturnWorkerReply *reply,
@@ -504,6 +503,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleReleaseUnusedWorkers(const rpc::ReleaseUnusedWorkersRequest &request,
                                   rpc::ReleaseUnusedWorkersReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `ShutdownRaylet` request.
+  void HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request,
+                            rpc::ShutdownRayletReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
   void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
@@ -603,11 +607,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
-  /// Delete URI in local node.
-  ///
-  /// \param uri The URI of the resource.
-  void DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb);
-
   /// ID of this node.
   NodeID self_node_id_;
   instrumented_io_context &io_service_;
@@ -676,7 +675,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       remote_node_manager_addresses_;
 
   /// Map of workers leased out to direct call clients.
-  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   /// Map from owner worker ID to a list of worker IDs that the owner has a
   /// lease on.
@@ -752,6 +751,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
+
+  /// Whether or not if the node draining process has already received.
+  bool is_node_drained_ = false;
 };
 
 }  // namespace raylet

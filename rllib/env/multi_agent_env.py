@@ -142,7 +142,7 @@ def make_multi_agent(env_name_or_creator):
     Returns:
         Type[MultiAgentEnv]: New MultiAgentEnv class to be used as env.
             The constructor takes a config dict with `num_agents` key
-            (default=1). The reset of the config dict will be passed on to the
+            (default=1). The rest of the config dict will be passed on to the
             underlying single-agent env's constructor.
 
     Examples:
@@ -163,7 +163,8 @@ def make_multi_agent(env_name_or_creator):
     """
 
     class MultiEnv(MultiAgentEnv):
-        def __init__(self, config):
+        def __init__(self, config=None):
+            config = config or {}
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
                 self.agents = [
