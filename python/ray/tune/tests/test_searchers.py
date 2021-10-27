@@ -2,7 +2,6 @@ import unittest
 import tempfile
 import shutil
 import os
-import pytest
 
 import numpy as np
 
@@ -124,8 +123,8 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testCFO(self):
-        pytest.skip("Broken in FLAML, reenable once "
-                    "https://github.com/microsoft/FLAML/pull/263 is merged")
+        self.skipTest("Broken in FLAML, reenable once "
+                      "https://github.com/microsoft/FLAML/pull/263 is merged")
         from ray.tune.suggest.flaml import CFO
 
         out = tune.run(
@@ -604,5 +603,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))
