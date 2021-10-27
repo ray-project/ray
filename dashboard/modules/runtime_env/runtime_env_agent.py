@@ -85,7 +85,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 runtime_env = RuntimeEnv()
-                RuntimeEnv.FromString(bytes(serialized_runtime_env, 'utf-8'))
+                runtime_env.FromString(bytes(serialized_runtime_env, 'utf-8'))
+                logger.info(f"The parsed runtime env: {runtime_env}")
                 allocated_resource: dict = json.loads(
                     serialized_allocated_resource_instances or "{}")
 
