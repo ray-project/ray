@@ -141,8 +141,8 @@ class ClientBuilder:
             job_config=self._job_config,
             _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs)
-        dashboard_url = ray.get(
-            ray.remote(ray.worker.get_dashboard_url).remote())
+        get_dashboard_url = ray.remote(ray.worker.get_dashboard_url)
+        dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
         cxt = ClientContext(
             dashboard_url=dashboard_url,
             python_version=client_info_dict["python_version"],
@@ -169,9 +169,9 @@ class ClientBuilder:
         """
         When a client builder is constructed through ray.init, for example
         `ray.init(ray://..., namespace=...)`, all of the
-        arguments passed into ray.init are passed again into this method.
-        Custom client builders can override this method to do their own
-        handling/validation of arguments.
+        arguments passed into ray.init with non-default values are passed
+        again into this method. Custom client builders can override this method
+        to do their own handling/validation of arguments.
         """
         # Use namespace and runtime_env from ray.init call
         if kwargs.get("namespace") is not None:

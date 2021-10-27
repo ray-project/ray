@@ -11,6 +11,7 @@ except ImportError:
 
 import ray
 import ray.cluster_utils
+from ray._private.test_utils import wait_for_condition
 from ray.util.placement_group import (placement_group, remove_placement_group)
 
 
@@ -89,6 +90,23 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
         pg_launchers.append(pg_launcher.remote(num_pg // 3))
 
     ray.get(pg_launchers, timeout=120)
+    ray.shutdown()
+    ray.init(address=cluster.address)
+
+    cluster_resources = ray.cluster_resources()
+    cluster_resources.pop("memory")
+    cluster_resources.pop("object_store_memory")
+
+    def wait_for_resource_recovered():
+        for resource, val in ray.available_resources().items():
+            if (resource in cluster_resources
+                    and cluster_resources[resource] != val):
+                return False
+            if "_group_" in resource:
+                return False
+        return True
+
+    wait_for_condition(wait_for_resource_recovered)
 
 
 if __name__ == "__main__":

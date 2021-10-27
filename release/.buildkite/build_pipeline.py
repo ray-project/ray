@@ -2,6 +2,7 @@ import copy
 import logging
 import os
 import sys
+from typing import Optional, List
 
 import yaml
 
@@ -46,6 +47,24 @@ class SmokeTest(ReleaseTest):
             name=name, smoke_test=True, retry=retry)
 
 
+class ConnectTest(ReleaseTest):
+    """Release Test that requires extra setup on the driver."""
+
+    def __init__(self,
+                 *args,
+                 setup_commands: Optional[List[str]] = None,
+                 requirements_file: Optional[str] = None,
+                 **kwargs):
+
+        # Commands to run on the driver before kicking off the test.
+        self.setup_commands = setup_commands if setup_commands else []
+
+        # Requirements to install on the driver before kicking off the test.
+        self.requirements_file = requirements_file
+
+        super().__init__(*args, **kwargs)
+
+
 CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "shuffle_10gb",
@@ -67,12 +86,15 @@ CORE_NIGHTLY_TESTS = {
         # as it hits the scalability limit.
         # "non_streaming_shuffle_1tb_5000_partitions",
         "decision_tree_autoscaling",
+        "decision_tree_autoscaling_20_runs",
+        "grpc_decision_tree_autoscaling_20_runs",
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
         "many_nodes_actor_test",
+        "grpc_many_nodes_actor_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
@@ -214,9 +236,21 @@ MANUAL_TESTS = {
     ]
 }
 
+# This test suite holds "user" tests to test important user workflows
+# in a particular environment.
+# All workloads in this test suite should:
+#   1. Be run in a distributed (multi-node) fashion
+#   2. Use autoscaling/scale up (no wait_cluster.py)
+#   3. Use GPUs if applicable
+#   4. Have the `use_connect` flag set.
+USER_TESTS = {}
+
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
-    "nightly": NIGHTLY_TESTS,
+    "nightly": {
+        **NIGHTLY_TESTS,
+        **USER_TESTS
+    },
     "weekly": WEEKLY_TESTS,
     "manual": MANUAL_TESTS,
 }
@@ -296,7 +330,12 @@ def ask_configuration():
                 "hint": ("ATTENTION: If you provide this, RAY_REPO, "
                          "RAY_BRANCH and RAY_VERSION will be ignored! "
                          "Please also make sure to provide the wheels URL "
-                         "for Python 3.7 on Linux."),
+                         "for Python 3.7 on Linux.\n"
+                         "You can also insert a commit hash here instead "
+                         "of a full URL.\n"
+                         "NOTE: You can specify multiple commits or URLs "
+                         "for easy bisection (one per line) - this will "
+                         "run each test on each of the specified wheels."),
                 "required": False,
                 "default": RAY_WHEELS,
                 "key": "ray_wheels"
@@ -387,6 +426,68 @@ def ask_configuration():
     ]
 
 
+def create_test_step(
+        ray_repo: str,
+        ray_branch: str,
+        ray_version: str,
+        ray_wheels: str,
+        ray_test_repo: str,
+        ray_test_branch: str,
+        test_file: str,
+        test_name: ReleaseTest,
+):
+    ray_wheels_str = f" ({ray_wheels}) " if ray_wheels else ""
+
+    logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
+    cmd = str(f"RAY_REPO=\"{ray_repo}\" "
+              f"RAY_BRANCH=\"{ray_branch}\" "
+              f"RAY_VERSION=\"{ray_version}\" "
+              f"RAY_WHEELS=\"{ray_wheels}\" "
+              f"RELEASE_RESULTS_DIR=/tmp/artifacts "
+              f"python release/e2e.py "
+              f"--category {ray_branch} "
+              f"--test-config {test_file} "
+              f"--test-name {test_name} "
+              f"--keep-results-dir")
+
+    if test_name.smoke_test:
+        logging.info("This test will run as a smoke test.")
+        cmd += " --smoke-test"
+
+    step_conf = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
+
+    if test_name.retry:
+        logging.info(f"This test will be retried up to "
+                     f"{test_name.retry} times.")
+        step_conf["retry"] = {
+            "automatic": [{
+                "exit_status": "*",
+                "limit": test_name.retry
+            }]
+        }
+
+    step_conf["commands"] = [
+        "pip install -q -r release/requirements.txt",
+        "pip install -U boto3 botocore",
+        f"git clone -b {ray_test_branch} {ray_test_repo} ~/ray", cmd,
+        "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
+        "|| true"
+    ]
+
+    if isinstance(test_name, ConnectTest):
+        # Add driver side setup commands to the step.
+        pip_requirements_command = [f"pip install -U -r "
+                                    f"{test_name.requirements_file}"] if \
+            test_name.requirements_file else []
+        step_conf["commands"] = test_name.setup_commands \
+            + pip_requirements_command \
+            + step_conf["commands"]
+
+    step_conf["label"] = f"{ray_wheels_str}{test_name} ({ray_branch}) - " \
+                         f"{ray_test_branch}/{ray_test_repo}"
+    return step_conf
+
+
 def build_pipeline(steps):
     all_steps = []
 
@@ -401,6 +502,14 @@ def build_pipeline(steps):
 
     FILTER_FILE = os.environ.get("FILTER_FILE", "")
     FILTER_TEST = os.environ.get("FILTER_TEST", "")
+
+    ray_wheels_list = [""]
+    if RAY_WHEELS:
+        ray_wheels_list = RAY_WHEELS.split("\n")
+
+    if len(ray_wheels_list) > 1:
+        logging.info(f"This will run a bisec on the following URLs/commits: "
+                     f"{ray_wheels_list}")
 
     logging.info(
         f"Building pipeline \n"
@@ -430,44 +539,18 @@ def build_pipeline(steps):
 
             logging.info(f"Adding test: {test_base}/{test_name}")
 
-            cmd = str(f"RAY_REPO=\"{RAY_REPO}\" "
-                      f"RAY_BRANCH=\"{RAY_BRANCH}\" "
-                      f"RAY_VERSION=\"{RAY_VERSION}\" "
-                      f"RAY_WHEELS=\"{RAY_WHEELS}\" "
-                      f"RELEASE_RESULTS_DIR=/tmp/artifacts "
-                      f"python release/e2e.py "
-                      f"--category {RAY_BRANCH} "
-                      f"--test-config {test_file} "
-                      f"--test-name {test_name} "
-                      f"--keep-results-dir")
+            for ray_wheels in ray_wheels_list:
+                step_conf = create_test_step(
+                    ray_repo=RAY_REPO,
+                    ray_branch=RAY_BRANCH,
+                    ray_version=RAY_VERSION,
+                    ray_wheels=ray_wheels,
+                    ray_test_repo=RAY_TEST_REPO,
+                    ray_test_branch=RAY_TEST_BRANCH,
+                    test_file=test_file,
+                    test_name=test_name)
 
-            if test_name.smoke_test:
-                logging.info("This test will run as a smoke test.")
-                cmd += " --smoke-test"
-
-            step_conf = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
-
-            if test_name.retry:
-                logging.info(f"This test will be retried up to "
-                             f"{test_name.retry} times.")
-                step_conf["retry"] = {
-                    "automatic": [{
-                        "exit_status": "*",
-                        "limit": test_name.retry
-                    }]
-                }
-
-            step_conf["commands"] = [
-                "pip install -q -r release/requirements.txt",
-                "pip install -U boto3 botocore",
-                f"git clone -b {RAY_TEST_BRANCH} {RAY_TEST_REPO} ~/ray", cmd,
-                "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
-                "|| true"
-            ]
-
-            step_conf["label"] = f"{test_name} ({RAY_BRANCH}) - " \
-                                 f"{RAY_TEST_BRANCH}/{test_base}"
-            all_steps.append(step_conf)
+                all_steps.append(step_conf)
 
     return all_steps
 
