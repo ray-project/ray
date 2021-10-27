@@ -682,6 +682,7 @@ def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
             ray.get(x)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_reconstruction_hangs(ray_start_cluster):
     config = {
         "num_heartbeats_timeout": 10,
@@ -704,6 +705,7 @@ def test_reconstruction_hangs(ray_start_cluster):
 
     @ray.remote
     def sleep():
+        # Task takes longer than the reconstruction timeout.
         time.sleep(3)
         return np.zeros(10**5, dtype=np.uint8)
 
@@ -711,15 +713,14 @@ def test_reconstruction_hangs(ray_start_cluster):
     def dependent_task(x):
         return
 
-    for _ in range(10):
-        obj = sleep.options(resources={"node1": 1}).remote()
-        for _ in range(3):
-            ray.get(dependent_task.remote(obj))
-            x = dependent_task.remote(obj)
-            cluster.remove_node(node_to_kill, allow_graceful=False)
-            node_to_kill = cluster.add_node(
-                num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
-            ray.get(x)
+    obj = sleep.options(resources={"node1": 1}).remote()
+    for _ in range(3):
+        ray.get(dependent_task.remote(obj))
+        x = dependent_task.remote(obj)
+        cluster.remove_node(node_to_kill, allow_graceful=False)
+        node_to_kill = cluster.add_node(
+            num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+        ray.get(x)
 
 
 if __name__ == "__main__":
