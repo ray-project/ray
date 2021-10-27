@@ -26,8 +26,8 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
   std::string message = absl::StrCat(
-      "Reporting worker exit, worker id = ", worker_id.Hex(), ", node id = ", node_id.Hex(),
-      ", address = ", worker_address.ip_address(),
+      "Reporting worker exit, worker id = ", worker_id.Hex(),
+      ", node id = ", node_id.Hex(), ", address = ", worker_address.ip_address(),
       ", exit_type = ", rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
       request.worker_failure().has_creation_task_exception());
   if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT ||
