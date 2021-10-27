@@ -182,11 +182,11 @@ def _store_package_in_gcs(
             "files using the 'excludes' option to the runtime_env.")
 
     if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
-        logger.info(f"Pushing local file package {pkg_uri} ({size_str}) to "
+        logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to "
                     "Ray cluster...")
     _internal_kv_put(pkg_uri, data)
     if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
-        logger.info("Successfully pushed local file package {pkg_uri}.")
+        logger.info(f"Successfully local file package '{pkg_uri}'.")
     return len(data)
 
 
@@ -324,7 +324,8 @@ def upload_package_if_needed(
 
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     if not pkg_file.exists():
-        logger.info(f"Creating a new package for directory {directory}.")
+        logger.info(f"Creating a file package '{pkg_uri}' "
+                    f"for local directory '{directory}'.")
         _zip_directory(
             directory,
             excludes,

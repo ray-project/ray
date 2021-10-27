@@ -821,14 +821,15 @@ ray.init("{address}", runtime_env={{"py_modules": ["{tmp_dir}"]}})
             f.write(os.urandom(size))
 
         output = run_string_as_driver(driver_script)
-        assert "Pushing large local file package" not in output
+        assert "Pushing local file" not in output
 
         size = SILENT_UPLOAD_SIZE_THRESHOLD + 1
         with open(filepath, "wb") as f:
             f.write(os.urandom(size))
 
         output = run_string_as_driver(driver_script)
-        assert "Pushed local files" in output
+        assert "Pushing local file" in output
+        assert "Successfully pushed" in output
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
