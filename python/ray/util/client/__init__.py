@@ -84,10 +84,11 @@ class _ClientContext:
                 _credentials=_credentials,
                 metadata=metadata,
                 connection_retries=connection_retries)
-            self.api.worker = self.client_worker
-            self.client_worker._server_init(job_config, ray_init_kwargs)
             conn_info = self.client_worker.connection_info()
             self._check_versions(conn_info, ignore_version)
+
+            self.api.worker = self.client_worker
+            self.client_worker._server_init(job_config, ray_init_kwargs)
             self._register_serializers()
             return conn_info
         except Exception:
