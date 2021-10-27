@@ -84,9 +84,9 @@ class JobStatusStorageClient:
 
 
 def exec_cmd_logs_to_file(
-    cmd: str,
-    stdout_file: str,
-    stderr_file: str,
+        cmd: str,
+        stdout_file: str,
+        stderr_file: str,
 ) -> int:
     """
     Runs a command as a child process, streaming stderr & stdout to given
@@ -191,7 +191,7 @@ class JobManager:
             job_id: str,
             entrypoint: str,
             runtime_env: Optional[Dict[str, Any]] = None,
-        ) -> str:
+    ) -> str:
         """
         1) Create new detached actor with same runtime_env as job spec
         2) Get task / actor level runtime_env as env var and pass into

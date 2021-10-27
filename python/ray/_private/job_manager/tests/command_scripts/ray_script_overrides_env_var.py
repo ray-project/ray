@@ -3,6 +3,7 @@ Test script that attempts to set its own runtime_env, but we should ensure
 we ended up using job submission API call's runtime_env instead of scripts
 """
 
+
 def run():
     import ray
     import os
@@ -19,8 +20,8 @@ def run():
         return "bar"
 
     ray.get(foo.remote())
-    print(os.environ.get("TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR", None)
-)
+    print(os.environ.get("TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR", None))
+
 
 if __name__ == "__main__":
     run()

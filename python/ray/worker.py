@@ -796,7 +796,6 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         # Set runtime_env in job_config if passed as env variable, such as
         # ray job submission with driver script executed in subprocess

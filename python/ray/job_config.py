@@ -116,5 +116,4 @@ class JobConfig:
             runtime_env=job_config_json.get("runtime_env", None),
             client_job=job_config_json.get("client_job", False),
             metadata=job_config_json.get("metadata", None),
-            ray_namespace=job_config_json.get("ray_namespace", None)
-        )
+            ray_namespace=job_config_json.get("ray_namespace", None))

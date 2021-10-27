@@ -116,8 +116,13 @@ class TestRuntimeEnv:
         """
         job_id: str = str(uuid4())
         job_id = job_manager.submit_job(
-            job_id, "echo $TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR",
-            runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "233"}})
+            job_id,
+            "echo $TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR",
+            runtime_env={
+                "env_vars": {
+                    "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "233"
+                }
+            })
         assert isinstance(job_id, str)
 
         def check_job_finished():
@@ -134,8 +139,13 @@ class TestRuntimeEnv:
         job_id_2 = str(uuid4())
 
         job_manager.submit_job(
-            job_id_1, f"python command_scripts/ray_script_prints_env_var.py",
-            runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"}})
+            job_id_1,
+            f"python command_scripts/ray_script_prints_env_var.py",
+            runtime_env={
+                "env_vars": {
+                    "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"
+                }
+            })
 
         def check_job_finished():
             status = job_manager.get_job_status(job_id_1)
@@ -146,8 +156,13 @@ class TestRuntimeEnv:
         assert job_manager.get_job_stdout(job_id_1) == b"JOB_1_VAR"
 
         job_manager.submit_job(
-            job_id_2, f"python command_scripts/ray_script_prints_env_var.py",
-            runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_2_VAR"}})
+            job_id_2,
+            f"python command_scripts/ray_script_prints_env_var.py",
+            runtime_env={
+                "env_vars": {
+                    "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_2_VAR"
+                }
+            })
 
         def check_job_finished():
             status = job_manager.get_job_status(job_id_2)
@@ -161,8 +176,13 @@ class TestRuntimeEnv:
         job_id_1 = str(uuid4())
 
         job_manager.submit_job(
-            job_id_1, f"python command_scripts/ray_script_overrides_env_var.py",
-            runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"}})
+            job_id_1,
+            f"python command_scripts/ray_script_overrides_env_var.py",
+            runtime_env={
+                "env_vars": {
+                    "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"
+                }
+            })
 
         def check_job_finished():
             status = job_manager.get_job_status(job_id_1)
