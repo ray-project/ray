@@ -140,7 +140,8 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     reference_counter_->UpdateResubmittedTaskReferences(return_ids, *task_deps);
     if (spec.IsActorTask()) {
       const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
-      reference_counter_->UpdateResubmittedTaskReferences(return_ids, {actor_creation_return_id});
+      reference_counter_->UpdateResubmittedTaskReferences(return_ids,
+                                                          {actor_creation_return_id});
     }
 
     retry_task_callback_(spec, /*delay=*/false);
@@ -475,9 +476,9 @@ void TaskManager::RemoveFinishedTaskReferences(
   }
 
   std::vector<ObjectID> deleted;
-  reference_counter_->UpdateFinishedTaskReferences(
-      return_ids,
-      plasma_dependencies, release_lineage, borrower_addr, borrowed_refs, &deleted);
+  reference_counter_->UpdateFinishedTaskReferences(return_ids, plasma_dependencies,
+                                                   release_lineage, borrower_addr,
+                                                   borrowed_refs, &deleted);
   in_memory_store_->Delete(deleted);
 }
 

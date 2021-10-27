@@ -112,7 +112,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids_to_add,
+      const std::vector<ObjectID> return_ids,
+      const std::vector<ObjectID> &argument_ids_to_add,
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
 
@@ -121,7 +122,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// have already incremented them when the task was first submitted.
   ///
   /// \param[in] argument_ids The arguments of the task to add references for.
-  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids)
+  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> return_ids,
+                                       const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
@@ -138,7 +140,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateFinishedTaskReferences(const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids,
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID> return_ids,
+                                    const std::vector<ObjectID> &argument_ids,
                                     bool release_lineage, const rpc::Address &worker_addr,
                                     const ReferenceTableProto &borrowed_refs,
                                     std::vector<ObjectID> *deleted)

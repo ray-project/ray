@@ -388,8 +388,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
                                    const std::string &spilled_url,
-                                   const NodeID &spilled_node_id,
-                                   bool pending_creation,
+                                   const NodeID &spilled_node_id, bool pending_creation,
                                    size_t object_size) {
   // Exit if the Pull request has already been fulfilled or canceled.
   auto it = object_pull_requests_.find(object_id);
@@ -488,11 +487,15 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
 
   RAY_LOG(WARNING) << "Object neither in memory nor external storage " << object_id.Hex();
   if (request.expiration_time_seconds == 0) {
-    request.expiration_time_seconds = get_time_seconds_() + RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
+    request.expiration_time_seconds =
+        get_time_seconds_() +
+        RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
   } else if (request.pending_object_creation) {
     // Object is pending creation, wait for the task that creates the object to
     // finish.
-    request.expiration_time_seconds = get_time_seconds_() + RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
+    request.expiration_time_seconds =
+        get_time_seconds_() +
+        RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
   } else if (get_time_seconds_() > request.expiration_time_seconds) {
     // Object has no locations and is not being reconstructed by its owner.
     fail_pull_request_(object_id);

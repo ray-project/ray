@@ -49,8 +49,7 @@ void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
 bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_info,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
                            std::unordered_set<NodeID> *node_ids, std::string *spilled_url,
-                           NodeID *spilled_node_id,
-                           bool *pending_creation,
+                           NodeID *spilled_node_id, bool *pending_creation,
                            size_t *object_size) {
   bool is_updated = false;
   std::unordered_set<NodeID> new_node_ids;
@@ -236,8 +235,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   }
   auto location_updated = UpdateObjectLocations(
       location_info, gcs_client_, &it->second.current_object_locations,
-      &it->second.spilled_url, &it->second.spilled_node_id,
-      &it->second.pending_creation,
+      &it->second.spilled_url, &it->second.spilled_node_id, &it->second.pending_creation,
       &it->second.object_size);
 
   // If the lookup has failed, that means the object is lost. Trigger the callback in this
@@ -264,8 +262,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
       // See https://github.com/ray-project/ray/issues/2959.
       callback_pair.second(object_id, it->second.current_object_locations,
                            it->second.spilled_url, it->second.spilled_node_id,
-                           it->second.pending_creation,
-                           it->second.object_size);
+                           it->second.pending_creation, it->second.object_size);
     }
   }
 }
@@ -340,8 +337,10 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     // structures shared with the caller and potentially invalidating caller
     // iterators. See https://github.com/ray-project/ray/issues/2959.
     io_service_.post(
-        [callback, locations, spilled_url, spilled_node_id, pending_creation, object_size, object_id]() {
-          callback(object_id, locations, spilled_url, spilled_node_id, pending_creation, object_size);
+        [callback, locations, spilled_url, spilled_node_id, pending_creation, object_size,
+         object_id]() {
+          callback(object_id, locations, spilled_url, spilled_node_id, pending_creation,
+                   object_size);
         },
         "ObjectDirectory.SubscribeObjectLocations");
   }
@@ -385,8 +384,10 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     // structures shared with the caller and potentially invalidating caller
     // iterators. See https://github.com/ray-project/ray/issues/2959.
     io_service_.post(
-        [callback, object_id, locations, spilled_url, spilled_node_id, pending_creation, object_size]() {
-          callback(object_id, locations, spilled_url, spilled_node_id, pending_creation, object_size);
+        [callback, object_id, locations, spilled_url, spilled_node_id, pending_creation,
+         object_size]() {
+          callback(object_id, locations, spilled_url, spilled_node_id, pending_creation,
+                   object_size);
         },
         "ObjectDirectory.LookupLocations");
   } else {
@@ -400,7 +401,8 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
       // See https://github.com/ray-project/ray/issues/2959.
       io_service_.post(
           [callback, object_id]() {
-            callback(object_id, std::unordered_set<NodeID>(), "", NodeID::Nil(), /*pending_creation=*/false, 0);
+            callback(object_id, std::unordered_set<NodeID>(), "", NodeID::Nil(),
+                     /*pending_creation=*/false, 0);
           },
           "ObjectDirectory.LookupLocations");
       return Status::OK();
@@ -432,8 +434,8 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
             mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
           } else {
             UpdateObjectLocations(reply.object_location_info(), gcs_client_, &node_ids,
-                                  &spilled_url, &spilled_node_id,
-            &pending_creation, &object_size);
+                                  &spilled_url, &spilled_node_id, &pending_creation,
+                                  &object_size);
           }
           RAY_LOG(DEBUG) << "Looked up locations for " << object_id
                          << ", returning: " << node_ids.size()
@@ -444,7 +446,8 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
           // caller iterators since this is already running in the core worker
           // client's lookup callback stack.
           // See https://github.com/ray-project/ray/issues/2959.
-          callback(object_id, node_ids, spilled_url, spilled_node_id, pending_creation, object_size);
+          callback(object_id, node_ids, spilled_url, spilled_node_id, pending_creation,
+                   object_size);
         });
   }
   return Status::OK();

@@ -263,7 +263,8 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
-    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids_to_add,
+    const std::vector<ObjectID> return_ids,
+    const std::vector<ObjectID> &argument_ids_to_add,
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
@@ -310,9 +311,9 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
-    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids, bool release_lineage,
-    const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
-    std::vector<ObjectID> *deleted) {
+    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids,
+    bool release_lineage, const rpc::Address &worker_addr,
+    const ReferenceTableProto &borrowed_refs, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreation(return_id, false);
@@ -1042,7 +1043,8 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
   return true;
 }
 
-void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id, bool pending_creation) {
+void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
+                                                   bool pending_creation) {
   auto it = object_id_refs_.find(object_id);
   bool push = false;
   if (it != object_id_refs_.end()) {
@@ -1206,8 +1208,8 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
                  << " locations, spilled url: " << spilled_url
                  << ", spilled node ID: " << spilled_node_id
                  << ", and object size: " << object_size
-                 << ", and primary node ID: " << primary_node_id
-                 << ", pending creation? " << it->second.pending_creation;
+                 << ", and primary node ID: " << primary_node_id << ", pending creation? "
+                 << it->second.pending_creation;
   rpc::PubMessage pub_message;
   pub_message.set_key_id(object_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
