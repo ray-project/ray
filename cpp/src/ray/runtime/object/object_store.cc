@@ -13,11 +13,12 @@
 // limitations under the License.
 
 #include "object_store.h"
-#include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 
 #include <memory>
 #include <utility>
+
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 namespace internal {
