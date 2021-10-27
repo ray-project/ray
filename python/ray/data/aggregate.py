@@ -42,7 +42,7 @@ class AggregateFn(object):
 
 
 class Count(AggregateFn):
-    """Defines count aggregation"""
+    """Defines count aggregation."""
 
     def __init__(self):
         super().__init__(
@@ -53,7 +53,7 @@ class Count(AggregateFn):
 
 
 class Sum(AggregateFn):
-    """Defines sum aggregation"""
+    """Defines sum aggregation."""
 
     def __init__(self, on: AggregateOnT = lambda r: r):
         on_fn = on
@@ -71,7 +71,7 @@ class Sum(AggregateFn):
 
 
 class Min(AggregateFn):
-    """Defines min aggregation"""
+    """Defines min aggregation."""
 
     def __init__(self, on: AggregateOnT = lambda r: r):
         on_fn = on
@@ -90,7 +90,7 @@ class Min(AggregateFn):
 
 
 class Max(AggregateFn):
-    """Defines max aggregation"""
+    """Defines max aggregation."""
 
     def __init__(self, on: AggregateOnT = lambda r: r):
         on_fn = on
@@ -109,7 +109,7 @@ class Max(AggregateFn):
 
 
 class Mean(AggregateFn):
-    """Defines mean aggregation"""
+    """Defines mean aggregation."""
 
     def __init__(self, on: AggregateOnT = lambda r: r):
         on_fn = on
