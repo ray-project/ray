@@ -87,7 +87,18 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param task_dependency_manager_ Used to fetch task's dependencies.
   /// \param is_owner_alive: A callback which returns if the owner process is alive
   /// (according to our ownership model).
-  /// \param gcs_client: A gcs client.
+  /// \param get_node_info: Function that returns the node info for a node.
+  /// \param announce_infeasible_task: Callback that invokes the user if a task
+  ///        is infeasible.
+  /// \param worker_pool: A reference to the worker pool.
+  /// \param leased_workers: A reference to the leased workers map.
+  /// \param get_task_arguments: A callback for getting a tasks' arguments by
+  ///        their ids.
+  /// \param max_pinned_task_arguments_bytes: The cap on pinned arguments.
+  /// \param get_time: A callback which returns the current time in seconds.
+  /// \param sched_cls_cap_interval_ms: The time before we increase the cap
+  ///        on the number of tasks that can run per scheduling class. If set
+  ///        to 0, there is no cap. If it's a large number, the cap is hard.
   ClusterTaskManager(
       const NodeID &self_node_id,
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
@@ -100,7 +111,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
-      size_t max_pinned_task_arguments_bytes);
+      size_t max_pinned_task_arguments_bytes,
+      std::function<double(void)> get_time = [] { return absl::GetCurrentTimeNanos(); },
+      int64_t sched_cls_cap_interval_ms =
+          RayConfig::instance().scheduling_class_capacity_interval_ms());
 
   void SetWorkerBacklog(SchedulingClass scheduling_class, const WorkerID &worker_id,
                         int64_t backlog_size) override;
@@ -276,7 +290,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       tasks_to_schedule_;
 
   struct SchedulingClassInfo {
-  SchedulingClassInfo() : num_running_tasks(0), capacity(0), next_update_time(0), num_updates(0) {}
+    SchedulingClassInfo()
+        : num_running_tasks(0), capacity(0), next_update_time(0), num_updates(0) {}
     /// The current total number of running tasks fo this scheduling class.
     int64_t num_running_tasks;
     /// The total number of tasks that can run from this scheduling class.
@@ -360,12 +375,16 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The maximum amount of bytes that can be used by executing task arguments.
   size_t max_pinned_task_arguments_bytes_;
 
+  /// Returns the current time in seconds
+  std::function<double()> get_time_;
+
+  /// The initial interval before the cap on the number of worker processes is increased.
+  const int64_t sched_cls_cap_interval_ms_;
+
   /// Metrics collected since the last report.
   uint64_t metric_tasks_queued_;
   uint64_t metric_tasks_dispatched_;
   uint64_t metric_tasks_spilled_;
-
-  const bool scheduling_class_backpressure_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.

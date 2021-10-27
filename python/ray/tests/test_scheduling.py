@@ -590,7 +590,7 @@ def test_out_of_order_scheduling(shutdown_only):
     first = foo.remote((None, ))
     second = foo.remote((first, ))
 
-    print(ray.get(first))
+    print(ray.get(second))
 
 
 def test_limit_concurrency(shutdown_only):
