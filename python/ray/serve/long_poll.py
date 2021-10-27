@@ -15,7 +15,7 @@ from ray.serve.utils import logger
 # that will slow down, or even block controller actor's event loop if near
 # its max_concurrency limit. Therefore we timeout a polling request after
 # a few seconds and let each client retry on their end.
-LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = 5
+LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = 60
 
 
 class LongPollNamespace(Enum):
