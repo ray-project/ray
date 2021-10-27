@@ -626,7 +626,7 @@ class BackendState:
         # Grace period to prevent forcing updates on long polling host to all
         # existing long polling clients on each HTTPProxy upon controller
         # actor failure.
-        self._long_poll_host_update_time = None
+        self._long_poll_host_update_time = time.time()
 
     def get_target_state_checkpoint_data(self):
         """
@@ -712,8 +712,10 @@ class BackendState:
         ]
 
     def _notify_running_replicas_changed(self):
-        if (self._long_poll_host_update_time
-                and time.time() > self._long_poll_host_update_time):
+        if time.time() > self._long_poll_host_update_time:
+            # During controller recovery, wait for grace period to bring
+            # replicas back as RUNNING before updating all long polling clients
+            # on HTTPProxy
             self._long_poll_host.notify_changed(
                 (LongPollNamespace.RUNNING_REPLICAS, self._name),
                 self.get_running_replica_infos(),
