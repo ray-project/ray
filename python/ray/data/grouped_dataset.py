@@ -65,6 +65,7 @@ class GroupedDataset(Generic[T]):
             an Arrow dataset of two columns where first column is
             the groupby key and the second column is the corresponding
             aggregation result.
+            If groupby key is None then the key part of return is omitted.
         """
 
         if len(aggs) == 0:
@@ -130,6 +131,7 @@ class GroupedDataset(Generic[T]):
             an Arrow dataset of [k, v] columns
             where k is the groupby key and
             v is the number of rows with that key.
+            If groupby key is None then the key part of return is omitted.
         """
         return self.aggregate(Count())
 
@@ -153,6 +155,7 @@ class GroupedDataset(Generic[T]):
             an Arrow dataset of [k, v] columns
             where k is the groupby key and
             v is the sum result.
+            If groupby key is None then the key part of return is omitted.
         """
         return self.aggregate(Sum(on))
 
@@ -176,6 +179,7 @@ class GroupedDataset(Generic[T]):
             an Arrow dataset of [k, v] columns
             where k is the groupby key and
             v is the min result.
+            If groupby key is None then the key part of return is omitted.
         """
         return self.aggregate(Min(on))
 
@@ -199,6 +203,7 @@ class GroupedDataset(Generic[T]):
             an Arrow dataset of [k, v] columns
             where k is the groupby key and
             v is the max result.
+            If groupby key is None then the key part of return is omitted.
         """
         return self.aggregate(Max(on))
 
@@ -222,6 +227,7 @@ class GroupedDataset(Generic[T]):
             an Arrow dataset of [k, v] columns
             where k is the groupby key and
             v is the mean result.
+            If groupby key is None then the key part of return is omitted.
         """
         return self.aggregate(Mean(on))
 

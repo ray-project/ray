@@ -347,12 +347,13 @@ class ArrowBlockAccessor(BlockAccessor):
         This assumes the block is already sorted by key in ascending order.
 
         Args:
-            key: The column name of key.
+            key: The column name of key or None for global aggregation.
             agg: The aggregation to do.
 
         Returns:
             A sorted block of [k, v] columns where k is the groupby key
             and v is the partially combined accumulator.
+            If key is None then the k column is omitted.
         """
         # TODO(jjyao) This can be implemented natively in Arrow
         key_fn = (lambda r: r[key]) if key is not None else (lambda r: None)
@@ -411,13 +412,14 @@ class ArrowBlockAccessor(BlockAccessor):
 
         Args:
             blocks: A list of partially combined and sorted blocks.
-            key: The column name of key.
+            key: The column name of key or None for global aggregation.
             agg: The aggregation to do.
 
         Returns:
             A block of [k, v] columns and its metadata
             where k is the groupby key
             and v is the corresponding aggregation result.
+            If key is None then the k column is omitted.
         """
 
         key_fn = (lambda r: r[r._row.schema.names[0]]

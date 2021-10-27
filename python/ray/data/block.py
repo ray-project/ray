@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     import pyarrow
     from ray.data.impl.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
+    from ray.data.grouped_dataset import GroupKeyT
 
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
@@ -156,7 +157,7 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key, agg: "AggregateFn") -> Block[U]:
+    def combine(self, key: "GroupKeyT", agg: "AggregateFn") -> Block[U]:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -168,7 +169,8 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     @staticmethod
-    def aggregate_combined_blocks(blocks: List[Block], key, agg: "AggregateFn"
-                                  ) -> Tuple[Block[U], BlockMetadata]:
+    def aggregate_combined_blocks(
+            blocks: List[Block], key: "GroupKeyT",
+            agg: "AggregateFn") -> Tuple[Block[U], BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

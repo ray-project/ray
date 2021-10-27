@@ -155,12 +155,14 @@ class SimpleBlockAccessor(BlockAccessor):
         This assumes the block is already sorted by key in ascending order.
 
         Args:
-            key: The key function that returns the key from the row.
+            key: The key function that returns the key from the row
+                or None for global aggregation.
             agg: The aggregation to do.
 
         Returns:
-            A sorted block of (k, v) pairs where k is the groupby key
-            and v is the partially combined accumulator.
+            A sorted block of (k, v) tuples where k is the groupby
+            key and v is the partially combined accumulator.
+            If key is None then the k element of tuple is omitted.
         """
         key_fn = key if key else lambda r: None
         iter = self.iter_rows()
@@ -222,12 +224,14 @@ class SimpleBlockAccessor(BlockAccessor):
 
         Args:
             blocks: A list of partially combined and sorted blocks.
-            key: The key function that returns the key from the row.
+            key: The key function that returns the key from the row
+                or None for global aggregation.
             agg: The aggregation to do.
 
         Returns:
-            A block of (k, v) pairs and its metadata where k is the groupby key
-            and v is the corresponding aggregation result.
+            A block of (k, v) tuples and its metadata where k is the groupby
+            key and v is the corresponding aggregation result.
+            If key is None then the k element of tuple is omitted.
         """
 
         key_fn = (lambda r: r[0]) if key else (lambda r: 0)
