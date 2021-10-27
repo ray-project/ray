@@ -1,5 +1,6 @@
 package io.ray.serve;
 
+import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
@@ -31,14 +32,12 @@ public class RayServeReplicaTest {
 
       BackendConfig backendConfig =
           new BackendConfig().setBackendLanguage(BackendLanguage.JAVA.getNumber());
-      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
       DeploymentInfo deploymentInfo =
           new DeploymentInfo()
               .setName(backendTag)
               .setBackendConfig(backendConfig)
               .setBackendVersion(new BackendVersion(version))
-              .setBackendDef("io.ray.serve.ReplicaContext")
-              .setInitArgs(initArgs);
+              .setBackendDef(DummyBackendReplica.class.getName());
 
       ActorHandle<RayServeWrappedReplica> backendHandle =
           Ray.actor(
@@ -55,7 +54,7 @@ public class RayServeReplicaTest {
       // handle request
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
-      requestMetadata.setCallMethod("getBackendTag");
+      requestMetadata.setCallMethod(Constants.CALL_METHOD);
       RequestWrapper.Builder requestWrapper = RequestWrapper.newBuilder();
 
       ObjectRef<Object> resultRef =
@@ -65,12 +64,35 @@ public class RayServeReplicaTest {
                   requestMetadata.build().toByteArray(),
                   requestWrapper.build().toByteArray())
               .remote();
-      Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), "1");
 
       // reconfigure
       ObjectRef<Object> versionRef =
           backendHandle.task(RayServeWrappedReplica::reconfigure, (Object) null).remote();
       Assert.assertEquals(((BackendVersion) versionRef.get()).getCodeVersion(), version);
+
+      backendHandle.task(RayServeWrappedReplica::reconfigure, new Object()).remote().get();
+      resultRef =
+          backendHandle
+              .task(
+                  RayServeWrappedReplica::handleRequest,
+                  requestMetadata.build().toByteArray(),
+                  requestWrapper.build().toByteArray())
+              .remote();
+      Assert.assertEquals((String) resultRef.get(), "1");
+
+      backendHandle
+          .task(RayServeWrappedReplica::reconfigure, ImmutableMap.of("value", "100"))
+          .remote()
+          .get();
+      resultRef =
+          backendHandle
+              .task(
+                  RayServeWrappedReplica::handleRequest,
+                  requestMetadata.build().toByteArray(),
+                  requestWrapper.build().toByteArray())
+              .remote();
+      Assert.assertEquals((String) resultRef.get(), "101");
 
       // get version
       versionRef = backendHandle.task(RayServeWrappedReplica::getVersion).remote();

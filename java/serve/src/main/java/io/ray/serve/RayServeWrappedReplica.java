@@ -169,7 +169,11 @@ public class RayServeWrappedReplica implements RayServeReplica {
         isCrossLanguage ? ServeProtoUtil.parseRequestWrapper((byte[]) requestArgs) : requestArgs);
   }
 
-  /** Check if the actor is healthy. */
+  /**
+   * Check if the actor is healthy.
+   *
+   * @return true if the actor is health, or return false.
+   */
   @Override
   public boolean checkHealth() {
     return backend.checkHealth();
@@ -185,13 +189,20 @@ public class RayServeWrappedReplica implements RayServeReplica {
     return backend.prepareForShutdown();
   }
 
+  /**
+   * Reconfigure user's configuration in the callable object through its reconfigure method.
+   *
+   * @param userConfig new user's configuration
+   * @return BackendVersion. If the current invocation is crossing language, the BackendVersion is
+   *     serialized to protobuf byte[].
+   */
   @Override
   public Object reconfigure(Object userConfig) {
     BackendVersion backendVersion =
         backend.reconfigure(
             deploymentInfo.getBackendConfig().isCrossLanguage() && userConfig != null
-                ? new Object[] {MessagePackSerializer.decode((byte[]) userConfig, Object.class)}
-                : (Object[]) userConfig);
+                ? MessagePackSerializer.decode((byte[]) userConfig, Object.class)
+                : userConfig);
     return deploymentInfo.getBackendConfig().isCrossLanguage()
         ? ServeProtoUtil.toProtobuf(backendVersion).toByteArray()
         : backendVersion;

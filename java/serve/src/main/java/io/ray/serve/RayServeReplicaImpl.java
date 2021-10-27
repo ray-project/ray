@@ -259,6 +259,8 @@ public class RayServeReplicaImpl implements RayServeReplica {
   /**
    * Perform graceful shutdown. Trigger a graceful shutdown protocol that will wait for all the
    * queued tasks to be completed and return to the controller.
+   *
+   * @return true if it is ready for shutdown.
    */
   @Override
   public synchronized boolean prepareForShutdown() {
@@ -297,11 +299,6 @@ public class RayServeReplicaImpl implements RayServeReplica {
     return true;
   }
 
-  /**
-   * Reconfigure user's configuration in the callable object through its reconfigure method.
-   *
-   * @param userConfig new user's configuration
-   */
   @Override
   public BackendVersion reconfigure(Object userConfig) {
     BackendVersion backendVersion = new BackendVersion(version.getCodeVersion(), userConfig);

@@ -4,9 +4,15 @@ public interface RayServeReplica {
 
   Object handleRequest(Object requestMetadata, Object requestArgs);
 
-  public Object reconfigure(Object userConfig);
+  default Object reconfigure(Object userConfig) {
+    return new BackendVersion(null, userConfig);
+  }
 
-  public boolean checkHealth();
+  default boolean checkHealth() {
+    return true;
+  }
 
-  public boolean prepareForShutdown();
+  default boolean prepareForShutdown() {
+    return true;
+  }
 }
