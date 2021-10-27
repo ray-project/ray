@@ -116,8 +116,8 @@ class TestRuntimeEnv:
         """
         job_id: str = str(uuid4())
         job_id = job_manager.submit_job(
-            job_id, "echo $TEST_SUBPROCESS_JOB_CONFIG",
-            runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG": "233"}})
+            job_id, "echo $TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR",
+            runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "233"}})
         assert isinstance(job_id, str)
 
         def check_job_finished():
@@ -130,4 +130,42 @@ class TestRuntimeEnv:
 
     def test_multiple_runtime_envs(self, job_manager):
         # Test that you can run two jobs in different envs without conflict.
-        pass
+        job_1_script = f"""
+import ray
+ray.init(address='auto')
+
+@ray.remote
+def foo():
+    return 'job_1!'
+
+print(ray.get(foo.remote()))
+        """
+
+        job_2_script = f"""
+import ray
+ray.init(address='auto')
+
+@ray.remote
+def foo():
+    return 'job_2!'
+
+print(ray.get(foo.remote()))
+        """
+
+        job_id_1 = str(uuid4())
+        job_id_2 = str(uuid4())
+
+        job_id = job_manager.submit_job(
+            job_id_1, f"python command_scripts/ray_script_prints_env_var.py",
+            runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"}})
+
+        def check_job_finished():
+            status = job_manager.get_job_status(job_id_1)
+            assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
+            return status == JobStatus.SUCCEEDED
+
+        wait_for_condition(check_job_finished)
+        assert job_manager.get_job_stdout(job_id_1) == b"JOB_1_VAR"
+        # job_id = job_manager.submit_job(
+        #     job_id_2, "echo $TEST_SUBPROCESS_JOB_CONFIG",
+        #     runtime_env={"env_vars": {"TEST_SUBPROCESS_JOB_CONFIG": job_id_2}})

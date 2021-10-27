@@ -796,16 +796,20 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    if runtime_env:
+
+    if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
+        # Set runtime_env in job_config if passed as env variable, such as
+        # ray job submission with driver script executed in subprocess
+        job_config_json = json.loads(
+            os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
+        job_config = ray.job_config.JobConfig.from_json(job_config_json)
+    # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
+    # higher priority in case user also provided runtime_env for ray.init()
+    elif runtime_env:
         # Set runtime_env in job_config if passed in as part of ray.init()
         if job_config is None:
             job_config = ray.job_config.JobConfig()
         job_config.set_runtime_env(runtime_env)
-    elif RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
-        # Set runtime_env in job_config if passed as env variable, such as
-        # ray job submission with driver script executed in subprocess
-        job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
-        job_config = ray.job_config.JobConfig.from_json(job_config_json)
 
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
