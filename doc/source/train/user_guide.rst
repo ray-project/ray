@@ -556,7 +556,7 @@ You may also config ``CheckpointStrategy`` to keep the "N best" checkpoints pers
 
     def train_func():
         # first checkpoint
-        train.save_checkpoint(loss=2) d
+        train.save_checkpoint(loss=2)
         # second checkpoint
         train.save_checkpoint(loss=4)
         # third checkpoint
