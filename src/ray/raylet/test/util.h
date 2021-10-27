@@ -126,12 +126,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return address_;
   }
-
-  Status AssignTask(const RayTask &task, const ResourceIdSet &resource_id_set) {
-    RAY_CHECK(false) << "Method unused";
-    Status s;
-    return s;
-  }
+  
   void DirectActorCallArgWaitComplete(int64_t tag) {
     RAY_CHECK(false) << "Method unused";
   }
