@@ -446,6 +446,19 @@ def send_local_file_to_remote_file(local_path: str, remote_path: str, ip: str):
     return ray.get(_remote_write.remote(stream, remote_path))
 
 
+def fetch_remote_file_to_local_file(remote_path: str, ip: str,
+                                    local_path: str):
+    def _read(path: str):
+        with open(path, "rb") as f:
+            return f.read
+
+    _remote_read = ray.remote(resources={f"node:{ip}": 0.01})(_read)
+    stream = ray.get(_remote_read.remote(remote_path))
+
+    with open(local_path, "wb") as f:
+        f.write(stream)
+
+
 def fetch_trial_node_dirs_to_tmp_dir(
         trials: List[TrialStub]) -> Dict[TrialStub, str]:
     dirmap = {}
@@ -1282,5 +1295,9 @@ if __name__ == "__main__":
         ray.get(
             _run_test_remote.remote(args.variant, args.bucket,
                                     remote_tune_script))
+
+        print("Fetching remote release test result file")
+        fetch_remote_file_to_local_file("/tmp/release_test_out.json", ip,
+                                        "/tmp/release_test_out.json")
 
     print(f"Test for variant {args.variant} SUCCEEDED")
