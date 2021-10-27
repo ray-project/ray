@@ -11,7 +11,7 @@ public class BackendConfig implements Serializable {
 
   private int maxConcurrentQueries = 100;
 
-  private Object[] userConfig;
+  private Object userConfig;
 
   private double gracefulShutdownWaitLoopS = 2;
 
@@ -40,11 +40,11 @@ public class BackendConfig implements Serializable {
     return this;
   }
 
-  public Object[] getUserConfig() {
+  public Object getUserConfig() {
     return userConfig;
   }
 
-  public BackendConfig setUserConfig(Object[] userConfig) {
+  public BackendConfig setUserConfig(Object userConfig) {
     this.userConfig = userConfig;
     return this;
   }

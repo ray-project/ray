@@ -66,10 +66,8 @@ public class ServeProtoUtil {
     backendConfig.setBackendLanguage(pbBackendConfig.getBackendLanguageValue());
     if (pbBackendConfig.getUserConfig() != null && pbBackendConfig.getUserConfig().size() != 0) {
       backendConfig.setUserConfig(
-          new Object[] {
-            MessagePackSerializer.decode(
-                pbBackendConfig.getUserConfig().toByteArray(), Object.class)
-          });
+          MessagePackSerializer.decode(
+              pbBackendConfig.getUserConfig().toByteArray(), Object.class));
     }
     return backendConfig;
   }
