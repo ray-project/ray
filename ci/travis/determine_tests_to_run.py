@@ -77,6 +77,7 @@ if __name__ == "__main__":
     RAY_CI_RLLIB_AFFECTED = 0  # Whether RLlib minimal tests should be run.
     RAY_CI_RLLIB_FULL_AFFECTED = 0  # Whether full RLlib tests should be run.
     RAY_CI_SERVE_AFFECTED = 0
+    RAY_CI_CORE_CPP_AFFECTED = 0
     RAY_CI_CPP_AFFECTED = 0
     RAY_CI_JAVA_AFFECTED = 0
     RAY_CI_PYTHON_AFFECTED = 0
@@ -201,6 +202,7 @@ if __name__ == "__main__":
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
+                RAY_CI_CORE_CPP_AFFECTED = 1
                 RAY_CI_CPP_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
@@ -225,6 +227,7 @@ if __name__ == "__main__":
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
+                RAY_CI_CORE_CPP_AFFECTED = 1
                 RAY_CI_CPP_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
@@ -263,6 +266,7 @@ if __name__ == "__main__":
         "RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED),
         "RAY_CI_DASHBOARD_AFFECTED={}".format(RAY_CI_DASHBOARD_AFFECTED),
         "RAY_CI_DOC_AFFECTED={}".format(RAY_CI_DOC_AFFECTED),
+        "RAY_CI_CORE_CPP_AFFECTED={}".format(RAY_CI_CORE_CPP_AFFECTED),
         "RAY_CI_CPP_AFFECTED={}".format(RAY_CI_CPP_AFFECTED),
         "RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED),
         "RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED),
