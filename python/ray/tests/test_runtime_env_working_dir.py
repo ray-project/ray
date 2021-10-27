@@ -82,7 +82,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
         ray.init(
             address,
             runtime_env={
-                "py_modules": [os.path.join(tmp_working_dir, "test_module")]
+                "py_modules": [str(Path(tmp_working_dir) / "test_module")]
             })
 
     @ray.remote
@@ -311,6 +311,8 @@ def test_multi_node(start_cluster, option: str, source: str):
     if option == "working_dir":
         ray.init(address, runtime_env={"working_dir": source})
     elif option == "py_modules":
+        if source != S3_PACKAGE_URI:
+            source = str(Path(source) / "test_module")
         ray.init(address, runtime_env={"py_modules": [source]})
 
     @ray.remote(num_cpus=1)
@@ -358,6 +360,9 @@ def test_job_level_gc(start_cluster, option: str, source: str):
     if option == "working_dir":
         ray.init(address, runtime_env={"working_dir": source})
     elif option == "py_modules":
+        pytest.skip("py_modules GC not implemented.")
+        if source != S3_PACKAGE_URI:
+            source = str(Path(source) / "test_module")
         ray.init(address, runtime_env={"py_modules": [source]})
 
     # For a local directory, the package should be in the GCS.
@@ -437,6 +442,9 @@ def test_detached_actor_gc(start_cluster, option: str, source: str):
         ray.init(
             address, namespace="test", runtime_env={"working_dir": source})
     elif option == "py_modules":
+        pytest.skip("py_modules GC not implemented.")
+        if source != S3_PACKAGE_URI:
+            source = str(Path(source) / "test_module")
         ray.init(
             address, namespace="test", runtime_env={"py_modules": [source]})
 
