@@ -235,7 +235,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
         if (status == PopWorkerStatus::JobConfigMissing) {
           cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
         } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
-          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_LATE_LIMITED;
+          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED;
         } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
           cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
         } else {
@@ -359,7 +359,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // should stay on this node. We can skip the rest of the shape because the
           // scheduler will make the same decision.
           work->SetStateWaiting(
-              internal::UnscheduledWorkCause::WAITING_FOR_REMOTE_NODES_RESOURCES);
+              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
           break;
         }
         if (!spec.GetDependencies().empty()) {
@@ -872,9 +872,9 @@ void ClusterTaskManager::FillResourceUsage(
   }
 }
 
-bool ClusterTaskManager::AnyPendingTasks(RayTask *exemplar, bool *any_pending,
-                                         int *num_pending_actor_creation,
-                                         int *num_pending_tasks) const {
+bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
+    RayTask *exemplar, bool *any_pending, int *num_pending_actor_creation,
+    int *num_pending_tasks) const {
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
@@ -895,7 +895,7 @@ bool ClusterTaskManager::AnyPendingTasks(RayTask *exemplar, bool *any_pending,
       if (work.GetUnscheduledCause() !=
               internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION &&
           work.GetUnscheduledCause() !=
-              internal::UnscheduledWorkCause::WAITING_FOR_REMOTE_NODES_RESOURCES &&
+              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE &&
           work.GetUnscheduledCause() !=
               internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
         continue;
@@ -962,7 +962,7 @@ std::string ClusterTaskManager::DebugStr() const {
                  internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
         num_waiting_for_plasma_memory += 1;
       } else if (work->GetUnscheduledCause() ==
-                 internal::UnscheduledWorkCause::WAITING_FOR_REMOTE_NODES_RESOURCES) {
+                 internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE) {
         num_waiting_for_remote_node_resources += 1;
       } else if (work->GetUnscheduledCause() ==
                  internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST) {
@@ -971,7 +971,7 @@ std::string ClusterTaskManager::DebugStr() const {
                  internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT) {
         num_worker_not_started_by_registration_timeout += 1;
       } else if (work->GetUnscheduledCause() ==
-                 internal::UnscheduledWorkCause::WORKER_NOT_FOUND_LATE_LIMITED) {
+                 internal::UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED) {
         num_worker_not_started_by_process_rate_limit += 1;
       }
     }

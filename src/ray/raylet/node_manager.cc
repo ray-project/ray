@@ -687,7 +687,12 @@ void NodeManager::HandleReleaseUnusedBundles(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-// See https://github.com/ray-project/ray/issues/5790 for details.
+// This warns users that there could be the resource deadlock. It works this way;
+// - If there's no available workers for scheduling
+// - But if there are still pending tasks waiting for resource acquisition
+// It means the cluster might not have enough resources to be in progress.
+// Note that this can print the false negative messages
+// e.g., there are many actors taking up resources for a long time.
 void NodeManager::WarnResourceDeadlock() {
   ray::RayTask exemplar;
   bool any_pending = false;
@@ -705,8 +710,8 @@ void NodeManager::WarnResourceDeadlock() {
   }
 
   // Check if any tasks are blocked on resource acquisition.
-  if (!cluster_task_manager_->AnyPendingTasks(&exemplar, &any_pending,
-                                              &pending_actor_creations, &pending_tasks)) {
+  if (!cluster_task_manager_->AnyPendingTasksForResourceAcquisition(
+          &exemplar, &any_pending, &pending_actor_creations, &pending_tasks)) {
     // No pending tasks, no need to warn.
     resource_deadlock_warned_ = 0;
     return;

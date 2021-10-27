@@ -46,18 +46,19 @@ enum WorkStatus {
 enum UnscheduledWorkCause {
   /// Waiting for acquiring resources.
   WAITING_FOR_RESOURCE_ACQUISITION,
-  /// Waiting for more memory to be available. This is set when we can't pin task
+  /// Waiting for more plasma store memory to be available. This is set when we can't pin
+  /// task
   /// arguments due to the lack of memory.
   WAITING_FOR_AVAILABLE_PLASMA_MEMORY,
-  /// Waiting for spilling because all of nodes are unavailable to schedule tasks.
-  WAITING_FOR_REMOTE_NODES_RESOURCES,
+  /// Pending because there's no node that satisfies the resource in the cluster.
+  WAITING_FOR_RESOURCES_AVAILABLE,
   /// Waiting because the worker wasn't available since job config for the worker wasn't
   /// registered yet.
   WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST,
   /// Waiting becasue the worker wasn't available since it has registration timeout.
   WORKER_NOT_FOUND_REGISTRATION_TIMEOUT,
   /// Waiting because the worker wasn't available since it was rate limited.
-  WORKER_NOT_FOUND_LATE_LIMITED,
+  WORKER_NOT_FOUND_RATE_LIMITED,
 };
 
 /// Work represents all the information needed to make a scheduling decision.
@@ -208,9 +209,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in] num_pending_tasks Number of pending tasks.
   /// \param[in] any_pending True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasks(RayTask *exemplar, bool *any_pending,
-                       int *num_pending_actor_creation,
-                       int *num_pending_tasks) const override;
+  bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar, bool *any_pending,
+                                             int *num_pending_actor_creation,
+                                             int *num_pending_tasks) const override;
 
   /// (Step 5) Call once a task finishes (i.e. a worker is returned).
   ///

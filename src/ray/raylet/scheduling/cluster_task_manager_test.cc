@@ -1082,7 +1082,7 @@ TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
 }
 
-TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
+TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   /*
     Check if the manager can correctly identify pending tasks.
    */
@@ -1109,8 +1109,8 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
-  ASSERT_FALSE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
-                                             &pending_actor_creations, &pending_tasks));
+  ASSERT_FALSE(task_manager_.AnyPendingTasksForResourceAcquisition(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
 
   // task1: running, task2: queued.
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
@@ -1123,8 +1123,8 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   task_manager_.QueueAndScheduleTask(task2, &reply2, callback2);
   pool_.TriggerCallbacks();
   ASSERT_FALSE(*callback_occurred2);
-  ASSERT_TRUE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
-                                            &pending_actor_creations, &pending_tasks));
+  ASSERT_TRUE(task_manager_.AnyPendingTasksForResourceAcquisition(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
 }
 
 TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {

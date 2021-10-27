@@ -190,9 +190,7 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
     num_parents = 6
     num_children = 6
     death_probability = 0.95
-    # TODO(sang): Currently setting this to 10 creates segfault
-    # which fails tests.
-    max_concurrency = 1
+    max_concurrency = 10
 
     for _ in range(num_remote_nodes):
         cluster.add_node(num_cpus=2)
