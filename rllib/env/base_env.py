@@ -173,13 +173,12 @@ class BaseEnv:
                 )
             # Sub-envs are not ray.remote actors.
             else:
-                env = VectorEnv.wrap(
+                env = VectorEnv.vectorize_gym_envs(
                     make_env=make_env,
                     existing_envs=[env],
                     num_envs=num_envs,
                     action_space=env.action_space,
                     observation_space=env.observation_space,
-                    policy_config=policy_config,
                 )
                 env = _VectorEnvToBaseEnv(env)
 
