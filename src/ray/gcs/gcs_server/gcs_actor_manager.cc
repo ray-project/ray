@@ -719,11 +719,11 @@ void GcsActorManager::OnWorkerDead(
     absl::StrAppend(&message, " Formatted creation task exception: ",
                     creation_task_exception->formatted_exception_string());
   }
-  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT ||
-      request.worker_failure().exit_type() == rpc::WorkerExitType::IDLE_EXIT) {
+  if (disconnect_type == rpc::WorkerExitType::INTENDED_EXIT ||
+      disconnect_type == rpc::WorkerExitType::IDLE_EXIT) {
     RAY_LOG(DEBUG) << message;
   } else {
-    RAY_LOG(ERROR) << message;
+    RAY_LOG(WARNING) << message;
   }
 
   bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_EXIT &&
