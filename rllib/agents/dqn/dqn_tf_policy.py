@@ -212,12 +212,12 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
 
 def get_distribution_inputs_and_class(policy: Policy,
                                       model: ModelV2,
-                                      obs_batch: TensorType,
+                                      input_dict: SampleBatch,
                                       *,
                                       explore=True,
                                       **kwargs):
     q_vals = compute_q_values(
-        policy, model, {"obs": obs_batch}, state_batches=None, explore=explore)
+        policy, model, input_dict, state_batches=None, explore=explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
@@ -342,7 +342,6 @@ def compute_q_values(policy: Policy,
 
     config = policy.config
 
-    input_dict["is_training"] = policy._get_is_training_placeholder()
     model_out, state = model(input_dict, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:

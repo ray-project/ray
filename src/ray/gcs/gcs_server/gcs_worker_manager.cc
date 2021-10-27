@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
+
 #include "ray/stats/stats.h"
 
 namespace ray {
@@ -57,14 +58,11 @@ void GcsWorkerManager::HandleReportWorkerFailure(
       stats::UnintentionalWorkerFailures.Record(1);
       // Only publish worker_id and raylet_id in address as they are the only fields used
       // by sub clients.
-      auto worker_failure_delta = std::make_shared<rpc::WorkerDeltaData>();
-      worker_failure_delta->set_worker_id(
-          worker_failure_data->worker_address().worker_id());
-      worker_failure_delta->set_raylet_id(
-          worker_failure_data->worker_address().raylet_id());
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Hex(),
-                                         worker_failure_delta->SerializeAsString(),
-                                         nullptr));
+      rpc::WorkerDeltaData worker_failure;
+      worker_failure.set_worker_id(worker_failure_data->worker_address().worker_id());
+      worker_failure.set_raylet_id(worker_failure_data->worker_address().raylet_id());
+      RAY_CHECK_OK(
+          gcs_publisher_->PublishWorkerFailure(worker_id, worker_failure, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
