@@ -691,7 +691,8 @@ class BackendState:
                 f"{new_backend_replica.replica_tag}, backend_tag: {self._name}"
             )
 
-        self._long_poll_host_update_time = time.time() + CONTROLLER_STARTUP_GRACE_PERIOD_S # noqa: E501
+        self._long_poll_host_update_time = time.time(
+        ) + CONTROLLER_STARTUP_GRACE_PERIOD_S  # noqa: E501
 
         # This halts all traffic in cluster.
         self._notify_running_replicas_changed()
@@ -711,8 +712,8 @@ class BackendState:
         ]
 
     def _notify_running_replicas_changed(self):
-        if (self._long_poll_host_update_time and
-                time.time() > self._long_poll_host_update_time):
+        if (self._long_poll_host_update_time
+                and time.time() > self._long_poll_host_update_time):
             self._long_poll_host.notify_changed(
                 (LongPollNamespace.RUNNING_REPLICAS, self._name),
                 self.get_running_replica_infos(),
