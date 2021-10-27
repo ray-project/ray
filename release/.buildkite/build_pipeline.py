@@ -252,13 +252,7 @@ USER_TESTS = {
     "~/ray/release/horovod_tests/horovod_tests.yaml": [
         ConnectTest(
             "horovod_realistic_test",
-            setup_commands=[
-                "export "
-                "HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 "
-                "HOROVOD_WITHOUT_TENSORFLOW=1 HOROVOD_WITHOUT_MXNET=1 "
-                "HOROVOD_WITH_PYTORCH=1"
-            ],
-            requirements_file="~/ray/release/horovod_tests"
+            requirements_file="../horovod_tests"
             "/driver_requirements.txt")
     ]
 }
