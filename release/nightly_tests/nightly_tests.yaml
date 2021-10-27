@@ -374,3 +374,4 @@
   run:
     timeout: 7200
     script: python stress_tests/test_placement_group.py
+  stable: false
