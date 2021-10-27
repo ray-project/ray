@@ -9,7 +9,6 @@ from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.agents.sac.sac import SACTrainer, \
     DEFAULT_CONFIG as SAC_CONFIG
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay
 from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
     UpdateTargetNetwork
@@ -17,6 +16,7 @@ from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
@@ -24,7 +24,6 @@ from ray.rllib.utils.typing import TrainerConfigDict
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
-replay_buffer = None
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -48,7 +47,11 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         "min_q_weight": 5.0,
         # Replay buffer should be larger or equal the size of the offline
         # dataset.
-        "buffer_size": int(1e6),
+        "buffer_size": DEPRECATED_VALUE,
+        "replay_buffer_config": {
+            "type": "LocalReplayBuffer",
+            "capacity": int(1e6),
+        },
     })
 # __sphinx_doc_end__
 # yapf: enable
@@ -74,29 +77,11 @@ def validate_config(config: TrainerConfigDict):
         try_import_tfp(error=True)
 
 
-def execution_plan(workers, config):
-    if config.get("prioritized_replay"):
-        prio_args = {
-            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
-            "prioritized_replay_beta": config["prioritized_replay_beta"],
-            "prioritized_replay_eps": config["prioritized_replay_eps"],
-        }
-    else:
-        prio_args = {}
+def execution_plan(workers, config, **kwargs):
+    assert "local_replay_buffer" in kwargs, (
+        "CQL execution plan requires a local replay buffer.")
 
-    local_replay_buffer = LocalReplayBuffer(
-        num_shards=1,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        replay_batch_size=config["train_batch_size"],
-        replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config.get("replay_sequence_length", 1),
-        replay_burn_in=config.get("burn_in", 0),
-        replay_zero_init_states=config.get("zero_init_states", True),
-        **prio_args)
-
-    global replay_buffer
-    replay_buffer = local_replay_buffer
+    local_replay_buffer = kwargs["local_replay_buffer"]
 
     def update_prio(item):
         samples, info_dict = item
@@ -150,8 +135,8 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
 def after_init(trainer):
     # Add the entire dataset to Replay Buffer (global variable)
-    global replay_buffer
     reader = trainer.workers.local_worker().input_reader
+    replay_buffer = trainer.local_replay_buffer
 
     # For d4rl, add the D4RLReaders' dataset to the buffer.
     if isinstance(trainer.config["input"], str) and \

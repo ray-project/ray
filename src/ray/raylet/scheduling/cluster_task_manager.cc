@@ -35,7 +35,7 @@ ClusterTaskManager::ClusterTaskManager(
     NodeInfoGetter get_node_info,
     std::function<void(const RayTask &)> announce_infeasible_task,
     WorkerPoolInterface &worker_pool,
-    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
@@ -116,9 +116,9 @@ bool ClusterTaskManager::SchedulePendingTasks() {
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
-      shapes_it = tasks_to_schedule_.erase(shapes_it);
+      tasks_to_schedule_.erase(shapes_it++);
     } else if (work_queue.empty()) {
-      shapes_it = tasks_to_schedule_.erase(shapes_it);
+      tasks_to_schedule_.erase(shapes_it++);
     } else {
       shapes_it++;
     }
@@ -262,7 +262,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
 
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
-    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -343,7 +343,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         bool did_spill = TrySpillback(work, is_infeasible);
         if (!did_spill) {
           // There must not be any other available nodes in the cluster, so the task
-          // should stay on this node. We can skip the reest of the shape because the
+          // should stay on this node. We can skip the rest of the shape because the
           // scheduler will make the same decision.
           break;
         }
@@ -379,9 +379,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     }
     if (is_infeasible) {
       infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
-      shapes_it = tasks_to_dispatch_.erase(shapes_it);
+      tasks_to_dispatch_.erase(shapes_it++);
     } else if (dispatch_queue.empty()) {
-      shapes_it = tasks_to_dispatch_.erase(shapes_it);
+      tasks_to_dispatch_.erase(shapes_it++);
     } else {
       shapes_it++;
     }
@@ -699,7 +699,7 @@ void ClusterTaskManager::FillResourceUsage(
 
   // 1-CPU optimization
   static const ResourceSet one_cpu_resource_set(
-      std::unordered_map<std::string, double>({{kCPU_ResourceLabel, 1}}));
+      absl::flat_hash_map<std::string, double>({{kCPU_ResourceLabel, 1}}));
   static const SchedulingClass one_cpu_scheduling_cls(
       TaskSpecification::GetSchedulingClass(one_cpu_resource_set));
   {
@@ -844,7 +844,7 @@ void ClusterTaskManager::FillResourceUsage(
 
   if (RayConfig::instance().enable_light_weight_resource_report()) {
     // Check whether resources have been changed.
-    std::unordered_map<std::string, double> local_resource_map(
+    absl::flat_hash_map<std::string, double> local_resource_map(
         data.resource_load().begin(), data.resource_load().end());
     ResourceSet local_resource(local_resource_map);
     if (last_reported_resources == nullptr ||
@@ -959,14 +959,14 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
       tasks_to_schedule_[shapes_it->first] = shapes_it->second;
-      shapes_it = infeasible_tasks_.erase(shapes_it);
+      infeasible_tasks_.erase(shapes_it++);
     }
   }
 }
 
 void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
-    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
+    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
@@ -1056,14 +1056,14 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
                    << " on a remote node that are no longer available";
   }
 
-  auto node_info_opt = get_node_info_(spillback_to);
-  RAY_CHECK(node_info_opt)
+  auto node_info_ptr = get_node_info_(spillback_to);
+  RAY_CHECK(node_info_ptr)
       << "Spilling back to a node manager, but no GCS info found for node "
       << spillback_to;
   auto reply = work->reply;
   reply->mutable_retry_at_raylet_address()->set_ip_address(
-      node_info_opt->node_manager_address());
-  reply->mutable_retry_at_raylet_address()->set_port(node_info_opt->node_manager_port());
+      node_info_ptr->node_manager_address());
+  reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
@@ -1078,7 +1078,7 @@ void ClusterTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {
   for (auto it = backlog_tracker_.begin(); it != backlog_tracker_.end();) {
     it->second.erase(worker_id);
     if (it->second.empty()) {
-      it = backlog_tracker_.erase(it);
+      backlog_tracker_.erase(it++);
     } else {
       ++it;
     }
@@ -1260,7 +1260,7 @@ bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
 }
 
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
-  std::unordered_map<std::string, FixedPoint> total_normal_task_resources;
+  absl::flat_hash_map<std::string, FixedPoint> total_normal_task_resources;
   const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
   for (auto &entry : leased_workers_) {
     std::shared_ptr<WorkerInterface> worker = entry.second;
@@ -1291,7 +1291,7 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
       }
     }
   }
-  return total_normal_task_resources;
+  return ResourceSet(total_normal_task_resources);
 }
 
 }  // namespace raylet

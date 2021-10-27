@@ -110,6 +110,7 @@ absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
     const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources,
     const std::function<bool(const NodeID &)> &node_filter_func) {
   absl::flat_hash_set<NodeID> result;
+  result.reserve(cluster_resources.size());
   for (const auto &iter : cluster_resources) {
     const auto &node_id = iter.first;
     if (node_filter_func == nullptr || node_filter_func(node_id)) {
@@ -142,13 +143,12 @@ SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
   absl::flat_hash_set<NodeID> candidate_nodes_copy(candidate_nodes);
   for (const auto &iter : required_resources_list) {
     // Score and sort nodes.
-    const auto &node_scores = ScoreNodes(iter, candidate_nodes_copy);
+    auto best_node = GetBestNode(iter, candidate_nodes_copy);
 
     // There are nodes to meet the scheduling requirements.
-    if (!node_scores.empty() && node_scores.front().second >= 0) {
-      const auto &highest_score_node_id = node_scores.front().first;
-      result_nodes.push_back(highest_score_node_id);
-      candidate_nodes_copy.erase(highest_score_node_id);
+    if (best_node) {
+      candidate_nodes_copy.erase(*best_node);
+      result_nodes.emplace_back(std::move(*best_node));
     } else {
       // There is no node to meet the scheduling requirements.
       break;
@@ -170,22 +170,20 @@ SchedulingResult GcsResourceScheduler::SpreadSchedule(
   absl::flat_hash_set<NodeID> selected_nodes;
   for (const auto &iter : required_resources_list) {
     // Score and sort nodes.
-    const auto &node_scores = ScoreNodes(iter, candidate_nodes_copy);
+    auto best_node = GetBestNode(iter, candidate_nodes_copy);
 
     // There are nodes to meet the scheduling requirements.
-    if (!node_scores.empty() && node_scores.front().second >= 0) {
-      const auto &highest_score_node_id = node_scores.front().first;
-      result_nodes.push_back(highest_score_node_id);
-      RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id, iter));
-      candidate_nodes_copy.erase(highest_score_node_id);
-      selected_nodes.insert(highest_score_node_id);
+    if (best_node) {
+      result_nodes.emplace_back(std::move(*best_node));
+      RAY_CHECK(gcs_resource_manager_.AcquireResources(result_nodes.back(), iter));
+      candidate_nodes_copy.erase(result_nodes.back());
+      selected_nodes.insert(result_nodes.back());
     } else {
       // Scheduling from selected nodes.
-      const auto &node_scores = ScoreNodes(iter, selected_nodes);
-      if (!node_scores.empty() && node_scores.front().second >= 0) {
-        const auto &highest_score_node_id = node_scores.front().first;
-        result_nodes.push_back(highest_score_node_id);
-        RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id, iter));
+      auto best_node = GetBestNode(iter, selected_nodes);
+      if (best_node) {
+        result_nodes.push_back(std::move(*best_node));
+        RAY_CHECK(gcs_resource_manager_.AcquireResources(result_nodes.back(), iter));
       } else {
         break;
       }
@@ -226,15 +224,15 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
   }
 
   std::vector<NodeID> result_nodes;
-  // Score and sort nodes.
-  const auto &node_scores = ScoreNodes(required_resources, candidate_nodes);
+
+  auto best_node = GetBestNode(required_resources, candidate_nodes);
 
   // Select the node with the highest score.
   // `StrictPackSchedule` does not need to consider the scheduling context, because it
   // only schedules to a node and triggers rescheduling when node dead.
-  if (!node_scores.empty() && node_scores.front().second >= 0) {
+  if (best_node) {
     for (int index = 0; index < (int)required_resources_list.size(); ++index) {
-      result_nodes.push_back(node_scores.front().first);
+      result_nodes.emplace_back(std::move(*best_node));
     }
   }
   if (result_nodes.empty()) {
@@ -258,32 +256,29 @@ SchedulingResult GcsResourceScheduler::PackSchedule(
   }
 
   while (!required_resources_list_copy.empty()) {
-    // Score and sort nodes.
     const auto &required_resources_index = required_resources_list_copy.front().first;
     const auto &required_resources = required_resources_list_copy.front().second;
-    const auto &node_scores = ScoreNodes(required_resources, candidate_nodes_copy);
-    if (node_scores.empty() || node_scores.front().second < 0) {
+    auto best_node = GetBestNode(required_resources, candidate_nodes_copy);
+    if (!best_node) {
       // There is no node to meet the scheduling requirements.
       break;
     }
 
-    const auto &highest_score_node_id = node_scores.front().first;
-    RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id,
-                                                     required_resources));
-    result_nodes[required_resources_index] = highest_score_node_id;
+    RAY_CHECK(gcs_resource_manager_.AcquireResources(*best_node, required_resources));
+    result_nodes[required_resources_index] = *best_node;
     required_resources_list_copy.pop_front();
 
     // We try to schedule more resources on one node.
     for (auto iter = required_resources_list_copy.begin();
          iter != required_resources_list_copy.end();) {
-      if (gcs_resource_manager_.AcquireResources(highest_score_node_id, iter->second)) {
-        result_nodes[iter->first] = highest_score_node_id;
+      if (gcs_resource_manager_.AcquireResources(*best_node, iter->second)) {
+        result_nodes[iter->first] = *best_node;
         required_resources_list_copy.erase(iter++);
       } else {
         ++iter;
       }
     }
-    candidate_nodes_copy.erase(highest_score_node_id);
+    candidate_nodes_copy.erase(*best_node);
   }
 
   // Releasing the resources temporarily deducted from `gcs_resource_manager_`.
@@ -296,10 +291,11 @@ SchedulingResult GcsResourceScheduler::PackSchedule(
   return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
 }
 
-std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
+std::optional<NodeID> GcsResourceScheduler::GetBestNode(
     const ResourceSet &required_resources,
     const absl::flat_hash_set<NodeID> &candidate_nodes) {
-  std::list<NodeScore> node_scores;
+  double best_node_score = -1;
+  const NodeID *best_node_id = nullptr;
   const auto &cluster_resources = gcs_resource_manager_.GetClusterResources();
 
   // Score the nodes.
@@ -307,14 +303,16 @@ std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
     const auto &iter = cluster_resources.find(node_id);
     RAY_CHECK(iter != cluster_resources.end());
     double node_score = node_scorer_->Score(required_resources, iter->second);
-    node_scores.emplace_back(node_id, node_score);
+    if (best_node_id == nullptr || best_node_score < node_score) {
+      best_node_id = &node_id;
+      best_node_score = node_score;
+    }
   }
-
-  // Sort node scores, the large score is in the front.
-  node_scores.sort([](const NodeScore &left, const NodeScore &right) {
-    return right.second < left.second;
-  });
-  return node_scores;
+  if (best_node_id && best_node_score >= 0) {
+    return *best_node_id;
+  } else {
+    return std::nullopt;
+  }
 }
 
 void GcsResourceScheduler::ReleaseTemporarilyDeductedResources(

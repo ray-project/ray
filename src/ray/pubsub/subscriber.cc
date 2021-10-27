@@ -31,13 +31,8 @@ void SubscriberChannel<KeyIdType>::Subscribe(
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto key_id = KeyIdType::FromBinary(key_id_binary);
 
-  auto subscription_it = subscription_map_.find(publisher_id);
-  if (subscription_it == subscription_map_.end()) {
-    subscription_it =
-        subscription_map_.emplace(publisher_id, SubscriptionInfo<KeyIdType>()).first;
-  }
-  RAY_CHECK(subscription_it != subscription_map_.end());
-  RAY_CHECK(subscription_it->second.subscription_callback_map
+  RAY_CHECK(subscription_map_[publisher_id]
+                .subscription_callback_map
                 .emplace(key_id, std::make_pair(std::move(subscription_callback),
                                                 std::move(subscription_failure_callback)))
                 .second);

@@ -39,17 +39,18 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
     }
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_resource_manager_ =
         std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
-    gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(gcs_pub_sub_, gcs_table_storage_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
         io_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
         *gcs_resource_scheduler_, raylet_client_pool_);
@@ -105,7 +106,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_resource_manager_->OnNodeAdd(*node);
 
     const auto &node_id = NodeID::FromBinary(node->node_id());
-    std::unordered_map<std::string, double> resource_map;
+    absl::flat_hash_map<std::string, double> resource_map;
     resource_map["CPU"] = cpu_num;
     gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
   }
@@ -219,7 +220,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       GUARDED_BY(placement_group_requests_mutex_);
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> failure_placement_groups_
       GUARDED_BY(placement_group_requests_mutex_);
-  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
@@ -1068,6 +1069,38 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestReleaseUnusedBundles) {
   std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundle;
   scheduler_->ReleaseUnusedBundles(node_to_bundle);
   ASSERT_EQ(1, raylet_clients_[0]->num_release_unused_bundles_requested);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
+  auto node0 = Mocker::GenNodeInfo(0);
+  auto node1 = Mocker::GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
+  placement_group->GetMutableBundle(0)->set_node_id(node0->node_id());
+  placement_group->GetMutableBundle(1)->set_node_id(node1->node_id());
+
+  std::unordered_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
+      group_to_bundles;
+  group_to_bundles[placement_group->GetPlacementGroupID()].emplace_back(
+      std::make_shared<BundleSpecification>(*placement_group->GetMutableBundle(0)));
+  group_to_bundles[placement_group->GetPlacementGroupID()].emplace_back(
+      std::make_shared<BundleSpecification>(*placement_group->GetMutableBundle(1)));
+  scheduler_->Initialize(group_to_bundles);
+
+  auto bundles = scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
+  ASSERT_EQ(1, bundles.size());
+  ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()].size());
+  ASSERT_EQ(0, bundles[placement_group->GetPlacementGroupID()][0]);
+
+  bundles = scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
+  ASSERT_EQ(1, bundles.size());
+  ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()].size());
+  ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()][0]);
 }
 
 }  // namespace ray

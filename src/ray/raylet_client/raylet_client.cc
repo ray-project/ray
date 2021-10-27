@@ -87,7 +87,7 @@ raylet::RayletClient::RayletClient(
     rpc::WorkerType worker_type, const JobID &job_id, const int &runtime_env_hash,
     const Language &language, const std::string &ip_address, Status *status,
     NodeID *raylet_id, int *port, std::string *serialized_job_config,
-    pid_t worker_shim_pid)
+    pid_t worker_shim_pid, StartupToken startup_token)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
@@ -100,7 +100,7 @@ raylet::RayletClient::RayletClient(
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
-      worker_shim_pid, to_flatbuf(fbb, job_id), runtime_env_hash, language,
+      worker_shim_pid, startup_token, to_flatbuf(fbb, job_id), runtime_env_hash, language,
       fbb.CreateString(ip_address),
       /*port=*/0, fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
@@ -156,8 +156,10 @@ Status raylet::RayletClient::Disconnect(
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
   if (!status.ok()) {
-    RAY_LOG(ERROR) << status.ToString()
-                   << " [RayletClient] Failed to disconnect from raylet.";
+    RAY_LOG(WARNING)
+        << status.ToString()
+        << " [RayletClient] Failed to disconnect from raylet. This means the "
+           "raylet the worker is connected is probably already dead.";
   }
   return Status::OK();
 }
@@ -270,20 +272,6 @@ Status raylet::RayletClient::PushError(const JobID &job_id, const std::string &t
       fbb.CreateString(error_message), timestamp);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::PushErrorRequest, &fbb);
-}
-
-Status raylet::RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fbb.CreateString(profile_events.SerializeAsString());
-  fbb.Finish(message);
-
-  auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);
-  // Don't be too strict for profile errors. Just create logs and prevent it from crash.
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << status.ToString()
-                   << " [RayletClient] Failed to push profile events.";
-  }
-  return Status::OK();
 }
 
 Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids,
@@ -435,6 +423,14 @@ void raylet::RayletClient::PinObjectIDs(
     callback(status, reply);
   };
   grpc_client_->PinObjectIDs(request, rpc_callback);
+}
+
+void raylet::RayletClient::ShutdownRaylet(
+    const NodeID &node_id, bool graceful,
+    const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) {
+  rpc::ShutdownRayletRequest request;
+  request.set_graceful(graceful);
+  grpc_client_->ShutdownRaylet(request, callback);
 }
 
 void raylet::RayletClient::GlobalGC(
