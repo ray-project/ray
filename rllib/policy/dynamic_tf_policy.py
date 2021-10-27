@@ -72,7 +72,7 @@ class DynamicTFPolicy(TFPolicy):
             obs_include_prev_action_reward=DEPRECATED_VALUE):
         """Initializes a DynamicTFPolicy instance.
 
-        Initialization oxf this class occurs in two phases and defines the
+        Initialization of this class occurs in two phases and defines the
         static graph.
 
         Phase 1: The model is created and model variables are initialized.
@@ -87,11 +87,19 @@ class DynamicTFPolicy(TFPolicy):
             action_space: Action space of the policy.
             config: Policy-specific configuration data.
             loss_fn: Function that returns a loss tensor for the policy graph.
-            stats_fn: Optional function that returns a dict of TF fetches
-                given the policy and batch input tensors.
-            grad_stats_fn: Optional function that returns a dict of TF
-                fetches given the policy, sample batch, and loss gradient
-                tensors.
+            stats_fn: Optional callable that - given the policy and batch
+                input tensors - returns a dict mapping str to TF ops.
+                These ops are fetched from the graph after loss calculations
+                and the resulting values can be found in the results dict
+                returned by e.g. `Trainer.train()` or in tensorboard (if TB
+                logging is enabled).
+            grad_stats_fn: Optional callable that - given the policy, batch
+                input tensors, and calculated loss gradient tensors - returns
+                a dict mapping str to TF ops. These ops are fetched from the
+                graph after loss and gradient calculations and the resulting
+                values can be found in the results dict returned by e.g.
+                `Trainer.train()` or in tensorboard (if TB logging is
+                enabled).
             before_loss_init: Optional function to run prior to
                 loss init that takes the same arguments as __init__.
             make_model: Optional function that returns a ModelV2 object
@@ -99,17 +107,37 @@ class DynamicTFPolicy(TFPolicy):
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
             action_sampler_fn: A callable returning a sampled action and its
-                log-likelihood given Policy, ModelV2, input_dict, explore,
-                timestep, and is_training.
+                log-likelihood given Policy, ModelV2, observation inputs,
+                explore, and is_training.
+                Provide `action_sampler_fn` if you would like to have full
+                control over the action computation step, including the
+                model forward pass, possible sampling from a distribution,
+                and exploration logic.
+                Note: If `action_sampler_fn` is given, `action_distribution_fn`
+                must be None. If both `action_sampler_fn` and
+                `action_distribution_fn` are None, RLlib will simply pass
+                inputs through `self.model` to get distribution inputs, create
+                the distribution object, sample from it, and apply some
+                exploration logic to the results.
+                The callable takes as inputs: Policy, ModelV2, obs_batch,
+                state_batches (optional), seq_lens (optional),
+                prev_actions_batch (optional), prev_rewards_batch (optional),
+                explore, and is_training.
             action_distribution_fn: A callable returning distribution inputs
                 (parameters), a dist-class to generate an action distribution
                 object from, and internal-state outputs (or an empty list if
                 not applicable).
-                Note: No Exploration hooks have to be called from within
-                `action_distribution_fn`. It's should only perform a simple
-                forward pass through some model.
-                If None, pass inputs through `self.model()` to get distribution
-                inputs.
+                Provide `action_distribution_fn` if you would like to only
+                customize the model forward pass call. The resulting
+                distribution parameters are then used by RLlib to create a
+                distribution object, sample from it, and execute any
+                exploration logic.
+                Note: If `action_distribution_fn` is given, `action_sampler_fn`
+                must be None. If both `action_sampler_fn` and
+                `action_distribution_fn` are None, RLlib will simply pass
+                inputs through `self.model` to get distribution inputs, create
+                the distribution object, sample from it, and apply some
+                exploration logic to the results.
                 The callable takes as inputs: Policy, ModelV2, input_dict,
                 explore, timestep, is_training.
             existing_inputs: When copying a policy, this specifies an existing
