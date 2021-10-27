@@ -43,6 +43,22 @@ std::vector<std::shared_ptr<int>> GetList(int x, std::vector<ray::ObjectRef<int>
 
 RAY_REMOTE(Return1, Plus1, Plus, Triple, GetVal, GetIntVal, GetList);
 
+std::promise<bool> g_promise;
+
+bool BlockGet() { return g_promise.get_future().get(); }
+
+bool GetValue(ray::ObjectRef<bool> arg) {
+  auto result = ray::Wait(std::vector<ray::ObjectRef<bool>>{arg}, 1, 1000);
+  EXPECT_EQ(result.ready.size(), 0);
+
+  g_promise.set_value(true);
+  bool r = *ray::Get(arg);
+  EXPECT_EQ(r, true);
+  return r;
+}
+
+RAY_REMOTE(BlockGet, GetValue);
+
 class Counter {
  public:
   int count;
@@ -184,6 +200,10 @@ TEST(RayApiTest, ObjectRefArgsTest) {
   EXPECT_EQ(result2.size(), 2);
   EXPECT_EQ(*result2[0], 42);
   EXPECT_EQ(*result2[1], 42);
+
+  auto r4 = ray::Task(BlockGet).Remote();
+  auto r5 = ray::Task(GetValue).Remote(r4);
+  EXPECT_EQ(*r5.Get(), true);
 }
 
 TEST(RayApiTest, CallWithValueTest) {

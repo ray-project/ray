@@ -25,29 +25,29 @@ namespace internal {
 
 class Arguments {
  public:
-  template <typename ArgType>
-  static void WrapArgsImpl(std::vector<TaskArg> *task_args, ArgType &&arg) {
-    static_assert(!is_object_ref_v<ArgType>, "ObjectRef can not be wrapped");
-
-    msgpack::sbuffer buffer = Serializer::Serialize(arg);
-    TaskArg task_arg;
-    task_arg.buf = std::move(buffer);
-    /// Pass by value.
-    task_args->emplace_back(std::move(task_arg));
+  template <typename OriginArgType, typename InputArgTypes>
+  static void WrapArgsImpl(std::vector<TaskArg> *task_args, InputArgTypes &&arg) {
+    if constexpr (is_object_ref_v<OriginArgType> || is_object_ref_v<InputArgTypes>) {
+      /// Pass by reference.
+      TaskArg task_arg{};
+      task_arg.id = arg.ID();
+      task_args->emplace_back(std::move(task_arg));
+    } else {
+      msgpack::sbuffer buffer = Serializer::Serialize(arg);
+      TaskArg task_arg;
+      task_arg.buf = std::move(buffer);
+      /// Pass by value.
+      task_args->emplace_back(std::move(task_arg));
+    }
   }
 
-  template <typename ArgType>
-  static void WrapArgsImpl(std::vector<TaskArg> *task_args, ObjectRef<ArgType> &arg) {
-    /// Pass by reference.
-    TaskArg task_arg{};
-    task_arg.id = arg.ID();
-    task_args->emplace_back(std::move(task_arg));
-  }
-
-  template <typename... OtherArgTypes>
-  static void WrapArgs(std::vector<TaskArg> *task_args, OtherArgTypes &&...args) {
+  template <typename OriginArgsTuple, size_t... I, typename... InputArgTypes>
+  static void WrapArgs(std::vector<TaskArg> *task_args, std::index_sequence<I...>,
+                       InputArgTypes &&...args) {
     (void)std::initializer_list<int>{
-        (WrapArgsImpl(task_args, std::forward<OtherArgTypes>(args)), 0)...};
+        (WrapArgsImpl<std::tuple_element_t<I, OriginArgsTuple>>(
+             task_args, std::forward<InputArgTypes>(args)),
+         0)...};
     /// Silence gcc warning error.
     (void)task_args;
   }
