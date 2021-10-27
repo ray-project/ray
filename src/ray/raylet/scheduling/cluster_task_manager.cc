@@ -909,28 +909,24 @@ std::string ClusterTaskManager::DebugStr() const {
   /// Calculates how much resources are occupied by tasks or actors.
   for (const auto &worker :
        worker_pool_.GetAllRegisteredWorkers(/*filter_dead_workers*/ true)) {
-    if (worker->IsDead()                        // worker is dead
-        || worker->IsBlocked()                  // worker is blocked by blocking Ray API
-        || worker->GetAssignedTaskId().IsNil()  // No tasks assigned
-        || worker->GetActorId().IsNil()) {      // No actor assigned
+    if (worker->IsDead()        // worker is dead
+        || worker->IsBlocked()  // worker is blocked by blocking Ray API
+        || (worker->GetAssignedTaskId().IsNil() &&
+            worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
       // Then this shouldn't have allocated resources.
       continue;
     }
 
-    const auto worker_pid = worker->GetProcess().GetId();
     const auto &task_or_actor_name = worker->GetAssignedTask()
                                          .GetTaskSpecification()
                                          .FunctionDescriptor()
                                          ->CallString();
-    std::shared_ptr<TaskResourceInstances> allocated_resources;
-    if (worker->GetAssignedTask().GetTaskSpecification().IsActorCreationTask()) {
-      allocated_resources = worker->GetLifetimeAllocatedInstances();
-    } else {
-      allocated_resources = worker->GetAllocatedInstances();
-    }
-    buffer << "    - (language="
+    buffer << "    - ("
+           << "language="
            << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
-           << " actor_or_task=" << task_or_actor_name << " pid=" << worker_pid << "): "
+           << " "
+           << "actor_or_task=" << task_or_actor_name << " "
+           << "pid=" << worker->GetProcess().GetId() << "): "
            << worker->GetAssignedTask()
                   .GetTaskSpecification()
                   .GetRequiredResources()
