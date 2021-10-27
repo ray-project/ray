@@ -483,8 +483,10 @@ def create_test_step(
             + pip_requirements_command \
             + step_conf["commands"]
 
-    step_conf["label"] = f"{test_name} ({ray_branch}) - " \
-                         f"{ray_test_branch}/{ray_test_repo}"
+    step_conf["label"] = (
+        f"{test_name} "
+        f"({'custom_wheels_url' if ray_wheels_str else ray_branch}) - "
+        f"{ray_test_branch}/{ray_test_repo}")
     return step_conf
 
 
