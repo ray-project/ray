@@ -40,15 +40,7 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class TorchPolicy(Policy):
-    """Template for a PyTorch policy and loss to use with RLlib.
-
-    Attributes:
-        observation_space (gym.Space): observation space of the policy.
-        action_space (gym.Space): action space of the policy.
-        config (dict): config of the policy.
-        model (TorchModel): Torch model instance.
-        dist_class (type): Torch action distribution class.
-    """
+    """PyTorch specific Policy class to use with RLlib."""
 
     @DeveloperAPI
     def __init__(
@@ -73,59 +65,67 @@ class TorchPolicy(Policy):
             get_batch_divisibility_req: Optional[Callable[[Policy],
                                                           int]] = None,
     ):
-        """Build a policy from policy and loss torch modules.
-
-        Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
-        is set. Only single GPU is supported for now.
+        """Initializes a TorchPolicy instance.
 
         Args:
-            observation_space (gym.spaces.Space): observation space of the
-                policy.
-            action_space (gym.spaces.Space): action space of the policy.
-            config (TrainerConfigDict): The Policy config dict.
-            model (ModelV2): PyTorch policy module. Given observations as
+            observation_space: Observation space of the policy.
+            action_space: Action space of the policy.
+            config: The Policy's config dict.
+            model: PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
-            loss (Callable[[Policy, ModelV2, Type[TorchDistributionWrapper],
-                SampleBatch], Union[TensorType, List[TensorType]]]): Callable
-                that returns a single scalar loss or a list of loss terms.
-            action_distribution_class (Type[TorchDistributionWrapper]): Class
-                for a torch action distribution.
-            action_sampler_fn (Callable[[TensorType, List[TensorType]],
-                Tuple[TensorType, TensorType]]): A callable returning a
-                sampled action and its log-likelihood given Policy, ModelV2,
-                input_dict, explore, timestep, and is_training.
-            action_distribution_fn (Optional[Callable[[Policy, ModelV2,
-                ModelInputDict, TensorType, TensorType],
-                Tuple[TensorType, type, List[TensorType]]]]): A callable
-                returning distribution inputs (parameters), a dist-class to
-                generate an action distribution object from, and
-                internal-state outputs (or an empty list if not applicable).
-                Note: No Exploration hooks have to be called from within
-                `action_distribution_fn`. It's should only perform a simple
-                forward pass through some model.
-                If None, pass inputs through `self.model()` to get distribution
-                inputs.
+            loss: Callable that returns one or more (a list of) scalar loss
+                terms.
+            action_distribution_class: Class for a torch action distribution.
+            action_sampler_fn: A callable returning a sampled action and its
+                log-likelihood given Policy, ModelV2, input_dict, state batches
+                (optional), explore, and timestep.
+                Provide `action_sampler_fn` if you would like to have full
+                control over the action computation step, including the
+                model forward pass, possible sampling from a distribution,
+                and exploration logic.
+                Note: If `action_sampler_fn` is given, `action_distribution_fn`
+                must be None. If both `action_sampler_fn` and
+                `action_distribution_fn` are None, RLlib will simply pass
+                inputs through `self.model` to get distribution inputs, create
+                the distribution object, sample from it, and apply some
+                exploration logic to the results.
+                The callable takes as inputs: Policy, ModelV2, input_dict
+                (SampleBatch), state_batches (optional), explore, and timestep.
+            action_distribution_fn: A callable returning distribution inputs
+                (parameters), a dist-class to generate an action distribution
+                object from, and internal-state outputs (or an empty list if
+                not applicable).
+                Provide `action_distribution_fn` if you would like to only
+                customize the model forward pass call. The resulting
+                distribution parameters are then used by RLlib to create a
+                distribution object, sample from it, and execute any
+                exploration logic.
+                Note: If `action_distribution_fn` is given, `action_sampler_fn`
+                must be None. If both `action_sampler_fn` and
+                `action_distribution_fn` are None, RLlib will simply pass
+                inputs through `self.model` to get distribution inputs, create
+                the distribution object, sample from it, and apply some
+                exploration logic to the results.
                 The callable takes as inputs: Policy, ModelV2, ModelInputDict,
                 explore, timestep, is_training.
-            max_seq_len (int): Max sequence length for LSTM training.
-            get_batch_divisibility_req (Optional[Callable[[Policy], int]]]):
-                Optional callable that returns the divisibility requirement
-                for sample batches given the Policy.
+            max_seq_len: Max sequence length for LSTM training.
+            get_batch_divisibility_req: Optional callable that returns the
+                divisibility requirement for sample batches given the Policy.
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
 
         # Create multi-GPU model towers, if necessary.
         # - The central main model will be stored under self.model, residing
-        #   on self.device.
+        #   on self.device (normally, a CPU).
         # - Each GPU will have a copy of that model under
         #   self.model_gpu_towers, matching the devices in self.devices.
         # - Parallelization is done by splitting the train batch and passing
         #   it through the model copies in parallel, then averaging over the
         #   resulting gradients, applying these averages on the main model and
         #   updating all towers' weights from the main model.
-        # - In case of just one device (1 (fake) GPU or 1 CPU), no
+        # - In case of just one device (1 (fake or real) GPU or 1 CPU), no
         #   parallelization will be done.
 
         # Get devices to build the graph on.
@@ -142,7 +142,7 @@ class TorchPolicy(Policy):
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
-        # - no GPUs available.
+        # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             logger.info("TorchPolicy (worker={}) running on {}.".format(
                 worker_idx
@@ -245,6 +245,30 @@ class TorchPolicy(Policy):
             (get_batch_divisibility_req or 1)
 
     @override(Policy)
+    def compute_actions_from_input_dict(
+            self,
+            input_dict: Dict[str, TensorType],
+            explore: bool = None,
+            timestep: Optional[int] = None,
+            **kwargs) -> \
+            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+
+        with torch.no_grad():
+            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            input_dict = self._lazy_tensor_dict(input_dict)
+            input_dict.is_training = False
+            # Pack internal state inputs into (separate) list.
+            state_batches = [
+                input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
+            ]
+            # Calculate RNN sequence lengths.
+            seq_lens = np.array([1] * len(input_dict["obs"])) \
+                if state_batches else None
+
+            return self._compute_action_helper(input_dict, state_batches,
+                                               seq_lens, explore, timestep)
+
+    @override(Policy)
     @DeveloperAPI
     def compute_actions(
             self,
@@ -279,132 +303,6 @@ class TorchPolicy(Policy):
             ]
             return self._compute_action_helper(input_dict, state_batches,
                                                seq_lens, explore, timestep)
-
-    @override(Policy)
-    def compute_actions_from_input_dict(
-            self,
-            input_dict: Dict[str, TensorType],
-            explore: bool = None,
-            timestep: Optional[int] = None,
-            **kwargs) -> \
-            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
-        with torch.no_grad():
-            # Pass lazy (torch) tensor dict to Model as `input_dict`.
-            input_dict = self._lazy_tensor_dict(input_dict)
-            input_dict.is_training = False
-            # Pack internal state inputs into (separate) list.
-            state_batches = [
-                input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
-            ]
-            # Calculate RNN sequence lengths.
-            seq_lens = np.array([1] * len(input_dict["obs"])) \
-                if state_batches else None
-
-            return self._compute_action_helper(input_dict, state_batches,
-                                               seq_lens, explore, timestep)
-
-    @with_lock
-    def _compute_action_helper(self, input_dict, state_batches, seq_lens,
-                               explore, timestep):
-        """Shared forward pass logic (w/ and w/o trajectory view API).
-
-        Returns:
-            Tuple:
-                - actions, state_out, extra_fetches, logp.
-        """
-        explore = explore if explore is not None else self.config["explore"]
-        timestep = timestep if timestep is not None else self.global_timestep
-        self._is_recurrent = state_batches is not None and state_batches != []
-
-        # Switch to eval mode.
-        if self.model:
-            self.model.eval()
-
-        if self.action_sampler_fn:
-            action_dist = dist_inputs = None
-            actions, logp, state_out = self.action_sampler_fn(
-                self,
-                self.model,
-                input_dict,
-                state_batches,
-                explore=explore,
-                timestep=timestep)
-        else:
-            # Call the exploration before_compute_actions hook.
-            self.exploration.before_compute_actions(
-                explore=explore, timestep=timestep)
-            if self.action_distribution_fn:
-                # Try new action_distribution_fn signature, supporting
-                # state_batches and seq_lens.
-                try:
-                    dist_inputs, dist_class, state_out = \
-                        self.action_distribution_fn(
-                            self,
-                            self.model,
-                            input_dict=input_dict,
-                            state_batches=state_batches,
-                            seq_lens=seq_lens,
-                            explore=explore,
-                            timestep=timestep,
-                            is_training=False)
-                # Trying the old way (to stay backward compatible).
-                # TODO: Remove in future.
-                except TypeError as e:
-                    if "positional argument" in e.args[0] or \
-                            "unexpected keyword argument" in e.args[0]:
-                        dist_inputs, dist_class, state_out = \
-                            self.action_distribution_fn(
-                                self,
-                                self.model,
-                                input_dict[SampleBatch.CUR_OBS],
-                                explore=explore,
-                                timestep=timestep,
-                                is_training=False)
-                    else:
-                        raise e
-            else:
-                dist_class = self.dist_class
-                dist_inputs, state_out = self.model(input_dict, state_batches,
-                                                    seq_lens)
-
-            if not (isinstance(dist_class, functools.partial)
-                    or issubclass(dist_class, TorchDistributionWrapper)):
-                raise ValueError(
-                    "`dist_class` ({}) not a TorchDistributionWrapper "
-                    "subclass! Make sure your `action_distribution_fn` or "
-                    "`make_model_and_action_dist` return a correct "
-                    "distribution class.".format(dist_class.__name__))
-
-            action_dist = dist_class(dist_inputs, self.model)
-
-            # Get the exploration action from the forward results.
-            actions, logp = \
-                self.exploration.get_exploration_action(
-                    action_distribution=action_dist,
-                    timestep=timestep,
-                    explore=explore)
-
-        input_dict[SampleBatch.ACTIONS] = actions
-
-        # Add default and custom fetches.
-        extra_fetches = self.extra_action_out(input_dict, state_batches,
-                                              self.model, action_dist)
-
-        # Action-dist inputs.
-        if dist_inputs is not None:
-            extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
-
-        # Action-logp and action-prob.
-        if logp is not None:
-            extra_fetches[SampleBatch.ACTION_PROB] = \
-                torch.exp(logp.float())
-            extra_fetches[SampleBatch.ACTION_LOGP] = logp
-
-        # Update our global timestep by the batch size.
-        self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
-
-        return convert_to_non_torch_type((actions, state_out, extra_fetches))
 
     @with_lock
     @override(Policy)
@@ -943,6 +841,107 @@ class TorchPolicy(Policy):
         """Imports weights into torch model."""
         return self.model.import_from_h5(import_file)
 
+    @with_lock
+    def _compute_action_helper(self, input_dict, state_batches, seq_lens,
+                               explore, timestep):
+        """Shared forward pass logic (w/ and w/o trajectory view API).
+
+        Returns:
+            Tuple:
+                - actions, state_out, extra_fetches, logp.
+        """
+        explore = explore if explore is not None else self.config["explore"]
+        timestep = timestep if timestep is not None else self.global_timestep
+        self._is_recurrent = state_batches is not None and state_batches != []
+
+        # Switch to eval mode.
+        if self.model:
+            self.model.eval()
+
+        if self.action_sampler_fn:
+            action_dist = dist_inputs = None
+            actions, logp, state_out = self.action_sampler_fn(
+                self,
+                self.model,
+                input_dict,
+                state_batches,
+                explore=explore,
+                timestep=timestep)
+        else:
+            # Call the exploration before_compute_actions hook.
+            self.exploration.before_compute_actions(
+                explore=explore, timestep=timestep)
+            if self.action_distribution_fn:
+                # Try new action_distribution_fn signature, supporting
+                # state_batches and seq_lens.
+                try:
+                    dist_inputs, dist_class, state_out = \
+                        self.action_distribution_fn(
+                            self,
+                            self.model,
+                            input_dict=input_dict,
+                            state_batches=state_batches,
+                            seq_lens=seq_lens,
+                            explore=explore,
+                            timestep=timestep,
+                            is_training=False)
+                # Trying the old way (to stay backward compatible).
+                # TODO: Remove in future.
+                except TypeError as e:
+                    if "positional argument" in e.args[0] or \
+                            "unexpected keyword argument" in e.args[0]:
+                        dist_inputs, dist_class, state_out = \
+                            self.action_distribution_fn(
+                                self,
+                                self.model,
+                                input_dict[SampleBatch.CUR_OBS],
+                                explore=explore,
+                                timestep=timestep,
+                                is_training=False)
+                    else:
+                        raise e
+            else:
+                dist_class = self.dist_class
+                dist_inputs, state_out = self.model(input_dict, state_batches,
+                                                    seq_lens)
+
+            if not (isinstance(dist_class, functools.partial)
+                    or issubclass(dist_class, TorchDistributionWrapper)):
+                raise ValueError(
+                    "`dist_class` ({}) not a TorchDistributionWrapper "
+                    "subclass! Make sure your `action_distribution_fn` or "
+                    "`make_model_and_action_dist` return a correct "
+                    "distribution class.".format(dist_class.__name__))
+            action_dist = dist_class(dist_inputs, self.model)
+
+            # Get the exploration action from the forward results.
+            actions, logp = \
+                self.exploration.get_exploration_action(
+                    action_distribution=action_dist,
+                    timestep=timestep,
+                    explore=explore)
+
+        input_dict[SampleBatch.ACTIONS] = actions
+
+        # Add default and custom fetches.
+        extra_fetches = self.extra_action_out(input_dict, state_batches,
+                                              self.model, action_dist)
+
+        # Action-dist inputs.
+        if dist_inputs is not None:
+            extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+
+        # Action-logp and action-prob.
+        if logp is not None:
+            extra_fetches[SampleBatch.ACTION_PROB] = \
+                torch.exp(logp.float())
+            extra_fetches[SampleBatch.ACTION_LOGP] = logp
+
+        # Update our global timestep by the batch size.
+        self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
+
+        return convert_to_non_torch_type((actions, state_out, extra_fetches))
+
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch, device=None):
         # TODO: (sven): Keep for a while to ensure backward compatibility.
         if not isinstance(postprocessed_batch, SampleBatch):
@@ -1082,7 +1081,7 @@ class TorchPolicy(Policy):
 #   and for all possible hyperparams, not just lr.
 @DeveloperAPI
 class LearningRateSchedule:
-    """Mixin for TFPolicy that adds a learning rate schedule."""
+    """Mixin for TorchPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
