@@ -191,7 +191,9 @@ def start_run(
     env = os.environ.copy()
     env["TUNE_RESULT_BUFFER_LENGTH"] = "1"
 
-    process = subprocess.Popen(["python", TUNE_SCRIPT] + args, env=env)
+    tune_script = os.environ.get("OVERWRITE_TUNE_SCRIPT", TUNE_SCRIPT)
+
+    process = subprocess.Popen(["python", tune_script] + args, env=env)
 
     return process
 
@@ -401,6 +403,18 @@ def fetch_remote_directory_content(
         ray.remote(
             resources={f"node:{node_ip}": 0.01})(_pack).remote(remote_dir))
     _unpack(packed, local_dir)
+
+
+def send_local_file_to_remote_file(local_path: str, remote_path: str, ip: str):
+    def _write(stream: bytes, path: str):
+        with open(path, "wb") as f:
+            f.write(stream)
+
+    with open(local_path, "wb") as f:
+        stream = f.read()
+
+    _remote_write = ray.remote(resources={f"node:{ip}": 0.01})(_write)
+    return ray.get(_remote_write.remote(stream, remote_path))
 
 
 def fetch_trial_node_dirs_to_tmp_dir(
@@ -1179,15 +1193,63 @@ if __name__ == "__main__":
 
     os.environ["TUNE_NUM_CPUS_PER_TRIAL"] = str(args.cpus_per_trial)
 
-    ray.init()
+    # Check if test should be run using Ray client
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "client_cloud_test")
+    if addr.startswith("anyscale://"):
+        uses_ray_client = True
+        ray.init(
+            address=addr,
+            job_name=job_name,
+            runtime_env={
+                "working_dir": os.path.abspath(os.path.dirname(__file__))
+            })
+    else:
+        uses_ray_client = False
+        ray.init(address="auto")
 
     print(f"Running cloud test variant: {args.variant}")
-    if args.variant == "no_sync_down":
-        test_no_sync_down()
-    elif args.variant == "ssh_sync":
-        test_ssh_sync()
-    elif args.variant == "durable_upload":
-        test_durable_upload(args.bucket)
-    elif args.variant == "no_durable_upload":
-        test_no_durable_upload(args.bucket)
+
+    def _run_test(variant: str,
+                  bucket: str = "",
+                  overwrite_tune_script: Optional[str] = None):
+        if overwrite_tune_script:
+            os.environ["OVERWRITE_TUNE_SCRIPT"] = overwrite_tune_script
+
+        if variant == "no_sync_down":
+            test_no_sync_down()
+        elif variant == "ssh_sync":
+            test_ssh_sync()
+        elif variant == "durable_upload":
+            test_durable_upload(bucket)
+        elif variant == "no_durable_upload":
+            test_no_durable_upload(bucket)
+
+    if not uses_ray_client:
+        print("This test will *not* use Ray client.")
+        _run_test(args.variant, args.bucket)
+    else:
+        print("This test will run using Ray client.")
+
+        # Use first alive node as head node
+        head_node = None
+        for node in ray.nodes():
+            if node["Alive"]:
+                head_node = node
+
+        assert head_node, "No running node found on cluster."
+        ip = head_node["NodeManagerAddress"]
+
+        remote_tune_script = "/tmp/_tune_script.py"
+
+        print(f"Sending tune script to remote node ({remote_tune_script})")
+        send_local_file_to_remote_file(TUNE_SCRIPT, remote_tune_script, ip)
+        print("Starting remote cloud test using Ray client")
+
+        _run_test_remote = ray.remote(
+            resources={f"node:{ip}": 0.01})(_run_test)
+        ray.get(
+            _run_test_remote.remote(args.variant, args.bucket,
+                                    remote_tune_script))
+
     print(f"Test for variant {args.variant} SUCCEEDED")
