@@ -140,11 +140,9 @@ def cleanup_remote_node_experiment_dir(experiment_name: str):
     experiment_dir = os.path.join(
         os.path.expanduser("~/ray_results"), experiment_name)
 
-    command = ["rm", "-rf", f"{experiment_dir}"]
-
     @ray.remote
-    def _run_on_remote_node(cmd: str):
-        return subprocess.check_call(cmd)
+    def _remove_on_remove_node(path: str):
+        return shutil.rmtree(path, ignore_errors=True)
 
     futures = []
     for node in ray.nodes():
@@ -158,8 +156,8 @@ def cleanup_remote_node_experiment_dir(experiment_name: str):
             # Skip on driver
             continue
 
-        rfn = _run_on_remote_node.options(resources={f"node:{ip}": 0.01})
-        futures.append(rfn.remote(command))
+        rfn = _remove_on_remove_node.options(resources={f"node:{ip}": 0.01})
+        futures.append(rfn.remote(experiment_dir))
     ray.get(futures)
 
 
@@ -415,7 +413,11 @@ def clear_bucket_contents(bucket: str):
             ["aws", "s3", "rm", "--recursive", "--quiet", bucket])
     elif bucket.startswith("gs://"):
         print("Clearing bucket contents:", bucket)
-        subprocess.check_call(["gsutil", "rm", "-f", "-r", bucket])
+        try:
+            subprocess.check_call(["gsutil", "rm", "-f", "-r", bucket])
+        except subprocess.CalledProcessError:
+            # If empty, ignore error
+            pass
     else:
         raise ValueError(f"Invalid bucket URL: {bucket}")
 
