@@ -186,7 +186,7 @@ def _store_package_in_gcs(
                     "Ray cluster...")
     _internal_kv_put(pkg_uri, data)
     if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
-        logger.info(f"Successfully pushed local file package '{pkg_uri}'.")
+        logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
 
 
