@@ -147,10 +147,6 @@ class JobSupervisor:
             )
             os.environ[ray_constants.
                        RAY_ADDRESS_ENVIRONMENT_VARIABLE] = ray_redis_address
-
-            print(os.environ["RAY_JOB_CONFIG_JSON_ENV_VAR"])
-
-            # print(os.environ["RAY_ADDRESS"])
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
 
