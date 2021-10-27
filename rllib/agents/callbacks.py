@@ -37,8 +37,8 @@ class DefaultCallbacks:
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
     def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                         policies: Dict[PolicyID, Policy],
-                         episode: Episode, **kwargs) -> None:
+                         policies: Dict[PolicyID, Policy], episode: Episode,
+                         **kwargs) -> None:
         """Callback run on the rollout worker before each episode starts.
 
         Args:
@@ -91,8 +91,7 @@ class DefaultCallbacks:
             })
 
     def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                       policies: Dict[PolicyID, Policy],
-                       episode: Episode,
+                       policies: Dict[PolicyID, Policy], episode: Episode,
                        **kwargs) -> None:
         """Runs when an episode is done.
 
