@@ -156,7 +156,10 @@ def inner_adaptation(workers, samples):
         e.learn_on_batch.remote(samples[i])
 
 
-def execution_plan(workers, config):
+def execution_plan(workers, config, **kwargs):
+    assert len(kwargs) == 0, (
+        "MAML execution_plan does NOT take any additional parameters")
+
     # Sync workers with meta policy
     workers.sync_weights()
 

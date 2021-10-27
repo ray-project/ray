@@ -169,9 +169,9 @@ class ClientBuilder:
         """
         When a client builder is constructed through ray.init, for example
         `ray.init(ray://..., namespace=...)`, all of the
-        arguments passed into ray.init are passed again into this method.
-        Custom client builders can override this method to do their own
-        handling/validation of arguments.
+        arguments passed into ray.init with non-default values are passed
+        again into this method. Custom client builders can override this method
+        to do their own handling/validation of arguments.
         """
         # Use namespace and runtime_env from ray.init call
         if kwargs.get("namespace") is not None:

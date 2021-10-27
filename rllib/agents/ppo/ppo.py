@@ -253,8 +253,8 @@ def warn_about_bad_reward_scales(config, result):
     return result
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the PPO algorithm. Defines the distributed dataflow.
 
     Args:
@@ -266,6 +266,9 @@ def execution_plan(workers: WorkerSet,
         LocalIterator[dict]: The Policy class to use with PPOTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
+    assert len(kwargs) == 0, (
+        "PPO execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     # Collect batches for the trainable policies.
