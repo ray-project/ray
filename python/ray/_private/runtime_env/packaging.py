@@ -113,7 +113,7 @@ def _hash_directory(
     It'll go through all the files in the directory and xor
     hash(file_name, file_content) to create a hash value.
     """
-    hash_val = b"0"
+    hash_val = b"0" * 8
     BUF_SIZE = 4096 * 1024
 
     def handler(path: Path):
