@@ -498,8 +498,8 @@ def test_exclusion(start_cluster, tmp_working_dir, option):
     def create_file(p, empty=False):
         if not p.parent.exists():
             p.parent.mkdir(parents=True)
-        if not empty:
-            with p.open("w") as f:
+        with p.open("w") as f:
+            if not empty:
                 f.write("Test")
 
     working_path = Path(tmp_working_dir)
