@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------
-# Tests from the python/ray/util/xgboost directory.
+# Tests from the python/ray/util/ray_lightning directory.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
