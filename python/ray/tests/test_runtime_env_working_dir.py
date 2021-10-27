@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from importlib import import_module
 import os
 from pathlib import Path
 import sys
@@ -319,11 +320,14 @@ def check_internal_kv_gced():
 
 def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
-        all_files = os.listdir(node.get_runtime_env_dir_path())
-        # Check that there are no files remaining except for .lock files.
-        # TODO(edoakes): the lock files should get cleaned up too!
-        if len(list(filter(lambda f: not f.endswith(".lock"), all_files))) > 0:
-            return False
+        for subdir in ["working_dir_files", "py_modules_files"]:
+            all_files = os.listdir(
+                os.path.join(node.get_runtime_env_dir_path(), subdir))
+            # Check that there are no files remaining except for .lock files.
+            # TODO(edoakes): the lock files should get cleaned up too!
+            if len(list(filter(lambda f: not f.endswith(".lock"),
+                               all_files))) > 0:
+                return False
 
     return True
 
@@ -454,18 +458,21 @@ def test_detached_actor_gc(start_cluster, working_dir):
     wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_exclusion(start_cluster, tmp_working_dir):
+def test_exclusion(start_cluster, tmp_working_dir, option):
     """Tests various forms of the 'excludes' parameter."""
     cluster, address = start_cluster
 
-    def create_file(p):
+    def create_file(p, empty=False):
         if not p.parent.exists():
             p.parent.mkdir(parents=True)
-        with p.open("w") as f:
-            f.write("Test")
+        if not empty:
+            with p.open("w") as f:
+                f.write("Test")
 
     working_path = Path(tmp_working_dir)
+    create_file(working_path / "__init__.py", empty=True)
     create_file(working_path / "test1")
     create_file(working_path / "test2")
     create_file(working_path / "test3")
@@ -478,11 +485,22 @@ def test_exclusion(start_cluster, tmp_working_dir):
     create_file(working_path / "tmp_dir" / "cache" / "test_1")
     create_file(working_path / "another_dir" / "cache" / "test_1")
 
+    module_name = Path(tmp_working_dir).name
+
     # Test that all files are present without excluding.
-    ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+    if option == "working_dir":
+        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+    else:
+        ray.init(address, runtime_env={"py_modules": [tmp_working_dir]})
 
     @ray.remote
     def check_file(name):
+        if option == "py_modules":
+            try:
+                module = import_module(module_name)
+            except ImportError:
+                return "FAILED"
+            name = os.path.join(module.__path__[0], name)
         try:
             with open(name) as f:
                 return f.read()
@@ -512,21 +530,31 @@ def test_exclusion(start_cluster, tmp_working_dir):
     ray.shutdown()
 
     # Test various exclusion methods.
-    ray.init(
-        address,
-        runtime_env={
-            "working_dir": tmp_working_dir,
-            "excludes": [
-                # exclude by relative path
-                "test2",
-                # exclude by dir
-                str(Path("tmp_dir") / "sub_dir"),
-                # exclude part of the dir
-                str(Path("tmp_dir") / "test_1"),
-                # exclude part of the dir
-                str(Path("tmp_dir") / "test_2"),
-            ]
-        })
+    excludes = [
+        # exclude by relative path
+        "test2",
+        # exclude by dir
+        str(Path("tmp_dir") / "sub_dir"),
+        # exclude part of the dir
+        str(Path("tmp_dir") / "test_1"),
+        # exclude part of the dir
+        str(Path("tmp_dir") / "test_2"),
+    ]
+
+    if option == "working_dir":
+        ray.init(
+            address,
+            runtime_env={
+                "working_dir": tmp_working_dir,
+                "excludes": excludes
+            })
+    else:
+        ray.init(
+            address,
+            runtime_env={
+                "py_modules": [tmp_working_dir],
+                "excludes": excludes
+            })
 
     assert get_all() == [
         "Test", "FAILED", "Test", "FAILED", "FAILED", "Test", "FAILED",
@@ -536,12 +564,22 @@ def test_exclusion(start_cluster, tmp_working_dir):
     ray.shutdown()
 
     # Test excluding all files using gitignore pattern matching syntax
-    ray.init(
-        address,
-        runtime_env={
-            "working_dir": tmp_working_dir,
-            "excludes": ["*"]
-        })
+    excludes = ["*"]
+    if option == "working_dir":
+        ray.init(
+            address,
+            runtime_env={
+                "working_dir": tmp_working_dir,
+                "excludes": excludes
+            })
+    else:
+        module_name = Path(tmp_working_dir).name
+        ray.init(
+            address,
+            runtime_env={
+                "py_modules": [tmp_working_dir],
+                "excludes": excludes
+            })
 
     assert get_all() == [
         "FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED",
@@ -560,10 +598,11 @@ test_[12]
 cache/
 """)
 
-    ray.init(
-        address, runtime_env={
-            "working_dir": tmp_working_dir,
-        })
+    if option == "working_dir":
+        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+    else:
+        module_name = Path(tmp_working_dir).name
+        ray.init(address, runtime_env={"py_modules": [tmp_working_dir]})
 
     assert get_all() == [
         "FAILED", "Test", "Test", "FAILED", "FAILED", "Test", "Test", "FAILED",
