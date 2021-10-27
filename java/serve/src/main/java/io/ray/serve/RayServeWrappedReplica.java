@@ -7,7 +7,7 @@ import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.generated.BackendVersion;
+import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
@@ -58,7 +58,7 @@ public class RayServeWrappedReplica {
         new RayServeReplica(
             callable,
             backendConfig,
-            ServeProtoUtil.parseBackendVersion(backendVersionBytes),
+            ServeProtoUtil.parseDeploymentVersion(backendVersionBytes),
             optional.get());
   }
 
@@ -72,7 +72,7 @@ public class RayServeWrappedReplica {
         deploymentInfo.getReplicaConfig().getBackendDef(),
         deploymentInfo.getReplicaConfig().getInitArgs(),
         deploymentInfo.getBackendConfig(),
-        deploymentInfo.getBackendVersion(),
+        deploymentInfo.getDeploymentVersion(),
         controllerName);
   }
 
@@ -132,7 +132,7 @@ public class RayServeWrappedReplica {
   }
 
   public byte[] reconfigure(Object userConfig) {
-    BackendVersion backendVersion = backend.reconfigure(userConfig);
+    DeploymentVersion backendVersion = backend.reconfigure(userConfig);
     return backendVersion.toByteArray();
   }
 

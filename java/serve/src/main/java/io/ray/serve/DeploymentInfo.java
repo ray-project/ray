@@ -28,11 +28,11 @@ public class DeploymentInfo implements Serializable {
     this.replicaConfig = replicaConfig;
   }
 
-  public byte[] getBackendVersion() {
+  public byte[] getDeploymentVersion() {
     return backendVersion;
   }
 
-  public void setBackendVersion(byte[] backendVersion) {
+  public void setDeploymentVersion(byte[] backendVersion) {
     this.backendVersion = backendVersion;
   }
 }

@@ -18,7 +18,7 @@ from ray.serve.constants import (
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
-from ray.serve.version import BackendVersion, VersionedReplica
+from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
 
 
@@ -150,7 +150,7 @@ class ActorReplicaWrapper:
 
         return self._placement_group
 
-    def start(self, backend_info: BackendInfo, version: BackendVersion):
+    def start(self, backend_info: BackendInfo, version: DeploymentVersion):
         """
         Start a new actor for current BackendReplica instance.
         """
@@ -215,7 +215,7 @@ class ActorReplicaWrapper:
         self._ready_obj_ref = self._actor_handle.get_metadata.remote()
 
     def check_ready(
-            self) -> Tuple[ReplicaStartupStatus, Optional[BackendVersion]]:
+            self) -> Tuple[ReplicaStartupStatus, Optional[DeploymentVersion]]:
         """
         Check if current replica has started by making ray API calls on
         relevant actor / object ref.
@@ -228,7 +228,7 @@ class ActorReplicaWrapper:
                     - replica __init__() failed.
                 SUCCEEDED:
                     - replica __init__() and reconfigure() succeeded.
-            version (BackendVersion):
+            version (DeploymentVersion):
                 None:
                     - replica reconfigure() haven't returned OR
                     - replica __init__() failed.
@@ -325,7 +325,7 @@ class BackendReplica(VersionedReplica):
 
     def __init__(self, controller_name: str, detached: bool,
                  replica_tag: ReplicaTag, backend_tag: BackendTag,
-                 version: BackendVersion):
+                 version: DeploymentVersion):
         self._actor = ActorReplicaWrapper(
             format_actor_name(replica_tag), detached, controller_name,
             replica_tag, backend_tag)
@@ -367,7 +367,7 @@ class BackendReplica(VersionedReplica):
     def actor_handle(self) -> ActorHandle:
         return self._actor.actor_handle
 
-    def start(self, backend_info: BackendInfo, version: BackendVersion):
+    def start(self, backend_info: BackendInfo, version: DeploymentVersion):
         """
         Start a new actor for current BackendReplica instance.
         """
@@ -382,7 +382,7 @@ class BackendReplica(VersionedReplica):
         BackendReplica instance.
         """
         self._actor.update_user_config(user_config)
-        self._version = BackendVersion(
+        self._version = DeploymentVersion(
             self._version.code_version, user_config=user_config)
 
     def recover(self):
@@ -410,7 +410,7 @@ class BackendReplica(VersionedReplica):
             if time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
                 status = ReplicaStartupStatus.PENDING_SLOW_START
         elif status == ReplicaStartupStatus.SUCCEEDED:
-            # Re-assign BackendVersion if start / update / recover succeeded
+            # Re-assign DeploymentVersion if start / update / recover succeeded
             # by reading re-computed version in RayServeReplica
             if version is not None:
                 self._version = version
@@ -511,7 +511,7 @@ class ReplicaStateContainer:
         return sum((self._replicas[state] for state in states), [])
 
     def pop(self,
-            exclude_version: Optional[BackendVersion] = None,
+            exclude_version: Optional[DeploymentVersion] = None,
             states: Optional[List[ReplicaState]] = None,
             max_replicas: Optional[int] = math.inf) -> List[VersionedReplica]:
         """Get and remove all replicas of the given states.
@@ -520,7 +520,7 @@ class ReplicaStateContainer:
         in order of state as passed in.
 
         Args:
-            exclude_version (BackendVersion): if specified, replicas of the
+            exclude_version (DeploymentVersion): if specified, replicas of the
                 provided version will *not* be removed.
             states (str): states to consider. If not specified, all replicas
                 are considered.
@@ -531,7 +531,7 @@ class ReplicaStateContainer:
             states = ALL_REPLICA_STATES
 
         assert (exclude_version is None
-                or isinstance(exclude_version, BackendVersion))
+                or isinstance(exclude_version, DeploymentVersion))
         assert isinstance(states, list)
 
         replicas = []
@@ -552,15 +552,15 @@ class ReplicaStateContainer:
         return replicas
 
     def count(self,
-              exclude_version: Optional[BackendVersion] = None,
-              version: Optional[BackendVersion] = None,
+              exclude_version: Optional[DeploymentVersion] = None,
+              version: Optional[DeploymentVersion] = None,
               states: Optional[List[ReplicaState]] = None):
         """Get the total count of replicas of the given states.
 
         Args:
-            exclude_version(BackendVersion): version to exclude. If not
+            exclude_version(DeploymentVersion): version to exclude. If not
                 specified, all versions are considered.
-            version(BackendVersion): version to filter to. If not specified,
+            version(DeploymentVersion): version to filter to. If not specified,
                 all versions are considered.
             states (str): states to consider. If not specified, all replicas
                 are considered.
@@ -569,8 +569,8 @@ class ReplicaStateContainer:
             states = ALL_REPLICA_STATES
         assert isinstance(states, list)
         assert (exclude_version is None
-                or isinstance(exclude_version, BackendVersion))
-        assert version is None or isinstance(version, BackendVersion)
+                or isinstance(exclude_version, DeploymentVersion))
+        assert version is None or isinstance(version, DeploymentVersion)
         if exclude_version is None and version is None:
             return sum(len(self._replicas[state]) for state in states)
         elif exclude_version is None and version is not None:
@@ -618,7 +618,7 @@ class BackendState:
         self._rollback_info: BackendInfo = None
         self._target_replicas: int = -1
         self._curr_goal: Optional[GoalId] = None
-        self._target_version: BackendVersion = None
+        self._target_version: DeploymentVersion = None
         self._prev_startup_warning: float = time.time()
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
@@ -728,7 +728,7 @@ class BackendState:
             self._target_info = backend_info
             self._target_replicas = backend_info.backend_config.num_replicas
 
-            self._target_version = BackendVersion(
+            self._target_version = DeploymentVersion(
                 backend_info.version,
                 user_config=backend_info.backend_config.user_config)
 
