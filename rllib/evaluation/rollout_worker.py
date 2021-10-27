@@ -18,7 +18,7 @@ from ray.rllib.env.utils import record_env_wrapper
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
-from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
+from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
@@ -50,7 +50,7 @@ from ray.util.debug import log_once, disable_log_once_globally, \
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.episode import MultiAgentEpisode
+    from ray.rllib.evaluation.episode import Episode
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
 
@@ -186,8 +186,8 @@ class RolloutWorker(ParallelIteratorWorker):
                                             None]] = None,
             policy_spec: Optional[Union[type, Dict[PolicyID,
                                                    PolicySpec]]] = None,
-            policy_mapping_fn: Optional[Callable[
-                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID, "Episode"],
+                                                 PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             rollout_fragment_length: int = 100,
@@ -257,15 +257,15 @@ class RolloutWorker(ParallelIteratorWorker):
             count_steps_by: The unit in which to count fragment
                 lengths. One of env_steps or agent_steps.
             batch_mode: One of the following batch modes:
-                - "truncate_episodes": Each call to sample() will return a batch
-                of at most `rollout_fragment_length * num_envs` in size.
+                - "truncate_episodes": Each call to sample() will return a
+                batch of at most `rollout_fragment_length * num_envs` in size.
                 The batch will be exactly `rollout_fragment_length * num_envs`
                 in size if postprocessing does not change batch sizes. Episodes
                 may be truncated in order to meet this size requirement.
-                - "complete_episodes": Each call to sample() will return a batch
-                of at least `rollout_fragment_length * num_envs` in size.
-                Episodes will not be truncated, but multiple episodes may
-                be packed within one batch to meet the batch size. Note
+                - "complete_episodes": Each call to sample() will return a
+                batch of at least `rollout_fragment_length * num_envs` in
+                size. Episodes will not be truncated, but multiple episodes
+                may be packed within one batch to meet the batch size. Note
                 that when `num_envs > 1`, episode steps will be buffered
                 until the episode completes, and hence batches may contain
                 significant amounts of off-policy data.
@@ -978,20 +978,6 @@ class RolloutWorker(ParallelIteratorWorker):
         # Grads is a dict (mapping PolicyIDs to ModelGradients).
         # Multi-agent case.
         if isinstance(grads, dict):
-            #if self.policy_config.get("framework") == "tf":
-            #    builders = {}
-            #    outputs = {}
-            #    for pid, grad in grads.items():
-            #        if pid not in self.policies_to_train:
-            #            continue
-            #        policy = self.policy_map[pid]
-            #        builders[pid] = TFRunBuilder(policy.get_session(),
-            #                                     "apply_gradients")
-            #        outputs[pid] = policy._build_apply_gradients(
-            #            builders[pid], grad)
-            #    for pid, op in outputs.items():
-            #        builders[pid].get(op)
-            #else:
             for pid, g in grads.items():
                 if pid in self.policies_to_train:
                     self.policy_map[pid].apply_gradients(g)
@@ -1005,7 +991,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Returns:
              List of RolloutMetrics and/or OffPolicyEstimate objects
-                collected thus-far.
+             collected thus-far.
         """
 
         # Get metrics from sampler (if any).
@@ -1094,8 +1080,8 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
-            policy_mapping_fn: Optional[Callable[
-                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID, "Episode"],
+                                                 PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
     ) -> Policy:
         """Adds a new policy to this RolloutWorker.
@@ -1176,8 +1162,8 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def set_policy_mapping_fn(
             self,
-            policy_mapping_fn: Optional[Callable[
-                [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
+            policy_mapping_fn: Optional[Callable[[AgentID, "Episode"],
+                                                 PolicyID]] = None,
     ) -> None:
         """Sets `self.policy_mapping_fn` to a new callable (if provided).
 
@@ -1245,10 +1231,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def foreach_trainable_policy(
-            self,
-            func: Callable[[Policy, PolicyID, Optional[Any]], T],
-            **kwargs
-    ) -> List[T]:
+            self, func: Callable[[Policy, PolicyID, Optional[Any]], T],
+            **kwargs) -> List[T]:
         """
         Calls the given function with each (policy, policy_id) tuple.
 
@@ -1265,7 +1249,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Returns:
             The list of return values of all calls to
-                `func([policy, pid, **kwargs])`.
+            `func([policy, pid, **kwargs])`.
         """
         return [
             func(policy, pid, **kwargs)
@@ -1307,7 +1291,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Returns:
             The current state of this RolloutWorker as a serialized, pickled
-                byte sequence.
+            byte sequence.
         """
         filters = self.get_filters(flush_after=True)
         state = {}
@@ -1446,8 +1430,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 sess.close()
 
     @DeveloperAPI
-    def apply(self,
-              func: Callable[["RolloutWorker", Optional[Any]], T], *args) -> T:
+    def apply(self, func: Callable[["RolloutWorker", Optional[Any]], T],
+              *args) -> T:
         """Calls the given function with this rollout worker instance.
 
         Args:
@@ -1588,7 +1572,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @Deprecated(
         new="Trainer.get_policy().export_checkpoint([export_dir], "
-            "[filename]?)",
+        "[filename]?)",
         error=False)
     def export_policy_checkpoint(self,
                                  export_dir: str,
