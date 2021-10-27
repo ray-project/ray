@@ -797,6 +797,12 @@ def init(
         pass
 
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
+        if runtime_env:
+            logger.warning(
+                "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
+                "are provided, only using JSON_ENV_VAR to construct "
+                "job_config. Please ensure no runtime_env is used in driver "
+                "script's ray.init() when using job submission API.")
         # Set runtime_env in job_config if passed as env variable, such as
         # ray job submission with driver script executed in subprocess
         job_config_json = json.loads(

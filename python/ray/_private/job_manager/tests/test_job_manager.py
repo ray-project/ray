@@ -191,3 +191,7 @@ class TestRuntimeEnv:
 
         wait_for_condition(check_job_finished)
         assert job_manager.get_job_stdout(job_id_1) == b"JOB_1_VAR"
+        stderr = job_manager.get_job_stderr(job_id_1).decode("utf-8")
+        assert stderr.startswith(
+            "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
+            "are provided")
