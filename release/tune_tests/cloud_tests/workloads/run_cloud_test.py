@@ -162,6 +162,35 @@ def cleanup_remote_node_experiment_dir(experiment_name: str):
     ray.get(futures)
 
 
+# Cluster utility
+def wait_for_nodes(num_nodes: int,
+                   timeout: float = 300.,
+                   feedback_interval: float = 10.):
+    start = time.time()
+
+    max_time = start + timeout
+    next_feedback = start + feedback_interval
+
+    curr_nodes = len(ray.nodes())
+    while curr_nodes < num_nodes:
+        now = time.time()
+
+        if now >= max_time:
+            raise RuntimeError(
+                f"Maximum wait time reached, but only "
+                f"{curr_nodes}/{num_nodes} nodes came up. Aborting.")
+
+        if now >= next_feedback:
+            passed = now - start
+            print(f"Waiting for more nodes to come up: "
+                  f"{curr_nodes}/{num_nodes} "
+                  f"({passed:.0f} seconds passed)")
+            next_feedback = now + feedback_interval
+
+        time.sleep(5)
+        curr_nodes = len(ray.nodes())
+
+
 # Run tune script in different process
 
 
@@ -1230,6 +1259,8 @@ if __name__ == "__main__":
         _run_test(args.variant, args.bucket)
     else:
         print("This test will run using Ray client.")
+
+        wait_for_nodes(num_nodes=4, timeout=300.)
 
         # Use first alive node as head node
         head_node = None

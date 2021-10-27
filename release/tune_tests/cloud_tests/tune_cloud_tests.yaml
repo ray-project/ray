@@ -60,7 +60,6 @@
   run:
     use_connect: True
     timeout: 600
-    prepare: python wait_cluster.py 4 600
     # Remove --cpus-per-trial 8 once n2-standard-2 is supported
     script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
 
@@ -73,7 +72,6 @@
   run:
     use_connect: True
     timeout: 600
-    prepare: python wait_cluster.py 4 600
     # Remove --cpus-per-trial 8 once n2-standard-2 is supported
     script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://jun-riot-test/durable_upload
 
@@ -87,6 +85,5 @@
   run:
     use_connect: True
     timeout: 600
-    prepare: python wait_cluster.py 4 600
     # Remove --cpus-per-trial 8 once n2-standard-2 is supported
     script: python workloads/run_cloud_test.py no_durable_upload --cpus-per-trial 8 --bucket gs://jun-riot-test/durable_upload
