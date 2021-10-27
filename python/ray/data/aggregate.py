@@ -66,7 +66,7 @@ class Sum(AggregateFn):
             init=lambda k: 0,
             accumulate=lambda a, r: a + on_fn(r),
             merge=lambda a1, a2: a1 + a2,
-            name=(f"sum({on})" if isinstance(on, str) else None))
+            name=(f"sum({str(on)})"))
 
 
 class Min(AggregateFn):
@@ -84,7 +84,7 @@ class Min(AggregateFn):
             accumulate=(
                 lambda a, r: (on_fn(r) if a is None else min(a, on_fn(r)))),
             merge=lambda a1, a2: min(a1, a2),
-            name=(f"min({on})" if isinstance(on, str) else None))
+            name=(f"min({str(on)})"))
 
 
 class Max(AggregateFn):
@@ -102,7 +102,7 @@ class Max(AggregateFn):
             accumulate=(
                 lambda a, r: (on_fn(r) if a is None else max(a, on_fn(r)))),
             merge=lambda a1, a2: max(a1, a2),
-            name=(f"max({on})" if isinstance(on, str) else None))
+            name=(f"max({str(on)})"))
 
 
 class Mean(AggregateFn):
@@ -120,4 +120,4 @@ class Mean(AggregateFn):
             accumulate=lambda a, r: [a[0] + on_fn(r), a[1] + 1],
             merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
             finalize=lambda a: a[0] / a[1],
-            name=(f"mean({on})" if isinstance(on, str) else None))
+            name=(f"mean({str(on)})"))
