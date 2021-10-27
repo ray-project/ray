@@ -180,8 +180,8 @@ class Policy(metaclass=ABCMeta):
             kwargs: Forward compatibility placeholder.
 
         Returns:
-            Tuple consisting of the action, the list of RNN state outputs (if any),
-            and a dictionary of extra features (if any).
+            Tuple consisting of the action, the list of RNN state outputs (if
+            any), and a dictionary of extra features (if any).
         """
         # Build the input-dict used for the call to
         # `self.compute_actions_from_input_dict()`.
