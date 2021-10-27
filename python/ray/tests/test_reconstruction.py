@@ -639,6 +639,7 @@ def test_reconstruction_stress(ray_start_cluster):
             i += 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
     config = {

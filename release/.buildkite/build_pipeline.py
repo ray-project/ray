@@ -2,6 +2,7 @@ import copy
 import logging
 import os
 import sys
+from typing import Optional, List
 
 import yaml
 
@@ -46,6 +47,24 @@ class SmokeTest(ReleaseTest):
             name=name, smoke_test=True, retry=retry)
 
 
+class ConnectTest(ReleaseTest):
+    """Release Test that requires extra setup on the driver."""
+
+    def __init__(self,
+                 *args,
+                 setup_commands: Optional[List[str]] = None,
+                 requirements_file: Optional[str] = None,
+                 **kwargs):
+
+        # Commands to run on the driver before kicking off the test.
+        self.setup_commands = setup_commands if setup_commands else []
+
+        # Requirements to install on the driver before kicking off the test.
+        self.requirements_file = requirements_file
+
+        super().__init__(*args, **kwargs)
+
+
 CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "shuffle_10gb",
@@ -68,12 +87,14 @@ CORE_NIGHTLY_TESTS = {
         # "non_streaming_shuffle_1tb_5000_partitions",
         "decision_tree_autoscaling",
         "decision_tree_autoscaling_20_runs",
+        "grpc_decision_tree_autoscaling_20_runs",
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
         "many_nodes_actor_test",
+        "grpc_many_nodes_actor_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
@@ -215,9 +236,21 @@ MANUAL_TESTS = {
     ]
 }
 
+# This test suite holds "user" tests to test important user workflows
+# in a particular environment.
+# All workloads in this test suite should:
+#   1. Be run in a distributed (multi-node) fashion
+#   2. Use autoscaling/scale up (no wait_cluster.py)
+#   3. Use GPUs if applicable
+#   4. Have the `use_connect` flag set.
+USER_TESTS = {}
+
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
-    "nightly": NIGHTLY_TESTS,
+    "nightly": {
+        **NIGHTLY_TESTS,
+        **USER_TESTS
+    },
     "weekly": WEEKLY_TESTS,
     "manual": MANUAL_TESTS,
 }
@@ -440,6 +473,15 @@ def create_test_step(
         "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
         "|| true"
     ]
+
+    if isinstance(test_name, ConnectTest):
+        # Add driver side setup commands to the step.
+        pip_requirements_command = [f"pip install -U -r "
+                                    f"{test_name.requirements_file}"] if \
+            test_name.requirements_file else []
+        step_conf["commands"] = test_name.setup_commands \
+            + pip_requirements_command \
+            + step_conf["commands"]
 
     step_conf["label"] = f"{ray_wheels_str}{test_name} ({ray_branch}) - " \
                          f"{ray_test_branch}/{ray_test_repo}"

@@ -283,7 +283,108 @@ class CoreWorkerDirectActorTaskSubmitter
   friend class CoreWorkerTest;
 };
 
-class BoundedExecutor;
+/// The class that manages fiber states for Python asyncio actors.
+///
+/// We'll create one fiber state for every concurrency group. And
+/// create one default fiber state for default concurrency group if
+/// necessary.
+class FiberStateManager final {
+ public:
+  explicit FiberStateManager(const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+                             const int32_t default_group_max_concurrency = 1000) {
+    for (auto &group : concurrency_groups) {
+      const auto name = group.name;
+      const auto max_concurrency = group.max_concurrency;
+      auto fiber = std::make_shared<FiberState>(max_concurrency);
+      auto &fds = group.function_descriptors;
+      for (auto fd : fds) {
+        functions_to_fiber_index_[fd->ToString()] = fiber;
+      }
+      name_to_fiber_index_[name] = fiber;
+    }
+    /// Create default fiber state for default concurrency group.
+    if (default_group_max_concurrency >= 1) {
+      default_fiber_ = std::make_shared<FiberState>(default_group_max_concurrency);
+    }
+  }
+
+  /// Get the corresponding fiber state by the give concurrency group or function
+  /// descriptor.
+  ///
+  /// Return the corresponding fiber state of the concurrency group
+  /// if concurrency_group_name is given.
+  /// Otherwise return the corresponding fiber state by the given function descriptor.
+  std::shared_ptr<FiberState> GetFiber(const std::string &concurrency_group_name,
+                                       ray::FunctionDescriptor fd) {
+    if (!concurrency_group_name.empty()) {
+      auto it = name_to_fiber_index_.find(concurrency_group_name);
+      RAY_CHECK(it != name_to_fiber_index_.end())
+          << "Failed to look up the fiber state of the given concurrency group "
+          << concurrency_group_name << " . It might be that you didn't define "
+          << "the concurrency group " << concurrency_group_name;
+      return it->second;
+    }
+
+    /// Code path of that this task wasn't specified in a concurrency group addtionally.
+    /// Use the predefined concurrency group.
+    if (functions_to_fiber_index_.find(fd->ToString()) !=
+        functions_to_fiber_index_.end()) {
+      return functions_to_fiber_index_[fd->ToString()];
+    }
+    return default_fiber_;
+  }
+
+ private:
+  // Map from the name to their corresponding fibers.
+  absl::flat_hash_map<std::string, std::shared_ptr<FiberState>> name_to_fiber_index_;
+
+  // Map from the FunctionDescriptors to their corresponding fibers.
+  absl::flat_hash_map<std::string, std::shared_ptr<FiberState>> functions_to_fiber_index_;
+
+  // The fiber for default concurrency group. It's nullptr if its max concurrency
+  // is 1.
+  std::shared_ptr<FiberState> default_fiber_ = nullptr;
+};
+
+/// Wraps a thread-pool to block posts until the pool has free slots. This is used
+/// by the SchedulingQueue to provide backpressure to clients.
+class BoundedExecutor {
+ public:
+  BoundedExecutor(int max_concurrency)
+      : num_running_(0), max_concurrency_(max_concurrency), pool_(max_concurrency){};
+
+  /// Posts work to the pool, blocking if no free threads are available.
+  void PostBlocking(std::function<void()> fn) {
+    mu_.LockWhen(absl::Condition(this, &BoundedExecutor::ThreadsAvailable));
+    num_running_ += 1;
+    mu_.Unlock();
+    boost::asio::post(pool_, [this, fn]() {
+      fn();
+      absl::MutexLock lock(&mu_);
+      num_running_ -= 1;
+    });
+  }
+
+  /// Stop the thread pool.
+  void Stop() { pool_.stop(); }
+
+  /// Join the thread pool.
+  void Join() { pool_.join(); }
+
+ private:
+  bool ThreadsAvailable() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return num_running_ < max_concurrency_;
+  }
+
+  /// Protects access to the counters below.
+  absl::Mutex mu_;
+  /// The number of currently running tasks.
+  int num_running_ GUARDED_BY(mu_);
+  /// The max number of concurrently running tasks allowed.
+  const int max_concurrency_;
+  /// The underlying thread pool for running tasks.
+  boost::asio::thread_pool pool_;
+};
 
 /// A manager that manages a set of thread pool. which will perform
 /// the methods defined in one concurrency group.
@@ -325,6 +426,26 @@ class PoolManager final {
       return functions_to_thread_pool_index_[fd->ToString()];
     }
     return default_thread_pool_;
+  }
+
+  /// Stop and join the thread pools that the pool manager owns.
+  void Stop() {
+    if (default_thread_pool_) {
+      RAY_LOG(DEBUG) << "Default pool is stopping.";
+      default_thread_pool_->Stop();
+      RAY_LOG(INFO) << "Default pool is joining. If the 'Default pool is joined.' "
+                       "message is not printed after this, the worker is probably "
+                       "hanging because the actor task is running an infinite loop.";
+      default_thread_pool_->Join();
+      RAY_LOG(INFO) << "Default pool is joined.";
+    }
+
+    for (const auto &it : name_to_thread_pool_index_) {
+      it.second->Stop();
+    }
+    for (const auto &it : name_to_thread_pool_index_) {
+      it.second->Join();
+    }
   }
 
  private:
@@ -426,40 +547,6 @@ class DependencyWaiterImpl : public DependencyWaiter {
   DependencyWaiterInterface &dependency_client_;
 };
 
-/// Wraps a thread-pool to block posts until the pool has free slots. This is used
-/// by the SchedulingQueue to provide backpressure to clients.
-class BoundedExecutor {
- public:
-  BoundedExecutor(int max_concurrency)
-      : num_running_(0), max_concurrency_(max_concurrency), pool_(max_concurrency){};
-
-  /// Posts work to the pool, blocking if no free threads are available.
-  void PostBlocking(std::function<void()> fn) {
-    mu_.LockWhen(absl::Condition(this, &BoundedExecutor::ThreadsAvailable));
-    num_running_ += 1;
-    mu_.Unlock();
-    boost::asio::post(pool_, [this, fn]() {
-      fn();
-      absl::MutexLock lock(&mu_);
-      num_running_ -= 1;
-    });
-  }
-
- private:
-  bool ThreadsAvailable() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return num_running_ < max_concurrency_;
-  }
-
-  /// Protects access to the counters below.
-  absl::Mutex mu_;
-  /// The number of currently running tasks.
-  int num_running_ GUARDED_BY(mu_);
-  /// The max number of concurrently running tasks allowed.
-  const int max_concurrency_;
-  /// The underlying thread pool for running tasks.
-  boost::asio::thread_pool pool_;
-};
-
 /// Used to implement task queueing at the worker. Abstraction to provide a common
 /// interface for actor tasks as well as normal ones.
 class SchedulingQueue {
@@ -477,6 +564,7 @@ class SchedulingQueue {
   virtual bool TaskQueueEmpty() const = 0;
   virtual size_t Size() const = 0;
   virtual size_t Steal(rpc::StealTasksReply *reply) = 0;
+  virtual void Stop() = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
   virtual ~SchedulingQueue(){};
 };
@@ -489,6 +577,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
       instrumented_io_context &main_io_service, DependencyWaiter &waiter,
       std::shared_ptr<PoolManager> pool_manager = std::make_shared<PoolManager>(),
       bool is_asyncio = false, int fiber_max_concurrency = 1,
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
@@ -497,13 +586,26 @@ class ActorSchedulingQueue : public SchedulingQueue {
         pool_manager_(pool_manager),
         is_asyncio_(is_asyncio) {
     if (is_asyncio_) {
-      RAY_LOG(INFO) << "Setting actor as async with max_concurrency="
-                    << fiber_max_concurrency << ", creating new fiber thread.";
-      fiber_state_ = std::make_unique<FiberState>(fiber_max_concurrency);
+      std::stringstream ss;
+      ss << "Setting actor as asyncio with max_concurrency=" << fiber_max_concurrency
+         << ", and defined concurrency groups are:" << std::endl;
+      for (const auto &concurrency_group : concurrency_groups) {
+        ss << "\t" << concurrency_group.name << " : "
+           << concurrency_group.max_concurrency;
+      }
+      RAY_LOG(INFO) << ss.str();
+      fiber_state_manager_ =
+          std::make_unique<FiberStateManager>(concurrency_groups, fiber_max_concurrency);
     }
   }
 
   virtual ~ActorSchedulingQueue() = default;
+
+  void Stop() {
+    if (pool_manager_) {
+      pool_manager_->Stop();
+    }
+  }
 
   bool TaskQueueEmpty() const {
     RAY_CHECK(false) << "TaskQueueEmpty() not implemented for actor queues";
@@ -595,7 +697,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
       if (is_asyncio_) {
         // Process async actor task.
-        fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
+        auto fiber = fiber_state_manager_->GetFiber(request.ConcurrencyGroupName(),
+                                                    request.FunctionDescriptor());
+        fiber->EnqueueFiber([request]() mutable { request.Accept(); });
       } else {
         // Process actor tasks.
         RAY_CHECK(pool_manager_ != nullptr);
@@ -661,9 +765,10 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
-  /// If is_asyncio_ is true, fiber_state_ contains the running state required
-  /// to enable continuation and work together with python asyncio.
-  std::unique_ptr<FiberState> fiber_state_;
+  /// Manage the running fiber states of actors in this worker. It works with
+  /// python asyncio if this is an asyncio actor.
+  std::unique_ptr<FiberStateManager> fiber_state_manager_;
+
   friend class SchedulingQueueTest;
 };
 
@@ -672,6 +777,10 @@ class ActorSchedulingQueue : public SchedulingQueue {
 class NormalSchedulingQueue : public SchedulingQueue {
  public:
   NormalSchedulingQueue(){};
+
+  void Stop() {
+    // No-op
+  }
 
   bool TaskQueueEmpty() const {
     absl::MutexLock lock(&mu_);
@@ -821,6 +930,12 @@ class CoreWorkerDirectTaskReceiver {
                         rpc::SendReplyCallback send_reply_callback);
 
   bool CancelQueuedNormalTask(TaskID task_id);
+
+  void Stop();
+
+ protected:
+  /// Cache the concurrency groups of actors.
+  absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
   // Worker context.

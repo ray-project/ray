@@ -579,7 +579,12 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
 
     // The object is still in scope. Track the raylet location until the object
     // has gone out of scope or the raylet fails, whichever happens first.
-    RAY_CHECK(!it->second.pinned_at_raylet_id.has_value());
+    if (it->second.pinned_at_raylet_id.has_value()) {
+      RAY_LOG(INFO) << "Updating primary location for object " << object_id << " to node "
+                    << raylet_id << ", but it already has a primary location "
+                    << *it->second.pinned_at_raylet_id
+                    << ". This should only happen during reconstruction";
+    }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
@@ -934,8 +939,7 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message, message has "
                  << worker_ref_removed_message->borrowed_refs().size()
                  << " borrowed references.";
-  object_info_publisher_->Publish(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                  pub_message, object_id.Binary());
+  object_info_publisher_->Publish(pub_message);
 }
 
 void ReferenceCounter::SetRefRemovedCallback(
@@ -1188,8 +1192,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
   FillObjectInformationInternal(it, object_locations_msg);
 
-  object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                  pub_message, object_id.Binary());
+  object_info_publisher_->Publish(pub_message);
 }
 
 Status ReferenceCounter::FillObjectInformation(
@@ -1232,8 +1235,7 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
     pub_message.set_key_id(object_id.Binary());
     pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
     pub_message.mutable_worker_object_locations_message()->set_ref_removed(true);
-    object_info_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                                    pub_message, object_id.Binary());
+    object_info_publisher_->Publish(pub_message);
     // Then, publish a failure to subscribers since this object is unreachable.
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());

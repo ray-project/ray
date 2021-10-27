@@ -66,6 +66,17 @@ A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS = [
     subnet_in_vpc(vpc_num) for vpc_num in range(1, 1000)
 ] + [DEFAULT_SUBNET]
 
+
+def subnet_in_az(idx):
+    azs = ["a", "b", "c", "d"]
+    subnet = copy.copy(DEFAULT_SUBNET)
+    subnet["AvailabilityZone"] = "us-west-2" + azs[idx % 4]
+    subnet["SubnetId"] = f"subnet-{idx:07d}"
+    return subnet
+
+
+TWENTY_SUBNETS_IN_DIFFERENT_AZS = [subnet_in_az(i) for i in range(20)]
+
 # Secondary EC2 subnet to expose to tests as required.
 AUX_SUBNET = {
     "AvailabilityZone": "us-west-2a",

@@ -503,6 +503,32 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
   }
 }
 
+void GcsPlacementGroupScheduler::Initialize(
+    const std::unordered_map<PlacementGroupID,
+                             std::vector<std::shared_ptr<BundleSpecification>>>
+        &group_to_bundles) {
+  // We need to reinitialize the `committed_bundle_location_index_`, otherwise,
+  // it will get an empty bundle set when raylet fo occurred after GCS server restart.
+
+  // Init the container that contains the map relation between node and bundle.
+  auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  committed_bundle_location_index_.AddNodes(alive_nodes);
+
+  for (const auto &group : group_to_bundles) {
+    const auto &placement_group_id = group.first;
+    std::shared_ptr<BundleLocations> committed_bundle_locations =
+        std::make_shared<BundleLocations>();
+    for (const auto &bundle : group.second) {
+      if (!bundle->NodeId().IsNil()) {
+        committed_bundle_locations->emplace(bundle->BundleId(),
+                                            std::make_pair(bundle->NodeId(), bundle));
+      }
+    }
+    committed_bundle_location_index_.AddBundleLocations(placement_group_id,
+                                                        committed_bundle_locations);
+  }
+}
+
 void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
     const PlacementGroupID &placement_group_id) {
   // Get the locations of prepared bundles.
