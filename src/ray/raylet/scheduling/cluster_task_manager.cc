@@ -239,7 +239,8 @@ bool ClusterTaskManager::PoppedWorkerHandler(
         } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
           cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
         } else {
-          RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker.";
+          RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
+                         << status;
         }
         work->SetStateWaiting(cause);
         // Return here because we shouldn't remove task dependencies.
@@ -977,12 +978,10 @@ std::string ClusterTaskManager::DebugStr() const {
     }
     return state + pair.second.size();
   };
-  size_t num_tasks_to_schedule =
-      std::accumulate(tasks_to_schedule_.begin(), tasks_to_schedule_.end(), (size_t)0,
-                      per_work_accumulator);
-  size_t num_tasks_to_dispatch =
-      std::accumulate(tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0,
-                      per_work_accumulator);
+  size_t num_tasks_to_schedule = std::accumulate(
+      tasks_to_schedule_.begin(), tasks_to_schedule_.end(), 0u, per_work_accumulator);
+  size_t num_tasks_to_dispatch = std::accumulate(
+      tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), 0u, per_work_accumulator);
 
   if (num_tasks_to_schedule + num_tasks_to_dispatch + num_infeasible_tasks > 1000) {
     RAY_LOG(WARNING)

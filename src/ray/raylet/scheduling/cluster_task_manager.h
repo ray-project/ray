@@ -33,7 +33,7 @@ namespace raylet {
 
 namespace internal {
 
-enum WorkStatus {
+enum class WorkStatus {
   /// Waiting to be scheduled.
   WAITING,
   /// Waiting for a worker to start.
@@ -43,7 +43,7 @@ enum WorkStatus {
 };
 
 /// This enum represents the cause of why work hasn't been scheduled yet.
-enum UnscheduledWorkCause {
+enum class UnscheduledWorkCause {
   /// Waiting for acquiring resources.
   WAITING_FOR_RESOURCE_ACQUISITION,
   /// Waiting for more plasma store memory to be available. This is set when we can't pin
