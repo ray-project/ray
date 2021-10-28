@@ -909,7 +909,7 @@ std::string ClusterTaskManager::DebugStr() const {
   // Calculates how much resources are occupied by tasks or actors.
   // Only iterate upto this number to avoid excessive CPU usage.
   auto max_iteration = RayConfig::instance().max_resource_analysis_iteration();
-  auto iteration = 0;
+  uint32_t iteration = 0;
   for (const auto &worker :
        worker_pool_.GetAllRegisteredWorkers(/*filter_dead_workers*/ true)) {
     if (max_iteration < iteration++) {
