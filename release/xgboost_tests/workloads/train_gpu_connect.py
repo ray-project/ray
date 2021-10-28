@@ -17,7 +17,7 @@ from ray.util.xgboost.release_test_util import train_ray
 
 if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
-    job_name = os.environ.get("RAY_JOB_NAME", "train_small")
+    job_name = os.environ.get("RAY_JOB_NAME", "train_gpu_connect")
     if addr.startswith("anyscale://"):
         ray.init(address=addr, job_name=job_name)
     else:

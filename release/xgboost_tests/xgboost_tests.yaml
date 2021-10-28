@@ -33,12 +33,12 @@
 - name: train_gpu_connect
   cluster:
     app_config: app_config_gpu.yaml
-    compute_template: tpl_gpu_small.yaml
+    compute_template: tpl_gpu_small_scaling.yaml
 
   run:
     use_connect: True
     timeout: 600
-    script: python workloads/train_gpu.py
+    script: python workloads/train_gpu_conect.py
 
 - name: distributed_api_test
   cluster:
