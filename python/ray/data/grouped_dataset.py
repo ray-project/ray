@@ -48,7 +48,7 @@ class GroupedDataset(Generic[T]):
         Examples:
             >>> grouped_ds.aggregate(AggregateFn(
             ...     init=lambda k: [],
-            ...     accumulate=lambda a, r: a.append(r),
+            ...     accumulate=lambda a, r: a + [r],
             ...     merge=lambda a1, a2: a1 + a2,
             ...     finalize=lambda a: a
             ... ))

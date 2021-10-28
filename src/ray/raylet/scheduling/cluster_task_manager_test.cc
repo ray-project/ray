@@ -60,6 +60,12 @@ class MockWorkerPool : public WorkerPoolInterface {
     workers.push_front(worker);
   }
 
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers) const {
+    RAY_CHECK(false) << "Not used.";
+    return {};
+  }
+
   void TriggerCallbacks() {
     for (auto it = workers.begin(); it != workers.end();) {
       std::shared_ptr<WorkerInterface> worker = *it;
@@ -273,7 +279,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     int count = 0;
     for (const auto &pair : task_manager_.tasks_to_dispatch_) {
       for (const auto &work : pair.second) {
-        if (work->status == WorkStatus::WAITING_FOR_WORKER) {
+        if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
           count++;
         }
       }
@@ -1082,7 +1088,7 @@ TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
 }
 
-TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
+TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   /*
     Check if the manager can correctly identify pending tasks.
    */
@@ -1109,8 +1115,8 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
-  ASSERT_FALSE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
-                                             &pending_actor_creations, &pending_tasks));
+  ASSERT_FALSE(task_manager_.AnyPendingTasksForResourceAcquisition(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
 
   // task1: running, task2: queued.
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
@@ -1123,8 +1129,8 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   task_manager_.QueueAndScheduleTask(task2, &reply2, callback2);
   pool_.TriggerCallbacks();
   ASSERT_FALSE(*callback_occurred2);
-  ASSERT_TRUE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
-                                            &pending_actor_creations, &pending_tasks));
+  ASSERT_TRUE(task_manager_.AnyPendingTasksForResourceAcquisition(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
 }
 
 TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
