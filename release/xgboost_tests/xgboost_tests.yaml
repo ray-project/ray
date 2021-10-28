@@ -30,6 +30,16 @@
     prepare: python wait_cluster.py 5 600
     script: python workloads/train_gpu.py
 
+- name: train_gpu_connect
+  cluster:
+    app_config: app_config_gpu.yaml
+    compute_template: tpl_gpu_small.yaml
+
+  run:
+    use_connect: True
+    timeout: 600
+    script: python workloads/train_gpu.py
+
 - name: distributed_api_test
   cluster:
     app_config: app_config.yaml

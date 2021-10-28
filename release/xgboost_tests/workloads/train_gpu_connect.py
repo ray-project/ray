@@ -28,7 +28,7 @@ if __name__ == "__main__":
         max_actor_restarts=2,
         num_actors=4,
         cpus_per_actor=4,
-        gpus_per_actor=0)
+        gpus_per_actor=1)
 
     @ray.remote
     def train():
@@ -38,7 +38,7 @@ if __name__ == "__main__":
             num_boost_rounds=100,
             num_files=25,
             regression=False,
-            use_gpu=False,
+            use_gpu=True,
             ray_params=ray_params,
             xgboost_params=None,
         )
@@ -51,7 +51,7 @@ if __name__ == "__main__":
         "time_taken": taken,
     }
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/train_small.json")
+                                      "/tmp/train_gpu_connect.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

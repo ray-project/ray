@@ -245,8 +245,9 @@ MANUAL_TESTS = {
 #   2. Use autoscaling/scale up (no wait_cluster.py)
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
-USER_TESTS = {}
-
+USER_TESTS = {
+    "~/ray/release/xgboost_tests/xgboost_tests.yaml": ["train_gpu_connect"]
+}
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
     "nightly": {
