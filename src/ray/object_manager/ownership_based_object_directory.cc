@@ -223,6 +223,11 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   it->second.subscribed = true;
 
   // Update entries for this object.
+  for (auto const &node_id_binary : location_info.node_ids()) {
+    const auto node_id = NodeID::FromBinary(node_id_binary);
+    RAY_LOG(DEBUG) << "Object " << object_id << " is on node " << node_id << " alive? "
+                   << gcs_client_->Nodes().IsRemoved(node_id);
+  }
   auto location_updated = UpdateObjectLocations(
       location_info, gcs_client_, &it->second.current_object_locations,
       &it->second.spilled_url, &it->second.spilled_node_id, &it->second.object_size);
@@ -460,13 +465,14 @@ OwnershipBasedObjectDirectory::LookupAllRemoteConnections() const {
 void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
   for (auto &listener : listeners_) {
     const ObjectID &object_id = listener.first;
-    if (listener.second.current_object_locations.count(node_id) > 0) {
-      // If the subscribed object has the removed node as a location, update
-      // its locations with an empty update so that the location will be removed.
-      UpdateObjectLocations({}, gcs_client_, &listener.second.current_object_locations,
-                            &listener.second.spilled_url,
-                            &listener.second.spilled_node_id,
-                            &listener.second.object_size);
+    bool updated = listener.second.current_object_locations.erase(node_id);
+    if (listener.second.spilled_node_id == node_id) {
+      listener.second.spilled_node_id = NodeID::Nil();
+      listener.second.spilled_url = "";
+      updated = true;
+    }
+
+    if (updated) {
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
       for (const auto &callback_pair : listener.second.callbacks) {

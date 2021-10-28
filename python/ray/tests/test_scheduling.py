@@ -550,7 +550,7 @@ def test_gpu(monkeypatch):
             def get_location(self):
                 return ray.worker.global_worker.node.unique_id
 
-        @ray.remote(num_cpus=0.5)
+        @ray.remote(num_cpus=1)
         def task_cpu():
             time.sleep(10)
             return ray.worker.global_worker.node.unique_id
@@ -558,7 +558,8 @@ def test_gpu(monkeypatch):
         @ray.remote(num_returns=2, num_gpus=0.5)
         def launcher():
             a = Actor1.remote()
-            task_results = [task_cpu.remote() for _ in range(n)]
+            # Leave one cpu for the actor.
+            task_results = [task_cpu.remote() for _ in range(n - 1)]
             actor_results = [a.get_location.remote() for _ in range(n)]
             return ray.get(task_results + actor_results
                            ), ray.worker.global_worker.node.unique_id

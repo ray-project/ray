@@ -391,6 +391,10 @@ def build_eager_tf_policy(
             postprocessed_batch["is_training"] = True
             self._lazy_tensor_dict(postprocessed_batch)
 
+            stats = self._learn_on_batch_eager(postprocessed_batch)
+            stats.update({"custom_metrics": learn_stats})
+            return stats
+
             def _learn_on_batch_eager(**samples):
                 with tf.variable_creator_scope(_disallow_var_creation):
                     grads_and_vars, stats = self._compute_gradients(samples)
@@ -420,7 +424,7 @@ def build_eager_tf_policy(
             )
 
             self._is_training = True
-            samples["is_training"] = True
+            samples.is_training = True
             return self._compute_gradients_eager(samples)
 
         @convert_eager_inputs

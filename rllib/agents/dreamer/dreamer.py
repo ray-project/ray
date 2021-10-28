@@ -185,7 +185,10 @@ class DreamerIteration:
         return fetches[DEFAULT_POLICY_ID]["learner_stats"]
 
 
-def execution_plan(workers, config):
+def execution_plan(workers, config, **kwargs):
+    assert len(kwargs) == 0, (
+        "Dreamer execution_plan does NOT take any additional parameters")
+
     # Special replay buffer for Dreamer agent.
     episode_buffer = EpisodicBuffer(length=config["batch_length"])
 
