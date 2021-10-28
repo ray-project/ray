@@ -310,6 +310,7 @@ RuntimeError: Failed to unpickle serialized exception"""
         assert clean_noqa(expected_output) == scrub_traceback(str(ex))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Broken on Windows")
 def test_serialization_error_message(shutdown_only):
     expected_output_task = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.task_with_unserializable_arg. Check https://docs.ray.io/en/master/serialization.html#troubleshooting for more information."""  # noqa
     expected_output_actor = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.A.__init__. Check https://docs.ray.io/en/master/serialization.html#troubleshooting for more information."""  # noqa
