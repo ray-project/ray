@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset
+    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT
 
 import collections
 import itertools
@@ -27,6 +27,7 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
+from ray.data.aggregate import AggregateOnT, AggregateFn, Max, Min, Mean
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -791,26 +792,102 @@ class Dataset(Generic[T]):
                 _epoch_warned = True
         return Dataset(LazyBlockList(calls, metadata, blocks), max_epoch)
 
-    def groupby(self, key: Callable[[T], Any]) -> "GroupedDataset[T]":
-        """Group the dataset by the specified key function (Experimental).
+    def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
+        """Group the dataset by the key function or column name (Experimental).
 
         This is a lazy operation.
-        Currently only simple block datasets are supported.
 
         Examples:
             >>> # Group by a key function and aggregate.
             >>> ray.data.range(100).groupby(lambda x: x % 3).count()
+            >>> # Group by an Arrow table column and aggregate.
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").count()
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: A key function.
+            key: A key function or Arrow column name.
 
         Returns:
             A lazy GroupedDataset that can be aggregated later.
         """
         from ray.data.grouped_dataset import GroupedDataset
         return GroupedDataset(self, key)
+
+    def aggregate(self, *aggs: Tuple[AggregateFn]) -> U:
+        """Aggregate the entire dataset as one group.
+
+        This is a blocking operation.
+
+        Examples:
+            >>> ray.data.range(100).aggregate(Max())
+            >>> ray.data.range_arrow(100).aggregate(Max("value"))
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            aggs: Aggregations to do.
+                Currently only single aggregation is supported.
+
+        Returns:
+            If the input dataset is a simple dataset then the output is
+            a tuple of (agg1, agg2, ...) where each tuple element is
+            the corresponding aggregation result.
+            If the input dataset is an Arrow dataset then the output is
+            an ArrowRow where each column is the corresponding
+            aggregation result.
+        """
+        return self.groupby(None).aggregate(*aggs).take(1)[0]
+
+    def min(self, on: AggregateOnT = None) -> U:
+        """Compute minimum over entire dataset.
+
+        Examples:
+            >>> ray.data.range(100).min()
+            >>> ray.data.range_arrow(100).min("value")
+
+        Args:
+            on: The data to min on.
+                It can be the column name for Arrow dataset.
+
+        Returns:
+            The min result.
+        """
+        return self.aggregate(Min(on))[0]
+
+    def max(self, on: AggregateOnT = None) -> U:
+        """Compute maximum over entire dataset.
+
+        Examples:
+            >>> ray.data.range(100).max()
+            >>> ray.data.range_arrow(100).max("value")
+
+        Args:
+            on: The data to max on.
+                It can be the column name for Arrow dataset.
+
+        Returns:
+            The max result.
+        """
+        return self.aggregate(Max(on))[0]
+
+    def mean(self, on: AggregateOnT = None) -> U:
+        """Compute mean over entire dataset.
+
+        Examples:
+            >>> ray.data.range(100).mean()
+            >>> ray.data.range_arrow(100).mean("value")
+
+        Args:
+            on: The data to mean on.
+                It can be the column name for Arrow dataset.
+
+        Returns:
+            The mean result.
+        """
+        return self.aggregate(Mean(on))[0]
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,

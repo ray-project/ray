@@ -98,10 +98,10 @@ cc_grpc_library(
 # gcs rpc server and client.
 cc_library(
     name = "gcs_service_rpc",
-    hdrs = glob([
-        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
+    hdrs = [
         "src/ray/rpc/gcs_server/gcs_rpc_client.h",
-    ]),
+        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
+    ],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
@@ -495,6 +495,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":gcs",
+        ":gcs_service_rpc",
         ":pubsub_lib",
         ":ray_common",
         ":redis_client",
@@ -1733,6 +1734,7 @@ cc_library(
         ":gcs",
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
+        ":pubsub_lib",
         ":redis_store_client",
     ],
 )
