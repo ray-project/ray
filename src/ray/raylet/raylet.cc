@@ -104,7 +104,7 @@ void Raylet::Start() {
 }
 
 void Raylet::Stop() {
-  RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf());
+  RAY_CHECK_OK(gcs_client_->Nodes().DrainSelf());
   node_manager_.Stop();
   acceptor_.close();
   ray::stats::Shutdown();

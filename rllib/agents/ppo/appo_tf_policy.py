@@ -99,7 +99,7 @@ def appo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
@@ -123,7 +123,7 @@ def appo_surrogate_loss(
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
-    target_model_out, _ = policy.target_model.from_batch(train_batch)
+    target_model_out, _ = policy.target_model(train_batch)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
     values_time_major = make_time_major(values)
@@ -306,7 +306,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         "vf_explained_var": explained_variance(
             tf.reshape(policy._value_targets, [-1]),
             tf.reshape(values_batched, [-1])),
-        "entropy_coeff": policy.entropy_coeff,
+        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
     }
 
     if policy.config["vtrace"]:
