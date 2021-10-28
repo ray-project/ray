@@ -218,6 +218,8 @@ class Episode:
                         agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvActionType:
         """Returns the last action for the specified AgentID, or zeros.
 
+        The "last" action is the most recent one taken by the agent.
+
         Args:
             agent_id: The agent's ID to get the last action for.
 
@@ -244,6 +246,9 @@ class Episode:
                         agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvActionType:
         """Returns the previous action for the specified agent, or zeros.
 
+        The "previous" action is the one taken one timestep before the
+        most recent action taken by the agent.
+
         Args:
             agent_id: The agent's ID to get the previous action for.
 
@@ -252,17 +257,43 @@ class Episode:
             Zero in case the agent has never performed any actions (or only
             one) in the episode.
         """
-        # We are at t > 0 -> There has been a previous action by this agent.
+        # We are at t > 1 -> There has been a previous action by this agent.
         if agent_id in self._agent_to_prev_action:
             return flatten_to_single_ndarray(
                 self._agent_to_prev_action[agent_id])
-        # We're at t=0, so return all zeros.
+        # We're at t <= 1, so return all zeros.
         else:
             return np.zeros_like(self.last_action_for(agent_id))
 
     @DeveloperAPI
+    def last_reward_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> float:
+        """Returns the last reward for the specified agent, or zero.
+
+        The "last" reward is the one received most recently by the agent.
+
+        Args:
+            agent_id: The agent's ID to get the last reward for.
+
+        Returns:
+            Last reward for the the specified AgentID.
+            Zero in case the agent has never performed any actions
+            (and thus received rewards) in the episode.
+        """
+
+        history = self._agent_reward_history[agent_id]
+        # We are at t > 0 -> Return previously received reward.
+        if len(history) >= 1:
+            return history[-1]
+        # We're at t=0, so there is no previous reward, just return zero.
+        else:
+            return 0.0
+
+    @DeveloperAPI
     def prev_reward_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> float:
         """Returns the previous reward for the specified agent, or zero.
+
+        The "previous" reward is the one received one timestep before the
+        most recently received reward of the agent.
 
         Args:
             agent_id: The agent's ID to get the previous reward for.
@@ -274,10 +305,10 @@ class Episode:
         """
 
         history = self._agent_reward_history[agent_id]
-        # We are at t > 0 -> Return previously received reward.
+        # We are at t > 1 -> Return reward prior to most recent (last) one.
         if len(history) >= 2:
             return history[-2]
-        # We're at t=0, so there is no previous reward, just return zero.
+        # We're at t <= 1, so there is no previous reward, just return zero.
         else:
             return 0.0
 

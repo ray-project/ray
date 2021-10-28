@@ -47,11 +47,11 @@ class DefaultCallbacks:
         Args:
             worker: Reference to the current rollout worker.
             base_env: BaseEnv running the episode. The underlying
-                sub environment objects can be received by calling
+                sub environment objects can be retrieved by calling
                 `base_env.get_sub_environments()`.
             policies: Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default" policy.
-            episode: Episode object which contains episode
+            episode: Episode object which contains the episode's
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
@@ -99,12 +99,9 @@ class DefaultCallbacks:
                 "episode": episode
             })
 
-    def on_episode_end(self,
-                       *,
-                       worker: "RolloutWorker",
-                       base_env: BaseEnv,
-                       policies: Dict[PolicyID, Policy],
-                       episode: Episode, **kwargs) -> None:
+    def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+                       policies: Dict[PolicyID, Policy], episode: Episode,
+                       **kwargs) -> None:
         """Runs when an episode is done.
 
         Args:
