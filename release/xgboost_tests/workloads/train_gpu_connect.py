@@ -11,17 +11,19 @@ import os
 import time
 
 import ray
-from xgboost_ray import RayParams
-
-from ray.util.xgboost.release_test_util import train_ray
 
 if __name__ == "__main__":
+    os.environ["RXGB_PLACEMENT_GROUP_TIMEOUT_S"] = "1200"
+
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "train_gpu_connect")
     if addr.startswith("anyscale://"):
         ray.init(address=addr, job_name=job_name)
     else:
         ray.init(address="auto")
+
+    from xgboost_ray import RayParams
+    from ray.util.xgboost.release_test_util import train_ray
 
     ray_params = RayParams(
         elastic_training=False,
