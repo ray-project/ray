@@ -298,11 +298,11 @@ class Worker:
                 serialized_value,
                 object_ref=object_ref,
                 owner_address=owner_address),
-                # If the owner address is set, then the initial reference is
-                # already acquired internally in CoreWorker::CreateOwned.
-                # TODO(ekl) we should unify the code path more with the others
-                # to avoid this special case.
-                skip_adding_local_ref=(owner_address is not None))
+            # If the owner address is set, then the initial reference is
+            # already acquired internally in CoreWorker::CreateOwned.
+            # TODO(ekl) we should unify the code path more with the others
+            # to avoid this special case.
+            skip_adding_local_ref=(owner_address is not None))
 
     def raise_errors(self, data_metadata_pairs, object_refs):
         out = self.deserialize_objects(data_metadata_pairs, object_refs)
