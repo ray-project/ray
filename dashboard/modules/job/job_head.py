@@ -38,7 +38,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/package")
     @_ensure_ray_initialized
-    async def get_package(self, req: aiohttp.web.Request):
+    async def get_package(self,
+                          req: aiohttp.web.Request) -> aiohttp.web.Response:
         req_data = await req.json()
         package_uri = GetPackageRequest(**req_data).package_uri
         already_exists = package_exists(package_uri)
@@ -51,7 +52,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     @routes.put("/package")
     @_ensure_ray_initialized
-    async def upload_package(self, req: aiohttp.web.Request):
+    async def upload_package(self,
+                             req: aiohttp.web.Request) -> aiohttp.web.Response:
         req_data = await req.json()
         upload_req = UploadPackageRequest(**req_data)
         package_uri = upload_req.package_uri
