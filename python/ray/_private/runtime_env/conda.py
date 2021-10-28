@@ -91,8 +91,8 @@ def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
         is the identity function.
     """
     if runtime_env.HasField("conda_runtime_env"):
-        if isinstance(runtime_env.conda_runtime_env, dict):
-            return runtime_env.conda_runtime_env()
+        if runtime_env.conda_runtime_env.HasField("config"):
+            return json.loads(runtime_env.conda_runtime_env.config)
         else:
             return None
     if runtime_env.HasField("pip_runtime_env"):
@@ -221,8 +221,9 @@ class CondaManager:
             f"Setting up conda or pip for runtime_env: {runtime_env.SerializeToString()}"
         )
         conda_dict = get_conda_dict(runtime_env, self._resources_dir)
-        if isinstance(runtime_env.conda_runtime_env(), str):
-            conda_env_name = runtime_env.conda_runtime_env()
+
+        if runtime_env.conda_runtime_env.HasField("conda_env_name"):
+            conda_env_name = runtime_env.conda_env_name
         else:
             assert conda_dict is not None
             ray_pip = current_ray_pip_specifier(logger=logger)

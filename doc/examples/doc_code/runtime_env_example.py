@@ -23,9 +23,9 @@ runtime_env = {
 }
 # __runtime_env_conda_def_end__
 
-# # __ray_init_start__
-# ray.init(runtime_env=runtime_env)
-# # __ray_init_end__
+# __ray_init_start__
+ray.init(runtime_env=runtime_env)
+# __ray_init_end__
 
 @ray.remote
 def f_job():
@@ -36,11 +36,11 @@ class Actor_job:
     def g(self):
         pass
 
-# ray.get(f_job.remote())
-# a = Actor_job.remote()
-# ray.get(a.g.remote())
+ray.get(f_job.remote())
+a = Actor_job.remote()
+ray.get(a.g.remote())
 
-# ray.shutdown()
+ray.shutdown()
 
 ray.init()
 
