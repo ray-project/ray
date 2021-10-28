@@ -189,7 +189,8 @@ class Monitor:
                     "Starting autoscaler metrics server on port {}".format(
                         AUTOSCALER_METRIC_PORT))
                 prometheus_client.start_http_server(
-                    AUTOSCALER_METRIC_PORT,
+                    port=AUTOSCALER_METRIC_PORT,
+                    addr="127.0.0.1" if head_node_ip == "127.0.0.1" else "",
                     registry=self.prom_metrics.registry)
             except Exception:
                 logger.exception(

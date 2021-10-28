@@ -3,13 +3,14 @@ import pytest
 import sys
 import tempfile
 from pathlib import Path
+from ray import job_config
 import yaml
 
 from ray._private.runtime_env.validation import (
     parse_and_validate_excludes, parse_and_validate_working_dir,
     parse_and_validate_conda, parse_and_validate_pip,
-    parse_and_validate_env_vars, ParsedRuntimeEnv,
-    override_task_or_actor_runtime_env)
+    parse_and_validate_env_vars, parse_and_validate_py_modules,
+    ParsedRuntimeEnv, override_task_or_actor_runtime_env)
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
 
@@ -47,22 +48,45 @@ def test_key_with_value_none():
 
 
 class TestValidateWorkingDir:
-    def test_validate_working_dir_bad_uri(self):
-        with pytest.raises(ValueError, match="must be a valid URI"):
+    def test_validate_bad_uri(self):
+        with pytest.raises(ValueError, match="a valid URI"):
             parse_and_validate_working_dir("unknown://abc")
 
-    def test_validate_working_dir_invalid_type(self):
+    def test_validate_invalid_type(self):
         with pytest.raises(TypeError):
             parse_and_validate_working_dir(1)
 
-    def test_validate_s3_working_dir_invalid_extension(self):
+    def test_validate_s3_invalid_extension(self):
         with pytest.raises(
                 ValueError, match="Only .zip files supported for S3 URIs."):
             parse_and_validate_working_dir("s3://bucket/file")
 
-    def test_validate_s3_working_dir_valid_input(self):
+    def test_validate_s3_valid_input(self):
         working_dir = parse_and_validate_working_dir("s3://bucket/file.zip")
         assert working_dir == "s3://bucket/file.zip"
+
+
+class TestValidatePyModules:
+    def test_validate_not_a_list(self):
+        with pytest.raises(TypeError, match="must be a list of strings"):
+            parse_and_validate_py_modules(".")
+
+    def test_validate_bad_uri(self):
+        with pytest.raises(ValueError, match="a valid URI"):
+            parse_and_validate_py_modules(["unknown://abc"])
+
+    def test_validate_invalid_type(self):
+        with pytest.raises(TypeError):
+            parse_and_validate_py_modules([1])
+
+    def test_validate_s3_invalid_extension(self):
+        with pytest.raises(
+                ValueError, match="Only .zip files supported for S3 URIs."):
+            parse_and_validate_py_modules(["s3://bucket/file"])
+
+    def test_validate_s3_valid_input(self):
+        py_modules = parse_and_validate_py_modules(["s3://bucket/file.zip"])
+        assert py_modules == ["s3://bucket/file.zip"]
 
 
 class TestValidateExcludes:
@@ -294,6 +318,14 @@ class TestOverrideRuntimeEnvs:
         parent_env = {"pip": ["pkg-name"], "uris": ["a", "b"]}
         result_env = override_task_or_actor_runtime_env(child_env, parent_env)
         assert result_env == {"uris": ["a"], "pip": ["pkg-name"]}
+
+
+class TestParseJobConfig:
+    def test_parse_runtime_env_from_json_env_variable(self):
+        job_config_json = {"runtime_env": {"working_dir": "uri://abc"}}
+        config = job_config.JobConfig.from_json(job_config_json)
+        assert config.runtime_env == job_config_json.get("runtime_env")
+        assert config.metadata == {}
 
 
 if __name__ == "__main__":
