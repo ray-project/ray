@@ -186,7 +186,6 @@ class JobManager:
             job_id: str,
             entrypoint: str,
             runtime_env: Optional[Dict[str, Any]] = None,
-            metadata: Optional[Dict[str, str]] = None,
     ) -> str:
         """
         1) Create new detached actor with same runtime_env as job spec
@@ -207,7 +206,7 @@ class JobManager:
             # For now we assume supervisor actor and driver script have same
             # runtime_env.
             runtime_env=runtime_env,
-        ).remote(job_id, metadata or {})
+        ).remote(job_id)
 
         try:
             ray.get(

@@ -181,37 +181,6 @@ class TestRuntimeEnv:
             "are provided")
 
 
-def test_pass_metadata(job_manager):
-    print_metadata_cmd = (
-        "python -c\""
-        "import ray;"
-        "ray.init();"
-        "job_config=ray.worker.global_worker.core_worker.get_job_config();"
-        "print(dict(sorted(job_config.metadata.items())))"
-        "\"")
-
-    # Check that we default to no metadata.
-    job_id: str = str(uuid4())
-    job_id = job_manager.submit_job(job_id, print_metadata_cmd)
-
-    wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(job_id) == b"{}"
-
-    # Check that we can pass custom metadata.
-    job_id: str = str(uuid4())
-    job_id = job_manager.submit_job(
-        job_id, print_metadata_cmd, metadata={
-            "key1": "val1",
-            "key2": "val2"
-        })
-
-    wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(
-        job_id) == b"{'key1': 'val1', 'key2': 'val2'}"
-
-
 def test_status_and_logs_while_blocking(job_manager):
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_file = os.path.join(tmp_dir, "hello")
