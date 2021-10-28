@@ -5,7 +5,7 @@ import re
 import scipy
 import tracemalloc
 import tree  # pip install dm_tree
-from typing import List
+from typing import Callable, List, Optional
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
@@ -169,8 +169,25 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
             return test
 
 
-def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
+def _test_some_code_for_memory_leaks(
+    desc: str,
+    init: Optional[Callable[[], None]],
+    code: Callable[[], None],
+    repeats: int,
+    max_num_trials: int = 1,
+):
+    """Runs given code (and init code) n times and checks for memory leaks. 
+    
+    Args:
+        desc: 
+        init: 
+        code: 
+        repeats: 
+        max_num_trials: 
 
+    Returns:
+
+    """
     def _i_print(i):
         if (i + 1) % 10 == 0:
             print(".", end="" if (i + 1) % 100 else f" {i + 1}\n", flush=True)
@@ -180,7 +197,7 @@ def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
     suspicious_stats = []
     for trial in range(max_num_trials):
         # Store up to n frames of each call stack.
-        tracemalloc.start(10)
+        tracemalloc.start(20)
 
         table = defaultdict(list)
 
@@ -208,17 +225,9 @@ def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
         # Suspicious memory allocation found?
         suspects = _find_memory_leaks_in_table(table)
         for suspect in sorted(suspects, key=lambda s: s.memory_increase, reverse=True):
-            pretty_traceback = "\n".join(suspect.traceback.format())
-
             # Only print out the biggest offender:
             if len(suspicious) == 0:
-                print("Most suspicious memory allocation in traceback "
-                      "(only printing out this one, but all (less suspicious)"
-                      " suspects will be investigated as well):")
-                print(pretty_traceback)
-                print(f"Increase total={suspect.memory_increase}B")
-                print(f"Slope={suspect.slope} B/detection")
-                print(f"Rval={suspect.rvalue}")
+                _pprint_suspect(suspect)
                 print("-> added to retry list")
             suspicious.add(suspect.traceback)
             suspicious_stats.append(suspect)
@@ -227,7 +236,7 @@ def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
 
         # Some suspicious memory allocations found.
         if len(suspicious) > 0:
-            print(f"Suspects found: {len(suspicious)}. Top-ten:")
+            print(f"{len(suspicious)} suspects found. Top-ten:")
             for i, s in enumerate(sorted(suspicious_stats, key=lambda s: s.memory_increase, reverse=True)):
                 if i > 10:
                     break
@@ -236,6 +245,10 @@ def _test_some_code_for_memory_leaks(desc, init, code, repeats, max_num_trials):
         else:
             print("No remaining suspects found -> returning")
             break
+
+    # Print out final top offender.
+    if len(suspicious_stats) > 0:
+        _pprint_suspect(suspicious_stats[0])
 
     return suspicious_stats
 
@@ -286,8 +299,11 @@ def _find_memory_leaks_in_table(table):
             # - If stronger positive slope -> error.
             # deltas = np.array([0.0 if i == 0 else h - hist[i - 1] for i, h in
             #          enumerate(hist)])
-            if memory_increase > 100 and (line.slope > 10.0 or (
-                    line.slope > 2.0 and line.rvalue > 0.5)):
+            if memory_increase > 100 and (
+                line.slope > 10.0 or
+                (line.slope > 6.0 and line.rvalue > 0.8) or
+                (line.slope > 4.0 and line.rvalue > 0.6)
+            ):
                 suspects.append(Suspect(
                     traceback=traceback,
                     memory_increase=memory_increase,
@@ -297,3 +313,13 @@ def _find_memory_leaks_in_table(table):
                 ))
 
     return suspects
+
+
+def _pprint_suspect(suspect):
+    print("Most suspicious memory allocation in traceback "
+          "(only printing out this one, but all (less suspicious)"
+          " suspects will be investigated as well):")
+    print("\n".join(suspect.traceback.format()))
+    print(f"Increase total={suspect.memory_increase}B")
+    print(f"Slope={suspect.slope} B/detection")
+    print(f"Rval={suspect.rvalue}")

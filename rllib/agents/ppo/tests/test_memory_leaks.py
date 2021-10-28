@@ -16,6 +16,18 @@ class TestMemoryLeaks(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
+    def test_dummy_code(self):
+        from ray.rllib.utils.debug.memory import _test_some_code_for_memory_leaks
+
+        a = []
+
+        def dumb_code():
+            nonlocal a
+            a.append(42)  # expect 8 bytes (int64) per detection
+
+        stats = _test_some_code_for_memory_leaks("dumb_code", None, dumb_code, 200, max_num_trials=3)
+        self.assertTrue(len(stats) == 1)
+
     def test_ppo_memory_leaks(self):
         """Test whether an APPOTrainer can be built with both frameworks."""
         config = ppo.DEFAULT_CONFIG.copy()
@@ -37,7 +49,7 @@ class TestMemoryLeaks(unittest.TestCase):
         # Otherwise, `check_memory_leaks` will complain.
         config["create_env_on_driver"] = True
 
-        for _ in framework_iterator(config, frameworks="tf2", with_eager_tracing=True):#TODO
+        for _ in framework_iterator(config, frameworks="torch"):#, with_eager_tracing=True):#TODO
             _config = config.copy()
             _config["env"] = RandomLargeObsSpaceEnv
             trainer = ppo.appo.APPOTrainer(config=_config)
