@@ -744,7 +744,7 @@ def init(
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
-        builder = ray.client(address, _disable_deprecation_warn=True)
+        builder = ray.client(address, _deprecation_warn_enabled=False)
 
         # Forward any keyword arguments that were changed from their default
         # values to the builder

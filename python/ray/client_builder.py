@@ -91,8 +91,9 @@ class ClientBuilder:
         # " (allow_multiple=True).
         self._allow_multiple_connections = False
         self._credentials = None
-        # Set to True if ClientBuilder is being constructed by internal methods
-        self._disable_deprecation_warn = False
+        # Set to False if ClientBuilder is being constructed by internal
+        # methods
+        self._deprecation_warn_enabled = True
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -123,7 +124,7 @@ class ClientBuilder:
                 includes the server's version of Python & Ray as well as the
                 dashboard_url.
         """
-        if not self._disable_deprecation_warn:
+        if self._deprecation_warn_enabled:
             self._client_deprecation_warn()
         # Fill runtime env/namespace from environment if not already set.
         # Should be done *after* the deprecation warning, since warning will
@@ -259,7 +260,7 @@ class _LocalClientBuilder(ClientBuilder):
         """
         Begin a connection to the address passed in via ray.client(...)
         """
-        if not self._disable_deprecation_warn:
+        if self._deprecation_warn_enabled:
             self._client_deprecation_warn()
         # Fill runtime env/namespace from environment if not already set.
         # Should be done *after* the deprecation warning, since warning will
@@ -321,7 +322,7 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
 
 @Deprecated
 def client(address: Optional[str] = None,
-           _disable_deprecation_warn: bool = False) -> ClientBuilder:
+           _deprecation_warn_enabled: bool = True) -> ClientBuilder:
     """
     Creates a ClientBuilder based on the provided address. The address can be
     of the following forms:
@@ -332,8 +333,9 @@ def client(address: Optional[str] = None,
         * ``"module://inner_address"``: load module.ClientBuilder & pass
             inner_address
 
-    The _disable_deprecation_warn flag suppresses deprecation warnings, and is
-    for internal use only.
+    The _deprecation_warn_enabled flag enables deprecation warnings, and is
+    for internal use only. Set it to False to suppress client deprecation
+    warnings.
     """
     env_address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
     if env_address and address is None:
@@ -344,5 +346,5 @@ def client(address: Optional[str] = None,
 
     builder = _get_builder_from_address(address)
     # Disable client deprecation warn when ray.client is used internally
-    builder._disable_deprecation_warn = _disable_deprecation_warn
+    builder._deprecation_warn_enabled = _deprecation_warn_enabled
     return builder
