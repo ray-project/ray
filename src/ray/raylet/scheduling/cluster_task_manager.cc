@@ -979,10 +979,10 @@ std::string ClusterTaskManager::DebugStr() const {
     return state + pair.second.size();
   };
   size_t num_tasks_to_schedule =
-      std::accumulate(tasks_to_schedule_.begin(), tasks_to_schedule_.end(), (size_t)u,
+      std::accumulate(tasks_to_schedule_.begin(), tasks_to_schedule_.end(), (size_t)0,
                       per_work_accumulator);
   size_t num_tasks_to_dispatch =
-      std::accumulate(tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)u,
+      std::accumulate(tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0,
                       per_work_accumulator);
 
   if (num_tasks_to_schedule + num_tasks_to_dispatch + num_infeasible_tasks > 1000) {
