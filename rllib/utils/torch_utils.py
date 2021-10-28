@@ -232,7 +232,7 @@ def l2_loss(x: TensorType) -> TensorType:
     return 0.5 * torch.sum(torch.pow(x, 2.0))
 
 
-def minimize_and_clip(optimizer: torch.Optimizer,
+def minimize_and_clip(optimizer: torch.optim.Optimizer,
                       clip_val: float = 10.0) -> None:
     """Clips grads found in `optimizer.param_groups` to given value in place.
 
@@ -240,7 +240,7 @@ def minimize_and_clip(optimizer: torch.Optimizer,
     `clip_val`.
 
     Args:
-        optimizer: The torch.Optimizer to get the variables from.
+        optimizer: The torch.optim.Optimizer to get the variables from.
         clip_val: The global norm clip value. Will clip around -clip_val and
             +clip_val.
     """
