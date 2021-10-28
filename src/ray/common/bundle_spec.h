@@ -27,7 +27,6 @@
 
 namespace ray {
 
-typedef std::function<void(const ResourceIdSet &)> ScheduleBundleCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.
 typedef std::function<void()> SpillbackBundleCallback;
@@ -68,26 +67,10 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// \return The resources that will be acquired by this bundle.
   const ResourceSet &GetRequiredResources() const;
 
-  /// Override dispatch behaviour.
-  void OnScheduleInstead(const ScheduleBundleCallback &callback) {
-    on_schedule_ = callback;
-  }
-
-  /// Override spillback behaviour.
-  void OnSpillbackInstead(const SpillbackBundleCallback &callback) {
-    on_spillback_ = callback;
-  }
-
   /// Get all placement group bundle resource labels.
-  const std::unordered_map<std::string, double> &GetFormattedResources() const {
+  const absl::flat_hash_map<std::string, double> &GetFormattedResources() const {
     return bundle_resource_labels_;
   }
-
-  /// Returns the schedule bundle callback, or nullptr.
-  const ScheduleBundleCallback &OnSchedule() const { return on_schedule_; }
-
-  /// Returns the spillback bundle callback, or nullptr.
-  const SpillbackBundleCallback &OnSpillback() const { return on_spillback_; }
 
   std::string DebugString() const;
 
@@ -106,11 +89,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// or task specifies placement group without bundle id.
   /// 2) `CPU_group_${bundle_index}_${group_id}`: this is the requested resource
   /// when the actor or task specifies placement group with bundle id.
-  std::unordered_map<std::string, double> bundle_resource_labels_;
-
-  mutable ScheduleBundleCallback on_schedule_ = nullptr;
-
-  mutable SpillbackBundleCallback on_spillback_ = nullptr;
+  absl::flat_hash_map<std::string, double> bundle_resource_labels_;
 };
 
 /// Format a placement group resource, e.g., CPU -> CPU_group_i

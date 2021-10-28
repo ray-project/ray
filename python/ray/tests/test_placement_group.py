@@ -11,7 +11,8 @@ import ray
 import ray.cluster_utils
 
 from ray._private.test_utils import (get_other_nodes, wait_for_condition,
-                                     is_placement_group_removed)
+                                     is_placement_group_removed,
+                                     placement_group_assert_no_leak)
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import PlacementGroup
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
@@ -39,6 +40,8 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         a = Actor.options(num_cpus=1, placement_group=pg).remote()
         ray.get(a.v.remote())
         ray.get(pg.ready())
+
+        placement_group_assert_no_leak([pg])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -93,6 +96,7 @@ def test_placement_group_pack(ray_start_cluster, connect_to_client):
         node_of_actor_1 = actor_info_1["Address"]["NodeID"]
         node_of_actor_2 = actor_info_2["Address"]["NodeID"]
         assert node_of_actor_1 == node_of_actor_2
+        placement_group_assert_no_leak([placement_group])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -149,6 +153,8 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
         node_of_actor_2 = actor_info_2["Address"]["NodeID"]
         assert node_of_actor_1 == node_of_actor_2
 
+        placement_group_assert_no_leak([placement_group])
+
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_spread(ray_start_cluster, connect_to_client):
@@ -196,6 +202,8 @@ def test_placement_group_spread(ray_start_cluster, connect_to_client):
         node_of_actor_1 = actor_info_1["Address"]["NodeID"]
         node_of_actor_2 = actor_info_2["Address"]["NodeID"]
         assert node_of_actor_1 != node_of_actor_2
+
+        placement_group_assert_no_leak([placement_group])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -257,6 +265,8 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
         assert node_of_actor_1 != node_of_actor_3
         assert node_of_actor_2 != node_of_actor_3
 
+        placement_group_assert_no_leak([placement_group])
+
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_actor_resource_ids(ray_start_cluster,
@@ -278,6 +288,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster,
         resources = ray.get(a1.f.remote())
         assert len(resources) == 1, resources
         assert "CPU_group_" in list(resources.keys())[0], resources
+        placement_group_assert_no_leak([g1])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -312,6 +323,8 @@ def test_placement_group_task_resource_ids(ray_start_cluster,
         assert ("CPU_group_0_" in keys[0]
                 or "CPU_group_0_" in keys[1]), resources
 
+        placement_group_assert_no_leak([g1])
+
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_hang(ray_start_cluster, connect_to_client):
@@ -338,12 +351,21 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
         assert len(resources) == 1, resources
         assert "CPU_group_" in list(resources.keys())[0], resources
 
+        placement_group_assert_no_leak([g1])
+
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_remove_placement_group(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
+
+    @ray.remote
+    def warmup():
+        pass
+
+    # warm up the cluster.
+    ray.get([warmup.remote() for _ in range(4)])
 
     with connect_to_client_or_not(connect_to_client):
         # First try to remove a placement group that doesn't
@@ -428,6 +450,8 @@ def test_remove_pending_placement_group(ray_start_cluster, connect_to_client):
         # Make sure this task is still schedulable.
         assert ray.get(f.remote()) == 3
 
+        placement_group_assert_no_leak([placement_group])
+
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_table(ray_start_cluster, connect_to_client):
@@ -444,6 +468,7 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
+    pgs_created = []
 
     with connect_to_client_or_not(connect_to_client):
         # Originally placement group creation should be pending because
@@ -453,6 +478,7 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
         bundles = [{"CPU": 2, "GPU": 1}, {"CPU": 2}]
         placement_group = ray.util.placement_group(
             name=name, strategy=strategy, bundles=bundles)
+        pgs_created.append(placement_group)
         result = ray.util.placement_group_table(placement_group)
         assert result["name"] == name
         assert result["strategy"] == strategy
@@ -474,14 +500,16 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
 
         # Add tow more placement group for placement group table test.
         second_strategy = "SPREAD"
-        ray.util.placement_group(
-            name="second_placement_group",
-            strategy=second_strategy,
-            bundles=bundles)
-        ray.util.placement_group(
-            name="third_placement_group",
-            strategy=second_strategy,
-            bundles=bundles)
+        pgs_created.append(
+            ray.util.placement_group(
+                name="second_placement_group",
+                strategy=second_strategy,
+                bundles=bundles))
+        pgs_created.append(
+            ray.util.placement_group(
+                name="third_placement_group",
+                strategy=second_strategy,
+                bundles=bundles))
 
         placement_group_table = ray.util.placement_group_table()
         assert len(placement_group_table) == 3
@@ -495,6 +523,8 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
             get_name_set.add(placement_group_data["name"])
 
         assert true_name_set == get_name_set
+
+        placement_group_assert_no_leak(pgs_created)
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -515,6 +545,7 @@ def test_cuda_visible_devices(ray_start_cluster, connect_to_client):
 
         devices = ray.get(o1)
         assert devices == "0", devices
+        placement_group_assert_no_leak([g1])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -585,6 +616,7 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster,
         ray.get(actor_4.value.remote())
         ray.get(actor_5.value.remote())
         ray.get(actor_6.value.remote())
+        placement_group_assert_no_leak([placement_group])
         ray.shutdown()
 
 

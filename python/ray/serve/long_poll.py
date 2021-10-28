@@ -10,13 +10,21 @@ from typing import (Any, Optional, Tuple, Callable, DefaultDict, Dict, Set,
 import ray
 from ray.serve.utils import logger
 
+# Each LongPollClient will send requests to LongPollHost to poll changes
+# as blocking awaitable. This doesn't scale if we have many client instances
+# that will slow down, or even block controller actor's event loop if near
+# its max_concurrency limit. Therefore we timeout a polling request after
+# a few seconds and let each client retry on their end.
+# We randomly select a timeout within this range to avoid a "thundering herd"
+# when there are many clients subscribing at the same time.
+LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (30, 60)
+
 
 class LongPollNamespace(Enum):
     def __repr__(self):
         return f"{self.__class__.__name__}.{self.name}"
 
-    REPLICA_HANDLES = auto()
-    BACKEND_CONFIGS = auto()
+    RUNNING_REPLICAS = auto()
     ROUTE_TABLE = auto()
 
 
@@ -60,6 +68,8 @@ class LongPollClient:
         self.event_loop = call_in_event_loop
         self._reset()
 
+        self.is_running = True
+
     def _reset(self):
         self.snapshot_ids: Dict[KeyType, int] = {
             key: -1
@@ -101,16 +111,22 @@ class LongPollClient:
             # exit.
             logger.debug("LongPollClient failed to connect to host. "
                          "Shutting down.")
+            self.is_running = False
             return
 
         if isinstance(updates, ConnectionError):
             logger.warning("LongPollClient connection failed, shutting down.")
+            self.is_running = False
             return
 
         if isinstance(updates, (ray.exceptions.RayTaskError)):
-            # Some error happened in the controller. It could be a bug or some
-            # undesired state.
-            logger.error("LongPollHost errored\n" + updates.traceback_str)
+            if isinstance(updates.as_instanceof_cause(),
+                          (asyncio.TimeoutError)):
+                logger.debug("LongPollClient polling timed out. Retrying.")
+            else:
+                # Some error happened in the controller. It could be a bug or
+                # some undesired state.
+                logger.error("LongPollHost errored\n" + updates.traceback_str)
             self._poll_next()
             return
 
@@ -130,7 +146,16 @@ class LongPollClient:
             if self.event_loop is None:
                 chained()
             else:
-                self.event_loop.call_soon_threadsafe(chained)
+                # Schedule the next iteration only if the loop is running.
+                # The event loop might not be running if users used a cached
+                # version across loops.
+                if self.event_loop.is_running():
+                    self.event_loop.call_soon_threadsafe(chained)
+                else:
+                    logger.error(
+                        "The event loop is closed, shutting down long poll "
+                        "client.")
+                    self.is_running = False
 
 
 class LongPollHost:
@@ -196,15 +221,20 @@ class LongPollHost:
 
         done, not_done = await asyncio.wait(
             async_task_to_watched_keys.keys(),
-            return_when=asyncio.FIRST_COMPLETED)
+            return_when=asyncio.FIRST_COMPLETED,
+            timeout=random.uniform(*LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S))
+
         [task.cancel() for task in not_done]
 
-        updated_object_key: str = async_task_to_watched_keys[done.pop()]
-        return {
-            updated_object_key: UpdatedObject(
-                self.object_snapshots[updated_object_key],
-                self.snapshot_ids[updated_object_key])
-        }
+        if len(done) == 0:
+            raise asyncio.TimeoutError("Polling request timed out.")
+        else:
+            updated_object_key: str = async_task_to_watched_keys[done.pop()]
+            return {
+                updated_object_key: UpdatedObject(
+                    self.object_snapshots[updated_object_key],
+                    self.snapshot_ids[updated_object_key])
+            }
 
     def notify_changed(
             self,

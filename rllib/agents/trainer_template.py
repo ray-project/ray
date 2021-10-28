@@ -18,7 +18,11 @@ from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
 logger = logging.getLogger(__name__)
 
 
-def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                           **kwargs):
+    assert len(kwargs) == 0, (
+        "Default execution_plan does NOT take any additional parameters")
+
     # Collects experiences in parallel from multiple RolloutWorker actors.
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -175,19 +179,8 @@ def build_trainer(
                 config=config,
                 num_workers=self.config["num_workers"])
             self.execution_plan = execution_plan
-            try:
-                self.train_exec_impl = execution_plan(self, self.workers,
-                                                      config)
-            except TypeError as e:
-                # Keyword error: Try old way w/o kwargs.
-                if "() takes 2 positional arguments but 3" in e.args[0]:
-                    self.train_exec_impl = execution_plan(self.workers, config)
-                    logger.warning(
-                        "`execution_plan` functions should accept "
-                        "`trainer`, `workers`, and `config` as args!")
-                # Other error -> re-raise.
-                else:
-                    raise e
+            self.train_exec_impl = execution_plan(
+                self.workers, config, **self._kwargs_for_execution_plan())
 
             if after_init:
                 after_init(self)

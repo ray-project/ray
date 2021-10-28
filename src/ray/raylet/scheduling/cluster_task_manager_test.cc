@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// clang-format off
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 
 #include <memory>
@@ -28,12 +29,14 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/test/util.h"
+#include "mock/ray/gcs/gcs_client.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
 
 #include "absl/container/flat_hash_map.h"
 #endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
+// clang-format on
 
 namespace ray {
 
@@ -55,6 +58,12 @@ class MockWorkerPool : public WorkerPoolInterface {
 
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     workers.push_front(worker);
+  }
+
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers) const {
+    RAY_CHECK(false) << "Not used.";
+    return {};
   }
 
   void TriggerCallbacks() {
@@ -96,20 +105,19 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   std::list<std::shared_ptr<WorkerInterface>> workers;
-  std::unordered_map<int, std::list<PopWorkerCallback>> callbacks;
+  absl::flat_hash_map<int, std::list<PopWorkerCallback>> callbacks;
   int num_pops;
 };
 
-std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(const std::string &id,
-                                                                    double num_cpus,
-                                                                    double num_gpus) {
-  std::unordered_map<std::string, double> local_node_resources;
+std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
+    const std::string &id, double num_cpus, double num_gpus, gcs::GcsClient &gcs_client) {
+  absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
-  auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      ClusterResourceScheduler(id, local_node_resources));
+  auto scheduler =
+      std::make_shared<ClusterResourceScheduler>(id, local_node_resources, gcs_client);
 
   return scheduler;
 }
@@ -155,7 +163,7 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
       const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     for (auto &obj_ref : required_objects) {
-      if (missing_objects_.count(ObjectRefToId(obj_ref))) {
+      if (missing_objects_.find(ObjectRefToId(obj_ref)) != missing_objects_.end()) {
         return false;
       }
     }
@@ -180,9 +188,10 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
   ClusterTaskManagerTest(double num_cpus_at_head = 8.0, double num_gpus_at_head = 0.0)
-      : id_(NodeID::FromRandom()),
-        scheduler_(
-            CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head, num_gpus_at_head)),
+      : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
+        id_(NodeID::FromRandom()),
+        scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head,
+                                             num_gpus_at_head, *gcs_client_)),
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
@@ -194,9 +203,12 @@ class ClusterTaskManagerTest : public ::testing::Test {
               return is_owner_alive_;
             },
             /* get_node_info= */
-            [this](const NodeID &node_id) {
+            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               node_info_calls_++;
-              return node_info_[node_id];
+              if (node_info_.count(node_id) != 0) {
+                return &node_info_[node_id];
+              }
+              return nullptr;
             },
             /* announce_infeasible_task= */
             [this](const RayTask &task) { announce_infeasible_task_calls_++; }, pool_,
@@ -215,6 +227,12 @@ class ClusterTaskManagerTest : public ::testing::Test {
             },
             /*max_pinned_task_arguments_bytes=*/1000) {}
 
+  void SetUp() {
+    static rpc::GcsNodeInfo node_info;
+    ON_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
+        .WillByDefault(::testing::Return(&node_info));
+  }
+
   RayObject *MakeDummyArg() {
     std::vector<uint8_t> data;
     data.resize(default_arg_size_);
@@ -222,13 +240,11 @@ class ClusterTaskManagerTest : public ::testing::Test {
     return new RayObject(buffer, nullptr, {});
   }
 
-  void SetUp() {}
-
   void Shutdown() {}
 
   void AddNode(const NodeID &id, double num_cpus, double num_gpus = 0,
                double memory = 0) {
-    std::unordered_map<std::string, double> node_resources;
+    absl::flat_hash_map<std::string, double> node_resources;
     node_resources[ray::kCPU_ResourceLabel] = num_cpus;
     node_resources[ray::kGPU_ResourceLabel] = num_gpus;
     node_resources[ray::kMemory_ResourceLabel] = memory;
@@ -271,10 +287,11 @@ class ClusterTaskManagerTest : public ::testing::Test {
     return count;
   }
 
+  std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
-  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
   bool is_owner_alive_;
@@ -282,7 +299,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
-  std::unordered_map<NodeID, absl::optional<rpc::GcsNodeInfo>> node_info_;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
@@ -871,7 +888,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   /*
     Test basic scheduler functionality:
-    1. Queue and attempt to schedule/dispatch atest with no workers available
+    1. Queue and attempt to schedule/dispatch a test with no workers available
     2. A worker becomes available, dispatch again.
    */
   rpc::RequestWorkerLeaseReply reply;
@@ -884,18 +901,21 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 
   std::vector<TaskID> to_cancel;
 
-  // Don't add these fist 2 tasks to `to_cancel`.
+  const WorkerID worker_id_submitting_first_task = WorkerID::FromRandom();
+  // Don't add the fist task to `to_cancel`.
   for (int i = 0; i < 1; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
-    task.SetBacklogSize(10 - i);
     task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    task_manager_.SetWorkerBacklog(task.GetTaskSpecification().GetSchedulingClass(),
+                                   worker_id_submitting_first_task, 10 - i);
     pool_.TriggerCallbacks();
   }
 
   for (int i = 1; i < 10; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
-    task.SetBacklogSize(10 - i);
     task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    task_manager_.SetWorkerBacklog(task.GetTaskSpecification().GetSchedulingClass(),
+                                   WorkerID::FromRandom(), 10 - i);
     pool_.TriggerCallbacks();
     to_cancel.push_back(task.GetTaskSpecification().TaskId());
   }
@@ -921,6 +941,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(worker);
   task_manager_.ScheduleAndDispatchTasks();
+  task_manager_.ClearWorkerBacklog(worker_id_submitting_first_task);
   pool_.TriggerCallbacks();
 
   {
@@ -1228,7 +1249,7 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
       node_resource_instances.GetAvailableResourceInstances();
 
   auto allocated_instances = std::make_shared<TaskResourceInstances>();
-  const std::unordered_map<std::string, double> task_spec = {{"CPU", 1.}, {"GPU", 1.}};
+  const absl::flat_hash_map<std::string, double> task_spec = {{"CPU", 1.}, {"GPU", 1.}};
   ASSERT_TRUE(scheduler_->AllocateLocalTaskResources(task_spec, allocated_instances));
   worker->SetAllocatedInstances(allocated_instances);
 

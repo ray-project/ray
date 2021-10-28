@@ -7,10 +7,10 @@ import platform
 import sys
 import socket
 import json
-import time
 import traceback
 
 from grpc.experimental import aio as aiogrpc
+from distutils.version import LooseVersion
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -83,14 +83,14 @@ class DashboardAgent(object):
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = self.server.add_insecure_port(
-            f"[::]:{self.dashboard_agent_port}")
+        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+            self.server, f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
         options = (("grpc.enable_http_proxy", 0), )
-        self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
-            f"{self.ip}:{self.node_manager_port}", options=options)
+        self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
+            f"{self.ip}:{self.node_manager_port}", options, asynchronous=True)
         self.http_session = None
         ip, port = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
@@ -143,8 +143,12 @@ class DashboardAgent(object):
             sys.exit(-1)
 
         # Create a http session for all modules.
-        self.http_session = aiohttp.ClientSession(
-            loop=asyncio.get_event_loop())
+        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
+        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
+            self.http_session = aiohttp.ClientSession(
+                loop=asyncio.get_event_loop())
+        else:
+            self.http_session = aiohttp.ClientSession()
 
         # Start a grpc asyncio server.
         await self.server.start()
@@ -333,16 +337,6 @@ if __name__ == "__main__":
             backup_count=args.logging_rotate_backup_count)
         setup_component_logger(**logging_params)
 
-        # The dashboard is currently broken on Windows.
-        # https://github.com/ray-project/ray/issues/14026.
-        if sys.platform == "win32":
-            logger.warning(
-                "The dashboard is currently disabled on windows. "
-                "See https://github.com/ray-project/ray/issues/14026 "
-                "for more details")
-            while True:
-                time.sleep(999)
-
         agent = DashboardAgent(
             args.node_ip_address,
             args.redis_address,
@@ -358,6 +352,8 @@ if __name__ == "__main__":
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             logging_params=logging_params)
+        if os.environ.get("_RAY_AGENT_FAILING"):
+            raise Exception("Failure injection failure.")
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())
