@@ -199,7 +199,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         return read_tasks
 
 
-@ray.remote(num_cpus=0)
+@ray.remote(num_cpus=0, placement_group=None)
 class _DesignatedBlockOwner:
     def ping(self):
         return "ok"
