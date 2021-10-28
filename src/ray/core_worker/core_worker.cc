@@ -190,7 +190,7 @@ void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
   if (quick_exit) {
     RAY_LOG(ERROR) << "The core worker process is not initialized yet or already "
                    << "shutdown.";
-    QuickExit(/*logging-enabled*/ false);
+    QuickExit();
   } else {
     RAY_CHECK(core_worker_process)
         << "The core worker process is not initialized yet or already "
@@ -236,7 +236,7 @@ void CoreWorkerProcess::InitializeSystemConfig() {
             // If there's no more attempt to try.
             if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
               std::ostringstream ss;
-              ss << "Failed to get the system config from raylet becuase "
+              ss << "Failed to get the system config from raylet because "
                  << "it is dead. Worker will terminate. Status: " << status;
               if (options_.worker_type == WorkerType::DRIVER) {
                 // If it is the driver, surface the issue to the user.
@@ -986,10 +986,17 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::CheckForRayletFailure() {
-  bool should_shutdown = IsRayletFailed(RayConfig::instance().RAYLET_PID());
-  RAY_LOG(WARNING) << "Shutting down the core worker because the local raylet failed. "
-                      "Check out the raylet.out log file.";
+  auto env_pid = RayConfig::instance().RAYLET_PID();
+  bool should_shutdown = IsRayletFailed(env_pid);
   if (should_shutdown) {
+    std::ostringstream stream;
+    stream << "Shutting down the core worker because the local raylet failed. "
+           << "Check out the raylet.out log file.";
+    if (!env_pid.empty()) {
+      auto pid = static_cast<pid_t>(std::stoi(env_pid));
+      stream << " Raylet pid: " << pid;
+    }
+    RAY_LOG(WARNING) << stream.str();
     if (options_.worker_type == WorkerType::WORKER) {
       task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
     } else {
