@@ -219,6 +219,7 @@ def start_run(
 
     env = os.environ.copy()
     env["TUNE_RESULT_BUFFER_LENGTH"] = "1"
+    env["TUNE_GLOBAL_CHECKPOINT_S"] = "0.5"
 
     tune_script = os.environ.get("OVERWRITE_TUNE_SCRIPT", TUNE_SCRIPT)
 
@@ -616,6 +617,8 @@ def load_trial_checkpoint_data(trial_dir: str,
         if not cp_dir.startswith("checkpoint_"):
             continue
 
+        cp_full_dir = os.path.join(trial_dir, cp_dir)
+
         try:
             checkpoint_num = int(cp_dir.lstrip("checkpoint_"))
             if checkpoint_num > node_trial.last_result["internal_iter"]:
@@ -624,13 +627,15 @@ def load_trial_checkpoint_data(trial_dir: str,
                 # already created a checkpoint, but the result was not yet
                 # processed by Ray Tune. So, we just pretend it isn't there
                 # for the sake of the test.
+                print(f"Skipping unobserved checkpoint: {cp_full_dir} as "
+                      f"{checkpoint_num} > "
+                      f"{node_trial.last_result['internal_iter']}")
                 continue
         except ValueError:
             # temporary checkpoint
             continue
 
-        with open(os.path.join(trial_dir, cp_dir, "checkpoint.json"),
-                  "rt") as f:
+        with open(os.path.join(cp_full_dir, "checkpoint.json"), "rt") as f:
             checkpoint_data = json.load(f)
         checkpoints.append((cp_dir, checkpoint_data))
 
