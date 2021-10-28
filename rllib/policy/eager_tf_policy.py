@@ -602,8 +602,10 @@ def build_eager_tf_policy(
                                  "`action_sampler_fn`!")
 
             seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
-            input_batch = SampleBatch({
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch)},
+            input_batch = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch)
+                },
                 _is_training=False)
             if prev_action_batch is not None:
                 input_batch[SampleBatch.PREV_ACTIONS] = \
