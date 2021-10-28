@@ -92,16 +92,16 @@ system. Let's take following simple examples:
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
        :language: python
-       :start-after: __torch_single_distributed_begin__
-       :end-before: __torch_single_distributed_end__
+       :start-after: __torch_distributed_begin__
+       :end-before: __torch_distributed_end__
 
     Then, instantiate a ``Trainer`` that uses a ``"torch"`` backend
     with 4 workers, and use it to run the new training function!
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
        :language: python
-       :start-after: __torch_single_trainer_begin__
-       :end-before: __torch_single_trainer_end__
+       :start-after: __torch_trainer_begin__
+       :end-before: __torch_trainer_end__
 
     See :ref:`train-porting-code` for a more comprehensive example.
 
