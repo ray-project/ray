@@ -19,45 +19,42 @@ def job_manager(shared_ray_instance):
     yield JobManager()
 
 
+def check_job_succeeded(job_manager, job_id):
+    status = job_manager.get_job_status(job_id)
+    assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
+    return status == JobStatus.SUCCEEDED
+
+
+def check_job_failed(job_manager, job_id):
+    status = job_manager.get_job_status(job_id)
+    assert status in {JobStatus.RUNNING, JobStatus.FAILED}
+    return status == JobStatus.FAILED
+
+
 def test_submit_basic_echo(job_manager):
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(job_id, "echo hello")
-    assert isinstance(job_id, str)
 
-    def check_job_finished():
-        status = job_manager.get_job_status(job_id)
-        assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
-        return status == JobStatus.SUCCEEDED
-
-    wait_for_condition(check_job_finished)
+    wait_for_condition(check_job_succeeded,
+                       job_manager=job_manager, job_id=job_id)
     assert job_manager.get_job_stdout(job_id) == b"hello"
 
 
 def test_submit_stderr(job_manager):
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(job_id, "echo error 1>&2")
-    assert isinstance(job_id, str)
 
-    def check_job_finished():
-        status = job_manager.get_job_status(job_id)
-        assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
-        return status == JobStatus.SUCCEEDED
-
-    wait_for_condition(check_job_finished)
+    wait_for_condition(check_job_succeeded,
+                       job_manager=job_manager, job_id=job_id)
     assert job_manager.get_job_stderr(job_id) == b"error"
 
 
 def test_submit_ls_grep(job_manager):
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(job_id, "ls | grep test_job_manager.py")
-    assert isinstance(job_id, str)
 
-    def check_job_finished():
-        status = job_manager.get_job_status(job_id)
-        assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
-        return status == JobStatus.SUCCEEDED
-
-    wait_for_condition(check_job_finished)
+    wait_for_condition(check_job_succeeded,
+                       job_manager=job_manager, job_id=job_id)
     assert job_manager.get_job_stdout(job_id) == b"test_job_manager.py"
 
 
@@ -71,15 +68,10 @@ def test_subprocess_exception(job_manager):
     """
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(
-        job_id, "python command_scripts/script_with_exception.py")
-    assert isinstance(job_id, str)
+        job_id, "python subprocess_driver_scripts/script_with_exception.py")
 
-    def check_job_finished():
-        status = job_manager.get_job_status(job_id)
-        assert status in {JobStatus.RUNNING, JobStatus.FAILED}
-        return status == JobStatus.FAILED
-
-    wait_for_condition(check_job_finished)
+    wait_for_condition(
+        check_job_failed, job_manager=job_manager, job_id=job_id)
     stderr = job_manager.get_job_stderr(job_id).decode("utf-8")
     last_line = stderr.strip().splitlines()[-1]
     assert last_line == "Exception: Script failed with exception !"
@@ -93,14 +85,9 @@ def test_submit_with_s3_runtime_env(job_manager):
         job_id,
         "python script.py",
         runtime_env={"working_dir": "s3://runtime-env-test/script.zip"})
-    assert isinstance(job_id, str)
 
-    def check_job_finished():
-        status = job_manager.get_job_status(job_id)
-        assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
-        return status == JobStatus.SUCCEEDED
-
-    wait_for_condition(check_job_finished)
+    wait_for_condition(check_job_succeeded,
+                       job_manager=job_manager, job_id=job_id)
     assert job_manager.get_job_stdout(
         job_id) == b"Executing main() from script.py !!"
 
@@ -123,14 +110,9 @@ class TestRuntimeEnv:
                     "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "233"
                 }
             })
-        assert isinstance(job_id, str)
 
-        def check_job_finished():
-            status = job_manager.get_job_status(job_id)
-            assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
-            return status == JobStatus.SUCCEEDED
-
-        wait_for_condition(check_job_finished)
+        wait_for_condition(check_job_succeeded,
+                           job_manager=job_manager, job_id=job_id)
         assert job_manager.get_job_stdout(job_id) == b"233"
 
     def test_multiple_runtime_envs(self, job_manager):
@@ -147,12 +129,8 @@ class TestRuntimeEnv:
                 }
             })
 
-        def check_job_finished():
-            status = job_manager.get_job_status(job_id_1)
-            assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
-            return status == JobStatus.SUCCEEDED
-
-        wait_for_condition(check_job_finished)
+        wait_for_condition(check_job_succeeded,
+                           job_manager=job_manager, job_id=job_id_1)
         assert job_manager.get_job_stdout(
             job_id_1
         ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'}}"  # noqa: E501
@@ -166,17 +144,16 @@ class TestRuntimeEnv:
                 }
             })
 
-        def check_job_finished():
-            status = job_manager.get_job_status(job_id_2)
-            assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
-            return status == JobStatus.SUCCEEDED
-
-        wait_for_condition(check_job_finished)
+        wait_for_condition(check_job_succeeded,
+                           job_manager=job_manager, job_id=job_id_2)
         assert job_manager.get_job_stdout(
             job_id_2
         ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_2_VAR'}}"  # noqa: E501
 
-    def test_ensure_env_var_job_config_priority(self, job_manager):
+    def test_env_var_and_driver_job_config_warning(self, job_manager):
+        """Ensure we got error message from worker.py and job stderr
+        if user provided runtime_env in both driver script and submit()
+        """
         job_id_1 = str(uuid4())
 
         job_manager.submit_job(
@@ -188,12 +165,8 @@ class TestRuntimeEnv:
                 }
             })
 
-        def check_job_finished():
-            status = job_manager.get_job_status(job_id_1)
-            assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
-            return status == JobStatus.SUCCEEDED
-
-        wait_for_condition(check_job_finished)
+        wait_for_condition(check_job_succeeded,
+                           job_manager=job_manager, job_id=job_id_1)
         assert job_manager.get_job_stdout(job_id_1) == b"JOB_1_VAR"
         stderr = job_manager.get_job_stderr(job_id_1).decode("utf-8")
         assert stderr.startswith(

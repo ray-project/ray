@@ -135,6 +135,7 @@ class JobSupervisor:
             "Run should only be called once.")
         self._status = JobStatus.RUNNING
         self._status_client.put_status(self._job_id, self._status)
+        exit_code = None
 
         try:
             # 2) Run the command until it finishes, appending logs as it goes.
