@@ -485,6 +485,37 @@ message PlacementGroupLoad {
   repeated PlacementGroupTableData placement_group_data = 1;
 }
 
+message PlacementGroupStats {
+  // The scheduling state of the placement group.
+  // This is purely for observability and the
+  // information could not be consistent
+  // if GCS restarts.
+  enum SchedulingState {
+    // The initial state.
+    WAITING_FOR_SCHEDULING = 0;
+    // Placement group creation failed because there was
+    // no nodes that satisfy resources.
+    NO_RESOURCES = 1;
+    // Placement group creation failed because there was
+    // an issue commiting resources to nodes.
+    FAILED_TO_COMMIT_RESOURCES = 2;
+    // Scheduling has cancelled because it is removed.
+    REMOVED = 3;
+    // Scheduling has finished properly.
+    FINISHED = 4;
+    // Placement group creation has failed because the
+    // requested resources are infeasible.
+    INFEASIBLE = 5;
+  }
+
+  double end_to_end_creation_latency_us= 2;
+  // The number of time scheduling has attempted on this placement group.
+  uint32 scheduling_attempt = 3;
+  double highest_retry_delay_ms = 4;
+  // The cause of placement group creation failure.
+  SchedulingState scheduling_state = 5;
+}
+
 message PlacementGroupTableData {
   // State of a placement group.
   enum PlacementGroupState {
@@ -522,5 +553,8 @@ message PlacementGroupTableData {
   bool is_detached = 10;
   // The pg's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 11;
+  // The placement group's stats / information such as when it is created or
+  // what's the current scheduling state.
+  PlacementGroupStats stats = 12;
 }
 ///////////////////////////////////////////////////////////////////////////////

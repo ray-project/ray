@@ -51,7 +51,7 @@ ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::vector<NodeID> &selected_nodes, const SchedulingResultStatus &status) {
   ScheduleMap schedule_map;
-  if (status == SUCCESS && !selected_nodes.empty()) {
+  if (status == SchedulingResultStatus::SUCCESS && !selected_nodes.empty()) {
     RAY_CHECK(bundles.size() == selected_nodes.size());
     int index = 0;
     for (const auto &bundle : bundles) {
@@ -152,11 +152,13 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto result_status = scheduling_result.first;
   auto selected_nodes = scheduling_result.second;
 
-  if (result_status != SUCCESS) {
+  if (result_status != SchedulingResultStatus::SUCCESS) {
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
                    << ", id: " << placement_group->GetPlacementGroupID()
-                   << ", because current reource can't satisfied this required resource.";
-    const bool &retryable = (result_status == FAILED) ? true : false;
+                   << ", because current reource can't satisfy the required resource.";
+    bool retryable = (result_status == SchedulingResultStatus::FAILED) ? true : false;
+    placement_group->GetMutableStats()->set_scheduling_state(
+        rpc::PlacementGroupStats::NO_RESOURCES);
     failure_callback(placement_group, retryable);
     return;
   }
@@ -430,6 +432,8 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
     }
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
     ReturnBundleResources(uncommitted_bundle_locations);
+    placement_group->GetMutableStats()->set_scheduling_state(
+        rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
     schedule_failure_handler(placement_group, true);
   } else {
     schedule_success_handler(placement_group);

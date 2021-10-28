@@ -342,6 +342,8 @@ class ExponentialBackOff {
     return ret;
   }
 
+  uint64_t Current() { return curr_value_; }
+
   void Reset() { curr_value_ = initial_value_; }
 
  private:

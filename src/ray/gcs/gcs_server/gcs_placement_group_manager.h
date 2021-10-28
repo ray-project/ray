@@ -69,6 +69,9 @@ class GcsPlacementGroup {
         placement_group_spec.creator_actor_dead());
     placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
+    created_time_nano_ = absl::GetCurrentTimeNanos();
+    placement_group_table_data_.mutable_stats()->set_scheduling_state(
+        rpc::PlacementGroupStats::WAITING_FOR_SCHEDULING);
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
@@ -124,6 +127,12 @@ class GcsPlacementGroup {
   /// Returns whether or not this is a detached placement group.
   bool IsDetached() const;
 
+  const rpc::PlacementGroupStats &GetStats() const;
+
+  rpc::PlacementGroupStats *GetMutableStats();
+
+  int64_t GetCreationTimeNano() const { return created_time_nano_; }
+
  private:
   FRIEND_TEST(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache);
   /// The placement_group meta data which contains the task specification as well as the
@@ -133,6 +142,7 @@ class GcsPlacementGroup {
   /// formatted strings for all resources (heavy string operations). To optimize the CPU
   /// usage, we cache bundle specs.
   mutable std::vector<std::shared_ptr<const BundleSpecification>> cached_bundle_specs_;
+  int64_t created_time_nano_;
 };
 
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
