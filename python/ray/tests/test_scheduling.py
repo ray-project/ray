@@ -246,23 +246,25 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=0, resources={"custom": 1})
-    def create_object():
+    def create_object(i):
+        print("done", i)
         return np.zeros(int(object_size), dtype=np.uint8)
 
     @ray.remote
     def f(i, x):
-        print(i, ray.worker.global_worker.node.unique_id)
+        print("in f", i, ray.worker.global_worker.node.unique_id)
         time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
-    deps = [create_object.remote() for _ in range(num_tasks)]
+    deps = [create_object.remote(None) for _ in range(num_tasks)]
     for i, dep in enumerate(deps):
         print(i, dep)
 
+    print("================================")
     # TODO(swang): Actually test load balancing. Load balancing is currently
     # flaky on Travis, probably due to the scheduling policy ping-ponging
     # waiting tasks.
-    deps = [create_object.remote() for _ in range(num_tasks)]
+    deps = [create_object.remote(i) for i in range(num_tasks)]
     tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
     for i, dep in enumerate(deps):
         print(i, dep)
