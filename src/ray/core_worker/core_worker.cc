@@ -523,7 +523,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                     rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
-      // /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
       /*get_client=*/
       [this](const rpc::Address &address) {
         return core_worker_client_pool_->GetOrConnect(address);
@@ -831,7 +830,8 @@ void CoreWorker::Exit(
     task_execution_service_.post(
         [this, exit_type, creation_task_exception_pb_bytes]() {
           if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR ||
-              exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
+              exit_type == rpc::WorkerExitType::INTENDED_EXIT ||
+              exit_type == rpc::WorkerExitType::IDLE_EXIT) {
             // Notify the raylet about this exit.
             // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect
             // manually.
