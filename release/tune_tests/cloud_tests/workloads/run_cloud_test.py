@@ -557,7 +557,6 @@ def load_experiment_checkpoint_from_state_file(
     for trial_cp_str in runner_state["checkpoints"]:
         parsed = json.loads(trial_cp_str, cls=TuneFunctionDecoder)
         trial = TrialStub(**parsed)
-        print("GOT TRIAL", trial, parsed)
         trials.append(trial)
 
     runner_data = runner_state["runner_data"]
@@ -1261,10 +1260,14 @@ if __name__ == "__main__":
 
     print(f"Running cloud test variant: {args.variant}")
 
+    release_test_out = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/release_test_out.json")
+
     def _run_test(variant: str,
                   bucket: str = "",
                   cpus_per_trial: int = 2,
                   overwrite_tune_script: Optional[str] = None):
+        start_time = time.monotonic()
         print(f"Running test variant `{variant}` on "
               f"node {ray.util.get_node_ip_address()} with "
               f"{cpus_per_trial} CPUs per trial.")
@@ -1284,6 +1287,13 @@ if __name__ == "__main__":
             test_durable_upload(bucket)
         elif variant == "no_durable_upload":
             test_no_durable_upload(bucket)
+
+        time_taken = time.monotonic() - start_time
+
+        result = {"time_taken": time_taken, "last_update": time.time()}
+
+        with open(release_test_out, "wt") as f:
+            json.dump(result, f)
 
     if not uses_ray_client:
         print("This test will *not* use Ray client.")
@@ -1313,8 +1323,7 @@ if __name__ == "__main__":
             _run_test_remote.remote(args.variant, args.bucket,
                                     args.cpus_per_trial, remote_tune_script))
 
-        print("Fetching remote release test result file")
-        fetch_remote_file_to_local_file("/tmp/release_test_out.json", ip,
-                                        "/tmp/release_test_out.json")
+        print(f"Fetching remote release test result file: {release_test_out}")
+        fetch_remote_file_to_local_file(release_test_out, ip, release_test_out)
 
     print(f"Test for variant {args.variant} SUCCEEDED")
