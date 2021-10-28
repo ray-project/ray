@@ -149,13 +149,15 @@ build:ci-github --experimental_repository_cache_hardlinks # GitHub Actions has l
 build:ci-github --disk_cache=~/ray-bazel-cache
 build:ci-github --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 test:ci --flaky_test_attempts=3
-test:ci --genrule_strategy=local
+test:ci --nocache_test_results
+test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
 test:ci-debug -c dbg
 test:ci-debug --copt="-g"
 test:ci-debug --flaky_test_attempts=3
-test:ci-debug --genrule_strategy=local
+test:ci-debug --nocache_test_results
+test:ci-debug --spawn_strategy=local
 test:ci-debug --test_output=errors
 test:ci-debug --test_verbose_timeout_warnings
 
