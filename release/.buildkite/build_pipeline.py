@@ -79,6 +79,7 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
         SmokeTest("dask_on_ray_large_scale_test_spilling"),
         "stress_test_placement_group",
+        "grpc_stress_test_placement_group",
         "shuffle_1tb_1000_partition",
         "non_streaming_shuffle_1tb_1000_partition",
         "shuffle_1tb_5000_partitions",
@@ -124,6 +125,7 @@ NIGHTLY_TESTS = {
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
+        "grpc_pg_autoscaling_regression_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -483,8 +485,10 @@ def create_test_step(
             + pip_requirements_command \
             + step_conf["commands"]
 
-    step_conf["label"] = f"{ray_wheels_str}{test_name} ({ray_branch}) - " \
-                         f"{ray_test_branch}/{ray_test_repo}"
+    step_conf["label"] = (
+        f"{test_name} "
+        f"({'custom_wheels_url' if ray_wheels_str else ray_branch}) - "
+        f"{ray_test_branch}/{ray_test_repo}")
     return step_conf
 
 

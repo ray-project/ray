@@ -27,6 +27,7 @@ from ray.serve.http_state import HTTPState
 from ray.serve.replica import create_replica_wrapper
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
+from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.utils import logger
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 
@@ -71,9 +72,11 @@ class ServeController:
         # Used to read/write checkpoints.
         self.controller_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
+        kv_store_namespace = (
+            f"{self.controller_name}-{self.controller_namespace}")
         self.kv_store = make_kv_store(
-            checkpoint_path,
-            namespace=f"{self.controller_name}-{self.controller_namespace}")
+            checkpoint_path, namespace=kv_store_namespace)
+        self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
 
         # Dictionary of backend_tag -> proxy_name -> most recent queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))
@@ -239,7 +242,7 @@ class ServeController:
                     }
 
             val[deployment_name] = entry
-        self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
+        self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
     def _all_running_replicas(
             self) -> Dict[BackendTag, List[RunningReplicaInfo]]:

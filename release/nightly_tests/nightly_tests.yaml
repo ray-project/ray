@@ -242,6 +242,17 @@
     timeout: 7200
     script: python stress_tests/test_placement_group.py
 
+
+- name: grpc_stress_test_placement_group
+  cluster:
+    app_config: stress_tests/stress_tests_app_config_grpc.yaml
+    compute_template: stress_tests/placement_group_tests_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python stress_tests/test_placement_group.py
+  stable: false
+
 # Test decision tree on autoscaling compute cluster.
 - name: decision_tree_autoscaling
   cluster:
@@ -356,3 +367,13 @@
   run:
     timeout: 1200
     script: python placement_group_tests/pg_run.py
+
+- name: grpc_pg_autoscaling_regression_test
+  cluster:
+    app_config: placement_group_tests/app_config_grpc.yaml
+    compute_template: placement_group_tests/compute.yaml
+
+  run:
+    timeout: 1200
+    script: python placement_group_tests/pg_run.py
+  stable: false
