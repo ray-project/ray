@@ -104,7 +104,7 @@ class VectorEnv:
         raise NotImplementedError
 
     @PublicAPI
-    def get_unwrapped(self) -> List[EnvType]:
+    def get_sub_environments(self) -> List[EnvType]:
         """Returns the underlying sub environments.
 
         Returns:
@@ -127,8 +127,12 @@ class VectorEnv:
         pass
 
     @Deprecated(new="vectorize_gym_envs", error=False)
-    def wrap(self, *args, **kwargs):
+    def wrap(self, *args, **kwargs) -> "_VectorizedGymEnv":
         return self.vectorize_gym_envs(*args, **kwargs)
+
+    @Deprecated(new="get_sub_environments", error=False)
+    def get_unwrapped(self) -> List[EnvType]:
+        return self.get_sub_environments()
 
 
 class _VectorizedGymEnv(VectorEnv):
@@ -203,7 +207,7 @@ class _VectorizedGymEnv(VectorEnv):
         return obs_batch, rew_batch, done_batch, info_batch
 
     @override(VectorEnv)
-    def get_unwrapped(self):
+    def get_sub_environments(self):
         return self.envs
 
     @override(VectorEnv)

@@ -286,17 +286,21 @@ class WorkerSet:
         return results
 
     @DeveloperAPI
-    def foreach_env(self, func: Callable[[BaseEnv], List[T]]) -> List[List[T]]:
-        """Calls `func` with all workers' (unwrapped) environments as arg.
+    def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
+        """Calls `func` with all workers' underlying sub environments as arg.
 
-        `func` takes a single unwrapped env as arg.
+        An "underlying sub environment" is a single clone of an env within
+        a vectorized environment.
+        `func` takes a single underlying sub environment as arg, e.g. a
+        gym.Env object.
 
         Args:
-            func: A function - taking a BaseEnv object as arg and returning
-                a list of return values over envs of the worker.
+            func: A function - taking an EnvType (normally a gym.Env object)
+                as arg and returning a list of return values over sub
+                environments for each worker.
 
         Returns:
-            The list (workers) of lists (environments) of results.
+            The list (workers) of lists (sub environments) of results.
         """
         local_results = [self.local_worker().foreach_env(func)]
         ray_gets = []
@@ -308,9 +312,12 @@ class WorkerSet:
     def foreach_env_with_context(
             self,
             func: Callable[[BaseEnv, EnvContext], List[T]]) -> List[List[T]]:
-        """Calls `func` with all workers' (unwrapped) envs and ctx as args.
+        """Calls `func` with all workers' underlying sub envs and env context.
 
-        `func` takes a single unwrapped env and the env_context as args.
+        An "underlying sub environment" is a single clone of an env within
+        a vectorized environment.
+        `func` takes a single underlying sub environment and the env_context
+        as args.
 
         Args:
             func: A function - taking a BaseEnv object and an EnvContext as

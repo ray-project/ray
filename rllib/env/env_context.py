@@ -35,8 +35,8 @@ class EnvContext(dict):
             vector_index: When there are multiple envs per worker, this
                 uniquely identifies the env index within the worker.
                 Starts from 0.
-            remote: Whether single sub-environments (in a vectorized env)
-                should be @ray.remote actors or not.
+            remote: Whether individual sub-environments (in a vectorized
+                env) should be @ray.remote actors or not.
         """
         # Store the env_config in the (super) dict.
         dict.__init__(self, env_config)

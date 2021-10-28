@@ -5,7 +5,7 @@ from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
     MultiEnvDict, PartialTrainerConfigDict
 
@@ -89,27 +89,36 @@ class BaseEnv:
             remote_env_batch_wait_ms: int = 0,
             policy_config: Optional[PartialTrainerConfigDict] = None,
     ) -> "BaseEnv":
-        """Converts an RLlib-supported env type into a BaseEnv object.
+        """Converts an RLlib-supported env into a BaseEnv object.
 
-        The resulting BaseEnv is always vectorized (contains n sub-envs)
-        for batched forward passes, even if n is only 1 by default.
-        It also supports async execution via its `poll` and `send_actions`
+        Supported types for the given `env` arg are gym.Env, BaseEnv,
+        VectorEnv, MultiAgentEnv, or ExternalEnv.
+
+        The resulting BaseEnv is always vectorized (contains n
+        sub-environments) for batched forward passes, where n may also be 1.
+        BaseEnv also supports async execution via the `poll` and `send_actions`
         methods and thus supports external simulators.
 
         TODO: Support gym3 environments, which are already vectorized.
 
         Args:
-            env: The environment type to convert/wrap.
-            make_env: A callable taking an int as input (number of sub-envs)
-                and returning a new sub-env of type `env`.
-            num_envs: The number of sub-envs to include in the resulting
-                (vectorized) BaseEnv.
+            env: An already existing environment of any supported env type
+                to convert/wrap into a BaseEnv. Supported types are gym.Env,
+                BaseEnv, VectorEnv, MultiAgentEnv, ExternalEnv, or
+                ExternalMultiAgentEnv.
+            make_env: A callable taking an int as input (which indicates the
+                number of individual sub-environments within the final
+                vectorized BaseEnv) and returning one individual
+                sub-environment.
+            num_envs: The number of sub-environments to create in the
+                resulting (vectorized) BaseEnv. The already existing `env`
+                will be one of the `num_envs`.
             remote_envs: Whether each sub-env should be a @ray.remote actor.
                 You can set this behavior in your config via the
-                "remote_worker_envs" option.
+                `remote_worker_envs=True` option.
             remote_env_batch_wait_ms: The wait time (in ms) to poll remote
-                sub-envs for, if applicable. Only used if `remote_envs` is
-                True.
+                sub-environments for, if applicable. Only used if
+                `remote_envs` is True.
             policy_config: Optional policy config dict.
 
         Returns:
@@ -122,22 +131,22 @@ class BaseEnv:
                 "Remote envs only make sense to use if num_envs > 1 "
                 "(i.e. vectorization is enabled).")
 
-        # `env` is already a BaseEnv -> Return as is.
+        # Given `env` is already a BaseEnv -> Return as is.
         if isinstance(env, BaseEnv):
             return env
 
-        # `env` is not a BaseEnv yet -> Need to convert it.
+        # `env` is not a BaseEnv yet -> Need to convert/vectorize.
 
         # MultiAgentEnv (which is a gym.Env).
         if isinstance(env, MultiAgentEnv):
-            # Sub-envs are ray.remote actors:
+            # Sub-environments are ray.remote actors:
             if remote_envs:
                 env = RemoteBaseEnv(
                     make_env,
                     num_envs,
                     multiagent=True,
                     remote_env_batch_wait_ms=remote_env_batch_wait_ms)
-            # Sub-envs are not ray.remote actors.
+            # Sub-environments are not ray.remote actors.
             else:
                 env = _MultiAgentEnvToBaseEnv(
                     make_env=make_env, existing_envs=[env], num_envs=num_envs)
@@ -158,7 +167,7 @@ class BaseEnv:
             env = _VectorEnvToBaseEnv(env)
         # Anything else: This usually implies that env is a gym.Env object.
         else:
-            # Sub-envs are ray.remote actors:
+            # Sub-environments are ray.remote actors:
             if remote_envs:
                 # Determine, whether the already existing sub-env (could
                 # be a ray.actor) is multi-agent or not.
@@ -171,7 +180,7 @@ class BaseEnv:
                     remote_env_batch_wait_ms=remote_env_batch_wait_ms,
                     existing_envs=[env],
                 )
-            # Sub-envs are not ray.remote actors.
+            # Sub-environments are not ray.remote actors.
             else:
                 # Convert gym.Env to VectorEnv ...
                 env = VectorEnv.vectorize_gym_envs(
@@ -233,8 +242,8 @@ class BaseEnv:
         returned here.
 
         Args:
-            env_id: The sub-env ID if applicable. If None, reset the entire
-                Env (i.e. all sub-envs).
+            env_id: The sub-environment's ID if applicable. If None, reset
+                the entire Env (i.e. all sub-environments).
 
         Returns:
             The reset (multi-agent) observation dict. None if reset is not
@@ -243,11 +252,11 @@ class BaseEnv:
         return None
 
     @PublicAPI
-    def get_unwrapped(self) -> List[EnvType]:
-        """Return a reference to the underlying gym envs, if any.
+    def get_sub_environments(self) -> List[EnvType]:
+        """Return a reference to the underlying sub environments, if any.
 
         Returns:
-            List of the underlying gym envs or [].
+            List of the underlying sub environments or [].
         """
         return []
 
@@ -256,8 +265,8 @@ class BaseEnv:
         """Tries to render the environment.
 
         Args:
-            env_id (Optional[int]): The sub-env ID if applicable. If None,
-                renders the entire Env (i.e. all sub-envs).
+            env_id (Optional[int]): The sub-environment's ID if applicable.
+                If None, renders the entire Env (i.e. all sub-environments).
         """
 
         # By default, do nothing.
@@ -268,9 +277,13 @@ class BaseEnv:
         """Releases all resources used."""
 
         # Try calling `close` on all sub-environments.
-        for env in self.get_unwrapped():
+        for env in self.get_sub_environments():
             if hasattr(env, "close"):
                 env.close()
+
+    @Deprecated(new="get_sub_environments", error=False)
+    def get_unwrapped(self) -> List[EnvType]:
+        return self.get_sub_environments()
 
 
 # Fixed agent identifier when there is only the single agent in the env
@@ -418,8 +431,8 @@ class _VectorEnvToBaseEnv(BaseEnv):
         return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
 
     @override(BaseEnv)
-    def get_unwrapped(self) -> List[EnvType]:
-        return self.vector_env.get_unwrapped()
+    def get_sub_environments(self) -> List[EnvType]:
+        return self.vector_env.get_sub_environments()
 
     @override(BaseEnv)
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
@@ -497,7 +510,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
         return obs
 
     @override(BaseEnv)
-    def get_unwrapped(self) -> List[EnvType]:
+    def get_sub_environments(self) -> List[EnvType]:
         return [state.env for state in self.env_states]
 
     @override(BaseEnv)
