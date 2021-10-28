@@ -1257,10 +1257,16 @@ if __name__ == "__main__":
                   bucket: str = "",
                   cpus_per_trial: int = 2,
                   overwrite_tune_script: Optional[str] = None):
+        print(f"Running test variant `{variant}` on "
+              f"node {ray.util.get_node_ip_address()} with "
+              f"{cpus_per_trial} CPUs per trial.")
+
         os.environ["TUNE_NUM_CPUS_PER_TRIAL"] = str(cpus_per_trial)
 
         if overwrite_tune_script:
             os.environ["OVERWRITE_TUNE_SCRIPT"] = overwrite_tune_script
+            print(f"The test script has been overwritten with "
+                  f"{overwrite_tune_script}")
 
         if variant == "no_sync_down":
             test_no_sync_down()
@@ -1290,7 +1296,8 @@ if __name__ == "__main__":
 
         remote_tune_script = "/tmp/_tune_script.py"
 
-        print(f"Sending tune script to remote node ({remote_tune_script})")
+        print(f"Sending tune script to remote node {ip} "
+              f"({remote_tune_script})")
         send_local_file_to_remote_file(TUNE_SCRIPT, remote_tune_script, ip)
         print("Starting remote cloud test using Ray client")
 

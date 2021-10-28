@@ -122,7 +122,7 @@ if __name__ == "__main__":
     if not ray.is_initialized:
         ray.init(address="auto")
 
-    print("Running with settings:")
+    print(f"Running on node {ray.util.get_node_ip_address()} with settings:")
     print(run_kwargs)
 
     run_tune(**run_kwargs)
