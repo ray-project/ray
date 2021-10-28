@@ -44,7 +44,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         submit_request = JobSubmitRequest(**req_data)
         job_id = self._job_manager.submit_job(
             submit_request.job_spec.entrypoint,
-            submit_request.job_spec.runtime_env)
+            runtime_env=submit_request.job_spec.runtime_env,
+            metadata=submit_request.job_spec.metadata)
 
         resp = JobSubmitResponse(job_id=job_id)
         return dashboard_utils.rest_response(

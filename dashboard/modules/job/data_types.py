@@ -1,3 +1,5 @@
+from typing import Any, Dict, Optional
+
 from pydantic import BaseModel
 from enum import Enum
 
@@ -12,12 +14,12 @@ class JobStatus(str, Enum):
 
 class JobSpec(BaseModel):
     # Dict to setup execution environment, better to have schema for this
-    runtime_env: dict
+    runtime_env: Dict[str, Any]
     # Command to start execution, ex: "python script.py"
     entrypoint: str
     # Metadata to pass in to configure job behavior or use as tags
     # Required by Anyscale product and already supported in Ray drivers
-    metadata: dict
+    metadata: Dict[str, str]
     # Likely there will be more fields needed later on for different apps
     # but we should keep it minimal and delegate policies to job manager
 

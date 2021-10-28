@@ -555,6 +555,21 @@ def get_log_message(pub_sub,
     return msgs
 
 
+def get_all_log_message(pub_sub, num, timeout=20):
+    """Get errors through pub/sub."""
+    start_time = time.time()
+    msgs = []
+    while time.time() - start_time < timeout and len(msgs) < num:
+        msg = pub_sub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
+        msgs.extend(log_lines)
+
+    return msgs
+
+
 def format_web_url(url):
     """Format web url."""
     url = url.replace("localhost", "http://127.0.0.1")
