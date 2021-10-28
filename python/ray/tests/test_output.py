@@ -2,6 +2,7 @@ import subprocess
 import sys
 import pytest
 import re
+import os
 
 import ray
 
@@ -333,7 +334,12 @@ def test_output():
     lines = outputs.split("\n")
     for line in lines:
         print(line)
-    assert len(lines) == 2, lines
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # Without "View the Ray dashboard"
+        assert len(lines) == 1, lines
+    else:
+        # With "View the Ray dashboard"
+        assert len(lines) == 2, lines
 
 
 if __name__ == "__main__":
