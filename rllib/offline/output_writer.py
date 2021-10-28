@@ -1,15 +1,14 @@
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType
 
 
 @PublicAPI
 class OutputWriter:
-    """Writer object for saving experiences from policy evaluation."""
+    """Writer API for saving experiences from policy evaluation."""
 
     @PublicAPI
     def write(self, sample_batch: SampleBatchType):
-        """Save a batch of experiences.
+        """Saves a batch of experiences.
 
         Args:
             sample_batch: SampleBatch or MultiAgentBatch to save.
@@ -22,4 +21,5 @@ class NoopOutput(OutputWriter):
 
     @override(OutputWriter)
     def write(self, sample_batch: SampleBatchType):
+        # Do nothing.
         pass

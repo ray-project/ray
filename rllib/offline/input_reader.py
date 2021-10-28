@@ -22,11 +22,11 @@ class InputReader(metaclass=ABCMeta):
 
     @abstractmethod
     @PublicAPI
-    def next(self) -> Union[SampleBatch, MultiAgentBatch]:
-        """Returns the next batch of experiences read.
+    def next(self) -> SampleBatchType:
+        """Returns the next batch of read experiences.
 
         Returns:
-            The experience read.
+            The experience read (SampleBatch or MultiAgentBatch).
         """
         raise NotImplementedError
 

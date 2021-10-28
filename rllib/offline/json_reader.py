@@ -32,13 +32,14 @@ WINDOWS_DRIVES = [chr(i) for i in range(ord("c"), ord("z") + 1)]
 class JsonReader(InputReader):
     """Reader object that loads experiences from JSON file chunks.
 
-    The input files will be read from in an random order."""
+    The input files will be read from in random order.
+    """
 
     @PublicAPI
     def __init__(self,
                  inputs: Union[str, List[str]],
                  ioctx: Optional[IOContext] = None):
-        """Initialize a JsonReader.
+        """Initializes a JsonReader instance.
 
         Args:
             inputs: Either a glob expression for files, e.g. `/tmp/**/*.json`,
@@ -101,7 +102,7 @@ class JsonReader(InputReader):
         return self._postprocess_if_needed(batch)
 
     def read_all_files(self) -> SampleBatchType:
-        """Reads through all files and yields 1 SampleBatche per line.
+        """Reads through all files and yields one SampleBatchType per line.
 
         When reaching the end of the last file, will start from the beginning
         again.

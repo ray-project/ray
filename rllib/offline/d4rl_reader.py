@@ -17,10 +17,10 @@ class D4RLReader(InputReader):
 
     @PublicAPI
     def __init__(self, inputs: str, ioctx: IOContext = None):
-        """Initialize a D4RLReader.
+        """Initializes a D4RLReader instance.
 
         Args:
-            inputs: String corresponding to D4RL environment name
+            inputs: String corresponding to the D4RL environment name.
             ioctx: Current IO context object.
         """
         import d4rl
