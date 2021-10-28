@@ -246,9 +246,11 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
+  gcs_server_address_updater_.reset();
   io_service_.stop();
+  gcs_client_.reset();
   if (io_thread_.joinable()) {
-    io_thread_.join();
+    // io_thread_.join();
   }
 }
 
