@@ -66,4 +66,4 @@ MAX_CACHED_HANDLES = 100
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
-CONTROLLER_MAX_CONCURRENCY = 5000
+CONTROLLER_MAX_CONCURRENCY = 15000

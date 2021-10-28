@@ -200,7 +200,8 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
 /// The maximum number of outbound bytes to allow to be outstanding. This avoids
 /// excessive memory usage during object broadcast to many receivers.
-RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, 2L * 1024 * 1024 * 1024)
+RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight,
+           ((uint64_t)2) * 1024 * 1024 * 1024)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
@@ -216,7 +217,7 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
 /// Number of threads used by rpc server in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 4)
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_client_thread_num, 1)
 /// Allow up to 5 seconds for connecting to gcs service.

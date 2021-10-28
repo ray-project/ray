@@ -1016,6 +1016,11 @@ def deployment(
         Deployment
     """
 
+    if num_replicas is not None \
+            and _autoscaling_config is not None:
+        raise ValueError("Manually setting num_replicas is not allowed when "
+                         "_autoscaling_config is provided.")
+
     config = BackendConfig()
     if num_replicas is not None:
         config.num_replicas = num_replicas
