@@ -98,10 +98,10 @@ cc_grpc_library(
 # gcs rpc server and client.
 cc_library(
     name = "gcs_service_rpc",
-    hdrs = glob([
-        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
+    hdrs = [
         "src/ray/rpc/gcs_server/gcs_rpc_client.h",
-    ]),
+        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
+    ],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
@@ -485,20 +485,18 @@ cc_binary(
 
 cc_library(
     name = "gcs_pub_sub_lib",
-    srcs = glob(
-        [
-            "src/ray/gcs/pubsub/gcs_pub_sub.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/gcs/pubsub/gcs_pub_sub.h",
-        ],
-    ),
+    srcs = [
+        "src/ray/gcs/pubsub/gcs_pub_sub.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/pubsub/gcs_pub_sub.h",
+    ],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
         ":gcs",
+        ":gcs_service_rpc",
+        ":pubsub_lib",
         ":ray_common",
         ":redis_client",
     ],
@@ -623,10 +621,12 @@ cc_library(
         "src/ray/stats/metric_exporter_client.cc",
     ],
     hdrs = [
+        "src/ray/stats/metric.h",
         "src/ray/stats/metric_defs.h",
         "src/ray/stats/metric_exporter.h",
         "src/ray/stats/metric_exporter_client.h",
         "src/ray/stats/stats.h",
+        "src/ray/stats/tag_defs.h",
     ],
     copts = COPTS,
     linkopts = select({
@@ -974,6 +974,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1002,6 +1003,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1207,6 +1209,7 @@ cc_test(
         "gcs_test_util_lib",
         "ray_common",
         "raylet_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1529,20 +1532,20 @@ cc_test(
     ],
 )
 
-# cc_test(
-#     name = "gcs_actor_scheduler_mock_test",
-#     size = "small",
-#     srcs = [
-#         "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_mock_test.cc",
-#     ],
-#     copts = COPTS,
-#     tags = ["team:core"],
-#     deps = [
-#         ":gcs_server_lib",
-#         ":ray_mock",
-#         "@com_google_googletest//:gtest_main",
-#     ],
-# )
+cc_test(
+    name = "gcs_actor_scheduler_mock_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_mock_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
 
 cc_test(
     name = "gcs_based_actor_scheduler_test",
@@ -1731,6 +1734,7 @@ cc_library(
         ":gcs",
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
+        ":pubsub_lib",
         ":redis_store_client",
     ],
 )

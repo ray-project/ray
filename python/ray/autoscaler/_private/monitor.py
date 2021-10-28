@@ -12,8 +12,6 @@ import json
 from multiprocessing.synchronize import Event
 from typing import Optional
 
-import grpc
-
 try:
     import prometheus_client
 except ImportError:
@@ -29,6 +27,8 @@ from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.fake_multi_node.node_provider import \
+    FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
     DEBUG_AUTOSCALING_ERROR, format_readonly_node_type
 
@@ -38,6 +38,7 @@ from ray._private.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized, _internal_kv_get, _internal_kv_del
 from ray._raylet import connect_to_gcs, disconnect_from_gcs
+import ray._private.utils
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +150,9 @@ class Monitor:
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         # Initialize the gcs stub for getting all node resource usage.
         gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
-
         options = (("grpc.enable_http_proxy", 0), )
-        gcs_channel = grpc.insecure_channel(gcs_address, options=options)
+        gcs_channel = ray._private.utils.init_grpc_channel(
+            gcs_address, options)
         self.gcs_node_resources_stub = \
             gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
 
@@ -163,7 +164,10 @@ class Monitor:
         head_node_ip = redis_address.split(":")[0]
         self.redis_address = redis_address
         self.redis_password = redis_password
-        self.load_metrics = LoadMetrics(local_ip=head_node_ip)
+        if os.environ.get("RAY_FAKE_CLUSTER"):
+            self.load_metrics = LoadMetrics(local_ip=FAKE_HEAD_NODE_ID)
+        else:
+            self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info
@@ -185,7 +189,8 @@ class Monitor:
                     "Starting autoscaler metrics server on port {}".format(
                         AUTOSCALER_METRIC_PORT))
                 prometheus_client.start_http_server(
-                    AUTOSCALER_METRIC_PORT,
+                    port=AUTOSCALER_METRIC_PORT,
+                    addr="127.0.0.1" if head_node_ip == "127.0.0.1" else "",
                     registry=self.prom_metrics.registry)
             except Exception:
                 logger.exception(

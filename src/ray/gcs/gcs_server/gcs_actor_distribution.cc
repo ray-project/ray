@@ -34,8 +34,8 @@ const ResourceSet &GcsActorWorkerAssignment::GetResources() const {
 bool GcsActorWorkerAssignment::IsShared() const { return is_shared_; }
 
 GcsBasedActorScheduler::GcsBasedActorScheduler(
-    instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
-    const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
+    const GcsNodeManager &gcs_node_manager,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
@@ -43,7 +43,7 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
         schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     rpc::ClientFactoryFn client_factory)
-    : GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager, gcs_pub_sub,
+    : GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager,
                         schedule_failure_handler, schedule_success_handler,
                         raylet_client_pool, client_factory),
       gcs_resource_manager_(std::move(gcs_resource_manager)),

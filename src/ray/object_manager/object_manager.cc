@@ -367,7 +367,7 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
 
   if (object_reader->GetDataSize() != data_size ||
       object_reader->GetMetadataSize() != metadata_size) {
-    if (object_reader->GetDataSize() == 0 && object_reader->GetMetadataSize() == 1) {
+    if (object_reader->GetDataSize() == 0) {
       // TODO(scv119): handle object size changes in a more graceful way.
       RAY_LOG(WARNING) << object_id
                        << " is marked as failed but object_manager has stale info "
