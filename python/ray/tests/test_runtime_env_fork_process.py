@@ -83,7 +83,7 @@ def test_fork_process_job_config_from_env_var(ray_start_cluster):
     result = ray.get(obj_ref1)
     assert result == 1
     # Check runtime env setup
-    assert ray.get(a1.get_runtime_env.remote()) == {'env_vars': {'a': 'b'}}
+    assert ray.get(a1.get_runtime_env.remote()) == {"env_vars": {"a": "b"}}
 
 
 if __name__ == "__main__":

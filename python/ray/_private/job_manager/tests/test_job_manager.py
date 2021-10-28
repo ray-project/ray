@@ -155,7 +155,7 @@ class TestRuntimeEnv:
         wait_for_condition(check_job_finished)
         assert job_manager.get_job_stdout(
             job_id_1
-        ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'}}"
+        ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'}}"  # noqa: E501
 
         job_manager.submit_job(
             job_id_2,
@@ -174,7 +174,7 @@ class TestRuntimeEnv:
         wait_for_condition(check_job_finished)
         assert job_manager.get_job_stdout(
             job_id_2
-        ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_2_VAR'}}"
+        ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_2_VAR'}}"  # noqa: E501
 
     def test_ensure_env_var_job_config_priority(self, job_manager):
         job_id_1 = str(uuid4())
