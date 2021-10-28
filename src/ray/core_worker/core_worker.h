@@ -1054,7 +1054,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
-  std::string OverrideTaskOrActorRuntimeEnv(const std::string &serialized_runtime_env);
+  std::string OverrideTaskOrActorRuntimeEnv(const std::string &serialized_runtime_env,
+  std::vector<std::string> *runtime_env_uris /* output */);
 
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,

@@ -1688,18 +1688,38 @@ static rpc::RuntimeEnv OverrideRuntimeEnv(const rpc::RuntimeEnv &child, const st
   return result_runtime_env;
 }
 
-std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(const std::string &serialized_runtime_env) {
+static std::vector<std::string> GetUrisFromRuntimeEnv(const rpc::RuntimeEnv *runtime_env) {
+  std::vector<std::string> result;
+  if (runtime_env == nullptr) {
+    return result;
+  }
+  for(const auto &uri : runtime_env->uris()) {
+    result.emplace_back(uri);
+  }
+  return result;
+}
+
+static std::vector<std::string> GetUrisFromSerializedRuntimeEnv(const std::string &serialized_runtime_env) {
+  rpc::RuntimeEnv runtime_env;
+  runtime_env.ParseFromString(serialized_runtime_env);
+  return GetUrisFromRuntimeEnv(&runtime_env);
+}
+
+std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(const std::string &serialized_runtime_env,
+                                                      std::vector<std::string> *runtime_env_uris) {
     RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: " << serialized_runtime_env << ", job config " << job_config_->serialized_runtime_env().serialized_runtime_env();
     std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
     if (options_.worker_type == WorkerType::DRIVER) {
       if (serialized_runtime_env == "") {
         RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 00000 " << job_config_->serialized_runtime_env().serialized_runtime_env();
+        *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
         return job_config_->serialized_runtime_env().serialized_runtime_env();
       }
       parent = job_runtime_env_;
     } else {
       if (serialized_runtime_env == "") {
         RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 11111 " << worker_context_.GetCurrentSerializedRuntimeEnv();
+        *runtime_env_uris = GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
         return worker_context_.GetCurrentSerializedRuntimeEnv();
       }
       parent = worker_context_.GetCurrentRuntimeEnv();
@@ -1707,12 +1727,15 @@ std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(const std::string &seriali
     if (parent) {
       rpc::RuntimeEnv child_runtime_env;
       child_runtime_env.ParseFromString(serialized_runtime_env);
+      auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
       std::string result;
-      RAY_CHECK(OverrideRuntimeEnv(child_runtime_env, parent).SerializeToString(&result));
+      RAY_CHECK(override_runtime_env.SerializeToString(&result));
       RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 22222 " << result;
+      *runtime_env_uris = GetUrisFromRuntimeEnv(&override_runtime_env);
       return result;
     } else {
       RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 33333 " << serialized_runtime_env;
+      *runtime_env_uris = GetUrisFromSerializedRuntimeEnv(serialized_runtime_env);
       return serialized_runtime_env;
     }
 }
@@ -1728,11 +1751,13 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
     const std::string &concurrency_group_name) {
   // Build common task spec.
+  std::vector<std::string> runtime_env_uris;
+  auto override_runtime_env = OverrideTaskOrActorRuntimeEnv(serialized_runtime_env, &runtime_env_uris);
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, OverrideTaskOrActorRuntimeEnv(serialized_runtime_env),
+      debugger_breakpoint, override_runtime_env, runtime_env_uris,
       concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {

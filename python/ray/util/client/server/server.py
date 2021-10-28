@@ -654,6 +654,8 @@ def decode_options(
     if options.json_options == "":
         return None
     opts = json.loads(options.json_options)
+    if options.serialized_runtime_env:
+        opts["runtime_env"] = options.serialized_runtime_env
     assert isinstance(opts, dict)
 
     if isinstance(opts.get("placement_group", None), dict):

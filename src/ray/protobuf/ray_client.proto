@@ -46,6 +46,7 @@ message Arg {
 // strongly defined and typed fields, without migrating the original ClientTask.
 message TaskOptions {
   string json_options = 1;
+  bytes serialized_runtime_env = 2;
 }
 
 // Represents one unit of work to be executed by the server.

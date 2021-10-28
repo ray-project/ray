@@ -76,8 +76,6 @@ struct TaskOptions {
   std::string concurrency_group_name;
   // Runtime Env used by this task. Propagated to child actors and tasks.
   std::string serialized_runtime_env;
-  // URIs contained in the runtime_env.
-  std::vector<std::string> runtime_env_uris;
 };
 
 /// Options for actor creation tasks.
