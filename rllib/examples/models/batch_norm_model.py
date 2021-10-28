@@ -65,7 +65,7 @@ class KerasBatchNormModel(TFModelV2):
         # Have to batch the is_training flag (B=1).
         out, self._value_out = self.base_model(
             [input_dict["obs"],
-             tf.expand_dims(input_dict.is_training, 0)])
+             tf.expand_dims(input_dict["is_training"], 0)])
         return out, []
 
     @override(ModelV2)
