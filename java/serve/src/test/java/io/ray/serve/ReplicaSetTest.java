@@ -7,7 +7,7 @@ import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.BackendVersion;
+import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.RequestMetadata;
 import java.util.HashMap;
 import java.util.Map;
@@ -67,8 +67,8 @@ public class ReplicaSetTest {
 
       DeploymentInfo deploymentInfo = new DeploymentInfo();
       deploymentInfo.setBackendConfig(backendConfigBytes);
-      deploymentInfo.setBackendVersion(
-          BackendVersion.newBuilder().setCodeVersion(version).build().toByteArray());
+      deploymentInfo.setDeploymentVersion(
+          DeploymentVersion.newBuilder().setCodeVersion(version).build().toByteArray());
       deploymentInfo.setReplicaConfig(
           new ReplicaConfig("io.ray.serve.ReplicaContext", initArgsBytes, new HashMap<>()));
 

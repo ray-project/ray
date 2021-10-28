@@ -6,7 +6,7 @@ import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.BackendVersion;
+import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
 import java.io.IOException;
@@ -40,8 +40,8 @@ public class RayServeReplicaTest {
 
       DeploymentInfo deploymentInfo = new DeploymentInfo();
       deploymentInfo.setBackendConfig(backendConfigBytes);
-      deploymentInfo.setBackendVersion(
-          BackendVersion.newBuilder().setCodeVersion(version).build().toByteArray());
+      deploymentInfo.setDeploymentVersion(
+          DeploymentVersion.newBuilder().setCodeVersion(version).build().toByteArray());
       deploymentInfo.setReplicaConfig(
           new ReplicaConfig("io.ray.serve.ReplicaContext", initArgsBytes, new HashMap<>()));
 
@@ -75,11 +75,11 @@ public class RayServeReplicaTest {
       // reconfigure
       ObjectRef<byte[]> versionRef =
           backendHandle.task(RayServeWrappedReplica::reconfigure, (Object) null).remote();
-      Assert.assertEquals(BackendVersion.parseFrom(versionRef.get()).getCodeVersion(), version);
+      Assert.assertEquals(DeploymentVersion.parseFrom(versionRef.get()).getCodeVersion(), version);
 
       // get version
       versionRef = backendHandle.task(RayServeWrappedReplica::getVersion).remote();
-      Assert.assertEquals(BackendVersion.parseFrom(versionRef.get()).getCodeVersion(), version);
+      Assert.assertEquals(DeploymentVersion.parseFrom(versionRef.get()).getCodeVersion(), version);
 
       // prepare for shutdown
       ObjectRef<Boolean> shutdownRef =
