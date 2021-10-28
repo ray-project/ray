@@ -49,7 +49,7 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
             resource_scheduler,
             /*schedule_failure_handler=*/
             [this](std::shared_ptr<gcs::GcsActor> actor, bool destroy_actor) {
-              failure_actors_.emplace_back(std::move(actor), destroy_actor);
+              failure_actors_.emplace_back(std::move(actor));
             },
             /*schedule_success_handler=*/
             [this](std::shared_ptr<gcs::GcsActor> actor,
