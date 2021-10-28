@@ -24,7 +24,9 @@ from ray.train.examples.train_fashion_mnist_example import train_func \
 from ray.train.examples.train_linear_example import train_func as \
     linear_train_func
 from ray.train.examples.torch_quick_start import train_func as \
-    quick_start_train_func
+    torch_quick_start_train_func
+from ray.train.examples.tensorflow_quick_start import train_func as \
+    tf_quick_start_train_func
 from ray.train.worker_group import WorkerGroup
 
 
@@ -580,7 +582,7 @@ def test_tf_non_distributed(ray_start_2_cpus):
 
     trainer = Trainer(backend="torch", num_workers=1)
     trainer.start()
-    trainer.run(quick_start_train_func)
+    trainer.run(tf_quick_start_train_func)
     trainer.shutdown()
 
 
@@ -624,7 +626,7 @@ def test_torch_non_distributed(ray_start_2_cpus):
 
     trainer = Trainer(backend="torch", num_workers=1)
     trainer.start()
-    trainer.run(quick_start_train_func)
+    trainer.run(torch_quick_start_train_func)
     trainer.shutdown()
 
 
