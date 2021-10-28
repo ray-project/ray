@@ -25,6 +25,15 @@ To install Ray libraries:
   pip install -U ray[tune]  # installs Ray + dependencies for Ray Tune
   pip install -U ray[rllib]  # installs Ray + dependencies for Ray RLlib
   pip install -U ray[serve]  # installs Ray + dependencies for Ray Serve
+  pip install -U ray[data] # installs Ray + dependencies for Ray Data.
+
+To install dependencies for the cluster launcher:
+
+.. code-block:: bash
+
+    pip install -U ray[aws] # installs Ray + dependencies for AWS cluster launcher
+    pip install -U ray[gcp] # installs Ray + dependencies for GCP cluster launcher
+    pip install -U ray[azure] # installs Ray + dependencies for Azure cluster launcher.
 
 
 **Note for Windows Users:** To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section). If you run into any issues, please see the :ref:`Windows Support <windows-support>` section.

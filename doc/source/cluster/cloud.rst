@@ -24,7 +24,7 @@ Ray with cloud providers
 .. tabs::
     .. group-tab:: AWS
 
-        First, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials``,
+        First, install the AWS dependencies (``pip install ray[aws]``) and configure your AWS credentials in ``~/.aws/credentials``,
         as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/configuration.html>`__.
 
         Once boto is configured to manage resources on your AWS account, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with an m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
@@ -49,6 +49,8 @@ Ray with cloud providers
     .. group-tab:: Azure
 
         First, install the Azure CLI (``pip install azure-cli``) then login using (``az login``).
+
+        Also install the additional required dependencies for Azure ``pip install ray[azure]``.
 
         Set the subscription to use from the command line (``az account set -s <subscription_id>``) or by modifying the provider section of the config provided e.g: `ray/python/ray/autoscaler/azure/example-full.yaml`
 
@@ -96,7 +98,7 @@ Ray with cloud providers
 
     .. group-tab:: GCP
 
-        First, install the Google API client (``pip install google-api-python-client``), set up your GCP credentials, and create a new GCP project.
+        First, install the GCP dependencies (``pip install ray[gcp]``), set up your GCP credentials, and create a new GCP project.
 
         Once the API client is configured to manage resources on your GCP account, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/gcp/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml>`__ cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 `preemptible workers <https://cloud.google.com/preemptible-vms/>`__. Note that you'll need to fill in your project id in those templates.
 

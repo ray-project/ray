@@ -233,6 +233,19 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
+    # Cloud specific deps.
+    setup_spec.extras["azure"] = setup_spec.extras["default"] + [
+        "azure-common", "msrestazure", "msrest", "azure-mgmt-resource",
+        "azure-mgmt-compute", "azure-mgmt-network", "knack", "azure-cli",
+        "azure-core"
+    ]
+
+    setup_spec.extras["gcp"] = setup_spec.extras["default"] + [
+        "cryptography >= 3.0.0", "google-api-python-client"
+    ]
+
+    setup_spec.extras["aws"] = setup_spec.extras["default"] + ["boto3"]
+
     setup_spec.extras["all"] = list(
         set(chain.from_iterable(setup_spec.extras.values())))
 
