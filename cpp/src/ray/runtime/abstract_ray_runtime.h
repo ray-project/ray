@@ -74,11 +74,6 @@ class AbstractRayRuntime : public RayRuntime {
 
   void RemoveLocalReference(const std::string &id);
 
-  /// Returns a map of all ObjectIDs currently in scope with a pair of their
-  /// (local, submitted_task) reference counts. For debugging purposes.
-  std::unordered_map<std::string, std::pair<size_t, size_t>> GetAllReferenceCounts()
-      const;
-
   std::string GetActorId(bool global, const std::string &actor_name);
 
   void KillActor(const std::string &str_actor_id, bool no_restart);

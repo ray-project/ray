@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 #include "../../runtime/abstract_ray_runtime.h"
+#include "../../runtime/object/native_object_store.h"
 #include "../../util/process_helper.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
@@ -264,34 +265,38 @@ TEST(RayClusterModeTest, GetAllNodeInfoTest) {
             ray::rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
 }
 
-bool CheckRefCount(std::unordered_map<std::string, std::pair<size_t, size_t>> expected) {
-  auto map = ray::internal::GetRayRuntime()->GetAllReferenceCounts();
+bool CheckRefCount(
+    std::unordered_map<ray::ObjectID, std::pair<size_t, size_t>> expected) {
+  auto object_store = std::make_unique<ray::internal::NativeObjectStore>();
+  auto map = object_store->GetAllReferenceCounts();
   return expected == map;
 }
 
 TEST(RayClusterModeTest, LocalRefrenceTest) {
   auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
-  auto objec_id = r1->ID();
-  EXPECT_TRUE(CheckRefCount({{objec_id, std::make_pair(1, 0)}}));
+  auto object_id = ray::ObjectID::FromBinary(r1->ID());
+  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
   auto r2 = std::make_unique<ray::ObjectRef<int>>(*r1);
-  EXPECT_TRUE(CheckRefCount({{objec_id, std::make_pair(2, 0)}}));
+  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(2, 0)}}));
   r1.reset();
-  EXPECT_TRUE(CheckRefCount({{objec_id, std::make_pair(1, 0)}}));
+  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
   r2.reset();
   EXPECT_TRUE(CheckRefCount({}));
 }
 
 TEST(RayClusterModeTest, DependencyRefrenceTest) {
   auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
-  auto objec_id = r1->ID();
-  EXPECT_TRUE(CheckRefCount({{objec_id, std::make_pair(1, 0)}}));
+  auto object_id = ray::ObjectID::FromBinary(r1->ID());
+  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
 
   auto r2 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Plus1).Remote(*r1));
-  EXPECT_TRUE(CheckRefCount(
-      {{objec_id, std::make_pair(1, 1)}, {r2->ID(), std::make_pair(1, 0)}}));
+  EXPECT_TRUE(
+      CheckRefCount({{object_id, std::make_pair(1, 1)},
+                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
   r2->Get();
-  EXPECT_TRUE(CheckRefCount(
-      {{objec_id, std::make_pair(1, 0)}, {r2->ID(), std::make_pair(1, 0)}}));
+  EXPECT_TRUE(
+      CheckRefCount({{object_id, std::make_pair(1, 0)},
+                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
   r1.reset();
   r2.reset();
   EXPECT_TRUE(CheckRefCount({}));

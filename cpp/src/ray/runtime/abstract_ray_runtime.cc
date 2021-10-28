@@ -201,16 +201,6 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
-std::unordered_map<std::string, std::pair<size_t, size_t>>
-AbstractRayRuntime::GetAllReferenceCounts() const {
-  std::unordered_map<std::string, std::pair<size_t, size_t>> map;
-  auto all_object_ref = object_store_->GetAllReferenceCounts();
-  for (auto &pair : all_object_ref) {
-    map.emplace(pair.first.Binary(), pair.second);
-  }
-  return map;
-}
-
 std::string AbstractRayRuntime::GetActorId(bool global, const std::string &actor_name) {
   auto actor_id = task_submitter_->GetActor(global, actor_name);
   if (actor_id.IsNil()) {
