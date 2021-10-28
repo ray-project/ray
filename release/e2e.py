@@ -1989,22 +1989,25 @@ def run_test(test_config_file: str,
             category=category,
         )
 
-        # Check if result are met
-        alert = maybe_get_alert_for_result(report_kwargs)
+        if not has_errored(result):
+            # Check if result are met if test succeeded
+            alert = maybe_get_alert_for_result(report_kwargs)
 
-        if alert:
-            # If we get an alert, the test failed.
-            logger.error(f"Alert has been raised for {test_suite}/{test_name} "
-                         f"({category}): {alert}")
-            result["status"] = "error (alert raised)"
-            report_kwargs["status"] = "error (alert raised)"
+            if alert:
+                # If we get an alert, the test failed.
+                logger.error(f"Alert has been raised for "
+                             f"{test_suite}/{test_name} "
+                             f"({category}): {alert}")
+                result["status"] = "error (alert raised)"
+                report_kwargs["status"] = "error (alert raised)"
 
-            # For printing/reporting to the database
-            report_kwargs["last_logs"] = alert
-            last_logs = alert
-        else:
-            logger.info(f"No alert raised for test {test_suite}/{test_name} "
-                        f"({category}) - the test successfully passed!")
+                # For printing/reporting to the database
+                report_kwargs["last_logs"] = alert
+                last_logs = alert
+            else:
+                logger.info(f"No alert raised for test "
+                            f"{test_suite}/{test_name} "
+                            f"({category}) - the test successfully passed!")
 
         if report:
             report_result(**report_kwargs)
