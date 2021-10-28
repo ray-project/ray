@@ -94,13 +94,12 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
-    def __init__(self, job_id: str, metadata: Dict[str, str]):
+    def __init__(self, job_id: str):
         self._job_id = job_id
         self._status = JobStatus.PENDING
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
-        self._metadata = metadata
 
     async def ready(self):
         pass
@@ -132,7 +131,6 @@ class JobSupervisor:
             # Set JobConfig for the child process (runtime_env, metadata).
             os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps({
                 "runtime_env": self._runtime_env,
-                "metadata": self._metadata,
             })
             ray_redis_address = ray._private.services.find_redis_address_or_die(  # noqa: E501
             )
