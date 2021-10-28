@@ -359,9 +359,9 @@ message ActorTaskSpec {
 // `TaskSpec` is determined at submission time.
 message TaskExecutionSpec {
   // The last time this task was received for scheduling.
-  double last_timestamp = 2;
+  double last_timestamp = 1;
   // The number of times this task was spilled back by raylets.
-  uint64 num_forwards = 3;
+  uint64 num_forwards = 2;
 }
 
 // Represents a task, including task spec, and task execution spec.
