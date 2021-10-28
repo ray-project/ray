@@ -205,6 +205,7 @@ class _DesignatedBlockOwner:
         return "ok"
 
 
+# TODO(ekl) remove this once we implement automatic ownership transfer.
 def _get_or_create_block_owner_actor() -> ray.actor.ActorHandle:
     name = "datasets_global_block_owner"
     namespace = "datasets_global_namespace"
