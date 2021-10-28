@@ -23,6 +23,8 @@ class MockWorkerPoolInterface : public WorkerPoolInterface {
               (override));
   MOCK_METHOD(void, PushWorker, (const std::shared_ptr<WorkerInterface> &worker),
               (override));
+  MOCK_METHOD(const std::vector<std::shared_ptr<WorkerInterface>>,
+              GetAllRegisteredWorkers, (bool filter_dead_workers), (override));
 };
 
 }  // namespace raylet
