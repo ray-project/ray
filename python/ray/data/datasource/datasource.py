@@ -116,7 +116,7 @@ class ReadTask(Callable[[], List[Block]]):
 
     def __call__(self) -> BlockPartition:
         result = self._read_fn()
-        bad_read_result = ValueError(
+        bad_read_result = DeprecationWarning(
             "Read task must return list of (block, metadata) tuples, got "
             "{}. Probably you need to return `[(ray.put(block), meta)]` "
             "instead of `block`.".format(result))
