@@ -229,6 +229,46 @@ def test_no_spurious_worker_startup(shutdown_only):
     assert got_num_workers, "failed to read num workers for 10 seconds"
 
 
+@pytest.fixture
+def set_agent_failure_env_var():
+    os.environ["_RAY_AGENT_FAILING"] = "1"
+    yield
+    del os.environ["_RAY_AGENT_FAILING"]
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "_system_config": {
+            "agent_restart_interval_ms": 10,
+            "agent_max_restart_count": 5
+        }
+    }],
+    indirect=True)
+def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
+    @ray.remote
+    class A:
+        def ready(self):
+            pass
+
+    @ray.remote
+    def f():
+        pass
+
+    runtime_env = {"env_vars": {"TF_WARNINGS": "none"}}
+    """
+    Test task raises an exception.
+    """
+    with pytest.raises(RuntimeEnvSetupError):
+        ray.get(f.options(runtime_env=runtime_env).remote())
+    """
+    Test actor task raises an exception.
+    """
+    a = A.options(runtime_env=runtime_env).remote()
+    # TODO(sang): Raise a RuntimeEnvSetupError with proper error.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ready.remote())
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-sv", __file__]))
