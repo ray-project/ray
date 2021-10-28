@@ -28,7 +28,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
+from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import AgentID, TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()

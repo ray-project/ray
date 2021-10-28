@@ -8,7 +8,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import Schedule
-from ray.rllib.utils.tf_ops import zero_logps_from_actions
+from ray.rllib.utils.tf_utils import zero_logps_from_actions
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()

@@ -2,7 +2,7 @@ import numpy as np
 import os
 import pprint
 import random
-from typing import Mapping, Optional
+from typing import Any, Mapping, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -10,11 +10,17 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 _printer = pprint.PrettyPrinter(indent=2, width=60)
 
 
-def summarize(obj):
+def summarize(obj: Any) -> Any:
     """Return a pretty-formatted string for an object.
 
     This has special handling for pretty-formatting of commonly used data types
     in RLlib, such as SampleBatch, numpy arrays, etc.
+
+    Args:
+        obj: The object to format.
+
+    Returns:
+        The summarized object.
     """
 
     return _printer.pformat(_summarize(obj))
@@ -76,8 +82,8 @@ def update_global_seed_if_necessary(framework: Optional[str] = None,
     This is useful for debugging and testing.
 
     Args:
-        framework (Optional[str]): The framework specifier (may be None).
-        seed (Optional[int]): An optional int seed. If None, will not do
+        framework: The framework specifier (may be None).
+        seed: An optional int seed. If None, will not do
             anything.
     """
     if seed is None:
