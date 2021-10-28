@@ -102,7 +102,10 @@ TensorType = Any
 
 # List of grads+var tuples (tf) or list of gradient tensors (torch)
 # representing model gradients and returned by compute_gradients().
-ModelGradients = Union[List[Tuple[TensorType, TensorType]], List[TensorType]]
+ModelGradients = Union[
+    List[Tuple[TensorType, TensorType]],
+    List[TensorType]
+]
 
 # Type of dict returned by get_weights() representing model weights.
 ModelWeights = dict

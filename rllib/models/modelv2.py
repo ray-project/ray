@@ -10,7 +10,8 @@ from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import NullContextManager
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated

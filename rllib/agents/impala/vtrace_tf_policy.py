@@ -15,7 +15,7 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import explained_variance
+from ray.rllib.utils.tf_utils import explained_variance
 
 tf1, tf, tfv = try_import_tf()
 

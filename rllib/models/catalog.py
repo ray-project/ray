@@ -18,8 +18,8 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, \
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, \
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE, \
     deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch

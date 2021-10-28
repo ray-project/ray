@@ -18,7 +18,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
+from ray.rllib.utils.tf_utils import huber_loss, make_tf_callable
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()

@@ -27,7 +27,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.tf_ops import huber_loss
+from ray.rllib.utils.tf_utils import huber_loss
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
 

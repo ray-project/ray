@@ -22,7 +22,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import one_hot
+from ray.rllib.utils.tf_utils import one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
 
 tf1, tf, tfv = try_import_tf()

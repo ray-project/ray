@@ -3,7 +3,7 @@
 import traceback
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
-from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.utils.deprecation import Deprecated
 
 
 def _import_a2c():

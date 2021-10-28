@@ -10,9 +10,9 @@ from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
-from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import explained_variance
+from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
     PolicyID, LocalOptimizer, ModelGradients
