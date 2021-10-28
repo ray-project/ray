@@ -67,6 +67,8 @@ steps:
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac,-post_wheel_build --
       //:all python/ray/serve/... python/ray/dashboard/... -rllib/... -core_worker_test
+    # clang-format is needed by java/test.sh
+    - brew install clang-format@12
     - ./java/test.sh
     - *epilogue_commands
 

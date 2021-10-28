@@ -11,11 +11,7 @@ function generate_one()
 {
   file=${2//./_}.h
   javac -h ./ "$1" -classpath ../bazel-bin/java/all_tests_deploy.jar -d runtime/target/
-  if command -v clang-format > /dev/null; then
-    clang-format -i "$file"
-  else
-    echo "Skip formatting $file as clang-format is not installed."
-  fi
+  clang-format -i "$file"
 
   cat <<EOF > ../src/ray/core_worker/lib/java/"$file"
 // Copyright 2017 The Ray Authors.
