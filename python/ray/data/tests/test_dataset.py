@@ -876,6 +876,38 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert str(ds.take(1)) == "[{'value': array([0])}]"
 
 
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_numpy_write_block_path_provider(ray_start_regular_shared, fs,
+                                         data_path, endpoint_url,
+                                         test_block_write_path_provider):
+    ds = ray.data.range_tensor(10, parallelism=2)
+    ds._set_uuid("data")
+    ds.write_numpy(
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    file_path1 = os.path.join(data_path, "000000_05_data.test.npy")
+    file_path2 = os.path.join(data_path, "000001_05_data.test.npy")
+    if endpoint_url is None:
+        arr1 = np.load(file_path1)
+        arr2 = np.load(file_path2)
+    else:
+        from s3fs.core import S3FileSystem
+        s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
+        arr1 = np.load(s3.open(file_path1))
+        arr2 = np.load(s3.open(file_path2))
+    assert ds.count() == 10
+    assert len(arr1) == 5
+    assert len(arr2) == 5
+    assert arr1.sum() == 10
+    assert arr2.sum() == 35
+    assert str(ds.take(1)) == "[{'value': array([0])}]"
+
+
 def test_read_text(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_text")
     os.mkdir(path)
@@ -1239,7 +1271,7 @@ def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
 
 
 def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
-    """Same as `test_parquet_read` but using a custom, fsspec filesystem.
+    """Same as `test_parquet_write` but using a custom, fsspec filesystem.
 
     TODO (Alex): We should write a similar test with a mock PyArrow fs, but
     unfortunately pa.fs._MockFileSystem isn't serializable, so this may require
@@ -1609,6 +1641,47 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     expected_df = df
     expected_df["one"] += 1
     assert expected_df.equals(dfds)
+
+
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_parquet_write_block_path_provider(ray_start_regular_shared, fs,
+                                           data_path, endpoint_url,
+                                           test_block_write_path_provider):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([df1, df2])
+    path = os.path.join(data_path, "test_parquet_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    ds._set_uuid("data")
+
+    ds.write_parquet(
+        path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    path1 = os.path.join(path, "000000_03_data.test.parquet")
+    path2 = os.path.join(path, "000001_03_data.test.parquet")
+    dfds = pd.concat([
+        pd.read_parquet(path1, storage_options=storage_options),
+        pd.read_parquet(path2, storage_options=storage_options)
+    ])
+    assert df.equals(dfds)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
 
 
 @pytest.mark.parametrize(
@@ -2528,6 +2601,60 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_json_write_block_path_provider(ray_start_regular_shared, fs,
+                                        data_path, endpoint_url,
+                                        test_block_write_path_provider):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    # Single block.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([df1])
+    ds._set_uuid("data")
+    ds.write_json(
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    file_path = os.path.join(data_path, "000000_03_data.test.json")
+    assert df1.equals(
+        pd.read_json(
+            file_path,
+            orient="records",
+            lines=True,
+            storage_options=storage_options))
+
+    # Two blocks.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([df1, df2])
+    ds._set_uuid("data")
+    ds.write_json(
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    file_path2 = os.path.join(data_path, "000001_03_data.test.json")
+    df = pd.concat([df1, df2])
+    ds_df = pd.concat([
+        pd.read_json(
+            file_path,
+            orient="records",
+            lines=True,
+            storage_options=storage_options),
+        pd.read_json(
+            file_path2,
+            orient="records",
+            lines=True,
+            storage_options=storage_options)
+    ])
+    assert df.equals(ds_df)
+
+
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [(None, lazy_fixture("local_path"), None),
@@ -2707,6 +2834,47 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     # Test metadata ops.
     for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+
+
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_csv_write_block_path_provider(ray_start_regular_shared, fs, data_path,
+                                       endpoint_url,
+                                       test_block_write_path_provider):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    # Single block.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([df1])
+    ds._set_uuid("data")
+    ds.write_csv(
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    file_path = os.path.join(data_path, "000000_03_data.test.csv")
+    assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
+
+    # Two blocks.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([df1, df2])
+    ds._set_uuid("data")
+    ds.write_csv(
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    file_path2 = os.path.join(data_path, "000001_03_data.test.csv")
+    df = pd.concat([df1, df2])
+    ds_df = pd.concat([
+        pd.read_csv(file_path, storage_options=storage_options),
+        pd.read_csv(file_path2, storage_options=storage_options)
+    ])
+    assert df.equals(ds_df)
 
 
 def test_groupby_arrow(ray_start_regular_shared):
