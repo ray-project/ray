@@ -719,15 +719,6 @@ class ActorClass:
             cpus_to_use, meta.num_gpus, meta.memory, meta.object_store_memory,
             meta.resources, meta.accelerator_type, num_cpus, num_gpus, memory,
             object_store_memory, resources, accelerator_type)
-        if placement_group_capture_child_tasks is None:
-            placement_group_capture_child_tasks = (
-                worker.should_capture_child_tasks_in_placement_group)
-        placement_group = configure_placement_group_based_on_context(
-            placement_group_capture_child_tasks,
-            placement_group_bundle_index,
-            resources,
-            meta.class_name,
-            placement_group=placement_group)
 
         # If the actor methods require CPU resources, then set the required
         # placement resources. If actor_placement_resources is empty, then
@@ -743,6 +734,17 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
+
+        if placement_group_capture_child_tasks is None:
+            placement_group_capture_child_tasks = (
+                worker.should_capture_child_tasks_in_placement_group)
+        placement_group = configure_placement_group_based_on_context(
+            placement_group_capture_child_tasks,
+            placement_group_bundle_index,
+            resources,
+            actor_placement_resources,
+            meta.class_name,
+            placement_group=placement_group)
 
         if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
             runtime_env = ParsedRuntimeEnv(runtime_env)

@@ -286,6 +286,7 @@ class RemoteFunction:
             placement_group_capture_child_tasks,
             placement_group_bundle_index,
             resources,
+            {},  # no placement_resources for tasks
             self._function_descriptor.function_name,
             placement_group=placement_group)
 

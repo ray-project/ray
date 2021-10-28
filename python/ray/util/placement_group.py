@@ -338,10 +338,49 @@ def check_placement_group_index(placement_group: PlacementGroup,
                          f"0-{placement_group.bundle_count}")
 
 
+def _validate_resource_shape(placement_group, resources, placement_resources,
+                             task_or_actor_repr):
+    def valid_resource_shape(resources, bundle_specs):
+        """
+        If the resource shape cannot fit into every
+        bundle spec, return False
+        """
+        for bundle in bundle_specs:
+            for resource, requested_val in resources.items():
+                if bundle.get(resource, 0) < requested_val:
+                    return False
+        return True
+
+    bundles = placement_group.bundle_specs
+    if not placement_group.is_empty:
+        resources_valid = valid_resource_shape(resources, bundles)
+        placement_resources_valid = valid_resource_shape(
+            placement_resources, bundles)
+
+        if not resources_valid:
+            raise ValueError(
+                f"Cannot schedule {task_or_actor_repr} with "
+                "the placement group because the resource request "
+                f"{resources} cannot fit into any bundles for "
+                f"the placement group, {bundles}.")
+        if not placement_resources_valid:
+            # Happens for the default actor case.
+            # placement_resources is not an exposed concept to users,
+            # so we should write more specialized error messages.
+            raise ValueError(f"Cannot schedule {task_or_actor_repr} with "
+                             "the placement group because the actor requires "
+                             f"{placement_resources.get('CPU', 0)} CPU for "
+                             "creation, but it cannot "
+                             f"fit into any bundles for the placement group, "
+                             f"{bundles}. Consider "
+                             "creating a placement group with CPU resources.")
+
+
 def configure_placement_group_based_on_context(
         placement_group_capture_child_tasks: bool,
         bundle_index: int,
         resources: Dict,
+        placement_resources: Dict,
         task_or_actor_repr: str,
         placement_group: Union[PlacementGroup, str, None] = "default")\
             -> PlacementGroup:
@@ -356,6 +395,8 @@ def configure_placement_group_based_on_context(
             context.
         bundle_index: The bundle index for tasks/actor scheduling.
         resources: The scheduling resources.
+        placement_resources: The scheduling placement resources for
+            actors.
         task_or_actor_repr: The repr of task or actor
             function/class descriptor.
         placement_group: The placement group instance.
@@ -372,10 +413,13 @@ def configure_placement_group_based_on_context(
     Raises:
         ValueError: If the bundle index is invalid for the placement group
     """
+    # Validate inputs.
     assert placement_group_capture_child_tasks is not None
     assert resources is not None
 
+    # Validate and get the PlacementGroup instance.
     # Placement group could be None, default, or placement group.
+    # Default behavior is "do not capture child tasks".
     if placement_group != "default":
         if not placement_group:
             placement_group = PlacementGroup.empty()
@@ -387,23 +431,12 @@ def configure_placement_group_based_on_context(
 
     if not placement_group:
         placement_group = PlacementGroup.empty()
-
     assert isinstance(placement_group, PlacementGroup)
+
+    # Validate the index.
     check_placement_group_index(placement_group, bundle_index)
 
-    def resource_empty(resources):
-        if not resources:
-            return True
-        for resource_val in resources.values():
-            if resource_val > 0:
-                return False
-        return True
-
-    if (not placement_group.is_empty
-            and (resource_empty(resources) and bundle_index == -1)):
-        raise ValueError(
-            f"{task_or_actor_repr} specifies the placement group, but "
-            "it doesn't request resources. Placement group won't be used. "
-            "This means you might have passed num_cpus=0 as a resource "
-            "requirement for this task or actor.")
+    # Validate the shape.
+    _validate_resource_shape(placement_group, resources, placement_resources,
+                             task_or_actor_repr)
     return placement_group
