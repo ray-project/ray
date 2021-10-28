@@ -103,7 +103,7 @@ def test_placement_group_invalid_resource_request(shutdown_only):
 
     # 1 CPU shouldn't work because the pg doesn't have CPU bundles.
     with pytest.raises(ValueError):
-        a = f.options(placement_group=pg).remote()
+        f.options(placement_group=pg).remote()
     # 0 CPU should work.
     ray.get(f.options(placement_group=pg, num_cpus=0).remote())
 

@@ -10,6 +10,7 @@ from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_wrap
 
 bundle_reservation_check = None
+BUNDLE_RESOURCE_LABEL = "bundle"
 
 
 # We need to import this method to use for ready API.
@@ -72,7 +73,7 @@ class PlacementGroup:
 
         return bundle_reservation_check.options(
             placement_group=self, resources={
-                "bundle": 0.001
+                BUNDLE_RESOURCE_LABEL: 0.001
             }).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int]) -> bool:
@@ -347,6 +348,10 @@ def _validate_resource_shape(placement_group, resources, placement_resources,
         """
         for bundle in bundle_specs:
             for resource, requested_val in resources.items():
+                # Skip "bundle" resource as it is automatically added
+                # to all nodes with bundles by the placement group.
+                if resource == BUNDLE_RESOURCE_LABEL:
+                    continue
                 if bundle.get(resource, 0) < requested_val:
                     return False
         return True
