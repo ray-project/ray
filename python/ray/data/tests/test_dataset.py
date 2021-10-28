@@ -93,8 +93,6 @@ def test_equal_split(shutdown_only, pipelined):
     assert not all(c == 6 for c in r2), r2
 
 
-@pytest.mark.skip(
-    reason="OwnerDiedError: https://github.com/ray-project/ray/issues/19659")
 def test_callable_classes(shutdown_only):
     ray.init(num_cpus=1)
     ds = ray.data.range(10)

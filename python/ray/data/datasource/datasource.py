@@ -164,7 +164,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 return list(builtins.range(start, start + count))
 
         i = 0
-        owner = None  # TODO _get_or_create_block_owner_actor()
+        owner = _get_or_create_block_owner_actor()
         while i < n:
             count = min(block_size, n - i)
             if block_format == "arrow":
