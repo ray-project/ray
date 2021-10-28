@@ -245,8 +245,8 @@ MANUAL_TESTS = {
     ],
     # Dev
     "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
-        "gcp_k8s_no_sync_down",
-        "gcp_k8s_ssh_sync",
+        # "gcp_k8s_no_sync_down",
+        # "gcp_k8s_ssh_sync",
         "gcp_k8s_durable_upload",
         # Disabled until #19637 is fixed
         # "gcp_k8s_no_durable_upload",
