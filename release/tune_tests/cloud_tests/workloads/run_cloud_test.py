@@ -279,9 +279,8 @@ def wait_until_process_terminated(process: subprocess.Popen,
     if process.poll() is None:
         process.terminate()
 
-        raise RuntimeError(
-            f"Process {process.pid} did not terminate within timeout, "
-            f"terminating forcefully instead.")
+        print(f"Warning: Process {process.pid} did not terminate within "
+              f"timeout, terminating forcefully instead.")
 
     print(f"Process {process.pid} terminated gracefully.")
 
@@ -309,7 +308,7 @@ def run_tune_script_for_time(
         # Stop experiment (with checkpoint) after some time
         send_signal_after_wait(process, signal=signal.SIGINT, wait=run_time)
         # Wait until process gracefully terminated
-        wait_until_process_terminated(process, timeout=60)
+        wait_until_process_terminated(process, timeout=45)
     finally:
         process.terminate()
 
