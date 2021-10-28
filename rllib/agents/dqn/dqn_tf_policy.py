@@ -242,7 +242,9 @@ def build_q_losses(policy: Policy, model, _,
     q_t, q_logits_t, q_dist_t, _ = compute_q_values(
         policy,
         model,
-        SampleBatch({"obs": train_batch[SampleBatch.CUR_OBS]}),
+        SampleBatch({
+            "obs": train_batch[SampleBatch.CUR_OBS]
+        }),
         state_batches=None,
         explore=False)
 
@@ -250,7 +252,9 @@ def build_q_losses(policy: Policy, model, _,
     q_tp1, q_logits_tp1, q_dist_tp1, _ = compute_q_values(
         policy,
         policy.target_model,
-        SampleBatch({"obs": train_batch[SampleBatch.NEXT_OBS]}),
+        SampleBatch({
+            "obs": train_batch[SampleBatch.NEXT_OBS]
+        }),
         state_batches=None,
         explore=False)
     if not hasattr(policy, "target_q_func_vars"):
