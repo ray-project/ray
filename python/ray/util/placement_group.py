@@ -412,6 +412,8 @@ def configure_placement_group_based_on_context(
 
     Raises:
         ValueError: If the bundle index is invalid for the placement group
+            or the requested resources shape doesn't fit to any
+            bundles.
     """
     # Validate inputs.
     assert placement_group_capture_child_tasks is not None
