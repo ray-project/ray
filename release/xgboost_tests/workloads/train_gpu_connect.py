@@ -32,7 +32,7 @@ if __name__ == "__main__":
 
     @ray.remote
     def train():
-        os.environ["RXGB_PLACEMENT_GROUP_TIMEOUT_S"] = "450"
+        os.environ["RXGB_PLACEMENT_GROUP_TIMEOUT_S"] = "1200"
 
         train_ray(
             path="/data/classification.parquet",
