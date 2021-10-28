@@ -21,6 +21,10 @@ def job_manager(shared_ray_instance):
 
 def check_job_succeeded(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
+    if status == JobStatus.FAILED:
+        stdout = job_manager.get_job_stdout(job_id)
+        stderr = job_manager.get_job_stderr(job_id)
+        raise RuntimeError(f"Job failed! stdout:\n{stdout}\nstderr:\n{stderr}")
     assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
     return status == JobStatus.SUCCEEDED
 
@@ -172,3 +176,34 @@ class TestRuntimeEnv:
         assert stderr.startswith(
             "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
             "are provided")
+
+
+def test_pass_metadata(job_manager):
+    print_metadata_cmd = (
+        "python -c\""
+        "import ray;"
+        "ray.init();"
+        "job_config=ray.worker.global_worker.core_worker.get_job_config();"
+        "print(dict(sorted(job_config.metadata.items())))"
+        "\"")
+
+    # Check that we default to no metadata.
+    job_id: str = str(uuid4())
+    job_id = job_manager.submit_job(job_id, print_metadata_cmd)
+
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
+    assert job_manager.get_job_stdout(job_id) == b"{}"
+
+    # Check that we can pass custom metadata.
+    job_id: str = str(uuid4())
+    job_id = job_manager.submit_job(
+        job_id, print_metadata_cmd, metadata={
+            "key1": "val1",
+            "key2": "val2"
+        })
+
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
+    assert job_manager.get_job_stdout(
+        job_id) == b"{'key1': 'val1', 'key2': 'val2'}"
