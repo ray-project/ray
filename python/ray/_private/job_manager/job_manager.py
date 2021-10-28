@@ -102,9 +102,13 @@ class JobSupervisor:
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
         self._metadata = metadata
+        self._put_status()
 
     async def ready(self):
         pass
+
+    def _put_status(self):
+        self._status_client.put_status(self._job_id, self._status)
 
     async def _exec_cmd(self, cmd: str, stdout_path: str, stderr_path: str):
         """
@@ -126,7 +130,7 @@ class JobSupervisor:
         assert self._status == JobStatus.PENDING, (
             "Run should only be called once.")
         self._status = JobStatus.RUNNING
-        self._status_client.put_status(self._job_id, self._status)
+        self._put_status()
         exit_code = None
 
         try:
@@ -149,7 +153,7 @@ class JobSupervisor:
                 self._status = JobStatus.SUCCEEDED
             else:
                 self._status = JobStatus.FAILED
-            self._status_client.put_status(self._job_id, self.get_status())
+            self._put_status()
             ray.actor.exit_actor()
 
     async def get_status(self) -> JobStatus:
