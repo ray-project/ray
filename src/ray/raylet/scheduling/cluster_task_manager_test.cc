@@ -60,6 +60,12 @@ class MockWorkerPool : public WorkerPoolInterface {
     workers.push_front(worker);
   }
 
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers) const {
+    RAY_CHECK(false) << "Not used.";
+    return {};
+  }
+
   void TriggerCallbacks() {
     for (auto it = workers.begin(); it != workers.end();) {
       std::shared_ptr<WorkerInterface> worker = *it;
