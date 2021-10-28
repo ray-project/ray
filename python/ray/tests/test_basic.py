@@ -323,15 +323,13 @@ def test_ray_options(shutdown_only):
 
     without_options = ray.get(foo.remote(ray.available_resources()))
     with_options = ray.get(
-            foo.options(
-                num_cpus=3,
-                num_gpus=4,
-                memory=50 * 2**20,
-                resources={
-                    "custom1": 0.5
-                }).remote(ray.available_resources()))
-
-
+        foo.options(
+            num_cpus=3,
+            num_gpus=4,
+            memory=50 * 2**20,
+            resources={
+                "custom1": 0.5
+            }).remote(ray.available_resources()))
 
     to_check = ["CPU", "GPU", "memory", "custom1"]
     for key in to_check:
