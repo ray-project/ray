@@ -10,6 +10,15 @@ from typing import (Any, Optional, Tuple, Callable, DefaultDict, Dict, Set,
 import ray
 from ray.serve.utils import logger
 
+# Each LongPollClient will send requests to LongPollHost to poll changes
+# as blocking awaitable. This doesn't scale if we have many client instances
+# that will slow down, or even block controller actor's event loop if near
+# its max_concurrency limit. Therefore we timeout a polling request after
+# a few seconds and let each client retry on their end.
+# We randomly select a timeout within this range to avoid a "thundering herd"
+# when there are many clients subscribing at the same time.
+LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (30, 60)
+
 
 class LongPollNamespace(Enum):
     def __repr__(self):
@@ -111,9 +120,13 @@ class LongPollClient:
             return
 
         if isinstance(updates, (ray.exceptions.RayTaskError)):
-            # Some error happened in the controller. It could be a bug or some
-            # undesired state.
-            logger.error("LongPollHost errored\n" + updates.traceback_str)
+            if isinstance(updates.as_instanceof_cause(),
+                          (asyncio.TimeoutError)):
+                logger.debug("LongPollClient polling timed out. Retrying.")
+            else:
+                # Some error happened in the controller. It could be a bug or
+                # some undesired state.
+                logger.error("LongPollHost errored\n" + updates.traceback_str)
             self._poll_next()
             return
 
@@ -208,15 +221,20 @@ class LongPollHost:
 
         done, not_done = await asyncio.wait(
             async_task_to_watched_keys.keys(),
-            return_when=asyncio.FIRST_COMPLETED)
+            return_when=asyncio.FIRST_COMPLETED,
+            timeout=random.uniform(*LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S))
+
         [task.cancel() for task in not_done]
 
-        updated_object_key: str = async_task_to_watched_keys[done.pop()]
-        return {
-            updated_object_key: UpdatedObject(
-                self.object_snapshots[updated_object_key],
-                self.snapshot_ids[updated_object_key])
-        }
+        if len(done) == 0:
+            raise asyncio.TimeoutError("Polling request timed out.")
+        else:
+            updated_object_key: str = async_task_to_watched_keys[done.pop()]
+            return {
+                updated_object_key: UpdatedObject(
+                    self.object_snapshots[updated_object_key],
+                    self.snapshot_ids[updated_object_key])
+            }
 
     def notify_changed(
             self,

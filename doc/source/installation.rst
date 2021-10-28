@@ -305,7 +305,7 @@ Some tags also have `variants` that add or change functionality:
    * - -gpu
      - Aliases to a specific ``-cuXX`` tagged image.
    * - <no tag>
-     - Aliases to ``-cpu`` tagged images
+     - Aliases to ``-cpu`` tagged images. For ``ray-ml`` image, aliases to ``-gpu`` tagged image.
 
 
 If you want to tweak some aspect of these images and build them locally, refer to the following script:
