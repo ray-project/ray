@@ -23,6 +23,8 @@ from ray.train.examples.train_fashion_mnist_example import train_func \
     as fashion_mnist_train_func
 from ray.train.examples.train_linear_example import train_func as \
     linear_train_func
+from ray.train.examples.torch_quick_start import train_func as \
+    quick_start_train_func
 from ray.train.worker_group import WorkerGroup
 
 
@@ -549,9 +551,9 @@ def test_world_rank(ray_start_2_cpus):
 
     assert set(results) == {0, 1}
 
-
-def test_tensorflow_mnist(ray_start_2_cpus):
-    num_workers = 2
+@pytest.mark.parametrize("num_workers", [1, 2])
+def test_tensorflow_mnist(ray_start_2_cpus, num_workers):
+    num_workers = num_workers
     epochs = 3
 
     trainer = Trainer("tensorflow", num_workers=num_workers)
@@ -571,9 +573,17 @@ def test_tensorflow_mnist(ray_start_2_cpus):
     assert len(accuracy) == epochs
     assert accuracy[-1] > accuracy[0]
 
+def test_tf_non_distributed(ray_start_2_cpus):
+    """Make sure Ray Train works without TF MultiWorkerMirroredStrategy."""
 
-def test_torch_linear(ray_start_2_cpus):
-    num_workers = 2
+    trainer = Trainer(backend="torch", num_workers=1)
+    trainer.start()
+    trainer.run(quick_start_train_func)
+    trainer.shutdown()
+
+@pytest.mark.parametrize("num_workers", [1, 2])
+def test_torch_linear(ray_start_2_cpus, num_workers):
+    num_workers = num_workers
     epochs = 3
 
     trainer = Trainer("torch", num_workers=num_workers)
@@ -587,7 +597,6 @@ def test_torch_linear(ray_start_2_cpus):
     for result in results:
         assert len(result) == epochs
         assert result[-1]["loss"] < result[0]["loss"]
-
 
 def test_torch_fashion_mnist(ray_start_2_cpus):
     num_workers = 2
@@ -604,6 +613,15 @@ def test_torch_fashion_mnist(ray_start_2_cpus):
     for result in results:
         assert len(result) == epochs
         assert result[-1] < result[0]
+
+
+def test_torch_non_distributed(ray_start_2_cpus):
+    """Make sure Ray Train works without torch DDP."""
+
+    trainer = Trainer(backend="torch", num_workers=1)
+    trainer.start()
+    trainer.run(quick_start_train_func)
+    trainer.shutdown()
 
 
 def test_horovod_simple(ray_start_2_cpus):
