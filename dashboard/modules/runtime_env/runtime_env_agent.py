@@ -85,7 +85,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 runtime_env = RuntimeEnv()
-                runtime_env.FromString(bytes(serialized_runtime_env, 'utf-8'))
+                runtime_env.ParseFromString(serialized_runtime_env)
                 logger.info(f"The parsed runtime env: {runtime_env}")
                 allocated_resource: dict = json.loads(
                     serialized_allocated_resource_instances or "{}")
@@ -96,7 +96,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 # avoid lint error. That will be moved to cgroup plugin.
                 per_job_logger.debug(f"Worker has resource :"
                                      f"{allocated_resource}")
-                context = RuntimeEnvContext(env_vars=runtime_env.env_vars)
+                context = RuntimeEnvContext(env_vars=dict(runtime_env.env_vars))
                 self._conda_manager.setup(
                     runtime_env, context, logger=per_job_logger)
                 self._working_dir_manager.setup(

@@ -1,6 +1,7 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import com.google.protobuf.ByteString;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
@@ -115,9 +116,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           // Set worker env to the serialized runtime env json.
           RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
           runtimeEnvBuilder.putAllEnvVars(rayConfig.workerEnv);
-          serializedRuntimeEnvBuilder.setSerializedRuntimeEnv(new String(runtimeEnvBuilder.build().toByteArray()));
+          serializedRuntimeEnvBuilder.setSerializedRuntimeEnv(runtimeEnvBuilder.build().toByteString());
         } else {
-          serializedRuntimeEnvBuilder.setSerializedRuntimeEnv("");
+          serializedRuntimeEnvBuilder.setSerializedRuntimeEnv(ByteString.copyFrom(new byte[0]));
         }
         jobConfigBuilder.setSerializedRuntimeEnv(serializedRuntimeEnvBuilder.build());
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
