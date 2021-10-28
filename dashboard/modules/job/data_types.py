@@ -1,5 +1,7 @@
-from pydantic import BaseModel
 from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel
 
 
 class JobStatus(str, Enum):
@@ -22,6 +24,25 @@ class JobSpec(BaseModel):
     # but we should keep it minimal and delegate policies to job manager
 
 
+# ==== Get Package ====
+
+
+class GetPackageRequest(BaseModel):
+    package_uri: str
+
+
+class GetPackageResponse(BaseModel):
+    package_exists: bool
+
+
+# ==== Upload Package ====
+
+
+class UploadPackageRequest(BaseModel):
+    package_uri: str
+    encoded_package_bytes: str
+
+
 # ==== Job Submit ====
 
 
@@ -33,7 +54,7 @@ class JobSubmitRequest(BaseModel):
     #   - Start new job execution
     # Else if job server has a running job with given id:
     #   - Fail, deployment update and reconfigure should happen in job manager
-    job_id: str = None
+    job_id: Optional[str] = None
 
 
 class JobSubmitResponse(BaseModel):

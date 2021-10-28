@@ -1,7 +1,8 @@
-import subprocess
-import pickle
 import os
+import pickle
+import subprocess
 from typing import Any, Dict, Tuple, Optional
+from uuid import uuid4
 
 import ray
 from ray.actor import ActorHandle
@@ -174,7 +175,7 @@ class JobManager:
             return None
 
     def submit_job(self,
-                   job_id: str,
+                   job_id: Optional[str],
                    entrypoint: str,
                    runtime_env: Optional[Dict[str, Any]] = None) -> str:
         """
@@ -185,6 +186,9 @@ class JobManager:
 
         Returns unique job_id.
         """
+        if job_id is None:
+            job_id = str(uuid4())
+
         supervisor = self._supervisor_actor_cls.options(
             lifetime="detached",
             name=self.JOB_ACTOR_NAME.format(job_id=job_id),
