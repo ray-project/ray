@@ -1198,7 +1198,8 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
     // the current worker. So we need to make sure ref count is > 0
-    // by invoking `AddLocalReference` first.
+    // by invoking `AddLocalReference` first. Note that in worker.py we set
+    // skip_adding_local_ref=True to avoid double referencing the object.
     AddLocalReference(*object_id);
     RAY_UNUSED(reference_counter_->AddBorrowedObject(*object_id, ObjectID::Nil(),
                                                      real_owner_address));
