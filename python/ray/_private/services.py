@@ -919,7 +919,14 @@ def start_redis(node_ip_address,
         # If no port is given, fallback to default Redis port for the primary
         # shard.
         if port is None:
-            port = ray_constants.DEFAULT_PORT
+            default_port = ray_constants.DEFAULT_PORT
+            if sys.platform == "win32":
+                length = 100
+                redis_port_lower_bound = default_port - length
+                redis_port_upper_bound = default_port + length
+                port = new_port(redis_port_lower_bound, redis_port_upper_bound)
+            else:
+                port = default_port
             num_retries = 20
         else:
             num_retries = 1
