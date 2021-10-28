@@ -13,6 +13,7 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import import_attr
 from ray._private.runtime_env.pip import get_proto_pip_runtime_env
 from ray._private.runtime_env.conda import get_proto_conda_runtime_env
+from ray._private.runtime_env.container import get_proto_container_runtime_env
 
 logger = logging.getLogger(__name__)
 
@@ -323,8 +324,8 @@ class ParsedRuntimeEnv(dict):
         if self._cached_pb is None:
             pb = RuntimeEnv()
             pb.working_dir = self.get("working_dir", "")
-            pb.uris.extend(self.get("uris", ""))
-            pb.env_vars.update(self.get("env_vars", ""))
+            pb.uris.extend(self.get("uris", []))
+            pb.env_vars.update(self.get("env_vars", {}))
             if "_inject_current_ray" in self:
                 pb.extensions["_inject_current_ray"] = self[
                     "_inject_current_ray"]
@@ -333,6 +334,9 @@ class ParsedRuntimeEnv(dict):
             elif self.get("conda"):
                 pb.conda_runtime_env.CopyFrom(
                     get_proto_conda_runtime_env(self))
+            elif self.get("container"):
+                pb.py_container_runtime_env.CopyFrom(
+                    get_proto_container_runtime_env(self))
             self._cached_pb = pb
 
         return self._cached_pb
