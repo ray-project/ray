@@ -229,6 +229,17 @@ def test_no_spurious_worker_startup(shutdown_only):
     assert got_num_workers, "failed to read num workers for 10 seconds"
 
 
+def test_runtime_env_no_spurious_resource_deadlock_msg(shutdown_only):
+    ray.init()
+
+    @ray.remote(runtime_env={"pip": ["tensorflow", "torch"]})
+    def f():
+        pass
+
+    # Check no warning printed.
+    ray.get(f.remote())
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-sv", __file__]))
