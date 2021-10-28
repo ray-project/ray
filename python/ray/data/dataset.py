@@ -832,10 +832,10 @@ class Dataset(Generic[T]):
                 Currently only single aggregation is supported.
 
         Returns:
-            If the input dataset is simple dataset then the output is
+            If the input dataset is a simple dataset then the output is
             a tuple of (agg1, agg2, ...) where each tuple element is
             the corresponding aggregation result.
-            If the input dataset is Arrow dataset then the output is
+            If the input dataset is an Arrow dataset then the output is
             an ArrowRow where each column is the corresponding
             aggregation result.
         """
@@ -850,7 +850,7 @@ class Dataset(Generic[T]):
 
         Args:
             on: The data to min on.
-                It can be the column name for arrow dataset.
+                It can be the column name for Arrow dataset.
 
         Returns:
             The min result.
@@ -866,7 +866,7 @@ class Dataset(Generic[T]):
 
         Args:
             on: The data to max on.
-                It can be the column name for arrow dataset.
+                It can be the column name for Arrow dataset.
 
         Returns:
             The max result.
@@ -882,7 +882,7 @@ class Dataset(Generic[T]):
 
         Args:
             on: The data to mean on.
-                It can be the column name for arrow dataset.
+                It can be the column name for Arrow dataset.
 
         Returns:
             The mean result.
