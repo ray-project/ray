@@ -84,7 +84,7 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
     assert resp.stderr == working_dir["expected_stderr"]
 
 
-def kest_job_metadata(disable_aiohttp_cache, enable_test_module,
+def test_job_metadata(disable_aiohttp_cache, enable_test_module,
                       ray_start_with_dashboard):
     address = _setup_webui_url(ray_start_with_dashboard)
 
