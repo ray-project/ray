@@ -223,7 +223,14 @@ class ClientBuilder:
         runtime_env = self._job_config.runtime_env
         replacement_args = []
         if self.address:
-            replacement_args.append(f'"ray://{self.address}"')
+            if isinstance(self, _LocalClientBuilder):
+                # Address might be set for LocalClientBuilder if ray.client()
+                # is called while ray_current_cluster is set
+                # (see _get_builder_from_address). In this case,
+                # leave off the ray:// so the user attaches the driver directly
+                replacement_args.append(f'"{self.address}"')
+            else:
+                replacement_args.append(f'"ray://{self.address}"')
         if namespace:
             replacement_args.append(f'namespace="{namespace}"')
         if runtime_env:

@@ -76,7 +76,7 @@ class Foo:
 
 a = Foo.options(lifetime="detached", name="abc").remote()
 ray.get(a.ping.remote())
-print(ray.get_runtime_context().namespace)
+print("Current namespace:", ray.get_runtime_context().namespace)
     """
 
     anon_driver = template.format(namespace="None")
@@ -86,12 +86,12 @@ print(ray.get_runtime_context().namespace)
     run_string_as_driver(anon_driver)
 
     run_in_namespace = template.format(namespace="'namespace'")
-    script_namespace = run_string_as_driver(run_in_namespace)
+    script_output = run_string_as_driver(run_in_namespace)
     # The second run fails because the actors are run in the same namespace.
     with pytest.raises(subprocess.CalledProcessError):
         run_string_as_driver(run_in_namespace)
 
-    assert script_namespace.strip() == "namespace"
+    assert "Current namespace: namespace" in script_output
     subprocess.check_output("ray stop --force", shell=True)
 
 
