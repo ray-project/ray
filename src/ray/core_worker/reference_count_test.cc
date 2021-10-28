@@ -141,7 +141,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
       client_factory_(publisher_address)
           ->WaitForRefRemoved(object_id, contained_in_id, owner_address);
     }
-    // Due to the test env, there are times that the same mssage id from the same
+    // Due to the test env, there are times that the same message id from the same
     // subscriber is subscribed twice. We should just no-op in this case.
     if (!(directory_->HasKeyId(key_id_binary) &&
           directory_->HasSubscriber(subscriber_id_))) {
@@ -170,6 +170,13 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
                    const rpc::Address &publisher_address,
                    const std::string &key_id_binary) override {
     return true;
+  }
+
+  bool IsSubscribed(const rpc::ChannelType channel_type,
+                    const rpc::Address &publisher_address,
+                    const std::string &key_id_binary) const override {
+    return directory_->HasKeyId(key_id_binary) &&
+           directory_->HasSubscriber(subscriber_id_);
   }
 
   std::string DebugString() const override {

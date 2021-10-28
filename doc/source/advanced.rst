@@ -470,7 +470,7 @@ Or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using 
 
 The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
 
-- ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory.
+- ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory with total size at most 100 MiB.
   It will be cached on the cluster, so the next time you connect with Ray Client you will be able to skip uploading the directory contents.
   All Ray workers for your job will be started in their node's local copy of this working directory.
 
