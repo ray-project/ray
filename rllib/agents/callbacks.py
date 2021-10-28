@@ -14,7 +14,6 @@ from ray.rllib.utils.typing import AgentID, PolicyID
 import psutil
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.trainer import Trainer
     from ray.rllib.evaluation import RolloutWorker
 
 
@@ -36,22 +35,29 @@ class DefaultCallbacks:
                 "a class extending rllib.agents.callbacks.DefaultCallbacks")
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
-    def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+    def on_episode_start(self,
+                         *,
+                         worker: "RolloutWorker",
+                         base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode, **kwargs) -> None:
+                         episode: MultiAgentEpisode,
+                         env_index: Optional[int] = None,
+                         **kwargs) -> None:
         """Callback run on the rollout worker before each episode starts.
 
         Args:
             worker: Reference to the current rollout worker.
-            base_env (BaseEnv): BaseEnv running the episode. The underlying
-                sub environment objects can be gotten by calling
+            base_env: BaseEnv running the episode. The underlying
+                sub environment objects can be received by calling
                 `base_env.get_sub_environments()`.
             policies: Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default" policy.
-            episode: Episode object which contains episode
+            episode (MultiAgentEpisode): Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -68,6 +74,7 @@ class DefaultCallbacks:
                         base_env: BaseEnv,
                         policies: Optional[Dict[PolicyID, Policy]] = None,
                         episode: MultiAgentEpisode,
+                        env_index: Optional[int] = None,
                         **kwargs) -> None:
         """Runs on each episode step.
 
@@ -83,6 +90,8 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -92,9 +101,14 @@ class DefaultCallbacks:
                 "episode": episode
             })
 
-    def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+    def on_episode_end(self,
+                       *,
+                       worker: "RolloutWorker",
+                       base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode, **kwargs) -> None:
+                       episode: MultiAgentEpisode,
+                       env_index: Optional[int] = None,
+                       **kwargs) -> None:
         """Runs when an episode is done.
 
         Args:
@@ -109,6 +123,8 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -188,13 +204,12 @@ class DefaultCallbacks:
 
         pass
 
-    def on_train_result(self, *, trainer: "Trainer", result: dict,
-                        **kwargs) -> None:
+    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
         """Called at the end of Trainable.train().
 
         Args:
-            trainer: Current trainer instance.
-            result: Dict of results returned from trainer.train() call.
+            trainer (Trainer): Current trainer instance.
+            result (dict): Dict of results returned from trainer.train() call.
                 You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
