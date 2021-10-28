@@ -1285,14 +1285,12 @@ if __name__ == "__main__":
 
         wait_for_nodes(num_nodes=4, timeout=300.)
 
-        # Use first alive node as head node
-        head_node = None
-        for node in ray.nodes():
-            if node["Alive"]:
-                head_node = node
+        # This will usually run on the head node
+        @ray.remote
+        def _get_head_ip():
+            return ray.util.get_node_ip_address()
 
-        assert head_node, "No running node found on cluster."
-        ip = head_node["NodeManagerAddress"]
+        ip = ray.get(_get_head_ip.remote())
 
         remote_tune_script = "/tmp/_tune_script.py"
 
