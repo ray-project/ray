@@ -38,6 +38,8 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
     "entropy_coeff": 0.01,
+    # Entropy coefficient schedule
+    "entropy_coeff_schedule": None,
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
@@ -81,8 +83,8 @@ def validate_config(trainer: Trainer, config: TrainerConfigDict) -> None:
         raise ValueError("`num_workers` for A3C must be >= 1!")
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the MARWIL/BC algorithm. Defines the distributed
     dataflow.
 
@@ -94,6 +96,9 @@ def execution_plan(workers: WorkerSet,
     Returns:
         LocalIterator[dict]: A local iterator over training metrics.
     """
+    assert len(kwargs) == 0, (
+        "A3C execution_plan does NOT take any additional parameters")
+
     # For A3C, compute policy gradients remotely on the rollout workers.
     grads = AsyncGradients(workers)
 

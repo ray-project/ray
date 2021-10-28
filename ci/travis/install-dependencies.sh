@@ -256,8 +256,9 @@ install_node() {
   (
     set +x # suppress set -x since it'll get very noisy here
     . "${HOME}/.nvm/nvm.sh"
-    nvm install node
-    nvm use --silent node
+    NODE_VERSION="14"
+    nvm install $NODE_VERSION
+    nvm use --silent $NODE_VERSION
     npm config set loglevel warn  # make NPM quieter
   )
 }
@@ -408,7 +409,7 @@ install_dependencies() {
 
   # RLlib testing with TF 1.x.
   if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym
+    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym==0.19
   fi
 
   # Additional Tune dependency for Horovod.

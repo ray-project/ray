@@ -9,6 +9,7 @@ from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray._private.test_utils import (RayTestTimeoutException,
                                      wait_until_succeeded_without_exception)
+from ray._private.utils import init_grpc_channel
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -20,7 +21,7 @@ def test_worker_stats(shutdown_only):
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     ray.nodes()[0]["NodeManagerPort"])
 
-    channel = grpc.insecure_channel(raylet_address)
+    channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
 
     def try_get_node_stats(num_retry=5, timeout=2):
@@ -133,11 +134,16 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
         # Make sure we can ping Prometheus endpoints.
         def test_prometheus_endpoint():
             response = requests.get(
-                "http://localhost:{}".format(metrics_export_port))
+                "http://localhost:{}".format(metrics_export_port),
+                # Fail the request early on if connection timeout
+                timeout=0.01)
             return response.status_code == 200
 
-        wait_until_succeeded_without_exception(
-            test_prometheus_endpoint, (requests.exceptions.ConnectionError, ))
+        assert wait_until_succeeded_without_exception(
+            test_prometheus_endpoint,
+            (requests.exceptions.ConnectionError, ),
+            # The dashboard takes more than 2s to startup.
+            timeout_ms=5000)
 
 
 if __name__ == "__main__":

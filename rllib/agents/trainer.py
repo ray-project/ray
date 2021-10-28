@@ -9,22 +9,25 @@ import os
 import pickle
 import tempfile
 import time
-from typing import Callable, Dict, List, Optional, Type, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts, \
     NullContextManager
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
@@ -41,7 +44,7 @@ from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
     PartialTrainerConfigDict, PolicyID, ResultDict, TensorStructType, \
-    TrainerConfigDict
+    TensorType, TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.resources import Resources
@@ -784,6 +787,67 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         # to mutate the result
         Trainable.log_result(self, result)
 
+    @DeveloperAPI
+    def _create_local_replay_buffer_if_necessary(self, config):
+        """Create a LocalReplayBuffer instance if necessary.
+
+        Args:
+            config (dict): Algorithm-specific configuration data.
+
+        Returns:
+            LocalReplayBuffer instance based on trainer config.
+            None, if local replay buffer is not needed.
+        """
+        # These are the agents that utilizes a local replay buffer.
+        if ("replay_buffer_config" not in config
+                or not config["replay_buffer_config"]):
+            # Does not need a replay buffer.
+            return None
+
+        replay_buffer_config = config["replay_buffer_config"]
+        if ("type" not in replay_buffer_config
+                or replay_buffer_config["type"] != "LocalReplayBuffer"):
+            # DistributedReplayBuffer coming soon.
+            return None
+
+        capacity = config.get("buffer_size", DEPRECATED_VALUE)
+        if capacity != DEPRECATED_VALUE:
+            # Print a deprecation warning.
+            deprecation_warning(
+                old="config['buffer_size']",
+                new="config['replay_buffer_config']['capacity']",
+                error=False)
+        else:
+            # Get capacity out of replay_buffer_config.
+            capacity = replay_buffer_config["capacity"]
+
+        if config.get("prioritized_replay"):
+            prio_args = {
+                "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+                "prioritized_replay_beta": config["prioritized_replay_beta"],
+                "prioritized_replay_eps": config["prioritized_replay_eps"],
+            }
+        else:
+            prio_args = {}
+
+        return LocalReplayBuffer(
+            num_shards=1,
+            learning_starts=config["learning_starts"],
+            capacity=capacity,
+            replay_batch_size=config["train_batch_size"],
+            replay_mode=config["multiagent"]["replay_mode"],
+            replay_sequence_length=config.get("replay_sequence_length", 1),
+            replay_burn_in=config.get("burn_in", 0),
+            replay_zero_init_states=config.get("zero_init_states", True),
+            **prio_args)
+
+    @DeveloperAPI
+    def _kwargs_for_execution_plan(self):
+        kwargs = {}
+        if self.local_replay_buffer:
+            kwargs["local_replay_buffer"] = self.local_replay_buffer
+        return kwargs
+
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
@@ -839,6 +903,10 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                         "-vv flags.".format(log_level))
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
+
+        # Create local replay buffer if necessary.
+        self.local_replay_buffer = (
+            self._create_local_replay_buffer_if_necessary(self.config))
 
         self._init(self.config, self.env_creator)
 
@@ -1120,17 +1188,29 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
     @PublicAPI
     def compute_single_action(
             self,
-            observation: TensorStructType,
-            state: List[TensorStructType] = None,
-            prev_action: TensorStructType = None,
-            prev_reward: float = None,
-            info: EnvInfoDict = None,
+            observation: Optional[TensorStructType] = None,
+            state: Optional[List[TensorStructType]] = None,
+            *,
+            prev_action: Optional[TensorStructType] = None,
+            prev_reward: Optional[float] = None,
+            info: Optional[EnvInfoDict] = None,
+            input_dict: Optional[SampleBatch] = None,
             policy_id: PolicyID = DEFAULT_POLICY_ID,
             full_fetch: bool = False,
-            explore: bool = None,
-            unsquash_actions: Optional[bool] = None,
-            clip_actions: Optional[bool] = None,
-    ) -> TensorStructType:
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
+            episode: Optional[MultiAgentEpisode] = None,
+            unsquash_action: Optional[bool] = None,
+            clip_action: Optional[bool] = None,
+
+            # Deprecated args.
+            unsquash_actions=DEPRECATED_VALUE,
+            clip_actions=DEPRECATED_VALUE,
+
+            # Kwargs placeholder for future compatibility.
+            **kwargs,
+    ) -> Union[TensorStructType, Tuple[TensorStructType, List[TensorType],
+                                       Dict[str, TensorType]]]:
         """Computes an action for the specified policy on the local worker.
 
         Note that you can also access the policy object through
@@ -1138,70 +1218,123 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         directly.
 
         Args:
-            observation (TensorStructType): observation from the environment.
-            state (List[TensorStructType]): RNN hidden state, if any. If state
-                is not None, then all of compute_single_action(...) is returned
-                (computed action, rnn state(s), logits dictionary).
-                Otherwise compute_single_action(...)[0] is returned
-                (computed action).
-            prev_action (TensorStructType): Previous action value, if any.
-            prev_reward (float): Previous reward, if any.
-            info (EnvInfoDict): info object, if any
-            policy_id (PolicyID): Policy to query (only applies to
-                multi-agent).
-            full_fetch (bool): Whether to return extra action fetch results.
-                This is always set to True if RNN state is specified.
-            explore (bool): Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
-            unsquash_actions (bool): Should actions be unsquashed according to
-                 the env's/Policy's action space?
-            clip_actions (bool): Should actions be clipped according to the
-                env's/Policy's action space?
+            observation: Single (unbatched) observation from the
+                environment.
+            state: List of all RNN hidden (single, unbatched) state tensors.
+            prev_action: Single (unbatched) previous action value.
+            prev_reward: Single (unbatched) previous reward value.
+            info: Env info dict, if any.
+            input_dict: An optional SampleBatch that holds all the values
+                for: obs, state, prev_action, and prev_reward, plus maybe
+                custom defined views of the current env trajectory. Note
+                that only one of `obs` or `input_dict` must be non-None.
+            policy_id: Policy to query (only applies to multi-agent).
+                Default: "default_policy".
+            full_fetch: Whether to return extra action fetch results.
+                This is always set to True if `state` is specified.
+            explore: Whether to apply exploration to the action.
+                Default: None -> use self.config["explore"].
+            timestep: The current (sampling) time step.
+            episode: This provides access to all of the internal episodes'
+                state, which may be useful for model-based or multi-agent
+                algorithms.
+            unsquash_action: Should actions be unsquashed according to the
+                env's/Policy's action space? If None, use the value of
+                self.config["normalize_actions"].
+            clip_action: Should actions be clipped according to the
+                env's/Policy's action space? If None, use the value of
+                self.config["clip_actions"].
+
+        Keyword Args:
+            kwargs: forward compatibility placeholder
 
         Returns:
-            any: The computed action if full_fetch=False, or
-            tuple: The full output of policy.compute_actions() if
-                full_fetch=True or we have an RNN-based Policy.
+            The computed action if full_fetch=False, or a tuple of a) the
+                full output of policy.compute_actions() if full_fetch=True
+                or we have an RNN-based Policy.
 
         Raises:
             KeyError: If the `policy_id` cannot be found in this Trainer's
                 local worker.
         """
+        if clip_actions != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Trainer.compute_single_action(`clip_actions`=...)",
+                new="Trainer.compute_single_action(`clip_action`=...)",
+                error=False)
+            clip_action = clip_actions
+        if unsquash_actions != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Trainer.compute_single_action(`unsquash_actions`=...)",
+                new="Trainer.compute_single_action(`unsquash_action`=...)",
+                error=False)
+            unsquash_action = unsquash_actions
+
+        # User provided an input-dict: Assert that `obs`, `prev_a|r`, `state`
+        # are all None.
+        err_msg = "Provide either `input_dict` OR [`observation`, ...] as " \
+                  "args to Trainer.compute_single_action!"
+        if input_dict is not None:
+            assert observation is None and prev_action is None and \
+                   prev_reward is None and state is None, err_msg
+            observation = input_dict[SampleBatch.OBS]
+        else:
+            assert observation is not None, err_msg
+
+        # Get the policy to compute the action for (in the multi-agent case,
+        # Trainer may hold >1 policies).
         policy = self.get_policy(policy_id)
         if policy is None:
             raise KeyError(
                 f"PolicyID '{policy_id}' not found in PolicyMap of the "
                 f"Trainer's local worker!")
-
         local_worker = self.workers.local_worker()
-
-        if state is None:
-            state = []
 
         # Check the preprocessor and preprocess, if necessary.
         pp = local_worker.preprocessors[policy_id]
         if pp and type(pp).__name__ != "NoPreprocessor":
             observation = pp.transform(observation)
-        filtered_observation = local_worker.filters[policy_id](
+        observation = local_worker.filters[policy_id](
             observation, update=False)
 
-        # Compute the action.
-        result = policy.compute_single_action(
-            filtered_observation,
-            state,
-            prev_action,
-            prev_reward,
-            info,
-            unsquash_actions=unsquash_actions,
-            clip_actions=clip_actions,
-            explore=explore)
+        # Input-dict.
+        if input_dict is not None:
+            input_dict[SampleBatch.OBS] = observation
+            action, state, extra = policy.compute_single_action(
+                input_dict=input_dict,
+                explore=explore,
+                timestep=timestep,
+                episode=episode,
+            )
+        # Individual args.
+        else:
+            action, state, extra = policy.compute_single_action(
+                obs=observation,
+                state=state,
+                prev_action=prev_action,
+                prev_reward=prev_reward,
+                info=info,
+                explore=explore,
+                timestep=timestep,
+                episode=episode,
+            )
+
+        # If we work in normalized action space (normalize_actions=True),
+        # we re-translate here into the env's action space.
+        if unsquash_action:
+            action = space_utils.unsquash_action(action,
+                                                 policy.action_space_struct)
+        # Clip, according to env's action space.
+        elif clip_action:
+            action = space_utils.clip_action(action,
+                                             policy.action_space_struct)
 
         # Return 3-Tuple: Action, states, and extra-action fetches.
         if state or full_fetch:
-            return result
+            return action, state, extra
         # Ensure backward compatibility.
         else:
-            return result[0]
+            return action
 
     @Deprecated(new="compute_single_action", error=False)
     def compute_action(self, *args, **kwargs):
@@ -1211,15 +1344,21 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
     def compute_actions(
             self,
             observations: TensorStructType,
-            state: List[TensorStructType] = None,
-            prev_action: TensorStructType = None,
-            prev_reward: TensorStructType = None,
-            info=None,
-            policy_id=DEFAULT_POLICY_ID,
-            full_fetch=False,
-            explore=None,
+            state: Optional[List[TensorStructType]] = None,
+            *,
+            prev_action: Optional[TensorStructType] = None,
+            prev_reward: Optional[TensorStructType] = None,
+            info: Optional[EnvInfoDict] = None,
+            policy_id: PolicyID = DEFAULT_POLICY_ID,
+            full_fetch: bool = False,
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
+            episodes: Optional[List[MultiAgentEpisode]] = None,
+            unsquash_actions: Optional[bool] = None,
+            clip_actions: Optional[bool] = None,
+            # Deprecated.
             normalize_actions=None,
-            clip_actions=None,
+            **kwargs,
     ):
         """Computes an action for the specified policy on the local Worker.
 
@@ -1227,30 +1366,46 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
         Args:
-            observation (obj): observation from the environment.
-            state (dict): RNN hidden state, if any. If state is not None,
+            observation: observation from the environment.
+            state: RNN hidden state, if any. If state is not None,
                 then all of compute_single_action(...) is returned
                 (computed action, rnn state(s), logits dictionary).
                 Otherwise compute_single_action(...)[0] is returned
                 (computed action).
-            prev_action (obj): previous action value, if any
-            prev_reward (int): previous reward, if any
-            info (dict): info object, if any
-            policy_id (str): Policy to query (only applies to multi-agent).
-            full_fetch (bool): Whether to return extra action fetch results.
+            prev_action: Previous action value, if any.
+            prev_reward: Previous reward, if any.
+            info: Env info dict, if any.
+            policy_id: Policy to query (only applies to multi-agent).
+            full_fetch: Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
-            explore (bool): Whether to pick an exploitation or exploration
+            explore: Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
-            normalize_actions (bool): Should actions be unsquashed according
-                to the env's/Policy's action space?
-            clip_actions (bool): Should actions be clipped according to the
-                env's/Policy's action space?
+            timestep: The current (sampling) time step.
+            episodes: This provides access to all of the internal episodes'
+                state, which may be useful for model-based or multi-agent
+                algorithms.
+            unsquash_actions: Should actions be unsquashed according
+                to the env's/Policy's action space? If None, use
+                self.config["normalize_actions"].
+            clip_actions: Should actions be clipped according to the
+                env's/Policy's action space? If None, use
+                self.config["clip_actions"].
+
+        Keyword Args:
+            kwargs: forward compatibility placeholder
 
         Returns:
             any: The computed action if full_fetch=False, or
             tuple: The full output of policy.compute_actions() if
                 full_fetch=True or we have an RNN-based Policy.
         """
+        if normalize_actions is not None:
+            deprecation_warning(
+                old="Trainer.compute_actions(`normalize_actions`=...)",
+                new="Trainer.compute_actions(`unsquash_actions`=...)",
+                error=False)
+            unsquash_actions = normalize_actions
+
         # Preprocess obs and states.
         state_defined = state is not None
         policy = self.get_policy(policy_id)
@@ -1275,23 +1430,38 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             state = list(zip(*filtered_state))
             state = [np.stack(s) for s in state]
 
+        input_dict = {SampleBatch.OBS: obs_batch}
+        if prev_action:
+            input_dict[SampleBatch.PREV_ACTIONS] = prev_action
+        if prev_reward:
+            input_dict[SampleBatch.PREV_REWARDS] = prev_reward
+        if info:
+            input_dict[SampleBatch.INFOS] = info
+        for i, s in enumerate(state):
+            input_dict[f"state_in_{i}"] = s
+
         # Batch compute actions
-        actions, states, infos = policy.compute_actions(
-            obs_batch,
-            state,
-            prev_action,
-            prev_reward,
-            info,
-            normalize_actions=normalize_actions,
-            clip_actions=clip_actions,
-            explore=explore)
+        actions, states, infos = policy.compute_actions_from_input_dict(
+            input_dict=input_dict,
+            explore=explore,
+            timestep=timestep,
+            episodes=episodes,
+        )
 
-        # Unbatch actions for the environment
-        atns, actions = space_utils.unbatch(actions), {}
-        for key, atn in zip(observations, atns):
-            actions[key] = atn
+        # Unbatch actions for the environment into a multi-agent dict.
+        single_actions = space_utils.unbatch(actions)
+        actions = {}
+        for key, a in zip(observations, single_actions):
+            # If we work in normalized action space (normalize_actions=True),
+            # we re-translate here into the env's action space.
+            if unsquash_actions:
+                a = space_utils.unsquash_action(a, policy.action_space_struct)
+            # Clip, according to env's action space.
+            elif clip_actions:
+                a = space_utils.clip_action(a, policy.action_space_struct)
+            actions[key] = a
 
-        # Unbatch states into a dict
+        # Unbatch states into a multi-agent dict.
         unbatched_states = {}
         for idx, agent_id in enumerate(observations):
             unbatched_states[agent_id] = [s[idx] for s in states]
@@ -1518,6 +1688,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             selected_workers=selected_workers)
 
     @classmethod
+    @override(Trainable)
     def resource_help(cls, config: TrainerConfigDict) -> str:
         return ("\n\nYou can adjust the resource requests of RLlib agents by "
                 "setting `num_workers`, `num_gpus`, and other configs. See "
@@ -1785,7 +1956,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
 
         logger.warning("Recreating execution plan after failure")
         workers.reset(healthy_workers)
-        execution_plan_suggestion = self.trigger_event("suggest_execution_plan", workers, config)
+        execution_plan_suggestion = self.trigger_event("suggest_execution_plan", workers, config, **self._kwargs_for_execution_plan)
         if execution_plan_suggestion:
             self.execution_plan = TriggersEvent(before=True, after=True)(
                 execution_plan_suggestion)
@@ -1893,23 +2064,25 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             "build_trainer_class()` function!")
 
     def _register_if_needed(self, env_object: Union[str, EnvType, None],
-                            config):
+                            config) -> Optional[str]:
         if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__
 
-            # Add convenience `_get_spaces` method.
-
-            def _get_spaces(s):
-                return s.observation_space, s.action_space
-
-            env_object._get_spaces = _get_spaces
-
             if config.get("remote_worker_envs"):
-                register_env(
-                    name,
-                    lambda cfg: ray.remote(num_cpus=0)(env_object).remote(cfg))
+
+                @ray.remote(num_cpus=0)
+                class _wrapper(env_object):
+                    # Add convenience `_get_spaces` and `_is_multi_agent`
+                    # methods.
+                    def _get_spaces(self):
+                        return self.observation_space, self.action_space
+
+                    def _is_multi_agent(self):
+                        return isinstance(self, MultiAgentEnv)
+
+                register_env(name, lambda cfg: _wrapper.remote(cfg))
             else:
                 register_env(name, lambda cfg: env_object(cfg))
             return name

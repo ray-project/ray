@@ -11,7 +11,7 @@ from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 from ray.tune.utils import merge_dicts, deep_update
 
 
@@ -77,6 +77,7 @@ __all__ = [
     "add_mixins",
     "check",
     "check_compute_single_action",
+    "check_train_results",
     "deep_update",
     "deprecation_warning",
     "fc",

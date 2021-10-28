@@ -68,6 +68,8 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
         # === Hyperparameters from the paper [1] ===
         # Size of the replay buffer (in sequences, not timesteps).
         "buffer_size": 100000,
+        # If True prioritized replay buffer will be used.
+        "prioritized_replay": False,
         # Set automatically: The number of contiguous environment steps to
         # replay at once. Will be calculated via
         # model->max_seq_len + burn_in.

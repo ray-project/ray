@@ -230,7 +230,7 @@ GLOBAL_CONFIG = {
     "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
     "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
-        "cld_4F7k8814aZzGG8TNUGPKnc"),  # cld_4F7k8814aZzGG8TNUGPKnc
+        "cld_4F7k8814aZzGG8TNUGPKnc"),  # anyscale_default_cloud
     "ANYSCALE_PROJECT": getenv_default("ANYSCALE_PROJECT", ""),
     "RAY_VERSION": getenv_default("RAY_VERSION", "2.0.0.dev0"),
     "RAY_REPO": getenv_default("RAY_REPO",
@@ -267,9 +267,27 @@ REPORT_S = 30
 RETRY_MULTIPLIER = 2
 
 
+def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s,
+                              max_retries):
+    retry_cnt = 0
+    retry_delay_s = initial_retry_delay_s
+    while True:
+        try:
+            return f()
+        except retry_exceptions as e:
+            retry_cnt += 1
+            if retry_cnt > max_retries:
+                raise
+            logger.info(f"Retry function call failed due to {e} "
+                        f"in {retry_delay_s} seconds...")
+            time.sleep(retry_delay_s)
+            retry_delay_s *= RETRY_MULTIPLIER
+
+
 def maybe_fetch_api_token():
     if GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"] is None:
-        print("Missing ANYSCALE_CLI_TOKEN, retrieving from AWS secrets store")
+        logger.info(
+            "Missing ANYSCALE_CLI_TOKEN, retrieving from AWS secrets store")
         # NOTE(simon) This should automatically retrieve
         # release-automation@anyscale.com's anyscale token
         GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"] = boto3.client(
@@ -354,6 +372,22 @@ def wheel_exists(ray_version, git_branch, git_commit):
     return requests.head(url).status_code == 200
 
 
+def commit_or_url(commit_or_url: str) -> str:
+    if commit_or_url.startswith("http"):
+        # Directly return the S3 url
+        if "s3-us-west-2.amazonaws" in commit_or_url:
+            return commit_or_url
+        # Resolve the redirects for buildkite artifacts
+        # This is needed because otherwise pip won't recognize the file name.
+        if "buildkite.com" in commit_or_url and "artifacts" in commit_or_url:
+            return requests.head(commit_or_url, allow_redirects=True).url
+
+    # Else, assume commit
+    os.environ["RAY_COMMIT"] = commit_or_url
+    return wheel_url(GLOBAL_CONFIG["RAY_VERSION"], GLOBAL_CONFIG["RAY_BRANCH"],
+                     commit_or_url)
+
+
 def get_latest_commits(repo: str, branch: str = "master") -> List[str]:
     cur = os.getcwd()
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -403,11 +437,12 @@ def find_ray_wheels(repo: str, branch: str, version: str):
 
 def populate_wheels_sanity_check(commit: Optional[str] = None):
     if not commit:
-        raise RuntimeError(f"Could not populate wheels sanity check command: "
-                           f"Commit hash missing. Got: {commit}")
-
-    cmd = (f"python -c 'import ray; "
-           f"assert ray.__commit__ == \"{commit}\", ray.__commit__'")
+        cmd = ("python -c 'import ray; print("
+               "\"No commit sanity check available, but this is the "
+               "Ray wheel commit:\", ray.__commit__)'")
+    else:
+        cmd = (f"python -c 'import ray; "
+               f"assert ray.__commit__ == \"{commit}\", ray.__commit__'")
     os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
@@ -461,11 +496,42 @@ def _load_config(local_dir: str, config_file: Optional[str]) -> Optional[Dict]:
     return yaml.safe_load(content)
 
 
+def _wrap_app_config_pip_installs(app_config: Dict[Any, Any]):
+    """Wrap pip package install in quotation marks"""
+    if app_config.get("python", {}).get("pip_packages"):
+        new_pip_packages = []
+        for pip_package in app_config["python"]["pip_packages"]:
+            new_pip_packages.append(f"\"{pip_package}\"")
+        app_config["python"]["pip_packages"] = new_pip_packages
+
+
 def has_errored(result: Dict[Any, Any]) -> bool:
     return result.get("status", "invalid") != "finished"
 
 
-def report_result(test_suite: str, test_name: str, status: str, logs: str,
+def maybe_get_alert_for_result(result_dict: Dict[str, Any]) -> Optional[str]:
+    # If we get a result dict, check if any alerts should be raised
+    from alert import SUITE_TO_FN, default_handle_result
+
+    logger.info("Checking if results are valid...")
+
+    # Copy dict because we modify kwargs here
+    handle_result_kwargs = result_dict.copy()
+    handle_result_kwargs["created_on"] = None
+
+    test_suite = handle_result_kwargs.get("test_suite", None)
+
+    handle_fn = SUITE_TO_FN.get(test_suite, None)
+    if not handle_fn:
+        logger.warning(f"No handle for suite {test_suite}")
+        alert = default_handle_result(**handle_result_kwargs)
+    else:
+        alert = handle_fn(**handle_result_kwargs)
+
+    return alert
+
+
+def report_result(test_suite: str, test_name: str, status: str, last_logs: str,
                   results: Dict[Any, Any], artifacts: Dict[Any, Any],
                   category: str):
     now = datetime.datetime.utcnow()
@@ -503,7 +569,7 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
     }, {
         "name": "last_logs",
         "value": {
-            "stringValue": logs
+            "stringValue": last_logs
         }
     }, {
         "name": "results",
@@ -524,38 +590,21 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
         }
     }]
 
-    retry_cnt = 0
     # Default boto3 call timeout is 45 seconds.
     retry_delay_s = 64
     MAX_RDS_RETRY = 3
-    db_updated = False
-
-    while retry_cnt < MAX_RDS_RETRY and not db_updated:
-        try:
-            rds_data_client.execute_statement(
-                database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
-                parameters=parameters,
-                secretArn=GLOBAL_CONFIG["RELEASE_AWS_DB_SECRET_ARN"],
-                resourceArn=GLOBAL_CONFIG["RELEASE_AWS_DB_RESOURCE_ARN"],
-                schema=schema,
-                sql=sql,
-            )
-            logger.info("Result has been persisted to the databse")
-            db_updated = True
-        except rds_data_client.exceptions.StatementTimeoutException as e:
-            logger.info(
-                f"Database operation failis due to time out. Error: {e}")
-            logger.info(f"Retry count: {retry_cnt} / {MAX_RDS_RETRY}")
-            logger.info(f"Retrying in {retry_delay_s} seconds...")
-            time.sleep(retry_delay_s)
-            retry_delay_s *= RETRY_MULTIPLIER
-        finally:
-            retry_cnt += 1
-
-    if not db_updated:
-        raise CommandTimeoutError(
-            "RDS command failed after retrying "
-            f"{MAX_RDS_RETRY} times. Check logs for more details")
+    exponential_backoff_retry(
+        lambda: rds_data_client.execute_statement(
+            database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
+            parameters=parameters,
+            secretArn=GLOBAL_CONFIG["RELEASE_AWS_DB_SECRET_ARN"],
+            resourceArn=GLOBAL_CONFIG["RELEASE_AWS_DB_RESOURCE_ARN"],
+            schema=schema,
+            sql=sql),
+        retry_exceptions=rds_data_client.exceptions.StatementTimeoutException,
+        initial_retry_delay_s=retry_delay_s,
+        max_retries=MAX_RDS_RETRY)
+    logger.info("Result has been persisted to the databse")
 
 
 def log_results_and_artifacts(result: Dict):
@@ -601,6 +650,37 @@ def search_running_session(sdk: AnyscaleSDK, project_id: str,
         logger.info("Found existing session.")
         session_id = result.results[0].id
     return session_id
+
+
+def find_cloud_by_name(sdk: AnyscaleSDK, cloud_name: str,
+                       _repeat: bool = True) -> Optional[str]:
+    cloud_id = None
+    logger.info(f"Looking up cloud with name `{cloud_name}`. ")
+
+    paging_token = None
+    while not cloud_id:
+        result = sdk.search_clouds(
+            clouds_query=dict(count=50, paging_token=paging_token))
+        paging_token = result.metadata.next_paging_token
+
+        for res in result.results:
+            if res.name == cloud_name:
+                cloud_id = res.id
+                logger.info(
+                    f"Found cloud with name `{cloud_name}` as `{cloud_id}`")
+                break
+
+        if not paging_token or cloud_id or not len(result.results):
+            break
+
+        # TODO: Currently the sdk.search_clouds API does not work
+        # and always returns the same 10 results. Thus we break here
+        # - if the cloud is not found in the first 10 results, this will
+        # throw an error downstream. Remove this comment and break in the next
+        # line once the issue is resolved.
+        break
+
+    return cloud_id
 
 
 def create_or_find_compute_template(
@@ -921,7 +1001,11 @@ def wait_for_session_command_to_complete(create_session_command_result,
         # Sleep 1 sec before next check.
         time.sleep(1)
 
-        result = sdk.get_session_command(session_command_id=scd_id)
+        result = exponential_backoff_retry(
+            lambda: sdk.get_session_command(session_command_id=scd_id),
+            retry_exceptions=Exception,
+            initial_retry_delay_s=10,
+            max_retries=3)
         completed = result.result.finished_at
 
         if state_str == "CMD_RUN":
@@ -952,10 +1036,14 @@ def wait_for_session_command_to_complete(create_session_command_result,
 def get_command_logs(session_controller: SessionController,
                      scd_id: str,
                      lines: int = 50):
-    result = session_controller.api_client.get_execution_logs_api_v2_session_commands_session_command_id_execution_logs_get(  # noqa: E501
-        session_command_id=scd_id,
-        start_line=-1 * lines,
-        end_line=0)
+    result = exponential_backoff_retry(
+        lambda: session_controller.api_client.get_execution_logs_api_v2_session_commands_session_command_id_execution_logs_get(  # noqa: E501
+            session_command_id=scd_id,
+            start_line=-1 * lines,
+            end_line=0),
+        retry_exceptions=Exception,
+        initial_retry_delay_s=10,
+        max_retries=3)
 
     return result.result.lines
 
@@ -1125,18 +1213,6 @@ def run_test_config(
                 Key: Name
                 Value: S3 URL
     """
-    # Todo (mid-term): Support other cluster definitions
-    #  (not only cluster configs)
-    cluster_config_rel_path = test_config["cluster"].get(
-        "cluster_config", None)
-    cluster_config = _load_config(local_dir, cluster_config_rel_path)
-
-    app_config_rel_path = test_config["cluster"].get("app_config", None)
-    app_config = _load_config(local_dir, app_config_rel_path)
-
-    compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
-    compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
-
     stop_event = multiprocessing.Event()
     result_queue = multiprocessing.Queue()
 
@@ -1179,6 +1255,34 @@ def run_test_config(
         anyscale_api_client=sdk.api_client,
     )
 
+    cloud_id = test_config["cluster"].get("cloud_id", None)
+    cloud_name = test_config["cluster"].get("cloud_name", None)
+    if cloud_id and cloud_name:
+        raise RuntimeError(
+            f"You can't supply both a `cloud_name` ({cloud_name}) and a "
+            f"`cloud_id` ({cloud_id}) in the test cluster configuration. "
+            f"Please provide only one.")
+    elif cloud_name and not cloud_id:
+        cloud_id = find_cloud_by_name(sdk, cloud_name)
+        if not cloud_id:
+            raise RuntimeError(
+                f"Couldn't find cloud with name `{cloud_name}`.")
+    else:
+        cloud_id = cloud_id or GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"]
+
+    # Overwrite global config so that `_load_config` sets the correct cloud
+    GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"] = cloud_id
+
+    cluster_config_rel_path = test_config["cluster"].get(
+        "cluster_config", None)
+    cluster_config = _load_config(local_dir, cluster_config_rel_path)
+
+    app_config_rel_path = test_config["cluster"].get("app_config", None)
+    app_config = _load_config(local_dir, app_config_rel_path)
+
+    compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
+    compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
+
     timeout = test_config["run"].get("timeout", 1800)
     if "RELEASE_OVERRIDE_TIMEOUT" in os.environ:
         previous_timeout = timeout
@@ -1208,6 +1312,9 @@ def run_test_config(
     elif "autosuspend_mins" in test_config["run"]:
         raise ValueError(
             "'autosuspend_mins' is only supported if 'use_connect' is True.")
+
+    # Only wrap pip packages after we installed the app config packages
+    _wrap_app_config_pip_installs(app_config)
 
     # Add information to results dict
     def _update_results(results: Dict):
@@ -1341,8 +1448,7 @@ def run_test_config(
                     logging.info("Starting session with cluster config")
                     cluster_config_str = json.dumps(cluster_config)
                     session_options["cluster_config"] = cluster_config_str
-                    session_options["cloud_id"] = (
-                        GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"], )
+                    session_options["cloud_id"] = cloud_id
                     session_options["uses_app_config"] = False
                 else:
                     logging.info("Starting session with app/compute config")
@@ -1685,6 +1791,7 @@ def run_test_config(
             target=_check_progress, args=(logger, ))
 
     build_timeout = test_config["run"].get("build_timeout", 1800)
+    prepare_timeout = test_config["run"].get("prepare_timeout", timeout)
 
     project_url = anyscale_project_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"])
@@ -1698,7 +1805,8 @@ def run_test_config(
     logger.info(msg)
 
     logger.info(f"Starting process with timeout {timeout} "
-                f"(build timeout {build_timeout})")
+                f"(prepare timeout {prepare_timeout}, "
+                f"build timeout {build_timeout})")
     process.start()
 
     # The timeout time will be updated after the build finished
@@ -1739,7 +1847,7 @@ def run_test_config(
 
         if state.state == "CMD_PREPARE":
             # Reset timeout after build finished
-            timeout_time = state.timestamp + timeout
+            timeout_time = state.timestamp + prepare_timeout
 
         if state.state == "CMD_RUN":
             # Reset timeout after prepare command or build finished
@@ -1795,9 +1903,9 @@ def run_test(test_config_file: str,
              report: bool = True,
              keep_results_dir: bool = False,
              session_name: Optional[str] = None,
-             app_config_id_override=None):
+             app_config_id_override=None) -> Dict[str, Any]:
     with open(test_config_file, "rt") as f:
-        test_configs = yaml.load(f, Loader=yaml.FullLoader)
+        test_configs = yaml.safe_load(f)
 
     test_config_dict = {}
     for test_config in test_configs:
@@ -1854,18 +1962,18 @@ def run_test(test_config_file: str,
 
         logger.info("Kicked off test. It's now up to the `--check` "
                     "part of the script to track its process.")
-        return
+        return {}
     else:
         # `--check` or no kick off only
 
         if status == "nosession":
             logger.info(f"No running session found for test {test_name}, so "
                         f"assuming everything is fine.")
-            return
+            return {}
 
         if status == "kickoff":
             logger.info(f"Test {test_name} is still running.")
-            return
+            return {}
 
         last_logs = result.get("last_logs", "No logs.")
 
@@ -1875,11 +1983,28 @@ def run_test(test_config_file: str,
             test_suite=test_suite,
             test_name=test_name,
             status=status,
-            logs=last_logs,
+            last_logs=last_logs,
             results=result.get("results", {}),
             artifacts=result.get("artifacts", {}),
             category=category,
         )
+
+        # Check if result are met
+        alert = maybe_get_alert_for_result(report_kwargs)
+
+        if alert:
+            # If we get an alert, the test failed.
+            logger.error(f"Alert has been raised for {test_suite}/{test_name} "
+                         f"({category}): {alert}")
+            result["status"] = "error (alert raised)"
+            report_kwargs["status"] = "error (alert raised)"
+
+            # For printing/reporting to the database
+            report_kwargs["last_logs"] = alert
+            last_logs = alert
+        else:
+            logger.info(f"No alert raised for test {test_suite}/{test_name} "
+                        f"({category}) - the test successfully passed!")
 
         if report:
             report_result(**report_kwargs)
@@ -1890,7 +2015,7 @@ def run_test(test_config_file: str,
         if has_errored(result):
             raise RuntimeError(last_logs)
 
-    return
+        return report_kwargs
 
 
 if __name__ == "__main__":
@@ -1952,10 +2077,16 @@ if __name__ == "__main__":
         raise RuntimeError(
             "You have to set the ANYSCALE_PROJECT environment variable!")
 
+    ray_wheels = args.ray_wheels or os.environ.get("RAY_WHEELS", "")
+
     maybe_fetch_api_token()
-    if args.ray_wheels:
-        os.environ["RAY_WHEELS"] = str(args.ray_wheels)
-        url = str(args.ray_wheels)
+    if ray_wheels:
+        logger.info(f"Using Ray wheels provided from URL/commit: "
+                    f"{ray_wheels}")
+        url = commit_or_url(str(ray_wheels))
+        logger.info(f"Resolved url link is: {url}")
+        # Overwrite with actual URL
+        os.environ["RAY_WHEELS"] = url
     elif not args.check:
         url = find_ray_wheels(
             GLOBAL_CONFIG["RAY_REPO"],
@@ -1967,8 +2098,8 @@ if __name__ == "__main__":
                                f"Ray {GLOBAL_CONFIG['RAY_VERSION']}, "
                                f"branch {GLOBAL_CONFIG['RAY_BRANCH']}")
 
-        # RAY_COMMIT is set by find_ray_wheels
-        populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
+    # RAY_COMMIT is set by commit_or_url and find_ray_wheels
+    populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 

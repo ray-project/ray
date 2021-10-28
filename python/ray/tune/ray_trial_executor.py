@@ -93,11 +93,18 @@ class _TrialCleanup:
     Args:
         threshold (int): Number of futures to hold at once. If the threshold
             is passed, cleanup will kick in and remove futures.
+        force_cleanup (int): Grace periods for forceful actor termination.
+            If 0, actors will not be forcefully terminated.
     """
 
-    def __init__(self, threshold: int = TRIAL_CLEANUP_THRESHOLD):
+    def __init__(self,
+                 threshold: int = TRIAL_CLEANUP_THRESHOLD,
+                 force_cleanup: int = 0):
         self.threshold = threshold
         self._cleanup_map = {}
+        if force_cleanup < 0:
+            force_cleanup = 0
+        self._force_cleanup = force_cleanup
 
     def add(self, trial: Trial, actor: ActorHandle):
         """Adds a trial actor to be stopped.
@@ -123,15 +130,27 @@ class _TrialCleanup:
         If partial=False, all futures are expected to return. If a future
         does not return within the timeout period, the cleanup terminates.
         """
+        # At this point, self._cleanup_map holds the last references
+        # to actors. Removing those references either one-by-one
+        # (graceful termination case) or all at once, by reinstantiating
+        # self._cleanup_map (forceful termination case) will cause Ray
+        # to kill the actors during garbage collection.
         logger.debug("Cleaning up futures")
         num_to_keep = int(self.threshold) / 2 if partial else 0
         while len(self._cleanup_map) > num_to_keep:
             dones, _ = ray.wait(
-                list(self._cleanup_map), timeout=DEFAULT_GET_TIMEOUT)
+                list(self._cleanup_map),
+                timeout=DEFAULT_GET_TIMEOUT
+                if not self._force_cleanup else self._force_cleanup)
             if not dones:
                 logger.warning(
                     "Skipping cleanup - trainable.stop did not return in "
                     "time. Consider making `stop` a faster operation.")
+                if not partial and self._force_cleanup:
+                    logger.warning(
+                        "Forcing trainable cleanup by terminating actors.")
+                    self._cleanup_map = {}
+                    return
             else:
                 done = dones[0]
                 del self._cleanup_map[done]
@@ -150,22 +169,20 @@ class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
     def __init__(self,
-                 queue_trials: bool = False,
                  reuse_actors: bool = False,
                  result_buffer_length: Optional[int] = None,
                  refresh_period: Optional[float] = None,
                  wait_for_placement_group: Optional[float] = None):
-        super(RayTrialExecutor, self).__init__(queue_trials)
-        # Check for if we are launching a trial without resources in kick off
-        # autoscaler.
-        self._trial_queued = False
+        super(RayTrialExecutor, self).__init__()
         self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object ref generated.
         # We use self._paused to store paused trials here.
         self._paused = {}
 
-        self._trial_cleanup = _TrialCleanup()
+        force_trial_cleanup = int(
+            os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "0"))
+        self._trial_cleanup = _TrialCleanup(force_cleanup=force_trial_cleanup)
         self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
         # The maxlen will be updated when `set_max_pending_trials()` is called
@@ -860,9 +877,9 @@ class RayTrialExecutor(TrialExecutor):
     def has_resources_for_trial(self, trial: Trial) -> bool:
         """Returns whether this runner has resources available for this trial.
 
-        If using placement groups, this will return True as long as we
-        didn't reach the maximum number of pending trials. It will also return
-        True if the trial placement group is already staged.
+        This will return True as long as we didn't reach the maximum number
+        of pending trials. It will also return True if the trial placement
+        group is already staged.
 
         Args:
             trial: Trial object which should be scheduled.
@@ -903,19 +920,6 @@ class RayTrialExecutor(TrialExecutor):
         if have_space:
             # The assumption right now is that we block all trials if one
             # trial is queued.
-            self._trial_queued = False
-            return True
-
-        can_overcommit = self._queue_trials and not self._trial_queued
-        if can_overcommit:
-            self._trial_queued = True
-            logger.warning(
-                "Allowing trial to start even though the "
-                "cluster does not have enough free resources. Trial actors "
-                "may appear to hang until enough resources are added to the "
-                "cluster (e.g., via autoscaling). You can disable this "
-                "behavior by specifying `queue_trials=False` in "
-                "ray.tune.run().")
             return True
 
         return False

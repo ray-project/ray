@@ -446,7 +446,7 @@ On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environme
 The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()``.
 The runtime environment defines the dependencies required for your workload.
 
-You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client...
+You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client:
 
 .. literalinclude:: ../examples/doc_code/runtime_env_example.py
    :language: python
@@ -461,7 +461,7 @@ You can specify a runtime environment for your whole job using ``ray.init()`` or
     # Using Ray Client
     ray.init("ray://localhost:10001", runtime_env=runtime_env)
 
-...or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
+Or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
 
 .. literalinclude:: ../examples/doc_code/runtime_env_example.py
    :language: python
@@ -470,10 +470,9 @@ You can specify a runtime environment for your whole job using ``ray.init()`` or
 
 The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
 
-- ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory.
+- ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory with total size at most 100 MiB.
   It will be cached on the cluster, so the next time you connect with Ray Client you will be able to skip uploading the directory contents.
-  Furthermore, if you locally make a small change to your directory, the next time you connect only the updated part will be uploaded.
-  All Ray workers for your job will be started in their node's copy of this working directory.
+  All Ray workers for your job will be started in their node's local copy of this working directory.
 
   - Examples
 
@@ -491,7 +490,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
   - Example: ``["my_file.txt", "path/to/dir", "*.log"]``
 
 - ``pip`` (List[str] | str): Either a list of pip packages, or a string containing the path to a pip
-  `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.  The path may be an absolute path or a relative path.  (Note: A relative path will be interpreted relative to ``working_dir`` if ``working_dir`` is specified.)
+  `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.  The path may be an absolute path or a relative path.
   This will be dynamically installed in the ``runtime_env``.
   To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
 
@@ -499,7 +498,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``"./requirements.txt"``
 
-- ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the path to a
+- ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the absolute or relative path to a
   `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
   or (3) the name of a local conda environment already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.
@@ -511,11 +510,14 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``"pytorch_p36"``
 
-  Note: if specifying the path to an "environment.yml" file, you may provide an absolute path or a relative path.  A relative path will be interpreted relative to ``working_dir`` if ``working_dir`` is specified.
 
 - ``env_vars`` (Dict[str, str]): Environment variables to set.
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
+
+- ``eager_install`` (bool): A boolean indicates whether to install runtime env eagerly before the workers are leased. This flag is set to True by default and only job level is supported now.
+
+  - Example: ``{"eager_install": False}``
 
 The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor, once set.
 

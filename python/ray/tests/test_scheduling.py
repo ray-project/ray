@@ -2,6 +2,7 @@
 import collections
 import logging
 import platform
+import subprocess
 import sys
 import time
 import unittest
@@ -549,15 +550,16 @@ def test_gpu(monkeypatch):
             def get_location(self):
                 return ray.worker.global_worker.node.unique_id
 
-        @ray.remote
-        def task_cpu(num_cpus=0.5):
+        @ray.remote(num_cpus=1)
+        def task_cpu():
             time.sleep(10)
             return ray.worker.global_worker.node.unique_id
 
         @ray.remote(num_returns=2, num_gpus=0.5)
         def launcher():
             a = Actor1.remote()
-            task_results = [task_cpu.remote() for _ in range(n)]
+            # Leave one cpu for the actor.
+            task_results = [task_cpu.remote() for _ in range(n - 1)]
             actor_results = [a.get_location.remote() for _ in range(n)]
             return ray.get(task_results + actor_results
                            ), ray.worker.global_worker.node.unique_id
@@ -576,6 +578,100 @@ def test_gpu(monkeypatch):
     finally:
         ray.shutdown()
         cluster.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 0,
+        "num_nodes": 1,
+    }], indirect=True)
+def test_head_node_without_cpu(ray_start_cluster):
+    @ray.remote(num_cpus=1)
+    def f():
+        return 1
+
+    f.remote()
+
+    check_count = 0
+    demand_1cpu = " {'CPU': 1.0}:"
+    while True:
+        status = subprocess.check_output(["ray", "status"]).decode()
+        if demand_1cpu in status:
+            break
+        check_count += 1
+        assert check_count < 5, f"Incorrect demand. Last status {status}"
+        time.sleep(1)
+
+    @ray.remote(num_cpus=2)
+    def g():
+        return 2
+
+    g.remote()
+
+    check_count = 0
+    demand_2cpu = " {'CPU': 2.0}:"
+    while True:
+        status = subprocess.check_output(["ray", "status"]).decode()
+        if demand_1cpu in status and demand_2cpu in status:
+            break
+        check_count += 1
+        assert check_count < 5, f"Incorrect demand. Last status {status}"
+        time.sleep(1)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_gpu_scheduling_liveness(ray_start_cluster):
+    """Check if the GPU scheduling is in progress when
+        it is used with the placement group
+        Issue: https://github.com/ray-project/ray/issues/19130
+    """
+    cluster = ray_start_cluster
+    # Start a node without a gpu.
+    cluster.add_node(num_cpus=6)
+    ray.init(address=cluster.address)
+
+    NUM_CPU_BUNDLES = 10
+
+    @ray.remote(num_cpus=1)
+    class Worker(object):
+        def __init__(self, i):
+            self.i = i
+
+        def work(self):
+            time.sleep(0.1)
+            print("work ", self.i)
+
+    @ray.remote(num_cpus=1, num_gpus=1)
+    class Trainer(object):
+        def __init__(self, i):
+            self.i = i
+
+        def train(self):
+            time.sleep(0.2)
+            print("train ", self.i)
+
+    bundles = [{"CPU": 1, "GPU": 1}]
+    bundles += [{"CPU": 1} for _ in range(NUM_CPU_BUNDLES)]
+
+    pg = ray.util.placement_group(bundles, strategy="PACK")
+    o = pg.ready()
+    # Artificial delay to simulate the real world workload.
+    time.sleep(3)
+    print("Scaling up.")
+    cluster.add_node(num_cpus=6, num_gpus=1)
+    ray.get(o)
+
+    workers = [
+        Worker.options(placement_group=pg).remote(i)
+        for i in range(NUM_CPU_BUNDLES)
+    ]
+    trainer = Trainer.options(placement_group=pg).remote(0)
+
+    # If the gpu scheduling doesn't properly work, the below
+    # code will hang.
+    ray.get(
+        [workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)], timeout=30)
+    ray.get(trainer.train.remote(), timeout=30)
 
 
 if __name__ == "__main__":

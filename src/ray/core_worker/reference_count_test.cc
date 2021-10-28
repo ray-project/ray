@@ -16,9 +16,9 @@
 
 #include <vector>
 
+#include "absl/functional/bind_front.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
@@ -94,7 +94,7 @@ using SubscriptionFailureCallbackMap =
 // static maps are used to simulate distirubted environment.
 static SubscriptionCallbackMap subscription_callback_map;
 static SubscriptionFailureCallbackMap subscription_failure_callback_map;
-static pubsub::pub_internal::SubscriptionIndex<ObjectID> directory;
+static pubsub::pub_internal::SubscriptionIndex directory;
 
 static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
   return publisher_id.Binary() + subscriber_id.Binary();
@@ -113,7 +113,7 @@ using PublisherFactoryFn =
 class MockDistributedSubscriber : public pubsub::SubscriberInterface {
  public:
   MockDistributedSubscriber(
-      pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory,
+      pubsub::pub_internal::SubscriptionIndex *directory,
       SubscriptionCallbackMap *subscription_callback_map,
       SubscriptionFailureCallbackMap *subscription_failure_callback_map,
       WorkerID subscriber_id, PublisherFactoryFn client_factory)
@@ -141,7 +141,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
       client_factory_(publisher_address)
           ->WaitForRefRemoved(object_id, contained_in_id, owner_address);
     }
-    // Due to the test env, there are times that the same mssage id from the same
+    // Due to the test env, there are times that the same message id from the same
     // subscriber is subscribed twice. We should just no-op in this case.
     if (!(directory_->HasKeyId(key_id_binary) &&
           directory_->HasSubscriber(subscriber_id_))) {
@@ -172,12 +172,19 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     return true;
   }
 
+  bool IsSubscribed(const rpc::ChannelType channel_type,
+                    const rpc::Address &publisher_address,
+                    const std::string &key_id_binary) const override {
+    return directory_->HasKeyId(key_id_binary) &&
+           directory_->HasSubscriber(subscriber_id_);
+  }
+
   std::string DebugString() const override {
     RAY_LOG(FATAL) << "No need to implement it for testing.";
     return "";
   }
 
-  pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory_;
+  pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   WorkerID subscriber_id_;
@@ -187,7 +194,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 class MockDistributedPublisher : public pubsub::PublisherInterface {
  public:
   MockDistributedPublisher(
-      pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory,
+      pubsub::pub_internal::SubscriptionIndex *directory,
       SubscriptionCallbackMap *subscription_callback_map,
       SubscriptionFailureCallbackMap *subscription_failure_callback_map,
       WorkerID publisher_id)
@@ -209,10 +216,9 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     RAY_LOG(FATAL) << "No need to implement it for testing.";
   }
 
-  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
-               const std::string &key_id_binary) {
-    auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(key_id_binary);
-    const auto oid = ObjectID::FromBinary(key_id_binary);
+  void Publish(const rpc::PubMessage &pub_message) {
+    auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(pub_message.key_id());
+    const auto oid = ObjectID::FromBinary(pub_message.key_id());
     RAY_CHECK(maybe_subscribers.has_value());
     for (const auto &subscriber_id : maybe_subscribers.value().get()) {
       const auto id = GenerateID(publisher_id_, subscriber_id);
@@ -230,7 +236,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     return true;
   }
 
-  pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory_;
+  pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   WorkerID publisher_id_;
@@ -270,7 +276,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
 
     auto borrower_callback = [=]() {
       auto ref_removed_callback =
-          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1);
+          absl::bind_front(&ReferenceCounter::HandleRefRemoved, &rc_);
       rc_.SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                 ref_removed_callback);
     };
@@ -656,7 +662,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   auto subscriber = std::make_shared<mock_pubsub::MockSubscriber>();
   auto rc = std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
       rpc::WorkerAddress(rpc::Address()), publisher.get(), subscriber.get()));
-  CoreWorkerMemoryStore store(nullptr, rc);
+  CoreWorkerMemoryStore store(rc);
 
   // Tests putting an object with no references is ignored.
   RAY_CHECK(store.Put(buffer, id2));

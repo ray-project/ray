@@ -5,6 +5,7 @@ from multiprocessing import Process, Queue
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
+import urllib
 
 from ray import logger
 from ray.tune import Trainable
@@ -201,8 +202,13 @@ class _WandbLoggingProcess(Process):
             if result == _WANDB_QUEUE_END:
                 break
             log, config_update = self._handle_result(result)
-            wandb.config.update(config_update, allow_val_change=True)
-            wandb.log(log)
+            try:
+                wandb.config.update(config_update, allow_val_change=True)
+                wandb.log(log)
+            except urllib.error.HTTPError as e:
+                # Ignore HTTPError. Missing a few data points is not a
+                # big issue, as long as things eventually recover.
+                logger.warn("Failed to log result to w&b: {}".format(str(e)))
         wandb.join()
 
     def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:

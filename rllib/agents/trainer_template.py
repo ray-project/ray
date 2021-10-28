@@ -19,7 +19,11 @@ from ray.rllib.utils.typing import EnvConfigDict, EnvType, EventName, \
 logger = logging.getLogger(__name__)
 
 
-def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                           **kwargs):
+    assert len(kwargs) == 0, (
+        "Default execution_plan does NOT take any additional parameters")
+
     # Collects experiences in parallel from multiple RolloutWorker actors.
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 

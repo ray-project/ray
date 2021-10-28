@@ -9,8 +9,8 @@ cd "$(dirname "$0")"
 
 function generate_one()
 {
-  file=${1//./_}.h
-  javah -classpath ../bazel-bin/java/all_tests_deploy.jar "$1"
+  file=${2//./_}.h
+  javac -h ./ "$1" -classpath ../bazel-bin/java/all_tests_deploy.jar -d runtime/target/
   clang-format -i "$file"
 
   cat <<EOF > ../src/ray/core_worker/lib/java/"$file"
@@ -33,15 +33,15 @@ EOF
   rm -f "$file"
 }
 
-generate_one io.ray.runtime.RayNativeRuntime
-generate_one io.ray.runtime.task.NativeTaskSubmitter
-generate_one io.ray.runtime.context.NativeWorkerContext
-generate_one io.ray.runtime.actor.NativeActorHandle
-generate_one io.ray.runtime.object.NativeObjectStore
-generate_one io.ray.runtime.task.NativeTaskExecutor
-generate_one io.ray.runtime.gcs.GlobalStateAccessor
-generate_one io.ray.runtime.metric.NativeMetric
+generate_one runtime/src/main/java/io/ray/runtime/RayNativeRuntime.java io.ray.runtime.RayNativeRuntime
+generate_one runtime/src/main/java/io/ray/runtime/task/NativeTaskSubmitter.java io.ray.runtime.task.NativeTaskSubmitter
+generate_one runtime/src/main/java/io/ray/runtime/context/NativeWorkerContext.java io.ray.runtime.context.NativeWorkerContext
+generate_one runtime/src/main/java/io/ray/runtime/actor/NativeActorHandle.java io.ray.runtime.actor.NativeActorHandle
+generate_one runtime/src/main/java/io/ray/runtime/object/NativeObjectStore.java io.ray.runtime.object.NativeObjectStore
+generate_one runtime/src/main/java/io/ray/runtime/gcs/GlobalStateAccessor.java io.ray.runtime.gcs.GlobalStateAccessor
+generate_one runtime/src/main/java/io/ray/runtime/metric/NativeMetric.java io.ray.runtime.metric.NativeMetric
 
 # Remove empty files
 rm -f io_ray_runtime_RayNativeRuntime_AsyncContext.h
 rm -f io_ray_runtime_task_NativeTaskExecutor_NativeActorContext.h
+
