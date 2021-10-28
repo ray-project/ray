@@ -152,7 +152,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_advanced.py",
-    "test_reconstruction.py"
+    "test_reconstruction.py",
     "test_cli.py",
     "test_failure.py",
     "test_actor_advanced.py",
