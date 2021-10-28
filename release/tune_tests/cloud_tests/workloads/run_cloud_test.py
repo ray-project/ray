@@ -454,7 +454,7 @@ def fetch_remote_file_to_local_file(remote_path: str, ip: str,
                                     local_path: str):
     def _read(path: str):
         with open(path, "rb") as f:
-            return f.read
+            return f.read()
 
     _remote_read = ray.remote(resources={f"node:{ip}": 0.01})(_read)
     stream = ray.get(_remote_read.remote(remote_path))
