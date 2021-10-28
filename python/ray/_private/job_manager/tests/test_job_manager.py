@@ -127,15 +127,19 @@ class TestRuntimeEnv:
 
     def test_multiple_runtime_envs(self, job_manager):
         # Test that you can run two jobs in different envs without conflict.
-        job_id_1 = str(uuid4())
-        job_id_2 = str(uuid4())
-
-        job_manager.submit_job(
-            job_id_1,
+        job_id_1 = job_manager.submit_job(
             "python subprocess_driver_scripts/print_runtime_env.py",
             runtime_env={
                 "env_vars": {
                     "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"
+                }
+            })
+
+        job_id_2 = job_manager.submit_job(
+            "python subprocess_driver_scripts/print_runtime_env.py",
+            runtime_env={
+                "env_vars": {
+                    "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_2_VAR"
                 }
             })
 
@@ -144,15 +148,6 @@ class TestRuntimeEnv:
         assert job_manager.get_job_stdout(
             job_id_1
         ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'}}"  # noqa: E501
-
-        job_manager.submit_job(
-            job_id_2,
-            "python subprocess_driver_scripts/print_runtime_env.py",
-            runtime_env={
-                "env_vars": {
-                    "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_2_VAR"
-                }
-            })
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id_2)

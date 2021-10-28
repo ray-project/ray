@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import pickle
 from typing import Any, Dict, Tuple, Optional
@@ -17,6 +18,9 @@ from ray.experimental.internal_kv import (
 )
 from ray.dashboard.modules.job.data_types import JobStatus
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class JobLogStorageClient:
@@ -96,18 +100,19 @@ class JobSupervisor:
     """
 
     def __init__(self, job_id: str, metadata: Dict[str, str]):
+        logger.debug(f"JobSupervisor for job {job_id} starting up.")
         self._job_id = job_id
         self._status = JobStatus.PENDING
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
         self._metadata = metadata
-        self._put_status()
 
     async def ready(self):
         pass
 
     def _put_status(self):
+        logger.debug(f"Putting status {self._status} for job {self._job_id}.")
         self._status_client.put_status(self._job_id, self._status)
 
     async def _exec_cmd(self, cmd: str, stdout_path: str, stderr_path: str):
@@ -146,7 +151,9 @@ class JobSupervisor:
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
 
+            logger.debug(f"Executing command for job {self._job_id}.")
             exit_code = await self._exec_cmd(cmd, stdout_path, stderr_path)
+            logger.debug(f"Command finished for job {self._job_id}.")
         finally:
             # 3) Once command finishes, update status to SUCCEEDED or FAILED.
             if exit_code == 0:
