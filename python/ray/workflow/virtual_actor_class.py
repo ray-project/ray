@@ -85,8 +85,8 @@ class ActorMethod(ActorMethodBase):
 
     def options(self,
                 *,
-                max_retries: int = None,
-                catch_exceptions: bool = None,
+                max_retries: int = 1,
+                catch_exceptions: bool = False,
                 name: str = None,
                 metadata: Dict[str, Any] = None,
                 **ray_options) -> ActorMethodBase:
