@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
+
 #include "../../runtime/abstract_ray_runtime.h"
 #include "../../runtime/object/native_object_store.h"
 #include "../../util/process_helper.h"
