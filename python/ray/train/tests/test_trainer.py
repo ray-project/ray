@@ -551,6 +551,7 @@ def test_world_rank(ray_start_2_cpus):
 
     assert set(results) == {0, 1}
 
+
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_tensorflow_mnist(ray_start_2_cpus, num_workers):
     num_workers = num_workers
@@ -573,6 +574,7 @@ def test_tensorflow_mnist(ray_start_2_cpus, num_workers):
     assert len(accuracy) == epochs
     assert accuracy[-1] > accuracy[0]
 
+
 def test_tf_non_distributed(ray_start_2_cpus):
     """Make sure Ray Train works without TF MultiWorkerMirroredStrategy."""
 
@@ -580,6 +582,7 @@ def test_tf_non_distributed(ray_start_2_cpus):
     trainer.start()
     trainer.run(quick_start_train_func)
     trainer.shutdown()
+
 
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_torch_linear(ray_start_2_cpus, num_workers):
@@ -597,6 +600,7 @@ def test_torch_linear(ray_start_2_cpus, num_workers):
     for result in results:
         assert len(result) == epochs
         assert result[-1]["loss"] < result[0]["loss"]
+
 
 def test_torch_fashion_mnist(ray_start_2_cpus):
     num_workers = 2
