@@ -715,6 +715,32 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
   }
 }
 
+TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesAllocationFailureTest) {
+  /// Make sure there's no leak when the resource allocation failed in the middle.
+  NodeResources node_resources;
+  vector<FixedPoint> pred_capacities{1 /* CPU */, 1 /* MEM */, 1 /* GPU */};
+  vector<int64_t> cust_ids{1, 2, 3};
+  vector<FixedPoint> cust_capacities{4, 4, 4};
+  initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
+  ClusterResourceScheduler resource_scheduler(0, node_resources, *gcs_client_);
+
+  ResourceRequest resource_request;
+  vector<FixedPoint> pred_demands = {0. /* CPU */, 0. /* MEM */, 0. /* GPU */};
+  vector<int64_t> req_cust_ids{1, 3, 5};
+  vector<FixedPoint> cust_demands{3, 3, 4};
+  initResourceRequest(resource_request, pred_demands, req_cust_ids, cust_demands);
+
+  NodeResourceInstances old_local_resources = resource_scheduler.GetLocalResources();
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
+  bool success =
+      resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
+
+  ASSERT_EQ(success, false);
+  // resource_scheduler.FreeTaskResourceInstances(task_allocation);
+  ASSERT_EQ((resource_scheduler.GetLocalResources() == old_local_resources), true);
+}
+
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
   {
     NodeResources node_resources;
