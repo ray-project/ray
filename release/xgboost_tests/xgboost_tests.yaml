@@ -38,7 +38,7 @@
   run:
     use_connect: True
     timeout: 600
-    script: python workloads/train_gpu_conect.py
+    script: python workloads/train_gpu_connect.py
 
 - name: distributed_api_test
   cluster:
