@@ -47,12 +47,6 @@ def train_func():
 
 # __tf_single_end__
 
-# __tf_single_run_begin__
-
-train_func()
-
-# __tf_single_run_end__
-
 # __tf_distributed_begin__
 
 import json
@@ -77,13 +71,20 @@ def train_func_distributed():
 
 # __tf_distributed_end__
 
-# __tf_trainer_begin__
+if __name__ == "__main__":
+    # __tf_single_run_begin__
 
-from ray.train import Trainer
+    train_func()
 
-trainer = Trainer(backend="tensorflow", num_workers=4)
-trainer.start()
-results = trainer.run(train_func_distributed)
-trainer.shutdown()
+    # __tf_single_run_end__
 
-# __tf_trainer_end__
+    # __tf_trainer_begin__
+
+    from ray.train import Trainer
+
+    trainer = Trainer(backend="tensorflow", num_workers=4)
+    trainer.start()
+    results = trainer.run(train_func_distributed)
+    trainer.shutdown()
+
+    # __tf_trainer_end__

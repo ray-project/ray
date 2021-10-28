@@ -46,12 +46,6 @@ def train_func():
 
 # __torch_single_end__
 
-# __torch_single_run_begin__
-
-train_func()
-
-# __torch_single_run_end__
-
 # __torch_distributed_begin__
 
 from torch.nn.parallel import DistributedDataParallel
@@ -74,13 +68,20 @@ def train_func_distributed():
 # __torch_distributed_end__
 
 
-# __torch_trainer_begin__
+if __name__ == "__main__":
+    # __torch_single_run_begin__
 
-from ray.train import Trainer
+    train_func()
 
-trainer = Trainer(backend="torch", num_workers=4)
-trainer.start()
-results = trainer.run(train_func_distributed)
-trainer.shutdown()
+    # __torch_single_run_end__
 
-# __torch_trainer_end__
+    # __torch_trainer_begin__
+
+    from ray.train import Trainer
+
+    trainer = Trainer(backend="torch", num_workers=4)
+    trainer.start()
+    results = trainer.run(train_func_distributed)
+    trainer.shutdown()
+
+    # __torch_trainer_end__
