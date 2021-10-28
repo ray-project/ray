@@ -101,10 +101,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
-RAY_CONFIG(float, scheduler_spread_threshold,
-           std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
-               ? std::stof(std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
-               : 0.5)
+RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
