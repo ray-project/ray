@@ -93,6 +93,22 @@ class JobSubmissionClient:
 
         return package_uri
 
+    def _upload_working_dir_if_needed(self, runtime_env: Dict[str, Any]):
+        if "working_dir" in runtime_env:
+            working_dir = runtime_env["working_dir"]
+            try:
+                parse_uri(working_dir)
+                is_uri = True
+                logger.debug("working_dir is already a valid URI.")
+            except ValueError:
+                is_uri = False
+
+            if not is_uri:
+                logger.debug("working_dir is not a URI, attempting to upload.")
+                package_uri = self._upload_package_if_needed(
+                    working_dir, excludes=runtime_env.get("excludes", None))
+                runtime_env["working_dir"] = package_uri
+
     def submit_job(self,
                    entrypoint: str,
                    runtime_env: Optional[Dict[str, Any]] = None,
@@ -101,20 +117,7 @@ class JobSubmissionClient:
         runtime_env = runtime_env or {}
         metadata = metadata or {}
 
-        # Dynamically upload working_dir if needed.
-        if "working_dir" in runtime_env:
-            working_dir = runtime_env["working_dir"]
-            try:
-                parse_uri(working_dir)
-                is_uri = True
-            except ValueError:
-                is_uri = False
-
-            if not is_uri:
-                package_uri = self._upload_package_if_needed(
-                    working_dir, excludes=runtime_env.get("excludes", None))
-                runtime_env["working_dir"] = package_uri
-
+        self._upload_working_dir_if_needed(runtime_env)
         job_spec = JobSpec(
             entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata)
         req = JobSubmitRequest(job_spec=job_spec, job_id=job_id)
