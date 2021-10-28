@@ -35,8 +35,8 @@ def test_submit_basic_echo(job_manager):
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(job_id, "echo hello")
 
-    wait_for_condition(check_job_succeeded,
-                       job_manager=job_manager, job_id=job_id)
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
     assert job_manager.get_job_stdout(job_id) == b"hello"
 
 
@@ -44,8 +44,8 @@ def test_submit_stderr(job_manager):
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(job_id, "echo error 1>&2")
 
-    wait_for_condition(check_job_succeeded,
-                       job_manager=job_manager, job_id=job_id)
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
     assert job_manager.get_job_stderr(job_id) == b"error"
 
 
@@ -53,8 +53,8 @@ def test_submit_ls_grep(job_manager):
     job_id: str = str(uuid4())
     job_id = job_manager.submit_job(job_id, "ls | grep test_job_manager.py")
 
-    wait_for_condition(check_job_succeeded,
-                       job_manager=job_manager, job_id=job_id)
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
     assert job_manager.get_job_stdout(job_id) == b"test_job_manager.py"
 
 
@@ -86,8 +86,8 @@ def test_submit_with_s3_runtime_env(job_manager):
         "python script.py",
         runtime_env={"working_dir": "s3://runtime-env-test/script.zip"})
 
-    wait_for_condition(check_job_succeeded,
-                       job_manager=job_manager, job_id=job_id)
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
     assert job_manager.get_job_stdout(
         job_id) == b"Executing main() from script.py !!"
 
@@ -111,8 +111,8 @@ class TestRuntimeEnv:
                 }
             })
 
-        wait_for_condition(check_job_succeeded,
-                           job_manager=job_manager, job_id=job_id)
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
         assert job_manager.get_job_stdout(job_id) == b"233"
 
     def test_multiple_runtime_envs(self, job_manager):
@@ -129,8 +129,8 @@ class TestRuntimeEnv:
                 }
             })
 
-        wait_for_condition(check_job_succeeded,
-                           job_manager=job_manager, job_id=job_id_1)
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id_1)
         assert job_manager.get_job_stdout(
             job_id_1
         ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'}}"  # noqa: E501
@@ -144,8 +144,8 @@ class TestRuntimeEnv:
                 }
             })
 
-        wait_for_condition(check_job_succeeded,
-                           job_manager=job_manager, job_id=job_id_2)
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id_2)
         assert job_manager.get_job_stdout(
             job_id_2
         ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_2_VAR'}}"  # noqa: E501
@@ -165,8 +165,8 @@ class TestRuntimeEnv:
                 }
             })
 
-        wait_for_condition(check_job_succeeded,
-                           job_manager=job_manager, job_id=job_id_1)
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id_1)
         assert job_manager.get_job_stdout(job_id_1) == b"JOB_1_VAR"
         stderr = job_manager.get_job_stderr(job_id_1).decode("utf-8")
         assert stderr.startswith(

@@ -287,10 +287,10 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
         "It took too much time to kill an actor: {}".format(actor_id))
 
 
-def wait_for_condition(
-    condition_predictor,
-    timeout=10, retry_interval_ms=100, **kwargs: Any
-):
+def wait_for_condition(condition_predictor,
+                       timeout=10,
+                       retry_interval_ms=100,
+                       **kwargs: Any):
     """Wait until a condition is met or time out with an exception.
 
     Args:
