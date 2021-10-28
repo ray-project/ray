@@ -218,7 +218,7 @@ class ComputeTDErrorMixin:
     def __init__(self):
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
-            input_dict = self._lazy_tensor_dict({SampleBatch.CUR_OBS: obs_t})
+            input_dict = SampleBatch({SampleBatch.CUR_OBS: obs_t})
             input_dict[SampleBatch.ACTIONS] = act_t
             input_dict[SampleBatch.REWARDS] = rew_t
             input_dict[SampleBatch.NEXT_OBS] = obs_tp1

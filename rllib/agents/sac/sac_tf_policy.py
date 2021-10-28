@@ -232,23 +232,20 @@ def sac_actor_critic_loss(
     deterministic = policy.config["_deterministic_loss"]
 
     # Get the base model output from the train batch.
-    model_out_t, _ = model({
-        "obs": train_batch[SampleBatch.CUR_OBS],
-        "is_training": policy._get_is_training_placeholder(),
-    }, [], None)
+    model_out_t, _ = model(SampleBatch(
+        {"obs": train_batch[SampleBatch.CUR_OBS]},
+        _is_training=policy._is_training), [], None)
 
     # Get the base model output from the next observations in the train batch.
-    model_out_tp1, _ = model({
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "is_training": policy._get_is_training_placeholder(),
-    }, [], None)
+    model_out_tp1, _ = model(SampleBatch(
+        {"obs": train_batch[SampleBatch.NEXT_OBS]},
+        _is_training=policy._is_training), [], None)
 
     # Get the target model's base outputs from the next observations in the
     # train batch.
-    target_model_out_tp1, _ = policy.target_model({
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "is_training": policy._get_is_training_placeholder(),
-    }, [], None)
+    target_model_out_tp1, _ = policy.target_model(SampleBatch(
+        {"obs": train_batch[SampleBatch.NEXT_OBS]},
+        _is_training=policy._is_training), [], None)
 
     # Discrete actions case.
     if model.discrete:

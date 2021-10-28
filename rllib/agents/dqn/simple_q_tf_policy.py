@@ -180,11 +180,14 @@ def compute_q_values(policy: Policy,
                      obs: TensorType,
                      explore,
                      is_training=None) -> TensorType:
-    model_out, _ = model({
-        SampleBatch.OBS: obs,
-        "is_training": is_training
-        if is_training is not None else policy._get_is_training_placeholder(),
-    }, [], None)
+    if is_training is None:
+        if hasattr(policy, "_is_training"):
+            is_training = policy._is_training
+        else:
+            is_training = False
+    model_out, _ = model(SampleBatch({SampleBatch.OBS: obs},
+                                     _is_training=is_training),
+                         [], None)
 
     return model_out
 
