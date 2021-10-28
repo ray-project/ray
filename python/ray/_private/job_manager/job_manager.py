@@ -1,8 +1,9 @@
 import asyncio
-import pickle
-import os
 import json
+import os
+import pickle
 from typing import Any, Dict, Tuple, Optional
+from uuid import uuid4
 
 import ray
 import ray.ray_constants as ray_constants
@@ -94,12 +95,13 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
-    def __init__(self, job_id: str):
+    def __init__(self, job_id: str, metadata: Dict[str, str]):
         self._job_id = job_id
         self._status = JobStatus.PENDING
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
+        self._metadata = metadata
 
     async def ready(self):
         pass
@@ -131,6 +133,7 @@ class JobSupervisor:
             # Set JobConfig for the child process (runtime_env, metadata).
             os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps({
                 "runtime_env": self._runtime_env,
+                "metadata": self._metadata,
             })
             ray_redis_address = ray._private.services.find_redis_address_or_die(  # noqa: E501
             )
@@ -181,9 +184,10 @@ class JobManager:
 
     def submit_job(
             self,
-            job_id: str,
             entrypoint: str,
+            job_id: Optional[str] = None,
             runtime_env: Optional[Dict[str, Any]] = None,
+            metadata: Optional[Dict[str, str]] = None,
     ) -> str:
         """
         1) Create new detached actor with same runtime_env as job spec
@@ -193,6 +197,7 @@ class JobManager:
 
         Returns unique job_id.
         """
+        job_id = job_id or str(uuid4())
         supervisor = self._supervisor_actor_cls.options(
             lifetime="detached",
             name=self.JOB_ACTOR_NAME.format(job_id=job_id),
@@ -204,7 +209,7 @@ class JobManager:
             # For now we assume supervisor actor and driver script have same
             # runtime_env.
             runtime_env=runtime_env,
-        ).remote(job_id)
+        ).remote(job_id, metadata or {})
 
         try:
             ray.get(

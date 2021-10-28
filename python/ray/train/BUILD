@@ -13,6 +13,24 @@ py_test(
 )
 
 py_test(
+    name = "tensorflow_quick_start",
+    size = "medium",
+    main = "examples/tensorflow_quick_start.py",
+    srcs = ["examples/tensorflow_quick_start.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "torch_quick_start",
+    size = "medium",
+    main = "examples/torch_quick_start.py",
+    srcs = ["examples/torch_quick_start.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "transformers_example",
     size = "large",
     main = "examples/transformers/transformers_example.py",
