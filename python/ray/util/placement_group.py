@@ -347,38 +347,41 @@ def _validate_resource_shape(placement_group, resources, placement_resources,
         bundle spec, return False
         """
         for bundle in bundle_specs:
+            fit_in_bundle = True
             for resource, requested_val in resources.items():
                 # Skip "bundle" resource as it is automatically added
                 # to all nodes with bundles by the placement group.
                 if resource == BUNDLE_RESOURCE_LABEL:
                     continue
                 if bundle.get(resource, 0) < requested_val:
-                    return False
-        return True
+                    fit_in_bundle = False
+                    break
+            if fit_in_bundle:
+                # If resource request fits in any bundle, it is valid.
+                return True
+        return False
 
     bundles = placement_group.bundle_specs
-    if not placement_group.is_empty:
-        resources_valid = valid_resource_shape(resources, bundles)
-        placement_resources_valid = valid_resource_shape(
-            placement_resources, bundles)
+    resources_valid = valid_resource_shape(resources, bundles)
+    placement_resources_valid = valid_resource_shape(placement_resources,
+                                                     bundles)
 
-        if not resources_valid:
-            raise ValueError(
-                f"Cannot schedule {task_or_actor_repr} with "
-                "the placement group because the resource request "
-                f"{resources} cannot fit into any bundles for "
-                f"the placement group, {bundles}.")
-        if not placement_resources_valid:
-            # Happens for the default actor case.
-            # placement_resources is not an exposed concept to users,
-            # so we should write more specialized error messages.
-            raise ValueError(f"Cannot schedule {task_or_actor_repr} with "
-                             "the placement group because the actor requires "
-                             f"{placement_resources.get('CPU', 0)} CPU for "
-                             "creation, but it cannot "
-                             f"fit into any bundles for the placement group, "
-                             f"{bundles}. Consider "
-                             "creating a placement group with CPU resources.")
+    if not resources_valid:
+        raise ValueError(f"Cannot schedule {task_or_actor_repr} with "
+                         "the placement group because the resource request "
+                         f"{resources} cannot fit into any bundles for "
+                         f"the placement group, {bundles}.")
+    if not placement_resources_valid:
+        # Happens for the default actor case.
+        # placement_resources is not an exposed concept to users,
+        # so we should write more specialized error messages.
+        raise ValueError(f"Cannot schedule {task_or_actor_repr} with "
+                         "the placement group because the actor requires "
+                         f"{placement_resources.get('CPU', 0)} CPU for "
+                         "creation, but it cannot "
+                         f"fit into any bundles for the placement group, "
+                         f"{bundles}. Consider "
+                         "creating a placement group with CPU resources.")
 
 
 def configure_placement_group_based_on_context(
@@ -444,6 +447,7 @@ def configure_placement_group_based_on_context(
     check_placement_group_index(placement_group, bundle_index)
 
     # Validate the shape.
-    _validate_resource_shape(placement_group, resources, placement_resources,
-                             task_or_actor_repr)
+    if not placement_group.is_empty:
+        _validate_resource_shape(placement_group, resources,
+                                 placement_resources, task_or_actor_repr)
     return placement_group
