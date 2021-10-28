@@ -96,6 +96,24 @@ def test_jemalloc_env_var_propagate():
     assert actual == expected
 
 
+def test_back_pressure():
+    ray.init(job_config=ray.job_config.JobConfig(max_pending_calls=-1))
+
+    @ray.remote
+    class Foo:
+        def ping(self):
+            print("ping called")
+            return 1
+
+    foo = Foo.remote()
+    ray.get(foo.ping.remote())
+
+    foo2 = Foo.options(max_pending_calls=100).remote()
+    ray.get(foo2.ping.remote())
+
+    ray.shutdown()
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

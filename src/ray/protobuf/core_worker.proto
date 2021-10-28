@@ -55,6 +55,9 @@ message ActorHandle {
 
   // How many times tasks may be retried on this actor if the actor fails.
   int64 max_task_retries = 9;
+
+  // The max number of pending actor calls.
+  int32 max_pending_calls = 10;
 }
 
 message ReturnObject {

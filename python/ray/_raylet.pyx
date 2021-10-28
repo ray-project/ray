@@ -1471,6 +1471,7 @@ cdef class CoreWorker:
                      c_string serialized_runtime_env,
                      runtime_env_uris,
                      concurrency_groups_dict,
+                     int32_t max_pending_calls,
                      ):
         cdef:
             CRayFunction ray_function
@@ -1508,7 +1509,7 @@ cdef class CoreWorker:
                         placement_group_capture_child_tasks,
                         serialized_runtime_env,
                         c_runtime_env_uris,
-                        c_concurrency_groups),
+                        c_concurrency_groups, max_pending_calls),
                     extension_data,
                     &c_actor_id))
 

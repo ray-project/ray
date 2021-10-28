@@ -18,6 +18,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final PlacementGroup group;
   public final int bundleIndex;
   public final List<ConcurrencyGroup> concurrencyGroups;
+  public final int maxPendingCalls;
 
   private ActorCreationOptions(
       boolean global,
@@ -28,7 +29,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
       int maxConcurrency,
       PlacementGroup group,
       int bundleIndex,
-      List<ConcurrencyGroup> concurrencyGroups) {
+      List<ConcurrencyGroup> concurrencyGroups,
+      int maxPendingCalls) {
     super(resources);
     this.global = global;
     this.name = name;
@@ -38,6 +40,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.group = group;
     this.bundleIndex = bundleIndex;
     this.concurrencyGroups = concurrencyGroups;
+    this.maxPendingCalls = maxPendingCalls;
   }
 
   /** The inner class for building ActorCreationOptions. */
@@ -51,6 +54,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private PlacementGroup group;
     private int bundleIndex;
     private List<ConcurrencyGroup> concurrencyGroups = new ArrayList<>();
+    private int maxPendingCalls = -1;
 
     /**
      * Set the actor name of a named actor. This named actor is only accessible from this job by
@@ -152,6 +156,24 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
+     * Set the max number of pending calls for this actor.
+     *
+     * <p>The max pending calls defaults to -1 to disable back pressure.
+     *
+     * @param maxPendingCalls The max number of pending calls for this actor.
+     * @return self
+     */
+    public Builder setMaxPendingCalls(int maxPendingCalls) {
+      if (maxPendingCalls < -1 || maxPendingCalls == 0) {
+        throw new IllegalArgumentException(
+            "maxPendingCalls must be greater than 0, or -1 to disable.");
+      }
+
+      this.maxPendingCalls = maxPendingCalls;
+      return this;
+    }
+
+    /**
      * Set the placement group to place this actor in.
      *
      * @param group The placement group of the actor.
@@ -174,7 +196,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
           maxConcurrency,
           group,
           bundleIndex,
-          concurrencyGroups);
+          concurrencyGroups,
+          maxPendingCalls);
     }
 
     /** Set the concurrency groups for this actor. */

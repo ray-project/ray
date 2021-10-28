@@ -102,6 +102,7 @@ jfieldID java_actor_creation_options_max_concurrency;
 jfieldID java_actor_creation_options_group;
 jfieldID java_actor_creation_options_bundle_index;
 jfieldID java_actor_creation_options_concurrency_groups;
+jfieldID java_actor_creation_options_max_pending_calls;
 
 jclass java_placement_group_creation_options_class;
 jclass java_placement_group_creation_options_strategy_class;
@@ -306,6 +307,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_actor_creation_options_class, "bundleIndex", "I");
   java_actor_creation_options_concurrency_groups = env->GetFieldID(
       java_actor_creation_options_class, "concurrencyGroups", "Ljava/util/List;");
+  java_actor_creation_options_max_pending_calls =
+      env->GetFieldID(java_actor_creation_options_class, "maxPendingCalls", "I");
   java_concurrency_group_impl_class =
       LoadClass(env, "io/ray/runtime/ConcurrencyGroupImpl");
   java_concurrency_group_impl_get_function_descriptors = env->GetMethodID(

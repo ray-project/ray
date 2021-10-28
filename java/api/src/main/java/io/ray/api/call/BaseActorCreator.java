@@ -100,6 +100,19 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
+   * Set the max number of pending calls for this actor.
+   *
+   * <p>The max pending calls defaults to -1 to disable back pressure.
+   *
+   * @param maxPendingCalls The max number of pending calls for this actor.
+   * @return self
+   */
+  public T setMaxPendingCalls(int maxPendingCalls) {
+    builder.setMaxPendingCalls(maxPendingCalls);
+    return self();
+  }
+
+  /**
    * Set the placement group to place this actor in.
    *
    * @param group The placement group of the actor.

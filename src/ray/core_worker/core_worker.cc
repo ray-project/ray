@@ -654,6 +654,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
+  if (job_config_->max_pending_calls() != -1) {
+    RAY_LOG(INFO) << "Core worker actor task back pressure enabled. max_pending_calls "
+                  << job_config_->max_pending_calls();
+  } else {
+    RAY_LOG(INFO) << "Core worker actor task back pressure disabled.";
+  }
+
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(*core_worker_client_pool_, *memory_store_,
                                              *task_manager_, *actor_creator_,
@@ -1784,7 +1791,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, GetCallerId(), rpc_address_, job_id,
       /*actor_cursor=*/ObjectID::FromIndex(actor_creation_task_id, 1),
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
-      actor_creation_options.max_task_retries);
+      actor_creation_options.max_task_retries, actor_creation_options.max_pending_calls);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(
@@ -1944,6 +1951,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
     const ActorID &actor_id, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options) {
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
+  RAY_LOG(INFO) << "SubmitActorTask actor id " << actor_id << " max pending calls "
+                << actor_handle->MaxPendingCalls();
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;

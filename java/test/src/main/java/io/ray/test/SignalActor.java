@@ -25,4 +25,8 @@ public class SignalActor {
   public static ActorHandle<SignalActor> create() {
     return Ray.actor(SignalActor::new).setMaxConcurrency(2).remote();
   }
+
+  public int ping() {
+    return 1;
+  }
 }

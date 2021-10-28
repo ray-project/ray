@@ -469,7 +469,8 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None):
+                runtime_env=None,
+                max_pending_calls=-1):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -522,7 +523,8 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=new_runtime_env)
+                    runtime_env=new_runtime_env,
+                    max_pending_calls=max_pending_calls)
 
         return ActorOptionWrapper()
 
@@ -545,7 +547,8 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None):
+                runtime_env=None,
+                max_pending_calls=-1):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -591,6 +594,7 @@ class ActorClass:
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
+            max_pending_calls (int):
 
         Returns:
             A handle to the newly created actor.
@@ -636,7 +640,8 @@ class ActorClass:
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
-                runtime_env=runtime_env)
+                runtime_env=runtime_env,
+                max_pending_calls=max_pending_calls)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -802,7 +807,8 @@ class ActorClass:
             extension_data=str(actor_method_cpu),
             serialized_runtime_env=parsed_runtime_env.serialize(),
             runtime_env_uris=parsed_runtime_env.get_uris(),
-            concurrency_groups_dict=concurrency_groups_dict or dict())
+            concurrency_groups_dict=concurrency_groups_dict or dict(),
+            max_pending_calls=max_pending_calls)
 
         actor_handle = ActorHandle(
             meta.language,

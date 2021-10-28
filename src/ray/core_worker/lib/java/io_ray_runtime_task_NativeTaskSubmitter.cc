@@ -151,6 +151,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   uint64_t max_concurrency = 1;
   auto placement_options = std::make_pair(PlacementGroupID::Nil(), -1);
   std::vector<ConcurrencyGroup> concurrency_groups;
+  int32_t max_pending_calls = -1;
 
   if (actorCreationOptions) {
     global =
@@ -219,6 +220,9 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         });
   }
 
+  max_pending_calls = static_cast<int32_t>(env->GetIntField(
+      actorCreationOptions, java_actor_creation_options_max_pending_calls));
+
   auto full_name = GetFullName(global, name);
   // TODO(suquark): support passing namespace for Java. Currently
   // there is no use case.
@@ -238,7 +242,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       /*placement_group_capture_child_tasks=*/true,
       /*serialized_runtime_env=*/"{}",
       /*runtime_env_uris=*/{},
-      concurrency_groups};
+      concurrency_groups,
+      max_pending_calls};
   return actor_creation_options;
 }
 
