@@ -1081,7 +1081,8 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner
          "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
          "which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+         "at https://github.com/ray-project/ray/issues/: "
+      << object_id;
 
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
