@@ -35,6 +35,7 @@ from dataclasses import dataclass
 import json
 import os
 import platform
+import re
 import shutil
 import signal
 import subprocess
@@ -282,8 +283,8 @@ def wait_until_process_terminated(process: subprocess.Popen,
 
         print(f"Warning: Process {process.pid} did not terminate within "
               f"timeout, terminating forcefully instead.")
-
-    print(f"Process {process.pid} terminated gracefully.")
+    else:
+        print(f"Process {process.pid} terminated gracefully.")
 
 
 def run_tune_script_for_time(
@@ -530,7 +531,8 @@ def fetch_bucket_contents_to_tmp_dir(bucket: str) -> str:
             ["aws", "s3", "cp", "--recursive", "--quiet", bucket, tmpdir])
     elif bucket.startswith("gs://"):
         subprocess.check_call(["gsutil", "-m", "cp", "-r", bucket, tmpdir])
-        subfolder = "durable_upload"
+        pattern = re.compile("gs://[^/]+/(.+)")
+        subfolder = re.match(pattern, bucket).group(1)
     else:
         raise ValueError(f"Invalid bucket URL: {bucket}")
 
@@ -554,7 +556,9 @@ def load_experiment_checkpoint_from_state_file(
     trials = []
     for trial_cp_str in runner_state["checkpoints"]:
         parsed = json.loads(trial_cp_str, cls=TuneFunctionDecoder)
-        trials.append(TrialStub(**parsed))
+        trial = TrialStub(**parsed)
+        print("GOT TRIAL", trial, parsed)
+        trials.append(trial)
 
     runner_data = runner_state["runner_data"]
 
@@ -1241,7 +1245,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Check if test should be run using Ray client
-    addr = os.environ.get("RAY_ADDRESS")
+    addr = os.environ.get("RAY_ADDRESS", "")
     job_name = os.environ.get("RAY_JOB_NAME", "client_cloud_test")
     if addr.startswith("anyscale://"):
         uses_ray_client = True
