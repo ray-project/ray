@@ -118,22 +118,14 @@ struct Invoker {
   static inline T ParseArg(const ArgsBuffer &pair, bool &is_ok) {
     const char *data = pair.first.data();
     const size_t size = pair.first.size();
-    const bool is_ref_arg = pair.second;
     is_ok = true;
     if constexpr (is_object_ref_v<T>) {
       // Construct an ObjectRef<T> by id.
       return T(std::string(data, size));
     } else {
-      // If it is an ObjectRef arg, get it's real value.
-      if (is_ref_arg) {
-        std::string id(data, size);
-        auto buf = GetValueFromObjectId(id);
-        return Serializer::Deserialize<T>(buf->data(), buf->size());
-      } else {
-        auto [success, value] = Serializer::DeserializeWhenNil<T>(data, size);
-        is_ok = success;
-        return value;
-      }
+      auto [success, value] = Serializer::DeserializeWhenNil<T>(data, size);
+      is_ok = success;
+      return value;
     }
   }
 

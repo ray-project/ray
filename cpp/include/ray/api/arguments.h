@@ -27,17 +27,18 @@ class Arguments {
  public:
   template <typename OriginArgType, typename InputArgTypes>
   static void WrapArgsImpl(std::vector<TaskArg> *task_args, InputArgTypes &&arg) {
-    if constexpr (is_object_ref_v<OriginArgType> || is_object_ref_v<InputArgTypes>) {
-      /// Pass by reference.
-      TaskArg task_arg{};
-      task_arg.id = arg.ID();
-      task_args->emplace_back(std::move(task_arg));
+    if constexpr (is_object_ref_v<OriginArgType>) {
+      PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
+    } else if constexpr (is_object_ref_v<InputArgTypes>) {
+      if (RayRuntimeHolder::Instance().Runtime()->IsLocalMode()) {
+        auto buffer = RayRuntimeHolder::Instance().Runtime()->Get(arg.ID());
+        PushValueArg(task_args, std::move(*buffer));
+      } else {
+        PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
+      }
     } else {
-      msgpack::sbuffer buffer = Serializer::Serialize(arg);
-      TaskArg task_arg;
-      task_arg.buf = std::move(buffer);
-      /// Pass by value.
-      task_args->emplace_back(std::move(task_arg));
+      msgpack::sbuffer buffer = Serializer::Serialize(std::forward<InputArgTypes>(arg));
+      PushValueArg(task_args, std::move(buffer));
     }
   }
 
@@ -50,6 +51,23 @@ class Arguments {
          0)...};
     /// Silence gcc warning error.
     (void)task_args;
+  }
+
+ private:
+  template <typename TaskArg>
+  static void PushValueArg(std::vector<TaskArg> *task_args, msgpack::sbuffer &&buffer) {
+    /// Pass by value.
+    TaskArg task_arg;
+    task_arg.buf = std::move(buffer);
+    task_args->emplace_back(std::move(task_arg));
+  }
+
+  template <typename TaskArg, typename T>
+  static void PushReferenceArg(std::vector<TaskArg> *task_args, T &&arg) {
+    /// Pass by reference.
+    TaskArg task_arg{};
+    task_arg.id = arg.ID();
+    task_args->emplace_back(std::move(task_arg));
   }
 };
 
