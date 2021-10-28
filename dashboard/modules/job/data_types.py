@@ -1,4 +1,9 @@
-from pydantic import BaseModel
+try:
+    from pydantic import BaseModel
+except ImportError:
+    # Lazy import without breaking class def
+    BaseModel = object
+
 from enum import Enum
 
 

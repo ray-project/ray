@@ -6,7 +6,6 @@ from typing import Any, Dict, Tuple, Optional
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
-from ray.serve.utils import get_current_node_resource_key
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_get,
@@ -173,6 +172,22 @@ class JobManager:
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
+    def _get_current_node_resource_key() -> str:
+        """Get the Ray resource key for current node.
+
+        It can be used for actor placement.
+        """
+        current_node_id = ray.get_runtime_context().node_id.hex()
+        for node in ray.nodes():
+            if node["NodeID"] == current_node_id:
+                # Found the node.
+                for key in node["Resources"].keys():
+                    if key.startswith("node:"):
+                        return key
+        else:
+            raise ValueError(
+                "Cannot found the node dictionary for current node.")
+
     def submit_job(self,
                    job_id: str,
                    entrypoint: str,
@@ -191,7 +206,7 @@ class JobManager:
             # Currently we assume JobManager is created by dashboard server
             # running on headnode, same for job supervisor actors scheduled
             resources={
-                get_current_node_resource_key(): 0.001,
+                self._get_current_node_resource_key(): 0.001,
             },
             runtime_env=runtime_env,
         ).remote(job_id)
