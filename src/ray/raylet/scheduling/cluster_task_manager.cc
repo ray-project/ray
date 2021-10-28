@@ -281,7 +281,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       info_by_sched_cls_[scheduling_class].capacity =
           MaxRunningTasksPerSchedulingClass(scheduling_class);
     }
-    auto &sched_cls_info = info_by_sched_cls_[scheduling_class];
+    // auto &sched_cls_info = info_by_sched_cls_[scheduling_class];
 
     /// We cap the maximum running tasks of a scheduling class to avoid
     /// scheduling too many tasks of a single type/depth, when there are
@@ -304,16 +304,22 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         continue;
       }
 
-      if (sched_cls_info.num_running_tasks >= sched_cls_info.capacity) {
-        RAY_LOG(ERROR) << "Hit cap!";
-        work_it++;
-        if (absl::GetCurrentTimeNanos() > sched_cls_info.next_update_time) {
-          double wait_time =
-              (1e-3 * sched_cls_cap_interval_ms_) * (1 << sched_cls_info.num_updates++);
-          sched_cls_info.next_update_time = absl::GetCurrentTimeNanos() + wait_time;
-        }
-        continue;
-      }
+      // if (sched_cls_info.num_running_tasks >= sched_cls_info.capacity) {
+      //   if (absl::GetCurrentTimeNanos() > sched_cls_info.next_update_time) {
+      //     // Don't increase the capacity on the very first update since that
+      //     // will unblock a new task immediately, instead of after the timeout.
+      //     if (sched_cls_info.num_updates > 0) {
+      //       sched_cls_info.capacity++;
+      //     }
+
+      //     double wait_time =
+      //         (1e6 * sched_cls_cap_interval_ms_) * (1L <<
+      //         sched_cls_info.num_updates++);
+      //     sched_cls_info.next_update_time = absl::GetCurrentTimeNanos() + wait_time;
+      //   }
+      //   work_it++;
+      //   continue;
+      // }
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
