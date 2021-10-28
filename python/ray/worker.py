@@ -27,6 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
@@ -191,8 +192,7 @@ class Worker:
     @property
     def runtime_env(self):
         """Get the runtime env in json format"""
-        return json.loads(self.core_worker.get_job_config()
-                          .runtime_env.serialized_runtime_env)
+        return self.core_worker.get_current_runtime_env()
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
@@ -297,7 +297,12 @@ class Worker:
             self.core_worker.put_serialized_object(
                 serialized_value,
                 object_ref=object_ref,
-                owner_address=owner_address))
+                owner_address=owner_address),
+            # If the owner address is set, then the initial reference is
+            # already acquired internally in CoreWorker::CreateOwned.
+            # TODO(ekl) we should unify the code path more with the others
+            # to avoid this special case.
+            skip_adding_local_ref=(owner_address is not None))
 
     def raise_errors(self, data_metadata_pairs, object_refs):
         out = self.deserialize_objects(data_metadata_pairs, object_refs)
@@ -1379,11 +1384,15 @@ def connect(node,
     # at the server side.
     if (mode == SCRIPT_MODE and not job_config.client_job
             and job_config.runtime_env):
-        job_config.set_runtime_env(
-            upload_working_dir_if_needed(
-                job_config.runtime_env,
-                worker.node.get_runtime_env_dir_path(),
-                logger=logger))
+        scratch_dir: str = worker.node.get_runtime_env_dir_path()
+        runtime_env = job_config.runtime_env or {}
+        runtime_env = upload_py_modules_if_needed(
+            runtime_env, scratch_dir, logger=logger)
+        runtime_env = upload_working_dir_if_needed(
+            runtime_env, scratch_dir, logger=logger)
+        # Remove excludes, it isn't relevant after the upload step.
+        runtime_env.pop("excludes", None)
+        job_config.set_runtime_env(runtime_env)
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
