@@ -303,21 +303,35 @@ def test_ray_options(shutdown_only):
 
     @ray.remote(
         num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
-    def foo():
-        import time
-        # Sleep for a heartbeat period to ensure resources changing reported.
-        time.sleep(0.1)
-        return ray.available_resources()
+    def foo(initial_resources):
+        # Possibly wait until the available resources have been updated
+        # (there might be a delay due to heartbeats)
+        retries = 10
+        keys = ["CPU", "GPU", "memory", "custom1"]
+        while retries >= 0:
+            resources = ray.available_resources()
+            do_return = True
+            for key in keys:
+                if resources[key] == initial_resources[key]:
+                    do_return = False
+                    break
+            if do_return:
+                return resources
+            time.sleep(0.2)
+            retries -= 1
+        raise RuntimeError("Number of retries exceeded")
 
-    without_options = ray.get(foo.remote())
+    without_options = ray.get(foo.remote(ray.available_resources()))
     with_options = ray.get(
-        foo.options(
-            num_cpus=3,
-            num_gpus=4,
-            memory=50 * 2**20,
-            resources={
-                "custom1": 0.5
-            }).remote())
+            foo.options(
+                num_cpus=3,
+                num_gpus=4,
+                memory=50 * 2**20,
+                resources={
+                    "custom1": 0.5
+                }).remote(ray.available_resources()))
+
+
 
     to_check = ["CPU", "GPU", "memory", "custom1"]
     for key in to_check:
