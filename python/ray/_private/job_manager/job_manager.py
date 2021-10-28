@@ -1,4 +1,4 @@
-import subprocess
+import asyncio
 import pickle
 import os
 import json
@@ -83,29 +83,6 @@ class JobStatusStorageClient:
         return pickle.loads(pickled_status)
 
 
-def exec_cmd_logs_to_file(
-        cmd: str,
-        stdout_file: str,
-        stderr_file: str,
-) -> int:
-    """
-    Runs a command as a child process, streaming stderr & stdout to given
-    log files.
-    """
-
-    with open(stdout_file, "a+") as stdout_in, open(stderr_file,
-                                                    "a+") as stderr_in:
-        child = subprocess.Popen(
-            cmd,
-            shell=True,
-            universal_newlines=True,
-            stdout=stdout_in,
-            stderr=stderr_in)
-
-        exit_code = child.wait()
-        return exit_code
-
-
 class JobSupervisor:
     """
     Ray actor created by JobManager for each submitted job, responsible to
@@ -125,10 +102,22 @@ class JobSupervisor:
         self._runtime_env = ray.get_runtime_context().runtime_env
         self._metadata = metadata
 
-    def ready(self):
+    async def ready(self):
         pass
 
-    def run(self, cmd: str):
+    async def _exec_cmd(self, cmd: str, stdout_path: str, stderr_path: str):
+        """
+        Runs a command as a child process, streaming stderr & stdout to given
+        log files.
+        """
+        with open(stdout_path, "a+") as stdout, open(stderr_path,
+                                                     "a+") as stderr:
+            child = await asyncio.create_subprocess_shell(
+                cmd, stdout=stdout, stderr=stderr)
+            exit_code = await child.wait()
+            return exit_code
+
+    async def run(self, cmd: str):
         """Run the command, then exit afterwards.
 
         Should update state and logs.
@@ -152,7 +141,7 @@ class JobSupervisor:
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
 
-            exit_code = exec_cmd_logs_to_file(cmd, stdout_path, stderr_path)
+            exit_code = await self._exec_cmd(cmd, stdout_path, stderr_path)
         finally:
             # 3) Once command finishes, update status to SUCCEEDED or FAILED.
             if exit_code == 0:
@@ -162,10 +151,11 @@ class JobSupervisor:
             self._status_client.put_status(self._job_id, self.get_status())
             ray.actor.exit_actor()
 
-    def get_status(self) -> JobStatus:
+    async def get_status(self) -> JobStatus:
         return self._status
 
-    def stop(self):
+    async def stop(self):
+        # TODO(edoakes): implement stop by canceling the asyncio coroutine.
         pass
 
 

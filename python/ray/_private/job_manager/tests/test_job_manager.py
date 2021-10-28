@@ -1,3 +1,6 @@
+import os
+import tempfile
+import time
 from uuid import uuid4
 
 import pytest
@@ -207,3 +210,29 @@ def test_pass_metadata(job_manager):
         check_job_succeeded, job_manager=job_manager, job_id=job_id)
     assert job_manager.get_job_stdout(
         job_id) == b"{'key1': 'val1', 'key2': 'val2'}"
+
+
+def test_status_and_logs_while_blocking(job_manager):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_file = os.path.join(tmp_dir, "hello")
+
+        # Block until file is present.
+        wait_for_file_cmd = (f"until [ -f {tmp_file} ]; "
+                             "do echo 'Waiting...' && sleep 1; "
+                             "done")
+        job_id: str = str(uuid4())
+        job_id = job_manager.submit_job(job_id, wait_for_file_cmd)
+
+        for _ in range(10):
+            time.sleep(0.1)
+            status = job_manager.get_job_status(job_id)
+            assert status == JobStatus.RUNNING
+            stdout = job_manager.get_job_stdout(job_id)
+            assert b"Waiting..." in stdout
+
+        # Signal the job to exit by writing to the file.
+        with open(tmp_file, "w") as f:
+            print("hello", file=f)
+
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
