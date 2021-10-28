@@ -24,9 +24,10 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U
+from ray.data.datasource import (
+    Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
+    ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
 from ray.data.aggregate import AggregateOnT, AggregateFn, Max, Min, Mean
-from ray.data.datasource import (Datasource, CSVDatasource, JSONDatasource,
-                                 NumpyDatasource, ParquetDatasource)
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -1147,6 +1148,8 @@ class Dataset(Generic[T]):
             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
             try_create_dir: bool = True,
             arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+            block_path_provider:
+            BlockWritePathProvider = DefaultBlockWritePathProvider(),
             arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
             **arrow_parquet_args) -> None:
         """Write the dataset to parquet.
@@ -1154,8 +1157,9 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use ``.repartition()``.
 
-        The format of the output files will be {uuid}_{block_idx}.parquet,
-        where ``uuid`` is an unique id for the dataset.
+        Unless a custom block path provider is given, the format of the output
+        files will be {uuid}_{block_idx}.parquet, where ``uuid`` is an unique
+        id for the dataset.
 
         Examples:
             >>> ds.write_parquet("s3://bucket/path")
@@ -1170,6 +1174,8 @@ class Dataset(Generic[T]):
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
+            block_path_provider: BlockWritePathProvider implementation to
+                write each dataset block to a custom output path.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
                 arguments to use when writing each block to a file. Overrides
                 any duplicate keys from arrow_parquet_args. This should be used
@@ -1187,6 +1193,7 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            block_path_provider=block_path_provider,
             write_args_fn=arrow_parquet_args_fn,
             **arrow_parquet_args)
 
@@ -1197,6 +1204,8 @@ class Dataset(Generic[T]):
             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
             try_create_dir: bool = True,
             arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+            block_path_provider:
+            BlockWritePathProvider = DefaultBlockWritePathProvider(),
             pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
             **pandas_json_args) -> None:
         """Write the dataset to json.
@@ -1204,8 +1213,9 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use ``.repartition()``.
 
-        The format of the output files will be {self._uuid}_{block_idx}.json,
-        where ``uuid`` is an unique id for the dataset.
+        Unless a custom block path provider is given, the format of the output
+        files will be {self._uuid}_{block_idx}.json, where ``uuid`` is an
+        unique id for the dataset.
 
         Examples:
             >>> ds.write_json("s3://bucket/path")
@@ -1220,6 +1230,8 @@ class Dataset(Generic[T]):
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
+            block_path_provider: BlockWritePathProvider implementation to
+                write each dataset block to a custom output path.
             pandas_json_args_fn: Callable that returns a dictionary of write
                 arguments to use when writing each block to a file. Overrides
                 any duplicate keys from pandas_json_args. This should be used
@@ -1238,6 +1250,7 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            block_path_provider=block_path_provider,
             write_args_fn=pandas_json_args_fn,
             **pandas_json_args)
 
@@ -1247,6 +1260,8 @@ class Dataset(Generic[T]):
                   filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                   try_create_dir: bool = True,
                   arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+                  block_path_provider:
+                  BlockWritePathProvider = DefaultBlockWritePathProvider(),
                   arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
                   **arrow_csv_args) -> None:
         """Write the dataset to csv.
@@ -1254,8 +1269,9 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use ``.repartition()``.
 
-        The format of the output files will be {uuid}_{block_idx}.csv, where
-        ``uuid`` is an unique id for the dataset.
+        Unless a custom block path provider is given, the format of the output
+        files will be {uuid}_{block_idx}.csv, where ``uuid`` is an unique id
+        for the dataset.
 
         Examples:
             >>> ds.write_csv("s3://bucket/path")
@@ -1270,6 +1286,8 @@ class Dataset(Generic[T]):
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
+            block_path_provider: BlockWritePathProvider implementation to
+                write each dataset block to a custom output path.
             arrow_csv_args_fn: Callable that returns a dictionary of write
                 arguments to use when writing each block to a file. Overrides
                 any duplicate keys from arrow_csv_args. This should be used
@@ -1285,6 +1303,7 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            block_path_provider=block_path_provider,
             write_args_fn=arrow_csv_args_fn,
             **arrow_csv_args)
 
@@ -1295,15 +1314,18 @@ class Dataset(Generic[T]):
             column: str = "value",
             filesystem: Optional["pyarrow.fs.FileSystem"] = None,
             try_create_dir: bool = True,
-            arrow_open_stream_args: Optional[Dict[str, Any]] = None) -> None:
+            arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+            block_path_provider:
+            BlockWritePathProvider = DefaultBlockWritePathProvider()) -> None:
         """Write a tensor column of the dataset to npy files.
 
         This is only supported for datasets convertible to Arrow records that
         contain a TensorArray column. To control the number of files, use
         ``.repartition()``.
 
-        The format of the output files will be {self._uuid}_{block_idx}.npy,
-        where ``uuid`` is an unique id for the dataset.
+        Unless a custom block path provider is given, the format of the output
+        files will be {self._uuid}_{block_idx}.npy, where ``uuid`` is an unique
+        id for the dataset.
 
         Examples:
             >>> ds.write_numpy("s3://bucket/path")
@@ -1320,6 +1342,8 @@ class Dataset(Generic[T]):
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
+            block_path_provider: BlockWritePathProvider implementation to
+                write each dataset block to a custom output path.
         """
         self.write_datasource(
             NumpyDatasource(),
@@ -1328,7 +1352,8 @@ class Dataset(Generic[T]):
             column=column,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
-            open_stream_args=arrow_open_stream_args)
+            open_stream_args=arrow_open_stream_args,
+            block_path_provider=block_path_provider)
 
     def write_datasource(self, datasource: Datasource[T],
                          **write_args) -> None:
