@@ -48,10 +48,7 @@ RUN echo "ulimit -c 0" >> /root/.bashrc
 
 # Setup Bazel caches
 RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
-    # Prevent uploading binary asserts to the cache.
     (if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
-    # Not use cached test results to ensure post-merge CI can discover flakiness.
-    (if [ "${BUILDKITE_BRANCH}" == "master" ]; then (echo "test --nocache_test_results" >> /root/.bazelrc); fi); \
     cat /root/.bazelrc
 
 RUN mkdir /ray
