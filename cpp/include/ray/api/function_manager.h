@@ -48,8 +48,7 @@ inline static msgpack::sbuffer PackVoid() {
 
 msgpack::sbuffer PackError(std::string error_msg);
 
-using ArgsBuffer =
-    std::pair<msgpack::sbuffer, bool /*Show it is an ObjectRef arg or not*/>;
+using ArgsBuffer = msgpack::sbuffer;
 using ArgsBufferList = std::vector<ArgsBuffer>;
 
 using RemoteFunction = std::function<msgpack::sbuffer(const ArgsBufferList &)>;
@@ -115,15 +114,14 @@ struct Invoker {
 
  private:
   template <typename T>
-  static inline T ParseArg(const ArgsBuffer &pair, bool &is_ok) {
-    const char *data = pair.first.data();
-    const size_t size = pair.first.size();
+  static inline T ParseArg(const ArgsBuffer &args_buffer, bool &is_ok) {
     is_ok = true;
     if constexpr (is_object_ref_v<T>) {
       // Construct an ObjectRef<T> by id.
-      return T(std::string(data, size));
+      return T(std::string(args_buffer.data(), args_buffer.size()));
     } else {
-      auto [success, value] = Serializer::DeserializeWhenNil<T>(data, size);
+      auto [success, value] =
+          Serializer::DeserializeWhenNil<T>(args_buffer.data(), args_buffer.size());
       is_ok = success;
       return value;
     }

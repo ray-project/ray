@@ -154,7 +154,7 @@ Status TaskExecutor::ExecuteTask(
       sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
     }
 
-    ray_args_buffer.push_back(std::make_pair(std::move(sbuf), is_ref_arg));
+    ray_args_buffer.push_back(std::move(sbuf));
   }
   if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
     std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
@@ -225,11 +225,11 @@ void TaskExecutor::Invoke(
       const auto &id = task_spec.ArgId(i).Binary();
       msgpack::sbuffer sbuf;
       sbuf.write(id.data(), id.size());
-      args_buffer.push_back(std::make_pair(std::move(sbuf), true));
+      args_buffer.push_back(std::move(sbuf));
     } else {
       msgpack::sbuffer sbuf;
       sbuf.write((const char *)task_spec.ArgData(i), task_spec.ArgDataSize(i));
-      args_buffer.push_back(std::make_pair(std::move(sbuf), false));
+      args_buffer.push_back(std::move(sbuf));
     }
   }
 
