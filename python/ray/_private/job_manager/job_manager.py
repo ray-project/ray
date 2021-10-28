@@ -1,8 +1,9 @@
-import subprocess
-import pickle
-import os
 import json
+import os
+import pickle
+import subprocess
 from typing import Any, Dict, Tuple, Optional
+from uuid import uuid4
 
 import ray
 import ray.ray_constants as ray_constants
@@ -193,8 +194,8 @@ class JobManager:
 
     def submit_job(
             self,
-            job_id: str,
             entrypoint: str,
+            job_id: Optional[str] = None,
             runtime_env: Optional[Dict[str, Any]] = None,
             metadata: Optional[Dict[str, str]] = None,
     ) -> str:
@@ -206,6 +207,7 @@ class JobManager:
 
         Returns unique job_id.
         """
+        job_id = job_id or str(uuid4())
         supervisor = self._supervisor_actor_cls.options(
             lifetime="detached",
             name=self.JOB_ACTOR_NAME.format(job_id=job_id),
