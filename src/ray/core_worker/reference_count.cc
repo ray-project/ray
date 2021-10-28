@@ -1196,6 +1196,15 @@ bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id) const 
   return it->second.is_reconstructable;
 }
 
+bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  return it->second.pending_creation;
+}
+
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &object_id = it->first;
   const auto &locations = it->second.locations;

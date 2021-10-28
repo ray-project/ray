@@ -485,20 +485,23 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  RAY_LOG(WARNING) << "Object neither in memory nor external storage " << object_id.Hex();
   if (request.expiration_time_seconds == 0) {
+    RAY_LOG(WARNING) << "Object neither in memory nor external storage "
+                     << object_id.Hex();
     request.expiration_time_seconds =
         get_time_seconds_() +
         RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
   } else if (request.pending_object_creation) {
     // Object is pending creation, wait for the task that creates the object to
     // finish.
+    RAY_LOG(INFO) << "Object pending creation " << object_id.Hex();
     request.expiration_time_seconds =
         get_time_seconds_() +
         RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
   } else if (get_time_seconds_() > request.expiration_time_seconds) {
     // Object has no locations and is not being reconstructed by its owner.
     fail_pull_request_(object_id);
+    request.expiration_time_seconds = 0;
   }
 }
 

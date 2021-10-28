@@ -472,6 +472,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool IsObjectReconstructable(const ObjectID &object_id) const;
 
+  /// Whether the object is pending creation (the task that creates it is
+  /// scheduled/executing).
+  bool IsObjectPendingCreation(const ObjectID &object_id) const;
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.

@@ -1127,7 +1127,7 @@ TEST_P(PullManagerTest, TestTimeOut) {
   pull_manager_.Tick();
   ASSERT_FALSE(timed_out_objects_.count(oids[0]));
   // Object has no locations now and is no longer pending execution.
-  pull_manager_.OnLocationChange(oids[0], client_ids, "", NodeID::Nil(), false, 0);
+  pull_manager_.OnLocationChange(oids[0], {}, "", NodeID::Nil(), false, 0);
   fake_time_ += 61;
   pull_manager_.Tick();
   ASSERT_TRUE(timed_out_objects_.count(oids[0]));
