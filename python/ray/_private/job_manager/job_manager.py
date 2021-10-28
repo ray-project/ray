@@ -1,9 +1,11 @@
 import subprocess
 import pickle
 import os
+import json
 from typing import Any, Dict, Tuple, Optional
 
 import ray
+import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.experimental.internal_kv import (
@@ -12,6 +14,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
 )
 from ray.dashboard.modules.job.data_types import JobStatus
+from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
 
 class JobLogStorageClient:
@@ -79,11 +82,16 @@ class JobStatusStorageClient:
         return pickle.loads(pickled_status)
 
 
-def exec_cmd_logs_to_file(cmd: str, stdout_file: str, stderr_file: str) -> int:
+def exec_cmd_logs_to_file(
+        cmd: str,
+        stdout_file: str,
+        stderr_file: str,
+) -> int:
     """
     Runs a command as a child process, streaming stderr & stdout to given
     log files.
     """
+
     with open(stdout_file, "a+") as stdout_in, open(stderr_file,
                                                     "a+") as stderr_in:
         child = subprocess.Popen(
@@ -126,13 +134,22 @@ class JobSupervisor:
             "Run should only be called once.")
         self._status = JobStatus.RUNNING
         self._status_client.put_status(self._job_id, self._status)
+        exit_code = None
 
         try:
             # 2) Run the command until it finishes, appending logs as it goes.
             # Set JobConfig for the child process (runtime_env, metadata).
-            #  - RAY_JOB_CONFIG_JSON={...}
+            #  - RAY_JOB_CONFIG_JSON_ENV_VAR={...}
+            os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps({
+                "runtime_env": ray.get_runtime_context().runtime_env
+            })
+            ray_redis_address = ray._private.services.find_redis_address_or_die(  # noqa: E501
+            )
+            os.environ[ray_constants.
+                       RAY_ADDRESS_ENVIRONMENT_VARIABLE] = ray_redis_address
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
+
             exit_code = exec_cmd_logs_to_file(cmd, stdout_path, stderr_path)
         finally:
             # 3) Once command finishes, update status to SUCCEEDED or FAILED.
@@ -188,10 +205,12 @@ class JobManager:
             raise ValueError(
                 "Cannot found the node dictionary for current node.")
 
-    def submit_job(self,
-                   job_id: str,
-                   entrypoint: str,
-                   runtime_env: Optional[Dict[str, Any]] = None) -> str:
+    def submit_job(
+            self,
+            job_id: str,
+            entrypoint: str,
+            runtime_env: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """
         1) Create new detached actor with same runtime_env as job spec
         2) Get task / actor level runtime_env as env var and pass into
@@ -208,6 +227,8 @@ class JobManager:
             resources={
                 self._get_current_node_resource_key(): 0.001,
             },
+            # For now we assume supervisor actor and driver script have same
+            # runtime_env.
             runtime_env=runtime_env,
         ).remote(job_id)
 
