@@ -54,9 +54,9 @@ def create_scheduler(
 
     scheduler = scheduler.lower()
     if scheduler not in SCHEDULER_IMPORT:
-        raise ValueError(
-            f"Search alg must be one of {list(SCHEDULER_IMPORT)}. "
-            f"Got: {scheduler}")
+        raise ValueError(f"The `scheduler` argument must be one of "
+                         f"{list(SCHEDULER_IMPORT)}. "
+                         f"Got: {scheduler}")
 
     SchedulerClass = SCHEDULER_IMPORT[scheduler]
 

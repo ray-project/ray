@@ -917,7 +917,36 @@ std::string ClusterTaskManager::DebugStr() const {
   buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
-  buffer << "==================================================";
+  buffer << "Resource usage {\n";
+  /// Calculates how much resources are occupied by tasks or actors.
+  for (const auto &worker :
+       worker_pool_.GetAllRegisteredWorkers(/*filter_dead_workers*/ true)) {
+    if (worker->IsDead()        // worker is dead
+        || worker->IsBlocked()  // worker is blocked by blocking Ray API
+        || (worker->GetAssignedTaskId().IsNil() &&
+            worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
+      // Then this shouldn't have allocated resources.
+      continue;
+    }
+
+    const auto &task_or_actor_name = worker->GetAssignedTask()
+                                         .GetTaskSpecification()
+                                         .FunctionDescriptor()
+                                         ->CallString();
+    buffer << "    - ("
+           << "language="
+           << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
+           << " "
+           << "actor_or_task=" << task_or_actor_name << " "
+           << "pid=" << worker->GetProcess().GetId() << "): "
+           << worker->GetAssignedTask()
+                  .GetTaskSpecification()
+                  .GetRequiredResources()
+                  .ToString()
+           << "\n";
+  }
+  buffer << "}\n";
+  buffer << "==================================================\n";
   return buffer.str();
 }
 
@@ -1071,14 +1100,14 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
                    << " on a remote node that are no longer available";
   }
 
-  auto node_info_opt = get_node_info_(spillback_to);
-  RAY_CHECK(node_info_opt)
+  auto node_info_ptr = get_node_info_(spillback_to);
+  RAY_CHECK(node_info_ptr)
       << "Spilling back to a node manager, but no GCS info found for node "
       << spillback_to;
   auto reply = work->reply;
   reply->mutable_retry_at_raylet_address()->set_ip_address(
-      node_info_opt->node_manager_address());
-  reply->mutable_retry_at_raylet_address()->set_port(node_info_opt->node_manager_port());
+      node_info_ptr->node_manager_address());
+  reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {

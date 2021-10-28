@@ -99,6 +99,13 @@ class WorkerPoolInterface {
   /// \param The idle worker to add.
   virtual void PushWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
 
+  /// Get all the registered workers.
+  ///
+  /// \param filter_dead_workers whether or not if this method will filter dead workers
+  /// that are still registered. \return A list containing all the workers.
+  virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers = false) const = 0;
+
   virtual ~WorkerPoolInterface(){};
 };
 

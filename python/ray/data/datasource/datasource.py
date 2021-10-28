@@ -229,8 +229,8 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
     Examples:
         >>> source = RandomIntRowDatasource()
         >>> ray.data.read_datasource(source, n=10, num_columns=2).take()
-        ... ArrowRow({'c_0': 1717767200176864416, 'c_1': 999657309586757214})
-        ... ArrowRow({'c_0': 4983608804013926748, 'c_1': 1160140066899844087})
+        ... {'c_0': 1717767200176864416, 'c_1': 999657309586757214}
+        ... {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
     """
 
     def prepare_read(self, parallelism: int, n: int,

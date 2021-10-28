@@ -64,8 +64,8 @@ class Trainer:
             a subclass of ``BackendConfig`` can be passed in.
             Supported ``str`` values: {"torch", "tensorflow", "horovod"}.
         num_workers (int): The number of workers (Ray actors) to launch.
-            Defaults to 1. Each worker will reserve 1 CPU by default. The
-            number of CPUs reserved by each worker can be overridden with the
+            Each worker will reserve 1 CPU by default. The number of CPUs
+            reserved by each worker can be overridden with the
             ``resources_per_worker`` argument.
         use_gpu (bool): If True, training will be done on GPUs (1 per
             worker). Defaults to False. The number of GPUs reserved by each
@@ -85,7 +85,7 @@ class Trainer:
     def __init__(
             self,
             backend: Union[str, BackendConfig],
-            num_workers: int = 1,
+            num_workers: int,
             use_gpu: bool = False,
             resources_per_worker: Optional[Dict[str, float]] = None,
             logdir: Optional[str] = None,
@@ -375,14 +375,17 @@ class Trainer:
         return self._executor.latest_checkpoint_dir
 
     @property
-    def latest_checkpoint_path(self) -> Optional[Path]:
-        """Path to the latest persisted checkpoint from the latest run.
+    def best_checkpoint_path(self) -> Optional[Path]:
+        """Path to the best persisted checkpoint from the latest run.
+
+        "Best" is defined by the input ``CheckpointStrategy``.
+        Default behavior is to return the most recent checkpoint.
 
         Returns ``None`` if ``run()`` has not been called or if
         ``train.checkpoint()`` has not been called from ``train_func`` within
         the most recent call to ``run``.
         """
-        return self._executor.latest_checkpoint_path
+        return self._executor.best_checkpoint_path
 
     @property
     def latest_checkpoint(self) -> Optional[Dict]:
