@@ -47,7 +47,8 @@ def aligned_array(size: int, dtype, align: int = 64) -> np.ndarray:
     return output
 
 
-def concat_aligned(items: List[np.ndarray], time_major: Optional[bool] = None) -> np.ndarray:
+def concat_aligned(items: List[np.ndarray],
+                   time_major: Optional[bool] = None) -> np.ndarray:
     """Concatenate arrays, ensuring the output is 64-byte aligned.
 
     We only align float arrays; other arrays are concatenated as normal.
@@ -132,7 +133,9 @@ def convert_to_numpy(x: TensorStructType, reduce_floats: bool = False):
     return tree.map_structure(mapping, x)
 
 
-def fc(x: np.ndarray, weights: np.ndarray, biases: Optional[np.ndarray] = None,
+def fc(x: np.ndarray,
+       weights: np.ndarray,
+       biases: Optional[np.ndarray] = None,
        framework: Optional[str] = None) -> np.ndarray:
     """Calculates FC (dense) layer outputs given weights/biases and input.
 

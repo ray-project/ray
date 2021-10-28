@@ -136,9 +136,8 @@ def get_placeholder(*,
 
 
 def get_tf_eager_cls_if_necessary(
-    orig_cls: Type["TFPolicy"],
-    config: PartialTrainerConfigDict
-) -> Type["TFPolicy"]:
+        orig_cls: Type["TFPolicy"],
+        config: PartialTrainerConfigDict) -> Type["TFPolicy"]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:
@@ -287,18 +286,20 @@ def make_tf_callable(session_or_none: Optional[tf1.Session],
 
 
 def minimize_and_clip(
-    optimizer: LocalOptimizer,
-    objective: TensorType,
-    var_list: List[tf.Variable],
-    clip_val: float = 10.0,
+        optimizer: LocalOptimizer,
+        objective: TensorType,
+        var_list: List[tf.Variable],
+        clip_val: float = 10.0,
 ) -> ModelGradients:
     """Computes, then clips gradients using objective, optimizer and var list.
 
-    Clipping is done using the bound `clip_val` on the global norm.
+    Ensures the norm of the gradients for each variable is clipped to
+    `clip_val`.
 
     Args:
-        optimizer: Either a shim optimizer (tf eager) containing a tf.GradientTape
-            under `self.tape` or a tf1 local optimizer object.
+        optimizer: Either a shim optimizer (tf eager) containing a
+            tf.GradientTape under `self.tape` or a tf1 local optimizer
+            object.
         objective: The loss tensor to calculate gradients on.
         var_list: The list of tf.Variables to compute gradients over.
         clip_val: The global norm clip value. Will clip around -clip_val and
@@ -365,7 +366,8 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
-def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorType:
+def reduce_mean_ignore_inf(x: TensorType,
+                           axis: Optional[int] = None) -> TensorType:
     """Same as tf.reduce_mean() but ignores -inf values.
 
     Args:

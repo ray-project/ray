@@ -23,10 +23,8 @@ FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
 
 
-def apply_grad_clipping(
-    policy: "TorchPolicy",
-    optimizer: LocalOptimizer,
-    loss: TensorType) -> Dict[str, TensorType]:
+def apply_grad_clipping(policy: "TorchPolicy", optimizer: LocalOptimizer,
+                        loss: TensorType) -> Dict[str, TensorType]:
     """Applies gradient clipping to already computed grads inside `optimizer`.
 
     Args:
@@ -54,6 +52,10 @@ def apply_grad_clipping(
     return info
 
 
+@Deprecated(
+    old="ray.rllib.utils.torch_utils.atanh",
+    new="torch.math.atanh",
+    error=False)
 def atanh(x: TensorType) -> TensorType:
     """Atanh function for PyTorch."""
     return 0.5 * torch.log(
@@ -61,13 +63,16 @@ def atanh(x: TensorType) -> TensorType:
 
 
 def concat_multi_gpu_td_errors(policy: "TorchPolicy") -> Dict[str, TensorType]:
-    """
+    """Concatenates multi-GPU (per-tower) TD error tensors given TorchPolicy.
+
+    TD-errors are extracted from the TorchPolicy via its tower_stats property.
 
     Args:
-        policy:
+        policy: The TorchPolicy to extract the TD-error values from.
 
     Returns:
-
+        A dict mapping strings "td_error" and "mean_td_error" to the
+        corresponding concatenated and mean-reduced values.
     """
     td_error = torch.cat(
         [
@@ -227,12 +232,19 @@ def l2_loss(x: TensorType) -> TensorType:
     return 0.5 * torch.sum(torch.pow(x, 2.0))
 
 
-def minimize_and_clip(optimizer, clip_val=10):
-    """Clips gradients found in `optimizer.param_groups` to given value.
+def minimize_and_clip(optimizer: torch.Optimizer,
+                      clip_val: float = 10.0) -> None:
+    """Clips grads found in `optimizer.param_groups` to given value in place.
 
     Ensures the norm of the gradients for each variable is clipped to
-    `clip_val`
+    `clip_val`.
+
+    Args:
+        optimizer: The torch.Optimizer to get the variables from.
+        clip_val: The global norm clip value. Will clip around -clip_val and
+            +clip_val.
     """
+    # Loop through optimizer's variables and norm per variable.
     for param_group in optimizer.param_groups:
         for p in param_group["params"]:
             if p.grad is not None:
@@ -284,7 +296,8 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
-def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorType:
+def reduce_mean_ignore_inf(x: TensorType,
+                           axis: Optional[int] = None) -> TensorType:
     """Same as torch.mean() but ignores -inf values.
 
     Args:
@@ -299,26 +312,51 @@ def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorT
     return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
 
 
-def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
+def sequence_mask(
+        lengths: TensorType,
+        maxlen: Optional[int] = None,
+        dtype=None,
+        time_major: bool = False,
+) -> TensorType:
     """Offers same behavior as tf.sequence_mask for torch.
 
     Thanks to Dimitris Papatheodorou
     (https://discuss.pytorch.org/t/pytorch-equivalent-for-tf-sequence-mask/
     39036).
+
+    Args:
+        lengths: The tensor of individual lengths to mask by.
+        maxlen: The maximum length to use for the time axis. If None, use
+            the max of `lengths`.
+        dtype: The torch dtype to use for the resulting mask.
+        time_major: Whether to return the mask as [B, T] (False; default) or
+            as [T, B] (True).
+
+    Returns:
+         The sequence mask resulting from the given input and parameters.
     """
+    # If maxlen not given, use the longest lengths in the `lengths` tensor.
     if maxlen is None:
         maxlen = int(lengths.max())
 
     mask = ~(torch.ones(
         (len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t() > lengths)
+    # Time major transformation.
     if not time_major:
         mask = mask.t()
+
+    # By default, set the mask to be boolean.
     mask.type(dtype or torch.bool)
 
     return mask
 
 
-def set_torch_seed(seed):
+def set_torch_seed(seed: Optional[int] = None) -> None:
+    """Sets the torch random seed to the given value.
+
+    Args:
+        seed: The seed to use or None for no seeding.
+    """
     if seed is not None and torch:
         torch.manual_seed(seed)
         # See https://github.com/pytorch/pytorch/issues/47672.
@@ -332,7 +370,10 @@ def set_torch_seed(seed):
         torch.backends.cudnn.deterministic = True
 
 
-def softmax_cross_entropy_with_logits(logits: TensorType, labels: TensorType) -> TensorType:
+def softmax_cross_entropy_with_logits(
+        logits: TensorType,
+        labels: TensorType,
+) -> TensorType:
     """Same behavior as tf.nn.softmax_cross_entropy_with_logits.
 
     Args:

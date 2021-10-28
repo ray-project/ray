@@ -54,8 +54,9 @@ def ExperimentalAPI(obj):
     """Annotation for documenting experimental APIs.
 
     Experimental APIs are classes and methods that are in development and may
-    change at any time in their development process. You should not expect these
-    APIs to be stable until their tag is changed to `DeveloperAPI` or `PublicAPI`.
+    change at any time in their development process. You should not expect
+    these APIs to be stable until their tag is changed to `DeveloperAPI` or
+    `PublicAPI`.
 
     Subclasses that inherit from a ``@ExperimentalAPI`` base class can be
     assumed experimental as well.
