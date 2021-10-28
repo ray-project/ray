@@ -4,13 +4,15 @@ import os
 import sys
 import time
 
+import psutil
 import numpy as np
 import pytest
+import signal
 
 import ray
 import ray.cluster_utils
 
-from ray._private.test_utils import (RayTestTimeoutException,
+from ray._private.test_utils import (run_string_as_driver, run_string_as_driver_nonblocking, RayTestTimeoutException,
                                      wait_for_pid_to_exit, wait_for_condition)
 
 logger = logging.getLogger(__name__)
@@ -743,6 +745,73 @@ def test_max_call_tasks(ray_start_regular):
     pid2 = ray.get(f.remote())
     assert pid1 == pid2
     wait_for_pid_to_exit(pid1)
+
+
+def test_worker_leaked_when_drain(ray_start_regular):
+    @ray.remote
+    def hello():
+        return "hello"
+
+    # Warnup cluster
+    assert "hello" == ray.get(hello.remote())
+
+    driver_template = """
+import ray
+import os
+import ray
+import numpy as np
+import time
+
+ray.init(address="{address}", namespace="test")
+
+@ray.remote
+class KvStore:
+    def __init__(self):
+        self.__data = dict()
+        
+    def put(self, k, v):
+        self.__data[k] = v
+        return True
+        
+    def get(self, k):
+        return self.__data[k]
+
+@ray.remote
+def normal_task(large):
+    try:
+        kvstore = ray.get_actor("kvstore", namespace="test")
+    except Exception as e:
+        kvstore = KvStore.options(name="kvstore", lifetime="detached").remote()
+    ray.get(kvstore.put.remote("pid", os.getpid()))
+    time.sleep(60 * 60)
+    return "normaltask"
+
+large = ray.put(np.zeros(100 * 2**10, dtype=np.int8))
+obj = normal_task.remote(large)
+print(ray.get(obj))
+"""
+    driver_script = driver_template.format(
+        address=ray_start_regular["redis_address"])
+    
+    driver_proc = run_string_as_driver_nonblocking(driver_script)
+
+    try:
+        driver_proc.wait(10)
+    except Exception as e:
+        print(e)
+
+    kvstore = ray.get_actor("kvstore", namespace="test")
+    normal_task_pid = ray.get(kvstore.get.remote("pid"))
+    normal_task_proc = psutil.Process(normal_task_pid)
+    print("killing normal task process, pid=", normal_task_pid)
+    normal_task_proc.send_signal(signal.SIGTERM)
+    time.sleep(3)
+
+    driver_proc.send_signal(signal.SIGTERM)
+    # Sleep to make sure raylet triggered cleanuping the idle workers.
+    time.sleep(10)
+
+    assert not psutil.pid_exists(normal_task_pid)
 
 
 if __name__ == "__main__":

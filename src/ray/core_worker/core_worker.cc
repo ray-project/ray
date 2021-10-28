@@ -832,6 +832,8 @@ void CoreWorker::Exit(
   RAY_CHECK_OK(
       local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
+  RAY_LOG(DEBUG) << "Exit signal received, remove all local references.";
+  reference_counter_->ReleaseAllLocalReferences();
   // Callback to shutdown.
   auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
