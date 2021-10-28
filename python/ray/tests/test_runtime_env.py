@@ -150,6 +150,11 @@ def test_invalid_conda_env(shutdown_only):
     def f():
         pass
 
+    @ray.remote
+    class A:
+        def f(self):
+            pass
+
     start = time.time()
     bad_env = {"conda": {"dependencies": ["this_doesnt_exist"]}}
     with pytest.raises(RuntimeEnvSetupError):
@@ -158,6 +163,12 @@ def test_invalid_conda_env(shutdown_only):
 
     # Check that another valid task can run.
     ray.get(f.remote())
+
+    # Check actor is also broken.
+    # TODO(sang): It should raise RuntimeEnvSetupError
+    a = A.options(runtime_env=bad_env).remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.f.remote())
 
     # The second time this runs it should be faster as the error is cached.
     start = time.time()
