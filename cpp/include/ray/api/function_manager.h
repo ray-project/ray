@@ -58,9 +58,6 @@ using RemoteMemberFunction =
     std::function<msgpack::sbuffer(msgpack::sbuffer *, const ArgsBufferList &)>;
 using RemoteMemberFunctionMap_t = std::unordered_map<std::string, RemoteMemberFunction>;
 
-inline std::function<std::shared_ptr<msgpack::sbuffer>(const std::string &id)>
-    GetValueFromObjectId;
-
 /// It's help to invoke functions and member functions, the class Invoker<Function> help
 /// do type erase.
 template <typename Function>
