@@ -170,6 +170,17 @@ class Session:
         # triggers resume.
         self.continue_lock.acquire()
 
+    def _auto_fill_checkpoint_metrics(self, result: dict) -> dict:
+        """Add autofilled metrics and update attributes."""
+        current_datetime = datetime.now()
+
+        auto_filled_metrics = {
+            TIMESTAMP: int(time.mktime(current_datetime.timetuple()))
+        }
+        result = result.copy()
+        result.update(auto_filled_metrics)
+        return result
+
     def checkpoint(self, **kwargs):
         """Adds kwargs to the queue to be consumed by main thread.
 
@@ -182,6 +193,8 @@ class Session:
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
             kwargs = {}
+        else:
+            kwargs = self._auto_fill_checkpoint_metrics(kwargs)
 
         result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
         # Add result to a thread-safe queue.
