@@ -14,7 +14,6 @@ py_test_module_list(
     "test_async.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
-    "test_advanced.py",
     "test_advanced_2.py",
     "test_advanced_3.py",
     "test_advanced_4.py",
@@ -79,7 +78,6 @@ py_test_module_list(
     "test_placement_group_2.py",
     "test_placement_group_3.py",
     "test_ray_init.py",
-    "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_env_env_vars.py",
@@ -153,6 +151,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_advanced.py",
+    "test_reconstruction.py"
     "test_cli.py",
     "test_failure.py",
     "test_actor_advanced.py",
