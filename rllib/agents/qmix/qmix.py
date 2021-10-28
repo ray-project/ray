@@ -58,11 +58,7 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Replay buffer ===
     # Size of the replay buffer in batches (not timesteps!).
-    "buffer_size": DEPRECATED_VALUE,
-    "replay_buffer_config": {
-        "type": "LocalReplayBuffer",
-        "capacity": 1000,
-    },
+    "buffer_size": 1000,
     # === Optimization ===
     # Learning rate for RMSProp optimizer
     "lr": 0.0005,
