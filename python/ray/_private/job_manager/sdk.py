@@ -4,8 +4,12 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 
-from pydantic import BaseModel
-from pydantic.main import ModelMetaclass
+try:
+    from pydantic import BaseModel
+    from pydantic.main import ModelMetaclass
+except ImportError:
+    BaseModel = object
+    ModelMetaclass = object
 
 import requests
 
