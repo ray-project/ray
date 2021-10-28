@@ -27,6 +27,8 @@ class ClientMmapTableEntry {
   uint8_t *pointer_;
   /// The length of the memory-mapped file.
   size_t length_;
+  /// Whether the table entry is mmapped or not. If not, the
+  /// base address is provided.
   bool mapped_;
 
   RAY_DISALLOW_COPY_AND_ASSIGN(ClientMmapTableEntry);

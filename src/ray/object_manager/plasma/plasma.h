@@ -49,7 +49,7 @@ struct PlasmaObject {
   int device_num;
   /// Set if device_num is equal to 0.
   int64_t mmap_size;
-  /// Pointer to the allocated memory.
+  /// Pointer to the base address of mmapped memory which the object allocated in.
   void *address;
 
   bool operator==(const PlasmaObject &other) const {
