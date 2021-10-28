@@ -182,7 +182,7 @@ class ActorReplicaWrapper:
                 backend_info.backend_config.to_proto_bytes(), version,
                 self._controller_name, self._detached)
 
-        self._allocated_obj_ref = self._actor_handle.poke.remote()
+        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
 
@@ -214,7 +214,7 @@ class ActorReplicaWrapper:
                 self._placement_group_name)
 
         # Re-fetch initialization proof
-        self._allocated_obj_ref = self._actor_handle.poke.remote()
+        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
 
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
@@ -1129,7 +1129,8 @@ class BackendState:
                 logger.warning(
                     f"Deployment '{self._name}' has "
                     f"{len(pending_initialization)} replicas that have taken "
-                    f"more than {SLOW_STARTUP_WARNING_S}s to initialize")
+                    f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
+                    "may be caused by a slow __init__ or reconfigure method.")
 
             self._prev_startup_warning = time.time()
 

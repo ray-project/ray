@@ -73,8 +73,15 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
             controller_handle = ray.get_actor(
                 controller_name, namespace=controller_namespace)
 
-            # use a closure to capture all constructor arguments
-            async def start_replica():
+            # This closure initializes user code and finalizes replica
+            # startup. By splitting the initialization step like this,
+            # we can already access this actor before the user code
+            # has finished initializing.
+            # The supervising state manager can then wait
+            # for allocation of this replica by using the `is_allocated`
+            # method. After that, it calls `reconfigure` to trigger
+            # user code initialization.
+            async def initialize_backend():
                 if is_function:
                     _callable = backend
                 else:
@@ -99,7 +106,7 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
             # Should we add a check in all methods that use self.backend
             # or, alternatively, create an async get_backend() method?
             self.backend = None
-            self._start_replica = start_replica
+            self._initialize_backend = initialize_backend
 
             # asyncio.Event used to signal that the replica is shutting down.
             self.shutdown_event = asyncio.Event()
@@ -119,7 +126,7 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
-        async def poke(self):
+        async def is_allocated(self):
             """poke the replica to check whether it's alive.
 
             When calling this method on an ActorHandle, it will complete as
@@ -133,7 +140,7 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
         async def reconfigure(self, user_config: Optional[Any] = None
                               ) -> Tuple[BackendConfig, BackendVersion]:
             if self.backend is None:
-                await self._start_replica()
+                await self._initialize_backend()
             if user_config is not None:
                 await self.backend.reconfigure(user_config)
 
