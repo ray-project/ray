@@ -30,6 +30,9 @@ class Arguments {
     if constexpr (is_object_ref_v<OriginArgType>) {
       PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
     } else if constexpr (is_object_ref_v<InputArgTypes>) {
+      // core_worker submitting task callback will get the value of an ObjectRef arg, but
+      // local mode we don't call core_worker submit task, so we need get the value of an
+      // ObjectRef arg only for local mode.
       if (RayRuntimeHolder::Instance().Runtime()->IsLocalMode()) {
         auto buffer = RayRuntimeHolder::Instance().Runtime()->Get(arg.ID());
         PushValueArg(task_args, std::move(*buffer));
