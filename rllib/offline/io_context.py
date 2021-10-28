@@ -1,9 +1,11 @@
 import os
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
-from ray.rllib.evaluation.sampler import SamplerInput
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.typing import TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation.sampler import SamplerInput
 
 
 @PublicAPI
@@ -36,7 +38,7 @@ class IOContext:
         self.worker = worker
 
     @PublicAPI
-    def default_sampler_input(self) -> Optional[SamplerInput]:
+    def default_sampler_input(self) -> Optional["SamplerInput"]:
         """Returns the RolloutWorker's SamplerInput object, if any.
 
         Returns None if the RolloutWorker has no SamplerInput. Note that local
