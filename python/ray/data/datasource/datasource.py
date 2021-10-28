@@ -205,6 +205,8 @@ class _DesignatedBlockOwner:
         return "ok"
 
 
+# We manually assign the owner so ray.put() blocks do not fate share with the
+# worker that created them.
 # TODO(ekl) remove this once we implement automatic ownership transfer.
 def _get_or_create_block_owner_actor() -> ray.actor.ActorHandle:
     name = "datasets_global_block_owner"
