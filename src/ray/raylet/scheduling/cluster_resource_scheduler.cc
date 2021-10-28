@@ -787,6 +787,10 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
         }
       }
     } else {
+      // Allocation failed because the custom resources don't exist in this local node.
+      // Restore node's local resources by freeing the resources
+      // of the failed allocation.
+      FreeTaskResourceInstances(task_allocation);
       return false;
     }
   }
