@@ -172,7 +172,7 @@ class JobManager:
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
-    def _get_current_node_resource_key() -> str:
+    def _get_current_node_resource_key(self) -> str:
         """Get the Ray resource key for current node.
 
         It can be used for actor placement.
