@@ -1119,18 +1119,19 @@ class BackendState:
                     f"Deployment '{self._name}' has "
                     f"{len(pending_allocation)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
-                    "may be caused by waiting for the cluster to auto-scale, "
-                    "or waiting for a runtime environment to install. "
-                    "Resources required "
-                    f"for each replica: {required}, resources available: "
-                    f"{available}. component=serve deployment={self._name}")
+                    f"may be caused by waiting for the cluster to auto-scale, "
+                    f"or waiting for a runtime environment to install. "
+                    f"Resources required for each replica: {required}, "
+                    f"resources available: {available}. "
+                    f"component=serve deployment={self._name}")
 
             if len(pending_initialization) > 0:
                 logger.warning(
                     f"Deployment '{self._name}' has "
                     f"{len(pending_initialization)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
-                    "may be caused by a slow __init__ or reconfigure method.")
+                    f"may be caused by a slow __init__ or reconfigure method."
+                    f"component=serve deployment={self._name}")
 
             self._prev_startup_warning = time.time()
 
