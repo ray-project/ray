@@ -264,6 +264,30 @@ def test_upscale_downscale_delay():
     assert new_num_replicas == 1
 
 
+def test_replicas_delayed_startup():
+    """Unit test simulating replicas taking time to start up."""
+    config = AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=200,
+        target_num_ongoing_requests_per_replica=1,
+        upscale_delay_s=0,
+        downscale_delay_s=0)
+
+    policy = BasicAutoscalingPolicy(config)
+
+    new_num_replicas = policy.get_decision_num_replicas([100], 1)
+    assert new_num_replicas == 100
+
+    # New target is 100, but no new replicas finished spinning up during this
+    # timestep.
+    new_num_replicas = policy.get_decision_num_replicas([100], 100)
+    assert new_num_replicas == 100
+
+    # Two new replicas spun up during this timestep.
+    new_num_replicas = policy.get_decision_num_replicas([100, 20, 3], 100)
+    assert new_num_replicas == 123
+
+
 if __name__ == "__main__":
     import sys
     import pytest
