@@ -1006,11 +1006,12 @@ class RolloutWorker(ParallelIteratorWorker):
         return out
 
     @DeveloperAPI
-    def foreach_env(self, func: Callable[[BaseEnv], T]) -> List[T]:
-        """Apply the given function to each underlying env instance.
+    def foreach_env(self, func: Callable[[EnvType], T]) -> List[T]:
+        """Calls the given function with each sub-environment as arg.
 
         Args:
-            func: The function to call for each environment (as only arg).
+            func: The function to call for each underlying
+                sub-environment (as only arg).
 
         Returns:
              The list of return values of all calls to `func([env])`.
@@ -1019,23 +1020,23 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.async_env is None:
             return []
 
-        envs = self.async_env.get_unwrapped()
+        envs = self.async_env.get_sub_environments()
         # Empty list (not implemented): Call function directly on the
         # BaseEnv.
         if not envs:
             return [func(self.async_env)]
-        # Call function on all underlying (vectorized) envs.
+        # Call function on all underlying (vectorized) sub environments.
         else:
             return [func(e) for e in envs]
 
     @DeveloperAPI
     def foreach_env_with_context(
-            self, func: Callable[[BaseEnv, EnvContext], T]) -> List[T]:
-        """Apply the given function to each underlying env instance.
+            self, func: Callable[[EnvType, EnvContext], T]) -> List[T]:
+        """Calls given function with each sub-env plus env_ctx as args.
 
         Args:
-            func: The function to call for each environment and its EnvContext
-                (as the args).
+            func: The function to call for each underlying
+                sub-environment and its EnvContext (as the args).
 
         Returns:
              The list of return values of all calls to `func([env, ctx])`.
@@ -1044,12 +1045,12 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.async_env is None:
             return []
 
-        envs = self.async_env.get_unwrapped()
+        envs = self.async_env.get_sub_environments()
         # Empty list (not implemented): Call function directly on the
         # BaseEnv.
         if not envs:
             return [func(self.async_env, self.env_context)]
-        # Call function on all underlying (vectorized) envs.
+        # Call function on all underlying (vectorized) sub environments.
         else:
             ret = []
             for i, e in enumerate(envs):

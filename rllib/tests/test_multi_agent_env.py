@@ -70,9 +70,9 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_no_reset_until_poll(self):
         env = _MultiAgentEnvToBaseEnv(lambda v: BasicMultiAgent(2), [], 1)
-        self.assertFalse(env.get_unwrapped()[0].resetted)
+        self.assertFalse(env.get_sub_environments()[0].resetted)
         env.poll()
-        self.assertTrue(env.get_unwrapped()[0].resetted)
+        self.assertTrue(env.get_sub_environments()[0].resetted)
 
     def test_vectorize_basic(self):
         env = _MultiAgentEnvToBaseEnv(lambda v: BasicMultiAgent(2), [], 2)

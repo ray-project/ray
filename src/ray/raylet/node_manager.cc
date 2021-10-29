@@ -253,6 +253,12 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
               result = std::move(results[0]);
             }
             return result;
+          },
+          /*fail_pull_request=*/
+          [this](const ObjectID &object_id) {
+            rpc::ObjectReference ref;
+            ref.set_object_id(object_id.Binary());
+            MarkObjectsAsFailed(rpc::ErrorType::OBJECT_LOST, {ref}, JobID::Nil());
           }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -687,12 +693,12 @@ void NodeManager::HandleReleaseUnusedBundles(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-// TODO(edoakes): this function is problematic because it both sends warnings spuriously
-// under normal conditions and sometimes doesn't send a warning under actual deadlock
-// conditions. The current logic is to push a warning when: all running tasks are
-// blocked, there is at least one ready task, and a warning hasn't been pushed in
-// debug_dump_period_ milliseconds.
-// See https://github.com/ray-project/ray/issues/5790 for details.
+// This warns users that there could be the resource deadlock. It works this way;
+// - If there's no available workers for scheduling
+// - But if there are still pending tasks waiting for resource acquisition
+// It means the cluster might not have enough resources to be in progress.
+// Note that this can print the false negative messages
+// e.g., there are many actors taking up resources for a long time.
 void NodeManager::WarnResourceDeadlock() {
   ray::RayTask exemplar;
   bool any_pending = false;
@@ -702,8 +708,7 @@ void NodeManager::WarnResourceDeadlock() {
 
   // Check if any progress is being made on this raylet.
   for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
-    if (!worker->IsDead() && !worker->GetAssignedTaskId().IsNil() &&
-        !worker->IsBlocked() && worker->GetActorId().IsNil()) {
+    if (worker->IsAvailableForScheduling()) {
       // Progress is being made in a task, don't warn.
       resource_deadlock_warned_ = 0;
       return;
@@ -711,13 +716,12 @@ void NodeManager::WarnResourceDeadlock() {
   }
 
   // Check if any tasks are blocked on resource acquisition.
-  if (!cluster_task_manager_->AnyPendingTasks(&exemplar, &any_pending,
-                                              &pending_actor_creations, &pending_tasks)) {
+  if (!cluster_task_manager_->AnyPendingTasksForResourceAcquisition(
+          &exemplar, &any_pending, &pending_actor_creations, &pending_tasks)) {
     // No pending tasks, no need to warn.
     resource_deadlock_warned_ = 0;
     return;
   }
-  available_resources = cluster_resource_scheduler_->GetLocalResourceViewString();
 
   // Push an warning to the driver that a task is blocked trying to acquire resources.
   // To avoid spurious triggers, only take action starting with the second time.
@@ -746,12 +750,14 @@ void NodeManager::WarnResourceDeadlock() {
         << "Required resources for this actor or task: "
         << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
         << "\n"
-        << "Available resources on this node: " << available_resources
-        << "In total there are " << pending_tasks << " pending tasks and "
+        << "Available resources on this node: "
+        << cluster_resource_scheduler_->GetLocalResourceViewString()
+        << " In total there are " << pending_tasks << " pending tasks and "
         << pending_actor_creations << " pending actors on this node.";
 
     std::string error_message_str = error_message.str();
     RAY_LOG(WARNING) << error_message_str;
+    RAY_LOG_EVERY_MS(WARNING, 10 * 1000) << cluster_task_manager_->DebugStr();
     if (RayConfig::instance().legacy_scheduler_warnings()) {
       auto error_data_ptr = gcs::CreateErrorTableData(
           "resource_deadlock", error_message_str, current_time_ms(),
