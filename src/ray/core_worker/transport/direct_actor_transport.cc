@@ -636,5 +636,11 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
   fiber_max_concurrency_ = fiber_max_concurrency;
 }
 
+void CoreWorkerDirectTaskReceiver::Stop() {
+  for (const auto &it : actor_scheduling_queues_) {
+    it.second->Stop();
+  }
+}
+
 }  // namespace core
 }  // namespace ray

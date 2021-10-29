@@ -301,8 +301,10 @@ class CoreWorkerProcess {
 
   /// Check that the core worker environment is initialized for this process.
   ///
+  /// \param[in] quick_exit If set to true, quick exit if uninitialized without
+  /// crash.
   /// \return Void.
-  static void EnsureInitialized();
+  static void EnsureInitialized(bool quick_exit);
 
   static void HandleAtExit();
 
@@ -1133,6 +1135,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs,
                      bool *is_application_level_error);
+
+  /// Put an object in the local plasma store.
+  Status PutInLocalPlasmaStore(const RayObject &object, const ObjectID &object_id,
+                               bool pin_object);
 
   /// Execute a local mode task (runs normal ExecuteTask)
   ///

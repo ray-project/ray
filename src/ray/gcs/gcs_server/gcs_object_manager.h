@@ -25,10 +25,10 @@ namespace gcs {
 
 class GcsObjectManager : public rpc::ObjectInfoHandler {
  public:
-  explicit GcsObjectManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                            std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub,
+  explicit GcsObjectManager(std::shared_ptr<GcsTableStorage> gcs_table_storage,
+                            std::shared_ptr<GcsPublisher> &gcs_publisher,
                             gcs::GcsNodeManager &gcs_node_manager)
-      : gcs_table_storage_(std::move(gcs_table_storage)), gcs_pub_sub_(gcs_pub_sub) {
+      : gcs_table_storage_(std::move(gcs_table_storage)), gcs_publisher_(gcs_publisher) {
     gcs_node_manager.AddNodeRemovedListener(
         [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
           // All of the related actors should be reconstructed when a node is removed from
@@ -141,7 +141,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   absl::flat_hash_map<NodeID, ObjectSet> node_to_objects_ GUARDED_BY(mutex_);
 
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<GcsPublisher> gcs_publisher_;
 
   // Debug info.
   enum CountType {

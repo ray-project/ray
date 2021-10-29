@@ -96,7 +96,11 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Replay buffer ===
     # Size of the replay buffer (in time steps).
-    "buffer_size": int(1e6),
+    "buffer_size": DEPRECATED_VALUE,
+    "replay_buffer_config": {
+        "type": "LocalReplayBuffer",
+        "capacity": int(1e6),
+    },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
     # Warnings will be created if:

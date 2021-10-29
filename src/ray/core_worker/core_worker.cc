@@ -85,6 +85,7 @@ void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
 }
 
 void CoreWorkerProcess::Shutdown() {
+  RAY_LOG(DEBUG) << "Shutdown. Core worker process will be deleted";
   if (!core_worker_process) {
     return;
   }
@@ -190,10 +191,20 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   }
 }
 
-void CoreWorkerProcess::EnsureInitialized() {
-  RAY_CHECK(core_worker_process)
-      << "The core worker process is not initialized yet or already "
-      << "shutdown.";
+void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
+  if (core_worker_process != nullptr) {
+    return;
+  }
+
+  if (quick_exit) {
+    RAY_LOG(ERROR) << "The core worker process is not initialized yet or already "
+                   << "shutdown.";
+    QuickExit(/*logging-enabled*/ false);
+  } else {
+    RAY_CHECK(core_worker_process)
+        << "The core worker process is not initialized yet or already "
+        << "shutdown.";
+  }
 }
 
 void CoreWorkerProcess::HandleAtExit() { core_worker_process.reset(); }
@@ -266,7 +277,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &work
 }
 
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ true);
   if (core_worker_process->options_.num_workers == 1) {
     auto global_worker = core_worker_process->GetGlobalWorker();
     if (core_worker_process->ShouldCreateGlobalWorkerOnConstruction() && !global_worker) {
@@ -289,9 +300,11 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 }
 
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ false);
   if (core_worker_process->options_.num_workers == 1) {
-    RAY_CHECK(core_worker_process->GetGlobalWorker()->GetWorkerID() == worker_id);
+    auto global_worker = core_worker_process->GetGlobalWorker();
+    RAY_CHECK(global_worker) << "Global worker must not be NULL.";
+    RAY_CHECK(global_worker->GetWorkerID() == worker_id);
     return;
   }
   current_core_worker_ = core_worker_process->GetWorker(worker_id);
@@ -345,7 +358,7 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
 }
 
 void CoreWorkerProcess::RunTaskExecutionLoop() {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ false);
   RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::WORKER);
   if (core_worker_process->options_.num_workers == 1) {
     // Run the task loop in the current thread only if the number of workers is 1.
@@ -354,6 +367,7 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
       worker = core_worker_process->CreateWorker();
     }
     worker->RunTaskExecutionLoop();
+    RAY_LOG(DEBUG) << "Task execution loop terminated. Removing the global worker.";
     core_worker_process->RemoveWorker(worker);
   } else {
     std::vector<std::thread> worker_threads;
@@ -362,6 +376,8 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
         SetThreadName("worker.task" + std::to_string(i));
         auto worker = core_worker_process->CreateWorker();
         worker->RunTaskExecutionLoop();
+        RAY_LOG(INFO) << "Task execution loop terminated for a thread "
+                      << std::to_string(i) << ". Removing a worker.";
         core_worker_process->RemoveWorker(worker);
       });
     }
@@ -517,7 +533,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                     rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
-      // /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
       /*get_client=*/
       [this](const rpc::Address &address) {
         return core_worker_client_pool_->GetOrConnect(address);
@@ -565,7 +580,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);
-    return node.has_value();
+    return node != nullptr;
   };
   auto reconstruct_object_callback = [this](const ObjectID &object_id) {
     io_service_.post(
@@ -580,6 +595,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_,
+      /*put_in_local_plasma_callback=*/
+      [this](const RayObject &object, const ObjectID &object_id) {
+        RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
+      },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool delay) {
         if (delay) {
@@ -729,8 +748,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         RAY_CHECK_OK(Put(RayObject(reason),
                          /*contained_object_ids=*/{}, object_id,
                          /*pin_object=*/pin_object));
-      },
-      RayConfig::instance().lineage_pinning_enabled());
+      });
 
   // Start the IO thread after all other members have been initialized, in case
   // the thread calls back into any of our members.
@@ -765,6 +783,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 void CoreWorker::Shutdown() {
   io_service_.stop();
   if (options_.worker_type == WorkerType::WORKER) {
+    direct_task_receiver_->Stop();
     task_execution_service_.stop();
   }
   if (options_.on_worker_shutdown) {
@@ -821,7 +840,8 @@ void CoreWorker::Exit(
     task_execution_service_.post(
         [this, exit_type, creation_task_exception_pb_bytes]() {
           if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR ||
-              exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
+              exit_type == rpc::WorkerExitType::INTENDED_EXIT ||
+              exit_type == rpc::WorkerExitType::IDLE_EXIT) {
             // Notify the raylet about this exit.
             // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect
             // manually.
@@ -1078,7 +1098,8 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner
          "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
          "which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+         "at https://github.com/ray-project/ray/issues/: "
+      << object_id;
 
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
@@ -1128,17 +1149,8 @@ Status CoreWorker::Put(const RayObject &object,
   return status;
 }
 
-Status CoreWorker::Put(const RayObject &object,
-                       const std::vector<ObjectID> &contained_object_ids,
-                       const ObjectID &object_id, bool pin_object) {
-  RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
-  if (options_.is_local_mode ||
-      (RayConfig::instance().put_small_object_in_memory_store() &&
-       static_cast<int64_t>(object.GetSize()) < max_direct_call_object_size_)) {
-    RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
-    RAY_CHECK(memory_store_->Put(object, object_id));
-    return Status::OK();
-  }
+Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
+                                         const ObjectID &object_id, bool pin_object) {
   bool object_exists;
   RAY_RETURN_NOT_OK(plasma_store_provider_->Put(
       object, object_id, /* owner_address = */ rpc_address_, &object_exists));
@@ -1162,6 +1174,20 @@ Status CoreWorker::Put(const RayObject &object,
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   return Status::OK();
+}
+
+Status CoreWorker::Put(const RayObject &object,
+                       const std::vector<ObjectID> &contained_object_ids,
+                       const ObjectID &object_id, bool pin_object) {
+  RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
+  if (options_.is_local_mode ||
+      (RayConfig::instance().put_small_object_in_memory_store() &&
+       static_cast<int64_t>(object.GetSize()) < max_direct_call_object_size_)) {
+    RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
+    RAY_CHECK(memory_store_->Put(object, object_id));
+    return Status::OK();
+  }
+  return PutInLocalPlasmaStore(object, object_id, pin_object);
 }
 
 Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
@@ -1189,7 +1215,8 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
     // the current worker. So we need to make sure ref count is > 0
-    // by invoking `AddLocalReference` first.
+    // by invoking `AddLocalReference` first. Note that in worker.py we set
+    // skip_adding_local_ref=True to avoid double referencing the object.
     AddLocalReference(*object_id);
     RAY_UNUSED(reference_counter_->AddBorrowedObject(*object_id, ObjectID::Nil(),
                                                      real_owner_address));
