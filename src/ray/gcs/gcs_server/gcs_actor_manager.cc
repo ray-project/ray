@@ -770,7 +770,7 @@ void GcsActorManager::OnWorkerDead(
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
   ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct,
-                   creation_task_exception);
+                   /*runtime_env_setup_failed=*/false, creation_task_exception);
 }
 
 void GcsActorManager::OnNodeDead(const NodeID &node_id) {
@@ -824,7 +824,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id) {
 }
 
 void GcsActorManager::ReconstructActor(
-    const ActorID &actor_id, bool need_reschedule,
+    const ActorID &actor_id, bool need_reschedule, bool runtime_env_setup_failed,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
@@ -891,6 +891,7 @@ void GcsActorManager::ReconstructActor(
     }
 
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+    mutable_actor_table_data->set_runtime_env_setup_failed(runtime_env_setup_failed);
     if (creation_task_exception != nullptr) {
       mutable_actor_table_data->set_allocated_creation_task_exception(
           new rpc::RayException(*creation_task_exception));
@@ -918,10 +919,18 @@ void GcsActorManager::ReconstructActor(
   }
 }
 
-void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
-  // We will attempt to schedule this actor once an eligible node is
-  // registered.
-  pending_actors_.emplace_back(std::move(actor));
+void GcsActorManager::OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
+                                              bool runtime_env_setup_failed) {
+  if (!runtime_env_setup_failed) {
+    // We will attempt to schedule this actor once an eligible node is
+    // registered.
+    pending_actors_.emplace_back(std::move(actor));
+    return;
+  }
+
+  // If there is runtime env failure, mark this actor as dead immediately.
+  ReconstructActor(actor->GetActorID(), /*need_reschedule=*/false,
+                   runtime_env_setup_failed);
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,

@@ -26,7 +26,7 @@ namespace gcs {
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
+    std::function<void(std::shared_ptr<GcsActor>, bool)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
         schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
@@ -51,7 +51,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   if (!node.has_value()) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
-    schedule_failure_handler_(std::move(actor));
+    schedule_failure_handler_(std::move(actor), /*runtime_env_setup_failed=*/false);
     return;
   }
 
@@ -310,6 +310,15 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
   }
 }
 
+void GcsActorScheduler::HandleRuntimeEnvSetupFailure(std::shared_ptr<GcsActor> actor,
+                                                     const NodeID &node_id) {
+  RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
+                << actor->GetActorID()
+                << " as the runtime environment setup failed, job id = "
+                << actor->GetActorID().JobId();
+  schedule_failure_handler_(actor, /*runtime_env_setup_failed=*/true);
+}
+
 void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
                                             std::shared_ptr<GcsLeasedWorker> worker) {
   RAY_CHECK(actor && worker);
@@ -487,6 +496,11 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     }
 
     if (status.ok()) {
+      if (reply.runtime_env_setup_failed()) {
+        HandleRuntimeEnvSetupFailure(actor, node_id);
+        return;
+      }
+
       if (reply.worker_address().raylet_id().empty() &&
           reply.retry_at_raylet_address().raylet_id().empty()) {
         // Actor creation task has been cancelled. It is triggered by `ray.kill`. If

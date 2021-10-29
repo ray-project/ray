@@ -306,7 +306,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// an actor creation task is infeasible.
   ///
   /// \param actor The actor whose creation task is infeasible.
-  void OnActorCreationFailed(std::shared_ptr<GcsActor> actor);
+  /// \param runtime_env_setup_failed Whether creation is failed due to runtime env setup
+  /// failure.
+  void OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
+                               bool runtime_env_setup_failed);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.
@@ -386,11 +389,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
+  /// \param runtime_env_setup_failed Only applies when need_reschedule=false. Whether
+  /// this actor died because of runtime env setup failure.
   /// \param creation_task_exception Only applies when need_reschedule=false, decribing
   /// why this actor failed. If this arg is set, it means this actor died because of an
   /// exception thrown in creation task.
   void ReconstructActor(
       const ActorID &actor_id, bool need_reschedule,
+      bool runtime_env_setup_failed = false,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
   /// Reconstruct the specified actor and reschedule it.

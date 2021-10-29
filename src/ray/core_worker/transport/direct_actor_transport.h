@@ -54,6 +54,7 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
                             int64_t num_restarts) = 0;
   virtual void DisconnectActor(
       const ActorID &actor_id, int64_t num_restarts, bool dead,
+      bool runtime_env_setup_failed = false,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
@@ -119,11 +120,14 @@ class CoreWorkerDirectActorTaskSubmitter
   /// ignore the command to connect.
   /// \param[in] dead Whether the actor is permanently dead. In this case, all
   /// pending tasks for the actor should be failed.
+  /// \param[in] runtime_env_setup_failed Only applies when dead = true. Means
+  /// this actor died due to runtime env setup failure.
   /// \param[in] creation_task_exception Reason why the actor is dead, only applies when
   /// dead = true. If this arg is set, it means this actor died because of an exception
   /// thrown in creation task.
   void DisconnectActor(
       const ActorID &actor_id, int64_t num_restarts, bool dead,
+      bool runtime_env_setup_failed = false,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
   /// Set the timerstamp for the caller.
@@ -140,6 +144,7 @@ class CoreWorkerDirectActorTaskSubmitter
     rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
     /// Only applies when state=DEAD.
     std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
+    bool runtime_env_setup_failed = false;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.

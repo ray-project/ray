@@ -541,10 +541,16 @@ void TaskManager::MarkPendingTaskFailed(
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     if (creation_task_exception != nullptr) {
       // Structure of bytes stored in object store:
-      // rpc::RayException
-      // ->pb-serialized bytes
-      // ->msgpack-serialized bytes
-      // ->[offset][msgpack-serialized bytes]
+
+      // First serialize RayException by the following steps:
+      // PB's RayException
+      // --(PB Serialization)-->
+      // --(msgpack Serialization)-->
+      // msgpack_serialized_exception(MSE)
+
+      // Then add it's length to the head(for coross-language deserialization):
+      // [MSE's length(9 bytes)] [MSE]
+
       std::string pb_serialized_exception;
       creation_task_exception->SerializeToString(&pb_serialized_exception);
       msgpack::sbuffer msgpack_serialized_exception;

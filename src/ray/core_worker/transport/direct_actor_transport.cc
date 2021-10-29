@@ -191,6 +191,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     const ActorID &actor_id, int64_t num_restarts, bool dead,
+    bool runtime_env_setup_failed,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id;
   absl::MutexLock lock(&mu_);
@@ -212,6 +213,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   if (dead) {
     queue->second.state = rpc::ActorTableData::DEAD;
     queue->second.creation_task_exception = creation_task_exception;
+    queue->second.runtime_env_setup_failed = runtime_env_setup_failed;
     // If there are pending requests, treat the pending tasks as failed.
     RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
                   << " because the actor is already dead.";
@@ -235,8 +237,12 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
                   << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
     for (auto &net_err_task : wait_for_death_info_tasks) {
-      RAY_UNUSED(task_finisher_.MarkPendingTaskFailed(
-          net_err_task.second, rpc::ErrorType::ACTOR_DIED, creation_task_exception));
+      rpc::ErrorType error_type = rpc::ErrorType::ACTOR_DIED;
+      if (runtime_env_setup_failed) {
+        error_type = rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
+      }
+      RAY_UNUSED(task_finisher_.MarkPendingTaskFailed(net_err_task.second, error_type,
+                                                      creation_task_exception));
     }
 
     // No need to clean up tasks that have been sent and are waiting for
@@ -371,8 +377,12 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           auto &queue = queue_pair->second;
 
           bool immediately_mark_object_fail = (queue.state == rpc::ActorTableData::DEAD);
+          rpc::ErrorType error_type = rpc::ErrorType::ACTOR_DIED;
+          if (queue.runtime_env_setup_failed) {
+            error_type = rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
+          }
           bool will_retry = task_finisher_.PendingTaskFailed(
-              task_id, rpc::ErrorType::ACTOR_DIED, &status, queue.creation_task_exception,
+              task_id, error_type, &status, queue.creation_task_exception,
               immediately_mark_object_fail);
           if (will_retry) {
             increment_completed_tasks = false;
