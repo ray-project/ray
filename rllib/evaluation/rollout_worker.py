@@ -1013,34 +1013,35 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def foreach_env(self, func: Callable[[BaseEnv], T]) -> List[T]:
-        """Apply the given function to each underlying env instance."""
+        """Apply the given function to each sub-environment instance."""
 
         if self.async_env is None:
             return []
 
-        envs = self.async_env.get_unwrapped()
+        envs = self.async_env.get_sub_environments()
         # Empty list (not implemented): Call function directly on the
         # BaseEnv.
         if not envs:
             return [func(self.async_env)]
-        # Call function on all underlying (vectorized) envs.
+        # Call function on all underlying (vectorized) sub environments.
         else:
             return [func(e) for e in envs]
 
     @DeveloperAPI
     def foreach_env_with_context(
             self, func: Callable[[BaseEnv, EnvContext], T]) -> List[T]:
-        """Apply the given function to each underlying env instance."""
+        """Apply the given function to each underlying sub-environment.
+        """
 
         if self.async_env is None:
             return []
 
-        envs = self.async_env.get_unwrapped()
+        envs = self.async_env.get_sub_environments()
         # Empty list (not implemented): Call function directly on the
         # BaseEnv.
         if not envs:
             return [func(self.async_env, self.env_context)]
-        # Call function on all underlying (vectorized) envs.
+        # Call function on all underlying (vectorized) sub environments.
         else:
             ret = []
             for i, e in enumerate(envs):
