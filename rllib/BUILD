@@ -1751,12 +1751,12 @@ py_test(
     srcs = ["tests/test_gpus.py"]
 )
 
-#py_test(
-#    name = "tests/test_ignore_worker_failure",
-#    tags = ["team:ml", "tests_dir", "tests_dir_I"],
-#    size = "large",
-#    srcs = ["tests/test_ignore_worker_failure.py"]
-#)
+py_test(
+    name = "tests/test_ignore_worker_failure",
+    tags = ["team:ml", "tests_dir", "tests_dir_I"],
+    size = "large",
+    srcs = ["tests/test_ignore_worker_failure.py"]
+)
 
 py_test(
     name = "tests/test_io",
