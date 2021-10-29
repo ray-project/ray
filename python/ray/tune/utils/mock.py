@@ -59,11 +59,8 @@ class MockRemoteTrainer(_MockTrainer):
             os.makedirs(self._logdir)
 
 
-class MockDurableTrainer(Trainable, _MockTrainer):
+class MockDurableTrainer(_MockTrainer):
     """Mock DurableTrainable that saves at tmp for simulated clusters."""
-
-    # TODO(ujvl): This class uses multiple inheritance; it should be cleaned
-    #  up once the durable training API converges.
 
     def __init__(self, remote_checkpoint_dir, sync_function_tpl, *args,
                  **kwargs):

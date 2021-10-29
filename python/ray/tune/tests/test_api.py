@@ -15,10 +15,10 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper, run)
+from ray.tune import (Trainable, TuneError, Stopper, run)
+from ray.tune.function_runner import wrap_function
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.callback import Callback
-from ray.tune.durable_trainable import durable
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
 from ray.tune.stopper import (MaximumIterationStopper, TrialPlateauStopper,
@@ -226,13 +226,13 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
         self.assertRaises(TypeError, lambda: Experiment("foo", A))
 
-    def testRegisterDurableTrainableTwice(self):
+    def testRegisterTrainableThrice(self):
         def train(config, reporter):
             pass
 
         register_trainable("foo", train)
-        register_trainable("foo", tune.durable("foo"))
-        register_trainable("foo", tune.durable("foo"))
+        register_trainable("foo", train)
+        register_trainable("foo", train)
 
     def testTrainableCallable(self):
         def dummy_fn(config, reporter, steps):
@@ -929,7 +929,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def _testDurableTrainable(self, trainable, function=False, cleanup=True):
         sync_client = mock_storage_client()
-        mock_get_client = "ray.tune.durable_trainable.get_cloud_sync_client"
+        mock_get_client = "ray.tune.trainable.get_cloud_sync_client"
         with patch(mock_get_client) as mock_get_cloud_sync_client:
             mock_get_cloud_sync_client.return_value = sync_client
             test_trainable = trainable(remote_checkpoint_dir=MOCK_REMOTE_DIR)
@@ -961,27 +961,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.addCleanup(shutil.rmtree, MOCK_REMOTE_DIR)
 
     def testDurableTrainableClass(self):
-        class TestTrain(DurableTrainable):
-            def setup(self, config):
-                self.state = {"hi": 1, "iter": 0}
-
-            def step(self):
-                self.state["iter"] += 1
-                return {
-                    "timesteps_this_iter": 1,
-                    "metric": self.state["iter"],
-                    "done": self.state["iter"] > 3
-                }
-
-            def save_checkpoint(self, path):
-                return self.state
-
-            def load_checkpoint(self, state):
-                self.state = state
-
-        self._testDurableTrainable(TestTrain)
-
-    def testDurableTrainableWrapped(self):
         class TestTrain(Trainable):
             def setup(self, config):
                 self.state = {"hi": 1, "iter": 0}
@@ -1000,11 +979,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def load_checkpoint(self, state):
                 self.state = state
 
-        self._testDurableTrainable(durable(TestTrain), cleanup=False)
-
-        tune.register_trainable("test_train", TestTrain)
-
-        self._testDurableTrainable(durable("test_train"))
+        self._testDurableTrainable(TestTrain)
 
     def testDurableTrainableFunction(self):
         def test_train(config, checkpoint_dir=None):
@@ -1026,12 +1001,12 @@ class TrainableFunctionApiTest(unittest.TestCase):
                         "done": state["iter"] > 3
                     })
 
-        self._testDurableTrainable(durable(test_train), function=True)
+        self._testDurableTrainable(wrap_function(test_train), function=True)
 
     def testDurableTrainableSyncFunction(self):
         """Check custom sync functions in durable trainables"""
 
-        class TestDurable(DurableTrainable):
+        class TestDurable(Trainable):
             def __init__(self, *args, **kwargs):
                 # Mock distutils.spawn.find_executable
                 # so `aws` command is found

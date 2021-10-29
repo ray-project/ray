@@ -448,6 +448,9 @@ class FunctionRunner(Trainable):
 
         checkpoint_path = TrainableUtil.process_checkpoint(
             checkpoint, parent_dir, state)
+
+        self._maybe_save_to_cloud()
+
         return checkpoint_path
 
     def save_to_object(self):
