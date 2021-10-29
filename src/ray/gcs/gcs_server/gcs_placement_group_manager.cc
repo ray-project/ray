@@ -338,6 +338,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     if (registered_placement_groups_.contains(placement_group_id)) {
       auto stats = placement_group->GetMutableStats();
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
+
       MarkSchedulingStarted(placement_group_id);
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
           placement_group,
@@ -622,12 +623,13 @@ void GcsPlacementGroupManager::AddToPendingQueue(
   }
 
   // Add the biggest delay that has seen so far.
-  auto last_delay = 0;
+  uint64_t last_delay = 0;
   if (exp_backer) {
     last_delay = exp_backer->Current();
   }
   pg->GetMutableStats()->set_highest_retry_delay_ms(absl::Nanoseconds(last_delay) /
                                                     absl::Milliseconds(1));
+  RAY_LOG(ERROR) << "Last delay " << last_delay;
   if (!exp_backer) {
     auto initial_delay_ns =
         1000000 *
