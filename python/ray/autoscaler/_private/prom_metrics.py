@@ -12,7 +12,8 @@ try:
     class AutoscalerPrometheusMetrics:
         def __init__(self, registry: CollectorRegistry = None):
             self.registry: CollectorRegistry = registry or \
-                CollectorRegistry(auto_describe=True)
+                                               CollectorRegistry(
+                                                   auto_describe=True)
             # Buckets: 5 seconds, 10 seconds, 20 seconds, 30 seconds,
             #          45 seconds, 1 minute, 1.5 minutes, 2 minutes,
             #          3 minutes, 4 minutes, 5 minutes, 6 minutes,
@@ -139,5 +140,16 @@ try:
                 registry=self.registry)
 except ImportError:
 
-    def AutoscalerPrometheusMetrics():
-        return None
+    class NullMetric:
+        def set(self, value):
+            pass
+
+        def observe(self, value):
+            pass
+
+        def inc(self):
+            pass
+
+    class AutoscalerPrometheusMetrics(object):
+        def __getattr__(self, attr):
+            return NullMetric()
