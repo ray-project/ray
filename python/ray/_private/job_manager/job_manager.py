@@ -1,4 +1,4 @@
-import subprocess
+import asyncio
 import pickle
 import os
 import json
@@ -16,6 +16,7 @@ from ray.experimental.internal_kv import (
 )
 from ray.dashboard.modules.job.data_types import JobStatus
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+from ray.serve.utils import logger
 
 
 class JobLogStorageClient:
@@ -82,53 +83,43 @@ class JobStatusStorageClient:
         assert pickled_status is not None, f"Status not found for {job_id}"
         return pickle.loads(pickled_status)
 
-
-def exec_cmd_logs_to_file(
-        cmd: str,
-        stdout_file: str,
-        stderr_file: str,
-) -> int:
-    """
-    Runs a command as a child process, streaming stderr & stdout to given
-    log files.
-    """
-
-    with open(stdout_file, "a+") as stdout_in, open(stderr_file,
-                                                    "a+") as stderr_in:
-        child = subprocess.Popen(
-            cmd,
-            shell=True,
-            universal_newlines=True,
-            stdout=stdout_in,
-            stderr=stderr_in)
-
-        exit_code = child.wait()
-        return exit_code
-
-
 class JobSupervisor:
     """
     Ray actor created by JobManager for each submitted job, responsible to
     setup runtime_env, execute given shell command in subprocess, update job
     status and persist job logs.
-
     One job supervisor actor maps to one subprocess, for one job_id.
-
     Job supervisor actor should fate share with subprocess it created.
     """
-
     def __init__(self, job_id: str):
         self._job_id = job_id
         self._status = JobStatus.PENDING
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
+        self._runtime_env = ray.get_runtime_context().runtime_env
+        self._task_coro = None
 
-    def ready(self):
+    async def ready(self):
         pass
 
-    def run(self, cmd: str):
-        """Run the command, then exit afterwards.
+    async def _exec_cmd(self, cmd: str, stdout_path: str, stderr_path: str):
+        """
+        Runs a command as a child process, streaming stderr & stdout to given
+        log files.
+        """
 
+        with open(stdout_path, "a+") as stdout, open(stderr_path,
+                                                     "a+") as stderr:
+            child = await asyncio.create_subprocess_shell(
+                cmd, stdout=stdout, stderr=stderr)
+
+            self._task_coro = asyncio.create_task(child.wait())
+            exit_code = await self._task_coro
+            return exit_code
+
+
+    async def run(self, cmd: str):
+        """Run the command, then exit afterwards.
         Should update state and logs.
         """
         assert self._status == JobStatus.PENDING, (
@@ -138,11 +129,9 @@ class JobSupervisor:
         exit_code = None
 
         try:
-            # 2) Run the command until it finishes, appending logs as it goes.
             # Set JobConfig for the child process (runtime_env, metadata).
-            #  - RAY_JOB_CONFIG_JSON_ENV_VAR={...}
             os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps({
-                "runtime_env": ray.get_runtime_context().runtime_env
+                "runtime_env": self._runtime_env,
             })
             ray_redis_address = ray._private.services.find_redis_address_or_die(  # noqa: E501
             )
@@ -151,21 +140,33 @@ class JobSupervisor:
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
 
-            exit_code = exec_cmd_logs_to_file(cmd, stdout_path, stderr_path)
+            exit_code = await self._exec_cmd(cmd, stdout_path, stderr_path)
         finally:
             # 3) Once command finishes, update status to SUCCEEDED or FAILED.
-            if exit_code == 0:
-                self._status = JobStatus.SUCCEEDED
-            else:
-                self._status = JobStatus.FAILED
-            self._status_client.put_status(self._job_id, self.get_status())
+            # No action if command is stopped by user
+            if self._status != JobStatus.STOPPED:
+                # Update terminal status based on subprocess return code.
+                if exit_code == 0:
+                    self._status = JobStatus.SUCCEEDED
+                else:
+                    self._status = JobStatus.FAILED
+
+                self._status_client.put_status(self._job_id, self._status)
             ray.actor.exit_actor()
 
     def get_status(self) -> JobStatus:
         return self._status
 
     def stop(self):
-        pass
+        if self._task_coro is None:
+            logger.info("No running task to cancel.")
+            return False
+        else:
+            logger.info(f"Stopping task for job {self._job_id} ....")
+            self._task_coro.cancel()
+            self._status = JobStatus.STOPPED
+            self._status_client.put_status(self._job_id, self._status)
+            return True
 
 
 class JobManager:
@@ -234,7 +235,9 @@ class JobManager:
         job_supervisor_actor = self._get_actor_for_job(job_id)
         if job_supervisor_actor is not None:
             # Actor is still alive, signal it to stop the driver.
-            job_supervisor_actor.stop.remote()
+            return ray.get([job_supervisor_actor.stop.remote()])[0]
+        else:
+            return False
 
     def get_job_status(self, job_id: str):
         job_supervisor_actor = self._get_actor_for_job(job_id)
