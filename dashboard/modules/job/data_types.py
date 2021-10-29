@@ -7,6 +7,7 @@ except ImportError:
     # Lazy import without breaking class def
     BaseModel = object
 
+
 class JobStatus(str, Enum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
