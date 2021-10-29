@@ -69,7 +69,7 @@ if __name__ == "__main__":
 
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "rte_ray_client")
-    for use_working_dir in [True, False]:
+    for use_working_dir in [True, True, False, False]:
         with tempfile.TemporaryDirectory() as tmpdir:
             runtime_env = {"working_dir": tmpdir} if use_working_dir else None
             print("Testing with use_working_dir=" + str(use_working_dir))
