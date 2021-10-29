@@ -3268,8 +3268,9 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
 
     # Test empty dataset.
     ds = ray.data.range_arrow(10).filter(lambda r: r["value"] > 10)
-    assert len(ray.data.impl.sort.sample_boundaries(ds._blocks, "value",
-                                                    3)) == 2
+    assert len(
+        ray.data.impl.sort.sample_boundaries(
+            list(ds._blocks.iter_blocks()), "value", 3)) == 2
     assert ds.sort("value").count() == 0
 
 
