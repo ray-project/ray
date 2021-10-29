@@ -413,7 +413,7 @@ class NestedSpacesTest(unittest.TestCase):
 
     def test_nested_dict_vector(self):
         self.do_test_nested_dict(
-            lambda _: VectorEnv.wrap(lambda i: NestedDictEnv()))
+            lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedDictEnv()))
 
     def test_nested_dict_serving(self):
         self.do_test_nested_dict(lambda _: SimpleServing(NestedDictEnv()))
@@ -427,7 +427,7 @@ class NestedSpacesTest(unittest.TestCase):
 
     def test_nested_tuple_vector(self):
         self.do_test_nested_tuple(
-            lambda _: VectorEnv.wrap(lambda i: NestedTupleEnv()))
+            lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedTupleEnv()))
 
     def test_nested_tuple_serving(self):
         self.do_test_nested_tuple(lambda _: SimpleServing(NestedTupleEnv()))

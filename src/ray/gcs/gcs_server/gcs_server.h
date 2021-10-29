@@ -56,7 +56,7 @@ class GcsJobManager;
 class GcsWorkerManager;
 class GcsPlacementGroupManager;
 
-/// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
+/// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
 /// In the future, GCS server's main responsibility is to manage meta data
 /// and the management of actor creation.
