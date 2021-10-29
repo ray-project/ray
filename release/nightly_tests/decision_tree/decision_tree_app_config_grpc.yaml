@@ -1,5 +1,5 @@
 base_image: "anyscale/ray-ml:pinned-nightly-py37"
-env_vars: {"RAY_grpc_based_resource_broadcast": "true", "RAY_event_stats": "true"}
+env_vars: {"RAY_grpc_based_resource_broadcast": "true"}
 
 python:
   pip_packages: []
