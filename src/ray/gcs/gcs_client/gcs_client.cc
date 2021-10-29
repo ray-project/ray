@@ -178,8 +178,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   stats_accessor_ = std::make_unique<StatsInfoAccessor>(this);
   error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
   worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);
-  placement_group_accessor_ =
-      std::make_unique<PlacementGroupInfoAccessor>(this);
+  placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   // Init gcs service address check timer.
   periodical_runner_ = std::make_unique<PeriodicalRunner>(io_service);
