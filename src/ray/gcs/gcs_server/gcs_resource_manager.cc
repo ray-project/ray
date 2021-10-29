@@ -186,13 +186,13 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, *resources_data);
-  } else {
-    if (node_resource_usages_.count(node_id) == 0 ||
-        resources_data->resources_available_changed()) {
-      const auto &resource_changed =
-          MapFromProtobuf(resources_data->resources_available());
-      SetAvailableResources(node_id, ResourceSet(resource_changed));
-    }
+  }
+
+  if (node_resource_usages_.count(node_id) == 0 ||
+      resources_data->resources_available_changed()) {
+    const auto &resource_changed =
+        MapFromProtobuf(resources_data->resources_available());
+    SetAvailableResources(node_id, ResourceSet(resource_changed));
   }
 
   UpdateNodeResourceUsage(node_id, data);
