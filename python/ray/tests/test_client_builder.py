@@ -2,6 +2,7 @@ import os
 import pytest
 import subprocess
 import sys
+import warnings
 from unittest.mock import patch, Mock
 
 import ray
@@ -75,7 +76,7 @@ class Foo:
 
 a = Foo.options(lifetime="detached", name="abc").remote()
 ray.get(a.ping.remote())
-print(ray.get_runtime_context().namespace)
+print("Current namespace:", ray.get_runtime_context().namespace)
     """
 
     anon_driver = template.format(namespace="None")
@@ -85,12 +86,12 @@ print(ray.get_runtime_context().namespace)
     run_string_as_driver(anon_driver)
 
     run_in_namespace = template.format(namespace="'namespace'")
-    script_namespace = run_string_as_driver(run_in_namespace)
+    script_output = run_string_as_driver(run_in_namespace)
     # The second run fails because the actors are run in the same namespace.
     with pytest.raises(subprocess.CalledProcessError):
         run_string_as_driver(run_in_namespace)
 
-    assert script_namespace.strip() == "namespace"
+    assert "Current namespace: namespace" in script_output
     subprocess.check_output("ray stop --force", shell=True)
 
 
@@ -281,6 +282,125 @@ def test_address_resolution(call_ray_stop_only):
     finally:
         if os.environ.get("RAY_ADDRESS"):
             del os.environ["RAY_ADDRESS"]
+
+
+def mock_connect(*args, **kwargs):
+    """
+    Force exit instead of actually attempting to connect
+    """
+    raise ConnectionError
+
+
+def has_client_deprecation_warn(warning: Warning,
+                                expected_replacement: str) -> bool:
+    """
+    Returns true if expected_replacement is in the message of the passed
+    warning, and that the warning mentions deprecation.
+    """
+    start = "Starting a connection through `ray.client` will be deprecated"
+    message = str(warning.message)
+    if start not in message:
+        return False
+    if expected_replacement not in message:
+        return False
+    return True
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="pip not supported in Windows runtime envs.")
+def test_client_deprecation_warn():
+    """
+    Tests that calling ray.client directly raises a deprecation warning with
+    a copy pasteable replacement for the client().connect() call converted
+    to ray.init style.
+    """
+    # Test warning when local client mode is used
+    with warnings.catch_warnings(record=True) as w:
+        ray.client().connect()
+        assert any(
+            has_client_deprecation_warn(warning, "ray.init()")
+            for warning in w)
+        ray.shutdown()
+
+    with warnings.catch_warnings(record=True) as w:
+        ray.client().namespace("nmspc").env({"pip": ["requests"]}).connect()
+    expected = 'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+    assert any(
+        has_client_deprecation_warn(warning, expected)  # noqa E501
+        for warning in w)
+    ray.shutdown()
+
+    server = ray_client_server.serve("localhost:50055")
+
+    # Test warning when namespace and runtime env aren't specified
+    with warnings.catch_warnings(record=True) as w:
+        with ray.client("localhost:50055").connect():
+            pass
+    assert any(
+        has_client_deprecation_warn(
+            warning, 'ray.init("ray://localhost:50055")') for warning in w)
+
+    # Test warning when just namespace specified
+    with warnings.catch_warnings(record=True) as w:
+        with ray.client("localhost:50055").namespace("nmspc").connect():
+            pass
+    assert any(
+        has_client_deprecation_warn(
+            warning, 'ray.init("ray://localhost:50055", namespace="nmspc")')
+        for warning in w)
+
+    # Test that passing namespace through env doesn't add namespace to the
+    # replacement
+    with warnings.catch_warnings(record=True) as w, \
+            patch.dict(os.environ, {"RAY_NAMESPACE": "aksdj"}):
+        with ray.client("localhost:50055").connect():
+            pass
+    assert any(
+        has_client_deprecation_warn(
+            warning, 'ray.init("ray://localhost:50055")') for warning in w)
+
+    # Skip actually connecting on these, since updating the runtime env is
+    # time consuming
+    with patch("ray.util.client_connect.connect", mock_connect):
+        # Test warning when just runtime_env specified
+        with warnings.catch_warnings(record=True) as w:
+            try:
+                ray.client("localhost:50055") \
+                    .env({"pip": ["requests"]}).connect()
+            except ConnectionError:
+                pass
+        expected = 'ray.init("ray://localhost:50055", runtime_env=<your_runtime_env>)'  # noqa E501
+        assert any(
+            has_client_deprecation_warn(warning, expected) for warning in w)
+
+        # Test warning works if both runtime env and namespace specified
+        with warnings.catch_warnings(record=True) as w:
+            try:
+                ray.client("localhost:50055").namespace("nmspc") \
+                    .env({"pip": ["requests"]}).connect()
+            except ConnectionError:
+                pass
+        expected = 'ray.init("ray://localhost:50055", namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+        assert any(
+            has_client_deprecation_warn(warning, expected) for warning in w)
+
+        # We don't expect namespace to appear in the warning message, since
+        # it was configured through an env var
+        with warnings.catch_warnings(record=True) as w, \
+                patch.dict(os.environ, {"RAY_NAMESPACE": "abcdef"}):
+            try:
+                ray.client("localhost:50055") \
+                    .env({"pip": ["requests"]}).connect()
+            except ConnectionError:
+                pass
+        expected = 'ray.init("ray://localhost:50055", runtime_env=<your_runtime_env>)'  # noqa E501
+        assert any(
+            has_client_deprecation_warn(warning, expected) for warning in w)
+
+    # cleanup
+    server.stop(0)
+    subprocess.check_output("ray stop --force", shell=True)
 
 
 if __name__ == "__main__":
