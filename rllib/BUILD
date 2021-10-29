@@ -2720,14 +2720,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/pettingzoo_env",
-    main = "examples/pettingzoo_env.py",
-    tags = ["team:ml", "examples", "examples_P"],
-    size = "medium",
-    srcs = ["examples/pettingzoo_env.py"],
-)
-
-py_test(
     name = "examples/preprocessing_disabled_tf",
     main = "examples/preprocessing_disabled.py",
     tags = ["team:ml", "examples", "examples_P"],
