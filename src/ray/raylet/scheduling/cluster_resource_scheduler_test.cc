@@ -22,7 +22,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
-#include "mock/ray/gcs/gcs_client.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
 

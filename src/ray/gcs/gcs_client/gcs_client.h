@@ -80,6 +80,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
+  /// \param get_gcs_server_address_func Function to get GCS server address.
   explicit GcsClient(const GcsClientOptions &options,
                      std::function<bool(std::pair<std::string, int> *)>
                          get_gcs_server_address_func = {});

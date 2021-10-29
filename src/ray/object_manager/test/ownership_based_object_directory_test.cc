@@ -23,7 +23,7 @@
 #include "ray/pubsub/mock_pubsub.h"
 
 // clang-format off
-#include "mock/ray/gcs/accessor.h"
+#include "mock/ray/gcs/gcs_client/accessor.h"
 // clang-format on
 
 namespace ray {
