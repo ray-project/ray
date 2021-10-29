@@ -59,7 +59,7 @@ Unfortunately, it is quite natural for a new Ray user to inadvertently use ``ray
     print("results = ", results)
 
 
-The output of a program execution is below. As expected, the program takes around 4 secs:
+The output of a program execution is below. As expected, the program takes around 4 seconds:
 
 .. code-block:: bash
 
@@ -165,7 +165,7 @@ Let’s now parallelize this code using Ray, by making every invocation of ``tin
 
     @ray.remote
     def tiny_work(x):
-        time.sleep(0.0001) # Replace this is with work you need to do.
+        time.sleep(0.0001) # Replace this with work you need to do.
         return x
 
     start = time.time()
@@ -263,9 +263,9 @@ This program outputs:
     duration = 1.0837509632110596
 
 
-This running time is quite large for a program that calls just 10 remote tasks that do nothing. The reason for this unexpected high running time is that each time we invoke ``no_work(a)``, Ray calls ``ray.put(a)`` which results in copying array `a` to the object store. Since array `a` has 2.5 million entries, copying it takes a non-trivial time.
+This running time is quite large for a program that calls just 10 remote tasks that do nothing. The reason for this unexpected high running time is that each time we invoke ``no_work(a)``, Ray calls ``ray.put(a)`` which results in copying array ``a`` to the object store. Since array ``a`` has 2.5 million entries, copying it takes a non-trivial time.
 
-To avoid copying array `a` every time ``no_work()`` is invoked, one simple solution is to explicitly call ``ray.put(a)``, and then pass `a`’s ID to ``no_work()``, as illustrated below:
+To avoid copying array ``a`` every time ``no_work()`` is invoked, one simple solution is to explicitly call ``ray.put(a)``, and then pass ``a``’s ID to ``no_work()``, as illustrated below:
 
 .. code-block:: python
 
@@ -291,7 +291,7 @@ Running this program takes only:
 
     duration = 0.132796049118042
 
-This is 7 times faster than the original program which is to be expected since the main overhead of invoking ``no_work(a)`` was copying the array `a` to the object store, which now happens only once.
+This is 7 times faster than the original program which is to be expected since the main overhead of invoking ``no_work(a)`` was copying the array ``a`` to the object store, which now happens only once.
 
 Arguably a more important advantage of avoiding multiple copies of the same object to the object store is that it precludes the object store filling up prematurely and incur the cost of object eviction.
 
@@ -301,7 +301,7 @@ Tip 4: Pipeline data processing
 
 If we use ``ray.get()`` on the results of multiple tasks we will have to wait until the last one of these tasks finishes. This can be an issue if tasks take widely different amounts of time.
 
-To illustrate this issue, consider the following example where we run four ``do_some_work()`` tasks in parallel, with each task taking a time uniformly distributed between 0 and 4 sec. Next, assume the results of these tasks are processed by ``process_results()``, which takes 1 sec per result. The expected running time is then (1) the time it takes to execute the slowest of the ``do_some_work()`` tasks, plus (2) 4 sec which is the time it takes to execute ``process_results()``.
+To illustrate this issue, consider the following example where we run four ``do_some_work()`` tasks in parallel, with each task taking a time uniformly distributed between 0 and 4 seconds. Next, assume the results of these tasks are processed by ``process_results()``, which takes 1 sec per result. The expected running time is then (1) the time it takes to execute the slowest of the ``do_some_work()`` tasks, plus (2) 4 seconds which is the time it takes to execute ``process_results()``.
 
 .. code-block:: python
 
@@ -348,7 +348,7 @@ Fortunately, Ray allows you to do exactly this by calling ``ray.wait()`` on a li
 
     @ray.remote
     def do_some_work(x):
-        time.sleep(random.uniform(0, 4)) # Replace this is with work you need to do.
+        time.sleep(random.uniform(0, 4)) # Replace this with work you need to do.
         return x
 
     def process_incremental(sum, result):
