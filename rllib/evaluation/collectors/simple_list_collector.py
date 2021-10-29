@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Tuple, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
@@ -505,11 +505,11 @@ class SimpleListCollector(SampleCollector):
         # Maps episode ID to the (non-built) individual agent steps in this
         # episode.
         self.agent_steps: Dict[EpisodeID, int] = collections.defaultdict(int)
-        # Maps episode ID to MultiAgentEpisode.
-        self.episodes: Dict[EpisodeID, MultiAgentEpisode] = {}
+        # Maps episode ID to Episode.
+        self.episodes: Dict[EpisodeID, Episode] = {}
 
     @override(SampleCollector)
-    def episode_step(self, episode: MultiAgentEpisode) -> None:
+    def episode_step(self, episode: Episode) -> None:
         episode_id = episode.episode_id
         # In the rase case that an "empty" step is taken at the beginning of
         # the episode (none of the agents has an observation in the obs-dict
@@ -550,8 +550,8 @@ class SimpleListCollector(SampleCollector):
                      if not self.multiple_episodes_in_batch else ""))
 
     @override(SampleCollector)
-    def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
-                     env_id: EnvID, policy_id: PolicyID, t: int,
+    def add_init_obs(self, episode: Episode, agent_id: AgentID, env_id: EnvID,
+                     policy_id: PolicyID, t: int,
                      init_obs: TensorType) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
@@ -707,7 +707,7 @@ class SimpleListCollector(SampleCollector):
     @override(SampleCollector)
     def postprocess_episode(
             self,
-            episode: MultiAgentEpisode,
+            episode: Episode,
             is_done: bool = False,
             check_dones: bool = False,
             build: bool = False) -> Union[None, SampleBatch, MultiAgentBatch]:
@@ -834,7 +834,7 @@ class SimpleListCollector(SampleCollector):
         if build:
             return self._build_multi_agent_batch(episode)
 
-    def _build_multi_agent_batch(self, episode: MultiAgentEpisode) -> \
+    def _build_multi_agent_batch(self, episode: Episode) -> \
             Union[MultiAgentBatch, SampleBatch]:
 
         ma_batch = {}
