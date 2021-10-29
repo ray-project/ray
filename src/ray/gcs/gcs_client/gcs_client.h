@@ -23,6 +23,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/status.h"
+#include "ray/common/id.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
@@ -173,7 +174,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// This function is thread safe.
   virtual InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
 
-  virtual GcsPubSub &GetGcsPubSub() { return *gcs_pub_sub_; }
+  virtual GcsSubscriber &GetGcsSubscriber() { return *gcs_subscriber_; }
 
   virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
@@ -221,10 +222,12 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   std::shared_ptr<RedisClient> redis_client_;
 
-  std::unique_ptr<GcsPubSub> gcs_pub_sub_;
+  const UniqueID gcs_client_id_ = UniqueID::FromRandom();
+
+  std::unique_ptr<GcsSubscriber> gcs_subscriber_;
 
   // Gcs rpc client
-  std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
+  std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
   // The runner to run function periodically.

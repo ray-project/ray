@@ -158,7 +158,7 @@ bool Subscriber::PublishIfPossible(bool force) {
     long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
 
     // Clean up & update metadata.
-    long_polling_connection_.reset(nullptr);
+    long_polling_connection_.reset();
     mailbox_.pop_front();
     last_connection_update_time_ms_ = get_time_ms_();
     return true;

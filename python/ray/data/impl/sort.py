@@ -51,6 +51,10 @@ def sample_boundaries(blocks: BlockList[T], key: SortKeyT,
     sample_bar.close()
 
     samples = ray.get(sample_results)
+    samples = [s for s in samples if len(s) > 0]
+    # The dataset is empty
+    if len(samples) == 0:
+        return [None] * (num_reducers - 1)
     sample_items = np.concatenate(samples)
     sample_items.sort()
     ret = [

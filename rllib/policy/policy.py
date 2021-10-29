@@ -5,7 +5,7 @@ from gym.spaces import Box
 import logging
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import Dict, List, Optional, Type, TYPE_CHECKING
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -58,58 +58,64 @@ PolicySpec.__new__.__defaults__ = (None, None, None, None)
 
 @DeveloperAPI
 class Policy(metaclass=ABCMeta):
-    """An agent policy and loss, i.e., a TFPolicy or other subclass.
+    """Policy base class: Calculates actions, losses, and holds NN models.
 
-    This object defines how to act in the environment, and also losses used to
-    improve the policy based on its experiences. Note that both policy and
-    loss are defined together for convenience, though the policy itself is
-    logically separate.
+    Policy is the abstract superclass for all DL-framework specific sub-classes
+    (e.g. TFPolicy or TorchPolicy). It exposes APIs to
 
-    All policies can directly extend Policy, however TensorFlow users may
-    find TFPolicy simpler to implement. TFPolicy also enables RLlib
-    to apply TensorFlow-specific optimizations such as fusing multiple policy
-    graphs and multi-GPU support.
+    1) Compute actions from observation (and possibly other) inputs.
+    2) Manage the Policy's NN model(s), like exporting and loading their
+       weights.
+    3) Postprocess a given trajectory from the environment or other input
+       via the `postprocess_trajectory` method.
+    4) Compute losses from a train batch.
+    5) Perform updates from a train batch on the NN-models (this normally
+       includes loss calculations) either a) in one monolithic step
+       (`train_on_batch`) or b) via batch pre-loading, then n steps of actual
+       loss computations and updates (`load_batch_into_buffer` +
+       `learn_on_loaded_batch`).
 
-    Attributes:
-        observation_space (gym.Space): Observation space of the policy. For
-            complex spaces (e.g., Dict), this will be flattened version of the
-            space, and you can access the original space via
-            ``observation_space.original_space``.
-        action_space (gym.Space): Action space of the policy.
-        exploration (Exploration): The exploration object to use for
-            computing actions, or None.
+    Note: It is not recommended to sub-class Policy directly, but rather use
+    one of the following two convenience methods:
+    `rllib.policy.policy_template::build_policy_class` (PyTorch) or
+    `rllib.policy.tf_policy_template::build_tf_policy_class` (TF).
     """
 
     @DeveloperAPI
-    def __init__(self, observation_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, config: TrainerConfigDict):
-        """Initialize the graph.
-
-        This is the standard constructor for policies. The policy
-        class you pass into RolloutWorker will be constructed with
-        these arguments.
+    def __init__(self, observation_space: gym.Space, action_space: gym.Space,
+                 config: TrainerConfigDict):
+        """Initializes a Policy instance.
 
         Args:
-            observation_space (gym.spaces.Space): Observation space of the
+            observation_space: Observation space of the
                 policy.
-            action_space (gym.spaces.Space): Action space of the policy.
-            config (TrainerConfigDict): Policy-specific configuration data.
+            action_space: Action space of the policy.
+            config: A complete Trainer/Policy config dict. For the default
+                config keys and values, see rllib/trainer/trainer.py.
         """
-        self.observation_space = observation_space
-        self.action_space = action_space
+        self.observation_space: gym.Space = observation_space
+        self.action_space: gym.Space = action_space
+        # The base struct of the action space.
+        # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
+        # action_space_struct = {"a": Discrete(2)}
         self.action_space_struct = get_base_struct_from_space(action_space)
-        self.config = config
+
+        self.config: TrainerConfigDict = config
+        # Create the callbacks object to use for handling custom callbacks.
         if self.config.get("callbacks"):
             self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
         else:
             from ray.rllib.agents.callbacks import DefaultCallbacks
             self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+
         # The global timestep, broadcast down from time to time from the
-        # driver.
-        self.global_timestep = 0
+        # local worker to all remote workers.
+        self.global_timestep: int = 0
+
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
-        self.dist_class = None
+        self.dist_class: Optional[Type] = None
+
         # Maximal view requirements dict for `learn_on_batch()` and
         # `compute_actions` calls.
         # View requirements will be automatically filtered out later based
@@ -122,55 +128,9 @@ class Policy(metaclass=ABCMeta):
             for k, v in view_reqs.items():
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
+        # Whether the Model's initial state (method) has been added
+        # automatically based on the given view requirements of the model.
         self._model_init_state_automatically_added = False
-
-    @abstractmethod
-    @DeveloperAPI
-    def compute_actions(
-            self,
-            obs_batch: Union[List[TensorStructType], TensorStructType],
-            state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Union[List[TensorStructType],
-                                     TensorStructType] = None,
-            prev_reward_batch: Union[List[TensorStructType],
-                                     TensorStructType] = None,
-            info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
-            explore: Optional[bool] = None,
-            timestep: Optional[int] = None,
-            **kwargs) -> \
-            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        """Computes actions for the current policy.
-
-        Args:
-            obs_batch: Batch of observations.
-            state_batches: List of RNN state input batches, if any.
-            prev_action_batch: Batch of previous action values.
-            prev_reward_batch: Batch of previous rewards.
-            info_batch (Optional[Dict[str, list]]): Batch of info objects.
-            episodes (Optional[List[MultiAgentEpisode]] ): List of
-                MultiAgentEpisode, one for each obs in obs_batch. This provides
-                access to all of the internal episode state, which may be
-                useful for model-based or multiagent algorithms.
-            explore (Optional[bool]): Whether to pick an exploitation or
-                exploration action. Set to None (default) for using the
-                value of `self.config["explore"]`.
-            timestep (Optional[int]): The current (sampling) time step.
-
-        Keyword Args:
-            kwargs: forward compatibility placeholder
-
-        Returns:
-            Tuple:
-                actions (TensorType): Batch of output actions, with shape like
-                    [BATCH_SIZE, ACTION_SHAPE].
-                state_outs (List[TensorType]): List of RNN state output
-                    batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
-                info (List[dict]): Dictionary of extra feature batches, if any,
-                    with shape like
-                    {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
-        """
-        raise NotImplementedError
 
     @DeveloperAPI
     def compute_single_action(
@@ -188,7 +148,16 @@ class Policy(metaclass=ABCMeta):
             # Kwars placeholder for future compatibility.
             **kwargs) -> \
             Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
-        """Unbatched version of compute_actions.
+        """Computes and returns a single (B=1) action value.
+
+        Takes an input dict (usually a SampleBatch) as its main data input.
+        This allows for using this method in case a more complex input pattern
+        (view requirements) is needed, for example when the Model requires the
+        last n observations, the last m actions/rewards, or a combination
+        of any of these.
+        Alternatively, in case no complex inputs are required, takes a single
+        `obs` values (and possibly single state values, prev-action/reward
+        values, etc..).
 
         Args:
             obs: Single observation.
@@ -208,12 +177,11 @@ class Policy(metaclass=ABCMeta):
             timestep: The current (sampling) time step.
 
         Keyword Args:
-            kwargs: Forward compatibility.
+            kwargs: Forward compatibility placeholder.
 
         Returns:
-            - actions: Single action.
-            - state_outs: List of RNN state outputs, if any.
-            - info: Dictionary of extra features, if any.
+            Tuple consisting of the action, the list of RNN state outputs (if
+            any), and a dictionary of extra features (if any).
         """
         # Build the input-dict used for the call to
         # `self.compute_actions_from_input_dict()`.
@@ -275,8 +243,11 @@ class Policy(metaclass=ABCMeta):
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
 
-        Uses the currently "forward-pass-registered" samples from the collector
-        to construct the input_dict for the Model.
+        Takes an input dict (usually a SampleBatch) as its main data input.
+        This allows for using this method in case a more complex input pattern
+        (view requirements) is needed, for example when the Model requires the
+        last n observations, the last m actions/rewards, or a combination
+        of any of these.
 
         Args:
             input_dict: A SampleBatch or input dict containing the Tensors
@@ -294,14 +265,12 @@ class Policy(metaclass=ABCMeta):
             kwargs: Forward compatibility placeholder.
 
         Returns:
-            Tuple:
-                actions (TensorType): Batch of output actions, with shape
-                    like [BATCH_SIZE, ACTION_SHAPE].
-                state_outs (List[TensorType]): List of RNN state output
-                    batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
-                info (dict): Dictionary of extra feature batches, if any, with
-                    shape like
-                    {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+            actions: Batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs: List of RNN state output
+                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
+            info: Dictionary of extra feature batches, if any, with shape like
+                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
         """
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
@@ -320,6 +289,53 @@ class Policy(metaclass=ABCMeta):
             **kwargs,
         )
 
+    @abstractmethod
+    @DeveloperAPI
+    def compute_actions(
+            self,
+            obs_batch: Union[List[TensorStructType], TensorStructType],
+            state_batches: Optional[List[TensorType]] = None,
+            prev_action_batch: Union[List[TensorStructType],
+                                     TensorStructType] = None,
+            prev_reward_batch: Union[List[TensorStructType],
+                                     TensorStructType] = None,
+            info_batch: Optional[Dict[str, list]] = None,
+            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
+            **kwargs) -> \
+            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        """Computes actions for the current policy.
+
+        Args:
+            obs_batch: Batch of observations.
+            state_batches: List of RNN state input batches, if any.
+            prev_action_batch: Batch of previous action values.
+            prev_reward_batch: Batch of previous rewards.
+            info_batch: Batch of info objects.
+            episodes: List of MultiAgentEpisodes, one for each obs in
+                obs_batch. This provides access to all of the internal
+                episode state, which may be useful for model-based or
+                multi-agent algorithms.
+            explore: Whether to pick an exploitation or exploration action.
+                Set to None (default) for using the value of
+                `self.config["explore"]`.
+            timestep: The current (sampling) time step.
+
+        Keyword Args:
+            kwargs: Forward compatibility placeholder
+
+        Returns:
+            actions (TensorType): Batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs (List[TensorType]): List of RNN state output
+                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
+            info (List[dict]): Dictionary of extra feature batches, if any,
+                with shape like
+                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+        """
+        raise NotImplementedError
+
     @DeveloperAPI
     def compute_log_likelihoods(
             self,
@@ -334,26 +350,24 @@ class Policy(metaclass=ABCMeta):
     ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
+        The log-likelihood is calculated using this Policy's action
+        distribution class (self.dist_class).
+
         Args:
-            actions (Union[List[TensorType], TensorType]): Batch of actions,
-                for which to retrieve the log-probs/likelihoods (given all
-                other inputs: obs, states, ..).
-            obs_batch (Union[List[TensorType], TensorType]): Batch of
-                observations.
-            state_batches (Optional[List[TensorType]]): List of RNN state input
-                batches, if any.
-            prev_action_batch (Optional[Union[List[TensorType], TensorType]]):
-                Batch of previous action values.
-            prev_reward_batch (Optional[Union[List[TensorType], TensorType]]):
-                Batch of previous rewards.
-            actions_normalized (bool): Is the given `actions` already
-                 normalized (between -1.0 and 1.0) or not? If not and
-                 `normalize_actions=True`, we need to normalize the given
-                 actions first, before calculating log likelihoods.
+            actions: Batch of actions, for which to retrieve the
+                log-probs/likelihoods (given all other inputs: obs,
+                states, ..).
+            obs_batch: Batch of observations.
+            state_batches: List of RNN state input batches, if any.
+            prev_action_batch: Batch of previous action values.
+            prev_reward_batch: Batch of previous rewards.
+            actions_normalized: Is the given `actions` already normalized
+                (between -1.0 and 1.0) or not? If not and
+                `normalize_actions=True`, we need to normalize the given
+                actions first, before calculating log likelihoods.
 
         Returns:
-            TensorType: Batch of log probs/likelihoods, with shape:
-                [BATCH_SIZE].
+            Batch of log probs/likelihoods, with shape: [BATCH_SIZE].
         """
         raise NotImplementedError
 
@@ -368,73 +382,136 @@ class Policy(metaclass=ABCMeta):
 
         This will be called on each trajectory fragment computed during policy
         evaluation. Each fragment is guaranteed to be only from one episode.
+        The given fragment may or may not contain the end of this episode,
+        depending on the `batch_mode=truncate_episodes|complete_episodes`,
+        `rollout_fragment_length`, and other settings.
 
         Args:
-            sample_batch (SampleBatch): batch of experiences for the policy,
+            sample_batch: batch of experiences for the policy,
                 which will contain at most one episode trajectory.
-            other_agent_batches (dict): In a multi-agent env, this contains a
+            other_agent_batches: In a multi-agent env, this contains a
                 mapping of agent ids to (policy, agent_batch) tuples
                 containing the policy and experiences of the other agents.
-            episode (Optional[MultiAgentEpisode]): An optional multi-agent
-                episode object to provide access to all of the
-                internal episode state, which may be useful for model-based or
-                multi-agent algorithms.
+            episode: An optional multi-agent episode object to provide
+                access to all of the internal episode state, which may
+                be useful for model-based or multi-agent algorithms.
 
         Returns:
-            SampleBatch: Postprocessed sample batch.
+            The postprocessed sample batch.
         """
+        # The default implementation just returns the same, unaltered batch.
         return sample_batch
 
     @DeveloperAPI
     def learn_on_batch(self, samples: SampleBatch) -> Dict[str, TensorType]:
-        """Fused compute gradients and apply gradients call.
+        """Perform one learning update, given `samples`.
 
-        Either this or the combination of compute/apply grads must be
-        implemented by subclasses.
+        Either this method or the combination of `compute_gradients` and
+        `apply_gradients` must be implemented by subclasses.
 
         Args:
-            samples (SampleBatch): The SampleBatch object to learn from.
+            samples: The SampleBatch object to learn from.
 
         Returns:
-            Dict[str, TensorType]: Dictionary of extra metadata from
-                compute_gradients().
+            Dictionary of extra metadata from `compute_gradients()`.
 
         Examples:
             >>> sample_batch = ev.sample()
             >>> ev.learn_on_batch(sample_batch)
         """
-
+        # The default implementation is simply a fused `compute_gradients` plus
+        # `apply_gradients` call.
         grads, grad_info = self.compute_gradients(samples)
         self.apply_gradients(grads)
         return grad_info
 
     @DeveloperAPI
-    def compute_gradients(self, postprocessed_batch: SampleBatch) -> \
-            Tuple[ModelGradients, Dict[str, TensorType]]:
-        """Computes gradients against a batch of experiences.
+    def load_batch_into_buffer(self, batch: SampleBatch,
+                               buffer_index: int = 0) -> int:
+        """Bulk-loads the given SampleBatch into the devices' memories.
 
-        Either this or learn_on_batch() must be implemented by subclasses.
+        The data is split equally across all the Policy's devices.
+        If the data is not evenly divisible by the batch size, excess data
+        should be discarded.
 
         Args:
-            postprocessed_batch (SampleBatch): The SampleBatch object to use
+            batch: The SampleBatch to load.
+            buffer_index: The index of the buffer (a MultiGPUTowerStack) to use
+                on the devices. The number of buffers on each device depends
+                on the value of the `num_multi_gpu_tower_stacks` config key.
+
+        Returns:
+            The number of tuples loaded per device.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
+        """Returns the number of currently loaded samples in the given buffer.
+
+        Args:
+            buffer_index: The index of the buffer (a MultiGPUTowerStack)
+                to use on the devices. The number of buffers on each device
+                depends on the value of the `num_multi_gpu_tower_stacks` config
+                key.
+
+        Returns:
+            The number of tuples loaded per device.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
+        """Runs a single step of SGD on an already loaded data in a buffer.
+
+        Runs an SGD step over a slice of the pre-loaded batch, offset by
+        the `offset` argument (useful for performing n minibatch SGD
+        updates repeatedly on the same, already pre-loaded data).
+
+        Updates the model weights based on the averaged per-device gradients.
+
+        Args:
+            offset: Offset into the preloaded data. Used for pre-loading
+                a train-batch once to a device, then iterating over
+                (subsampling through) this batch n times doing minibatch SGD.
+            buffer_index: The index of the buffer (a MultiGPUTowerStack)
+                to take the already pre-loaded data from. The number of buffers
+                on each device depends on the value of the
+                `num_multi_gpu_tower_stacks` config key.
+
+        Returns:
+            The outputs of extra_ops evaluated over the batch.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def compute_gradients(self, postprocessed_batch: SampleBatch) -> \
+            Tuple[ModelGradients, Dict[str, TensorType]]:
+        """Computes gradients given a batch of experiences.
+
+        Either this in combination with `apply_gradients()` or
+        `learn_on_batch()` must be implemented by subclasses.
+
+        Args:
+            postprocessed_batch: The SampleBatch object to use
                 for calculating gradients.
 
         Returns:
-            Tuple[ModelGradients, Dict[str, TensorType]]:
-                - List of gradient output values.
-                - Extra policy-specific info values.
+            grads: List of gradient output values.
+            grad_info: Extra policy-specific info values.
         """
         raise NotImplementedError
 
     @DeveloperAPI
     def apply_gradients(self, gradients: ModelGradients) -> None:
-        """Applies previously computed gradients.
+        """Applies the (previously) computed gradients.
 
-        Either this or learn_on_batch() must be implemented by subclasses.
+        Either this in combination with `compute_gradients()` or
+        `learn_on_batch()` must be implemented by subclasses.
 
         Args:
-            gradients (ModelGradients): The already calculated gradients to
-                apply to this Policy.
+            gradients: The already calculated gradients to apply to this
+                Policy.
         """
         raise NotImplementedError
 
@@ -443,10 +520,13 @@ class Policy(metaclass=ABCMeta):
         """Returns model weights.
 
         Note: The return value of this method will reside under the "weights"
-        key in the return value of Policy.get_state().
+        key in the return value of Policy.get_state(). Model weights are only
+        one part of a Policy's state. Other state information contains:
+        optimizer variables, exploration state, and global state vars such as
+        the sampling timestep.
 
         Returns:
-            ModelWeights: Serializable copy or view of model weights.
+            Serializable copy or view of model weights.
         """
         raise NotImplementedError
 
@@ -454,33 +534,30 @@ class Policy(metaclass=ABCMeta):
     def set_weights(self, weights: ModelWeights) -> None:
         """Sets this Policy's model's weights.
 
+        Note: Model weights are only one part of a Policy's state. Other
+        state information contains: optimizer variables, exploration state,
+        and global state vars such as the sampling timestep.
+
         Args:
-            weights (ModelWeights): Serializable copy or view of model weights.
+            weights: Serializable copy or view of model weights.
         """
         raise NotImplementedError
 
     @DeveloperAPI
     def get_exploration_state(self) -> Dict[str, TensorType]:
-        """Returns the current exploration information of this policy.
-
-        This information depends on the policy's Exploration object.
+        """Returns the state of this Policy's exploration component.
 
         Returns:
-            Dict[str, TensorType]: Serializable information on the
-                `self.exploration` object.
+            Serializable information on the `self.exploration` object.
         """
         return self.exploration.get_state()
-
-    @Deprecated(new="get_exploration_state", error=False)
-    def get_exploration_info(self) -> Dict[str, TensorType]:
-        return self.get_exploration_state()
 
     @DeveloperAPI
     def is_recurrent(self) -> bool:
         """Whether this Policy holds a recurrent Model.
 
         Returns:
-            bool: True if this Policy has-a RNN-based Model.
+            True if this Policy has-a RNN-based Model.
         """
         return False
 
@@ -503,69 +580,16 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
-    def load_batch_into_buffer(self, batch: SampleBatch,
-                               buffer_index: int = 0) -> int:
-        """Bulk-loads the given SampleBatch into the devices' memories.
-
-        The data is split equally across all the devices. If the data is not
-        evenly divisible by the batch size, excess data should be discarded.
-
-        Args:
-            batch (SampleBatch): The SampleBatch to load.
-            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
-                to use on the devices.
-
-        Returns:
-            int: The number of tuples loaded per device.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
-    def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
-        """Returns the number of currently loaded samples in the given buffer.
-
-        Args:
-            batch (SampleBatch): The SampleBatch to load.
-            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
-                to use on the devices.
-
-        Returns:
-            int: The number of tuples loaded per device.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
-    def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
-        """Runs a single step of SGD on already loaded data in a buffer.
-
-        Runs an SGD step over a slice of the pre-loaded batch, offset by
-        the `offset` argument (useful for performing n minibatch SGD
-        updates repeatedly on the same, already pre-loaded data).
-
-        Updates shared model weights based on the averaged per-device
-        gradients.
-
-        Args:
-            offset (int): Offset into the preloaded data. Used for pre-loading
-                a train-batch once to a device, then iterating over
-                (subsampling through) this batch n times doing minibatch SGD.
-            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
-                to take the already pre-loaded data from.
-
-        Returns:
-            The outputs of extra_ops evaluated over the batch.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
-        """Returns all local state.
+        """Returns the entire current state of this Policy.
 
         Note: Not to be confused with an RNN model's internal state.
+        State includes the Model(s)' weights, optimizer weights,
+        the exploration component's state, as well as global variables, such
+        as sampling timesteps.
 
         Returns:
-            Union[Dict[str, TensorType], List[TensorType]]: Serialized local
-                state.
+            Serialized local state.
         """
         state = {
             # All the policy's weights.
@@ -576,11 +600,14 @@ class Policy(metaclass=ABCMeta):
         return state
 
     @DeveloperAPI
-    def set_state(self, state: object) -> None:
-        """Restores all local state to the provided `state`.
+    def set_state(
+            self,
+            state: Union[Dict[str, TensorType], List[TensorType]],
+    ) -> None:
+        """Restores the entire current state of this Policy from `state`.
 
         Args:
-            state (object): The new state to set this policy to. Can be
+            state: The new state to set this policy to. Can be
                 obtained by calling `self.get_state()`.
         """
         self.set_weights(state["weights"])
@@ -597,6 +624,15 @@ class Policy(metaclass=ABCMeta):
         # Store the current global time step (sum over all policies' sample
         # steps).
         self.global_timestep = global_vars["timestep"]
+
+    @DeveloperAPI
+    def export_checkpoint(self, export_dir: str) -> None:
+        """Export Policy checkpoint to local directory.
+
+        Args:
+            export_dir (str): Local writable directory.
+        """
+        raise NotImplementedError
 
     @DeveloperAPI
     def export_model(self, export_dir: str,
@@ -627,9 +663,12 @@ class Policy(metaclass=ABCMeta):
     def get_session(self) -> Optional["tf1.Session"]:
         """Returns tf.Session object to use for computing actions or None.
 
+        Note: This method only applies to TFPolicy sub-classes. All other
+        sub-classes should expect a None to be returned from this method.
+
         Returns:
-            Optional[tf1.Session]: The tf Session to use for computing actions
-                and losses with this policy.
+            The tf Session to use for computing actions and losses with
+                this policy or None.
         """
         return None
 
@@ -935,11 +974,6 @@ class Policy(metaclass=ABCMeta):
                     vr["state_out_{}".format(i)] = ViewRequirement(
                         space=space, used_for_training=True)
 
-    @Deprecated(new="save", error=False)
-    def export_checkpoint(self, export_dir: str) -> None:
-        """Export Policy checkpoint to local directory.
-
-        Args:
-            export_dir (str): Local writable directory.
-        """
-        raise NotImplementedError
+    @Deprecated(new="get_exploration_state", error=False)
+    def get_exploration_info(self) -> Dict[str, TensorType]:
+        return self.get_exploration_state()

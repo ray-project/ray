@@ -32,7 +32,7 @@ ClusterTaskManager::ClusterTaskManager(
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     TaskDependencyManagerInterface &task_dependency_manager,
     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
-    NodeInfoGetter get_node_info,
+    internal::NodeInfoGetter get_node_info,
     std::function<void(const RayTask &)> announce_infeasible_task,
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -70,7 +70,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // blocking where a task which cannot be scheduled because
       // there are not enough available resources blocks other
       // tasks from being scheduled.
-      const std::shared_ptr<Work> &work = *work_it;
+      const std::shared_ptr<internal::Work> &work = *work_it;
       RayTask task = work->task;
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
@@ -126,7 +126,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
   return did_schedule;
 }
 
-bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<Work> work) {
+bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work) {
   const auto &task = work->task;
   const auto &task_id = task.GetTaskSpecification().TaskId();
   const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
@@ -156,11 +156,11 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<Work> work) {
 bool ClusterTaskManager::PoppedWorkerHandler(
     const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
     const TaskID &task_id, SchedulingClass scheduling_class,
-    const std::shared_ptr<Work> &work, bool is_detached_actor,
+    const std::shared_ptr<internal::Work> &work, bool is_detached_actor,
     const rpc::Address &owner_address) {
   const auto &reply = work->reply;
   const auto &callback = work->callback;
-  bool canceled = work->status == WorkStatus::CANCELLED;
+  bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
   const auto &task = work->task;
   const auto &spec = task.GetTaskSpecification();
   bool dispatched = false;
@@ -173,7 +173,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     not_detached_with_owner_failed = true;
   }
 
-  auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<Work> &work,
+  auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<internal::Work> &work,
                                              const SchedulingClass &scheduling_class) {
     auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
     RAY_CHECK(shapes_it != tasks_to_dispatch_.end());
@@ -230,7 +230,19 @@ bool ClusterTaskManager::PoppedWorkerHandler(
       } else {
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
-        work->status = WorkStatus::WAITING;
+        internal::UnscheduledWorkCause cause =
+            internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
+        if (status == PopWorkerStatus::JobConfigMissing) {
+          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
+        } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
+          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED;
+        } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
+          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
+        } else {
+          RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
+                         << status;
+        }
+        work->SetStateWaiting(cause);
         // Return here because we shouldn't remove task dependencies.
         return dispatched;
       }
@@ -278,7 +290,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
-      if (work->status == WorkStatus::WAITING_FOR_WORKER) {
+      if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
         work_it++;
         continue;
       }
@@ -309,6 +321,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
               << "Cannot dispatch task " << task_id
               << " until another task finishes and releases its arguments, but no other "
                  "task is running";
+          work->SetStateWaiting(
+              internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY);
           work_it++;
         }
         continue;
@@ -345,6 +359,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // There must not be any other available nodes in the cluster, so the task
           // should stay on this node. We can skip the rest of the shape because the
           // scheduler will make the same decision.
+          work->SetStateWaiting(
+              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
           break;
         }
         if (!spec.GetDependencies().empty()) {
@@ -362,7 +378,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                   allocated_instances);
         }
         work->allocated_instances = allocated_instances;
-        work->status = WorkStatus::WAITING_FOR_WORKER;
+        work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
         auto &owner_address = spec.CallerAddress();
         worker_pool_.PopWorker(
@@ -388,7 +404,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   }
 }
 
-bool ClusterTaskManager::TrySpillback(const std::shared_ptr<Work> &work,
+bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                       bool &is_infeasible) {
   const auto &spec = work->task.GetTaskSpecification();
   int64_t _unused;
@@ -414,7 +430,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
   metric_tasks_queued_++;
-  auto work = std::make_shared<Work>(task, reply, [send_reply_callback] {
+  auto work = std::make_shared<internal::Work>(task, reply, [send_reply_callback] {
     send_reply_callback(Status::OK(), nullptr, nullptr);
   });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
@@ -561,7 +577,8 @@ void ClusterTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
   }
 }
 
-void ReplyCancelled(std::shared_ptr<Work> &work, bool runtime_env_setup_failed) {
+void ReplyCancelled(std::shared_ptr<internal::Work> &work,
+                    bool runtime_env_setup_failed) {
   auto reply = work->reply;
   auto callback = work->callback;
   reply->set_canceled(true);
@@ -597,7 +614,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
         ReplyCancelled(*work_it, runtime_env_setup_failed);
-        if ((*work_it)->status == WorkStatus::WAITING_FOR_WORKER) {
+        if ((*work_it)->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
           // We've already acquired resources so we need to release them.
           cluster_resource_scheduler_->ReleaseWorkerResources(
               (*work_it)->allocated_instances);
@@ -608,7 +625,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
         }
-        (*work_it)->status = WorkStatus::CANCELLED;
+        (*work_it)->SetStateCancelled();
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_dispatch_.erase(shapes_it);
@@ -856,16 +873,35 @@ void ClusterTaskManager::FillResourceUsage(
   }
 }
 
-bool ClusterTaskManager::AnyPendingTasks(RayTask *exemplar, bool *any_pending,
-                                         int *num_pending_actor_creation,
-                                         int *num_pending_tasks) const {
+bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
+    RayTask *exemplar, bool *any_pending, int *num_pending_actor_creation,
+    int *num_pending_tasks) const {
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
   for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
+      const auto &work = *work_it;
       const auto &task = work_it->task;
+
+      // If the work is not in the waiting state, it will be scheduled soon or won't be
+      // scheduled. Consider as non-pending.
+      if (work.GetState() != internal::WorkStatus::WAITING) {
+        continue;
+      }
+
+      // If the work is not waiting for acquiring resources, we don't consider it as
+      // there's resource deadlock.
+      if (work.GetUnscheduledCause() !=
+              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION &&
+          work.GetUnscheduledCause() !=
+              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE &&
+          work.GetUnscheduledCause() !=
+              internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
+        continue;
+      }
+
       if (task.GetTaskSpecification().IsActorCreationTask()) {
         *num_pending_actor_creation += 1;
       } else {
@@ -883,29 +919,129 @@ bool ClusterTaskManager::AnyPendingTasks(RayTask *exemplar, bool *any_pending,
 }
 
 std::string ClusterTaskManager::DebugStr() const {
-  // TODO(Shanly): This method will be replaced with `DebugString` once we remove the
-  // legacy scheduler.
-  auto accumulator = [](size_t state,
-                        const std::pair<int, std::deque<std::shared_ptr<Work>>> &pair) {
-    return state + pair.second.size();
-  };
+  auto accumulator =
+      [](size_t state,
+         const std::pair<int, std::deque<std::shared_ptr<internal::Work>>> &pair) {
+        return state + pair.second.size();
+      };
+  size_t num_waiting_for_resource = 0;
+  size_t num_waiting_for_plasma_memory = 0;
+  size_t num_waiting_for_remote_node_resources = 0;
+  size_t num_worker_not_started_by_job_config_not_exist = 0;
+  size_t num_worker_not_started_by_registration_timeout = 0;
+  size_t num_worker_not_started_by_process_rate_limit = 0;
+  size_t num_worker_waiting_for_workers = 0;
+  size_t num_cancelled_tasks = 0;
+
   size_t num_infeasible_tasks = std::accumulate(
       infeasible_tasks_.begin(), infeasible_tasks_.end(), (size_t)0, accumulator);
-  size_t num_tasks_to_schedule = std::accumulate(
-      tasks_to_schedule_.begin(), tasks_to_schedule_.end(), (size_t)0, accumulator);
-  size_t num_tasks_to_dispatch = std::accumulate(
-      tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0, accumulator);
+
+  // TODO(sang): Normally, the # of queued tasks are not large, so this is less likley to
+  // be an issue that we iterate all of them. But if it uses lots of CPU, consider
+  // optimizing by updating live instead of iterating through here.
+  auto per_work_accumulator = [&num_waiting_for_resource, &num_waiting_for_plasma_memory,
+                               &num_waiting_for_remote_node_resources,
+                               &num_worker_not_started_by_job_config_not_exist,
+                               &num_worker_not_started_by_registration_timeout,
+                               &num_worker_not_started_by_process_rate_limit,
+                               &num_worker_waiting_for_workers, &num_cancelled_tasks](
+                                  size_t state,
+                                  const std::pair<
+                                      int, std::deque<std::shared_ptr<internal::Work>>>
+                                      &pair) {
+    const auto &work_queue = pair.second;
+    for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
+      const auto &work = *work_it++;
+      if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+        num_worker_waiting_for_workers += 1;
+      } else if (work->GetState() == internal::WorkStatus::CANCELLED) {
+        num_cancelled_tasks += 1;
+      } else if (work->GetUnscheduledCause() ==
+                 internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION) {
+        num_waiting_for_resource += 1;
+      } else if (work->GetUnscheduledCause() ==
+                 internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
+        num_waiting_for_plasma_memory += 1;
+      } else if (work->GetUnscheduledCause() ==
+                 internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE) {
+        num_waiting_for_remote_node_resources += 1;
+      } else if (work->GetUnscheduledCause() ==
+                 internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST) {
+        num_worker_not_started_by_job_config_not_exist += 1;
+      } else if (work->GetUnscheduledCause() ==
+                 internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT) {
+        num_worker_not_started_by_registration_timeout += 1;
+      } else if (work->GetUnscheduledCause() ==
+                 internal::UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED) {
+        num_worker_not_started_by_process_rate_limit += 1;
+      }
+    }
+    return state + pair.second.size();
+  };
+  size_t num_tasks_to_schedule =
+      std::accumulate(tasks_to_schedule_.begin(), tasks_to_schedule_.end(), (size_t)0,
+                      per_work_accumulator);
+  size_t num_tasks_to_dispatch =
+      std::accumulate(tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0,
+                      per_work_accumulator);
+
+  if (num_tasks_to_schedule + num_tasks_to_dispatch + num_infeasible_tasks > 1000) {
+    RAY_LOG(WARNING)
+        << "More than 1000 tasks are queued in this node. This can cause slow down.";
+  }
+
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
   buffer << "Infeasible queue length: " << num_infeasible_tasks << "\n";
   buffer << "Schedule queue length: " << num_tasks_to_schedule << "\n";
   buffer << "Dispatch queue length: " << num_tasks_to_dispatch << "\n";
+  buffer << "num_waiting_for_resource: " << num_waiting_for_resource << "\n";
+  buffer << "num_waiting_for_plasma_memory: " << num_waiting_for_plasma_memory << "\n";
+  buffer << "num_waiting_for_remote_node_resources: "
+         << num_waiting_for_remote_node_resources << "\n";
+  buffer << "num_worker_not_started_by_job_config_not_exist: "
+         << num_worker_not_started_by_job_config_not_exist << "\n";
+  buffer << "num_worker_not_started_by_registration_timeout: "
+         << num_worker_not_started_by_registration_timeout << "\n";
+  buffer << "num_worker_not_started_by_process_rate_limit: "
+         << num_worker_not_started_by_process_rate_limit << "\n";
+  buffer << "num_worker_waiting_for_workers: " << num_worker_waiting_for_workers << "\n";
+  buffer << "num_cancelled_tasks: " << num_cancelled_tasks << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
   buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
   buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
-  buffer << "==================================================";
+  buffer << "Resource usage {\n";
+  /// Calculates how much resources are occupied by tasks or actors.
+  for (const auto &worker :
+       worker_pool_.GetAllRegisteredWorkers(/*filter_dead_workers*/ true)) {
+    if (worker->IsDead()        // worker is dead
+        || worker->IsBlocked()  // worker is blocked by blocking Ray API
+        || (worker->GetAssignedTaskId().IsNil() &&
+            worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
+      // Then this shouldn't have allocated resources.
+      continue;
+    }
+
+    const auto &task_or_actor_name = worker->GetAssignedTask()
+                                         .GetTaskSpecification()
+                                         .FunctionDescriptor()
+                                         ->CallString();
+    buffer << "    - ("
+           << "language="
+           << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
+           << " "
+           << "actor_or_task=" << task_or_actor_name << " "
+           << "pid=" << worker->GetProcess().GetId() << "): "
+           << worker->GetAssignedTask()
+                  .GetTaskSpecification()
+                  .GetRequiredResources()
+                  .ToString()
+           << "\n";
+  }
+  buffer << "}\n";
+  buffer << "==================================================\n";
   return buffer.str();
 }
 
@@ -1044,7 +1180,7 @@ void ClusterTaskManager::Dispatch(
 }
 
 void ClusterTaskManager::Spillback(const NodeID &spillback_to,
-                                   const std::shared_ptr<Work> &work) {
+                                   const std::shared_ptr<internal::Work> &work) {
   metric_tasks_spilled_++;
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();

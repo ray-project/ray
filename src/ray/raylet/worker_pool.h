@@ -86,6 +86,7 @@ class WorkerPoolInterface {
   /// cases:
   /// Case 1: An suitable worker was found in idle worker pool.
   /// Case 2: An suitable worker registered to raylet.
+  /// The corresponding PopWorkerStatus will be passed to the callback.
   /// \param allocated_instances_serialized_json The allocated resource instances
   /// json string, it contains resource ID which assigned to this worker.
   /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
@@ -98,6 +99,13 @@ class WorkerPoolInterface {
   ///
   /// \param The idle worker to add.
   virtual void PushWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  /// Get all the registered workers.
+  ///
+  /// \param filter_dead_workers whether or not if this method will filter dead workers
+  /// that are still registered. \return A list containing all the workers.
+  virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers = false) const = 0;
 
   virtual ~WorkerPoolInterface(){};
 };

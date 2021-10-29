@@ -79,16 +79,6 @@ class WorkerInterface {
   virtual void SetOwnerAddress(const rpc::Address &address) = 0;
   virtual const rpc::Address &GetOwnerAddress() const = 0;
 
-  virtual const ResourceIdSet &GetLifetimeResourceIds() const = 0;
-  virtual void SetLifetimeResourceIds(ResourceIdSet &resource_ids) = 0;
-  virtual void ResetLifetimeResourceIds() = 0;
-
-  virtual const ResourceIdSet &GetTaskResourceIds() const = 0;
-  virtual void SetTaskResourceIds(ResourceIdSet &resource_ids) = 0;
-  virtual void ResetTaskResourceIds() = 0;
-  virtual ResourceIdSet ReleaseTaskCpuResources() = 0;
-  virtual void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) = 0;
-
   virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
 
   virtual const BundleID &GetBundleId() const = 0;
@@ -115,6 +105,9 @@ class WorkerInterface {
   virtual bool IsRegistered() = 0;
 
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
+
+  /// Return True if the worker is available for scheduling a task or actor.
+  virtual bool IsAvailableForScheduling() const = 0;
 
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
@@ -178,16 +171,6 @@ class Worker : public WorkerInterface {
   void SetOwnerAddress(const rpc::Address &address);
   const rpc::Address &GetOwnerAddress() const;
 
-  const ResourceIdSet &GetLifetimeResourceIds() const;
-  void SetLifetimeResourceIds(ResourceIdSet &resource_ids);
-  void ResetLifetimeResourceIds();
-
-  const ResourceIdSet &GetTaskResourceIds() const;
-  void SetTaskResourceIds(ResourceIdSet &resource_ids);
-  void ResetTaskResourceIds();
-  ResourceIdSet ReleaseTaskCpuResources();
-  void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
-
   void DirectActorCallArgWaitComplete(int64_t tag);
 
   const BundleID &GetBundleId() const;
@@ -221,6 +204,13 @@ class Worker : public WorkerInterface {
   void SetAssignedTask(const RayTask &assigned_task) { assigned_task_ = assigned_task; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
+
+  bool IsAvailableForScheduling() const {
+    return !IsDead()                        // Not dead
+           && !GetAssignedTaskId().IsNil()  // No assigned task
+           && !IsBlocked()                  // Not blocked
+           && GetActorId().IsNil();         // No assigned actor
+  }
 
   rpc::CoreWorkerClientInterface *rpc_client() {
     RAY_CHECK(IsRegistered());
@@ -273,12 +263,6 @@ class Worker : public WorkerInterface {
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;
-  /// The specific resource IDs that this worker owns for its lifetime. This is
-  /// only used for actors.
-  ResourceIdSet lifetime_resource_ids_;
-  /// The specific resource IDs that this worker currently owns for the duration
-  // of a task.
-  ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.

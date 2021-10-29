@@ -22,8 +22,9 @@ PullManager::PullManager(
     NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
     const std::function<void(const ObjectID &)> cancel_pull_request,
+    const std::function<void(const ObjectID &)> fail_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
-    const std::function<double()> get_time, int pull_timeout_ms,
+    const std::function<double()> get_time_seconds, int pull_timeout_ms,
     int64_t num_bytes_available,
     std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
     std::function<std::string(const ObjectID &)> get_locally_spilled_object_url)
@@ -32,11 +33,12 @@ PullManager::PullManager(
       send_pull_request_(send_pull_request),
       cancel_pull_request_(cancel_pull_request),
       restore_spilled_object_(restore_spilled_object),
-      get_time_(get_time),
+      get_time_seconds_(get_time_seconds),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
       pin_object_(pin_object),
       get_locally_spilled_object_url_(get_locally_spilled_object_url),
+      fail_pull_request_(fail_pull_request),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
@@ -79,7 +81,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       // The first pull request doesn't need to be special case. Instead we can just let
       // the retry timer fire immediately.
       it = object_pull_requests_
-               .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_()))
+               .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_seconds_()))
                .first;
     } else {
       if (it->second.object_size_set) {
@@ -386,7 +388,8 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
                                    const std::string &spilled_url,
-                                   const NodeID &spilled_node_id, size_t object_size) {
+                                   const NodeID &spilled_node_id, bool pending_creation,
+                                   size_t object_size) {
   // Exit if the Pull request has already been fulfilled or canceled.
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
@@ -399,6 +402,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   it->second.spilled_url = spilled_url;
   it->second.spilled_node_id = spilled_node_id;
+  it->second.pending_object_creation = pending_creation;
   if (!it->second.object_size_set) {
     it->second.object_size = object_size;
     it->second.object_size_set = true;
@@ -448,7 +452,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   RAY_CHECK(it != object_pull_requests_.end());
   auto &request = it->second;
-  if (request.next_pull_time > get_time_()) {
+  if (request.next_pull_time > get_time_seconds_()) {
     return;
   }
 
@@ -481,9 +485,24 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // TODO(swang): Store an error if this times out and the object is not
-  // pending reconstruction.
-  RAY_LOG(WARNING) << "Object neither in memory nor external storage " << object_id.Hex();
+  if (request.expiration_time_seconds == 0) {
+    RAY_LOG(WARNING) << "Object neither in memory nor external storage "
+                     << object_id.Hex();
+    request.expiration_time_seconds =
+        get_time_seconds_() +
+        RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
+  } else if (request.pending_object_creation) {
+    // Object is pending creation, wait for the task that creates the object to
+    // finish.
+    RAY_LOG(INFO) << "Object pending creation " << object_id.Hex();
+    request.expiration_time_seconds =
+        get_time_seconds_() +
+        RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
+  } else if (get_time_seconds_() > request.expiration_time_seconds) {
+    // Object has no locations and is not being reconstructed by its owner.
+    fail_pull_request_(object_id);
+    request.expiration_time_seconds = 0;
+  }
 }
 
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
@@ -546,14 +565,14 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 void PullManager::ResetRetryTimer(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it != object_pull_requests_.end()) {
-    it->second.next_pull_time = get_time_();
+    it->second.next_pull_time = get_time_seconds_();
     it->second.num_retries = 0;
   }
 }
 
 void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
                                    const ObjectID &object_id) {
-  const auto time = get_time_();
+  const auto time = get_time_seconds_();
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time = time + retry_timeout_len;
   if (retry_timeout_len > max_timeout_) {
