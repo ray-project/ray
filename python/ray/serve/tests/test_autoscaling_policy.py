@@ -148,6 +148,7 @@ def test_e2e_basic_scale_up_down(serve_instance):
 
 
 @mock.patch.object(ServeController, "autoscale")
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_initial_num_replicas(mock, serve_instance):
     """ assert that the inital amount of replicas a deployment is launched with
     respects the bounds set by autoscaling_config.
