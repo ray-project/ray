@@ -260,7 +260,7 @@ USER_TESTS = {
             "horovod_user_test",
             setup_commands=[
                 "sudo apt update", "sudo apt -y install "
-                "build-essential", ["pip install cmake"]
+                "build-essential"
             ] + [
                 f"export {horovod_env_var}=1"
                 for horovod_env_var in HOROVOD_INSTALL_ENV_VARS
