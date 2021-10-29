@@ -135,7 +135,7 @@ void AgentManager::CreateRuntimeEnv(
   if (!should_start_agent_) {
     RAY_LOG(ERROR) << "Not all required Ray dependencies for the runtime_env "
                       "feature were found. To install the required dependencies, "
-                   << "please run `pip install 'ray[default]'`.";
+                   << "please run `pip install \"ray[default]\"`.";
     // Execute the callback after the currently executing callback finishes.  Otherwise
     // the task may be erased from the dispatch queue during the queue iteration in
     // ClusterTaskManager::DispatchScheduledTasksToWorkers(), invalidating the iterator

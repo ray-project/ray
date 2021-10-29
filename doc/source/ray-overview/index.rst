@@ -170,7 +170,7 @@ Tune Quick Start
 
     .. code-block:: bash
 
-        $ pip install 'ray[tune]'
+        $ pip install "ray[tune]"
 
 
 This example runs a small grid search with an iterative training function.
@@ -196,7 +196,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]
+  pip install "ray[rllib]"
 
 .. code-block:: python
 

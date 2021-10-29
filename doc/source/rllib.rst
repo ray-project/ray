@@ -25,7 +25,7 @@ RLlib has extra dependencies on top of ``ray``. First, you'll need to install ei
 
 .. code-block:: bash
 
-  pip install 'ray[rllib]'
+  pip install "ray[rllib]"
 
 Then, you can try out training in the following equivalent ways:
 
