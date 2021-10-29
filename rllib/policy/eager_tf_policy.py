@@ -403,9 +403,8 @@ def build_eager_tf_policy(
 
             if not hasattr(self, "_learn_on_batch_eager"):
                 if self.config["eager_tracing"]:
-                    self._learn_on_batch_eager = tf.function(
-
-                    )(_learn_on_batch_eager)
+                    self._learn_on_batch_eager = tf.function()(
+                        _learn_on_batch_eager)
                 else:
                     self._learn_on_batch_eager = _learn_on_batch_eager
 

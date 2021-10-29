@@ -171,12 +171,15 @@ def appo_surrogate_loss(
                 target_policy_logits=make_time_major(
                     unpacked_old_policy_behaviour_logits, drop_last=drop_last),
                 actions=tf.unstack(
-                    make_time_major(loss_actions, drop_last=drop_last), axis=2),
+                    make_time_major(loss_actions, drop_last=drop_last),
+                    axis=2),
                 discounts=tf.cast(
-                    ~make_time_major(tf.cast(dones, tf.bool), drop_last=drop_last),
+                    ~make_time_major(
+                        tf.cast(dones, tf.bool), drop_last=drop_last),
                     tf.float32) * policy.config["gamma"],
                 rewards=make_time_major(rewards, drop_last=drop_last),
-                values=values_time_major[:-1] if drop_last else values_time_major,
+                values=values_time_major[:-1]
+                if drop_last else values_time_major,
                 bootstrap_value=values_time_major[-1],
                 dist_class=Categorical if is_multidiscrete else dist_class,
                 model=model,
