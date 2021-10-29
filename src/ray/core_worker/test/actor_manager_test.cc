@@ -20,18 +20,17 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/gcs_client/service_based_accessor.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace ray {
 namespace core {
 
 using ::testing::_;
 
-class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
+class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
  public:
-  MockActorInfoAccessor(gcs::ServiceBasedGcsClient *client)
-      : gcs::ServiceBasedActorInfoAccessor(client) {}
+  MockActorInfoAccessor(gcs::GcsClient *client) : gcs::ActorInfoAccessor(client) {}
 
   ~MockActorInfoAccessor() {}
 
@@ -61,9 +60,9 @@ class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
       callback_map_;
 };
 
-class MockGcsClient : public gcs::ServiceBasedGcsClient {
+class MockGcsClient : public gcs::GcsClient {
  public:
-  MockGcsClient(gcs::GcsClientOptions options) : gcs::ServiceBasedGcsClient(options) {}
+  MockGcsClient(gcs::GcsClientOptions options) : gcs::GcsClient(options) {}
 
   void Init(MockActorInfoAccessor *actor_info_accessor) {
     actor_accessor_.reset(actor_info_accessor);
