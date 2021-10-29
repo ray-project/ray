@@ -562,7 +562,8 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
           // persist placement group entry every time we update
           // stats.
           if (it != registered_placement_groups_.end()) {
-            reply->add_placement_group_table_data()->CopyFrom(it->second->GetPlacementGroupTableData());
+            reply->add_placement_group_table_data()->CopyFrom(
+                it->second->GetPlacementGroupTableData());
           } else {
             reply->add_placement_group_table_data()->CopyFrom(data.second);
           }
