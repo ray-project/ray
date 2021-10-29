@@ -180,8 +180,7 @@ class TestAsyncAPI:
             wait_for_file_cmd = (f"until [ -f {tmp_file} ]; "
                                  "do echo 'Waiting...' && sleep 1; "
                                  "done")
-            job_id: str = str(uuid4())
-            job_id = job_manager.submit_job(job_id, wait_for_file_cmd)
+            job_id = job_manager.submit_job(wait_for_file_cmd)
 
             for _ in range(10):
                 time.sleep(0.1)
@@ -205,8 +204,7 @@ class TestAsyncAPI:
             wait_for_file_cmd = (f"until [ -f {tmp_file} ]; "
                                  "do echo 'Waiting...' && sleep 1; "
                                  "done")
-            job_id: str = str(uuid4())
-            job_id = job_manager.submit_job(job_id, wait_for_file_cmd)
+            job_id = job_manager.submit_job(wait_for_file_cmd)
 
             for _ in range(10):
                 time.sleep(0.1)
