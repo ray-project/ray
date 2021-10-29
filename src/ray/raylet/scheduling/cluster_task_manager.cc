@@ -293,7 +293,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       info_by_sched_cls_[scheduling_class].capacity =
           MaxRunningTasksPerSchedulingClass(scheduling_class);
     }
-    // auto &sched_cls_info = info_by_sched_cls_[scheduling_class];
+    auto &sched_cls_info = info_by_sched_cls_[scheduling_class];
 
     /// We cap the maximum running tasks of a scheduling class to avoid
     /// scheduling too many tasks of a single type/depth, when there are
@@ -316,22 +316,22 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         continue;
       }
 
-      // if (sched_cls_info.num_running_tasks >= sched_cls_info.capacity) {
-      //   if (absl::GetCurrentTimeNanos() > sched_cls_info.next_update_time) {
-      //     // Don't increase the capacity on the very first update since that
-      //     // will unblock a new task immediately, instead of after the timeout.
-      //     if (sched_cls_info.num_updates > 0) {
-      //       sched_cls_info.capacity++;
-      //     }
+      if (sched_cls_info.num_running_tasks >= sched_cls_info.capacity) {
+        if (absl::GetCurrentTimeNanos() > sched_cls_info.next_update_time) {
+          // Don't increase the capacity on the very first update since that
+          // will unblock a new task immediately, instead of after the timeout.
+          if (sched_cls_info.num_updates > 0) {
+            sched_cls_info.capacity++;
+          }
 
-      //     double wait_time =
-      //         (1e6 * sched_cls_cap_interval_ms_) * (1L <<
-      //         sched_cls_info.num_updates++);
-      //     sched_cls_info.next_update_time = absl::GetCurrentTimeNanos() + wait_time;
-      //   }
-      //   work_it++;
-      //   continue;
-      // }
+          double wait_time =
+              (1e6 * sched_cls_cap_interval_ms_) * (1L <<
+              sched_cls_info.num_updates++);
+          sched_cls_info.next_update_time = absl::GetCurrentTimeNanos() + wait_time;
+        }
+        work_it++;
+        continue;
+      }
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
@@ -506,10 +506,6 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
 void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       RayTask *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
-  if (leased_workers_.count(worker->WorkerId()) == 0) {
-    // TaskFinished has already been called on this worker.
-    return;
-  }
   *task = worker->GetAssignedTask();
   auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
   info_by_sched_cls_[sched_cls].num_running_tasks--;
@@ -521,7 +517,6 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
   }
-  ScheduleAndDispatchTasks();
 }
 
 bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
