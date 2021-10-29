@@ -1,5 +1,5 @@
 pendulum-sac-fake-gpus:
-    env: Pendulum-v1
+    env: Pendulum-v0
     run: SAC
     stop:
         episode_reward_mean: -700

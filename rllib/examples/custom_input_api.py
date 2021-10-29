@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
     # config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
     config = {
-        "env": "Pendulum-v1",
+        "env": "Pendulum-v0",
         # we can either use the tune registry, class path, or direct function
         # to connect our input api.
         "input": "custom_input",
