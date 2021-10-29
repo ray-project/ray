@@ -51,6 +51,11 @@ class MockRemoteTrainer(_MockTrainer):
     """Mock Trainable that saves at tmp for simulated clusters."""
 
     def __init__(self, *args, **kwargs):
+        # Tests in test_cluster.py supply a remote checkpoint dir
+        # We should ignore this here as this is specifically a
+        # non-durable trainer
+        kwargs.pop("remote_checkpoint_dir", None)
+
         super(MockRemoteTrainer, self).__init__(*args, **kwargs)
         if self._logdir.startswith("/"):
             self._logdir = self._logdir[1:]

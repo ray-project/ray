@@ -310,6 +310,7 @@ class TrialRunner:
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(local_checkpoint_dir,
                                         remote_checkpoint_dir, sync_to_cloud)
+
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
