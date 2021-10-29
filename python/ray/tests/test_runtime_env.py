@@ -7,7 +7,7 @@ from pathlib import Path
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, get_error_message
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
@@ -229,8 +229,16 @@ def test_no_spurious_worker_startup(shutdown_only):
     assert got_num_workers, "failed to read num workers for 10 seconds"
 
 
-def test_runtime_env_no_spurious_resource_deadlock_msg(shutdown_only):
-    ray.init()
+@pytest.fixture
+def runtime_env_local_dev_env_var():
+    os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
+    yield
+    del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
+
+
+def test_runtime_env_no_spurious_resource_deadlock_msg(
+        runtime_env_local_dev_env_var, ray_start_regular, error_pubsub):
+    p = error_pubsub
 
     @ray.remote(runtime_env={"pip": ["tensorflow", "torch"]})
     def f():
@@ -238,6 +246,8 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(shutdown_only):
 
     # Check no warning printed.
     ray.get(f.remote())
+    errors = get_error_message(p, 5, ray.ray_constants.RESOURCE_DEADLOCK_ERROR)
+    assert len(errors) == 0
 
 
 if __name__ == "__main__":
