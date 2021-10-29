@@ -22,7 +22,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/agent_finder.h"
 #include "ray/util/event.h"
@@ -254,10 +254,20 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   }
 }
 
-void CoreWorkerProcess::EnsureInitialized() {
-  RAY_CHECK(core_worker_process)
-      << "The core worker process is not initialized yet or already "
-      << "shutdown.";
+void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
+  if (core_worker_process != nullptr) {
+    return;
+  }
+
+  if (quick_exit) {
+    RAY_LOG(ERROR) << "The core worker process is not initialized yet or already "
+                   << "shutdown.";
+    QuickExit(/*logging-enabled*/ false);
+  } else {
+    RAY_CHECK(core_worker_process)
+        << "The core worker process is not initialized yet or already "
+        << "shutdown.";
+  }
 }
 
 void CoreWorkerProcess::HandleAtExit() { core_worker_process.reset(); }
@@ -330,7 +340,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &work
 }
 
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ true);
   if (core_worker_process->options_.num_workers == 1) {
     auto global_worker = core_worker_process->GetGlobalWorker();
     if (core_worker_process->ShouldCreateGlobalWorkerOnConstruction() && !global_worker) {
@@ -353,7 +363,7 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 }
 
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ false);
   if (core_worker_process->options_.num_workers == 1) {
     auto global_worker = core_worker_process->GetGlobalWorker();
     RAY_CHECK(global_worker) << "Global worker must not be NULL.";
@@ -414,7 +424,7 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
 }
 
 void CoreWorkerProcess::RunTaskExecutionLoop() {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ false);
   RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::WORKER);
   if (core_worker_process->options_.num_workers == 1) {
     // Run the task loop in the current thread only if the number of workers is 1.
@@ -544,7 +554,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.gcs_options.password_,
       /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
       /*enable_subscribe_conn=*/true);
-  gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(
+  gcs_client_ = std::make_shared<gcs::GcsClient>(
       gcs_options, [this](std::pair<std::string, int> *address) {
         absl::MutexLock lock(&gcs_server_address_mutex_);
         if (gcs_server_address_.second != 0) {
@@ -1154,7 +1164,8 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner
          "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
          "which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+         "at https://github.com/ray-project/ray/issues/: "
+      << object_id;
 
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
@@ -1270,7 +1281,8 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
     // the current worker. So we need to make sure ref count is > 0
-    // by invoking `AddLocalReference` first.
+    // by invoking `AddLocalReference` first. Note that in worker.py we set
+    // skip_adding_local_ref=True to avoid double referencing the object.
     AddLocalReference(*object_id);
     RAY_UNUSED(reference_counter_->AddBorrowedObject(*object_id, ObjectID::Nil(),
                                                      real_owner_address));

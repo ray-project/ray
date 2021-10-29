@@ -12,7 +12,7 @@ from ray.includes.common cimport (
     CGcsClientOptions,
 )
 
-cdef extern from "ray/gcs/accessor.h" nogil:
+cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
         CRayStatus Put(const c_string &key,
                        const c_string &value,
@@ -23,7 +23,7 @@ cdef extern from "ray/gcs/accessor.h" nogil:
         CRayStatus Exists(const c_string &key, c_bool &exist)
         CRayStatus Keys(const c_string &key, c_vector[c_string]& results)
 
-cdef extern from "ray/gcs/gcs_client.h" nogil:
+cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CGcsClient "ray::gcs::GcsClient":
         CInternalKVAccessor &InternalKV()
 
@@ -31,15 +31,15 @@ cdef extern from "ray/gcs/gcs_client.h" nogil:
 cdef extern from * namespace "_gcs_maker":
     """
     #include "ray/common/asio/instrumented_io_context.h"
-    #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+    #include "ray/gcs/gcs_client/gcs_client.h"
     #include "ray/common/asio/instrumented_io_context.h"
     #include <memory>
     #include <thread>
     namespace _gcs_maker {
-      class RayletGcsClient : public ray::gcs::ServiceBasedGcsClient {
+      class RayletGcsClient : public ray::gcs::GcsClient {
        public:
         RayletGcsClient(const ray::gcs::GcsClientOptions &options)
-            : ray::gcs::ServiceBasedGcsClient(options),
+            : ray::gcs::GcsClient(options),
               work_(io_context_),
               thread_([this](){
                   io_context_.run();

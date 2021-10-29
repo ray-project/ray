@@ -28,7 +28,7 @@ from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode
+    from ray.rllib.evaluation import Episode
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -277,7 +277,7 @@ class TFPolicy(Policy):
             input_dict: Union[SampleBatch, Dict[str, TensorType]],
             explore: bool = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List["Episode"]] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
@@ -308,7 +308,7 @@ class TFPolicy(Policy):
             prev_action_batch: Union[List[TensorType], TensorType] = None,
             prev_reward_batch: Union[List[TensorType], TensorType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List["Episode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs):

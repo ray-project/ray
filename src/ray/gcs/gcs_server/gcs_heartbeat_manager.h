@@ -19,7 +19,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
-#include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
