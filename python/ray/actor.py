@@ -407,7 +407,7 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
+        new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
@@ -427,7 +427,7 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
+        new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
@@ -746,12 +746,17 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
 
-        if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
-            runtime_env = ParsedRuntimeEnv(runtime_env)
-        elif isinstance(runtime_env, ParsedRuntimeEnv):
-            pass
+        new_runtime_env = bytes()
+        if runtime_env:
+            if isinstance(runtime_env, bytes):
+                # Serialzed protobuf runtime env from Ray client.
+                new_runtime_env = runtime_env
+            elif isinstance(runtime_env, ParsedRuntimeEnv):
+                new_runtime_env = runtime_env.serialize()
+            else:
+                raise TypeError(f"Error runtime env type {type(runtime_env)}")
         else:
-            runtime_env = meta.runtime_env
+            new_runtime_env = meta.runtime_env
 
         # parent_runtime_env = worker.core_worker.get_current_runtime_env()
         # parsed_runtime_env = override_task_or_actor_runtime_env(
@@ -776,7 +781,6 @@ class ActorClass:
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
                 PythonFunctionDescriptor(module_name, method_name, class_name))
 
-        print(f"create_actor with {runtime_env.serialize()}")
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -795,7 +799,7 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            serialized_runtime_env=runtime_env.serialize(),
+            serialized_runtime_env=new_runtime_env,
             concurrency_groups_dict=concurrency_groups_dict or dict())
 
         actor_handle = ActorHandle(

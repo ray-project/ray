@@ -90,9 +90,6 @@ class JobConfig:
             pb.serialized_runtime_env.uris[:] = parsed_env.get_uris()
             pb.serialized_runtime_env.serialized_runtime_env = parsed_env.serialize(
             )
-            print(
-                f"pb.serialized_runtime_env.serialized_runtime_env: {pb.serialized_runtime_env.serialized_runtime_env}"
-            )
             pb.serialized_runtime_env.runtime_env_eager_install = eager_install
 
             self._cached_pb = pb
