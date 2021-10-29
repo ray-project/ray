@@ -918,10 +918,15 @@ void GcsActorManager::ReconstructActor(
   }
 }
 
-void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
-  // We will attempt to schedule this actor once an eligible node is
-  // registered.
-  pending_actors_.emplace_back(std::move(actor));
+void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor,
+                                            bool destroy_actor) {
+  if (destroy_actor) {
+    DestroyActor(actor->GetActorID());
+  } else {
+    // We will attempt to schedule this actor once an eligible node is
+    // registered.
+    pending_actors_.emplace_back(std::move(actor));
+  }
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
