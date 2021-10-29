@@ -53,6 +53,7 @@ std::string RayLog::logger_name_ = "ray_log_sink";
 long RayLog::log_rotation_max_size_ = 1 << 29;
 long RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
+std::atomic<bool> RayLog::initialized_ = false;
 
 std::string GetCallTrace() {
   std::vector<void *> local_stack;
@@ -271,6 +272,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
   spdlog::set_pattern(log_format_pattern_);
   spdlog::set_default_logger(logger);
+
+  initialized_ = true;
 }
 
 void RayLog::UninstallSignalAction() {
@@ -296,6 +299,11 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
+  if (!initialized_) {
+    // If the log wasn't initialized, make it no-op.
+    RAY_LOG(INFO) << "The log wasn't initialized. ShutdownRayLog requests are ignored";
+    return;
+  }
   UninstallSignalAction();
   if (spdlog::default_logger()) {
     spdlog::default_logger()->flush();
