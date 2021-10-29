@@ -866,7 +866,7 @@ class TrialRunner:
                         trials=self._trials,
                         trial=trial)
                 if _profile.too_slow and trial.sync_on_checkpoint:
-                    # TODO(ujvl): Suggest using DurableTrainable once
+                    # TODO(ujvl): Suggest using cloud checkpointing once
                     #  API has converged.
 
                     msg = (

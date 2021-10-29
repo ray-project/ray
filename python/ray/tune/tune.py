@@ -538,8 +538,9 @@ def run(
         trial_executor=trial_executor,
         callbacks=callbacks,
         metric=metric,
-        # Driver should only sync trial checkpoints if not a DurableTrainable
-        driver_sync_trial_checkpoints=not experiments[0].is_durable_trainable)
+        # Driver should only sync trial checkpoints if
+        # checkpoints are not synced to cloud
+        driver_sync_trial_checkpoints=not bool(sync_config.upload_dir))
 
     if not runner.resumed:
         for exp in experiments:

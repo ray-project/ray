@@ -10,7 +10,7 @@ import uuid
 import ray._private.utils
 
 from ray.rllib.agents.mock import _MockTrainer
-from ray.tune import DurableTrainable, Trainable
+from ray.tune import Trainable
 from ray.tune.sync_client import get_sync_client
 from ray.tune.syncer import NodeSyncer
 from ray.tune.callback import Callback
@@ -59,7 +59,7 @@ class MockRemoteTrainer(_MockTrainer):
             os.makedirs(self._logdir)
 
 
-class MockDurableTrainer(DurableTrainable, _MockTrainer):
+class MockDurableTrainer(Trainable, _MockTrainer):
     """Mock DurableTrainable that saves at tmp for simulated clusters."""
 
     # TODO(ujvl): This class uses multiple inheritance; it should be cleaned
@@ -68,7 +68,8 @@ class MockDurableTrainer(DurableTrainable, _MockTrainer):
     def __init__(self, remote_checkpoint_dir, sync_function_tpl, *args,
                  **kwargs):
         _MockTrainer.__init__(self, *args, **kwargs)
-        DurableTrainable.__init__(self, remote_checkpoint_dir, *args, **kwargs)
+        kwargs["remote_checkpoint_dir"] = remote_checkpoint_dir
+        Trainable.__init__(self, *args, **kwargs)
 
     def _create_storage_client(self):
         return mock_storage_client()

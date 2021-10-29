@@ -462,6 +462,10 @@ class Trial:
     def uses_placement_groups(self):
         return bool(self.placement_group_factory)
 
+    @property
+    def uses_cloud_checkpointing(self):
+        return bool(self.remote_checkpoint_dir)
+
     def reset(self):
         # If there is `default_resource_request` associated with the trainable,
         # clear `resources` and `placement_group_factory`.
