@@ -120,7 +120,6 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
     def get_decision_num_replicas(self,
                                   current_num_ongoing_requests: List[float],
                                   curr_target_num_replicas: int) -> int:
-        print("decision counter: ", self.decision_counter)
         if len(current_num_ongoing_requests) == 0:
             return curr_target_num_replicas
 
