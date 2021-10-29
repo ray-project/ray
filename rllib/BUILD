@@ -50,6 +50,8 @@
 #   pipeline, defined in .buildkite/pipeline.gpu.large.yaml.
 # - "no_gpu": Indicating that a test should not be run in the GPU pipeline due
 #   to certain incompatibilities.
+# - "no_tf_eager_tracing": Exclude this test from tf-eager tracing tests.
+# - "torch_only": Only run this test case with framework=torch.
 
 # Our .buildkite/pipeline.yml and .buildkite/pipeline.gpu.yml files execute all
 # these tests in n different jobs.
