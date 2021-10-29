@@ -853,8 +853,11 @@ void GcsActorManager::ReconstructActor(
     int64_t remaining = max_restarts - num_restarts;
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
   }
-  RAY_LOG(INFO) << "Actor is failed " << actor_id << " on worker " << worker_id
+  RAY_LOG(INFO) << "Actor " << actor_id << " is failed on worker " << worker_id
                 << " at node " << node_id << ", need_reschedule = " << need_reschedule
+                << ", runtime_env_setup_failed = " << runtime_env_setup_failed
+                << ", has_creation_task_exception = "
+                << (creation_task_exception != nullptr)
                 << ", remaining_restarts = " << remaining_restarts
                 << ", job id = " << actor_id.JobId();
   if (remaining_restarts != 0) {

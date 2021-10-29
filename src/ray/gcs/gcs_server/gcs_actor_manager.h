@@ -441,8 +441,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       const rpc::ActorTableData &actor) {
     auto actor_delta = std::make_shared<rpc::ActorTableData>();
     actor_delta->set_state(actor.state());
-    actor_delta->set_allocated_creation_task_exception(
-        new rpc::RayException(actor.creation_task_exception()));
+    if (actor.has_creation_task_exception()) {
+      actor_delta->set_allocated_creation_task_exception(
+          new rpc::RayException(actor.creation_task_exception()));
+    }
+    actor_delta->set_runtime_env_setup_failed(actor.runtime_env_setup_failed());
     actor_delta->mutable_address()->CopyFrom(actor.address());
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_timestamp(actor.timestamp());

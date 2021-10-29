@@ -193,7 +193,10 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     const ActorID &actor_id, int64_t num_restarts, bool dead,
     bool runtime_env_setup_failed,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
-  RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id;
+  RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id
+                 << ", runtime_env_setup_failed=" << runtime_env_setup_failed
+                 << ", has_creation_task_exception="
+                 << (creation_task_exception != nullptr);
   absl::MutexLock lock(&mu_);
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
@@ -221,14 +224,17 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     auto head = requests.begin();
 
     auto status = Status::IOError("cancelling all pending tasks of dead actor");
+    rpc::ErrorType error_type = rpc::ErrorType::ACTOR_DIED;
+    if (runtime_env_setup_failed) {
+      error_type = rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
+    }
     while (head != requests.end()) {
       const auto &task_spec = head->second.first;
       task_finisher_.MarkTaskCanceled(task_spec.TaskId());
       // No need to increment the number of completed tasks since the actor is
       // dead.
-      RAY_UNUSED(!task_finisher_.PendingTaskFailed(task_spec.TaskId(),
-                                                   rpc::ErrorType::ACTOR_DIED, &status,
-                                                   creation_task_exception));
+      RAY_UNUSED(!task_finisher_.PendingTaskFailed(task_spec.TaskId(), error_type,
+                                                   &status, creation_task_exception));
       head = requests.erase(head);
     }
 
@@ -237,10 +243,6 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
                   << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
     for (auto &net_err_task : wait_for_death_info_tasks) {
-      rpc::ErrorType error_type = rpc::ErrorType::ACTOR_DIED;
-      if (runtime_env_setup_failed) {
-        error_type = rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
-      }
       RAY_UNUSED(task_finisher_.MarkPendingTaskFailed(net_err_task.second, error_type,
                                                       creation_task_exception));
     }
