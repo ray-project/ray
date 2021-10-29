@@ -15,9 +15,6 @@ from ray._private.thirdparty.pathspec import PathSpec
 
 default_logger = logging.getLogger(__name__)
 
-# If the working_dir is beyond this size, print a progress message to prevent
-# the appearance of hanging.
-SILENT_UPLOAD_SIZE_THRESHOLD = 1 * 1024 * 1024  # 1MiB
 # If an individual file is beyond this size, print a warning.
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
@@ -181,12 +178,10 @@ def _store_package_in_gcs(
             f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
             "files using the 'excludes' option to the runtime_env.")
 
-    if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
-        logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to "
-                    "Ray cluster...")
+    logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to "
+                "Ray cluster...")
     _internal_kv_put(pkg_uri, data)
-    if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
-        logger.info(f"Successfully pushed file package '{pkg_uri}'.")
+    logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
 
 
