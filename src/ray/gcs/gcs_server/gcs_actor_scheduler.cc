@@ -312,10 +312,12 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
 
 void GcsActorScheduler::HandleRuntimeEnvSetupFailure(std::shared_ptr<GcsActor> actor,
                                                      const NodeID &node_id) {
-  RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
-                << actor->GetActorID()
-                << " as the runtime environment setup failed, job id = "
-                << actor->GetActorID().JobId();
+  RAY_LOG(ERROR)
+      << "Failed to lease worker from node " << node_id << " for actor "
+      << actor->GetActorID() << "("
+      << actor->GetCreationTaskSpecification().FunctionDescriptor()->CallString() << ")"
+      << " as the runtime environment setup failed, job id = "
+      << actor->GetActorID().JobId();
   schedule_failure_handler_(actor, /*runtime_env_setup_failed=*/true);
 }
 
@@ -496,6 +498,8 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     }
 
     if (status.ok()) {
+      // The runtime environment has failed by an unrecoverable error.
+      // We cannot create this actor anymore.
       if (reply.runtime_env_setup_failed()) {
         HandleRuntimeEnvSetupFailure(actor, node_id);
         return;
@@ -503,9 +507,10 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
 
       if (reply.worker_address().raylet_id().empty() &&
           reply.retry_at_raylet_address().raylet_id().empty()) {
-        // Actor creation task has been cancelled. It is triggered by `ray.kill`. If
-        // the number of remaining restarts of the actor is not equal to 0, GCS will
-        // reschedule the actor, so it return directly here.
+        // Actor creation task has been cancelled. It is triggered by
+        // `ray.ksrc/ray/gcs/gcs_server/gcs_actor_scheduler.ccill`. If the number of
+        // remaining restarts of the actor is not equal to 0, GCS will reschedule the
+        // actor, so it return directly here.
         RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
                        << " creation task has been cancelled.";
         return;

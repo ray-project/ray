@@ -302,14 +302,18 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
 
-  /// Handle actor creation task failure. This should be called when scheduling
-  /// an actor creation task is infeasible.
+  /// Handle actor creation task failure. This should be called
+  /// - when scheduling an actor creation task is infeasible.
+  /// - when actor cannot be created to the cluster (e.g., runtime environment ops
+  /// failed).
   ///
   /// \param actor The actor whose creation task is infeasible.
   /// \param runtime_env_setup_failed Whether creation is failed due to runtime env setup
-  /// failure.
+  /// failure. If false is given, the actor will be rescheduled. Otherwise, all
+  /// the interest party (driver that has actor handles) will notify
+  /// that the actor is dead.
   void OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
-                               bool runtime_env_setup_failed);
+                               bool runtime_env_setup_failed = false);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.
