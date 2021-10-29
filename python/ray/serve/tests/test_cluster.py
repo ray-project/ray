@@ -116,6 +116,7 @@ def test_node_failure(ray_cluster):
     assert pids3.issubset(pids4)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_replica_startup_status_transitions(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
