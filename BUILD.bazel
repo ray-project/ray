@@ -1731,8 +1731,8 @@ cc_library(
     ],
     hdrs = [
         "src/ray/gcs/gcs_client/accessor.h",
-        "src/ray/gcs/gcs_client/gcs_client.h",
         "src/ray/gcs/gcs_client/agent_finder.h",
+        "src/ray/gcs/gcs_client/gcs_client.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
