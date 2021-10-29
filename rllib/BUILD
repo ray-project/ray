@@ -793,7 +793,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "Pendulum-v1",
+        "--env", "Pendulum-v0",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\"}'",
@@ -809,7 +809,7 @@ py_test(
     size = "small",
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "FrozenLake-v1",
+        "--env", "FrozenLake-v0",
         "--run", "DQN",
         "--config", "'{\"framework\": \"tf\"}'",
         "--stop", "'{\"training_iteration\": 1}'"
@@ -996,7 +996,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "Pendulum-v1",
+        "--env", "Pendulum-v0",
         "--run", "APPO",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"num_gpus\": 0}'",
