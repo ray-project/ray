@@ -182,6 +182,10 @@ class RayletClientInterface : public PinObjectsInterface,
 
   virtual void GetGcsServerAddress(
       const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
+
+  virtual void ShutdownRaylet(
+      const NodeID &node_id, bool graceful,
+      const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) = 0;
 };
 
 namespace raylet {
@@ -208,6 +212,8 @@ class RayletConnection {
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
  private:
+  /// Shutdown the raylet if the local connection is disconnected.
+  void ShutdownIfLocalRayletDisconnected(const Status &status);
   /// The connection to raylet.
   std::shared_ptr<ServerConnection> conn_;
   /// A mutex to protect stateful operations of the raylet client.
@@ -422,6 +428,10 @@ class RayletClient : public RayletClientInterface {
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
+
+  void ShutdownRaylet(
+      const NodeID &node_id, bool graceful,
+      const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override;
 
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;

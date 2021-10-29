@@ -17,13 +17,14 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
-#include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -39,7 +40,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
-                          std::shared_ptr<GcsTableStorage> gcs_table_storage);
+                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -47,9 +49,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle unregister rpc request come from raylet.
-  void HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
-                            rpc::UnregisterNodeReply *reply,
-                            rpc::SendReplyCallback send_reply_callback) override;
+  void HandleDrainNode(const rpc::DrainNodeRequest &request, rpc::DrainNodeReply *reply,
+                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get all node info rpc request.
   void HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
@@ -117,6 +118,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   std::string DebugString() const;
 
+  /// Drain the given node.
+  /// Idempotent.
+  void DrainNode(const NodeID &node_id);
+
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
@@ -140,12 +145,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// A publisher for publishing gcs messages.
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Storage for GCS tables.
-  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// Raylet client pool.
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 
   // Debug info.
   enum CountType {
     REGISTER_NODE_REQUEST = 0,
-    UNREGISTER_NODE_REQUEST = 1,
+    DRAIN_NODE_REQUEST = 1,
     GET_ALL_NODE_INFO_REQUEST = 2,
     GET_INTERNAL_CONFIG_REQUEST = 3,
     CountType_MAX = 4,

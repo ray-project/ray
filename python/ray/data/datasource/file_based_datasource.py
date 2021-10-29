@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Callable, Optional, List, Tuple, Union, Any, Dict, \
     TYPE_CHECKING
 import urllib.parse
@@ -7,16 +6,96 @@ import urllib.parse
 if TYPE_CHECKING:
     import pyarrow
 
+import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
 from ray.data.impl.block_list import BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
+from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult, \
+    _get_or_create_block_owner_actor
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 from ray.data.impl.remote_fn import cached_remote_fn
 
 logger = logging.getLogger(__name__)
+
+
+@DeveloperAPI
+class BlockWritePathProvider:
+    """Abstract callable that provides concrete output paths when writing
+    dataset blocks.
+
+    Current subclasses:
+        DefaultBlockWritePathProvider
+    """
+
+    def _get_write_path_for_block(
+            self,
+            base_path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            dataset_uuid: Optional[str] = None,
+            block: Optional[ObjectRef[Block]] = None,
+            block_index: Optional[int] = None,
+            file_format: Optional[str] = None) -> str:
+        """
+        Resolves and returns the write path for the given dataset block. When
+        implementing this method, care should be taken to ensure that a unique
+        path is provided for every dataset block.
+
+        Args:
+            base_path: The base path to write the dataset block out to. This is
+                expected to be the same for all blocks in the dataset, and may
+                point to either a directory or file prefix.
+            filesystem: The filesystem implementation that will be used to
+                write a file out to the write path returned.
+            dataset_uuid: Unique identifier for the dataset that this block
+                belongs to.
+            block: Object reference to the block to write.
+            block_index: Ordered index of the block to write within its parent
+                dataset.
+            file_format: File format string for the block that can be used as
+                the file extension in the write path returned.
+        """
+        raise NotImplementedError
+
+    def __call__(self,
+                 base_path: str,
+                 *,
+                 filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                 dataset_uuid: Optional[str] = None,
+                 block: Optional[ObjectRef[Block]] = None,
+                 block_index: Optional[int] = None,
+                 file_format: Optional[str] = None) -> str:
+        return self._get_write_path_for_block(
+            base_path,
+            filesystem=filesystem,
+            dataset_uuid=dataset_uuid,
+            block=block,
+            block_index=block_index,
+            file_format=file_format)
+
+
+class DefaultBlockWritePathProvider(BlockWritePathProvider):
+    """Default block write path provider implementation that writes each
+    dataset block out to a file of the form:
+    {base_path}/{dataset_uuid}_{block_index}.{file_format}
+    """
+
+    def _get_write_path_for_block(
+            self,
+            base_path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            dataset_uuid: Optional[str] = None,
+            block: Optional[ObjectRef[Block]] = None,
+            block_index: Optional[int] = None,
+            file_format: Optional[str] = None) -> str:
+        suffix = f"{dataset_uuid}_{block_index:06}.{file_format}"
+        # Use forward slashes for cross-filesystem compatibility, since PyArrow
+        # FileSystem paths are always forward slash separated, see:
+        # https://arrow.apache.org/docs/python/filesystems.html
+        return f"{base_path}/{suffix}"
 
 
 @DeveloperAPI
@@ -77,6 +156,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block = _block_udf(block)
             return block
 
+        owner = _get_or_create_block_owner_actor()
         read_tasks = []
         for read_paths, file_sizes in zip(
                 np.array_split(paths, parallelism),
@@ -88,14 +168,14 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 num_rows = None
             else:
                 num_rows = len(read_paths) * self._rows_per_file()
+            meta = BlockMetadata(
+                num_rows=num_rows,
+                size_bytes=sum(file_sizes),
+                schema=schema,
+                input_files=read_paths)
             read_task = ReadTask(
-                lambda read_paths=read_paths: read_files(
-                    read_paths, filesystem),
-                BlockMetadata(
-                    num_rows=num_rows,
-                    size_bytes=sum(file_sizes),
-                    schema=schema,
-                    input_files=read_paths)
+                lambda read_paths=read_paths, meta=meta: [(ray.put(read_files(
+                    read_paths, filesystem), _owner=owner), meta)], meta
             )
             read_tasks.append(read_task)
 
@@ -122,6 +202,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  try_create_dir: bool = True,
                  open_stream_args: Optional[Dict[str, Any]] = None,
+                 block_path_provider:
+                 BlockWritePathProvider = DefaultBlockWritePathProvider(),
                  write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
                  _block_udf: Optional[Callable[[Block], Block]] = None,
                  **write_args) -> List[ObjectRef[WriteResult]]:
@@ -156,9 +238,16 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         file_format = self._file_format()
         write_tasks = []
+        if not block_path_provider:
+            block_path_provider = DefaultBlockWritePathProvider()
         for block_idx, block in enumerate(blocks):
-            write_path = os.path.join(
-                path, f"{dataset_uuid}_{block_idx:06}.{file_format}")
+            write_path = block_path_provider(
+                path,
+                filesystem=filesystem,
+                dataset_uuid=dataset_uuid,
+                block=block,
+                block_index=block_idx,
+                file_format=file_format)
             write_task = write_block.remote(write_path, block)
             write_tasks.append(write_task)
 

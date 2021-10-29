@@ -64,7 +64,9 @@ Status raylet::RayletConnection::WriteMessage(MessageType type,
   std::unique_lock<std::mutex> guard(write_mutex_);
   int64_t length = fbb ? fbb->GetSize() : 0;
   uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
-  return conn_->WriteMessage(static_cast<int64_t>(type), length, bytes);
+  auto status = conn_->WriteMessage(static_cast<int64_t>(type), length, bytes);
+  ShutdownIfLocalRayletDisconnected(status);
+  return status;
 }
 
 Status raylet::RayletConnection::AtomicRequestReply(MessageType request_type,
@@ -73,7 +75,19 @@ Status raylet::RayletConnection::AtomicRequestReply(MessageType request_type,
                                                     flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(mutex_);
   RAY_RETURN_NOT_OK(WriteMessage(request_type, fbb));
-  return conn_->ReadMessage(static_cast<int64_t>(reply_type), reply_message);
+  auto status = conn_->ReadMessage(static_cast<int64_t>(reply_type), reply_message);
+  ShutdownIfLocalRayletDisconnected(status);
+  return status;
+}
+
+void raylet::RayletConnection::ShutdownIfLocalRayletDisconnected(const Status &status) {
+  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+    RAY_LOG(WARNING) << "The connection is failed because the local raylet has been "
+                        "dead. Terminate the process. Status: "
+                     << status;
+    QuickExit();
+    RAY_LOG(FATAL) << "Unreachable.";
+  }
 }
 
 raylet::RayletClient::RayletClient(
@@ -156,8 +170,10 @@ Status raylet::RayletClient::Disconnect(
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
   if (!status.ok()) {
-    RAY_LOG(WARNING) << status.ToString()
-                     << " [RayletClient] Failed to disconnect from raylet.";
+    RAY_LOG(WARNING)
+        << status.ToString()
+        << " [RayletClient] Failed to disconnect from raylet. This means the "
+           "raylet the worker is connected is probably already dead.";
   }
   return Status::OK();
 }
@@ -421,6 +437,14 @@ void raylet::RayletClient::PinObjectIDs(
     callback(status, reply);
   };
   grpc_client_->PinObjectIDs(request, rpc_callback);
+}
+
+void raylet::RayletClient::ShutdownRaylet(
+    const NodeID &node_id, bool graceful,
+    const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) {
+  rpc::ShutdownRayletRequest request;
+  request.set_graceful(graceful);
+  grpc_client_->ShutdownRaylet(request, callback);
 }
 
 void raylet::RayletClient::GlobalGC(

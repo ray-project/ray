@@ -33,7 +33,7 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -301,8 +301,10 @@ class CoreWorkerProcess {
 
   /// Check that the core worker environment is initialized for this process.
   ///
+  /// \param[in] quick_exit If set to true, quick exit if uninitialized without
+  /// crash.
   /// \return Void.
-  static void EnsureInitialized();
+  static void EnsureInitialized(bool quick_exit);
 
   static void HandleAtExit();
 

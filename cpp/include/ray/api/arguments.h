@@ -16,46 +16,61 @@
 
 #include <ray/api/object_ref.h>
 #include <ray/api/serializer.h>
+#include <ray/api/type_traits.h>
 
 #include <msgpack.hpp>
 
 namespace ray {
 namespace internal {
 
-/// Check T is ObjectRef or not.
-template <typename T>
-struct is_object_ref : std::false_type {};
-
-template <typename T>
-struct is_object_ref<ObjectRef<T>> : std::true_type {};
-
 class Arguments {
  public:
-  template <typename ArgType>
-  static void WrapArgsImpl(std::vector<TaskArg> *task_args, ArgType &&arg) {
-    static_assert(!is_object_ref<ArgType>::value, "ObjectRef can not be wrapped");
+  template <typename OriginArgType, typename InputArgTypes>
+  static void WrapArgsImpl(std::vector<TaskArg> *task_args, InputArgTypes &&arg) {
+    if constexpr (is_object_ref_v<OriginArgType>) {
+      PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
+    } else if constexpr (is_object_ref_v<InputArgTypes>) {
+      // core_worker submitting task callback will get the value of an ObjectRef arg, but
+      // local mode we don't call core_worker submit task, so we need get the value of an
+      // ObjectRef arg only for local mode.
+      if (RayRuntimeHolder::Instance().Runtime()->IsLocalMode()) {
+        auto buffer = RayRuntimeHolder::Instance().Runtime()->Get(arg.ID());
+        PushValueArg(task_args, std::move(*buffer));
+      } else {
+        PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
+      }
+    } else {
+      msgpack::sbuffer buffer = Serializer::Serialize(std::forward<InputArgTypes>(arg));
+      PushValueArg(task_args, std::move(buffer));
+    }
+  }
 
-    msgpack::sbuffer buffer = Serializer::Serialize(arg);
+  template <typename OriginArgsTuple, size_t... I, typename... InputArgTypes>
+  static void WrapArgs(std::vector<TaskArg> *task_args, std::index_sequence<I...>,
+                       InputArgTypes &&...args) {
+    (void)std::initializer_list<int>{
+        (WrapArgsImpl<std::tuple_element_t<I, OriginArgsTuple>>(
+             task_args, std::forward<InputArgTypes>(args)),
+         0)...};
+    /// Silence gcc warning error.
+    (void)task_args;
+  }
+
+ private:
+  template <typename TaskArg>
+  static void PushValueArg(std::vector<TaskArg> *task_args, msgpack::sbuffer &&buffer) {
+    /// Pass by value.
     TaskArg task_arg;
     task_arg.buf = std::move(buffer);
-    /// Pass by value.
     task_args->emplace_back(std::move(task_arg));
   }
 
-  template <typename ArgType>
-  static void WrapArgsImpl(std::vector<TaskArg> *task_args, ObjectRef<ArgType> &arg) {
+  template <typename TaskArg, typename T>
+  static void PushReferenceArg(std::vector<TaskArg> *task_args, T &&arg) {
     /// Pass by reference.
     TaskArg task_arg{};
     task_arg.id = arg.ID();
     task_args->emplace_back(std::move(task_arg));
-  }
-
-  template <typename... OtherArgTypes>
-  static void WrapArgs(std::vector<TaskArg> *task_args, OtherArgTypes &&... args) {
-    (void)std::initializer_list<int>{
-        (WrapArgsImpl(task_args, std::forward<OtherArgTypes>(args)), 0)...};
-    /// Silence gcc warning error.
-    (void)task_args;
   }
 };
 

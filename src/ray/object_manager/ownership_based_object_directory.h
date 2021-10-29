@@ -24,7 +24,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -95,6 +95,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
     // The node id that spills the object to the disk.
     // It will be Nil if it uses a distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
+    bool pending_creation = false;
     /// The size of the object.
     size_t object_size = 0;
     /// This flag will get set to true if received any notification of the object.

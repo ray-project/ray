@@ -20,6 +20,7 @@ from typing import List, Any, Callable, TypeVar, Tuple, Union
 
 import numpy as np
 import ray
+from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
@@ -33,7 +34,7 @@ T = TypeVar("T")
 SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 
 
-def sample_boundaries(blocks: BlockList[T], key: SortKeyT,
+def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
                       num_reducers: int) -> List[T]:
     """
     Return (num_reducers - 1) items in ascending order from the blocks that
@@ -51,6 +52,10 @@ def sample_boundaries(blocks: BlockList[T], key: SortKeyT,
     sample_bar.close()
 
     samples = ray.get(sample_results)
+    samples = [s for s in samples if len(s) > 0]
+    # The dataset is empty
+    if len(samples) == 0:
+        return [None] * (num_reducers - 1)
     sample_items = np.concatenate(samples)
     sample_items.sort()
     ret = [
@@ -60,8 +65,9 @@ def sample_boundaries(blocks: BlockList[T], key: SortKeyT,
     return ret[1:]
 
 
-def sort_impl(blocks: BlockList[T], key: SortKeyT,
-              descending: bool = False) -> BlockList[T]:
+def sort_impl(blocks: BlockList, key: SortKeyT,
+              descending: bool = False) -> BlockList:
+    blocks = list(blocks.iter_blocks())
     if len(blocks) == 0:
         return BlockList([], [])
 

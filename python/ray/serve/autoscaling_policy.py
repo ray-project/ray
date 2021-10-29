@@ -70,19 +70,19 @@ class AutoscalingPolicy:
     @abstractmethod
     def get_decision_num_replicas(self,
                                   current_num_ongoing_requests: List[float],
-                                  curr_num_replicas: int) -> int:
+                                  curr_target_num_replicas: int) -> int:
         """Make a decision to scale backends.
 
         Arguments:
             current_num_ongoing_requests: List[float]: List of number of
                 ongoing requests for each replica.
-            curr_num_replicas (int): The number of replicas that the backend
-                currently has.
+            curr_target_num_replicas (int): The number of replicas that the
+                deployment is currently trying to scale to.
 
         Returns:
             int: The new number of replicas to scale this backend to.
         """
-        return curr_num_replicas
+        return curr_target_num_replicas
 
 
 class BasicAutoscalingPolicy(AutoscalingPolicy):
@@ -119,17 +119,16 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
     def get_decision_num_replicas(self,
                                   current_num_ongoing_requests: List[float],
-                                  curr_num_replicas: int) -> int:
-
+                                  curr_target_num_replicas: int) -> int:
         if len(current_num_ongoing_requests) == 0:
-            return curr_num_replicas
+            return curr_target_num_replicas
 
-        decision_num_replicas = curr_num_replicas
+        decision_num_replicas = curr_target_num_replicas
 
         desired_num_replicas = calculate_desired_num_replicas(
             self.config, current_num_ongoing_requests)
         # Scale up.
-        if desired_num_replicas > curr_num_replicas:
+        if desired_num_replicas > curr_target_num_replicas:
             # If the previous decision was to scale down (the counter was
             # negative), we reset it and then increment it (set to 1).
             # Otherwise, just increment.
@@ -144,7 +143,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
                 decision_num_replicas = desired_num_replicas
 
         # Scale down.
-        elif desired_num_replicas < curr_num_replicas:
+        elif desired_num_replicas < curr_target_num_replicas:
             # If the previous decision was to scale up (the counter was
             # positive), reset it to zero before decrementing.
             if self.decision_counter > 0:
@@ -154,10 +153,6 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             # Only actually scale the replicas if we've made this decision for
             # 'scale_down_consecutive_periods' in a row.
             if self.decision_counter < -self.scale_down_consecutive_periods:
-                # TODO(architkulkarni): curr_replicas will now slowly adjust
-                # until it gets to decision_num_replicas, but we will be making
-                # future decision_counter calculations on this moving
-                # curr_replicas value.  Is this okay?
                 self.decision_counter = 0
                 decision_num_replicas = desired_num_replicas
 

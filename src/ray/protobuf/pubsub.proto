@@ -18,6 +18,7 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/gcs.proto";
 
 /// Each channel is prefixed by the name of its components.
 /// For example, for pubsub channels that are used by core workers,
@@ -29,6 +30,14 @@ enum ChannelType {
   WORKER_REF_REMOVED_CHANNEL = 1;
   /// A channel for object locations.
   WORKER_OBJECT_LOCATIONS_CHANNEL = 2;
+  /// A channel for actor info.
+  GCS_ACTOR_CHANNEL = 3;
+  /// A channel for job info.
+  GCS_JOB_CHANNEL = 4;
+  /// A channel for node info.
+  GCS_NODE_INFO_CHANNEL = 5;
+  /// A channel for node resources.
+  GCS_NODE_RESOURCE_CHANNEL = 6;
 }
 
 ///
@@ -47,6 +56,10 @@ message PubMessage {
     WorkerObjectLocationsPubMessage worker_object_locations_message = 5;
     // The message that indicates the given key id is not available anymore.
     FailureMessage failure_message = 6;
+    ActorTableData actor_message = 7;
+    JobTableData job_message = 8;
+    GcsNodeInfo node_info_message = 9;
+    NodeResourceChange node_resource_message = 10;
   }
 }
 
@@ -81,6 +94,10 @@ message WorkerObjectLocationsPubMessage {
   // counting protocol that causes the object to be released while there are
   // still references.
   bool ref_removed = 7;
+  // If this is set, the task that creates the object is pending execution. If
+  // there are no locations and this is set, the subscriber should wait for the
+  // new location to appear.
+  bool pending_creation = 8;
 }
 
 /// Indicating the subscriber needs to handle failure callback.
@@ -165,7 +182,7 @@ message PubsubLongPollingRequest {
 }
 
 message PubsubLongPollingReply {
-  /// The object ids that are published.
+  /// The messages that are published.
   repeated PubMessage pub_messages = 1;
 }
 

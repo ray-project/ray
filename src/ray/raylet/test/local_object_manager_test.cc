@@ -18,7 +18,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"
@@ -65,6 +65,10 @@ class MockSubscriber : public pubsub::SubscriberInterface {
   MOCK_METHOD3(Unsubscribe, bool(const rpc::ChannelType channel_type,
                                  const rpc::Address &publisher_address,
                                  const std::string &key_id_binary));
+
+  MOCK_CONST_METHOD3(IsSubscribed, bool(const rpc::ChannelType channel_type,
+                                        const rpc::Address &publisher_address,
+                                        const std::string &key_id_binary));
 
   MOCK_CONST_METHOD0(DebugString, std::string());
 

@@ -6,7 +6,6 @@ from typing import Union
 import ray._private.utils as utils
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts
-from ray.ray_constants import env_bool
 from ray.dashboard.utils import async_loop_forever, create_task
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
@@ -17,8 +16,6 @@ logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
-@dashboard_utils.dashboard_module(
-    enable=env_bool(event_consts.EVENT_MODULE_ENVIRONMENT_KEY, False))
 class EventAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)

@@ -1,6 +1,6 @@
 .. _cross_language:
 
-Cross-language programming
+Cross-Language Programming
 ==========================
 
 This page will show you how to use Ray's cross-language programming feature.

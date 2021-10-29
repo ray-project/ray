@@ -20,7 +20,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/object_manager/common.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/worker_pool.h"

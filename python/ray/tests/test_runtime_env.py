@@ -43,9 +43,29 @@ def test_get_release_wheel_url():
                 assert requests.head(url).status_code == 200, url
 
 
+@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
+def start_cluster(ray_start_cluster, request):
+    assert request.param in {"ray_client", "no_ray_client"}
+    use_ray_client: bool = request.param == "ray_client"
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    if use_ray_client:
+        cluster.head_node._ray_params.ray_client_server_port = "10003"
+        cluster.head_node.start_ray_client_server()
+        address = "ray://localhost:10003"
+    else:
+        address = cluster.address
+
+    yield cluster, address
+
+
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
-def test_decorator_task(ray_start_cluster_head):
+def test_decorator_task(start_cluster):
+    cluster, address = start_cluster
+    ray.init(address)
+
     @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
     def f():
         return os.environ.get("foo")
@@ -55,7 +75,10 @@ def test_decorator_task(ray_start_cluster_head):
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
-def test_decorator_actor(ray_start_cluster_head):
+def test_decorator_actor(start_cluster):
+    cluster, address = start_cluster
+    ray.init(address)
+
     @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
     class A:
         def g(self):
@@ -67,12 +90,9 @@ def test_decorator_actor(ray_start_cluster_head):
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
-def test_decorator_complex(shutdown_only):
-    ray.init(
-        job_config=ray.job_config.JobConfig(
-            runtime_env={"env_vars": {
-                "foo": "job"
-            }}))
+def test_decorator_complex(start_cluster):
+    cluster, address = start_cluster
+    ray.init(address, runtime_env={"env_vars": {"foo": "job"}})
 
     @ray.remote
     def env_from_job():
@@ -130,6 +150,11 @@ def test_invalid_conda_env(shutdown_only):
     def f():
         pass
 
+    @ray.remote
+    class A:
+        def f(self):
+            pass
+
     start = time.time()
     bad_env = {"conda": {"dependencies": ["this_doesnt_exist"]}}
     with pytest.raises(RuntimeEnvSetupError):
@@ -138,6 +163,12 @@ def test_invalid_conda_env(shutdown_only):
 
     # Check that another valid task can run.
     ray.get(f.remote())
+
+    # Check actor is also broken.
+    # TODO(sang): It should raise RuntimeEnvSetupError
+    a = A.options(runtime_env=bad_env).remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.f.remote())
 
     # The second time this runs it should be faster as the error is cached.
     start = time.time()
@@ -207,6 +238,46 @@ def test_no_spurious_worker_startup(shutdown_only):
             assert num_workers <= 1
         time.sleep(0.1)
     assert got_num_workers, "failed to read num workers for 10 seconds"
+
+
+@pytest.fixture
+def set_agent_failure_env_var():
+    os.environ["_RAY_AGENT_FAILING"] = "1"
+    yield
+    del os.environ["_RAY_AGENT_FAILING"]
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "_system_config": {
+            "agent_restart_interval_ms": 10,
+            "agent_max_restart_count": 5
+        }
+    }],
+    indirect=True)
+def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
+    @ray.remote
+    class A:
+        def ready(self):
+            pass
+
+    @ray.remote
+    def f():
+        pass
+
+    runtime_env = {"env_vars": {"TF_WARNINGS": "none"}}
+    """
+    Test task raises an exception.
+    """
+    with pytest.raises(RuntimeEnvSetupError):
+        ray.get(f.options(runtime_env=runtime_env).remote())
+    """
+    Test actor task raises an exception.
+    """
+    a = A.options(runtime_env=runtime_env).remote()
+    # TODO(sang): Raise a RuntimeEnvSetupError with proper error.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ready.remote())
 
 
 if __name__ == "__main__":

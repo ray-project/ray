@@ -56,7 +56,8 @@ ObjectManager::ObjectManager(
     SpillObjectsCallback spill_objects_callback,
     std::function<void()> object_store_full_callback,
     AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
-    std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object)
+    std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
+    const std::function<void(const ObjectID &)> fail_pull_request)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -122,10 +123,10 @@ ObjectManager::ObjectManager(
   if (available_memory < 0) {
     available_memory = 0;
   }
-  pull_manager_.reset(new PullManager(self_node_id_, object_is_local, send_pull_request,
-                                      cancel_pull_request, restore_spilled_object_,
-                                      get_time, config.pull_timeout_ms, available_memory,
-                                      pin_object, get_spilled_object_url));
+  pull_manager_.reset(new PullManager(
+      self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
+      fail_pull_request, restore_spilled_object_, get_time, config.pull_timeout_ms,
+      available_memory, pin_object, get_spilled_object_url));
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
 }
@@ -208,13 +209,13 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto request_id = pull_manager_->Pull(object_refs, prio, &objects_to_locate);
 
-  const auto &callback = [this](const ObjectID &object_id,
-                                const std::unordered_set<NodeID> &client_ids,
-                                const std::string &spilled_url,
-                                const NodeID &spilled_node_id, size_t object_size) {
-    pull_manager_->OnLocationChange(object_id, client_ids, spilled_url, spilled_node_id,
-                                    object_size);
-  };
+  const auto &callback =
+      [this](const ObjectID &object_id, const std::unordered_set<NodeID> &client_ids,
+             const std::string &spilled_url, const NodeID &spilled_node_id,
+             bool pending_creation, size_t object_size) {
+        pull_manager_->OnLocationChange(object_id, client_ids, spilled_url,
+                                        spilled_node_id, pending_creation, object_size);
+      };
 
   for (const auto &ref : objects_to_locate) {
     // Subscribe to object notifications. A notification will be received every
@@ -567,7 +568,7 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
           [this, wait_id](const ObjectID &lookup_object_id,
                           const std::unordered_set<NodeID> &node_ids,
                           const std::string &spilled_url, const NodeID &spilled_node_id,
-                          size_t object_size) {
+                          bool pending_creation, size_t object_size) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
@@ -609,7 +610,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
           [this, wait_id](const ObjectID &subscribe_object_id,
                           const std::unordered_set<NodeID> &node_ids,
                           const std::string &spilled_url, const NodeID &spilled_node_id,
-                          size_t object_size) {
+                          bool pending_creation, size_t object_size) {
             auto object_id_wait_state = active_wait_requests_.find(wait_id);
             if (object_id_wait_state == active_wait_requests_.end()) {
               // Depending on the timing of calls to the object directory, we

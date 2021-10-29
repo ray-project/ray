@@ -10,7 +10,7 @@ import ray
 import ray.train as train
 from ray._private.test_utils import wait_for_condition
 from ray.train import Trainer, TorchConfig, TensorflowConfig, \
-    HorovodConfig
+    HorovodConfig, CheckpointStrategy
 from ray.train.backends.backend import BackendConfig, Backend, \
     BackendExecutor
 from ray.train.callbacks.callback import TrainingCallback
@@ -23,6 +23,10 @@ from ray.train.examples.train_fashion_mnist_example import train_func \
     as fashion_mnist_train_func
 from ray.train.examples.train_linear_example import train_func as \
     linear_train_func
+from ray.train.examples.torch_quick_start import train_func as \
+    torch_quick_start_train_func
+from ray.train.examples.tensorflow_quick_start import train_func as \
+    tf_quick_start_train_func
 from ray.train.worker_group import WorkerGroup
 
 
@@ -447,18 +451,19 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
     def train_func():
         for i in range(2):
             train.save_checkpoint(epoch=i)
+            time.sleep(1)
 
     trainer = Trainer(config, num_workers=2, logdir=logdir)
     trainer.start()
     trainer.run(train_func)
 
-    assert trainer.latest_checkpoint_path is not None
+    assert trainer.best_checkpoint_path is not None
     if logdir is not None:
         assert trainer.logdir == Path(logdir).expanduser().resolve()
     assert trainer.latest_checkpoint_dir.is_dir()
-    assert trainer.latest_checkpoint_path.is_file()
-    assert trainer.latest_checkpoint_path.name == f"checkpoint_{2:06d}"
-    assert trainer.latest_checkpoint_path.parent.name == "checkpoints"
+    assert trainer.best_checkpoint_path.is_file()
+    assert trainer.best_checkpoint_path.name == f"checkpoint_{2:06d}"
+    assert trainer.best_checkpoint_path.parent.name == "checkpoints"
     latest_checkpoint = trainer.latest_checkpoint
 
     def validate():
@@ -466,7 +471,74 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
         assert checkpoint is not None
         assert checkpoint == latest_checkpoint
 
-    trainer.run(validate, checkpoint=trainer.latest_checkpoint_path)
+    trainer.run(validate, checkpoint=trainer.best_checkpoint_path)
+
+
+def test_persisted_checkpoint_strategy(ray_start_2_cpus):
+    logdir = "/tmp/test/trainer/test_persisted_checkpoint_strategy"
+    config = TestConfig()
+
+    checkpoint_strategy = CheckpointStrategy(
+        num_to_keep=2,
+        checkpoint_score_attribute="loss",
+        checkpoint_score_order="min")
+
+    def train_func():
+        train.save_checkpoint(loss=3)  # best
+        train.save_checkpoint(loss=7)  # worst, deleted
+        train.save_checkpoint(loss=5)
+
+    trainer = Trainer(config, num_workers=2, logdir=logdir)
+    trainer.start()
+    trainer.run(train_func, checkpoint_strategy=checkpoint_strategy)
+
+    assert trainer.best_checkpoint_path is not None
+    if logdir is not None:
+        assert trainer.logdir == Path(logdir).expanduser().resolve()
+    assert trainer.latest_checkpoint_dir.is_dir()
+    assert trainer.best_checkpoint_path.is_file()
+    assert trainer.best_checkpoint_path.name == f"checkpoint_{1:06d}"
+
+    checkpoint_dir = trainer.latest_checkpoint_dir
+    file_names = [f.name for f in checkpoint_dir.iterdir()]
+    assert len(file_names) == 2
+    assert f"checkpoint_{1:06d}" in file_names
+    assert f"checkpoint_{2:06d}" not in file_names
+    assert f"checkpoint_{3:06d}" in file_names
+
+    def validate():
+        checkpoint = train.load_checkpoint()
+        assert checkpoint is not None
+        assert checkpoint["loss"] == 3
+
+    trainer.run(validate, checkpoint=trainer.best_checkpoint_path)
+
+
+def test_persisted_checkpoint_strategy_failure(ray_start_2_cpus):
+    logdir = "/tmp/test/trainer/test_persisted_checkpoint_strategy_failure"
+    config = TestConfig()
+
+    def train_func():
+        train.save_checkpoint(epoch=0)
+
+    trainer = Trainer(config, num_workers=2, logdir=logdir)
+    trainer.start()
+
+    with pytest.raises(ValueError):
+        trainer.run(
+            train_func, checkpoint_strategy=CheckpointStrategy(num_to_keep=-1))
+
+    with pytest.raises(ValueError):
+        trainer.run(
+            train_func,
+            checkpoint_strategy=CheckpointStrategy(
+                checkpoint_score_order="invalid_order"))
+
+    with pytest.raises(ValueError):
+        trainer.run(
+            train_func,
+            checkpoint_strategy=CheckpointStrategy(
+                checkpoint_score_attribute="missing_attribute"))
 
 
 def test_world_rank(ray_start_2_cpus):
@@ -482,8 +554,9 @@ def test_world_rank(ray_start_2_cpus):
     assert set(results) == {0, 1}
 
 
-def test_tensorflow_mnist(ray_start_2_cpus):
-    num_workers = 2
+@pytest.mark.parametrize("num_workers", [1, 2])
+def test_tensorflow_mnist(ray_start_2_cpus, num_workers):
+    num_workers = num_workers
     epochs = 3
 
     trainer = Trainer("tensorflow", num_workers=num_workers)
@@ -504,8 +577,18 @@ def test_tensorflow_mnist(ray_start_2_cpus):
     assert accuracy[-1] > accuracy[0]
 
 
-def test_torch_linear(ray_start_2_cpus):
-    num_workers = 2
+def test_tf_non_distributed(ray_start_2_cpus):
+    """Make sure Ray Train works without TF MultiWorkerMirroredStrategy."""
+
+    trainer = Trainer(backend="torch", num_workers=1)
+    trainer.start()
+    trainer.run(tf_quick_start_train_func)
+    trainer.shutdown()
+
+
+@pytest.mark.parametrize("num_workers", [1, 2])
+def test_torch_linear(ray_start_2_cpus, num_workers):
+    num_workers = num_workers
     epochs = 3
 
     trainer = Trainer("torch", num_workers=num_workers)
@@ -536,6 +619,15 @@ def test_torch_fashion_mnist(ray_start_2_cpus):
     for result in results:
         assert len(result) == epochs
         assert result[-1] < result[0]
+
+
+def test_torch_non_distributed(ray_start_2_cpus):
+    """Make sure Ray Train works without torch DDP."""
+
+    trainer = Trainer(backend="torch", num_workers=1)
+    trainer.start()
+    trainer.run(torch_quick_start_train_func)
+    trainer.shutdown()
 
 
 def test_horovod_simple(ray_start_2_cpus):
