@@ -214,7 +214,7 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
 /// Number of threads used by rpc server in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 4)
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_client_thread_num, 1)
 /// Allow up to 5 seconds for connecting to gcs service.
@@ -420,7 +420,7 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_actor_scheduling_enabled, true);
+RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false);
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
