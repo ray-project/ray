@@ -6,8 +6,8 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 from ray.dashboard.tests.conftest import *  # noqa
-from ray._private.test_utils import (format_web_url,
-                                     wait_until_server_available)
+from ray._private.test_utils import (
+    format_web_url, wait_until_server_available, wait_for_condition)
 from ray._private.job_manager import JobStatus
 from ray.dashboard.modules.job.data_types import (
     JobSubmitRequest, JobSubmitResponse, JobStatusRequest, JobStatusResponse,
@@ -21,6 +21,22 @@ def _setup_webui_url(ray_start_with_dashboard):
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
     return webui_url
+
+
+def _check_job_succeeded(job_id, endpoint):
+    # Job execution happens in background async run(), while job manager
+    # and web request APIs are synchronous.
+    status_request = JobStatusRequest(job_id=job_id)
+    resp = requests.get(endpoint, json=status_request.dict())
+    resp.raise_for_status()
+    data = resp.json()["data"]["data"]
+    response = JobStatusResponse(**data)
+    status = response.job_status
+
+    assert status in {
+        JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED
+    }
+    return status == JobStatus.SUCCEEDED
 
 
 @pytest.mark.parametrize(
@@ -43,12 +59,8 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
     response = JobSubmitResponse(**data)
     job_id = response.job_id
 
-    status_request = JobStatusRequest(job_id=job_id)
-    resp = requests.get(f"{webui_url}/status", json=status_request.dict())
-    resp.raise_for_status()
-    data = resp.json()["data"]["data"]
-    response = JobStatusResponse(**data)
-    assert response.job_status == JobStatus.SUCCEEDED
+    wait_for_condition(
+        _check_job_succeeded, job_id=job_id, endpoint=f"{webui_url}/status")
 
     logs_request = JobLogsRequest(job_id=job_id)
     resp = requests.get(f"{webui_url}/logs", json=logs_request.dict())
@@ -86,12 +98,8 @@ def test_job_metadata(disable_aiohttp_cache, enable_test_module,
     response = JobSubmitResponse(**data)
     job_id = response.job_id
 
-    status_request = JobStatusRequest(job_id=job_id)
-    resp = requests.get(f"{webui_url}/status", json=status_request.dict())
-    resp.raise_for_status()
-    data = resp.json()["data"]["data"]
-    response = JobStatusResponse(**data)
-    assert response.job_status == JobStatus.SUCCEEDED
+    wait_for_condition(
+        _check_job_succeeded, job_id=job_id, endpoint=f"{webui_url}/status")
 
     logs_request = JobLogsRequest(job_id=job_id)
     resp = requests.get(f"{webui_url}/logs", json=logs_request.dict())
