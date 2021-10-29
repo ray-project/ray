@@ -276,10 +276,7 @@ class GcsSubscriber {
         gcs_address_(gcs_address),
         subscriber_(std::move(subscriber)) {}
 
-  /// Uses Redis pubsub.
-  Status SubscribeAllActors(
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done);
+  /// Uses GCS pubsub when created with `subscriber`.
   Status SubscribeActor(const ActorID &id,
                         const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
                         const StatusCallback &done);

@@ -64,7 +64,8 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this](const std::string &object_id_binary) {
+    auto owner_dead_callback = [this](const std::string &object_id_binary,
+                                      const Status &) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       ReleaseFreedObject(object_id);
     };
@@ -74,7 +75,8 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 
     core_worker_subscriber_->Subscribe(
         std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address,
-        object_id.Binary(), subscription_callback, owner_dead_callback);
+        object_id.Binary(), /*subscribe_done_callback=*/{}, subscription_callback,
+        owner_dead_callback);
   }
 }
 

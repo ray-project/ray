@@ -213,6 +213,14 @@ Status GcsPublisher::PublishObject(const ObjectID &id,
 
 Status GcsPublisher::PublishActor(const ActorID &id, const rpc::ActorTableData &message,
                                   const StatusCallback &done) {
+  if (publisher_ != nullptr) {
+    rpc::PubMessage msg;
+    msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
+    msg.set_key_id(id.Binary());
+    *msg.mutable_actor_message() = message;
+    publisher_->Publish(msg);
+    return Status::OK();
+  }
   return pubsub_->Publish(ACTOR_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
@@ -274,20 +282,30 @@ Status GcsSubscriber::SubscribeAllJobs(
   return pubsub_->SubscribeAll(JOB_CHANNEL, on_subscribe, done);
 }
 
-Status GcsSubscriber::SubscribeAllActors(
-    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-    const StatusCallback &done) {
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    rpc::ActorTableData actor_data;
-    actor_data.ParseFromString(data);
-    subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
-  };
-  return pubsub_->SubscribeAll(ACTOR_CHANNEL, on_subscribe, done);
-}
-
 Status GcsSubscriber::SubscribeActor(
     const ActorID &id, const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
+  if (subscriber_ != nullptr) {
+    const std::string raw_id = id.Binary();
+    auto subscription_callback = [id, subscribe, done,
+                                  raw_id](const rpc::PubMessage &msg) {
+      RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
+      RAY_CHECK(msg.key_id() == id.Binary());
+      subscribe(id, msg.actor_message());
+    };
+    // TODO: fix error propagation.
+    auto subscription_failure_callback = [id, done](const std::string &failed_id,
+                                                    const Status &status) {
+      RAY_CHECK(failed_id == id.Binary());
+      RAY_LOG(WARNING) << "Subscription to Actor " << id.Hex()
+                       << " failed: " << status.ToString();
+    };
+    RAY_CHECK(subscriber_->Subscribe(
+        std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_ACTOR_CHANNEL,
+        gcs_address_, id.Binary(), [done](Status status) { done(status); },
+        std::move(subscription_callback), std::move(subscription_failure_callback)));
+    return Status::OK();
+  }
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::ActorTableData actor_data;
     actor_data.ParseFromString(data);
@@ -297,10 +315,19 @@ Status GcsSubscriber::SubscribeActor(
 }
 
 Status GcsSubscriber::UnsubscribeActor(const ActorID &id) {
+  if (subscriber_ != nullptr) {
+    subscriber_->Unsubscribe(rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_,
+                             id.Binary());
+    return Status::OK();
+  }
   return pubsub_->Unsubscribe(ACTOR_CHANNEL, id.Hex());
 }
 
 bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
+  if (subscriber_ != nullptr) {
+    return !subscriber_->IsSubscribed(rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_,
+                                      id.Binary());
+  }
   return pubsub_->IsUnsubscribed(ACTOR_CHANNEL, id.Hex());
 }
 

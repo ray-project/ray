@@ -841,8 +841,8 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   };
 
   // If the borrower is failed, this callback will be called.
-  const auto publisher_failed_callback = [this,
-                                          addr](const std::string &object_id_binary) {
+  const auto publisher_failed_callback = [this, addr](const std::string &object_id_binary,
+                                                      const Status &) {
     // When the request is failed, there's no new borrowers ref published from this
     // borrower.
     const auto object_id = ObjectID::FromBinary(object_id_binary);
@@ -851,8 +851,8 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
 
   object_info_subscriber_->Subscribe(
       std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-      addr.ToProto(), object_id.Binary(), message_published_callback,
-      publisher_failed_callback);
+      addr.ToProto(), object_id.Binary(), /*subscribe_done_callback=*/{},
+      message_published_callback, publisher_failed_callback);
 }
 
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
