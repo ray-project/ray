@@ -132,7 +132,7 @@ def main(num_workers,
         placement_group_timeout_s=placement_group_timeout_s)
     executor = RayExecutor(settings, use_gpu=use_gpu, num_workers=num_workers)
     executor.start()
-    executor.run(train_fn, **kwargs)
+    executor.run(train_fn, kwargs=kwargs)
 
 if __name__ == "__main__":
     start = time.time()
