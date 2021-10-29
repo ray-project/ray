@@ -21,6 +21,10 @@ def job_manager(shared_ray_instance):
 
 def check_job_succeeded(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
+    if status == JobStatus.FAILED:
+        stdout = job_manager.get_job_stdout(job_id)
+        stderr = job_manager.get_job_stderr(job_id)
+        raise RuntimeError(f"Job failed! stdout:\n{stdout}\nstderr:\n{stderr}")
     assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
     return status == JobStatus.SUCCEEDED
 
@@ -32,8 +36,16 @@ def check_job_failed(job_manager, job_id):
 
 
 def test_submit_basic_echo(job_manager):
-    job_id: str = str(uuid4())
-    job_id = job_manager.submit_job(job_id, "echo hello")
+    job_id = job_manager.submit_job("echo hello")
+
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
+    assert job_manager.get_job_stdout(job_id) == b"hello"
+
+
+def test_pass_in_job_id(job_manager):
+    job_id = job_manager.submit_job("echo hello", job_id="my_job_id")
+    assert job_id == "my_job_id"
 
     wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id)
@@ -41,8 +53,7 @@ def test_submit_basic_echo(job_manager):
 
 
 def test_submit_stderr(job_manager):
-    job_id: str = str(uuid4())
-    job_id = job_manager.submit_job(job_id, "echo error 1>&2")
+    job_id = job_manager.submit_job("echo error 1>&2")
 
     wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id)
@@ -50,8 +61,7 @@ def test_submit_stderr(job_manager):
 
 
 def test_submit_ls_grep(job_manager):
-    job_id: str = str(uuid4())
-    job_id = job_manager.submit_job(job_id, "ls | grep test_job_manager.py")
+    job_id = job_manager.submit_job("ls | grep test_job_manager.py")
 
     wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id)
@@ -66,9 +76,8 @@ def test_subprocess_exception(job_manager):
     3) Job no hanging job supervisor actor
     4) Empty stdout
     """
-    job_id: str = str(uuid4())
     job_id = job_manager.submit_job(
-        job_id, "python subprocess_driver_scripts/script_with_exception.py")
+        "python subprocess_driver_scripts/script_with_exception.py")
 
     wait_for_condition(
         check_job_failed, job_manager=job_manager, job_id=job_id)
@@ -80,9 +89,7 @@ def test_subprocess_exception(job_manager):
 
 
 def test_submit_with_s3_runtime_env(job_manager):
-    job_id: str = str(uuid4())
     job_id = job_manager.submit_job(
-        job_id,
         "python script.py",
         runtime_env={"working_dir": "s3://runtime-env-test/script.zip"})
 
@@ -101,9 +108,7 @@ class TestRuntimeEnv:
         """Test we can pass env vars in the subprocess that executes job's
         driver script.
         """
-        job_id: str = str(uuid4())
         job_id = job_manager.submit_job(
-            job_id,
             "echo $TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR",
             runtime_env={
                 "env_vars": {
@@ -172,3 +177,32 @@ class TestRuntimeEnv:
         assert stderr.startswith(
             "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
             "are provided")
+
+
+def test_pass_metadata(job_manager):
+    print_metadata_cmd = (
+        "python -c\""
+        "import ray;"
+        "ray.init();"
+        "job_config=ray.worker.global_worker.core_worker.get_job_config();"
+        "print(dict(sorted(job_config.metadata.items())))"
+        "\"")
+
+    # Check that we default to no metadata.
+    job_id = job_manager.submit_job(print_metadata_cmd)
+
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
+    assert job_manager.get_job_stdout(job_id) == b"{}"
+
+    # Check that we can pass custom metadata.
+    job_id = job_manager.submit_job(
+        print_metadata_cmd, metadata={
+            "key1": "val1",
+            "key2": "val2"
+        })
+
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
+    assert job_manager.get_job_stdout(
+        job_id) == b"{'key1': 'val1', 'key2': 'val2'}"
