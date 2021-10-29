@@ -7,8 +7,5 @@
 torch
 torchvision
 
-# Needed for Horovod install.
-cmake
-
 # Horovod master.
 git+https://github.com/horovod/horovod.git
