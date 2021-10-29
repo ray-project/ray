@@ -1,7 +1,8 @@
 import time
 
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray.serve.backend_state import (SLOW_STARTUP_WARNING_S,
+                                     SLOW_STARTUP_WARNING_PERIOD_S)
 
 
 def test_slow_allocation_warning(serve_instance, capsys):
@@ -11,34 +12,53 @@ def test_slow_allocation_warning(serve_instance, capsys):
         def __init__(self):
             pass
 
-    D.deploy(_blocking=False)
+    num_replicas = 2
+    D.options(num_replicas=num_replicas).deploy(_blocking=False)
 
     expected_warning = (f"Deployment '{D.name}' has "
-                        f"1 replicas that have taken "
-                        f"more than 30s to be scheduled.")
+                        f"{num_replicas} replicas that have taken "
+                        f"more than {SLOW_STARTUP_WARNING_S}s "
+                        f"to be scheduled.")
 
-    def warning_printed():
-        captured = capsys.readouterr()
-        return expected_warning in captured.err
+    # wait long enough for the warning to be printed
+    # with a small grace period
+    time.sleep(SLOW_STARTUP_WARNING_PERIOD_S * 1.5)
 
-    wait_for_condition(warning_printed, timeout=60, retry_interval_ms=1000)
+    captured = capsys.readouterr()
+
+    print(captured.err)
+
+    assert expected_warning in captured.err
+
+    # make sure that exactly one warning was printed
+    # for this deployment
+    assert captured.err.count(expected_warning) == 1
 
 
 def test_slow_initialization_warning(serve_instance, capsys):
     # this deployment will take a while to allocate
+
     @serve.deployment
     class D:
         def __init__(self):
             time.sleep(99999)
 
-    D.deploy(_blocking=False)
+    num_replicas = 4
+    D.options(num_replicas=num_replicas).deploy(_blocking=False)
 
     expected_warning = (f"Deployment '{D.name}' has "
-                        f"1 replicas that have taken "
-                        f"more than 30s to initialize.")
+                        f"{num_replicas} replicas that have taken "
+                        f"more than {SLOW_STARTUP_WARNING_S}s "
+                        f"to initialize.")
 
-    def warning_printed():
-        captured = capsys.readouterr()
-        return expected_warning in captured.err
+    # wait long enough for the warning to be printed
+    # with a small grace period
+    time.sleep(SLOW_STARTUP_WARNING_PERIOD_S * 1.5)
 
-    wait_for_condition(warning_printed, timeout=60, retry_interval_ms=1000)
+    captured = capsys.readouterr()
+
+    assert expected_warning in captured.err
+
+    # make sure that exactly one warning was printed
+    # for this deployment
+    assert captured.err.count(expected_warning) == 1

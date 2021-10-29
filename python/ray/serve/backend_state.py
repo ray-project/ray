@@ -1118,9 +1118,10 @@ class BackendState:
                 logger.warning(
                     f"Deployment '{self._name}' has "
                     f"{len(pending_allocation)} replicas that have taken "
-                    f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
-                    f"may be caused by waiting for the cluster to auto-scale, "
-                    f"or waiting for a runtime environment to install. "
+                    f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
+                    f"This may be caused by waiting for the cluster to "
+                    f"auto-scale, or waiting for a runtime environment "
+                    f"to install. "
                     f"Resources required for each replica: {required}, "
                     f"resources available: {available}. "
                     f"component=serve deployment={self._name}")
