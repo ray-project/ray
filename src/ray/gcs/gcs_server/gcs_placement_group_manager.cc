@@ -247,9 +247,9 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
   if (!is_feasible) {
     // We will attempt to schedule this placement_group once an eligible node is
     // registered.
-    infeasible_placement_groups_.emplace_back(std::move(placement_group));
     placement_group->GetMutableStats()->set_scheduling_state(
         rpc::PlacementGroupStats::INFEASIBLE);
+    infeasible_placement_groups_.emplace_back(std::move(placement_group));
   } else {
     auto state = placement_group->GetState();
     RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
@@ -263,10 +263,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       // priority than trying to place other placement groups.
       AddToPendingQueue(std::move(placement_group), /* rank */ 0);
     } else {
-      auto stats = placement_group->GetMutableStats();
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
-      auto delay = backoff.Current();
-      stats->set_highest_retry_delay_ms(absl::Nanoseconds(delay) / absl::Milliseconds(1));
     }
   }
   io_context_.post([this] { SchedulePendingPlacementGroups(); });
@@ -624,6 +621,13 @@ void GcsPlacementGroupManager::AddToPendingQueue(
     rank = absl::GetCurrentTimeNanos();
   }
 
+  // Add the biggest delay that has seen so far.
+  auto last_delay = 0;
+  if (exp_backer) {
+    last_delay = exp_backer->Current();
+  }
+  pg->GetMutableStats()->set_highest_retry_delay_ms(absl::Nanoseconds(last_delay) /
+                                                    absl::Milliseconds(1));
   if (!exp_backer) {
     auto initial_delay_ns =
         1000000 *

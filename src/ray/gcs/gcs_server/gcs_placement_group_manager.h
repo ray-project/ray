@@ -301,7 +301,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param pg The placementgroup we are adding
   /// \param rank The rank for this placement group. Semantically it's the time
   /// this placement group to be scheduled. By default it'll be assigned to be
-  /// the current time.
+  /// the current time. If you assign 0, it means it will be scheduled as a highest
+  /// priority.
   /// \param exp_backer The exponential backoff. A default one will be given if
   /// it's not set. This will be used to generate the deferred time for this pg.
   void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,

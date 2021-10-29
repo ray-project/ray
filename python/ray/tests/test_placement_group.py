@@ -537,11 +537,10 @@ def test_placement_group_stats(ray_start_cluster):
     # Test createable pgs.
     pg = ray.util.placement_group(bundles=[{"CPU": 4, "GPU": 1}])
     ray.get(pg.ready())
-    from pprint import pprint
-    pprint(ray.util.placement_group_table(pg))
     stats = ray.util.placement_group_table(pg)["stats"]
     assert stats["scheduling_attempt"] == 1
     assert stats["scheduling_state"] == "FINISHED"
+    assert stats["end_to_end_creation_latency_ms"] != 0
 
     # Create a pending pg.
     pg2 = ray.util.placement_group(bundles=[{"CPU": 4, "GPU": 1}])
@@ -551,6 +550,8 @@ def test_placement_group_stats(ray_start_cluster):
         if stats["scheduling_attempt"] != 1:
             return False
         if stats["scheduling_state"] != "NO_RESOURCES":
+            return False
+        if stats["end_to_end_creation_latency_ms"] != 0:
             return False
         return True
 
@@ -563,6 +564,8 @@ def test_placement_group_stats(ray_start_cluster):
     def assert_scheduling_state():
         stats = ray.util.placement_group_table(pg2)["stats"]
         if stats["scheduling_state"] != "FINISHED":
+            return False
+        if stats["end_to_end_creation_latency_ms"] == 0:
             return False
         return True
 
