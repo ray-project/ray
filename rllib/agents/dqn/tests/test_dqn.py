@@ -64,7 +64,7 @@ class TestDQN(unittest.TestCase):
         # Test against all frameworks.
         for _ in framework_iterator(config):
             # Default EpsilonGreedy setup.
-            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v1")
+            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
             for _ in range(50):
@@ -83,7 +83,7 @@ class TestDQN(unittest.TestCase):
                 "type": "SoftQ",
                 "temperature": 0.000001
             }
-            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v1")
+            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Due to the low temp, always expect the same action.
             actions = [trainer.compute_single_action(obs)]
             for _ in range(50):
@@ -93,7 +93,7 @@ class TestDQN(unittest.TestCase):
 
             # Higher softmax temperature.
             config["exploration_config"]["temperature"] = 1.0
-            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v1")
+            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
 
             # Even with the higher temperature, if we set explore=False, we
             # should expect the same actions always.
@@ -113,7 +113,7 @@ class TestDQN(unittest.TestCase):
             # With Random exploration.
             config["exploration_config"] = {"type": "Random"}
             config["explore"] = True
-            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v1")
+            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             actions = []
             for _ in range(300):
                 actions.append(trainer.compute_single_action(obs))
