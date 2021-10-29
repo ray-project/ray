@@ -25,6 +25,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, \
     BlockPartition, BlockPartitionMetadata
+from ray.data.context import DatasetContext
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
@@ -120,8 +121,10 @@ class Dataset(Generic[T]):
         """
 
         fn = cache_wrapper(fn)
+        context = DatasetContext.get_instance()
 
         def transform(block: Block) -> Block:
+            DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
@@ -185,8 +188,10 @@ class Dataset(Generic[T]):
         import pandas as pd
 
         fn = cache_wrapper(fn)
+        context = DatasetContext.get_instance()
 
         def transform(block: Block) -> Block:
+            DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             total_rows = block.num_rows()
             max_batch_size = batch_size
@@ -255,8 +260,10 @@ class Dataset(Generic[T]):
         """
 
         fn = cache_wrapper(fn)
+        context = DatasetContext.get_instance()
 
         def transform(block: Block) -> Block:
+            DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
@@ -295,8 +302,10 @@ class Dataset(Generic[T]):
         """
 
         fn = cache_wrapper(fn)
+        context = DatasetContext.get_instance()
 
         def transform(block: Block) -> Block:
+            DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = block.builder()
             for row in block.iter_rows():
