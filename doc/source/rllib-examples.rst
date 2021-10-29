@@ -117,7 +117,7 @@ Evaluation:
 
 Serving and Offline
 -------------------
-- `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/offline_rl.py>`__:
+- `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl.py>`__:
    Example showing how to run an offline RL training job using a historic-data json file.
 - :ref:`Serving RLlib models with Ray Serve <serve-rllib-tutorial>`: Example of using Ray Serve to serve RLlib models
    with HTTP and JSON interface. **This is the recommended way to expose RLlib for online serving use case**.

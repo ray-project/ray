@@ -234,10 +234,13 @@ py_test(
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
 
+# Does not work with tf-eager tracing due to Exploration's postprocessing
+# method injecting a tensor into a new graph. Revisit when tf-eager tracing
+# is better supported.
 py_test(
     name = "learning_tests_cartpole_dqn_param_noise",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_eager_tracing"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-dqn-param-noise.yaml"],
