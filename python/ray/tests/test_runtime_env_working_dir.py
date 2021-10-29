@@ -823,7 +823,7 @@ import ray
 ray.init("{address}", runtime_env={{"py_modules": ["{tmp_dir}"]}})
 """
 
-        with open(filepath, "wb") as f:
+        with open(filepath, "w") as f:
             f.write("Hi")
 
         output = run_string_as_driver(driver_script)
