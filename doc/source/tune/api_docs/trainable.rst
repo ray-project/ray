@@ -259,7 +259,7 @@ Use ``validate_save_restore`` to catch ``save_checkpoint``/``load_checkpoint`` e
 .. _tune-cloud-checkpointing:
 
 Storing checkpoints on cloud storage
------------------------------------
+------------------------------------
 
 Ray Tune trainables can sync trial logs and checkpoints to cloud storage (via the `upload_dir`). This is especially
 useful when training a large number of distributed trials, as logs and checkpoints are otherwise synchronized
