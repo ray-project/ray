@@ -153,10 +153,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto selected_nodes = scheduling_result.second;
 
   if (result_status != SchedulingResultStatus::SUCCESS) {
-    bool retryable = (result_status == SchedulingResultStatus::FAILED) ? true : false;
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
                    << ", id: " << placement_group->GetPlacementGroupID()
-                   << ", because current reource can't satisfy the required resource. Retryable: " << retryable;
+                   << ", because current reource can't satisfy the required resource.";
+    bool retryable = (result_status == SchedulingResultStatus::FAILED) ? true : false;
     placement_group->GetMutableStats()->set_scheduling_state(
         rpc::PlacementGroupStats::NO_RESOURCES);
     failure_callback(placement_group, retryable);
