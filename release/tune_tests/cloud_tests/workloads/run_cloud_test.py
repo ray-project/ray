@@ -530,7 +530,14 @@ def fetch_bucket_contents_to_tmp_dir(bucket: str) -> str:
         subprocess.check_call(
             ["aws", "s3", "cp", "--recursive", "--quiet", bucket, tmpdir])
     elif bucket.startswith("gs://"):
-        subprocess.check_call(["gsutil", "-m", "cp", "-r", bucket, tmpdir])
+        try:
+            subprocess.check_call(["gsutil", "-m", "cp", "-r", bucket, tmpdir])
+        except subprocess.CalledProcessError as e:
+            # Sometimes single files cannot be processed
+            if len(os.listdir(tmpdir)) == 0:
+                raise RuntimeError(
+                    f"Local dir {tmpdir} empty after trying to fetch "
+                    f"bucket data.") from e
         pattern = re.compile("gs://[^/]+/(.+)")
         subfolder = re.match(pattern, bucket).group(1)
     else:
