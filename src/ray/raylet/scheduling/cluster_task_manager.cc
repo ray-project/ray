@@ -40,9 +40,10 @@ ClusterTaskManager::ClusterTaskManager(
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
     size_t max_pinned_task_arguments_bytes,
-    std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>, double)> execute_after,
-    std::function<double(void)> get_time,
-    int64_t sched_cls_cap_interval_ms)
+    std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
+                                                               double)>
+        execute_after,
+    std::function<double(void)> get_time, int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -327,9 +328,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
               (1e6 * sched_cls_cap_interval_ms_) * (1L << sched_cls_info.num_updates++);
           sched_cls_info.next_update_time = get_time_() + wait_time;
           RAY_LOG(ERROR) << "Next cap update: " << (wait_time / 1e9);
-          sched_cls_info.timer = execute_after_([this](){
-                                                  RAY_LOG(ERROR) << "DELAYED EXECUTION HIT";
-                                                  ScheduleAndDispatchTasks();}, wait_time);
+          sched_cls_info.timer = execute_after_(
+              [this]() {
+                RAY_LOG(ERROR) << "DELAYED EXECUTION HIT";
+                ScheduleAndDispatchTasks();
+              },
+              wait_time);
         }
         work_it++;
         continue;

@@ -609,7 +609,6 @@ def test_limit_concurrency(shutdown_only):
         ray.get(block_task.acquire.remote())
         print("got to end!")
 
-
     refs = [foo.remote() for _ in range(20)]
 
     block_driver_refs = [block_driver.acquire.remote() for _ in range(20)]

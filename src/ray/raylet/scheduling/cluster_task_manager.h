@@ -159,10 +159,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes,
-      std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>, double)> execute_after,
+      std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
+                                                                 double)>
+          execute_after,
       std::function<double(void)> get_time = absl::GetCurrentTimeNanos,
-      int64_t sched_cls_cap_interval_ms = RayConfig::instance().scheduling_class_capacity_interval_ms());
-
+      int64_t sched_cls_cap_interval_ms =
+          RayConfig::instance().scheduling_class_capacity_interval_ms());
 
   void SetWorkerBacklog(SchedulingClass scheduling_class, const WorkerID &worker_id,
                         int64_t backlog_size) override;
@@ -426,7 +428,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   size_t max_pinned_task_arguments_bytes_;
 
   /// Executes a function after a given time.
-  std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>, double)> execute_after_;
+  std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
+                                                             double)>
+      execute_after_;
 
   /// Returns the current time in seconds
   std::function<double()> get_time_;
