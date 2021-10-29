@@ -1098,145 +1098,11 @@ def test_durable_upload(bucket: str):
         after_experiments_callback=after_experiments)
 
 
-def test_no_durable_upload(bucket: str):
-    """
-    Sync only experiment checkpoints to cloud, so:
-
-        sync_to_driver=True
-        upload_dir="s3://"
-        no durable_trainable
-
-    Expected results after first checkpoint:
-
-        - 4 trials are running
-        - At least one trial ran on the head node
-        - At least one trial ran remotely
-        - Driver has trial checkpoints from head node trial
-        - Driver has trial checkpoints from remote node trials
-        - Remote trial dirs only have data for one trial
-        - Remote trial dirs have checkpoints for node-local trials
-        - Cloud checkpoint is valid
-        - Cloud checkpoint has checkpoints from all trials
-            (this is because the driver has checkpoints and syncs them up)
-
-    Then, remote checkpoint directories are cleaned up.
-
-    Expected results after second checkpoint:
-
-        - 4 trials are running
-        - All trials progressed with training
-        - Cloud checkpoint is valid
-        - Cloud checkpoint has checkpoints from all trials
-            (this is because the driver has checkpoints and syncs them up)
-
-    """
-    if not bucket:
-        raise ValueError(
-            "The `no_durable_upload` test requires a `--bucket` argument to "
-            "be set.")
-
-    experiment_name = "cloud_no_durable_upload"
-    indicator_file = f"/tmp/{experiment_name}_indicator"
-
-    def before_experiments():
-        clear_bucket_contents(bucket)
-
-    def between_experiments():
-        (experiment_state, driver_dir_cp, trial_exp_checkpoint_data
-         ) = get_experiment_and_trial_data(experiment_name=experiment_name)
-
-        # Req: 4 trials are running
-        assert all(
-            trial.status == "RUNNING"
-            for trial in experiment_state.trials), "Not all trials are RUNNING"
-
-        # Req: At least one trial ran on driver
-        # Req: At least one trial ran remotely
-        assert_min_num_trials(
-            driver_dir_cp.trial_to_cps.keys(), on_driver=1, on_worker=1)
-
-        # Req: Driver has trial checkpoints from head node trial
-        # Req: Driver has trial checkpoints from remote node trials
-        assert_checkpoint_count(
-            driver_dir_cp, for_driver_trial=2, for_worker_trial=2)
-
-        for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
-            # Req: Remote trial dirs only have data for one trial
-
-            seen = len(exp_dir_cp.trial_to_cps)
-
-            if trial.was_on_driver_node:
-                assert seen == 4, (f"Trial {trial.trial_id} was on driver, "
-                                   f"but observed too few trials ({seen}) "
-                                   f"in experiment dir.")
-            else:
-                assert seen == 1, (
-                    f"Trial {trial.trial_id} was not on driver, "
-                    f"but observed not exactly 1 trials ({seen}) "
-                    f"in experiment dir.")
-
-                assert_checkpoint_count(
-                    exp_dir_cp, for_driver_trial=0, for_worker_trial=2)
-
-        bucket_state_cp, bucket_dir_cp = get_bucket_data(
-            bucket, experiment_name)
-
-        # Req: Cloud checkpoint is valid
-        assert_experiment_checkpoint_validity(bucket_state_cp)
-
-        # Req: Cloud checkpoint has checkpoints from all trials
-        assert_checkpoint_count(
-            bucket_dir_cp, for_driver_trial=2, for_worker_trial=2)
-
-        # Delete remote checkpoints before resume
-        print("Deleting remote checkpoints before resume")
-        cleanup_remote_node_experiment_dir(experiment_name)
-
-    def after_experiments():
-        (experiment_state, driver_dir_cp, trial_exp_checkpoint_data
-         ) = get_experiment_and_trial_data(experiment_name=experiment_name)
-
-        # Req: 4 trials are running
-        assert all(
-            trial.status == "RUNNING"
-            for trial in experiment_state.trials), "Not all trials are RUNNING"
-
-        for trial in experiment_state.trials:
-            assert_trial_progressed_training(trial)
-
-        bucket_state_cp, bucket_dir_cp = get_bucket_data(
-            bucket, experiment_name)
-
-        # Req: Cloud checkpoint is valid
-        assert_experiment_checkpoint_validity(bucket_state_cp)
-
-        # Req: Cloud checkpoint has checkpoints from all trials
-        assert_checkpoint_count(
-            bucket_dir_cp, for_driver_trial=2, for_worker_trial=2)
-
-        clear_bucket_contents(bucket)
-
-    run_resume_flow(
-        experiment_name=experiment_name,
-        indicator_file=indicator_file,
-        sync_to_driver=True,
-        upload_dir=bucket,
-        durable=False,
-        first_run_time=45,
-        second_run_time=45,
-        before_experiments_callback=before_experiments,
-        between_experiments_callback=between_experiments,
-        after_experiments_callback=after_experiments)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "variant",
-        choices=[
-            "no_sync_down", "ssh_sync", "durable_upload", "no_durable_upload"
-        ])
+        "variant", choices=["no_sync_down", "ssh_sync", "durable_upload"])
     parser.add_argument("--bucket", type=str, default=None)
     parser.add_argument(
         "--cpus-per-trial", required=False, default=2, type=int)
@@ -1285,8 +1151,6 @@ if __name__ == "__main__":
             test_ssh_sync()
         elif variant == "durable_upload":
             test_durable_upload(bucket)
-        elif variant == "no_durable_upload":
-            test_no_durable_upload(bucket)
 
         time_taken = time.monotonic() - start_time
 
