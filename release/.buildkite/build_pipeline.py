@@ -251,7 +251,12 @@ MANUAL_TESTS = {
 #   2. Use autoscaling/scale up (no wait_cluster.py)
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
-USER_TESTS = {}
+USER_TESTS = {
+    "~/ray/release/ray_lightning_tests/ray_lightning_tests.yaml": [
+        ConnectTest(requirements_file="release/ray_lightning_tests"
+                                      "/driver_requirements.txt")
+    ]
+}
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
