@@ -147,8 +147,8 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({ actor }) => {
               {actor.gpus.map((gpu) => {
                 const gpuUtilization = gpu.utilizationGpu ? (
                   <UsageBar
-                    percent={gpu.utilizationGpu * 100}
-                    text={`${gpu.utilizationGpu * 100}%`}
+                    percent={gpu.utilizationGpu}
+                    text={`${gpu.utilizationGpu}%`}
                   />
                 ) : (
                   <Typography
