@@ -7,7 +7,7 @@ import json
 import os
 
 import ray
-from ray.rllib.examples.tune_framework import run
+from ray.rllib.examples.tune.framework import run
 
 if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
