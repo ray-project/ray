@@ -15,7 +15,7 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = glob(["tests/test_*.py", "examples/**/*.py"]),
-  size = "medium",
+  size = "large",
   extra_srcs = SRCS,
   tags = ["team:core", "exclusive"],
   deps = ["//:ray_lib"],
