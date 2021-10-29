@@ -31,10 +31,10 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
 Client arguments
 ----------------
 
-Ray Client is used when the address passed into ``ray.init`` is prefixed with ``ray://``. Client mode currently accepts two arguments:
+Ray Client is used when the address passed into ``ray.init`` is prefixed with ``ray://``. Besides the address, Client mode currently accepts two other arguments:
 
-- ``namespace``: Sets the namespace for the session.
-- ``runtime_env``: Sets the `runtime environment <../advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
+- ``namespace`` (optional): Sets the namespace for the session.
+- ``runtime_env`` (optional): Sets the `runtime environment <../advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
 
 .. code-block:: python
 
