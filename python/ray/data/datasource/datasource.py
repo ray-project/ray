@@ -106,29 +106,32 @@ class ReadTask(Callable[[], List[Block]]):
     contents of the block itself.
     """
 
-    def __init__(self, read_fn: Callable[[], List[Block]],
-                 metadata: BlockPartitionMetadata):
+    def __init__(self, read_fn: Callable[[], Iterable[Block]],
+                 metadata: BlockPartitionMetadata, context: DatasetContext):
         self._metadata = metadata
         self._read_fn = read_fn
+        self._context = context
 
     def get_metadata(self) -> BlockPartitionMetadata:
         return self._metadata
 
     def __call__(self) -> BlockPartition:
         result = self._read_fn()
-        bad_read_result = DeprecationWarning(
-            "Read task must return list of (block, metadata) tuples, got "
-            "{}. Probably you need to return `[(ray.put(block), meta)]` "
-            "instead of `block`.".format(result))
-        if not isinstance(result, list):
-            raise bad_read_result
-        if len(result) == 0:
+        if not hasattr(result, "__iter__"):
+            DeprecationWarning(
+                "Read function must return Iterable[Block], got {}. "
+                "Probably you need to return `[block]` instead of "
+                "`block`.".format(result))
+        partition: BlockPartition = []
+        for block in result:
+            metadata = BlockAccessor.for_block(block).get_metadata(
+                input_files=self._metadata.input_files)
+            partition.append((
+                ray.put(block, _owner=self._context.block_owner),
+                metadata))
+        if len(partition) == 0:
             raise ValueError("Read task must return non-empty list.")
-        if not isinstance(result[0], tuple) or len(result[0]) != 2 \
-                or not isinstance(result[0][0], ray.ObjectRef) \
-                or not isinstance(result[0][1], BlockMetadata):
-            raise bad_read_result
-        return result
+        return partition
 
 
 class RangeDatasource(Datasource[Union[ArrowRow, int]]):
@@ -191,9 +194,8 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 input_files=None)
             read_tasks.append(
                 ReadTask(
-                    lambda i=i, count=count, meta=meta: [(
-                        ray.put(make_block(i, count), _owner=owner), meta)],
-                    meta))
+                    lambda i=i, count=count: [make_block(i, count)],
+                    meta, owner))
             i += block_size
 
         return read_tasks
@@ -313,10 +315,9 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
                 input_files=None)
             read_tasks.append(
                 ReadTask(
-                    lambda count=count, num_columns=num_columns, meta=meta:
-                        [(ray.put(make_block(count, num_columns),
-                          _owner=owner), meta)],
-                    meta))
+                    lambda count=count, num_columns=num_columns: [
+                        make_block(count, num_columns)],
+                    meta, owner))
             i += block_size
 
         return read_tasks

@@ -182,8 +182,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         return read_tasks
 
     def _rows_per_file(self):
-        """Returns the number of rows per file, or None if unknown.
-        """
+        """Returns the number of rows per file, or None if unknown."""
         return None
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
@@ -192,7 +191,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         This method should be implemented by subclasses.
         """
         raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _read_files().")
+            "Subclasses of FileBasedDatasource must implement _read_file().")
 
     def do_write(self,
                  blocks: List[ObjectRef[Block]],
