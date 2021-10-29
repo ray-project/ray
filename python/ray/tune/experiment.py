@@ -147,26 +147,28 @@ class Experiment:
         if not stop:
             pass
         elif isinstance(stop, list):
-            if any(not isinstance(s, Stopper) for s in stop):
+            bad_stoppers = [s for s in stop if not isinstance(s, Stopper)]
+            if bad_stoppers:
+                stopper_types = [type(s) for s in stop]
                 raise ValueError(
                     "If you pass a list as the `stop` argument to "
                     "`tune.run()`, each element must be an instance of "
-                    "`tune.stopper.Stopper`.")
+                    f"`tune.stopper.Stopper`. Got {stopper_types}.")
             self._stopper = CombinedStopper(*stop)
         elif isinstance(stop, dict):
             stopping_criteria = stop
         elif callable(stop):
             if FunctionStopper.is_valid_function(stop):
                 self._stopper = FunctionStopper(stop)
-            elif issubclass(type(stop), Stopper):
+            elif isinstance(stop, Stopper):
                 self._stopper = stop
             else:
                 raise ValueError("Provided stop object must be either a dict, "
                                  "a function, or a subclass of "
-                                 "`ray.tune.Stopper`.")
+                                 f"`ray.tune.Stopper`. Got {type(stop)}.")
         else:
-            raise ValueError("Invalid stop criteria: {}. Must be a "
-                             "callable or dict".format(stop))
+            raise ValueError(f"Invalid stop criteria: {stop}. Must be a "
+                             f"callable or dict. Got {type(stop)}.")
 
         if time_budget_s:
             if self._stopper:

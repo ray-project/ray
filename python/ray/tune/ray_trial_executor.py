@@ -169,15 +169,11 @@ class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
     def __init__(self,
-                 queue_trials: bool = False,
                  reuse_actors: bool = False,
                  result_buffer_length: Optional[int] = None,
                  refresh_period: Optional[float] = None,
                  wait_for_placement_group: Optional[float] = None):
-        super(RayTrialExecutor, self).__init__(queue_trials)
-        # Check for if we are launching a trial without resources in kick off
-        # autoscaler.
-        self._trial_queued = False
+        super(RayTrialExecutor, self).__init__()
         self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object ref generated.
@@ -881,9 +877,9 @@ class RayTrialExecutor(TrialExecutor):
     def has_resources_for_trial(self, trial: Trial) -> bool:
         """Returns whether this runner has resources available for this trial.
 
-        If using placement groups, this will return True as long as we
-        didn't reach the maximum number of pending trials. It will also return
-        True if the trial placement group is already staged.
+        This will return True as long as we didn't reach the maximum number
+        of pending trials. It will also return True if the trial placement
+        group is already staged.
 
         Args:
             trial: Trial object which should be scheduled.
@@ -924,19 +920,6 @@ class RayTrialExecutor(TrialExecutor):
         if have_space:
             # The assumption right now is that we block all trials if one
             # trial is queued.
-            self._trial_queued = False
-            return True
-
-        can_overcommit = self._queue_trials and not self._trial_queued
-        if can_overcommit:
-            self._trial_queued = True
-            logger.warning(
-                "Allowing trial to start even though the "
-                "cluster does not have enough free resources. Trial actors "
-                "may appear to hang until enough resources are added to the "
-                "cluster (e.g., via autoscaling). You can disable this "
-                "behavior by specifying `queue_trials=False` in "
-                "ray.tune.run().")
             return True
 
         return False

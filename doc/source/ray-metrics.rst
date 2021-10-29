@@ -1,3 +1,5 @@
+.. _ray-metrics:
+
 Exporting Metrics
 =================
 To help monitoring Ray applications, Ray

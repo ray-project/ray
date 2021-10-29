@@ -176,6 +176,15 @@ class FunctionActorManager:
                  "job_id", "function_id", "function_name", "function",
                  "module", "max_calls"
              ])
+
+        if ray_constants.ISOLATE_EXPORTS and \
+                job_id_str != self._worker.current_job_id.binary():
+            # A worker only executes tasks from the assigned job.
+            # TODO(jjyao): If fetching unrelated remote functions
+            # becomes a perf issue, we can also consider having export
+            # queue per job.
+            return
+
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
@@ -376,11 +385,20 @@ class FunctionActorManager:
         job_id = self._worker.current_job_id
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())
+        try:
+            serialized_actor_class = pickle.dumps(Class)
+        except TypeError as e:
+            msg = (
+                "Could not serialize the actor class "
+                f"{actor_creation_function_descriptor.repr}. "
+                "Check https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
+                "for more information.")
+            raise TypeError(msg) from e
         actor_class_info = {
             "class_name": actor_creation_function_descriptor.class_name.split(
                 ".")[-1],
             "module": actor_creation_function_descriptor.module_name,
-            "class": pickle.dumps(Class),
+            "class": serialized_actor_class,
             "job_id": job_id.binary(),
             "collision_identifier": self.compute_collision_identifier(Class),
             "actor_method_names": json.dumps(list(actor_method_names))

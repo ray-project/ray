@@ -63,58 +63,25 @@ system. Let's take following simple examples:
 
     First, set up your dataset and model.
 
-    .. code-block:: python
-
-        import torch
-        import torch.nn as nn
-
-        num_samples = 20
-        input_size = 10
-        layer_size = 15
-        output_size = 5
-
-        class NeuralNetwork(nn.Module):
-            def __init__(self):
-                super(NeuralNetwork, self).__init__()
-                self.layer1 = nn.Linear(input_size, layer_size)
-                self.relu = nn.ReLU()
-                self.layer2 = nn.Linear(layer_size, output_size)
-
-            def forward(self, input):
-                return self.layer2(self.relu(self.layer1(input)))
-
-        # In this example we use a randomly generated dataset.
-        input = torch.randn(num_samples, input_size)
-        labels = torch.randn(num_samples, output_size)
+    .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
+       :language: python
+       :start-after: __torch_setup_begin__
+       :end-before: __torch_setup_end__
 
 
     Now define your single-worker PyTorch training function.
 
-    .. code-block:: python
-
-        import torch.optim as optim
-
-        def train_func():
-            num_epochs = 3
-            model = NeuralNetwork()
-            loss_fn = nn.MSELoss()
-            optimizer = optim.SGD(model.parameters(), lr=0.1)
-
-            for epoch in range(num_epochs):
-                output = model(input)
-                loss = loss_fn(output, labels)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                print(f"epoch: {epoch}, loss: {loss.item()}")
-
+    .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
+       :language: python
+       :start-after: __torch_single_begin__
+       :end-before: __torch_single_end__
 
     This training function can be executed with:
 
-    .. code-block:: python
-
-        train_func()
-
+    .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
+       :language: python
+       :start-after: __torch_single_run_begin__
+       :end-before: __torch_single_run_end__
 
     Now let's convert this to a distributed multi-worker training function!
 
@@ -123,40 +90,20 @@ system. Let's take following simple examples:
     data parallel code as as you would normally run it with
     ``torch.distributed.launch``.
 
-    .. code-block:: python
-
-        from torch.nn.parallel import DistributedDataParallel
-
-        def train_func_distributed():
-            num_epochs = 3
-            model = NeuralNetwork()
-            model = DistributedDataParallel(model)
-            loss_fn = nn.MSELoss()
-            optimizer = optim.SGD(model.parameters(), lr=0.1)
-
-            for epoch in range(num_epochs):
-                output = model(input)
-                loss = loss_fn(output, labels)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                print(f"epoch: {epoch}, loss: {loss.item()}")
+    .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
+       :language: python
+       :start-after: __torch_distributed_begin__
+       :end-before: __torch_distributed_end__
 
     Then, instantiate a ``Trainer`` that uses a ``"torch"`` backend
     with 4 workers, and use it to run the new training function!
 
-    .. code-block:: python
-
-        from ray.train import Trainer
-
-        trainer = Trainer(backend="torch", num_workers=4)
-        trainer.start()
-        results = trainer.run(train_func_distributed)
-        trainer.shutdown()
-
+    .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
+       :language: python
+       :start-after: __torch_trainer_begin__
+       :end-before: __torch_trainer_end__
 
     See :ref:`train-porting-code` for a more comprehensive example.
-
 
   .. group-tab:: TensorFlow
 
@@ -165,52 +112,24 @@ system. Let's take following simple examples:
 
     First, set up your dataset and model.
 
-    .. code-block:: python
-
-        import numpy as np
-        import tensorflow as tf
-
-        def mnist_dataset(batch_size):
-            (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
-            # The `x` arrays are in uint8 and have values in the [0, 255] range.
-            # You need to convert them to float32 with values in the [0, 1] range.
-            x_train = x_train / np.float32(255)
-            y_train = y_train.astype(np.int64)
-            train_dataset = tf.data.Dataset.from_tensor_slices(
-                (x_train, y_train)).shuffle(60000).repeat().batch(batch_size)
-            return train_dataset
-
-
-        def build_and_compile_cnn_model():
-            model = tf.keras.Sequential([
-                tf.keras.layers.InputLayer(input_shape=(28, 28)),
-                tf.keras.layers.Reshape(target_shape=(28, 28, 1)),
-                tf.keras.layers.Conv2D(32, 3, activation='relu'),
-                tf.keras.layers.Flatten(),
-                tf.keras.layers.Dense(128, activation='relu'),
-                tf.keras.layers.Dense(10)
-            ])
-            model.compile(
-                loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-                optimizer=tf.keras.optimizers.SGD(learning_rate=0.001),
-                metrics=['accuracy'])
-            return model
+    .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
+       :language: python
+       :start-after: __tf_setup_begin__
+       :end-before: __tf_setup_end__
 
     Now define your single-worker TensorFlow training function.
 
-    .. code-block:: python
-
-        def train_func():
-            batch_size = 64
-            single_worker_dataset = mnist.mnist_dataset(batch_size)
-            single_worker_model = mnist.build_and_compile_cnn_model()
-            single_worker_model.fit(single_worker_dataset, epochs=3, steps_per_epoch=70)
+    .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
+           :language: python
+           :start-after: __tf_single_begin__
+           :end-before: __tf_single_end__
 
     This training function can be executed with:
 
-    .. code-block:: python
-
-        train_func()
+    .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
+       :language: python
+       :start-after: __tf_single_run_begin__
+       :end-before: __tf_single_run_end__
 
     Now let's convert this to a distributed multi-worker training function!
     All you need to do is:
@@ -220,40 +139,18 @@ system. Let's take following simple examples:
     2. Choose your TensorFlow distributed training strategy. In this example
        we use the ``MultiWorkerMirroredStrategy``.
 
-    .. code-block:: python
-
-        import json
-        import os
-
-        def train_func_distributed():
-            per_worker_batch_size = 64
-            # This environment variable will be set by Ray Train.
-            tf_config = json.loads(os.environ['TF_CONFIG'])
-            num_workers = len(tf_config['cluster']['worker'])
-
-            strategy = tf.distribute.MultiWorkerMirroredStrategy()
-
-            global_batch_size = per_worker_batch_size * num_workers
-            multi_worker_dataset = mnist_dataset(global_batch_size)
-
-            with strategy.scope():
-                # Model building/compiling need to be within `strategy.scope()`.
-                multi_worker_model = build_and_compile_cnn_model()
-
-            multi_worker_model.fit(multi_worker_dataset, epochs=3, steps_per_epoch=70)
+    .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
+       :language: python
+       :start-after: __tf_distributed_begin__
+       :end-before: __tf_distributed_end__
 
     Then, instantiate a ``Trainer`` that uses a ``"tensorflow"`` backend
     with 4 workers, and use it to run the new training function!
 
-    .. code-block:: python
-
-        from ray.train import Trainer
-
-        trainer = Trainer(backend="tensorflow", num_workers=4)
-        trainer.start()
-        results = trainer.run(train_func_distributed)
-        trainer.shutdown()
-
+    .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
+       :language: python
+       :start-after: __tf_trainer_begin__
+       :end-before: __tf_trainer_end__
 
     See :ref:`train-porting-code` for a more comprehensive example.
 

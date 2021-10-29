@@ -58,7 +58,6 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer in batches (not timesteps!).
     "buffer_size": 1000,
-
     # === Optimization ===
     # Learning rate for RMSProp optimizer
     "lr": 0.0005,
@@ -100,7 +99,10 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def execution_plan(workers, config):
+def execution_plan(workers, config, **kwargs):
+    assert len(kwargs) == 0, (
+        "QMIX execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
     replay_buffer = SimpleReplayBuffer(config["buffer_size"])
 
