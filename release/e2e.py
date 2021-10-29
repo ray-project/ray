@@ -367,9 +367,17 @@ def wheel_url(ray_version, git_branch, git_commit):
            f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
 
 
+def mac_wheel_url(ray_version, git_branch, git_commit):
+    return f"https://s3-us-west-2.amazonaws.com/ray-wheels/" \
+           f"{git_branch}/{git_commit}/" \
+           f"ray-{ray_version}-cp37-cp37m-macosx_10_15_intel.whl"
+
+
 def wheel_exists(ray_version, git_branch, git_commit):
     url = wheel_url(ray_version, git_branch, git_commit)
-    return requests.head(url).status_code == 200
+    mac_url = mac_wheel_url(ray_version, git_branch, git_commit)
+    return requests.head(url).status_code == 200 and requests.head(
+        mac_url).status_code == 200
 
 
 def commit_or_url(commit_or_url: str) -> str:
