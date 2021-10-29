@@ -1,4 +1,6 @@
 from ray.core.generated.common_pb2 import ErrorType
+import inspect
+from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
@@ -102,3 +104,18 @@ def construct_error_message(job_id, error_type, message, timestamp):
     data.error_message = message
     data.timestamp = timestamp
     return data.SerializeToString()
+
+class GcsClient:
+    def __init__(self, stubs):
+        self._methods = {}
+        for stub in stubs:
+            for (name, method) in inspect.getmembers(stub, predicate=inspect.ismethod):
+                self._methods[name] = method
+    def __getattr__(self, key: str):
+        return self._methods[key]
+
+    @classmethod
+    def connect_to_gcs(cls, address):
+        channel = grpc.insecure_channel(address)
+        stubs = [gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)]
+        return cls(stubs)
