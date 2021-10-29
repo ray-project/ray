@@ -224,6 +224,7 @@ def test_empty_working_dir(start_cluster):
         ray.shutdown()
         ray.init(address, runtime_env={"working_dir": working_dir})
 
+
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_input_validation(start_cluster, option: str):
