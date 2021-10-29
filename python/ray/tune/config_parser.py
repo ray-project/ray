@@ -157,7 +157,7 @@ _cached_pgf = {}
 def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     """Creates a Trial object from parsing the spec.
 
-    Arguments:
+    Args:
         spec (dict): A resolved experiment specification. Arguments should
             The args here should correspond to the command line flags
             in ray.tune.config_parser.
