@@ -487,7 +487,8 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     }
 
     if (status.ok()) {
-      // The runtime environment could be created. It means this actor cannot be created.
+      // The runtime environment has failed by an unrecoverable error.
+      // We cannot create this actor anymore.
       if (reply.runtime_env_setup_failed()) {
         // Right now, the way to report error message back to actor is not that great.
         // This message is used to notify users the cause of actor death (with ERROR
