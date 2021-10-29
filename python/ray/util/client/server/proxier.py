@@ -214,7 +214,7 @@ class ProxyManager():
                                "runtime_env feature were found on the "
                                "cluster. To install the required "
                                "dependencies, please run `pip install "
-                               "'ray[default]'` on all cluster nodes.")
+                               "\"ray[default]\"` on all cluster nodes.")
         create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"))

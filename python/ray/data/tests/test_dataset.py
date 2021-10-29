@@ -288,7 +288,8 @@ def test_zip_arrow(ray_start_regular_shared):
 def test_batch_tensors(ray_start_regular_shared):
     import torch
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
-    res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
+    res = ("Dataset(num_blocks=40, num_rows=40, "
+           "schema=<class 'torch.Tensor'>)")
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
@@ -1702,7 +1703,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+    for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)
@@ -2060,23 +2061,33 @@ def test_split(ray_start_regular_shared):
     assert ds._block_sizes() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [len(dataset._blocks) for dataset in datasets]
+    assert [2] * 5 == [
+        dataset._blocks.initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3, 3] == [len(dataset._blocks) for dataset in datasets]
+    assert [4, 3, 3] == [
+        dataset._blocks.initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [len(dataset._blocks) for dataset in datasets]
+    assert [10] == [
+        dataset._blocks.initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [len(dataset._blocks) for dataset in datasets]
+    assert [1] * 10 == [
+        dataset._blocks.initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(11)
-    assert [1] * 10 + [0] == [len(dataset._blocks) for dataset in datasets]
+    assert [1] * 10 + [0] == [
+        dataset._blocks.initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
 
@@ -2105,7 +2116,7 @@ def test_split_hints(ray_start_regular_shared):
         """
         num_blocks = len(block_node_ids)
         ds = ray.data.range(num_blocks, parallelism=num_blocks)
-        blocks = list(ds._blocks)
+        blocks = list(ds._blocks.iter_blocks())
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
@@ -2131,7 +2142,7 @@ def test_split_hints(ray_start_regular_shared):
                 for i in range(len(actors)):
                     assert {blocks[j]
                             for j in expected_split_result[i]} == set(
-                                datasets[i]._blocks)
+                                datasets[i]._blocks.iter_blocks())
 
     assert_split_assignment(["node2", "node1", "node1"], ["node1", "node2"],
                             [[1, 2], [0]])
@@ -2369,7 +2380,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+    for block, meta in ds._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -2490,7 +2501,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
-    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+    for block, meta in ds._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes()
 
     # Directory and file, two files.
@@ -2569,7 +2580,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+    for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     if fs is None:
@@ -2586,7 +2597,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+    for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -2678,7 +2689,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+    for block, meta in ds._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -2809,7 +2820,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+    for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
@@ -2821,7 +2832,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+    for block, meta in ds2._blocks.iter_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -2867,6 +2878,11 @@ def test_csv_write_block_path_provider(ray_start_regular_shared, fs, data_path,
 
 
 def test_groupby_arrow(ray_start_regular_shared):
+    # Test empty dataset.
+    agg_ds = ray.data.range_arrow(10).filter(
+        lambda r: r["value"] > 10).groupby("value").count()
+    assert agg_ds.count() == 0
+
     # Test built-in count aggregation
     xs = list(range(100))
     random.shuffle(xs)
@@ -2890,6 +2906,10 @@ def test_groupby_arrow(ray_start_regular_shared):
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "sum(B)": 1683}, {"A": 1, "sum(B)": 1617},
          {"A": 2, "sum(B)": 1650}]
+    # Test built-in global sum aggregation
+    assert ray.data.from_items([{"A": x} for x in xs]).sum("A") == 4950
+    assert ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).sum(
+        "value") == 0
 
     # Test built-in min aggregation
     xs = list(range(100))
@@ -2904,6 +2924,8 @@ def test_groupby_arrow(ray_start_regular_shared):
          {"A": 2, "min(B)": 2}]
     # Test built-in global min aggregation
     assert ray.data.from_items([{"A": x} for x in xs]).min("A") == 0
+    with pytest.raises(ValueError):
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value")
 
     # Test built-in max aggregation
     xs = list(range(100))
@@ -2918,6 +2940,8 @@ def test_groupby_arrow(ray_start_regular_shared):
          {"A": 2, "max(B)": 98}]
     # Test built-in global max aggregation
     assert ray.data.from_items([{"A": x} for x in xs]).max("A") == 99
+    with pytest.raises(ValueError):
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value")
 
     # Test built-in mean aggregation
     xs = list(range(100))
@@ -2932,6 +2956,9 @@ def test_groupby_arrow(ray_start_regular_shared):
          {"A": 2, "mean(B)": 50.0}]
     # Test built-in global mean aggregation
     assert ray.data.from_items([{"A": x} for x in xs]).mean("A") == 49.5
+    with pytest.raises(ValueError):
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).mean(
+            "value")
 
 
 def test_groupby_simple(ray_start_regular_shared):
@@ -2976,6 +3003,9 @@ def test_groupby_simple(ray_start_regular_shared):
             finalize=lambda a: 1 / 0))
     assert agg_ds.count() == 0
     assert agg_ds == ds
+    agg_ds = ray.data.range(10).filter(lambda r: r > 10).groupby(
+        lambda r: r).count()
+    assert agg_ds.count() == 0
 
     # Test built-in count aggregation
     xs = list(range(100))
@@ -2991,6 +3021,9 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617),
                                                        (2, 1650)]
+    # Test built-in global sum aggregation
+    assert ray.data.from_items(xs).sum() == 4950
+    assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
 
     # Test built-in min aggregation
     xs = list(range(100))
@@ -3000,6 +3033,8 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
     # Test built-in global min aggregation
     assert ray.data.from_items(xs).min() == 0
+    with pytest.raises(ValueError):
+        ray.data.range(10).filter(lambda r: r > 10).min()
 
     # Test built-in max aggregation
     xs = list(range(100))
@@ -3010,6 +3045,8 @@ def test_groupby_simple(ray_start_regular_shared):
                                                                           98)]
     # Test built-in global max aggregation
     assert ray.data.from_items(xs).max() == 99
+    with pytest.raises(ValueError):
+        ray.data.range(10).filter(lambda r: r > 10).max()
 
     # Test built-in mean aggregation
     xs = list(range(100))
@@ -3020,6 +3057,8 @@ def test_groupby_simple(ray_start_regular_shared):
                                                        (2, 50.0)]
     # Test built-in global mean aggregation
     assert ray.data.from_items(xs).mean() == 49.5
+    with pytest.raises(ValueError):
+        ray.data.range(10).filter(lambda r: r > 10).mean()
 
 
 def test_sort_simple(ray_start_regular_shared):
@@ -3039,6 +3078,8 @@ def test_sort_simple(ray_start_regular_shared):
     s1 = ds.sort()
     assert s1.count() == 0
     assert s1 == ds
+    ds = ray.data.range(10).filter(lambda r: r > 10).sort()
+    assert ds.count() == 0
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -3224,6 +3265,13 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
     ds = ds.filter(lambda r: r["A"] == 0)
     assert [row.as_pydict() for row in ds.sort("A").iter_rows()] == \
         [{"A": 0, "B": 0}]
+
+    # Test empty dataset.
+    ds = ray.data.range_arrow(10).filter(lambda r: r["value"] > 10)
+    assert len(
+        ray.data.impl.sort.sample_boundaries(
+            list(ds._blocks.iter_blocks()), "value", 3)) == 2
+    assert ds.sort("value").count() == 0
 
 
 def test_dataset_retry_exceptions(ray_start_regular, local_path):

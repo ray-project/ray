@@ -94,6 +94,10 @@ message WorkerObjectLocationsPubMessage {
   // counting protocol that causes the object to be released while there are
   // still references.
   bool ref_removed = 7;
+  // If this is set, the task that creates the object is pending execution. If
+  // there are no locations and this is set, the subscriber should wait for the
+  // new location to appear.
+  bool pending_creation = 8;
 }
 
 /// Indicating the subscriber needs to handle failure callback.

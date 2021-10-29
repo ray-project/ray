@@ -118,11 +118,13 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
-    def __init__(self, job_id: str):
+    def __init__(self, job_id: str, metadata: Dict[str, str]):
         self._job_id = job_id
         self._status = JobStatus.PENDING
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
+        self._runtime_env = ray.get_runtime_context().runtime_env
+        self._metadata = metadata
 
     def ready(self):
         pass
@@ -139,11 +141,10 @@ class JobSupervisor:
         exit_code = None
 
         try:
-            # 2) Run the command until it finishes, appending logs as it goes.
             # Set JobConfig for the child process (runtime_env, metadata).
-            #  - RAY_JOB_CONFIG_JSON_ENV_VAR={...}
             os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps({
-                "runtime_env": ray.get_runtime_context().runtime_env
+                "runtime_env": self._runtime_env,
+                "metadata": self._metadata,
             })
             ray_redis_address = ray._private.services.find_redis_address_or_die(  # noqa: E501
             )
@@ -191,10 +192,12 @@ class JobManager:
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
-    def submit_job(self,
-                   job_id: Optional[str],
-                   entrypoint: str,
-                   runtime_env: Optional[Dict[str, Any]] = None) -> str:
+    def submit_job(
+            self,
+            entrypoint: str,
+            runtime_env: Optional[Dict[str, Any]] = None,
+            metadata: Optional[Dict[str, str]] = None,
+    ) -> str:
         """
         1) Create new detached actor with same runtime_env as job spec
         2) Get task / actor level runtime_env as env var and pass into
@@ -203,9 +206,7 @@ class JobManager:
 
         Returns unique job_id.
         """
-        if job_id is None:
-            job_id = str(uuid4())
-
+        job_id = str(uuid4())
         supervisor = self._supervisor_actor_cls.options(
             lifetime="detached",
             name=self.JOB_ACTOR_NAME.format(job_id=job_id),
@@ -217,7 +218,7 @@ class JobManager:
             # For now we assume supervisor actor and driver script have same
             # runtime_env.
             runtime_env=runtime_env,
-        ).remote(job_id)
+        ).remote(job_id, metadata or {})
 
         try:
             ray.get(

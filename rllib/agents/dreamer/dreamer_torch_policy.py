@@ -5,7 +5,7 @@ from typing import Dict, Optional
 
 import ray
 from ray.rllib.agents.dreamer.utils import FreezeParameters
-from ray.rllib.evaluation import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
@@ -247,7 +247,7 @@ def preprocess_episode(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
     """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
     When t=0, the resetted obs is paired with action and reward of 0.
     """

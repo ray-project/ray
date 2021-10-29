@@ -26,7 +26,7 @@ namespace gcs {
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
+    std::function<void(std::shared_ptr<GcsActor>, bool)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
         schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
@@ -51,7 +51,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   if (!node.has_value()) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
-    schedule_failure_handler_(std::move(actor));
+    schedule_failure_handler_(std::move(actor), /*destroy_actor*/ false);
     return;
   }
 
@@ -487,6 +487,24 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     }
 
     if (status.ok()) {
+      // The runtime environment has failed by an unrecoverable error.
+      // We cannot create this actor anymore.
+      if (reply.runtime_env_setup_failed()) {
+        // Right now, the way to report error message back to actor is not that great.
+        // This message is used to notify users the cause of actor death (with ERROR
+        // severity).
+        // TODO(sang): It is a temporary solution. Improve the error reporting here.
+        RAY_LOG(ERROR)
+            << "Cannot create an actor "
+            << actor->GetCreationTaskSpecification().FunctionDescriptor()->CallString()
+            << " of an id " << actor->GetActorID()
+            << " because the runtime environment setup failed on a node of address "
+            << node->node_manager_address() << ".";
+        RAY_LOG(INFO) << "Actor failed to be scheduled on a node " << node_id;
+        schedule_failure_handler_(std::move(actor), /*destroy_actor*/ true);
+        return;
+      }
+
       if (reply.worker_address().raylet_id().empty() &&
           reply.retry_at_raylet_address().raylet_id().empty()) {
         // Actor creation task has been cancelled. It is triggered by `ray.kill`. If

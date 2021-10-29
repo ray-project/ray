@@ -18,11 +18,16 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "gtest/gtest_prod.h"
 
+#include "gtest/gtest_prod.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
+#include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/gcs/redis_client.h"
+#include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -69,22 +74,29 @@ class GcsClientOptions {
 ///
 /// To read and write from the GCS, `Connect()` must be called and return Status::OK.
 /// Before exit, `Disconnect()` must be called.
-class GcsClient : public std::enable_shared_from_this<GcsClient> {
+class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
  public:
-  virtual ~GcsClient() {}
+  GcsClient() = default;
+  /// Constructor of GcsClient.
+  ///
+  /// \param options Options for client.
+  /// \param get_gcs_server_address_func Function to get GCS server address.
+  explicit GcsClient(const GcsClientOptions &options,
+                     std::function<bool(std::pair<std::string, int> *)>
+                         get_gcs_server_address_func = {});
+
+  virtual ~GcsClient() = default;
 
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
   ///
   /// \return Status
-  virtual Status Connect(instrumented_io_context &io_service) = 0;
+  virtual Status Connect(instrumented_io_context &io_service);
 
   /// Disconnect with GCS Service. Non-thread safe.
-  virtual void Disconnect() = 0;
+  virtual void Disconnect();
 
-  virtual std::pair<std::string, int> GetGcsServerAddress() {
-    return std::make_pair("", 0);
-  }
+  virtual std::pair<std::string, int> GetGcsServerAddress();
 
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
@@ -161,14 +173,13 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
-  InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
+  virtual InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
+
+  virtual GcsSubscriber &GetGcsSubscriber() { return *gcs_subscriber_; }
+
+  virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
  protected:
-  /// Constructor of GcsClient.
-  ///
-  /// \param options Options for client.
-  GcsClient(const GcsClientOptions &options = GcsClientOptions()) : options_(options) {}
-
   GcsClientOptions options_;
 
   /// Whether this client is connected to GCS.
@@ -185,6 +196,48 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
+
+ private:
+  /// Get gcs server address from redis.
+  /// This address is set by GcsServer::StoreGcsServerAddressInRedis function.
+  ///
+  /// \param context The context of redis.
+  /// \param address The address of gcs server.
+  /// \param max_attempts The maximum number of times to get gcs server rpc address.
+  /// \return Returns true if gcs server address is obtained, False otherwise.
+  bool GetGcsServerAddressFromRedis(redisContext *context,
+                                    std::pair<std::string, int> *address,
+                                    int max_attempts = 1);
+
+  /// Fire a periodic timer to check if GCS sever address has changed.
+  void PeriodicallyCheckGcsServerAddress();
+
+  /// This function is used to redo subscription and reconnect to GCS RPC server when gcs
+  /// service failure is detected.
+  ///
+  /// \param type The type of GCS service failure.
+  void GcsServiceFailureDetected(rpc::GcsServiceFailureType type);
+
+  /// Reconnect to GCS RPC server.
+  void ReconnectGcsServer();
+
+  std::shared_ptr<RedisClient> redis_client_;
+
+  const UniqueID gcs_client_id_ = UniqueID::FromRandom();
+
+  std::unique_ptr<GcsSubscriber> gcs_subscriber_;
+
+  // Gcs rpc client
+  std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  // The runner to run function periodically.
+  std::unique_ptr<PeriodicalRunner> periodical_runner_;
+  std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
+  std::function<void(bool)> resubscribe_func_;
+  std::pair<std::string, int> current_gcs_server_address_;
+  int64_t last_reconnect_timestamp_ms_;
+  std::pair<std::string, int> last_reconnect_address_;
 };
 
 }  // namespace gcs
