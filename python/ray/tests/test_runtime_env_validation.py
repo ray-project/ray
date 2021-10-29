@@ -170,6 +170,8 @@ class TestParsedRuntimeEnv:
         sys.platform == "win32", reason="Pip option not supported on Windows.")
     def test_serialization(self):
         env1 = ParsedRuntimeEnv({
+            # fix this
+            # "pip": ["colorful", "requests"],
             "pip": ["requests"],
             "env_vars": {
                 "hi1": "hi1",
@@ -182,6 +184,7 @@ class TestParsedRuntimeEnv:
                 "hi2": "hi2",
                 "hi1": "hi1"
             },
+            # "pip": ["requests", "colorful"]
             "pip": ["requests"]
         })
 
@@ -196,7 +199,7 @@ class TestParsedRuntimeEnv:
         deserialized_env1 = ParsedRuntimeEnv.deserialize(serialized_env1)
         deserialized_env2 = ParsedRuntimeEnv.deserialize(serialized_env2)
 
-        assert env1 == deserialized_env1 == env2 == deserialized_env2
+        assert deserialized_env1 == deserialized_env2
 
     def test_reject_pip_and_conda(self):
         with pytest.raises(ValueError):

@@ -32,6 +32,7 @@ import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.util.debug import log_once
+from ray.core.generated.common_pb2 import RuntimeEnv
 import ray
 import colorama
 import setproctitle
@@ -191,7 +192,9 @@ class Worker:
     @property
     def runtime_env(self):
         """Get the runtime env in byte string"""
-        return self.core_worker.get_job_config().serialized_runtime_env.serialized_runtime_env
+        rutime_env = RuntimeEnv()
+        rutime_env.ParseFromString(self.core_worker.get_job_config().serialized_runtime_env.serialized_runtime_env)
+        return rutime_env
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.

@@ -10,9 +10,8 @@ def get_proto_pip_runtime_env(runtime_env) -> PipRuntimeEnv:
     """
 
     if runtime_env.get("pip"):
-        config = PipRuntimeEnv.Config(runtime_env["pip"])
         pip_runtime_env = PipRuntimeEnv()
-        pip_runtime_env.config = config
+        pip_runtime_env.config.config.extend(runtime_env["pip"].sort())
         return pip_runtime_env
 
     return None

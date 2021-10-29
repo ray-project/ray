@@ -551,7 +551,7 @@ def test_runtime_context(start_cluster, working_dir):
     ray.init(runtime_env={"working_dir": working_dir})
 
     def check():
-        wd = ray.get_runtime_context().runtime_env["working_dir"]
+        wd = ray.get_runtime_context().runtime_env.working_dir
         if working_dir == S3_PACKAGE_URI:
             assert wd == S3_PACKAGE_URI
         else:
@@ -633,15 +633,15 @@ def test_inheritance(start_cluster):
 
         # Passing working_dir URI through directly should work.
         env1 = ray.get_runtime_context().runtime_env
-        assert "working_dir" in env1
+        assert env1.working_dir
         t = Test.options(runtime_env=env1).remote()
         assert ray.get(t.f.remote()) == "world"
 
         # Passing a local directory should not work.
         env2 = ray.get_runtime_context().runtime_env
-        env2["working_dir"] = "."
+        env2.working_dir = "."
         with pytest.raises(ValueError):
-            t = Test.options(runtime_env=env2).remote()
+            t = Test.options(runtime_env=env2.SerializeToString()).remote()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

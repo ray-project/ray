@@ -325,7 +325,11 @@ class ParsedRuntimeEnv(dict):
             pb = RuntimeEnv()
             pb.working_dir = self.get("working_dir", "")
             pb.uris.extend(self.get("uris", []))
-            pb.env_vars.update(self.get("env_vars", {}))
+            env_vars = self.get("env_vars", {})
+            if env_vars:
+                # fix this
+                env_vars = sorted(env_vars.items())
+            pb.env_vars.update(env_vars)
             if "_inject_current_ray" in self:
                 pb.extensions["_inject_current_ray"] = self[
                     "_inject_current_ray"]
@@ -342,8 +346,9 @@ class ParsedRuntimeEnv(dict):
         return self._cached_pb
 
     @classmethod
-    def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
-        return cls(json.loads(serialized), _validate=False)
+    def deserialize(cls, serialized: bytes()) -> RuntimeEnv:
+        runtime_env = RuntimeEnv()
+        return runtime_env.ParseFromString(serialized)
 
     def serialize(self) -> str:
         # Sort the keys we can compare the serialized string for equality.
