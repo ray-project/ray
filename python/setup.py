@@ -196,7 +196,6 @@ if setup_spec.type == SetupType.RAY:
             "aioredis < 2",
             "colorful",
             "py-spy >= 0.2.0",
-            "jsonschema",
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
@@ -246,6 +245,7 @@ if setup_spec.type == SetupType.RAY:
         "dataclasses; python_version < '3.7'",
         "filelock",
         "grpcio >= 1.28.1",
+        "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",

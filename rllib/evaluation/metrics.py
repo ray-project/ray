@@ -1,14 +1,13 @@
+import collections
 import logging
 import numpy as np
-import collections
-from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
@@ -17,6 +16,17 @@ if TYPE_CHECKING:
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 logger = logging.getLogger(__name__)
+
+RolloutMetrics = collections.namedtuple("RolloutMetrics", [
+    "episode_length",
+    "episode_reward",
+    "agent_rewards",
+    "custom_metrics",
+    "perf_stats",
+    "hist_data",
+    "media",
+])
+RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {})
 
 
 def extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
