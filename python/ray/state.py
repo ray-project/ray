@@ -407,6 +407,8 @@ class GlobalState:
             "stats": {
                 "end_to_end_creation_latency_ms": (
                     stats.end_to_end_creation_latency_us / 1000.0),
+                "scheduling_latency_ms": (
+                    stats.scheduling_latency_us / 1000.0),
                 "scheduling_attempt": stats.scheduling_attempt,
                 "highest_retry_delay_ms": stats.highest_retry_delay_ms,
                 "scheduling_state": gcs_pb2.PlacementGroupStats.

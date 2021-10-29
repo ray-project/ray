@@ -507,13 +507,25 @@ message PlacementGroupStats {
     // requested resources are infeasible.
     INFEASIBLE = 5;
   }
-
-  double end_to_end_creation_latency_us = 2;
+  // The time creation request is first received.
+  int64 creation_request_received_ns = 2;
+  // The time scheduling is started after queuing.
+  int64 scheduling_started_time_ns = 3;
+  // The time from scheduling started <-> scheduling succeeds.
+  double scheduling_latency_us = 4;
+  // The time from first request received <-> scheduling succeeds.
+  // end_to_end_creation_latency_us - scheduling_latency_us
+  // == queuing time.
+  double end_to_end_creation_latency_us = 5;
   // The number of time scheduling has attempted on this placement group.
-  uint32 scheduling_attempt = 3;
-  double highest_retry_delay_ms = 4;
+  uint32 scheduling_attempt = 6;
+  // Scheduler retries the pg scheduling with
+  // exponential backoff delay.
+  // The biggest delay that's ever seen from
+  // this placement group creation process.
+  double highest_retry_delay_ms = 7;
   // The cause of placement group creation failure.
-  SchedulingState scheduling_state = 5;
+  SchedulingState scheduling_state = 8;
 }
 
 message PlacementGroupTableData {

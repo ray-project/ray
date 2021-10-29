@@ -21,9 +21,22 @@
 #include "ray/stats/stats.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
+// The time from placement group creation request has received
+// <-> Placement group creation succeeds.
 DEFINE_stats(placement_group_creation_latency_ms,
              "end to end latency of placement group creation", (),
              ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::Histogram);
+// The time from placement group scheduling has started
+// <-> Placement group creation succeeds.
+DEFINE_stats(placement_group_scheduling_latency_ms,
+             "scheduling latency of placement groups", (),
+             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::Histogram);
+DEFINE_stats(pending_placement_group, "Number of total pending placement groups", (), (),
+             ray::stats::Gauge);
+DEFINE_stats(registered_placement_group, "Number of total registered placement groups",
+             (), (), ray::stats::Gauge);
+DEFINE_stats(infeasible_placement_group, "Number of total infeasible placement groups",
+             (), (), ray::stats::Gauge);
 
 namespace ray {
 namespace gcs {
@@ -274,13 +287,19 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
     const std::shared_ptr<GcsPlacementGroup> &placement_group) {
   RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID();
+
   // Setup stats.
   auto stats = placement_group->GetMutableStats();
   auto now = absl::GetCurrentTimeNanos();
-  auto creation_latency_us =
-      absl::Nanoseconds(now - placement_group->GetCreationTimeNano()) /
+  double scheduling_latency_us =
+      absl::Nanoseconds(now - stats->scheduling_started_time_ns()) /
       absl::Microseconds(1);
+  double creation_latency_us =
+      absl::Nanoseconds(now - stats->creation_request_received_ns()) /
+      absl::Microseconds(1);
+  stats->set_scheduling_latency_us(scheduling_latency_us);
   stats->set_end_to_end_creation_latency_us(creation_latency_us);
+  STATS_placement_group_scheduling_latency_ms.Record(scheduling_latency_us / 1e3);
   STATS_placement_group_creation_latency_ms.Record(creation_latency_us / 1e3);
   stats->set_scheduling_state(rpc::PlacementGroupStats::FINISHED);
 
@@ -338,6 +357,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     if (registered_placement_groups_.contains(placement_group_id)) {
       auto stats = placement_group->GetMutableStats();
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
+      stats->set_scheduling_started_time_ns(absl::GetCurrentTimeNanos());
       MarkSchedulingStarted(placement_group_id);
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
           placement_group,
@@ -532,10 +552,20 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
     rpc::GetAllPlacementGroupReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all placement group info.";
   auto on_done =
-      [reply, send_reply_callback](
+      [this, reply, send_reply_callback](
           const std::unordered_map<PlacementGroupID, PlacementGroupTableData> &result) {
         for (auto &data : result) {
-          reply->add_placement_group_table_data()->CopyFrom(data.second);
+          const auto &placement_group_id = data.first;
+          auto it = registered_placement_groups_.find(placement_group_id);
+          // If the pg entry exists in memory just copy from it since
+          // it has less stale data. It is useful because we don't
+          // persist placement group entry every time we update
+          // stats.
+          if (it != registered_placement_groups_.end()) {
+            reply->add_placement_group_table_data()->CopyFrom(it->second->GetPlacementGroupTableData());
+          } else {
+            reply->add_placement_group_table_data()->CopyFrom(data.second);
+          }
         }
         RAY_LOG(DEBUG) << "Finished getting all placement group info.";
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -735,7 +765,9 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
 }
 
 void GcsPlacementGroupManager::CollectStats() const {
-  stats::PendingPlacementGroups.Record(pending_placement_groups_.size());
+  STATS_pending_placement_group.Record(pending_placement_groups_.size());
+  STATS_registered_placement_group.Record(registered_placement_groups_.size());
+  STATS_infeasible_placement_group.Record(infeasible_placement_groups_.size());
 }
 
 void GcsPlacementGroupManager::Tick() {
