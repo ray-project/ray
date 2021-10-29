@@ -19,7 +19,7 @@ Here are possible system overheads when your tasks and actors are located in a d
 - **Object transfer cost**: When A accesses an object created by B (O), the O is not immediately available to A. Here, Ray fetches the O from NB to NA. That says, there will be a network cost to transfer the object and latency overhead to wait for the object to be fetched. The overhead linearly grows to the object size that needs to be transferred.
 - **Network cost**: When A and B communicate with each other, there is additional networking overhead since A and B are located in a different node.
 
-In some cases, this type of overhead can have a significant impact on your application's performance. For example, imagine you'd like to read 
+In some cases, this type of overhead can have a significant impact on your application's performance. For example, imagine you'd like to read a 
 large size dataset using S3 and distribute it to multiple tasks or actors. 
 
 You can minimize the overhead using the placement group's `STRICT_PACK` strategy. `STRICT_PACK` guarantees that all the tasks and actors are located in the same node.
