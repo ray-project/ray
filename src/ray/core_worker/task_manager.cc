@@ -54,7 +54,6 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
     task_deps.push_back(actor_creation_return_id);
   }
-  reference_counter_->UpdateSubmittedTaskReferences(task_deps);
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
@@ -62,7 +61,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     num_returns--;
   }
   std::vector<rpc::ObjectReference> returned_refs;
+  std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < num_returns; i++) {
+    auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
       bool is_reconstructable = max_retries != 0;
       // We pass an empty vector for inner IDs because we do not know the return
@@ -70,17 +71,20 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       // publish the WaitForRefRemoved message that we are now a borrower for
       // the inner IDs. Note that this message can be received *before* the
       // PushTaskReply.
-      reference_counter_->AddOwnedObject(spec.ReturnId(i),
+      reference_counter_->AddOwnedObject(return_id,
                                          /*inner_ids=*/{}, caller_address, call_site, -1,
                                          /*is_reconstructable=*/is_reconstructable);
     }
 
+    return_ids.push_back(return_id);
     rpc::ObjectReference ref;
     ref.set_object_id(spec.ReturnId(i).Binary());
     ref.mutable_owner_address()->CopyFrom(caller_address);
     ref.set_call_site(call_site);
     returned_refs.push_back(std::move(ref));
   }
+
+  reference_counter_->UpdateSubmittedTaskReferences(return_ids, task_deps);
 
   {
     absl::MutexLock lock(&mu_);
@@ -97,6 +101,7 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
                                  std::vector<ObjectID> *task_deps) {
   TaskSpecification spec;
   bool resubmit = false;
+  std::vector<ObjectID> return_ids;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -113,30 +118,32 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
         RAY_CHECK(it->second.num_retries_left == -1);
       }
       spec = it->second.spec;
-    }
-  }
 
-  for (size_t i = 0; i < spec.NumArgs(); i++) {
-    if (spec.ArgByRef(i)) {
-      task_deps->push_back(spec.ArgId(i));
-    } else {
-      const auto &inlined_refs = spec.ArgInlinedRefs(i);
-      for (const auto &inlined_ref : inlined_refs) {
-        task_deps->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+      for (const auto &return_id : it->second.reconstructable_return_ids) {
+        return_ids.push_back(return_id);
       }
     }
   }
 
-  if (!task_deps->empty()) {
-    reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
-  }
-
-  if (spec.IsActorTask()) {
-    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
-    reference_counter_->UpdateResubmittedTaskReferences({actor_creation_return_id});
-  }
-
   if (resubmit) {
+    for (size_t i = 0; i < spec.NumArgs(); i++) {
+      if (spec.ArgByRef(i)) {
+        task_deps->push_back(spec.ArgId(i));
+      } else {
+        const auto &inlined_refs = spec.ArgInlinedRefs(i);
+        for (const auto &inlined_ref : inlined_refs) {
+          task_deps->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+        }
+      }
+    }
+
+    reference_counter_->UpdateResubmittedTaskReferences(return_ids, *task_deps);
+    if (spec.IsActorTask()) {
+      const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
+      reference_counter_->UpdateResubmittedTaskReferences(return_ids,
+                                                          {actor_creation_return_id});
+    }
+
     retry_task_callback_(spec, /*delay=*/false);
   }
 
@@ -434,6 +441,7 @@ void TaskManager::OnTaskDependenciesInlined(
     const std::vector<ObjectID> &contained_ids) {
   std::vector<ObjectID> deleted;
   reference_counter_->UpdateSubmittedTaskReferences(
+      /*return_ids=*/{},
       /*argument_ids_to_add=*/contained_ids,
       /*argument_ids_to_remove=*/inlined_dependency_ids, &deleted);
   in_memory_store_->Delete(deleted);
@@ -458,9 +466,19 @@ void TaskManager::RemoveFinishedTaskReferences(
     plasma_dependencies.push_back(actor_creation_return_id);
   }
 
+  std::vector<ObjectID> return_ids;
+  size_t num_returns = spec.NumReturns();
+  if (spec.IsActorTask()) {
+    num_returns--;
+  }
+  for (size_t i = 0; i < num_returns; i++) {
+    return_ids.push_back(spec.ReturnId(i));
+  }
+
   std::vector<ObjectID> deleted;
-  reference_counter_->UpdateFinishedTaskReferences(
-      plasma_dependencies, release_lineage, borrower_addr, borrowed_refs, &deleted);
+  reference_counter_->UpdateFinishedTaskReferences(return_ids, plasma_dependencies,
+                                                   release_lineage, borrower_addr,
+                                                   borrowed_refs, &deleted);
   in_memory_store_->Delete(deleted);
 }
 
