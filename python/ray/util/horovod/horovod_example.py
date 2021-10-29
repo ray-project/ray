@@ -115,8 +115,14 @@ def train_fn(data_dir=None,
                     100. * batch_idx / len(train_loader), loss.item()))
 
 
-def main(num_workers, use_gpu, **kwargs):
-    settings = RayExecutor.create_settings(timeout_s=30)
+def main(num_workers,
+         use_gpu,
+         timeout_s=30,
+         placement_group_timeout_s=100,
+         **kwargs):
+    settings = RayExecutor.create_settings(
+        timeout_s=timeout_s,
+        placement_group_timeout_s=placement_group_timeout_s)
     executor = RayExecutor(settings, use_gpu=use_gpu, num_workers=num_workers)
     executor.start()
     executor.run(train_fn, **kwargs)

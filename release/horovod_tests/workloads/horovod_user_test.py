@@ -15,7 +15,12 @@ if __name__ == "__main__":
     else:
         ray.init(address="auto")
 
-    main(num_workers=6, use_gpu=True, use_cuda=True, num_epochs=20)
+    main(
+        num_workers=6,
+        use_gpu=True,
+        use_cuda=True,
+        num_epochs=20,
+        placement_group_timeout_s=900)
 
     taken = time.time() - start
     result = {
