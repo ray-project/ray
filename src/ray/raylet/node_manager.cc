@@ -337,6 +337,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
     return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
              failed_nodes_cache_.count(owner_node_id) > 0);
   };
+  std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>, double)> asdf =
+    [this](std::function<void()> fn, double wait_ns) {
+      RAY_LOG(ERROR) << "callback called!";
+      return execute_after(io_service_, fn, wait_ns * 1e6);
+    };
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
@@ -346,7 +351,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
              std::vector<std::unique_ptr<RayObject>> *results) {
         return GetObjectsFromPlasma(object_ids, results);
       },
-      max_task_args_memory);
+      max_task_args_memory,
+      asdf
+      );
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       // TODO (Alex): Ideally we could do these in a more robust way (retry
@@ -506,6 +513,10 @@ ray::Status NodeManager::RegisterGcs() {
   }
 
   return ray::Status::OK();
+}
+
+void NodeManager::ExecuteAfter(std::function<void()> fn, double wait_ns) {
+  
 }
 
 void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {

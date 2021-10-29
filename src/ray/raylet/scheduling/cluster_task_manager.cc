@@ -39,7 +39,9 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    size_t max_pinned_task_arguments_bytes, std::function<double(void)> get_time,
+    size_t max_pinned_task_arguments_bytes,
+    std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>, double)> execute_after,
+    std::function<double(void)> get_time,
     int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -53,6 +55,7 @@ ClusterTaskManager::ClusterTaskManager(
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
+      execute_after_(execute_after),
       get_time_(get_time),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       metric_tasks_queued_(0),
@@ -300,12 +303,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     /// deeper/other functions that should be run. We need to apply back
     /// pressure here because workers don't submit their lease requests until
     /// dependencies are resolved.
-    // auto max_running_tasks = MaxRunningTasksPerSchedulingClass(scheduling_class);
     bool is_infeasible = false;
-    // for (auto work_it = dispatch_queue.begin();
-    //      work_it != dispatch_queue.end() &&
-    //      (scheduling_class_backpressure_ &&
-    //       num_running_tasks_by_sched_cls_[scheduling_class] < max_running_tasks);) {
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = work->task;
@@ -317,7 +315,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       }
 
       if (sched_cls_info.num_running_tasks >= sched_cls_info.capacity) {
-        if (absl::GetCurrentTimeNanos() > sched_cls_info.next_update_time) {
+        RAY_LOG(ERROR) << "Hit cap";
+        if (get_time_() > sched_cls_info.next_update_time) {
           // Don't increase the capacity on the very first update since that
           // will unblock a new task immediately, instead of after the timeout.
           if (sched_cls_info.num_updates > 0) {
@@ -326,7 +325,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
           double wait_time =
               (1e6 * sched_cls_cap_interval_ms_) * (1L << sched_cls_info.num_updates++);
-          sched_cls_info.next_update_time = absl::GetCurrentTimeNanos() + wait_time;
+          sched_cls_info.next_update_time = get_time_() + wait_time;
+          RAY_LOG(ERROR) << "Next cap update: " << (wait_time / 1e9);
+          sched_cls_info.timer = execute_after_([this](){
+                                                  RAY_LOG(ERROR) << "DELAYED EXECUTION HIT";
+                                                  ScheduleAndDispatchTasks();}, wait_time);
         }
         work_it++;
         continue;

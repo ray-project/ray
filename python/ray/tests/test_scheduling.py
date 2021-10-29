@@ -5,6 +5,7 @@ import os
 import platform
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 
@@ -260,7 +261,6 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     for i, dep in enumerate(deps):
         print(i, dep)
 
-    print("================================")
     # TODO(swang): Actually test load balancing. Load balancing is currently
     # flaky on Travis, probably due to the scheduling policy ping-ponging
     # waiting tasks.
@@ -574,9 +574,8 @@ def test_out_of_order_scheduling(shutdown_only):
     ray.init(num_cpus=1)
 
     @ray.remote
-    def foo(arg):
+    def foo(arg, path):
         ref, = arg
-        path = "/Users/alex/anyscale/ray/t.txt"
         should_die = not os.path.exists(path)
         with open(path, "w") as f:
             f.write("")
@@ -589,10 +588,11 @@ def test_out_of_order_scheduling(shutdown_only):
             ray.get(ref)
             return "done!"
 
-    first = foo.remote((None, ))
-    second = foo.remote((first, ))
-
-    print(ray.get(second))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = f"{tmpdir}/temp.txt"
+        first = foo.remote((None, ), path)
+        second = foo.remote((first, ), path)
+        print(ray.get(second))
 
 
 def test_limit_concurrency(shutdown_only):
@@ -601,31 +601,33 @@ def test_limit_concurrency(shutdown_only):
     block_task = Semaphore.remote(0)
     block_driver = Semaphore.remote(0)
 
+    ray.get([block_task.locked.remote(), block_driver.locked.remote()])
+
     @ray.remote(num_cpus=1)
     def foo():
         ray.get(block_driver.release.remote())
         ray.get(block_task.acquire.remote())
+        print("got to end!")
 
-    ref1 = foo.remote()
-    ref2 = foo.remote()
 
-    ray.get(block_driver.acquire.remote())
+    refs = [foo.remote() for _ in range(20)]
 
-    block_driver_ref = block_driver.acquire.remote()
+    block_driver_refs = [block_driver.acquire.remote() for _ in range(20)]
 
-    # The second instance of foo can't run because it's blocked on the dispatch
-    # queue until the first instance finishes.
-    ready, not_ready = ray.wait([block_driver_ref], timeout=1)
-    assert len(not_ready) == 1
+    # Some of the tasks will run since we relax the cap, but not all because it
+    # should take exponentially long for the cap to be increased.
+    ready, not_ready = ray.wait(block_driver_refs, timeout=1, num_returns=20)
+    assert len(not_ready) >= 1
 
+    print("222222222222222222222222222222222222222")
     # Now the first instance of foo finishes, so the second starts to run.
-    ray.get(block_task.release.remote())
+    ray.get([block_task.release.remote() for _ in range(19)])
 
-    ready, not_ready = ray.wait([block_driver_ref], timeout=1)
+    ready, not_ready = ray.wait(block_driver_refs, timeout=1, num_returns=20)
     assert len(not_ready) == 0
 
-    ready, not_ready = ray.wait([ref1, ref2], num_returns=2, timeout=1)
-    assert len(ready) == 1
+    ready, not_ready = ray.wait(refs, num_returns=20, timeout=1)
+    assert len(ready) == 19
     assert len(not_ready) == 1
 
 
