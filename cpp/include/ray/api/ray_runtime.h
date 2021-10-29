@@ -76,6 +76,7 @@ class RayRuntime {
   virtual std::vector<PlacementGroup> GetAllPlacementGroups() = 0;
   virtual PlacementGroup GetPlacementGroupById(const std::string &id) = 0;
   virtual PlacementGroup GetPlacementGroup(const std::string &name, bool global) = 0;
+  virtual bool IsLocalMode() { return false; }
 };
 }  // namespace internal
 }  // namespace ray

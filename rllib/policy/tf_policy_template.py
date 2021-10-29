@@ -18,7 +18,7 @@ from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode
+    from ray.rllib.evaluation import Episode
 
 tf1, tf, tfv = try_import_tf()
 
@@ -34,7 +34,7 @@ def build_tf_policy(
                                               TrainerConfigDict]] = None,
         postprocess_fn: Optional[Callable[[
             Policy, SampleBatch, Optional[Dict[AgentID, SampleBatch]],
-            Optional["MultiAgentEpisode"]
+            Optional["Episode"]
         ], SampleBatch]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,
@@ -107,7 +107,7 @@ def build_tf_policy(
             overrides. If None, uses only(!) the user-provided
             PartialTrainerConfigDict as dict for this Policy.
         postprocess_fn (Optional[Callable[[Policy, SampleBatch,
-            Optional[Dict[AgentID, SampleBatch]], MultiAgentEpisode], None]]):
+            Optional[Dict[AgentID, SampleBatch]], Episode], None]]):
             Optional callable for post-processing experience batches (called
             after the parent class' `postprocess_trajectory` method).
         stats_fn (Optional[Callable[[Policy, SampleBatch],

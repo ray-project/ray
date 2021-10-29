@@ -1,8 +1,9 @@
-from typing import Tuple, Dict, List
 import gym
+from typing import Callable, Dict, List, Tuple, Type, Union
 
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import MultiAgentDict, AgentID
+from ray.rllib.utils.typing import AgentID, EnvType, MultiAgentDict
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -52,7 +53,7 @@ class MultiAgentEnv(gym.Env):
         """Resets the env and returns observations from ready agents.
 
         Returns:
-            obs (dict): New observations for each ready agent.
+            New observations for each ready agent.
         """
         raise NotImplementedError
 
@@ -66,12 +67,12 @@ class MultiAgentEnv(gym.Env):
         number of agents in the env can vary over time.
 
         Returns:
-            Tuple[dict, dict, dict, dict]: Tuple with 1) new observations for
-                each ready agent, 2) reward values for each ready agent. If
-                the episode is just started, the value will be None.
-                3) Done values for each ready agent. The special key
-                "__all__" (required) is used to indicate env termination.
-                4) Optional info values for each agent id.
+            Tuple containing 1) new observations for
+            each ready agent, 2) reward values for each ready agent. If
+            the episode is just started, the value will be None.
+            3) Done values for each ready agent. The special key
+            "__all__" (required) is used to indicate env termination.
+            4) Optional info values for each agent id.
         """
         raise NotImplementedError
 
@@ -107,12 +108,12 @@ class MultiAgentEnv(gym.Env):
         This API is experimental.
 
         Args:
-            groups (dict): Mapping from group id to a list of the agent ids
+            groups: Mapping from group id to a list of the agent ids
                 of group members. If an agent id is not present in any group
                 value, it will be left ungrouped.
-            obs_space (Space): Optional observation space for the grouped
+            obs_space: Optional observation space for the grouped
                 env. Must be a tuple space.
-            act_space (Space): Optional action space for the grouped env.
+            act_space: Optional action space for the grouped env.
                 Must be a tuple space.
 
         Examples:
@@ -130,20 +131,22 @@ class MultiAgentEnv(gym.Env):
 # yapf: enable
 
 
-def make_multi_agent(env_name_or_creator):
+def make_multi_agent(
+        env_name_or_creator: Union[str, Callable[[EnvContext], EnvType]],
+) -> Type["MultiAgentEnv"]:
     """Convenience wrapper for any single-agent env to be converted into MA.
 
     Agent IDs are int numbers starting from 0 (first agent).
 
     Args:
-        env_name_or_creator (Union[str, Callable[]]: String specifier or
-            env_maker function.
+        env_name_or_creator: String specifier or env_maker function taking
+            an EnvContext object as only arg and returning a gym.Env.
 
     Returns:
-        Type[MultiAgentEnv]: New MultiAgentEnv class to be used as env.
-            The constructor takes a config dict with `num_agents` key
-            (default=1). The rest of the config dict will be passed on to the
-            underlying single-agent env's constructor.
+        New MultiAgentEnv class to be used as env.
+        The constructor takes a config dict with `num_agents` key
+        (default=1). The rest of the config dict will be passed on to the
+        underlying single-agent env's constructor.
 
     Examples:
          >>> # By gym string:
