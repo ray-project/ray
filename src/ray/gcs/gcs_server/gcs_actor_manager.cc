@@ -184,8 +184,8 @@ void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest &request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   });
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to create actor, job id = " << actor_id.JobId()
-                   << ", actor id = " << actor_id << ", status: " << status.ToString();
+    RAY_LOG(WARNING) << "Failed to create actor, job id = " << actor_id.JobId()
+                     << ", actor id = " << actor_id << ", status: " << status.ToString();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
   ++counts_[CountType::CREATE_ACTOR_REQUEST];

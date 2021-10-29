@@ -228,7 +228,7 @@ PettingZoo Multi-Agent Environments
     # you can pass arguments to the environment creator with the env_config option in the config
     config['env_config'] = {"num_floors": 5}
 
-A more complete example is here: `pettingzoo_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/pettingzoo_env.py>`__
+A more complete example is here: `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/rllib_pistonball.py>`__
 
 
 Rock Paper Scissors Example

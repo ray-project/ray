@@ -46,10 +46,11 @@ class DefaultCallbacks:
         """Callback run on the rollout worker before each episode starts.
 
         Args:
-            worker (RolloutWorker): Reference to the current rollout worker.
-            base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
-            policies (dict): Mapping of policy id to policy objects. In single
+            worker: Reference to the current rollout worker.
+            base_env: BaseEnv running the episode. The underlying
+                sub environment objects can be received by calling
+                `base_env.get_sub_environments()`.
+            policies: Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default" policy.
             episode (MultiAgentEpisode): Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
@@ -80,7 +81,8 @@ class DefaultCallbacks:
         Args:
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
+                sub environment objects can be gotten by calling
+                `base_env.get_sub_environments()`.
             policies (Optional[Dict[PolicyID, Policy]]): Mapping of policy id
                 to policy objects. In single agent mode there will only be a
                 single "default_policy".
@@ -112,7 +114,8 @@ class DefaultCallbacks:
         Args:
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
+                sub environment objects can be retrieved by calling
+                `base_env.get_sub_environments()`.
             policies (Dict[PolicyID, Policy]): Mapping of policy id to policy
                 objects. In single agent mode there will only be a single
                 "default_policy".
