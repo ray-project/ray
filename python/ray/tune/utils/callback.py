@@ -122,7 +122,7 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
             "TUNE_DISABLE_AUTO_CALLBACK_SYNCER", "0") != "1":
 
         # Detect Docker and Kubernetes environments
-        _sync_to_driver = detect_sync_to_driver(sync_config.sync_to_driver)
+        _sync_to_driver = detect_sync_to_driver(sync_config)
 
         syncer_callback = SyncerCallback(sync_function=_sync_to_driver)
         callbacks.append(syncer_callback)

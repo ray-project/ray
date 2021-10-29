@@ -219,7 +219,7 @@ class TrialRunner:
                  scheduler=None,
                  local_checkpoint_dir=None,
                  remote_checkpoint_dir=None,
-                 sync_to_cloud=None,
+                 sync_config=None,
                  stopper=None,
                  resume=False,
                  server_port=None,
@@ -308,9 +308,8 @@ class TrialRunner:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
 
         self._remote_checkpoint_dir = remote_checkpoint_dir
-        self._syncer = get_cloud_syncer(local_checkpoint_dir,
-                                        remote_checkpoint_dir, sync_to_cloud)
-
+        self._syncer = get_cloud_syncer(
+            local_checkpoint_dir, remote_checkpoint_dir, sync_config.syncer)
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 

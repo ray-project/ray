@@ -1,5 +1,4 @@
-from typing import (Any, Callable, Dict, List, TYPE_CHECKING, Type, Union,
-                    Optional)
+from typing import (Callable, Dict, List, TYPE_CHECKING, Type, Union, Optional)
 
 import distutils
 import logging
@@ -54,8 +53,8 @@ def set_sync_periods(sync_config):
             "'TUNE_CLOUD_SYNC_S' is deprecated. Set "
             "`cloud_sync_period` via tune.SyncConfig instead.")
         CLOUD_SYNC_PERIOD = env_integer(key="TUNE_CLOUD_SYNC_S", default=300)
-    NODE_SYNC_PERIOD = int(sync_config.node_sync_period)
-    CLOUD_SYNC_PERIOD = int(sync_config.cloud_sync_period)
+    NODE_SYNC_PERIOD = int(sync_config.sync_period)
+    CLOUD_SYNC_PERIOD = int(sync_config.sync_period)
 
 
 def log_sync_template(options=""):
@@ -94,36 +93,51 @@ def log_sync_template(options=""):
 class SyncConfig:
     """Configuration object for syncing.
 
+    If an ``upload_dir`` is specified, both experiment and trial checkpoints
+    will be stored on remote (cloud) storage. Synchronization then only
+    happens via this remote storage.
+
     Args:
         upload_dir (str): Optional URI to sync training results and checkpoints
             to (e.g. ``s3://bucket``, ``gs://bucket`` or ``hdfs://path``).
-        sync_to_cloud (func|str): Function for syncing the local_dir to and
-            from upload_dir. If string, then it must be a string template that
-            includes `{source}` and `{target}` for the syncer to run. If not
-            provided, the sync command defaults to standard S3, gsutil or HDFS
-            sync commands. By default local_dir is synced to remote_dir every
-            300 seconds. To change this, set the TUNE_CLOUD_SYNC_S
-            environment variable in the driver machine.
-        sync_to_driver (func|str|bool): Function for syncing trial logdir from
-            remote node to local. If string, then it must be a string template
-            that includes `{source}` and `{target}` for the syncer to run.
-            If True or not provided, it defaults to using rsync. If False,
-            syncing to driver is disabled.
+            Specifying this will enable cloud-based checkpointing.
+        syncer (None|func|str): Function for syncing the local_dir to and
+            from remote storage. If string, then it must be a string template
+            that includes ``{source}`` and ``{target}`` for the syncer to run.
+            If not provided, it defaults to rsync for non cloud-based storage,
+            and to standard S3, gsutil or HDFS sync commands for cloud-based
+            storage.
+            If set to ``None``, no syncing will take place.
+            Defaults to ``"auto"`` (auto detect).
         sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
-            driver. If set to False, checkpoint syncing from worker to driver
+            driver (only non cloud-storage).
+            If set to False, checkpoint syncing from worker to driver
             is asynchronous and best-effort. This does not affect persistent
             storage syncing. Defaults to True.
-        node_sync_period (int): Syncing period for syncing worker logs to
-            driver. Defaults to 300.
-        cloud_sync_period (int): Syncing period for syncing local
-            checkpoints to cloud. Defaults to 300.
+        sync_period (int): Syncing period for syncing between nodes.
+
     """
-    upload_dir: str = None
-    sync_to_cloud: Any = None
-    sync_to_driver: Any = None
+    upload_dir: Optional[str] = None
+    syncer: Union[None, str] = "auto"
+
     sync_on_checkpoint: bool = True
-    node_sync_period: int = 300
-    cloud_sync_period: int = 300
+    sync_period: int = 300
+
+    def __new__(cls, *args, **kwargs):
+        if "node_sync_period" in kwargs or "cloud_sync_period" in kwargs:
+            raise DeprecationWarning(
+                "DeprecationWarning: The `node_sync_period` and "
+                "`cloud_sync_period` properties of `tune.SyncConfig` are "
+                "deprecated. Pass the `sync_period` property instead.")
+
+        if "sync_to_cloud" in kwargs or "sync_to_driver" in kwargs:
+            raise DeprecationWarning(
+                "The `sync_to_cloud` and `sync_to_driver` properties of "
+                "`tune.SyncConfig` are deprecated. Pass the `syncer` property "
+                "instead. Presence of an `upload_dir` decides if checkpoints "
+                "are synced to cloud or not. Syncing to driver is "
+                "automatically disabled if an `upload_dir` is given.")
+        return super(SyncConfig, cls).__new__(cls)
 
 
 class Syncer:
@@ -323,10 +337,17 @@ class NodeSyncer(Syncer):
         return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
 
 
-def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
+def get_cloud_syncer(local_dir, remote_dir=None,
+                     sync_function=None) -> CloudSyncer:
     """Returns a Syncer.
 
     This syncer is in charge of syncing the local_dir with upload_dir.
+
+    If no ``remote_dir`` is provided, it will return a no-op syncer.
+
+    If a ``sync_function`` is provided, it will return a CloudSyncer using
+    a custom SyncClient initialized by the sync function. Otherwise it will
+    return a CloudSyncer with default templates for s3/gs/hdfs.
 
     Args:
         local_dir (str): Source directory for syncing.
@@ -349,13 +370,20 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
         _syncers[key] = CloudSyncer(local_dir, remote_dir, NOOP)
         return _syncers[key]
 
+    if sync_function == "auto":
+        sync_function = None  # Auto-detect
+
+    # Maybe get user-provided sync client here
     client = get_sync_client(sync_function)
 
     if client:
+        # If the user provided a sync template or function
         _syncers[key] = CloudSyncer(local_dir, remote_dir, client)
-        return _syncers[key]
-    sync_client = get_cloud_sync_client(remote_dir)
-    _syncers[key] = CloudSyncer(local_dir, remote_dir, sync_client)
+    else:
+        # Else, get default cloud sync client (e.g. S3 syncer)
+        sync_client = get_cloud_sync_client(remote_dir)
+        _syncers[key] = CloudSyncer(local_dir, remote_dir, sync_client)
+
     return _syncers[key]
 
 
@@ -371,6 +399,9 @@ def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
             syncer to run. If True or not provided, it defaults rsync. If
             False, a noop Syncer is returned.
     """
+    if sync_function == "auto":
+        sync_function = None  # Auto-detect
+
     key = (local_dir, remote_dir)
     if key in _syncers:
         return _syncers[key]
@@ -479,13 +510,17 @@ class SyncerCallback(Callback):
 
 
 def detect_sync_to_driver(
-        sync_to_driver: Union[None, bool, Type],
+        sync_config: SyncConfig,
         cluster_config_file: str = "~/ray_bootstrap_config.yaml"):
     from ray.tune.integration.docker import DockerSyncer
 
+    if bool(sync_config.upload_dir):
+        # No sync to driver for cloud checkpointing
+        return False
+
+    sync_to_driver = sync_config.syncer
+
     if isinstance(sync_to_driver, Type):
-        return sync_to_driver
-    elif isinstance(sync_to_driver, bool) and sync_to_driver is False:
         return sync_to_driver
 
     # Else: True or None. Auto-detect.

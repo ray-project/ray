@@ -316,7 +316,11 @@ class Trial:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
             self.remote_checkpoint_dir_prefix = None
+
+        if sync_to_cloud == "auto":
+            sync_to_cloud = None
         self.sync_to_cloud = sync_to_cloud
+
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.keep_checkpoints_num = keep_checkpoints_num

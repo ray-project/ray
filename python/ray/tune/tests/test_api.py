@@ -1029,9 +1029,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
             exp = Experiment(
                 name="test_durable_sync",
                 run=trainable_cls,
-                sync_to_cloud=sync_to_cloud,
-                sync_to_driver=False,
-                upload_dir=upload_dir)
+                sync_config=tune.SyncConfig(
+                    syncer=sync_to_cloud, upload_dir=upload_dir))
 
             searchers = BasicVariantGenerator()
             searchers.add_configurations([exp])

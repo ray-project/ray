@@ -9,6 +9,7 @@ from six import string_types
 from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.resources import json_to_resources
+from ray.tune.syncer import SyncConfig
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.util import SafeFallbackEncoder
 
@@ -192,6 +193,8 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
                 raise TuneError("Error parsing resources_per_trial",
                                 resources) from exc
 
+    sync_config = spec.get("sync_config", SyncConfig())
+
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
         # convert to string in a straightforward manner.
@@ -202,10 +205,10 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
         remote_checkpoint_dir=spec.get("remote_checkpoint_dir"),
-        sync_to_cloud=spec.get("sync_to_cloud"),
+        sync_to_cloud=sync_config.syncer,
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_at_end=args.checkpoint_at_end,
-        sync_on_checkpoint=args.sync_on_checkpoint,
+        sync_on_checkpoint=sync_config.sync_on_checkpoint,
         keep_checkpoints_num=args.keep_checkpoints_num,
         checkpoint_score_attr=args.checkpoint_score_attr,
         export_formats=spec.get("export_formats", []),
