@@ -6,7 +6,8 @@ debian_packages:
 
 python:
   conda_packages: []
-  pip_packages: []
+  pip_packages:
+    - filelock>=3.3.0
 
 post_build_cmds:
   - pip uninstall -y numpy ray || true
