@@ -403,6 +403,14 @@ class RuntimeEnvSetupError(RayError):
             "to the driver's STDOUT.")
 
 
+class BackPressureError(RayError):
+    """Raised when actor call back pressure occurs."""
+
+    def __str__(self):
+        return super(BackPressureError, self).__str__() + (
+            "Back pressure occurs when submitting the actor call.")
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -417,4 +425,5 @@ RAY_EXCEPTION_TYPES = [
     GetTimeoutError,
     AsyncioActorExit,
     RuntimeEnvSetupError,
+    BackPressureError,
 ]

@@ -100,6 +100,10 @@ from ray.includes.gcs_client cimport CGcsClient
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
+from ray.includes.optional cimport (
+    optional
+)
+
 import ray
 from ray.exceptions import (
     RayActorError,
@@ -110,6 +114,7 @@ from ray.exceptions import (
     GetTimeoutError,
     TaskCancelledError,
     AsyncioActorExit,
+    BackPressureError,
 )
 from ray import external_storage
 import ray.ray_constants as ray_constants
@@ -1590,7 +1595,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
-            c_vector[CObjectReference] return_refs
+            optional[c_vector[CObjectReference]] return_refs
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -1606,8 +1611,11 @@ cdef class CoreWorker:
                 c_actor_id,
                 ray_function,
                 args_vector, CTaskOptions(name, num_returns, c_resources))
-
-            return VectorToObjectRefs(return_refs)
+            if return_refs.has_value():
+                return VectorToObjectRefs(return_refs.value())
+            else:
+                raise BackPressureError("Back pressure occurs "
+                                        "when submitting the actor call.")
 
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:

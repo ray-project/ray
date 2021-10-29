@@ -771,7 +771,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \return ObjectRefs returned by this task.
-  std::vector<rpc::ObjectReference> SubmitActorTask(
+  std::optional<std::vector<rpc::ObjectReference>> SubmitActorTask(
       const ActorID &actor_id, const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options);
 

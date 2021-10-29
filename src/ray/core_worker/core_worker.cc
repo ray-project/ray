@@ -605,7 +605,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
-            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+            direct_actor_submitter_->PushTaskToClientQueue(spec);
           } else {
             RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
           }
@@ -921,6 +921,7 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
 }
 
 void CoreWorker::WaitForShutdown() {
+  direct_actor_submitter_->WaitForShutdown();
   if (io_thread_.joinable()) {
     io_thread_.join();
   }
@@ -1019,7 +1020,7 @@ void CoreWorker::InternalHeartbeat() {
 
   for (auto &spec : tasks_to_resubmit) {
     if (spec.IsActorTask()) {
-      RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+      direct_actor_submitter_->PushTaskToClientQueue(spec);
     } else {
       RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
     }
@@ -1947,12 +1948,16 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   return status_future.get();
 }
 
-std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
+std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     const ActorID &actor_id, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options) {
+  /// Determine if there will be backpressure at the very beginning of submitting a task.
+  if (direct_actor_submitter_->IsClientQueueFull(actor_id)) {
+    RAY_LOG(DEBUG) << "Back pressure occur. actor_id: " << actor_id;
+    return std::nullopt;
+  }
+
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
-  RAY_LOG(INFO) << "SubmitActorTask actor id " << actor_id << " max pending calls "
-                << actor_handle->MaxPendingCalls();
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
@@ -1991,13 +1996,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-    io_service_.post(
-        [this, task_spec]() {
-          RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
-        },
-        "CoreWorker.SubmitActorTask");
+    direct_actor_submitter_->PushTaskToClientQueue(task_spec);
   }
-  return returned_refs;
+  return {returned_refs};
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill,
