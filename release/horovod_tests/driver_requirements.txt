@@ -7,5 +7,8 @@
 torch
 torchvision
 
+# Required to install Horovod on the driver.
+cmake
+
 # Horovod master.
 git+https://github.com/horovod/horovod.git

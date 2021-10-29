@@ -243,6 +243,10 @@ MANUAL_TESTS = {
     ]
 }
 
+HOROVOD_INSTALL_ENV_VARS = [
+    "HOROVOD_WITH_GLOO", "HOROVOD_WITHOUT_MPI", "HOROVOD_WITHOUT_TENSORFLOW",
+    "HOROVOD_WITHOUT_MXNET", "HOROVOD_WITH_PYTORCH"
+]
 # This test suite holds "user" tests to test important user workflows
 # in a particular environment.
 # All workloads in this test suite should:
@@ -254,6 +258,14 @@ USER_TESTS = {
     "~/ray/release/horovod_tests/horovod_tests.yaml": [
         ConnectTest(
             "horovod_user_test",
+            setup_commands=[
+                "sudo apt update",
+                "sudo apt -y install "
+                "build-essential",
+            ] + [
+                f"export {horovod_env_var}=1"
+                for horovod_env_var in HOROVOD_INSTALL_ENV_VARS
+            ],
             requirements_file="release/horovod_tests/driver_requirements.txt")
     ]
 }
