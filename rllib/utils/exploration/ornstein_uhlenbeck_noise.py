@@ -234,7 +234,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                   sess: Optional["tf.Session"] = None) -> None:
         if self.framework == "tf":
             self.ou_state.load(state["ou_state"], session=sess)
-        elif self.framework == "torch":
+        elif isinstance(self.ou_state, np.ndarray):
             self.ou_state = state["ou_state"]
         else:
             self.ou_state.assign(state["ou_state"])

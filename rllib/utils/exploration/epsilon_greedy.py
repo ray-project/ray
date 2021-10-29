@@ -212,7 +212,7 @@ class EpsilonGreedy(Exploration):
                   sess: Optional["tf.Session"] = None) -> None:
         if self.framework == "tf":
             self.last_timestep.load(state["last_timestep"], session=sess)
-        elif self.framework == "torch":
+        elif isinstance(self.last_timestep, int):
             self.last_timestep = state["last_timestep"]
         else:
             self.last_timestep.assign(state["last_timestep"])
