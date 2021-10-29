@@ -271,7 +271,7 @@ def test_replicas_delayed_startup():
         max_replicas=200,
         target_num_ongoing_requests_per_replica=1,
         upscale_delay_s=0,
-        downscale_delay_s=0)
+        downscale_delay_s=100000)
 
     policy = BasicAutoscalingPolicy(config)
 
@@ -285,6 +285,11 @@ def test_replicas_delayed_startup():
 
     # Two new replicas spun up during this timestep.
     new_num_replicas = policy.get_decision_num_replicas([100, 20, 3], 100)
+    assert new_num_replicas == 123
+
+    # A lot of queries got drained and a lot of replicas started up, but
+    # new_num_replicas should not decrease, because of the downscale delay.
+    new_num_replicas = policy.get_decision_num_replicas([6, 2, 1, 1], 123)
     assert new_num_replicas == 123
 
 
