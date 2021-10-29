@@ -515,7 +515,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 result.valid = True
                 return result
         except Exception as e:
-            logger.debug(f"Caught schedule exception, returning: {e}")
+            logger.info(f"Caught schedule exception, returning: {e}")
             return ray_client_pb2.ClientTaskTicket(
                 valid=False, error=cloudpickle.dumps(e))
 
