@@ -28,7 +28,7 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, \
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
-from ray.data.aggregate import AggregateOnT, AggregateFn, Max, Min, Mean
+from ray.data.aggregate import AggregateOnT, AggregateFn, Sum, Max, Min, Mean
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -839,8 +839,30 @@ class Dataset(Generic[T]):
             If the input dataset is an Arrow dataset then the output is
             an ArrowRow where each column is the corresponding
             aggregation result.
+            If the dataset is empty, return None.
         """
-        return self.groupby(None).aggregate(*aggs).take(1)[0]
+        ret = self.groupby(None).aggregate(*aggs).take(1)
+        return ret[0] if len(ret) > 0 else None
+
+    def sum(self, on: AggregateOnT = None) -> U:
+        """Compute sum over entire dataset.
+
+        Examples:
+            >>> ray.data.range(100).sum()
+            >>> ray.data.range_arrow(100).sum("value")
+
+        Args:
+            on: The data to sum on.
+                It can be the column name for Arrow dataset.
+
+        Returns:
+            The sum result.
+        """
+        ret = self.aggregate(Sum(on))
+        if ret is None:
+            return 0
+        else:
+            return ret[0]
 
     def min(self, on: AggregateOnT = None) -> U:
         """Compute minimum over entire dataset.
@@ -856,7 +878,11 @@ class Dataset(Generic[T]):
         Returns:
             The min result.
         """
-        return self.aggregate(Min(on))[0]
+        ret = self.aggregate(Min(on))
+        if ret is None:
+            raise ValueError("Cannot compute min on an empty dataset")
+        else:
+            return ret[0]
 
     def max(self, on: AggregateOnT = None) -> U:
         """Compute maximum over entire dataset.
@@ -872,7 +898,11 @@ class Dataset(Generic[T]):
         Returns:
             The max result.
         """
-        return self.aggregate(Max(on))[0]
+        ret = self.aggregate(Max(on))
+        if ret is None:
+            raise ValueError("Cannot compute max on an empty dataset")
+        else:
+            return ret[0]
 
     def mean(self, on: AggregateOnT = None) -> U:
         """Compute mean over entire dataset.
@@ -888,7 +918,11 @@ class Dataset(Generic[T]):
         Returns:
             The mean result.
         """
-        return self.aggregate(Mean(on))[0]
+        ret = self.aggregate(Mean(on))
+        if ret is None:
+            raise ValueError("Cannot compute mean on an empty dataset")
+        else:
+            return ret[0]
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
@@ -1070,22 +1104,6 @@ class Dataset(Generic[T]):
             ray.get([
                 get_num_rows.remote(block)
                 for block in self._blocks.iter_blocks()
-            ]))
-
-    def sum(self) -> int:
-        """Sum up the elements of this dataset.
-
-        Time complexity: O(dataset size / parallelism)
-
-        Returns:
-            The sum of the records in the dataset.
-        """
-
-        get_sum = cached_remote_fn(_get_sum)
-
-        return sum(
-            ray.get([
-                get_sum.remote(block) for block in self._blocks.iter_blocks()
             ]))
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
@@ -2096,11 +2114,6 @@ class Dataset(Generic[T]):
 def _get_num_rows(block: Block) -> int:
     block = BlockAccessor.for_block(block)
     return block.num_rows()
-
-
-def _get_sum(block: Block) -> int:
-    block = BlockAccessor.for_block(block)
-    return sum(block.iter_rows())
 
 
 def _block_to_df(block: Block):
