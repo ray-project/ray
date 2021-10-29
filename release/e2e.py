@@ -660,7 +660,9 @@ def find_cloud_by_name(sdk: AnyscaleSDK, cloud_name: str,
     paging_token = None
     while not cloud_id:
         result = sdk.search_clouds(
-            clouds_query=dict(count=50, paging_token=paging_token))
+            clouds_query=dict(
+                paging=dict(count=50, paging_token=paging_token)))
+
         paging_token = result.metadata.next_paging_token
 
         for res in result.results:
@@ -672,13 +674,6 @@ def find_cloud_by_name(sdk: AnyscaleSDK, cloud_name: str,
 
         if not paging_token or cloud_id or not len(result.results):
             break
-
-        # TODO: Currently the sdk.search_clouds API does not work
-        # and always returns the same 10 results. Thus we break here
-        # - if the cloud is not found in the first 10 results, this will
-        # throw an error downstream. Remove this comment and break in the next
-        # line once the issue is resolved.
-        break
 
     return cloud_id
 
@@ -1989,22 +1984,25 @@ def run_test(test_config_file: str,
             category=category,
         )
 
-        # Check if result are met
-        alert = maybe_get_alert_for_result(report_kwargs)
+        if not has_errored(result):
+            # Check if result are met if test succeeded
+            alert = maybe_get_alert_for_result(report_kwargs)
 
-        if alert:
-            # If we get an alert, the test failed.
-            logger.error(f"Alert has been raised for {test_suite}/{test_name} "
-                         f"({category}): {alert}")
-            result["status"] = "error (alert raised)"
-            report_kwargs["status"] = "error (alert raised)"
+            if alert:
+                # If we get an alert, the test failed.
+                logger.error(f"Alert has been raised for "
+                             f"{test_suite}/{test_name} "
+                             f"({category}): {alert}")
+                result["status"] = "error (alert raised)"
+                report_kwargs["status"] = "error (alert raised)"
 
-            # For printing/reporting to the database
-            report_kwargs["last_logs"] = alert
-            last_logs = alert
-        else:
-            logger.info(f"No alert raised for test {test_suite}/{test_name} "
-                        f"({category}) - the test successfully passed!")
+                # For printing/reporting to the database
+                report_kwargs["last_logs"] = alert
+                last_logs = alert
+            else:
+                logger.info(f"No alert raised for test "
+                            f"{test_suite}/{test_name} "
+                            f"({category}) - the test successfully passed!")
 
         if report:
             report_result(**report_kwargs)

@@ -241,14 +241,20 @@ def build_q_losses(policy: Policy, model, _,
     # q network evaluation
     q_t, q_logits_t, q_dist_t, _ = compute_q_values(
         policy,
-        model, {"obs": train_batch[SampleBatch.CUR_OBS]},
+        model,
+        SampleBatch({
+            "obs": train_batch[SampleBatch.CUR_OBS]
+        }),
         state_batches=None,
         explore=False)
 
     # target q network evalution
     q_tp1, q_logits_tp1, q_dist_tp1, _ = compute_q_values(
         policy,
-        policy.target_model, {"obs": train_batch[SampleBatch.NEXT_OBS]},
+        policy.target_model,
+        SampleBatch({
+            "obs": train_batch[SampleBatch.NEXT_OBS]
+        }),
         state_batches=None,
         explore=False)
     if not hasattr(policy, "target_q_func_vars"):
@@ -267,7 +273,7 @@ def build_q_losses(policy: Policy, model, _,
         q_tp1_using_online_net, q_logits_tp1_using_online_net, \
             q_dist_tp1_using_online_net, _ = compute_q_values(
                 policy, model,
-                {"obs": train_batch[SampleBatch.NEXT_OBS]},
+                SampleBatch({"obs": train_batch[SampleBatch.NEXT_OBS]}),
                 state_batches=None,
                 explore=False)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
@@ -334,7 +340,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
 
 def compute_q_values(policy: Policy,
                      model: ModelV2,
-                     input_dict,
+                     input_batch: SampleBatch,
                      state_batches=None,
                      seq_lens=None,
                      explore=None,
@@ -342,7 +348,8 @@ def compute_q_values(policy: Policy,
 
     config = policy.config
 
-    model_out, state = model(input_dict, state_batches or [], seq_lens)
+    input_batch["is_training"] = is_training
+    model_out, state = model(input_batch, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
