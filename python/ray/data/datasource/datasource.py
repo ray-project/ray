@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, Generic, List, Callable, Union, Tuple
+from typing import Any, Generic, List, Callable, Union, Tuple, Iterable
 
 import numpy as np
 
@@ -127,9 +127,8 @@ class ReadTask(Callable[[], BlockPartition]):
         for block in result:
             metadata = BlockAccessor.for_block(block).get_metadata(
                 input_files=self._metadata.input_files)
-            partition.append((
-                ray.put(block, _owner=self._context.block_owner),
-                metadata))
+            partition.append((ray.put(block, _owner=context.block_owner),
+                              metadata))
         if len(partition) == 0:
             raise ValueError("Read task must return non-empty list.")
         return partition
@@ -168,7 +167,6 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 return list(builtins.range(start, start + count))
 
         i = 0
-        owner = _get_or_create_block_owner_actor()
         while i < n:
             count = min(block_size, n - i)
             if block_format == "arrow":
@@ -284,7 +282,6 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
              for i in range(num_columns)}).schema
 
         i = 0
-        owner = _get_or_create_block_owner_actor()
         while i < n:
             count = min(block_size, n - i)
             meta = BlockMetadata(
@@ -296,7 +293,7 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
                 ReadTask(
                     lambda count=count, num_columns=num_columns: [
                         make_block(count, num_columns)],
-                    meta, owner))
+                    meta))
             i += block_size
 
         return read_tasks

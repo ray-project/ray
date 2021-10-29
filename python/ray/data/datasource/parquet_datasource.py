@@ -7,11 +7,9 @@ import numpy as np
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource.datasource import ReadTask, \
-    _get_or_create_block_owner_actor
+from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource, _resolve_paths_and_filesystem, _resolve_kwargs)
 from ray.data.impl.block_list import BlockMetadata
@@ -135,7 +133,6 @@ class ParquetDatasource(FileBasedDatasource):
             metadata = _fetch_metadata_remotely(serialized_pieces)
         else:
             metadata = _fetch_metadata(pq_ds.pieces)
-        owner = _get_or_create_block_owner_actor()
         for piece_data in np.array_split(
                 list(zip(pq_ds.pieces, serialized_pieces, metadata)),
                 parallelism):
@@ -145,8 +142,7 @@ class ParquetDatasource(FileBasedDatasource):
             meta = _build_block_metadata(pieces, metadata, inferred_schema)
             read_tasks.append(
                 ReadTask(
-                    lambda pieces_=serialized_pieces, meta=meta: [
-                        (ray.put(read_pieces(pieces_), _owner=owner), meta)],
+                    lambda pieces_=serialized_pieces: [read_pieces(pieces_)],
                     meta))
 
         return read_tasks

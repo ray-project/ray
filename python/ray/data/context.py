@@ -2,7 +2,6 @@ import ray
 
 from ray.util.annotations import DeveloperAPI
 
-
 # The context singleton on this process.
 _default_context = None
 
@@ -15,10 +14,8 @@ class DatasetContext:
     from the driver and remote workers via DatasetContext.get_instance().
     """
 
-    def __init__(
-            self,
-            block_owner: ray.actor.ActorHandle,
-            target_max_block_size: int):
+    def __init__(self, block_owner: ray.actor.ActorHandle,
+                 target_max_block_size: int):
         """Private constructor (use get_instance() instead)."""
         self.block_owner = block_owner
         self.target_max_block_size = target_max_block_size
@@ -27,12 +24,14 @@ class DatasetContext:
     def get_instance():
         global _default_context
         if _default_context is None:
-            _default_context = DatasetContext(None, 500 * 1024 * 1024)
+            _default_context = DatasetContext(
+                _get_or_create_block_owner_actor(), 500 * 1024 * 1024)
         return _default_context
 
     @staticmethod
-    def _set_current(context: DatasetContext) -> None:
-        global default_context = context
+    def _set_current(context: "DatasetContext") -> None:
+        global _default_context
+        _default_context = context
 
 
 @ray.remote(num_cpus=0, placement_group=None)
