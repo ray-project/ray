@@ -563,7 +563,9 @@ class Trainer(Trainable):
     def __init__(self,
                  config: TrainerConfigDict = None,
                  env: str = None,
-                 logger_creator: Callable[[], Logger] = None):
+                 logger_creator: Callable[[], Logger] = None,
+                 remote_checkpoint_dir: Optional[str] = None,
+                 sync_function_tpl: Optional[str] = None):
         """Initialize an RLLib trainer.
 
         Args:
@@ -621,7 +623,8 @@ class Trainer(Trainable):
 
             logger_creator = default_logger_creator
 
-        super().__init__(config, logger_creator)
+        super().__init__(config, logger_creator, remote_checkpoint_dir,
+                         sync_function_tpl)
 
     @classmethod
     @override(Trainable)

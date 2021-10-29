@@ -389,9 +389,12 @@ class RayTrialExecutor(TrialExecutor):
         kwargs = {
             "config": trial_config,
             "logger_creator": logger_creator,
-            "remote_checkpoint_dir": trial.remote_checkpoint_dir,
-            "sync_function_tpl": trial.sync_to_cloud
         }
+        if trial.uses_cloud_checkpointing:
+            # We keep these kwargs separate for backwards compatibility
+            # with trainables that don't provide these keyword arguments
+            kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
+            kwargs["sync_function_tpl"] = trial.sync_to_cloud
 
         with self._change_working_directory(trial):
             return full_actor_class.remote(**kwargs)
