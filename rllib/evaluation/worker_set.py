@@ -29,9 +29,9 @@ T = TypeVar("T")
 
 @DeveloperAPI
 class WorkerSet:
-    """Set of RolloutWorkers with n @ray.remote workers and one local worker.
+    """Represents a set of RolloutWorkers.
 
-    Where n may be 0.
+    There must be one local worker copy, and zero or more remote workers.
     """
 
     def __init__(self,
@@ -43,20 +43,20 @@ class WorkerSet:
                  num_workers: int = 0,
                  logdir: Optional[str] = None,
                  _setup: bool = True):
-        """Initializes a WorkerSet instance.
+        """Create a new WorkerSet and initialize its workers.
 
         Args:
-            env_creator: Function that returns env given env config.
-            validate_env: Optional callable to validate the generated
-                environment (only on worker=0).
-            policy_class: An optional Policy class. If None, PolicySpecs can be
-                generated automatically by using the Trainer's default class
-                of via a given multi-agent policy config dict.
-            trainer_config: Optional dict that extends the common config of
-                the Trainer class.
-            num_workers: Number of remote rollout workers to create.
-            logdir: Optional logging directory for workers.
-            _setup: Whether to setup workers. This is only for testing.
+            env_creator (Optional[Callable[[EnvContext], EnvType]]): Function
+                that returns env given env config.
+            validate_env (Optional[Callable[[EnvType], None]]): Optional
+                callable to validate the generated environment (only on
+                worker=0).
+            policy (Optional[Type[Policy]]): A rllib.policy.Policy class.
+            trainer_config (Optional[TrainerConfigDict]): Optional dict that
+                extends the common config of the Trainer class.
+            num_workers (int): Number of remote rollout workers to create.
+            logdir (Optional[str]): Optional logging directory for workers.
+            _setup (bool): Whether to setup workers. This is only for testing.
         """
 
         if not trainer_config:
@@ -119,20 +119,15 @@ class WorkerSet:
             )
 
     def local_worker(self) -> RolloutWorker:
-        """Returns the local rollout worker."""
+        """Return the local rollout worker."""
         return self._local_worker
 
     def remote_workers(self) -> List[ActorHandle]:
-        """Returns a list of remote rollout workers."""
+        """Return a list of remote rollout workers."""
         return self._remote_workers
 
     def sync_weights(self, policies: Optional[List[PolicyID]] = None) -> None:
-        """Syncs model weights from the local worker to all remote workers.
-
-        Args:
-            policies: An optional list of policy IDs to sync for. If None,
-                sync all policies.
-        """
+        """Syncs weights from the local worker to all remote workers."""
         if self.remote_workers():
             weights = ray.put(self.local_worker().get_weights(policies))
             for e in self.remote_workers():
@@ -141,11 +136,8 @@ class WorkerSet:
     def add_workers(self, num_workers: int) -> None:
         """Creates and adds a number of remote workers to this worker set.
 
-        Can be called several times on the same WorkerSet to add more
-        RolloutWorkers to the set.
-
         Args:
-            num_workers: The number of remote Workers to add to this
+            num_workers (int): The number of remote Workers to add to this
                 WorkerSet.
         """
         remote_args = {
@@ -167,36 +159,25 @@ class WorkerSet:
         ])
 
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
-        """Hard overrides the remote workers in this set with the given one.
-
-        Args:
-            new_remote_workers: A list of new RolloutWorkers
-                (as `ActorHandles`) to use as remote workers.
-        """
+        """Called to change the set of remote workers."""
         self._remote_workers = new_remote_workers
 
     def stop(self) -> None:
-        """Calls `stop` on all rollout workers (including the local one)."""
+        """Stop all rollout workers."""
         try:
             self.local_worker().stop()
             tids = [w.stop.remote() for w in self.remote_workers()]
             ray.get(tids)
         except Exception:
-            logger.exception("Failed to stop workers!")
+            logger.exception("Failed to stop workers")
         finally:
             for w in self.remote_workers():
                 w.__ray_terminate__.remote()
 
     @DeveloperAPI
     def foreach_worker(self, func: Callable[[RolloutWorker], T]) -> List[T]:
-        """Calls the given function with each worker instance as arg.
+        """Apply the given function to each worker instance."""
 
-        Args:
-            func: The function to call for each worker (as only arg).
-
-        Returns:
-             The list of return values of all calls to `func([worker])`.
-        """
         local_result = [func(self.local_worker())]
         remote_results = ray.get(
             [w.apply.remote(func) for w in self.remote_workers()])
@@ -205,23 +186,11 @@ class WorkerSet:
     @DeveloperAPI
     def foreach_worker_with_index(
             self, func: Callable[[RolloutWorker, int], T]) -> List[T]:
-        """Calls `func` with each worker instance and worker idx as args.
+        """Apply the given function to each worker instance.
 
         The index will be passed as the second arg to the given function.
-
-        Args:
-            func: The function to call for each worker and its index
-                (as args). The local worker has index 0, all remote workers
-                have indices > 0.
-
-        Returns:
-             The list of return values of all calls to `func([worker, idx])`.
-                The first entry in this list are the results of the local
-                worker, followed by all remote workers' results.
         """
-        # Local worker: Index=0.
         local_result = [func(self.local_worker(), 0)]
-        # Remote workers: Index > 0.
         remote_results = ray.get([
             w.apply.remote(func, i + 1)
             for i, w in enumerate(self.remote_workers())
@@ -230,22 +199,15 @@ class WorkerSet:
 
     @DeveloperAPI
     def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
-        """Calls `func` with each worker's (policy, PolicyID) tuple.
-
-        Note that in the multi-agent case, each worker may have more than one
-        policy.
+        """Apply the given function to each worker's (policy, policy_id) tuple.
 
         Args:
-            func: A function - taking a Policy and its ID - that is
+            func (callable): A function - taking a Policy and its ID - that is
                 called on all workers' Policies.
 
         Returns:
-            The list of return values of func over all workers' policies. The
-                length of this list is:
-                (num_workers + 1 (local-worker)) *
-                [num policies in the multi-agent config dict].
-                The local workers' results are first, followed by all remote
-                workers' results
+            List[any]: The list of return values of func over all workers'
+                policies.
         """
         results = self.local_worker().foreach_policy(func)
         ray_gets = []
@@ -259,8 +221,8 @@ class WorkerSet:
 
     @DeveloperAPI
     def trainable_policies(self) -> List[PolicyID]:
-        """Returns the list of trainable policy ids."""
-        return self.local_worker().policies_to_train
+        """Return the list of trainable policy ids."""
+        return self.local_worker().foreach_trainable_policy(lambda _, pid: pid)
 
     @DeveloperAPI
     def foreach_trainable_policy(
@@ -268,7 +230,7 @@ class WorkerSet:
         """Apply `func` to all workers' Policies iff in `policies_to_train`.
 
         Args:
-            func: A function - taking a Policy and its ID - that is
+            func (callable): A function - taking a Policy and its ID - that is
                 called on all workers' Policies in `worker.policies_to_train`.
 
         Returns:
@@ -288,7 +250,7 @@ class WorkerSet:
 
     @DeveloperAPI
     def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
-        """Calls `func` with all workers' sub environments as args.
+        """Apply `func` to all workers' underlying sub environments.
 
         An "underlying sub environment" is a single clone of an env within
         a vectorized environment.
@@ -296,12 +258,13 @@ class WorkerSet:
         gym.Env object.
 
         Args:
-            func: A function - taking an EnvType (normally a gym.Env object)
-                as arg and returning a list of lists of return values, one
-                value per underlying sub-environment per each worker.
+            func (Callable[[EnvType], T]): A function - taking an EnvType
+                (normally a gym.Env object) as arg and returning a list of
+                return values over sub environments for each worker.
 
         Returns:
-            The list (workers) of lists (sub environments) of results.
+            List[List[T]]: The list (workers) of lists (sub environments) of
+                results.
         """
         local_results = [self.local_worker().foreach_env(func)]
         ray_gets = []
@@ -313,7 +276,7 @@ class WorkerSet:
     def foreach_env_with_context(
             self,
             func: Callable[[BaseEnv, EnvContext], List[T]]) -> List[List[T]]:
-        """Call `func` with all workers' sub-environments and env_ctx as args.
+        """Apply `func` to all workers' underlying sub environments.
 
         An "underlying sub environment" is a single clone of an env within
         a vectorized environment.
@@ -321,13 +284,13 @@ class WorkerSet:
         as args.
 
         Args:
-            func: A function - taking a BaseEnv object and an EnvContext as
-                arg - and returning a list of lists of return values over envs
+            func (Callable[[BaseEnv], T]): A function - taking a BaseEnv
+                object as arg and returning a list of return values over envs
                 of the worker.
 
         Returns:
-            The list (1 item per workers) of lists (1 item per sub-environment)
-                of results.
+            List[List[T]]: The list (workers) of lists (environments) of
+                results.
         """
         local_results = [self.local_worker().foreach_env_with_context(func)]
         ray_gets = []
