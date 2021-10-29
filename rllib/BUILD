@@ -11,10 +11,16 @@
 # Currently we have the following categories:
 
 # - Learning tests/regression, tagged:
-#   "learning_tests_[tf|torch]" AND "learning_tests_[cartpole|pendulum]"
+# -- "learning_tests_[tf|torch]": Distinguish tf vs torch.
+# -- "learning_tests_[cartpole|pendulum]": distinguish cartpole vs pendulum.
+# -- "learning_tests_[discrete|continuous]_[tf|torch]": distinguish discrete
+#    actions vs continuous actions AND tf vs torch.
+# -- "fake_gpus_[tf|torch]": Tests that run using 2 fake GPUs.
+
 # - Quick agent compilation/tune-train tests, tagged "quick_train".
 #   NOTE: These should be obsoleted in favor of "trainers_dir" tests as
 #         they cover the same functionaliy.
+
 # - Folder-bound tests, tagged with the name of the top-level dir:
 #   - `env` directory tests.
 #   - `evaluation` directory tests.
@@ -22,16 +28,32 @@
 #   - `models` directory tests.
 #   - `policy` directory tests.
 #   - `utils` directory tests.
-# - Trainer ("agents") tests, tagged "trainers_dir".
-# - Tests directory (everything in rllib/tests/...), tagged: "tests_dir"
-# - Examples directory (everything in rllib/examples/...), tagged: "examples"
 
-# The "examples" and "tests_dir" tags have further sub-tags going by the
+# - Trainer ("agents") tests, tagged "trainers_dir".
+
+# - Tests directory (everything in rllib/tests/...), tagged: "tests_dir" and
+#   "tests_dir_[A-Z]"
+
+# - Examples directory (everything in rllib/examples/...), tagged: "examples" and
+#   "examples_[A-Z]"
+
+# Note: The "examples" and "tests_dir" tags have further sub-tags going by the
 # starting letter of the test name (e.g. "examples_A", or "tests_dir_F") for
 # split-up purposes in buildkite.
 
-# Our .buildkite/pipeline.yml file executes all these tests in n
-# different jobs.
+# Additional tags are:
+# - "team:ml": Indicating that all tests in this file are the responsibility of
+#   the ML Team.
+# - "needs_gpu": Indicating that a test needs to have a GPU in order to run.
+# - "gpu": Indicating that a test may (but doesn't have to) be run in the GPU
+#   pipeline, defined in .buildkite/pipeline.gpu.yaml.
+# - "multi-gpu": Indicating that a test will definitely be run in the Large GPU
+#   pipeline, defined in .buildkite/pipeline.gpu.large.yaml.
+# - "no_gpu": Indicating that a test should not be run in the GPU pipeline due
+#   to certain incompatibilities.
+
+# Our .buildkite/pipeline.yml and .buildkite/pipeline.gpu.yml files execute all
+# these tests in n different jobs.
 
 
 # --------------------------------------------------------------------
@@ -876,24 +898,12 @@ py_test(
     srcs = ["agents/ddpg/tests/test_ddpg.py"]
 )
 
-# DQNTrainer/SimpleQTrainer
+# DQNTrainer
 py_test(
     name = "test_dqn",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
     srcs = ["agents/dqn/tests/test_dqn.py"]
-)
-py_test(
-    name = "test_r2d2",
-    tags = ["team:ml", "trainers_dir"],
-    size = "large",
-    srcs = ["agents/dqn/tests/test_r2d2.py"]
-)
-py_test(
-    name = "test_simple_q",
-    tags = ["team:ml", "trainers_dir"],
-    size = "medium",
-    srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
 # Dreamer
@@ -1002,12 +1012,36 @@ py_test(
     srcs = ["agents/qmix/tests/test_qmix.py"]
 )
 
+# R2D2Trainer
+py_test(
+    name = "test_r2d2",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/dqn/tests/test_r2d2.py"]
+)
+
+# RNNSACTrainer
+py_test(
+    name = "test_rnnsac",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/sac/tests/test_rnnsac.py"]
+)
+
 # SACTrainer
 py_test(
     name = "test_sac",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
     srcs = ["agents/sac/tests/test_sac.py"]
+)
+
+# SimpleQTrainer
+py_test(
+    name = "test_simple_q",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
 # TD3Trainer
@@ -1328,18 +1362,38 @@ py_test(
 # --------------------------------------------------------------------
 
 sh_test(
-    name = "env/tests/test_local_inference",
+    name = "env/tests/test_local_inference_cartpole",
     tags = ["team:ml", "env"],
     size = "medium",
-    srcs = ["env/tests/test_local_inference.sh"],
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "cartpole"],
     data = glob(["examples/serving/*.py"]),
 )
 
 sh_test(
-    name = "env/tests/test_remote_inference",
+    name = "env/tests/test_remote_inference_cartpole",
     tags = ["team:ml", "env"],
     size = "medium",
-    srcs = ["env/tests/test_remote_inference.sh"],
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["remote", "cartpole"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_local_inference_unity3d",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "unity3d"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_remote_inference_unity3d",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["remote", "unity3d"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1348,6 +1402,13 @@ py_test(
     tags = ["team:ml", "env"],
     size = "small",
     srcs = ["env/tests/test_record_env_wrapper.py"]
+)
+
+py_test(
+    name = "env/tests/test_remote_worker_envs",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_remote_worker_envs.py"]
 )
 
 py_test(
@@ -1399,14 +1460,19 @@ py_test(
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
 
-# mysteriously times out on travis.
-#py_test(
-#    name = "evaluation/tests/test_trajectory_view_api",
-#    tags = ["team:ml", "evaluation"],
-#    size = "medium",
-#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
-#)
+py_test(
+    name = "evaluation/tests/test_trajectory_view_api",
+    tags = ["team:ml", "evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
+)
 
+py_test(
+    name = "evaluation/tests/test_episode",
+    tags = ["team:ml", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode.py"]
+)
 
 # --------------------------------------------------------------------
 # Optimizers and Memories
@@ -1461,7 +1527,7 @@ py_test(
 py_test(
     name = "test_preprocessors",
     tags = ["team:ml", "models"],
-    size = "small",
+    size = "medium",
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
@@ -1685,12 +1751,12 @@ py_test(
     srcs = ["tests/test_gpus.py"]
 )
 
-#py_test(
-#    name = "tests/test_ignore_worker_failure",
-#    tags = ["team:ml", "tests_dir", "tests_dir_I"],
-#    size = "large",
-#    srcs = ["tests/test_ignore_worker_failure.py"]
-#)
+py_test(
+    name = "tests/test_ignore_worker_failure",
+    tags = ["team:ml", "tests_dir", "tests_dir_I"],
+    size = "large",
+    srcs = ["tests/test_ignore_worker_failure.py"]
+)
 
 py_test(
     name = "tests/test_io",
@@ -1842,14 +1908,14 @@ py_test(
     args = ["TestSupportedMultiAgentOffPolicy"]
 )
 
-# py_test(
-#     name = "tests/test_supported_spaces_pg",
-#     main = "tests/test_supported_spaces.py",
-#     tags = ["team:ml", "tests_dir", "tests_dir_S"],
-#     size = "enormous",
-#     srcs = ["tests/test_supported_spaces.py"],
-#     args = ["TestSupportedSpacesPG"]
-# )
+py_test(
+     name = "tests/test_supported_spaces_pg",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:ml", "tests_dir", "tests_dir_S"],
+     size = "large",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesPG"]
+ )
 
 py_test(
     name = "tests/test_supported_spaces_off_policy",
@@ -1890,7 +1956,7 @@ py_test(
     name = "examples/action_masking_tf",
     main = "examples/action_masking.py",
     tags = ["team:ml", "examples", "examples_A"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2"]
 )
@@ -1899,7 +1965,7 @@ py_test(
     name = "examples/action_masking_torch",
     main = "examples/action_masking.py",
     tags = ["team:ml", "examples", "examples_A"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/action_masking.py"],
     args = ["--stop-iter=2", "--framework=torch"]
 )
@@ -1940,13 +2006,14 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=150", "--num-cpus=4"]
 )
 
-py_test(
-    name = "examples/bare_metal_policy_with_custom_view_reqs",
-    main = "examples/bare_metal_policy_with_custom_view_reqs.py",
-    tags = ["team:ml", "examples", "examples_B"],
-    size = "small",
-    srcs = ["examples/bare_metal_policy_with_custom_view_reqs.py"],
-)
+# times-out: #
+#py_test(
+#    name = "examples/bare_metal_policy_with_custom_view_reqs",
+#    main = "examples/bare_metal_policy_with_custom_view_reqs.py",
+#    tags = ["team:ml", "examples", "examples_B"],
+#    size = "small",
+#    srcs = ["examples/bare_metal_policy_with_custom_view_reqs.py"],
+#)
 
 py_test(
     name = "examples/batch_norm_model_ppo_tf",
@@ -2396,28 +2463,28 @@ py_test(
 py_test(
     name = "examples/deterministic_training_tf",
     main = "examples/deterministic_training.py",
-    tags = ["team:ml", "examples", "examples_D"],
+    tags = ["team:ml", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf"]
+    args = ["--as-test", "--stop-iters=1", "--framework=tf", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(
     name = "examples/deterministic_training_tf2",
     main = "examples/deterministic_training.py",
-    tags = ["team:ml", "examples", "examples_D"],
+    tags = ["team:ml", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf2"]
+    args = ["--as-test", "--stop-iters=1", "--framework=tf2", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(
     name = "examples/deterministic_training_torch",
     main = "examples/deterministic_training.py",
-    tags = ["team:ml", "examples", "examples_D"],
+    tags = ["team:ml", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=torch"]
+    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(
@@ -2653,11 +2720,21 @@ py_test(
 )
 
 py_test(
-    name = "examples/pettingzoo_env",
-    main = "examples/pettingzoo_env.py",
+    name = "examples/preprocessing_disabled_tf",
+    main = "examples/preprocessing_disabled.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/pettingzoo_env.py"],
+    srcs = ["examples/preprocessing_disabled.py"],
+    args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/preprocessing_disabled_torch",
+    main = "examples/preprocessing_disabled.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/preprocessing_disabled.py"],
+    args = ["--framework=torch", "--stop-iters=2"]
 )
 
 py_test(
@@ -2696,7 +2773,7 @@ py_test(
 
 py_test(
     name = "examples/rnnsac_stateless_cartpole",
-    tags = ["team:ml", "examples", "examples_R"],
+    tags = ["team:ml", "gpu"],
     size = "large",
     srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )

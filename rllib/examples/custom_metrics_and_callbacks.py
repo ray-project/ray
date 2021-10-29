@@ -13,7 +13,7 @@ import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
-from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
+from ray.rllib.evaluation import Episode, RolloutWorker
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 
@@ -28,8 +28,8 @@ parser.add_argument("--stop-iters", type=int, default=2000)
 
 class MyCallbacks(DefaultCallbacks):
     def on_episode_start(self, *, worker: RolloutWorker, base_env: BaseEnv,
-                         policies: Dict[str, Policy],
-                         episode: MultiAgentEpisode, env_index: int, **kwargs):
+                         policies: Dict[str, Policy], episode: Episode,
+                         env_index: int, **kwargs):
         # Make sure this episode has just been started (only initial obs
         # logged so far).
         assert episode.length == 0, \
@@ -41,8 +41,8 @@ class MyCallbacks(DefaultCallbacks):
         episode.hist_data["pole_angles"] = []
 
     def on_episode_step(self, *, worker: RolloutWorker, base_env: BaseEnv,
-                        policies: Dict[str, Policy],
-                        episode: MultiAgentEpisode, env_index: int, **kwargs):
+                        policies: Dict[str, Policy], episode: Episode,
+                        env_index: int, **kwargs):
         # Make sure this episode is ongoing.
         assert episode.length > 0, \
             "ERROR: `on_episode_step()` callback should not be called right " \
@@ -53,11 +53,11 @@ class MyCallbacks(DefaultCallbacks):
         episode.user_data["pole_angles"].append(pole_angle)
 
     def on_episode_end(self, *, worker: RolloutWorker, base_env: BaseEnv,
-                       policies: Dict[str, Policy], episode: MultiAgentEpisode,
+                       policies: Dict[str, Policy], episode: Episode,
                        env_index: int, **kwargs):
         # Make sure this episode is really done.
         assert episode.batch_builder.policy_collectors[
-            "default_policy"].buffers["dones"][-1], \
+            "default_policy"].batches[-1]["dones"][-1], \
             "ERROR: `on_episode_end()` should only be called " \
             "after episode is done!"
         pole_angle = np.mean(episode.user_data["pole_angles"])
@@ -84,8 +84,8 @@ class MyCallbacks(DefaultCallbacks):
             policy, result["sum_actions_in_train_batch"]))
 
     def on_postprocess_trajectory(
-            self, *, worker: RolloutWorker, episode: MultiAgentEpisode,
-            agent_id: str, policy_id: str, policies: Dict[str, Policy],
+            self, *, worker: RolloutWorker, episode: Episode, agent_id: str,
+            policy_id: str, policies: Dict[str, Policy],
             postprocessed_batch: SampleBatch,
             original_batches: Dict[str, SampleBatch], **kwargs):
         print("postprocessed {} steps".format(postprocessed_batch.count))

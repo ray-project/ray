@@ -20,12 +20,12 @@ from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
     MultiGPUTrainOneStep
-from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -144,8 +144,8 @@ def validate_config(config: TrainerConfigDict) -> None:
             "simple_optimizer=True if this doesn't work for you.")
 
 
-def execution_plan(trainer: Trainer, workers: WorkerSet,
-                   config: TrainerConfigDict, **kwargs) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the DQN algorithm. Defines the distributed dataflow.
 
     Args:
@@ -157,28 +157,13 @@ def execution_plan(trainer: Trainer, workers: WorkerSet,
     Returns:
         LocalIterator[dict]: A local iterator over training metrics.
     """
-    if config.get("prioritized_replay"):
-        prio_args = {
-            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
-            "prioritized_replay_beta": config["prioritized_replay_beta"],
-            "prioritized_replay_eps": config["prioritized_replay_eps"],
-        }
-    else:
-        prio_args = {}
+    assert "local_replay_buffer" in kwargs, (
+        "GenericOffPolicyTrainer execution plan requires a "
+        "local replay buffer.")
 
-    local_replay_buffer = LocalReplayBuffer(
-        num_shards=1,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        replay_batch_size=config["train_batch_size"],
-        replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config.get("replay_sequence_length", 1),
-        replay_burn_in=config.get("burn_in", 0),
-        replay_zero_init_states=config.get("zero_init_states", True),
-        **prio_args)
     # Assign to Trainer, so we can store the LocalReplayBuffer's
     # data when we save checkpoints.
-    trainer.local_replay_buffer = local_replay_buffer
+    local_replay_buffer = kwargs["local_replay_buffer"]
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -200,8 +185,17 @@ def execution_plan(trainer: Trainer, workers: WorkerSet,
                 td_error = info.get("td_error",
                                     info[LEARNER_STATS_KEY].get("td_error"))
                 samples.policy_batches[policy_id].set_get_interceptor(None)
-                prio_dict[policy_id] = (samples.policy_batches[policy_id]
-                                        .get("batch_indexes"), td_error)
+                batch_indices = samples.policy_batches[policy_id].get(
+                    "batch_indexes")
+                # In case the buffer stores sequences, TD-error could already
+                # be calculated per sequence chunk.
+                if len(batch_indices) != len(td_error):
+                    T = local_replay_buffer.replay_sequence_length
+                    assert len(batch_indices) > len(
+                        td_error) and len(batch_indices) % T == 0
+                    batch_indices = batch_indices.reshape([-1, T])[:, 0]
+                    assert len(batch_indices) == len(td_error)
+                prio_dict[policy_id] = (batch_indices, td_error)
             local_replay_buffer.update_priorities(prio_dict)
         return info_dict
 
