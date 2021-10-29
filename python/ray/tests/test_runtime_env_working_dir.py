@@ -826,13 +826,11 @@ ray.init("{address}", runtime_env={{"py_modules": ["{tmp_dir}"]}})
         with open(filepath, "wb") as f:
             f.write("Hi")
 
-
-
-
         output = run_string_as_driver(driver_script)
         assert "Pushing file package" in output
         assert "Successfully pushed file package" in output
         assert "warning" not in output.lower()
+
 
 @pytest.mark.skipif(
     sys.platform != "darwin", reason="Package exceeds max size.")
