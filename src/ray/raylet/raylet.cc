@@ -20,8 +20,8 @@
 #include <iostream>
 
 #include "ray/common/status.h"
-#include "ray/stats/stats.h"
 #include "ray/gcs/gcs_client/agent_finder.h"
+#include "ray/stats/stats.h"
 #include "ray/util/util.h"
 
 namespace {
