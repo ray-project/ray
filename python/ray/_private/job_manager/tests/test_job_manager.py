@@ -28,19 +28,21 @@ def check_job_succeeded(job_manager, job_id):
         stdout = job_manager.get_job_stdout(job_id)
         stderr = job_manager.get_job_stderr(job_id)
         raise RuntimeError(f"Job failed! stdout:\n{stdout}\nstderr:\n{stderr}")
-    assert status in {JobStatus.RUNNING, JobStatus.SUCCEEDED}
+    assert status in {
+        JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED
+    }
     return status == JobStatus.SUCCEEDED
 
 
 def check_job_failed(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status in {JobStatus.RUNNING, JobStatus.FAILED}
+    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
     return status == JobStatus.FAILED
 
 
 def check_job_stopped(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status in {JobStatus.RUNNING, JobStatus.STOPPED}
+    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
     return status == JobStatus.STOPPED
 
 
