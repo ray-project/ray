@@ -83,6 +83,7 @@ class JobStatusStorageClient:
         assert pickled_status is not None, f"Status not found for {job_id}"
         return pickle.loads(pickled_status)
 
+
 class JobSupervisor:
     """
     Ray actor created by JobManager for each submitted job, responsible to
@@ -91,6 +92,7 @@ class JobSupervisor:
     One job supervisor actor maps to one subprocess, for one job_id.
     Job supervisor actor should fate share with subprocess it created.
     """
+
     def __init__(self, job_id: str):
         self._job_id = job_id
         self._status = JobStatus.PENDING
@@ -116,7 +118,6 @@ class JobSupervisor:
             self._task_coro = asyncio.create_task(child.wait())
             exit_code = await self._task_coro
             return exit_code
-
 
     async def run(self, cmd: str):
         """Run the command, then exit afterwards.

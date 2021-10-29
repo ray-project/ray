@@ -182,6 +182,7 @@ class TestRuntimeEnv:
             "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
             "are provided")
 
+
 class TestAsyncAPI:
     def test_status_and_logs_while_blocking(self, job_manager):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -189,8 +190,8 @@ class TestAsyncAPI:
 
             # Block until file is present.
             wait_for_file_cmd = (f"until [ -f {tmp_file} ]; "
-                                "do echo 'Waiting...' && sleep 1; "
-                                "done")
+                                 "do echo 'Waiting...' && sleep 1; "
+                                 "done")
             job_id: str = str(uuid4())
             job_id = job_manager.submit_job(job_id, wait_for_file_cmd)
 
@@ -208,15 +209,14 @@ class TestAsyncAPI:
             wait_for_condition(
                 check_job_succeeded, job_manager=job_manager, job_id=job_id)
 
-
     def test_cancel_job(self, job_manager):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_file = os.path.join(tmp_dir, "hello")
 
             # Block until file is present.
             wait_for_file_cmd = (f"until [ -f {tmp_file} ]; "
-                                "do echo 'Waiting...' && sleep 1; "
-                                "done")
+                                 "do echo 'Waiting...' && sleep 1; "
+                                 "done")
             job_id: str = str(uuid4())
             job_id = job_manager.submit_job(job_id, wait_for_file_cmd)
 
@@ -227,8 +227,8 @@ class TestAsyncAPI:
                 stdout = job_manager.get_job_stdout(job_id)
                 assert b"Waiting..." in stdout
 
-            assert job_manager.stop_job(job_id) == True
+            assert job_manager.stop_job(job_id) is True
             wait_for_condition(
                 check_job_stopped, job_manager=job_manager, job_id=job_id)
 
-            assert job_manager.stop_job(str(uuid4())) == False
+            assert job_manager.stop_job(str(uuid4())) is False
