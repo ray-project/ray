@@ -170,7 +170,7 @@ def test_initial_num_replicas(mock, serve_instance):
     A.deploy()
 
     controller = serve_instance._controller
-    wait_for_condition(lambda: get_num_running_replicas(controller, A) == 2)
+    assert get_num_running_replicas(controller, A) == 2
 
 
 class MockTimer:
