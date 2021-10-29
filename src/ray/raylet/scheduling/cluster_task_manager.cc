@@ -325,8 +325,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           }
 
           double wait_time =
-              (1e6 * sched_cls_cap_interval_ms_) * (1L <<
-              sched_cls_info.num_updates++);
+              (1e6 * sched_cls_cap_interval_ms_) * (1L << sched_cls_info.num_updates++);
           sched_cls_info.next_update_time = absl::GetCurrentTimeNanos() + wait_time;
         }
         work_it++;
