@@ -303,6 +303,7 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
              for i in range(num_columns)}).schema
 
         i = 0
+        owner = _get_or_create_block_owner_actor()
         while i < n:
             count = min(block_size, n - i)
             meta = BlockMetadata(
@@ -313,7 +314,8 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
             read_tasks.append(
                 ReadTask(
                     lambda count=count, num_columns=num_columns, meta=meta:
-                        [(ray.put(make_block(count, num_columns)), meta)],
+                        [(ray.put(make_block(count, num_columns),
+                          _owner=owner), meta)],
                     meta))
             i += block_size
 

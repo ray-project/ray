@@ -11,7 +11,8 @@ from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
 from ray.data.impl.block_list import BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
+from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult, \
+    _get_or_create_block_owner_actor
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -155,6 +156,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block = _block_udf(block)
             return block
 
+        owner = _get_or_create_block_owner_actor()
         read_tasks = []
         for read_paths, file_sizes in zip(
                 np.array_split(paths, parallelism),
@@ -173,7 +175,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 input_files=read_paths)
             read_task = ReadTask(
                 lambda read_paths=read_paths, meta=meta: [(ray.put(read_files(
-                    read_paths, filesystem)), meta)], meta
+                    read_paths, filesystem), _owner=owner), meta)], meta
             )
             read_tasks.append(read_task)
 
