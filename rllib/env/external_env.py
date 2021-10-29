@@ -12,10 +12,10 @@ from ray.rllib.utils.typing import EnvActionType, EnvObsType, EnvInfoDict
 class ExternalEnv(threading.Thread):
     """An environment that interfaces with external agents.
 
-    Unlike simulator envs, control is inverted. The environment queries the
-    policy to obtain actions and logs observations and rewards for training.
-    This is in contrast to gym.Env, where the algorithm drives the simulation
-    through env.step() calls.
+    Unlike simulator envs, control is inverted: The environment queries the
+    policy to obtain actions and in return logs observations and rewards for
+    training. This is in contrast to gym.Env, where the algorithm drives the
+    simulation through env.step() calls.
 
     You can use ExternalEnv as the backend for policy serving (by serving HTTP
     requests in the run loop), for ingesting offline logs data (by reading
@@ -26,10 +26,6 @@ class ExternalEnv(threading.Thread):
     and off-policy actions (through self.log_action()).
 
     This env is thread-safe, but individual episodes must be executed serially.
-
-    Attributes:
-        action_space (gym.Space): Action space.
-        observation_space (gym.Space): Observation space.
 
     Examples:
         >>> register_env("my_env", lambda config: YourExternalEnv(config))
@@ -43,12 +39,12 @@ class ExternalEnv(threading.Thread):
                  action_space: gym.Space,
                  observation_space: gym.Space,
                  max_concurrent: int = 100):
-        """Initializes an external env.
+        """Initializes an ExternalEnv instance.
 
         Args:
-            action_space (gym.Space): Action space of the env.
-            observation_space (gym.Space): Observation space of the env.
-            max_concurrent (int): Max number of active episodes to allow at
+            action_space: Action space of the env.
+            observation_space: Observation space of the env.
+            max_concurrent: Max number of active episodes to allow at
                 once. Exceeding this limit raises an error.
         """
 
@@ -86,13 +82,13 @@ class ExternalEnv(threading.Thread):
         """Record the start of an episode.
 
         Args:
-            episode_id (Optional[str]): Unique string id for the episode or
+            episode_id: Unique string id for the episode or
                 None for it to be auto-assigned and returned.
-            training_enabled (bool): Whether to use experiences for this
+            training_enabled: Whether to use experiences for this
                 episode to improve the policy.
 
         Returns:
-            episode_id (str): Unique string id for the episode.
+            Unique string id for the episode.
         """
 
         if episode_id is None:
@@ -117,11 +113,11 @@ class ExternalEnv(threading.Thread):
         """Record an observation and get the on-policy action.
 
         Args:
-            episode_id (str): Episode id returned from start_episode().
-            observation (obj): Current environment observation.
+            episode_id: Episode id returned from start_episode().
+            observation: Current environment observation.
 
         Returns:
-            action (obj): Action from the env action space.
+            Action from the env action space.
         """
 
         episode = self._get(episode_id)
@@ -133,9 +129,9 @@ class ExternalEnv(threading.Thread):
         """Record an observation and (off-policy) action taken.
 
         Args:
-            episode_id (str): Episode id returned from start_episode().
-            observation (obj): Current environment observation.
-            action (obj): Action for the observation.
+            episode_id: Episode id returned from start_episode().
+            observation: Current environment observation.
+            action: Action for the observation.
         """
 
         episode = self._get(episode_id)
@@ -145,17 +141,17 @@ class ExternalEnv(threading.Thread):
     def log_returns(self,
                     episode_id: str,
                     reward: float,
-                    info: EnvInfoDict = None) -> None:
-        """Record returns from the environment.
+                    info: Optional[EnvInfoDict] = None) -> None:
+        """Records returns (rewards and infos) from the environment.
 
         The reward will be attributed to the previous action taken by the
         episode. Rewards accumulate until the next action. If no reward is
         logged before the next action, a reward of 0.0 is assumed.
 
         Args:
-            episode_id (str): Episode id returned from start_episode().
-            reward (float): Reward from the environment.
-            info (dict): Optional info dict.
+            episode_id: Episode id returned from start_episode().
+            reward: Reward from the environment.
+            info: Optional info dict.
         """
 
         episode = self._get(episode_id)
@@ -166,11 +162,11 @@ class ExternalEnv(threading.Thread):
 
     @PublicAPI
     def end_episode(self, episode_id: str, observation: EnvObsType) -> None:
-        """Record the end of an episode.
+        """Records the end of an episode.
 
         Args:
-            episode_id (str): Episode id returned from start_episode().
-            observation (obj): Current environment observation.
+            episode_id: Episode id returned from start_episode().
+            observation: Current environment observation.
         """
 
         episode = self._get(episode_id)
@@ -178,7 +174,7 @@ class ExternalEnv(threading.Thread):
         episode.done(observation)
 
     def _get(self, episode_id: str) -> "_ExternalEnvEpisode":
-        """Get a started episode or raise an error."""
+        """Get a started episode by its ID or raise an error."""
 
         if episode_id in self._finished:
             raise ValueError(

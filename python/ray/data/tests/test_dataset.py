@@ -2867,6 +2867,11 @@ def test_csv_write_block_path_provider(ray_start_regular_shared, fs, data_path,
 
 
 def test_groupby_arrow(ray_start_regular_shared):
+    # Test empty dataset.
+    agg_ds = ray.data.range_arrow(10).filter(
+        lambda r: r["value"] > 10).groupby("value").count()
+    assert agg_ds.count() == 0
+
     # Test built-in count aggregation
     xs = list(range(100))
     random.shuffle(xs)
@@ -2890,6 +2895,10 @@ def test_groupby_arrow(ray_start_regular_shared):
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "sum(B)": 1683}, {"A": 1, "sum(B)": 1617},
          {"A": 2, "sum(B)": 1650}]
+    # Test built-in global sum aggregation
+    assert ray.data.from_items([{"A": x} for x in xs]).sum("A") == 4950
+    assert ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).sum(
+        "value") == 0
 
     # Test built-in min aggregation
     xs = list(range(100))
@@ -2904,6 +2913,8 @@ def test_groupby_arrow(ray_start_regular_shared):
          {"A": 2, "min(B)": 2}]
     # Test built-in global min aggregation
     assert ray.data.from_items([{"A": x} for x in xs]).min("A") == 0
+    with pytest.raises(ValueError):
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value")
 
     # Test built-in max aggregation
     xs = list(range(100))
@@ -2918,6 +2929,8 @@ def test_groupby_arrow(ray_start_regular_shared):
          {"A": 2, "max(B)": 98}]
     # Test built-in global max aggregation
     assert ray.data.from_items([{"A": x} for x in xs]).max("A") == 99
+    with pytest.raises(ValueError):
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value")
 
     # Test built-in mean aggregation
     xs = list(range(100))
@@ -2932,6 +2945,9 @@ def test_groupby_arrow(ray_start_regular_shared):
          {"A": 2, "mean(B)": 50.0}]
     # Test built-in global mean aggregation
     assert ray.data.from_items([{"A": x} for x in xs]).mean("A") == 49.5
+    with pytest.raises(ValueError):
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).mean(
+            "value")
 
 
 def test_groupby_simple(ray_start_regular_shared):
@@ -2976,6 +2992,9 @@ def test_groupby_simple(ray_start_regular_shared):
             finalize=lambda a: 1 / 0))
     assert agg_ds.count() == 0
     assert agg_ds == ds
+    agg_ds = ray.data.range(10).filter(lambda r: r > 10).groupby(
+        lambda r: r).count()
+    assert agg_ds.count() == 0
 
     # Test built-in count aggregation
     xs = list(range(100))
@@ -2991,6 +3010,9 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617),
                                                        (2, 1650)]
+    # Test built-in global sum aggregation
+    assert ray.data.from_items(xs).sum() == 4950
+    assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
 
     # Test built-in min aggregation
     xs = list(range(100))
@@ -3000,6 +3022,8 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
     # Test built-in global min aggregation
     assert ray.data.from_items(xs).min() == 0
+    with pytest.raises(ValueError):
+        ray.data.range(10).filter(lambda r: r > 10).min()
 
     # Test built-in max aggregation
     xs = list(range(100))
@@ -3010,6 +3034,8 @@ def test_groupby_simple(ray_start_regular_shared):
                                                                           98)]
     # Test built-in global max aggregation
     assert ray.data.from_items(xs).max() == 99
+    with pytest.raises(ValueError):
+        ray.data.range(10).filter(lambda r: r > 10).max()
 
     # Test built-in mean aggregation
     xs = list(range(100))
@@ -3020,6 +3046,8 @@ def test_groupby_simple(ray_start_regular_shared):
                                                        (2, 50.0)]
     # Test built-in global mean aggregation
     assert ray.data.from_items(xs).mean() == 49.5
+    with pytest.raises(ValueError):
+        ray.data.range(10).filter(lambda r: r > 10).mean()
 
 
 def test_sort_simple(ray_start_regular_shared):
@@ -3039,6 +3067,8 @@ def test_sort_simple(ray_start_regular_shared):
     s1 = ds.sort()
     assert s1.count() == 0
     assert s1 == ds
+    ds = ray.data.range(10).filter(lambda r: r > 10).sort()
+    assert ds.count() == 0
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -3224,6 +3254,12 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
     ds = ds.filter(lambda r: r["A"] == 0)
     assert [row.as_pydict() for row in ds.sort("A").iter_rows()] == \
         [{"A": 0, "B": 0}]
+
+    # Test empty dataset.
+    ds = ray.data.range_arrow(10).filter(lambda r: r["value"] > 10)
+    assert len(ray.data.impl.sort.sample_boundaries(ds._blocks, "value",
+                                                    3)) == 2
+    assert ds.sort("value").count() == 0
 
 
 def test_dataset_retry_exceptions(ray_start_regular, local_path):

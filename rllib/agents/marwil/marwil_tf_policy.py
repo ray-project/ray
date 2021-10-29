@@ -59,7 +59,7 @@ def postprocess_advantages(
         other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
             dict of AgentIDs mapping to other agents' trajectory data (from the
             same episode). NOTE: The other agents use the same policy.
-        episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
+        episode (Optional[Episode]): Optional multi-agent episode
             object in which the agents operated.
 
     Returns:
