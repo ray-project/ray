@@ -24,7 +24,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/stats/stats.h"
-#include "ray/util/agent_finder.h"
+#include "ray/gcs/gcs_client/agent_finder.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
 
@@ -165,7 +165,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       options_.gcs_options.password_,
       /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
       /*enable_subscribe_conn=*/true);
-  gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(
+  gcs_client_ = std::make_shared<gcs::GcsClient>(
       gcs_options, [this](std::pair<std::string, int> *address) {
         absl::MutexLock lock(&gcs_server_address_mutex_);
         if (gcs_server_address_.second != 0) {

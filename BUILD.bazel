@@ -543,6 +543,7 @@ cc_library(
     deps = [
         ":agent_manager_rpc",
         ":gcs",
+        ":gcs_client_lib",
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
         ":gcs_table_storage_lib",
@@ -1731,6 +1732,7 @@ cc_library(
     hdrs = [
         "src/ray/gcs/gcs_client/accessor.h",
         "src/ray/gcs/gcs_client/gcs_client.h",
+        "src/ray/gcs/gcs_client/agent_finder.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",

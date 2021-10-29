@@ -28,7 +28,7 @@
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/stats/stats.h"
-#include "ray/util/agent_finder.h"
+#include "ray/gcs/gcs_client/agent_finder.h"
 
 namespace ray {
 namespace gcs {

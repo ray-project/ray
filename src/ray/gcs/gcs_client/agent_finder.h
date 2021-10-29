@@ -19,7 +19,7 @@
 
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
