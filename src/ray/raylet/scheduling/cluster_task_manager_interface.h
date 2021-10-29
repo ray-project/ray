@@ -119,9 +119,9 @@ class ClusterTaskManagerInterface {
   /// \param[in] num_pending_tasks Number of pending tasks.
   /// \param[in] any_pending True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  virtual bool AnyPendingTasks(RayTask *exemplar, bool *any_pending,
-                               int *num_pending_actor_creation,
-                               int *num_pending_tasks) const = 0;
+  virtual bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar, bool *any_pending,
+                                                     int *num_pending_actor_creation,
+                                                     int *num_pending_tasks) const = 0;
 
   /// The helper to dump the debug state of the cluster task manater.
   virtual std::string DebugStr() const = 0;

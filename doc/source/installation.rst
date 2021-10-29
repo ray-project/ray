@@ -26,9 +26,6 @@ To install Ray libraries:
   pip install -U ray[rllib]  # installs Ray + dependencies for Ray RLlib
   pip install -U ray[serve]  # installs Ray + dependencies for Ray Serve
 
-
-**Note for Windows Users:** To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section). If you run into any issues, please see the :ref:`Windows Support <windows-support>` section.
-
 .. _install-nightlies:
 
 Daily Releases (Nightlies)
@@ -178,8 +175,6 @@ Windows support is currently limited and "alpha" quality.
 Bugs, process/resource leaks, or other incompatibilities may exist under various scenarios.
 Unusual, unattended, or production usage is **not** recommended.
 
-To use Ray on Windows, the Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section).
-
 If you encounter any issues, please try the following:
 
 - Check the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page on GitHub to see the latest updates on Windows support.
@@ -188,22 +183,6 @@ If you encounter any issues, please try the following:
 If your issue has not yet been addressed, comment on the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page.
 
 .. _windows-dependencies:
-
-Windows Dependencies
-~~~~~~~~~~~~~~~~~~~~
-
-For Windows, ensure the latest `Visual C++ runtime`_ (`install link`_) is installed before using Ray.
-
-Otherwise, you may receive an error similar to the following when Ray fails to find
-the runtime library files (e.g. ``VCRUNTIME140_1.dll``):
-
-.. code-block:: bash
-
-  FileNotFoundError: Could not find module '_raylet.pyd' (or one of its dependencies).
-
-.. _`Visual C++ Runtime`: https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
-.. _`install link`: https://aka.ms/vs/16/release/vc_redist.x64.exe
-
 
 Installing Ray on Arch Linux
 ----------------------------
@@ -305,7 +284,7 @@ Some tags also have `variants` that add or change functionality:
    * - -gpu
      - Aliases to a specific ``-cuXX`` tagged image.
    * - <no tag>
-     - Aliases to ``-cpu`` tagged images
+     - Aliases to ``-cpu`` tagged images. For ``ray-ml`` image, aliases to ``-gpu`` tagged image.
 
 
 If you want to tweak some aspect of these images and build them locally, refer to the following script:

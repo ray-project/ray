@@ -1,4 +1,5 @@
 import os
+import time
 
 import pytest
 from unittest.mock import patch
@@ -209,6 +210,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
     def train_func():
         for i in range(2):
             train.save_checkpoint(epoch=i)
+            time.sleep(1)
 
     config = TestConfig()
     e = BackendExecutor(config)
@@ -219,9 +221,9 @@ def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
     assert e.latest_checkpoint_id == 2
     assert e.latest_checkpoint is not None
     assert e.latest_checkpoint["epoch"] == 1
-    assert e.latest_checkpoint_path is not None
+    assert e.best_checkpoint_path is not None
 
-    assert os.path.exists(e.latest_checkpoint_path)
+    assert os.path.exists(e.best_checkpoint_path)
 
     def validate():
         checkpoint = train.load_checkpoint()
@@ -231,7 +233,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
     e2 = BackendExecutor(config)
     e2.start()
     e2.start_training(
-        validate, checkpoint=e.latest_checkpoint_path, run_dir=tmp_path)
+        validate, checkpoint=e.best_checkpoint_path, run_dir=tmp_path)
     e2.finish_training()
 
 
@@ -239,6 +241,7 @@ def test_persisted_checkpoint_id(ray_start_2_cpus, tmp_path):
     def train_func():
         for i in range(2):
             train.save_checkpoint(epoch=i)
+            time.sleep(1)
 
     config = TestConfig()
     e = BackendExecutor(config)
@@ -249,9 +252,9 @@ def test_persisted_checkpoint_id(ray_start_2_cpus, tmp_path):
     assert e.latest_checkpoint_id == 102
     assert e.latest_checkpoint is not None
     assert e.latest_checkpoint["epoch"] == 1
-    assert e.latest_checkpoint_path is not None
+    assert e.best_checkpoint_path is not None
 
-    assert os.path.exists(e.latest_checkpoint_path)
+    assert os.path.exists(e.best_checkpoint_path)
 
 
 def test_mismatch_checkpoint_report(ray_start_2_cpus, tmp_path):

@@ -22,6 +22,7 @@ from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
+from ray.data.aggregate import AggregateFn
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD)
@@ -874,6 +875,38 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert str(ds.take(1)) == "[{'value': array([0])}]"
 
 
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_numpy_write_block_path_provider(ray_start_regular_shared, fs,
+                                         data_path, endpoint_url,
+                                         test_block_write_path_provider):
+    ds = ray.data.range_tensor(10, parallelism=2)
+    ds._set_uuid("data")
+    ds.write_numpy(
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    file_path1 = os.path.join(data_path, "000000_05_data.test.npy")
+    file_path2 = os.path.join(data_path, "000001_05_data.test.npy")
+    if endpoint_url is None:
+        arr1 = np.load(file_path1)
+        arr2 = np.load(file_path2)
+    else:
+        from s3fs.core import S3FileSystem
+        s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
+        arr1 = np.load(s3.open(file_path1))
+        arr2 = np.load(s3.open(file_path2))
+    assert ds.count() == 10
+    assert len(arr1) == 5
+    assert len(arr2) == 5
+    assert arr1.sum() == 10
+    assert arr2.sum() == 35
+    assert str(ds.take(1)) == "[{'value': array([0])}]"
+
+
 def test_read_text(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_text")
     os.mkdir(path)
@@ -1237,7 +1270,7 @@ def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
 
 
 def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
-    """Same as `test_parquet_read` but using a custom, fsspec filesystem.
+    """Same as `test_parquet_write` but using a custom, fsspec filesystem.
 
     TODO (Alex): We should write a similar test with a mock PyArrow fs, but
     unfortunately pa.fs._MockFileSystem isn't serializable, so this may require
@@ -1607,6 +1640,47 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     expected_df = df
     expected_df["one"] += 1
     assert expected_df.equals(dfds)
+
+
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_parquet_write_block_path_provider(ray_start_regular_shared, fs,
+                                           data_path, endpoint_url,
+                                           test_block_write_path_provider):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([df1, df2])
+    path = os.path.join(data_path, "test_parquet_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    ds._set_uuid("data")
+
+    ds.write_parquet(
+        path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    path1 = os.path.join(path, "000000_03_data.test.parquet")
+    path2 = os.path.join(path, "000001_03_data.test.parquet")
+    dfds = pd.concat([
+        pd.read_parquet(path1, storage_options=storage_options),
+        pd.read_parquet(path2, storage_options=storage_options)
+    ])
+    assert df.equals(dfds)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
 
 
 @pytest.mark.parametrize(
@@ -2516,6 +2590,60 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_json_write_block_path_provider(ray_start_regular_shared, fs,
+                                        data_path, endpoint_url,
+                                        test_block_write_path_provider):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    # Single block.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([df1])
+    ds._set_uuid("data")
+    ds.write_json(
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    file_path = os.path.join(data_path, "000000_03_data.test.json")
+    assert df1.equals(
+        pd.read_json(
+            file_path,
+            orient="records",
+            lines=True,
+            storage_options=storage_options))
+
+    # Two blocks.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([df1, df2])
+    ds._set_uuid("data")
+    ds.write_json(
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    file_path2 = os.path.join(data_path, "000001_03_data.test.json")
+    df = pd.concat([df1, df2])
+    ds_df = pd.concat([
+        pd.read_json(
+            file_path,
+            orient="records",
+            lines=True,
+            storage_options=storage_options),
+        pd.read_json(
+            file_path2,
+            orient="records",
+            lines=True,
+            storage_options=storage_options)
+    ])
+    assert df.equals(ds_df)
+
+
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [(None, lazy_fixture("local_path"), None),
@@ -2697,6 +2825,131 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_csv_write_block_path_provider(ray_start_regular_shared, fs, data_path,
+                                       endpoint_url,
+                                       test_block_write_path_provider):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    # Single block.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([df1])
+    ds._set_uuid("data")
+    ds.write_csv(
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    file_path = os.path.join(data_path, "000000_03_data.test.csv")
+    assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
+
+    # Two blocks.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([df1, df2])
+    ds._set_uuid("data")
+    ds.write_csv(
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider)
+    file_path2 = os.path.join(data_path, "000001_03_data.test.csv")
+    df = pd.concat([df1, df2])
+    ds_df = pd.concat([
+        pd.read_csv(file_path, storage_options=storage_options),
+        pd.read_csv(file_path2, storage_options=storage_options)
+    ])
+    assert df.equals(ds_df)
+
+
+def test_groupby_arrow(ray_start_regular_shared):
+    # Test empty dataset.
+    agg_ds = ray.data.range_arrow(10).filter(
+        lambda r: r["value"] > 10).groupby("value").count()
+    assert agg_ds.count() == 0
+
+    # Test built-in count aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items([{
+        "A": (x % 3),
+        "B": x
+    } for x in xs]).groupby("A").count()
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "count()": 34}, {"A": 1, "count()": 33},
+         {"A": 2, "count()": 33}]
+
+    # Test built-in sum aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items([{
+        "A": (x % 3),
+        "B": x
+    } for x in xs]).groupby("A").sum("B")
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "sum(B)": 1683}, {"A": 1, "sum(B)": 1617},
+         {"A": 2, "sum(B)": 1650}]
+    # Test built-in global sum aggregation
+    assert ray.data.from_items([{"A": x} for x in xs]).sum("A") == 4950
+    assert ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).sum(
+        "value") == 0
+
+    # Test built-in min aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items([{
+        "A": (x % 3),
+        "B": x
+    } for x in xs]).groupby("A").min("B")
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "min(B)": 0}, {"A": 1, "min(B)": 1},
+         {"A": 2, "min(B)": 2}]
+    # Test built-in global min aggregation
+    assert ray.data.from_items([{"A": x} for x in xs]).min("A") == 0
+    with pytest.raises(ValueError):
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value")
+
+    # Test built-in max aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items([{
+        "A": (x % 3),
+        "B": x
+    } for x in xs]).groupby("A").max("B")
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "max(B)": 99}, {"A": 1, "max(B)": 97},
+         {"A": 2, "max(B)": 98}]
+    # Test built-in global max aggregation
+    assert ray.data.from_items([{"A": x} for x in xs]).max("A") == 99
+    with pytest.raises(ValueError):
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value")
+
+    # Test built-in mean aggregation
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items([{
+        "A": (x % 3),
+        "B": x
+    } for x in xs]).groupby("A").mean("B")
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "mean(B)": 49.5}, {"A": 1, "mean(B)": 49.0},
+         {"A": 2, "mean(B)": 50.0}]
+    # Test built-in global mean aggregation
+    assert ray.data.from_items([{"A": x} for x in xs]).mean("A") == 49.5
+    with pytest.raises(ValueError):
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).mean(
+            "value")
+
+
 def test_groupby_simple(ray_start_regular_shared):
     parallelism = 3
     xs = [("A", 2), ("A", 4), ("A", 9), ("B", 10), ("B", 20), ("C", 3),
@@ -2705,10 +2958,11 @@ def test_groupby_simple(ray_start_regular_shared):
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Mean aggregation
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
-        init=lambda key: (0, 0),
-        accumulate=lambda key, a, r: (a[0] + r[1], a[1] + 1),
-        merge=lambda key, a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
-        finalize=lambda key, a: a[0] / a[1])
+        AggregateFn(
+            init=lambda k: (0, 0),
+            accumulate=lambda a, r: (a[0] + r[1], a[1] + 1),
+            merge=lambda a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
+            finalize=lambda a: a[0] / a[1]))
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [("A", 5), ("B", 15),
                                                        ("C", 7)]
@@ -2720,9 +2974,10 @@ def test_groupby_simple(ray_start_regular_shared):
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Count aggregation
     agg_ds = ds.groupby(lambda r: str(r)).aggregate(
-        init=lambda key: 0,
-        accumulate=lambda key, a, r: a + 1,
-        merge=lambda key, a1, a2: a1 + a2)
+        AggregateFn(
+            init=lambda k: 0,
+            accumulate=lambda a, r: a + 1,
+            merge=lambda a1, a2: a1 + a2))
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: str(r[0])).take(3) == [("A", 3), ("B", 1),
                                                             ("None", 3)]
@@ -2730,12 +2985,16 @@ def test_groupby_simple(ray_start_regular_shared):
     # Test empty dataset.
     ds = ray.data.from_items([])
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
-        init=lambda key: 1 / 0,  # should never reach here
-        accumulate=lambda key, a, r: 1 / 0,
-        merge=lambda key, a1, a2: 1 / 0,
-        finalize=lambda key, a: 1 / 0)
+        AggregateFn(
+            init=lambda k: 1 / 0,  # should never reach here
+            accumulate=lambda a, r: 1 / 0,
+            merge=lambda a1, a2: 1 / 0,
+            finalize=lambda a: 1 / 0))
     assert agg_ds.count() == 0
     assert agg_ds == ds
+    agg_ds = ray.data.range(10).filter(lambda r: r > 10).groupby(
+        lambda r: r).count()
+    assert agg_ds.count() == 0
 
     # Test built-in count aggregation
     xs = list(range(100))
@@ -2744,7 +3003,6 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2,
                                                                           33)]
-
     # Test built-in sum aggregation
     xs = list(range(100))
     random.shuffle(xs)
@@ -2752,6 +3010,9 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617),
                                                        (2, 1650)]
+    # Test built-in global sum aggregation
+    assert ray.data.from_items(xs).sum() == 4950
+    assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
 
     # Test built-in min aggregation
     xs = list(range(100))
@@ -2759,6 +3020,10 @@ def test_groupby_simple(ray_start_regular_shared):
     agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).min()
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
+    # Test built-in global min aggregation
+    assert ray.data.from_items(xs).min() == 0
+    with pytest.raises(ValueError):
+        ray.data.range(10).filter(lambda r: r > 10).min()
 
     # Test built-in max aggregation
     xs = list(range(100))
@@ -2767,6 +3032,10 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2,
                                                                           98)]
+    # Test built-in global max aggregation
+    assert ray.data.from_items(xs).max() == 99
+    with pytest.raises(ValueError):
+        ray.data.range(10).filter(lambda r: r > 10).max()
 
     # Test built-in mean aggregation
     xs = list(range(100))
@@ -2775,6 +3044,10 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5), (1, 49.0),
                                                        (2, 50.0)]
+    # Test built-in global mean aggregation
+    assert ray.data.from_items(xs).mean() == 49.5
+    with pytest.raises(ValueError):
+        ray.data.range(10).filter(lambda r: r > 10).mean()
 
 
 def test_sort_simple(ray_start_regular_shared):
@@ -2794,6 +3067,8 @@ def test_sort_simple(ray_start_regular_shared):
     s1 = ds.sort()
     assert s1.count() == 0
     assert s1 == ds
+    ds = ray.data.range(10).filter(lambda r: r > 10).sort()
+    assert ds.count() == 0
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -2979,6 +3254,12 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
     ds = ds.filter(lambda r: r["A"] == 0)
     assert [row.as_pydict() for row in ds.sort("A").iter_rows()] == \
         [{"A": 0, "B": 0}]
+
+    # Test empty dataset.
+    ds = ray.data.range_arrow(10).filter(lambda r: r["value"] > 10)
+    assert len(ray.data.impl.sort.sample_boundaries(ds._blocks, "value",
+                                                    3)) == 2
+    assert ds.sort("value").count() == 0
 
 
 def test_dataset_retry_exceptions(ray_start_regular, local_path):

@@ -191,10 +191,20 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   }
 }
 
-void CoreWorkerProcess::EnsureInitialized() {
-  RAY_CHECK(core_worker_process)
-      << "The core worker process is not initialized yet or already "
-      << "shutdown.";
+void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
+  if (core_worker_process != nullptr) {
+    return;
+  }
+
+  if (quick_exit) {
+    RAY_LOG(ERROR) << "The core worker process is not initialized yet or already "
+                   << "shutdown.";
+    QuickExit(/*logging-enabled*/ false);
+  } else {
+    RAY_CHECK(core_worker_process)
+        << "The core worker process is not initialized yet or already "
+        << "shutdown.";
+  }
 }
 
 void CoreWorkerProcess::HandleAtExit() { core_worker_process.reset(); }
@@ -267,7 +277,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &work
 }
 
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ true);
   if (core_worker_process->options_.num_workers == 1) {
     auto global_worker = core_worker_process->GetGlobalWorker();
     if (core_worker_process->ShouldCreateGlobalWorkerOnConstruction() && !global_worker) {
@@ -290,7 +300,7 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 }
 
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ false);
   if (core_worker_process->options_.num_workers == 1) {
     auto global_worker = core_worker_process->GetGlobalWorker();
     RAY_CHECK(global_worker) << "Global worker must not be NULL.";
@@ -348,7 +358,7 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
 }
 
 void CoreWorkerProcess::RunTaskExecutionLoop() {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ false);
   RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::WORKER);
   if (core_worker_process->options_.num_workers == 1) {
     // Run the task loop in the current thread only if the number of workers is 1.
@@ -523,7 +533,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                     rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
-      // /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
       /*get_client=*/
       [this](const rpc::Address &address) {
         return core_worker_client_pool_->GetOrConnect(address);
@@ -831,7 +840,8 @@ void CoreWorker::Exit(
     task_execution_service_.post(
         [this, exit_type, creation_task_exception_pb_bytes]() {
           if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR ||
-              exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
+              exit_type == rpc::WorkerExitType::INTENDED_EXIT ||
+              exit_type == rpc::WorkerExitType::IDLE_EXIT) {
             // Notify the raylet about this exit.
             // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect
             // manually.
@@ -1088,7 +1098,8 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner
          "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
          "which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+         "at https://github.com/ray-project/ray/issues/: "
+      << object_id;
 
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
@@ -1204,7 +1215,8 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
     // the current worker. So we need to make sure ref count is > 0
-    // by invoking `AddLocalReference` first.
+    // by invoking `AddLocalReference` first. Note that in worker.py we set
+    // skip_adding_local_ref=True to avoid double referencing the object.
     AddLocalReference(*object_id);
     RAY_UNUSED(reference_counter_->AddBorrowedObject(*object_id, ObjectID::Nil(),
                                                      real_owner_address));

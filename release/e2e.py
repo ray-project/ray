@@ -374,8 +374,13 @@ def wheel_exists(ray_version, git_branch, git_commit):
 
 def commit_or_url(commit_or_url: str) -> str:
     if commit_or_url.startswith("http"):
-        # Assume URL
-        return commit_or_url
+        # Directly return the S3 url
+        if "s3-us-west-2.amazonaws" in commit_or_url:
+            return commit_or_url
+        # Resolve the redirects for buildkite artifacts
+        # This is needed because otherwise pip won't recognize the file name.
+        if "buildkite.com" in commit_or_url and "artifacts" in commit_or_url:
+            return requests.head(commit_or_url, allow_redirects=True).url
 
     # Else, assume commit
     os.environ["RAY_COMMIT"] = commit_or_url
@@ -1984,22 +1989,25 @@ def run_test(test_config_file: str,
             category=category,
         )
 
-        # Check if result are met
-        alert = maybe_get_alert_for_result(report_kwargs)
+        if not has_errored(result):
+            # Check if result are met if test succeeded
+            alert = maybe_get_alert_for_result(report_kwargs)
 
-        if alert:
-            # If we get an alert, the test failed.
-            logger.error(f"Alert has been raised for {test_suite}/{test_name} "
-                         f"({category}): {alert}")
-            result["status"] = "error (alert raised)"
-            report_kwargs["status"] = "error (alert raised)"
+            if alert:
+                # If we get an alert, the test failed.
+                logger.error(f"Alert has been raised for "
+                             f"{test_suite}/{test_name} "
+                             f"({category}): {alert}")
+                result["status"] = "error (alert raised)"
+                report_kwargs["status"] = "error (alert raised)"
 
-            # For printing/reporting to the database
-            report_kwargs["last_logs"] = alert
-            last_logs = alert
-        else:
-            logger.info(f"No alert raised for test {test_suite}/{test_name} "
-                        f"({category}) - the test successfully passed!")
+                # For printing/reporting to the database
+                report_kwargs["last_logs"] = alert
+                last_logs = alert
+            else:
+                logger.info(f"No alert raised for test "
+                            f"{test_suite}/{test_name} "
+                            f"({category}) - the test successfully passed!")
 
         if report:
             report_result(**report_kwargs)
@@ -2079,6 +2087,7 @@ if __name__ == "__main__":
         logger.info(f"Using Ray wheels provided from URL/commit: "
                     f"{ray_wheels}")
         url = commit_or_url(str(ray_wheels))
+        logger.info(f"Resolved url link is: {url}")
         # Overwrite with actual URL
         os.environ["RAY_WHEELS"] = url
     elif not args.check:
