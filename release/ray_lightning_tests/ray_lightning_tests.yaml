@@ -1,4 +1,4 @@
-- name: lightning_user_test
+- name: ray_lightning_user_test
   cluster:
     app_config: app_config.yaml
     compute_template: compute_tpl.yaml
