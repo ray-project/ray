@@ -42,16 +42,18 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def submit(self, req) -> aiohttp.web.Response:
         req_data = dict(await req.json())
         submit_request = JobSubmitRequest(**req_data)
-        self._job_manager.submit_job(submit_request.job_id,
-                                     submit_request.job_spec.entrypoint,
-                                     submit_request.job_spec.runtime_env)
+        job_id = self._job_manager.submit_job(
+            submit_request.job_spec.entrypoint,
+            job_id=submit_request.job_id,
+            runtime_env=submit_request.job_spec.runtime_env,
+            metadata=submit_request.job_spec.metadata)
 
-        resp = JobSubmitResponse(job_id=submit_request.job_id)
+        resp = JobSubmitResponse(job_id=job_id)
         return dashboard_utils.rest_response(
             success=True,
             convert_google_style=False,
             data=resp.dict(),
-            message=f"Submitted job {submit_request.job_id}")
+            message=f"Submitted job {job_id}")
 
     @routes.get("/status")
     @_ensure_ray_initialized

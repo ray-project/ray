@@ -502,7 +502,8 @@ def _env_runner(
     # error and continue with max_episode_steps=None.
     max_episode_steps = None
     try:
-        max_episode_steps = base_env.get_unwrapped()[0].spec.max_episode_steps
+        max_episode_steps = base_env.get_sub_environments()[
+            0].spec.max_episode_steps
     except Exception:
         pass
 
@@ -513,8 +514,9 @@ def _env_runner(
             # Try to override the env's own max-step setting with our horizon.
             # If this won't work, throw an error.
             try:
-                base_env.get_unwrapped()[0].spec.max_episode_steps = horizon
-                base_env.get_unwrapped()[0]._max_episode_steps = horizon
+                base_env.get_sub_environments()[
+                    0].spec.max_episode_steps = horizon
+                base_env.get_sub_environments()[0]._max_episode_steps = horizon
             except Exception:
                 raise ValueError(
                     "Your `horizon` setting ({}) is larger than the Env's own "
@@ -1148,12 +1150,12 @@ def _fetch_atari_metrics(base_env: BaseEnv) -> List[RolloutMetrics]:
 
     However, for metrics reporting we count full episodes, all lives included.
     """
-    unwrapped = base_env.get_unwrapped()
-    if not unwrapped:
+    sub_environments = base_env.get_sub_environments()
+    if not sub_environments:
         return None
     atari_out = []
-    for u in unwrapped:
-        monitor = get_wrapper_by_cls(u, MonitorEnv)
+    for sub_env in sub_environments:
+        monitor = get_wrapper_by_cls(sub_env, MonitorEnv)
         if not monitor:
             return None
         for eps_rew, eps_len in monitor.next_episode_results():

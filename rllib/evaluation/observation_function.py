@@ -41,8 +41,8 @@ class ObservationFunction:
                 returns this dict.
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env objects can be retrieved by calling
-                base_env.get_unwrapped().
+                sub environment objects (BaseEnvs are vectorized) can be
+                retrieved by calling `base_env.get_sub_environments()`.
             policies (dict): Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default" policy.
             episode (MultiAgentEpisode): Episode state object.
