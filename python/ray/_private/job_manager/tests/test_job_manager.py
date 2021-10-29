@@ -219,6 +219,7 @@ class TestAsyncAPI:
 
             assert job_manager.stop_job(str(uuid4())) is False
 
+
 def test_pass_metadata(job_manager):
     print_metadata_cmd = (
         "python -c\""
