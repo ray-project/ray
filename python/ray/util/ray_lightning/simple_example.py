@@ -46,8 +46,7 @@ def main(num_workers: int = 2, use_gpu: bool = False, max_steps: int = 10):
 
     autoencoder = LitAutoEncoder()
     trainer = pl.Trainer(
-        plugins=[RayPlugin(num_workers=num_workers)],
-        use_gpu=use_gpu,
+        plugins=[RayPlugin(num_workers=num_workers, use_gpu=use_gpu)],
         max_steps=max_steps)
     trainer.fit(autoencoder, DataLoader(train), DataLoader(val))
 
