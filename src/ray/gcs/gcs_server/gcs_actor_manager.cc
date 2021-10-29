@@ -131,7 +131,8 @@ GcsActorManager::GcsActorManager(
   if (RayConfig::instance().gcs_actor_scheduling_enabled() &&
       // TODO(yic): This will only happen in test environment. We should fix
       // this when cleanup the old code
-      std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_) != nullptr) {
+      std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_) !=
+          nullptr) {
     auto gcs_actor_scheduler =
         std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_);
     gcs_actor_scheduler->AddResourcesChangedListener([this] {

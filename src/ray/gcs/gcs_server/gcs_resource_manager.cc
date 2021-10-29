@@ -190,8 +190,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
 
   if (node_resource_usages_.count(node_id) == 0 ||
       resources_data->resources_available_changed()) {
-    const auto &resource_changed =
-        MapFromProtobuf(resources_data->resources_available());
+    const auto &resource_changed = MapFromProtobuf(resources_data->resources_available());
     SetAvailableResources(node_id, ResourceSet(resource_changed));
   }
 
