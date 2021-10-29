@@ -432,10 +432,14 @@ def fetch_remote_directory_content(
         with tarfile.open(tmpfile) as tar:
             tar.extractall(dir)
 
-    packed = ray.get(
-        ray.remote(
-            resources={f"node:{node_ip}": 0.01})(_pack).remote(remote_dir))
-    _unpack(packed, local_dir)
+    try:
+        packed = ray.get(
+            ray.remote(
+                resources={f"node:{node_ip}": 0.01})(_pack).remote(remote_dir))
+        _unpack(packed, local_dir)
+    except Exception as e:
+        print(f"Warning: Could not fetch remote directory contents. Message: "
+              f"{str(e)}")
 
 
 def send_local_file_to_remote_file(local_path: str, remote_path: str, ip: str):
