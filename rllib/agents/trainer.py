@@ -1433,8 +1433,6 @@ class Trainer(Trainable):
         # Stop all optimizers.
         if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
-        # Then stop according to Trainable's logic.
-        Trainable.stop(self)
 
     @classmethod
     @override(Trainable)
