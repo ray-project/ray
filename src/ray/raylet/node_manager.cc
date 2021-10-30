@@ -1483,7 +1483,8 @@ void NodeManager::HandleUpdateResourceUsage(
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
 
-  if (next_resource_seq_no_ != 0 && resource_usage_batch.seq_no() != next_resource_seq_no_) {
+  if (next_resource_seq_no_ != 0 &&
+      resource_usage_batch.seq_no() != next_resource_seq_no_) {
     RAY_LOG(WARNING)
         << "Raylet may have missed a resource broadcast. This either means that GCS has "
            "restarted, the network is heavily congested and is dropping, reordering, or "
