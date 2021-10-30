@@ -287,9 +287,15 @@ class RayServeReplica:
         start = time.time()
         method_to_call = None
         try:
-            method_to_call = sync_to_async(
-                self.get_runner_method(request_item))
-            result = await method_to_call(*args, **kwargs)
+            runner_method = self.get_runner_method(request_item)
+            method_to_call = sync_to_async(runner_method)
+            result = None
+            if len(inspect.signature(runner_method).parameters) > 0:
+                result = await method_to_call(*args, **kwargs)
+            else:
+                # The method doesn't take in anything, including the request
+                # information, so we pass nothing into it
+                result = await method_to_call()
 
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()

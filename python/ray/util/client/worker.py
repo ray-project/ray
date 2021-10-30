@@ -36,6 +36,7 @@ from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
 import ray._private.utils
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 if TYPE_CHECKING:
@@ -676,11 +677,14 @@ class Worker:
                 serialized_job_config = None
             else:
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    job_config.set_runtime_env(
-                        upload_working_dir_if_needed(
-                            job_config.runtime_env or {},
-                            tmp_dir,
-                            logger=logger))
+                    runtime_env = job_config.runtime_env or {}
+                    runtime_env = upload_py_modules_if_needed(
+                        runtime_env, tmp_dir, logger=logger)
+                    runtime_env = upload_working_dir_if_needed(
+                        runtime_env, tmp_dir, logger=logger)
+                    # Remove excludes, it isn't relevant after the upload step.
+                    runtime_env.pop("excludes", None)
+                    job_config.set_runtime_env(runtime_env)
 
                 serialized_job_config = pickle.dumps(job_config)
 

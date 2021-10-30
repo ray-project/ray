@@ -39,18 +39,24 @@ def upload_working_dir_if_needed(
             raise ValueError("Only .zip files supported for S3 URIs.")
         return runtime_env
 
-    # Remove excludes, it isn't relevant after the upload step.
-    excludes = runtime_env.pop("excludes", None)
+    excludes = runtime_env.get("excludes", None)
     working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
     upload_package_if_needed(
-        working_dir_uri, scratch_dir, working_dir, excludes, logger=logger)
+        working_dir_uri,
+        scratch_dir,
+        working_dir,
+        include_parent_dir=False,
+        excludes=excludes,
+        logger=logger)
     runtime_env["working_dir"] = working_dir_uri
     return runtime_env
 
 
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
-        self._resources_dir = resources_dir
+        self._resources_dir = os.path.join(resources_dir, "working_dir_files")
+        if not os.path.isdir(self._resources_dir):
+            os.makedirs(self._resources_dir)
         assert _internal_kv_initialized()
 
     def delete_uri(self,
@@ -72,8 +78,6 @@ class WorkingDirManager:
 
         working_dir = download_and_unpack_package(
             runtime_env["working_dir"], self._resources_dir, logger=logger)
-        if working_dir is None:
-            return
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is

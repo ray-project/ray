@@ -12,7 +12,7 @@ import pytest
 from ray.experimental.internal_kv import (_internal_kv_del,
                                           _internal_kv_exists)
 from ray._private.runtime_env.packaging import (
-    _dir_travel, get_uri_for_directory, _get_excludes, _get_local_path,
+    _dir_travel, get_uri_for_directory, _get_excludes,
     upload_package_if_needed)
 
 
@@ -100,31 +100,19 @@ class TestUploadPackageIfNeeded:
     def test_create_upload_once(self, empty_dir, random_dir,
                                 ray_start_regular):
         uri = get_uri_for_directory(random_dir)
-        created, uploaded = upload_package_if_needed(uri, empty_dir,
-                                                     random_dir)
-        assert created and uploaded
+        uploaded = upload_package_if_needed(uri, empty_dir, random_dir)
+        assert uploaded
         assert _internal_kv_exists(uri)
 
-        created, uploaded = upload_package_if_needed(uri, empty_dir,
-                                                     random_dir)
-        assert not created and not uploaded
+        uploaded = upload_package_if_needed(uri, empty_dir, random_dir)
+        assert not uploaded
         assert _internal_kv_exists(uri)
 
         # Delete the URI from the internal_kv. This should trigger re-upload.
         _internal_kv_del(uri)
         assert not _internal_kv_exists(uri)
-        created, uploaded = upload_package_if_needed(uri, empty_dir,
-                                                     random_dir)
-        assert not created and uploaded
-
-        # Delete the URI from the internal_kv and local file system.
-        # This should trigger both re-packaging and re-upload.
-        _internal_kv_del(uri)
-        assert not _internal_kv_exists(uri)
-        Path(_get_local_path(empty_dir, uri)).unlink()
-        created, uploaded = upload_package_if_needed(uri, empty_dir,
-                                                     random_dir)
-        assert created and uploaded
+        uploaded = upload_package_if_needed(uri, empty_dir, random_dir)
+        assert uploaded
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

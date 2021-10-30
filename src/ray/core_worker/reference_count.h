@@ -112,6 +112,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   void UpdateSubmittedTaskReferences(
+      const std::vector<ObjectID> return_ids,
       const std::vector<ObjectID> &argument_ids_to_add,
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
@@ -121,13 +122,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// have already incremented them when the task was first submitted.
   ///
   /// \param[in] argument_ids The arguments of the task to add references for.
-  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids)
+  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> return_ids,
+                                       const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
   /// may still be borrowing any object IDs that were contained in its
-  /// arguments. This should be called when inlined dependencies are inlined or
-  /// when the task finishes for plasma dependencies.
+  /// arguments. This should be called when the task finishes.
   ///
   /// \param[in] object_ids The object IDs to remove references for.
   /// \param[in] release_lineage Whether to decrement the arguments' lineage
@@ -139,7 +140,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID> return_ids,
+                                    const std::vector<ObjectID> &argument_ids,
                                     bool release_lineage, const rpc::Address &worker_addr,
                                     const ReferenceTableProto &borrowed_refs,
                                     std::vector<ObjectID> *deleted)
@@ -470,6 +472,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool IsObjectReconstructable(const ObjectID &object_id) const;
 
+  /// Whether the object is pending creation (the task that creates it is
+  /// scheduled/executing).
+  bool IsObjectPendingCreation(const ObjectID &object_id) const;
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -623,6 +629,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
+    /// Whether the task that creates this object is scheduled/executing.
+    bool pending_creation = false;
     /// Callback that will be called when this ObjectID no longer has
     /// references.
     std::function<void(const ObjectID &)> on_delete;
@@ -755,6 +763,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] it The reference iterator for the object.
   /// \param[in] node_id The new object location to be added.
   void AddObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void UpdateObjectPendingCreation(const ObjectID &object_id, bool pending_creation)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Publish object locations to all subscribers.
