@@ -170,7 +170,8 @@ class ServeController:
 
             decision_num_replicas = (
                 autoscaling_policy.get_decision_num_replicas(
-                    current_num_ongoing_requests, len(running_replicas)))
+                    current_num_ongoing_requests=current_num_ongoing_requests,
+                    curr_target_num_replicas=backend_config.num_replicas))
             new_backend_config.num_replicas = decision_num_replicas
 
             new_backend_info = copy(backend_info)

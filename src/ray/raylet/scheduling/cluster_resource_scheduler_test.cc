@@ -22,7 +22,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
-#include "mock/ray/gcs/gcs_client.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
 
@@ -52,8 +52,8 @@ vector<int64_t> EmptyIntVector;
 vector<bool> EmptyBoolVector;
 vector<FixedPoint> EmptyFixedPointVector;
 
-void initResourceRequest(ResourceRequest &res_request, vector<FixedPoint> &pred_demands,
-                         vector<int64_t> &cust_ids, vector<FixedPoint> &cust_demands) {
+void initResourceRequest(ResourceRequest &res_request, vector<FixedPoint> pred_demands,
+                         vector<int64_t> cust_ids, vector<FixedPoint> cust_demands) {
   res_request.predefined_resources.resize(PredefinedResources_MAX + pred_demands.size());
   for (size_t i = 0; i < pred_demands.size(); i++) {
     res_request.predefined_resources[i] = pred_demands[i];
@@ -1228,6 +1228,35 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
                                                       /*force_spillback=*/true,
                                                       &total_violations, &is_infeasible),
             node_ids[51]);
+}
+
+TEST_F(ClusterResourceSchedulerTest, ActorDecision) {
+  auto local_node = NodeID::FromRandom();
+  auto remote_node = NodeID::FromRandom();
+  std::string cpu = "CPU";
+  absl::flat_hash_map<std::string, double> resource;
+  resource[cpu] = 2.0;
+  absl::flat_hash_map<std::string, double> available;
+  available[cpu] = 1.5;
+
+  ClusterResourceScheduler resource_scheduler(local_node.Binary(), resource,
+                                              *gcs_client_);
+  resource_scheduler.AddOrUpdateNode(remote_node.Binary(), resource, available);
+  auto usage = std::vector<double>{1.0};
+  resource_scheduler.SubtractCPUResourceInstances(usage);
+  RayConfig::instance().gcs_actor_scheduling_enabled() = false;
+  RayConfig::instance().scheduler_spread_threshold() = 0.6;
+  absl::flat_hash_map<std::string, double> require;
+  require[cpu] = 1.0;
+  int64_t violations = 0;
+  bool is_feasible = false;
+  auto node = resource_scheduler.GetBestSchedulableNode(require, false, true, false,
+                                                        &violations, &is_feasible);
+  ASSERT_EQ(node, remote_node.Binary());
+  RayConfig::instance().gcs_actor_scheduling_enabled() = true;
+  node = resource_scheduler.GetBestSchedulableNode(require, false, true, false,
+                                                   &violations, &is_feasible);
+  ASSERT_EQ(node, local_node.Binary());
 }
 
 TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {

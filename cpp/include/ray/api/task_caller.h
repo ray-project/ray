@@ -27,7 +27,7 @@ class TaskCaller {
   TaskCaller(RayRuntime *runtime, RemoteFunctionHolder remote_function_holder);
 
   template <typename... Args>
-  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);
+  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&...args);
 
   TaskCaller &SetName(std::string name) {
     task_options_.name = std::move(name);
@@ -71,11 +71,13 @@ TaskCaller<F>::TaskCaller(RayRuntime *runtime,
 template <typename F>
 template <typename... Args>
 ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(
-    Args &&... args) {
+    Args &&...args) {
   StaticCheck<F, Args...>();
   CheckTaskOptions(task_options_.resources);
   using ReturnType = boost::callable_traits::return_type_t<F>;
-  Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
+  using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
+  Arguments::WrapArgs<ArgsTuple>(&args_, std::make_index_sequence<sizeof...(Args)>{},
+                                 std::forward<Args>(args)...);
   auto returned_object_id = runtime_->Call(remote_function_holder_, args_, task_options_);
   return ObjectRef<ReturnType>(returned_object_id);
 }

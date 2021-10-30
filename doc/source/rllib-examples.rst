@@ -146,7 +146,7 @@ Multi-Agent and Hierarchical
    Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
 - `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__:
    Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
-- `PettingZoo multi-agent example <https://github.com/ray-project/ray/blob/master/rllib/examples/pettingzoo_env.py>`__:
+- `PettingZoo multi-agent example <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/rllib_pistonball.py>`__:
    Example on how to use RLlib to learn in `PettingZoo <https://www.pettingzoo.ml>`__ multi-agent environments.
 - `PPO with centralized critic on two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__:
    Example of customizing PPO to leverage a centralized value function.
