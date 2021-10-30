@@ -1,27 +1,30 @@
-import ray
-from ray.train import Trainer
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
+import json
+import os
+import time
 
-from ray.train.examples.train_linear_example import train_func
+import ray
+
+from ray.train.examples.train_linear_example import train_linear
 
 if __name__ == "__main__":
-    import argparse
+    start = time.time()
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        help=("Finish quickly for testing."))
-    args = parser.parse_args()
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "horovod_user_test")
 
-    ray.init(address="auto")
+    if addr is not None and addr.startswith("anyscale://"):
+        ray.init(address=addr, job_name=job_name)
+    else:
+        ray.init(address="auto")
 
-    trainer = Trainer("torch", num_workers=4, use_gpu=True)
-    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
-    trainer.start()
-    results = trainer.run(
-        train_func,
-        config,
-        callbacks=[JsonLoggerCallback(),
-                   TBXLoggerCallback()])
-    trainer.shutdown()
+    results = train_linear(num_workers=6, use_gpu=True, epochs=20)
+
+    taken = time.time() - start
+    result = {"time_taken": taken, "train_results": results}
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/train_torc_linear_test.json")
+
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
+
+    print("Test Successful!")

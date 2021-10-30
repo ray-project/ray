@@ -1,26 +1,31 @@
+import json
+import os
+import time
+
 import ray
-from ray.train import Trainer
-from ray.train.examples.tensorflow_mnist_example import train_func
+from ray.train.examples.tensorflow_mnist_example import train_tensorflow_mnist
 
 if __name__ == "__main__":
-    import argparse
+    start = time.time()
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        help=("Finish quickly for testing."))
-    args = parser.parse_args()
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "horovod_user_test")
 
-    ray.init(address="auto")
+    if addr is not None and addr.startswith("anyscale://"):
+        ray.init(address=addr, job_name=job_name)
+    else:
+        ray.init(address="auto")
 
-    trainer = Trainer(backend="tensorflow", num_workers=4, use_gpu=True)
-    trainer.start()
-    results = trainer.run(
-        train_func=train_func,
-        config={
-            "lr": 1e-3,
-            "batch_size": 64,
-            "epochs": 4
-        })
-    trainer.shutdown()
+    train_tensorflow_mnist(num_workers=6, use_gpu=True, epochs=20)
+
+    taken = time.time() - start
+    result = {
+        "time_taken": taken,
+    }
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/train_torc_linear_test.json")
+
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
+
+    print("Test Successful!")

@@ -147,10 +147,6 @@ NIGHTLY_TESTS = {
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
     ],
-    "~/ray/release/train_tests/train_tests.yaml": [
-        "train_tensorflow_linear,test",
-        "train_torch_linear,test",
-    ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "bookkeeping_overhead",
         "durable_trainable",
@@ -249,7 +245,12 @@ MANUAL_TESTS = {
 #   2. Use autoscaling/scale up (no wait_cluster.py)
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
-USER_TESTS = {}
+USER_TESTS = {
+    "~/ray/release/train_tests/train_tests.yaml": [
+        "train_tensorflow_linear,test",
+        "train_torch_linear,test",
+    ]
+}
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
