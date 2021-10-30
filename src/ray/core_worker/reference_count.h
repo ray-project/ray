@@ -705,7 +705,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///   that the borrowed ID contained another ID in the returned
   ///   borrowed_refs.
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
-                                         ReferenceTable *borrowed_refs)
+                                         ReferenceTable *borrowed_refs,
+                                         bool clear_stored)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge remote borrowers into our local ref count. This will add any
