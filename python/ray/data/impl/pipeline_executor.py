@@ -12,7 +12,8 @@ if TYPE_CHECKING:
 
 
 @ray.remote(num_cpus=0, placement_group=None)
-def pipeline_stage(fn: Callable[[], Dataset[T]], context: DatasetContext) -> Dataset[T]:
+def pipeline_stage(fn: Callable[[], Dataset[T]],
+                   context: DatasetContext) -> Dataset[T]:
     DatasetContext._set_current(context)
     try:
         prev = set_progress_bars(False)
@@ -27,7 +28,8 @@ class PipelineExecutor:
         self._stages: List[ObjectRef[Dataset[
             Any]]] = [None] * (len(self._pipeline._stages) + 1)
         self._iter = iter(self._pipeline._base_iterable)
-        self._stages[0] = pipeline_stage.remote(next(self._iter), DatasetContext.get_instance())
+        self._stages[0] = pipeline_stage.remote(
+            next(self._iter), DatasetContext.get_instance())
 
         if self._pipeline._length and self._pipeline._length != float("inf"):
             length = self._pipeline._length
@@ -76,13 +78,14 @@ class PipelineExecutor:
                     output = result
                 else:
                     fn = self._pipeline._stages[i]
-                    self._stages[i +
-                                 1] = pipeline_stage.remote(lambda: fn(result), DatasetContext.get_instance())
+                    self._stages[i + 1] = pipeline_stage.remote(
+                        lambda: fn(result), DatasetContext.get_instance())
 
             # Pull a new element for the initial slot if possible.
             if self._stages[0] is None:
                 try:
-                    self._stages[0] = pipeline_stage.remote(next(self._iter), DatasetContext.get_instance())
+                    self._stages[0] = pipeline_stage.remote(
+                        next(self._iter), DatasetContext.get_instance())
                 except StopIteration:
                     pass
 
