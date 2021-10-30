@@ -119,7 +119,8 @@ def main(num_workers,
          use_gpu,
          timeout_s=30,
          placement_group_timeout_s=100,
-         **kwargs):
+         kwargs=None):
+    kwargs = kwargs if kwargs else {}
     settings = RayExecutor.create_settings(
         timeout_s=timeout_s,
         placement_group_timeout_s=placement_group_timeout_s)
@@ -219,4 +220,4 @@ if __name__ == "__main__":
     main(
         num_workers=args.num_workers,
         use_gpu=args.use_cuda if args.use_cuda else False,
-        **kwargs)
+        kwargs=kwargs)
