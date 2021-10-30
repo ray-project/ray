@@ -514,7 +514,8 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
   auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
-  info_by_sched_cls_[sched_cls].running_tasks.erase(task->GetTaskSpecification().TaskId());
+  info_by_sched_cls_[sched_cls].running_tasks.erase(
+      task->GetTaskSpecification().TaskId());
   if (info_by_sched_cls_[sched_cls].running_tasks.size() == 0) {
     info_by_sched_cls_.erase(sched_cls);
   }

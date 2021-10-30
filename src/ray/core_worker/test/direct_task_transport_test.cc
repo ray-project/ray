@@ -143,7 +143,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
 class MockRayletClient : public WorkerLeaseInterface {
  public:
-  Status ReturnWorker(int worker_port, const WorkerID &worker_id, bool disconnect_worker) override {
+  Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                      bool disconnect_worker) override {
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {

@@ -226,11 +226,11 @@ class ClusterTaskManagerTest : public ::testing::Test {
               return true;
             },
             /*max_pinned_task_arguments_bytes=*/1000,
-            /*execute_after=*/[this](std::function<void()> fn, double wait_time_ns) {
+            /*execute_after=*/
+            [this](std::function<void()> fn, double wait_time_ns) {
               delayed_execution_.push_back({fn, wait_time_ns});
               return nullptr;
-            }
-                      ) {}
+            }) {}
 
   void SetUp() {
     static rpc::GcsNodeInfo node_info;
@@ -1640,49 +1640,46 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
   auto scheduler_ = std::make_shared<ClusterResourceScheduler>(
-                                                               ClusterResourceScheduler(id_.Binary(), local_node_resources, *gcs_client_));
+      ClusterResourceScheduler(id_.Binary(), local_node_resources, *gcs_client_));
 
   std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
                                                              double)>
-    asdf = [this](std::function<void()> fn, double wait_ns) {
-             return nullptr;
-           };
-  ClusterTaskManager 
-        task_manager_(
-            id_, scheduler_, dependency_manager_,
-            /* is_owner_alive= */
-            [this](const WorkerID &worker_id, const NodeID &node_id) {
-              return is_owner_alive_;
-            },
-            /* get_node_info= */
-            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
-              node_info_calls_++;
-              if (node_info_.count(node_id) != 0) {
-                return &node_info_[node_id];
-              }
-              return nullptr;
-            },
-            /* announce_infeasible_task= */
-            [this](const RayTask &task) { announce_infeasible_task_calls_++; }, pool_,
-            leased_workers_,
-            /* get_task_arguments= */
-            [this](const std::vector<ObjectID> &object_ids,
-                   std::vector<std::unique_ptr<RayObject>> *results) {
-              for (auto &obj_id : object_ids) {
-                if (missing_objects_.count(obj_id) == 0) {
-                  results->emplace_back(MakeDummyArg());
-                } else {
-                  results->emplace_back(nullptr);
-                }
-              }
-              return true;
-            },
-            /*max_pinned_task_arguments_bytes=*/1000,
-            /*execute_after=*/[this](std::function<void()> fn, double wait_time_ns) {
-              delayed_execution_.push_back({fn, wait_time_ns});
-              return nullptr;
-            }
-                      );
+      asdf = [this](std::function<void()> fn, double wait_ns) { return nullptr; };
+  ClusterTaskManager task_manager_(
+      id_, scheduler_, dependency_manager_,
+      /* is_owner_alive= */
+      [this](const WorkerID &worker_id, const NodeID &node_id) {
+        return is_owner_alive_;
+      },
+      /* get_node_info= */
+      [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
+        node_info_calls_++;
+        if (node_info_.count(node_id) != 0) {
+          return &node_info_[node_id];
+        }
+        return nullptr;
+      },
+      /* announce_infeasible_task= */
+      [this](const RayTask &task) { announce_infeasible_task_calls_++; }, pool_,
+      leased_workers_,
+      /* get_task_arguments= */
+      [this](const std::vector<ObjectID> &object_ids,
+             std::vector<std::unique_ptr<RayObject>> *results) {
+        for (auto &obj_id : object_ids) {
+          if (missing_objects_.count(obj_id) == 0) {
+            results->emplace_back(MakeDummyArg());
+          } else {
+            results->emplace_back(nullptr);
+          }
+        }
+        return true;
+      },
+      /*max_pinned_task_arguments_bytes=*/1000,
+      /*execute_after=*/
+      [this](std::function<void()> fn, double wait_time_ns) {
+        delayed_execution_.push_back({fn, wait_time_ns});
+        return nullptr;
+      });
 
   RayTask task = CreateTask({}, /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({}, /*num_args=*/0, /*args=*/{});
