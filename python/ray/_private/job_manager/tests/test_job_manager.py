@@ -2,7 +2,6 @@ from uuid import uuid4
 import tempfile
 import os
 import time
-import psutil
 
 import pytest
 
@@ -244,8 +243,6 @@ class TestAsyncAPI:
                                  "do echo 'Waiting...' && sleep 1; "
                                  "done")
 
-            print(len(psutil.pids()))
-            prev = set(psutil.pids())
             job_id = job_manager.submit_job(wait_for_file_cmd)
 
             for _ in range(10):
@@ -259,14 +256,20 @@ class TestAsyncAPI:
             wait_for_condition(
                 check_job_stopped, job_manager=job_manager, job_id=job_id)
 
-            print(len(psutil.pids()))
-            print(set(psutil.pids()) - prev)
             # Assert re-stopping a stopped job also returns False
             assert job_manager.stop_job(job_id) is False
             # Assert stopping non-existent job returns False
             assert job_manager.stop_job(str(uuid4())) is False
 
-            print(len(psutil.pids()))
+    def test_kill_job_actor_in_before_driver_finish(self, job_manager):
+        """
+        Test submitting a long running / blocker driver script, and kill
+        the job supervisor actor before script returns and ensure
+
+        1) Job status is correctly marked as failed
+        2) No hanging subprocess from failed job
+        """
+        pass
 
     def test_stop_job_in_pending(self, job_manager):
         """
@@ -278,11 +281,20 @@ class TestAsyncAPI:
         """
         pass
 
-    def test_stop_job_subprocess_cleanup(self, job_manager):
+    def test_stop_job_subprocess_cleanup_upon_success(self, job_manager):
         """
         Ensure driver scripts' subprocess is cleaned up properly when we
-        stopped a job.
+        successfully finished a job.
 
-        SIGTERM first, SIGKILL after certain timeout.
+        SIGTERM first, SIGKILL after 3 seconds.
+        """
+        pass
+
+    def test_stop_job_subprocess_cleanup_upon_stop(self, job_manager):
+        """
+        Ensure driver scripts' subprocess is cleaned up properly when we
+        stopped a running job.
+
+        SIGTERM first, SIGKILL after 3 seconds.
         """
         pass

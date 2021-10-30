@@ -126,7 +126,7 @@ class JobSupervisor:
                                                      "a+") as stderr:
             child = await asyncio.create_subprocess_shell(
                 cmd, stdout=stdout, stderr=stderr)
-
+            logger.debug(f"Started driver command subprocess PID: {child.pid}")
             self._status_client.put_child_process_pid(self._job_id, child.pid)
             self._task_coro = asyncio.create_task(child.wait())
             exit_code = await self._task_coro
@@ -156,8 +156,10 @@ class JobSupervisor:
                 self._job_id)
 
             exit_code = await self._exec_cmd(cmd, stdout_path, stderr_path)
+        except asyncio.CancelledError:
+            logger.debug("Driver command coroutine canceled.")
         except Exception as e:
-            logger.info(e)
+            logger.debug(e)
         finally:
             logger.debug(
                 f"Driver command coroutine returned, exit code: {exit_code}")
@@ -189,19 +191,28 @@ class JobSupervisor:
         return self._status_client.get_status(self._job_id)
 
     def stop(self):
+        def on_terminate(proc):
+            logger.debug(
+                f"process {proc} terminated with exit code {proc.returncode}")
+
         if self._task_coro is None:
             logger.debug("No running task to cancel.")
             return False
         else:
-            logger.debug(f"Stopping task for job {self._job_id} ....")
-            # Put sta
-            self._status_client.put_status(self._job_id, JobStatus.STOPPED)
+            logger.debug(
+                f"Stopping task coroutine for job {self._job_id} ....")
+
             self._task_coro.cancel()
             pid = self._status_client.get_child_process_pid(self._job_id)
             if psutil.pid_exists(pid):
-                logger.debug(f"Terminating child process PID: {pid}")
                 child = psutil.Process(pid)
                 child.terminate()
+                gone, alive = psutil.wait_procs(
+                    [child], timeout=3, callback=on_terminate)
+                for child in alive:
+                    child.kill()
+
+            self._status_client.put_status(self._job_id, JobStatus.STOPPED)
 
             return True
 
@@ -256,6 +267,8 @@ class JobManager:
 
         supervisor = None
         try:
+            logger.debug(
+                f"Submitting job with generated internal job_id: {job_id}")
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=self.JOB_ACTOR_NAME.format(job_id=job_id),
