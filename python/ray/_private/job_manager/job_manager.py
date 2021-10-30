@@ -21,6 +21,7 @@ from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
 logger = logging.getLogger(__name__)
 
+
 class JobLogStorageClient:
     """
     Disk storage for stdout / stderr of driver script logs.
