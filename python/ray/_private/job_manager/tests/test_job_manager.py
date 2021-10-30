@@ -198,7 +198,7 @@ class TestAsyncAPI:
             wait_for_condition(
                 check_job_succeeded, job_manager=job_manager, job_id=job_id)
 
-    def test_cancel_job(self, job_manager):
+    def test_stop_job(self, job_manager):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_file = os.path.join(tmp_dir, "hello")
 
@@ -219,7 +219,29 @@ class TestAsyncAPI:
             wait_for_condition(
                 check_job_stopped, job_manager=job_manager, job_id=job_id)
 
+            # Assert re-stopping a stopped job also returns False
+            assert job_manager.stop_job(job_id) is False
+            # Assert stopping non-existent job returns False
             assert job_manager.stop_job(str(uuid4())) is False
+
+    def test_stop_job_in_pending(self, job_manager):
+        """
+        Kick off a job that took a while to reaching RUNNING state, stop the
+        job and ensure
+
+        1) Job can correctly be stop immediately with correct JobStatus
+        2) No dangling subprocess left.
+        """
+        pass
+
+    def test_stop_job_subprocess_cleanup(self, job_manager):
+        """
+        Ensure driver scripts' subprocess is cleaned up properly when we
+        stopped a job.
+
+        SIGTERM first, SIGKILL after certain timeout.
+        """
+        pass
 
 
 def test_pass_metadata(job_manager):

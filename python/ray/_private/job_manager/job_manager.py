@@ -96,7 +96,6 @@ class JobSupervisor:
 
     def __init__(self, job_id: str, metadata: Dict[str, str]):
         self._job_id = job_id
-        self._status = JobStatus.PENDING
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
@@ -124,10 +123,10 @@ class JobSupervisor:
         """Run the command, then exit afterwards.
         Should update state and logs.
         """
-        assert self._status == JobStatus.PENDING, (
+        cur_status = self.get_status()
+        assert cur_status == JobStatus.PENDING, (
             "Run should only be called once.")
-        self._status = JobStatus.RUNNING
-        self._status_client.put_status(self._job_id, self._status)
+        self._status_client.put_status(self._job_id, JobStatus.RUNNING)
         exit_code = None
 
         try:
@@ -147,18 +146,20 @@ class JobSupervisor:
         finally:
             # 3) Once command finishes, update status to SUCCEEDED or FAILED.
             # No action if command is stopped by user
-            if self._status != JobStatus.STOPPED:
+            cur_status = self.get_status()
+            if cur_status != JobStatus.STOPPED:
                 # Update terminal status based on subprocess return code.
                 if exit_code == 0:
-                    self._status = JobStatus.SUCCEEDED
+                    self._status_client.put_status(
+                        self._job_id, JobStatus.SUCCEEDED)
                 else:
-                    self._status = JobStatus.FAILED
+                    self._status_client.put_status(
+                        self._job_id, JobStatus.FAILED)
 
-                self._status_client.put_status(self._job_id, self._status)
             ray.actor.exit_actor()
 
     def get_status(self) -> JobStatus:
-        return self._status
+        return self._status_client.get_status(self._job_id)
 
     def stop(self):
         if self._task_coro is None:
@@ -167,8 +168,8 @@ class JobSupervisor:
         else:
             logger.info(f"Stopping task for job {self._job_id} ....")
             self._task_coro.cancel()
-            self._status = JobStatus.STOPPED
-            self._status_client.put_status(self._job_id, self._status)
+            self._status_client.put_status(
+                        self._job_id, JobStatus.STOPPED)
             return True
 
 
@@ -179,7 +180,8 @@ class JobManager:
     as lost once the ray cluster running job manager instance is down.
     """
     JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
-    START_ACTOR_TIMEOUT_S = 10
+    # Time given to setup runtime_env for job supervisor actor.
+    START_ACTOR_TIMEOUT_S = 60
 
     def __init__(self):
         self._status_client = JobStatusStorageClient()
@@ -201,14 +203,23 @@ class JobManager:
             metadata: Optional[Dict[str, str]] = None,
     ) -> str:
         """
-        1) Create new detached actor with same runtime_env as job spec
-        2) Get task / actor level runtime_env as env var and pass into
-            subprocess
-        3) subprocess.run(entrypoint)
+        Job execution happens asynchronously.
 
-        Returns unique job_id.
+        1) Generate a new unique id for this job submission, expected to be
+            executed in complete isolation.
+        2) Create new detached actor with same runtime_env as job spec
+        3) Get task / actor level runtime_env as env var and pass into
+            subprocess
+        4) asyncio.create_subprocess_shell(entrypoint)
+
+
+        Args:
+
+        Returns:
+
         """
         job_id = str(uuid4())
+        self._status_client.put_status(job_id, JobStatus.PENDING)
         supervisor = self._supervisor_actor_cls.options(
             lifetime="detached",
             name=self.JOB_ACTOR_NAME.format(job_id=job_id),
@@ -219,7 +230,7 @@ class JobManager:
             },
             # For now we assume supervisor actor and driver script have same
             # runtime_env.
-            runtime_env=runtime_env,
+            runtime_env=runtime_env
         ).remote(job_id, metadata or {})
 
         try:
@@ -227,7 +238,9 @@ class JobManager:
                 supervisor.ready.remote(), timeout=self.START_ACTOR_TIMEOUT_S)
         except GetTimeoutError:
             ray.kill(supervisor, no_restart=True)
-            raise RuntimeError(f"Failed to start actor for job {job_id}.")
+            self._status_client.put_status(job_id, JobStatus.FAILED)
+            raise RuntimeError(
+                f"Failed to start actor for job {job_id}. This could be runtime_env configuration failure, timeout after {self.START_ACTOR_TIMEOUT_S} secs. ")
 
         # Kick off the job to run in the background.
         supervisor.run.remote(entrypoint)
@@ -239,7 +252,7 @@ class JobManager:
         job_supervisor_actor = self._get_actor_for_job(job_id)
         if job_supervisor_actor is not None:
             # Actor is still alive, signal it to stop the driver.
-            return ray.get([job_supervisor_actor.stop.remote()])[0]
+            return ray.get(job_supervisor_actor.stop.remote())
         else:
             return False
 
