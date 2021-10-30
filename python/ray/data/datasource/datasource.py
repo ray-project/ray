@@ -127,6 +127,7 @@ class ReadTask(Callable[[], BlockPartition]):
         for block in result:
             metadata = BlockAccessor.for_block(block).get_metadata(
                 input_files=self._metadata.input_files)
+            assert context.block_owner
             partition.append((ray.put(block, _owner=context.block_owner),
                               metadata))
         if len(partition) == 0:
