@@ -1,8 +1,10 @@
+from typing import Optional
+
 import ray
 from ray.util.annotations import DeveloperAPI
 
 # The context singleton on this process.
-_default_context = None
+_default_context: "Optional[DatasetContext]" = None
 
 
 @DeveloperAPI
@@ -20,7 +22,7 @@ class DatasetContext:
         self.target_max_block_size = target_max_block_size
 
     @staticmethod
-    def get_current():
+    def get_current() -> "DatasetContext":
         """Get or create a singleton context.
 
         If the context has not yet been created in this process, it will be
