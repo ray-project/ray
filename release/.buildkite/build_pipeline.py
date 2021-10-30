@@ -247,8 +247,14 @@ MANUAL_TESTS = {
 #   4. Have the `use_connect` flag set.
 USER_TESTS = {
     "~/ray/release/train_tests/train_tests.yaml": [
-        "train_tensorflow_linear,test",
-        "train_torch_linear,test",
+        ConnectTest(
+            "train_tensorflow_linear,test",
+            requirements_file="release/train_tests"
+            "/driver_requirements.txt"),
+        ConnectTest(
+            "train_torch_linear,test",
+            requirements_file="release/train_tests"
+            "/driver_requirements.txt")
     ]
 }
 
