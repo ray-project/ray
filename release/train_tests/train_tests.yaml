@@ -4,8 +4,6 @@
         compute_template: compute_tpl.yaml
 
     run:
-        use_connect: True
-        autosuspend_mins: 20
         timeout: 36000
         script: python workloads/train_tensorflow_linear_test.py
 
@@ -15,7 +13,5 @@
         compute_template: compute_tpl.yaml
 
     run:
-        use_connect: True
-        autosuspend_mins: 20
         timeout: 36000
         script: python workloads/train_torch_linear_test.py
