@@ -234,7 +234,6 @@ class RayLog : public RayLogBase {
                           const std::string &logDir = "");
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
-  /// If `StartRayLog` wasn't called before, it will be no-op.
   static void ShutDownRayLog();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
@@ -288,8 +287,6 @@ class RayLog : public RayLogBase {
   bool is_fatal_ = false;
   /// String stream of exposed log content.
   std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
-  /// Whether or not the log is initialized.
-  static std::atomic<bool> initialized_;
   /// Callback functions which will be triggered to expose fatal log.
   static std::vector<FatalLogCallback> fatal_log_callbacks_;
   static RayLogLevel severity_threshold_;
