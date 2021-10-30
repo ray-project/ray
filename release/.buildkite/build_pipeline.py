@@ -248,7 +248,7 @@ MANUAL_TESTS = {
 USER_TESTS = {
     "~/ray/release/train_tests/train_tests.yaml": [
         ConnectTest(
-            "train_tensorflow_linear_test",
+            "train_tensorflow_mnist_test",
             requirements_file="release/train_tests"
             "/driver_requirements.txt"),
         ConnectTest(
