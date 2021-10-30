@@ -795,6 +795,8 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
                                              resource_entry.second->resource_capacity());
           }
           ResourceCreateUpdated(node_id, resource_set);
+          // When new node is added, try to reschedule the tasks
+          cluster_task_manager_->ScheduleAndDispatchTasks();
         }
       }));
 }
@@ -1481,7 +1483,7 @@ void NodeManager::HandleUpdateResourceUsage(
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
 
-  if (resource_usage_batch.seq_no() != next_resource_seq_no_) {
+  if (next_resource_seq_no_ != 0 && resource_usage_batch.seq_no() != next_resource_seq_no_) {
     RAY_LOG(WARNING)
         << "Raylet may have missed a resource broadcast. This either means that GCS has "
            "restarted, the network is heavily congested and is dropping, reordering, or "
@@ -1496,23 +1498,22 @@ void NodeManager::HandleUpdateResourceUsage(
   for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
     if (resource_change_or_data.has_data()) {
       const auto &resource_usage = resource_change_or_data.data();
-      const NodeID &node_id = NodeID::FromBinary(resource_usage.node_id());
-      if (node_id == self_node_id_) {
+      auto node_id = NodeID::FromBinary(resource_usage.node_id());
+      if (node_id != self_node_id_) {
         // Skip messages from self.
-        continue;
+        UpdateResourceUsage(node_id, resource_usage);
       }
-      UpdateResourceUsage(node_id, resource_usage);
     } else if (resource_change_or_data.has_change()) {
       const auto &resource_notification = resource_change_or_data.change();
-      auto id = NodeID::FromBinary(resource_notification.node_id());
+      auto node_id = NodeID::FromBinary(resource_notification.node_id());
       if (resource_notification.updated_resources_size() != 0) {
         ResourceSet resource_set(
             MapFromProtobuf(resource_notification.updated_resources()));
-        ResourceCreateUpdated(id, resource_set);
+        ResourceCreateUpdated(node_id, resource_set);
       }
 
       if (resource_notification.deleted_resources_size() != 0) {
-        ResourceDeleted(id,
+        ResourceDeleted(node_id,
                         VectorFromProtobuf(resource_notification.deleted_resources()));
       }
     }
