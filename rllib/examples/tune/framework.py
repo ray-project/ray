@@ -7,6 +7,7 @@ from pprint import pformat
 
 import ray
 from ray import tune
+from ray.tune import CLIReporter
 
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger("tune_framework")
@@ -42,7 +43,18 @@ def run():
             "time_total_s": 3000,
         },
         verbose=1,
-        num_samples=2)
+        num_samples=1,
+        progress_reporter=CLIReporter(
+            metric_columns={
+                "training_iteration": "iter",
+                "time_total_s": "time_total_s",
+                "timesteps_total": "ts",
+                "snapshots": "snapshots",
+                "episodes_this_iter": "train_episodes",
+            },
+            sort_by_metric=True,
+            max_report_frequency=30,
+        ))
 
 
 if __name__ == "__main__":
