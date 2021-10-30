@@ -942,9 +942,6 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
         }
       } else {
         RAY_UNUSED(inner_it->second.stored_in_objects.emplace(object_id, owner_address));
-        //        // This should be the first time that we have stored this object ID
-        //        // inside this return ID.
-        //        RAY_CHECK(inserted);
       }
       PRINT_REF_COUNT(inner_it);
     }
