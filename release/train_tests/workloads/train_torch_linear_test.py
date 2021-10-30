@@ -68,6 +68,7 @@ def train_func(config):
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
+    assert torch.cuda.is_available()
     device = torch.device(f"cuda:{train.local_rank()}"
                           if torch.cuda.is_available() else "cpu")
 
