@@ -274,8 +274,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
         # be published.
         elif actor_data_dict["state"] in ("ALIVE", "DEAD"):
             assert actor_data_dict.keys() >= {
-                "state", "address", "timestamp", "pid",
-                "creationTaskException", "rayNamespace"
+                "state", "address", "timestamp", "pid", "rayNamespace"
             }
         elif actor_data_dict["state"] == "PENDING_CREATION":
             assert actor_data_dict.keys() == {
