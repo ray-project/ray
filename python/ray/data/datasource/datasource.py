@@ -298,3 +298,11 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
             i += block_size
 
         return read_tasks
+
+
+# TODO(ekl) somehow removing this class definition will cause
+# test_dataset.py::test_callable_classes to fail, maybe due to import order.
+@ray.remote
+class _Dummy:
+    def f(self):
+        pass
