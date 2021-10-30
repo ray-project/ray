@@ -670,7 +670,8 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
   for (const auto &borrowed_id : borrowed_ids) {
     // Don't clear stored_in values, which may be from previous tasks that
     // created this same object id.
-    RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id, &borrowed_refs, /*clear_stored=*/false))
+    RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id, &borrowed_refs,
+                                                /*clear_stored=*/false))
         << borrowed_id;
     // Decrease the ref count for each of the borrowed IDs. This is because we
     // artificially increment each borrowed ID to keep it pinned during task
@@ -858,8 +859,8 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
     RAY_CHECK(msg.has_worker_ref_removed_message());
     const ReferenceTable new_borrower_refs =
         ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
-    RAY_LOG(DEBUG) << "WaitForRefRemoved returned for " << object_id << ", dest="
-                   << addr.worker_id;
+    RAY_LOG(DEBUG) << "WaitForRefRemoved returned for " << object_id
+                   << ", dest=" << addr.worker_id;
 
     CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
     // Unsubscribe the object once the message is published.
@@ -874,8 +875,8 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
     // When the request is failed, there's no new borrowers ref published from this
     // borrower.
     const auto object_id = ObjectID::FromBinary(object_id_binary);
-    RAY_LOG(DEBUG) << "WaitForRefRemoved failed for " << object_id << ", dest="
-                   << addr.worker_id;
+    RAY_LOG(DEBUG) << "WaitForRefRemoved failed for " << object_id
+                   << ", dest=" << addr.worker_id;
     CleanupBorrowersOnRefRemoved({}, object_id, addr);
   };
 
@@ -941,9 +942,9 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
         }
       } else {
         RAY_UNUSED(inner_it->second.stored_in_objects.emplace(object_id, owner_address));
-//        // This should be the first time that we have stored this object ID
-//        // inside this return ID.
-//        RAY_CHECK(inserted);
+        //        // This should be the first time that we have stored this object ID
+        //        // inside this return ID.
+        //        RAY_CHECK(inserted);
       }
       PRINT_REF_COUNT(inner_it);
     }
@@ -957,7 +958,8 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
     PRINT_REF_COUNT(it);
   }
   ReferenceTable borrowed_refs;
-  RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id, &borrowed_refs, /*clear_stored=*/true));
+  RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id, &borrowed_refs,
+                                               /*clear_stored=*/true));
   for (const auto &pair : borrowed_refs) {
     RAY_LOG(DEBUG) << pair.first << " has " << pair.second.borrowers.size()
                    << " borrowers, stored in " << pair.second.stored_in_objects.size();
@@ -971,8 +973,8 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   ReferenceTableToProto(borrowed_refs,
                         worker_ref_removed_message->mutable_borrowed_refs());
 
-  RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message for " << object_id << ", message has "
-                 << worker_ref_removed_message->borrowed_refs().size()
+  RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message for " << object_id
+                 << ", message has " << worker_ref_removed_message->borrowed_refs().size()
                  << " borrowed references.";
   object_info_publisher_->Publish(pub_message);
 }
@@ -1148,7 +1150,8 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   const auto object_size = it->second.object_size;
   if (object_size < 0) {
     // We don't know the object size so we can't returned valid locality data.
-    RAY_LOG(DEBUG) << "Reference [" << it->second.call_site << "] for object " << object_id
+    RAY_LOG(DEBUG) << "Reference [" << it->second.call_site << "] for object "
+                   << object_id
                    << " has an unknown object size, locality data not available";
     return absl::nullopt;
   }
