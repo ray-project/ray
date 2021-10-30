@@ -90,6 +90,7 @@ def train_tensorflow_mnist(num_workers=2, use_gpu=False, epochs=4):
     trainer.shutdown()
     print(f"Results: {results[0]}")
 
+
 if __name__ == "__main__":
     start = time.time()
 

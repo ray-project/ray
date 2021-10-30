@@ -96,7 +96,8 @@ def train_func(config):
 
 
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
-    trainer = Trainer(num_workers=num_workers, use_gpu=use_gpu)
+    trainer = Trainer(
+        backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer.start()
     results = trainer.run(
@@ -108,6 +109,7 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3):
 
     print(results)
     return results
+
 
 if __name__ == "__main__":
     start = time.time()
