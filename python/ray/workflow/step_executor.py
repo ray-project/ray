@@ -28,7 +28,7 @@ from ray.workflow.common import (
 
 if TYPE_CHECKING:
     from ray.workflow.common import (WorkflowRef, WorkflowInputs,
-                                     WorkflowStepOptions)
+                                     WorkflowStepRuntimeOptions)
     from ray.workflow.workflow_context import WorkflowStepContext
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
@@ -221,7 +221,7 @@ def commit_step(store: workflow_storage.WorkflowStorage, step_id: "StepID",
         outer_most_step_id=context.outer_most_step_id)
 
 
-def _wrap_run(func: Callable, options: "WorkflowStepOptions", *args,
+def _wrap_run(func: Callable, options: "WorkflowStepRuntimeOptions", *args,
               **kwargs) -> Tuple[Any, Any]:
     """Wrap the function and execute it.
 
@@ -313,7 +313,7 @@ def _wrap_run(func: Callable, options: "WorkflowStepOptions", *args,
 def _workflow_step_executor(func: Callable, context: "WorkflowStepContext",
                             step_id: "StepID",
                             baked_inputs: "_BakedWorkflowInputs",
-                            options: "WorkflowStepOptions") -> Any:
+                            options: "WorkflowStepRuntimeOptions") -> Any:
     """Executor function for workflow step.
 
     Args:

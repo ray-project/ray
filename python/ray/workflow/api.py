@@ -14,7 +14,7 @@ from ray.workflow import virtual_actor_class
 from ray.workflow import storage as storage_base
 from ray.workflow.common import (
     WorkflowStatus, ensure_ray_initialized, Workflow, Event,
-    WorkflowRunningError, WorkflowNotFoundError, WorkflowStepOptions, StepType)
+    WorkflowRunningError, WorkflowNotFoundError, WorkflowStepRuntimeOptions, StepType)
 from ray.workflow import serialization
 from ray.workflow.event_listener import (EventListener, EventListenerType,
                                          TimerListener)
@@ -71,7 +71,7 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
     serialization.init_manager()
 
 
-def make_step_decorator(step_options: "WorkflowStepOptions",
+def make_step_decorator(step_options: "WorkflowStepRuntimeOptions",
                         name: Optional[str] = None,
                         metadata: Optional[Dict[str, Any]] = None):
     def decorator(func):
@@ -96,7 +96,7 @@ def step(*args, **kwargs):
 
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        options = WorkflowStepOptions.make(step_type=StepType.FUNCTION)
+        options = WorkflowStepRuntimeOptions.make(step_type=StepType.FUNCTION)
         return make_step_decorator(options)(args[0])
     if len(args) != 0:
         raise ValueError(f"Invalid arguments for step decorator {args}")
@@ -106,7 +106,7 @@ def step(*args, **kwargs):
     metadata = kwargs.pop("metadata", None)
     ray_options = kwargs
 
-    options = WorkflowStepOptions.make(
+    options = WorkflowStepRuntimeOptions.make(
         step_type=StepType.FUNCTION,
         catch_exceptions=catch_exceptions,
         max_retries=max_retries,

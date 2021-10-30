@@ -14,7 +14,7 @@ from ray._private import signature
 from ray.workflow import storage
 from ray.workflow.common import (Workflow, StepID, WorkflowMetaData,
                                  WorkflowStatus, WorkflowRef,
-                                 WorkflowNotFoundError, WorkflowStepOptions)
+                                 WorkflowNotFoundError, WorkflowStepRuntimeOptions)
 from ray.workflow import workflow_context
 from ray.workflow import serialization
 from ray.workflow import serialization_context
@@ -73,7 +73,7 @@ class StepInspectResult:
     # The dynamically referenced workflows in the input of the workflow.
     workflow_refs: Optional[List[str]] = None
     # The options of the workflow step.
-    step_options: Optional[WorkflowStepOptions] = None
+    step_options: Optional[WorkflowStepRuntimeOptions] = None
     # step throw exception
     step_raised_exception: bool = False
 
@@ -337,7 +337,7 @@ class WorkflowStorage:
                 func_body_valid=(STEP_FUNC_BODY in keys),
                 workflows=metadata["workflows"],
                 workflow_refs=metadata["workflow_refs"],
-                step_options=WorkflowStepOptions.from_dict(
+                step_options=WorkflowStepRuntimeOptions.from_dict(
                     metadata["step_options"]),
                 step_raised_exception=(STEP_EXCEPTION in keys),
             )

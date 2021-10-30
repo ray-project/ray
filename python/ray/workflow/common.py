@@ -115,7 +115,7 @@ def calculate_identifier(obj: Any) -> str:
 
 
 @dataclass
-class WorkflowStepOptions:
+class WorkflowStepRuntimeOptions:
     """Options that will affect a workflow step at runtime."""
     # Type of the step.
     step_type: "StepType"
@@ -178,7 +178,7 @@ class WorkflowData:
     # name of the step
     name: str
     # Workflow step options provided by users.
-    step_options: WorkflowStepOptions
+    step_options: WorkflowStepRuntimeOptions
     # meta data to store
     user_metadata: Dict[str, Any]
 

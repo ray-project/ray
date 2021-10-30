@@ -5,7 +5,7 @@ from typing import Callable, Dict, Any, Optional
 from ray._private import signature
 from ray.workflow import serialization_context
 from ray.workflow.common import (Workflow, WorkflowData, StepType,
-                                 ensure_ray_initialized, WorkflowStepOptions)
+                                 ensure_ray_initialized, WorkflowStepRuntimeOptions)
 from ray.util.annotations import PublicAPI
 
 
@@ -15,7 +15,7 @@ class WorkflowStepFunction:
     def __init__(self,
                  func: Callable,
                  *,
-                 step_options: "WorkflowStepOptions" = None,
+                 step_options: "WorkflowStepRuntimeOptions" = None,
                  name: Optional[str] = None,
                  metadata: Optional[Dict[str, Any]] = None):
         if metadata is not None:
@@ -29,7 +29,7 @@ class WorkflowStepFunction:
                         "metadata values must be JSON serializable, "
                         "however '{}' has a value whose {}.".format(k, e))
         if step_options is None:
-            step_options = WorkflowStepOptions.make(
+            step_options = WorkflowStepRuntimeOptions.make(
                 step_type=StepType.FUNCTION)
         self._func = func
         self._step_options = step_options
@@ -95,7 +95,7 @@ class WorkflowStepFunction:
         # TODO(suquark): The options seems drops items that we did not
         # specify (e.g., the name become "None" if we did not pass
         # name to the options). This does not seem correct to me.
-        step_options = WorkflowStepOptions(
+        step_options = WorkflowStepRuntimeOptions(
             StepType.FUNCTION,
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,

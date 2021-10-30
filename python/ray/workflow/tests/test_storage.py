@@ -8,7 +8,7 @@ from ray.workflow import storage
 from ray.workflow.workflow_storage import asyncio_run
 from ray.workflow.common import (
     StepType,
-    WorkflowStepOptions,
+    WorkflowStepRuntimeOptions,
     WorkflowNotFoundError,
 )
 from ray.workflow.tests import utils
@@ -134,7 +134,7 @@ def test_workflow_storage(workflow_start_regular):
     wf_storage = workflow_storage.WorkflowStorage(workflow_id,
                                                   storage.get_global_storage())
     step_id = "some_step"
-    step_options = WorkflowStepOptions(
+    step_options = WorkflowStepRuntimeOptions(
         step_type=StepType.FUNCTION,
         catch_exceptions=False,
         max_retries=1,
@@ -218,7 +218,7 @@ def test_workflow_storage(workflow_start_regular):
             wf_storage._key_step_function_body(step_id), some_func))
     asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), args))
     inspect_result = wf_storage.inspect_step(step_id)
-    step_options = WorkflowStepOptions(
+    step_options = WorkflowStepRuntimeOptions(
         step_type=StepType.FUNCTION,
         catch_exceptions=False,
         max_retries=1,

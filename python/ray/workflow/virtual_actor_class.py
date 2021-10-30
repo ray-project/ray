@@ -12,7 +12,7 @@ from ray.util.inspect import (is_function_or_method, is_class_method,
 from ray._private import signature
 
 from ray.workflow.common import (slugify, WorkflowData, Workflow, WorkflowRef,
-                                 StepType, WorkflowStepOptions)
+                                 StepType, WorkflowStepRuntimeOptions)
 from ray.workflow import serialization_context
 from ray.workflow.storage import Storage, get_global_storage
 from ray.workflow.workflow_storage import WorkflowStorage
@@ -176,7 +176,7 @@ class _VirtualActorMethodHelper:
     from raw class methods."""
 
     def __init__(self, original_class, method: Callable, method_name: str,
-                 options: WorkflowStepOptions):
+                 options: WorkflowStepRuntimeOptions):
         self._original_class = original_class
         self._original_method = method
         # Extract the signature of the method. This will be used
@@ -259,7 +259,7 @@ class _VirtualActorMethodHelper:
                     raise ValueError(
                         "metadata values must be JSON serializable, "
                         "however '{}' has a value whose {}.".format(k, e))
-        options = WorkflowStepOptions.make(
+        options = WorkflowStepRuntimeOptions.make(
             step_type=self._options.step_type,
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
@@ -298,7 +298,7 @@ class VirtualActorMetadata:
                 step_type = StepType.READONLY_ACTOR_METHOD
             else:
                 step_type = StepType.ACTOR_METHOD
-            options = WorkflowStepOptions.make(step_type=step_type)
+            options = WorkflowStepRuntimeOptions.make(step_type=step_type)
             self.methods[method_name] = _VirtualActorMethodHelper(
                 original_class, method, method_name, options=options)
 
