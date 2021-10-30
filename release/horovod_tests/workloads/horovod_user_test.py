@@ -27,7 +27,7 @@ if __name__ == "__main__":
         "time_taken": taken,
     }
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/horovod_releastic_test.json")
+                                      "/tmp/horovod_user_test.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
