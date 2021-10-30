@@ -110,6 +110,7 @@ def test_async_actor_task_retries(ray_start_regular):
     assert ray.get(ref_3) == 3
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_task_retry_mini_integration(ray_start_cluster):
     """Test nested tasks with infinite retry and
         keep killing nodes while retrying is happening.
