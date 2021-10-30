@@ -1,6 +1,6 @@
 import functools
 import json
-from typing import Callable, Dict, Any
+from typing import Callable, Dict, Any, Optional
 
 from ray._private import signature
 from ray.workflow import serialization_context
@@ -15,15 +15,9 @@ class WorkflowStepFunction:
     def __init__(self,
                  func: Callable,
                  *,
-                 max_retries=3,
-                 catch_exceptions=False,
-                 name=None,
-                 metadata=None,
-                 ray_options=None):
-        if not isinstance(max_retries, int) or max_retries < 1:
-            raise ValueError("max_retries should be greater or equal to 1.")
-        if ray_options is not None and not isinstance(ray_options, dict):
-            raise ValueError("ray_options must be a dict.")
+                 step_options: "WorkflowStepOptions" = None,
+                 name: Optional[str] = None,
+                 metadata: Optional[Dict[str, Any]] = None):
         if metadata is not None:
             if not isinstance(metadata, dict):
                 raise ValueError("metadata must be a dict.")
@@ -34,11 +28,11 @@ class WorkflowStepFunction:
                     raise ValueError(
                         "metadata values must be JSON serializable, "
                         "however '{}' has a value whose {}.".format(k, e))
-
+        if step_options is None:
+            step_options = WorkflowStepOptions.make(
+                step_type=StepType.FUNCTION)
         self._func = func
-        self._max_retries = max_retries
-        self._catch_exceptions = catch_exceptions
-        self._ray_options = ray_options or {}
+        self._step_options = step_options
         self._func_signature = signature.extract_signature(func)
         self._name = name or ""
         self._user_metadata = metadata or {}
@@ -54,12 +48,6 @@ class WorkflowStepFunction:
                 return serialization_context.make_workflow_inputs(
                     flattened_args)
 
-            step_options = WorkflowStepOptions(
-                step_type=StepType.FUNCTION,
-                max_retries=self._max_retries,
-                catch_exceptions=self._catch_exceptions,
-                ray_options=self._ray_options,
-            )
             workflow_data = WorkflowData(
                 func_body=self._func,
                 inputs=None,
@@ -107,10 +95,14 @@ class WorkflowStepFunction:
         # TODO(suquark): The options seems drops items that we did not
         # specify (e.g., the name become "None" if we did not pass
         # name to the options). This does not seem correct to me.
+        step_options = WorkflowStepOptions(
+            StepType.FUNCTION,
+            catch_exceptions=catch_exceptions,
+            max_retries=max_retries,
+            ray_options=ray_options,
+        )
         return WorkflowStepFunction(
             self._func,
-            max_retries=max_retries,
-            catch_exceptions=catch_exceptions,
+            step_options=step_options,
             name=name,
-            metadata=metadata,
-            ray_options=ray_options)
+            metadata=metadata)

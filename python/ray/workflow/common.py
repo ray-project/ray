@@ -116,6 +116,7 @@ def calculate_identifier(obj: Any) -> str:
 
 @dataclass
 class WorkflowStepOptions:
+    """Options that will affect a workflow step at runtime."""
     # Type of the step.
     step_type: "StepType"
     # Whether the user want to handle the exception manually.
@@ -124,6 +125,31 @@ class WorkflowStepOptions:
     max_retries: int
     # ray_remote options
     ray_options: Dict[str, Any]
+
+    @classmethod
+    def make(cls,
+             *,
+             step_type,
+             catch_exceptions=None,
+             max_retries=None,
+             ray_options=None):
+        if max_retries is None:
+            max_retries = 3
+        elif not isinstance(max_retries, int) or max_retries < 1:
+            raise ValueError("max_retries should be greater or equal to 1.")
+        if catch_exceptions is None:
+            catch_exceptions = False
+        if max_retries is None:
+            max_retries = 3
+        if ray_options is None:
+            ray_options = {}
+        elif not isinstance(ray_options, dict):
+            raise ValueError("ray_options must be a dict.")
+        return cls(
+            step_type=step_type,
+            catch_exceptions=catch_exceptions,
+            max_retries=max_retries,
+            ray_options=ray_options)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -134,12 +160,12 @@ class WorkflowStepOptions:
         }
 
     @classmethod
-    def from_dict(cls, metadata: Dict[str, Any]):
+    def from_dict(cls, value: Dict[str, Any]):
         return cls(
-            step_type=StepType[metadata["step_type"]],
-            max_retries=metadata["max_retries"],
-            catch_exceptions=metadata["catch_exceptions"],
-            ray_options=metadata["ray_options"],
+            step_type=StepType[value["step_type"]],
+            max_retries=value["max_retries"],
+            catch_exceptions=value["catch_exceptions"],
+            ray_options=value["ray_options"],
         )
 
 

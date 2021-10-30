@@ -12,9 +12,9 @@ from ray.workflow.step_function import WorkflowStepFunction
 
 from ray.workflow import virtual_actor_class
 from ray.workflow import storage as storage_base
-from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized,
-                                 Workflow, Event, WorkflowRunningError,
-                                 WorkflowNotFoundError)
+from ray.workflow.common import (
+    WorkflowStatus, ensure_ray_initialized, Workflow, Event,
+    WorkflowRunningError, WorkflowNotFoundError, WorkflowStepOptions, StepType)
 from ray.workflow import serialization
 from ray.workflow.event_listener import (EventListener, EventListenerType,
                                          TimerListener)
@@ -71,9 +71,12 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
     serialization.init_manager()
 
 
-def make_step_decorator(step_options: Dict[str, Any]):
+def make_step_decorator(step_options: "WorkflowStepOptions",
+                        name: Optional[str] = None,
+                        metadata: Optional[Dict[str, Any]] = None):
     def decorator(func):
-        return WorkflowStepFunction(func, **step_options)
+        return WorkflowStepFunction(
+            func, step_options=step_options, name=name, metadata=metadata)
 
     return decorator
 
@@ -93,25 +96,22 @@ def step(*args, **kwargs):
 
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return make_step_decorator({})(args[0])
+        options = WorkflowStepOptions.make(step_type=StepType.FUNCTION)
+        return make_step_decorator(options)(args[0])
     if len(args) != 0:
         raise ValueError(f"Invalid arguments for step decorator {args}")
-    step_options = {}
     max_retries = kwargs.pop("max_retries", None)
-    if max_retries is not None:
-        step_options["max_retries"] = max_retries
     catch_exceptions = kwargs.pop("catch_exceptions", None)
-    if catch_exceptions is not None:
-        step_options["catch_exceptions"] = catch_exceptions
     name = kwargs.pop("name", None)
-    if name is not None:
-        step_options["name"] = name
     metadata = kwargs.pop("metadata", None)
-    if metadata is not None:
-        step_options["metadata"] = metadata
-    if len(kwargs) != 0:
-        step_options["ray_options"] = kwargs
-    return make_step_decorator(step_options)
+    ray_options = kwargs
+
+    options = WorkflowStepOptions.make(
+        step_type=StepType.FUNCTION,
+        catch_exceptions=catch_exceptions,
+        max_retries=max_retries,
+        ray_options=ray_options)
+    return make_step_decorator(options, name, metadata)
 
 
 @PublicAPI(stability="beta")

@@ -175,7 +175,8 @@ class _VirtualActorMethodHelper:
     """This is a helper class for managing options and creating workflow steps
     from raw class methods."""
 
-    def __init__(self, original_class, method: Callable, method_name: str):
+    def __init__(self, original_class, method: Callable, method_name: str,
+                 options: WorkflowStepOptions):
         self._original_class = original_class
         self._original_method = method
         # Extract the signature of the method. This will be used
@@ -198,17 +199,7 @@ class _VirtualActorMethodHelper:
 
         self._method = method
         self._method_name = method_name
-        self._readonly = getattr(method, "__virtual_actor_readonly__", False)
-        if self._readonly:
-            step_type = StepType.READONLY_ACTOR_METHOD
-        else:
-            step_type = StepType.ACTOR_METHOD
-        self._options = WorkflowStepOptions(
-            step_type=step_type,
-            max_retries=1,
-            catch_exceptions=False,
-            ray_options={},
-        )
+        self._options = options
         self._name = None
         self._user_metadata = {}
 
@@ -219,12 +210,12 @@ class _VirtualActorMethodHelper:
 
     @property
     def readonly(self) -> bool:
-        return self._readonly
+        return self._options.step_type == StepType.READONLY_ACTOR_METHOD
 
     def step(self, *args, **kwargs):
         flattened_args = signature.flatten_args(self._signature, args, kwargs)
         actor_id = workflow_context.get_current_workflow_id()
-        if not self._readonly:
+        if not self.readonly:
             if self._method_name == "__init__":
                 state_ref = None
             else:
@@ -235,7 +226,7 @@ class _VirtualActorMethodHelper:
         workflow_inputs = serialization_context.make_workflow_inputs(
             flattened_args)
 
-        if self._readonly:
+        if self.readonly:
             _actor_method = _wrap_readonly_actor_method(
                 actor_id, self._original_class, self._method_name)
         else:
@@ -258,8 +249,6 @@ class _VirtualActorMethodHelper:
                 name=None,
                 metadata=None,
                 **ray_options) -> "_VirtualActorMethodHelper":
-        if not isinstance(max_retries, int) or max_retries < 1:
-            raise ValueError("max_retries should be greater or equal to 1.")
         if metadata is not None:
             if not isinstance(metadata, dict):
                 raise ValueError("metadata must be a dict.")
@@ -270,11 +259,17 @@ class _VirtualActorMethodHelper:
                     raise ValueError(
                         "metadata values must be JSON serializable, "
                         "however '{}' has a value whose {}.".format(k, e))
+        options = WorkflowStepOptions.make(
+            step_type=self._options.step_type,
+            catch_exceptions=catch_exceptions,
+            max_retries=max_retries,
+            ray_options=ray_options)
         _self = _VirtualActorMethodHelper(
-            self._original_class, self._original_method, self._method_name)
-        _self._options.max_retries = max_retries
-        _self._options.catch_exceptions = catch_exceptions
-        _self._options.ray_options = ray_options
+            self._original_class,
+            self._original_method,
+            self._method_name,
+            options=options)
+
         _self._name = name
         _self._user_metadata = metadata
         return _self
@@ -297,8 +292,15 @@ class VirtualActorMetadata:
         self.qualname = original_class.__qualname__
         self.methods = {}
         for method_name, method in actor_methods:
+            self._readonly = getattr(method, "__virtual_actor_readonly__",
+                                     False)
+            if self._readonly:
+                step_type = StepType.READONLY_ACTOR_METHOD
+            else:
+                step_type = StepType.ACTOR_METHOD
+            options = WorkflowStepOptions.make(step_type=step_type)
             self.methods[method_name] = _VirtualActorMethodHelper(
-                original_class, method, method_name)
+                original_class, method, method_name, options=options)
 
     def generate_random_actor_id(self) -> str:
         """Generate random actor ID."""
