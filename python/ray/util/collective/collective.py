@@ -544,7 +544,8 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
 def send_multigpu(tensor,
                   dst_rank: int,
                   dst_gpu_index: int,
-                  group_name: str = "default"):
+                  group_name: str = "default",
+                  n_elements: int = 0):
     """Send a tensor to a remote GPU synchronously.
 
     The function asssume each process owns >1 GPUs, and the sender
@@ -555,6 +556,8 @@ def send_multigpu(tensor,
         dst_rank (int): the rank of the destination process.
         dst_gpu_index (int): the destination gpu index.
         group_name (str): the name of the collective group.
+        n_elements (int): if specified, send the next n elements
+            from the starting address of tensor.
 
     Returns:
         None
@@ -567,9 +570,12 @@ def send_multigpu(tensor,
     if dst_rank == g.rank:
         raise RuntimeError("The dst_rank '{}' is self. Considering "
                            "doing GPU to GPU memcpy instead?".format(dst_rank))
+    if n_elements < 0:
+        raise RuntimeError("The n_elements '{}' should >= 0.".format(n_elements))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
     opts.dst_gpu_index = dst_gpu_index
+    opts.n_elements = n_elements
     g.send([tensor], opts)
 
 
@@ -598,7 +604,8 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
 def recv_multigpu(tensor,
                   src_rank: int,
                   src_gpu_index: int,
-                  group_name: str = "default"):
+                  group_name: str = "default",
+                  n_elements: int = 0):
     """Receive a tensor from a remote GPU synchronously.
 
     The function asssume each process owns >1 GPUs, and the sender
@@ -621,9 +628,12 @@ def recv_multigpu(tensor,
     if src_rank == g.rank:
         raise RuntimeError("The dst_rank '{}' is self. Considering "
                            "doing GPU to GPU memcpy instead?".format(src_rank))
+    if n_elements < 0:
+        raise RuntimeError("The n_elements '{}' should be >= 0.".format(n_elements))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
     opts.src_gpu_index = src_gpu_index
+    opts.n_elements = n_elements
     g.recv([tensor], opts)
 
 
