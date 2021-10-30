@@ -795,9 +795,9 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
                                              resource_entry.second->resource_capacity());
           }
           ResourceCreateUpdated(node_id, resource_set);
-          // When new node is added, try to reschedule the tasks
-          cluster_task_manager_->ScheduleAndDispatchTasks();
         }
+        // When new node is added, try to reschedule the tasks
+        cluster_task_manager_->ScheduleAndDispatchTasks();
       }));
 }
 
