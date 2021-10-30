@@ -1418,12 +1418,14 @@ py_test(
     srcs = ["env/wrappers/tests/test_unity3d_env.py"]
 )
 
-py_test(
-    name = "env/wrappers/tests/test_recsim_wrapper",
-    tags = ["team:ml", "env"],
-    size = "small",
-    srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
-)
+# Taken out due to
+# AttributeError: module 'tensorflow.tools.docs.doc_controls' has no attribute 'inheritable_header
+#py_test(
+#    name = "env/wrappers/tests/test_recsim_wrapper",
+#    tags = ["team:ml", "env"],
+#    size = "small",
+#    srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
+#)
 
 py_test(
     name = "env/wrappers/tests/test_exception_wrapper",
@@ -2010,7 +2012,7 @@ py_test(
     name = "examples/bare_metal_policy_with_custom_view_reqs",
     main = "examples/bare_metal_policy_with_custom_view_reqs.py",
     tags = ["team:ml", "examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/bare_metal_policy_with_custom_view_reqs.py"],
 )
 
