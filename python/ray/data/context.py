@@ -1,5 +1,6 @@
-import ray
+import os
 
+import ray
 from ray.util.annotations import DeveloperAPI
 
 # The context singleton on this process.
@@ -22,14 +23,38 @@ class DatasetContext:
 
     @staticmethod
     def get_instance():
+        """Get or create a singleton context.
+
+        If the context has not yet been created in this process, it will be
+        initialized with default settings.
+        """
         global _default_context
+
         if _default_context is None:
-            _default_context = DatasetContext(
-                _get_or_create_block_owner_actor(), 500 * 1024 * 1024)
+            _default_context = DatasetContext(None, 500 * 1024 * 1024)
+
+        if _default_context.block_owner is None:
+            owner = _DesignatedBlockOwner.options(lifetime="detached").remote()
+            ray.get(owner.ping.remote())
+
+            # Clear the actor handle after Ray reinits since it's no longer
+            # valid.
+            def clear_owner():
+                if _default_context:
+                    _default_context.block_owner = None
+
+            ray.worker._post_init_hooks.append(clear_owner)
+            _default_context.block_owner = owner
+
         return _default_context
 
     @staticmethod
     def _set_current(context: "DatasetContext") -> None:
+        """Set the current context in a remote worker.
+
+        This is used internally by Dataset to propagate the driver context to
+        remote workers used for parallelization.
+        """
         global _default_context
         _default_context = context
 
@@ -38,18 +63,3 @@ class DatasetContext:
 class _DesignatedBlockOwner:
     def ping(self):
         return "ok"
-
-
-# We manually assign the owner so ray.put() blocks do not fate share with the
-# worker that created them.
-# TODO(ekl) remove this once we implement automatic ownership transfer.
-def _get_or_create_block_owner_actor() -> ray.actor.ActorHandle:
-    name = "datasets_global_block_owner"
-    namespace = "datasets_global_namespace"
-    try:
-        actor = ray.get_actor(name=name, namespace=namespace)
-    except ValueError:
-        actor = _DesignatedBlockOwner.options(
-            name=name, namespace=namespace, lifetime="detached").remote()
-    ray.get(actor.ping.remote())
-    return actor
