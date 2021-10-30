@@ -315,7 +315,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         continue;
       }
 
-      if (sched_cls_info.num_running_tasks >= sched_cls_info.capacity) {
+      if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
         RAY_LOG(ERROR) << "Hit cap";
         if (get_time_() > sched_cls_info.next_update_time) {
           // Don't increase the capacity on the very first update since that
@@ -514,8 +514,8 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
   auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
-  info_by_sched_cls_[sched_cls].num_running_tasks--;
-  if (info_by_sched_cls_[sched_cls].num_running_tasks == 0) {
+  info_by_sched_cls_[sched_cls].running_tasks.erase(task->GetTaskSpecification().TaskId());
+  if (info_by_sched_cls_[sched_cls].running_tasks.size() == 0) {
     info_by_sched_cls_.erase(sched_cls);
   }
 
@@ -1137,9 +1137,8 @@ void ClusterTaskManager::Dispatch(
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
-  // num_running_tasks_by_sched_cls_[task_spec.GetSchedulingClass()]++;
   const auto &sched_cls = task_spec.GetSchedulingClass();
-  info_by_sched_cls_[sched_cls].num_running_tasks++;
+  info_by_sched_cls_[sched_cls].running_tasks.insert(task_spec.TaskId());
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;

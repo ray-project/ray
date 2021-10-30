@@ -225,7 +225,12 @@ class ClusterTaskManagerTest : public ::testing::Test {
               }
               return true;
             },
-            /*max_pinned_task_arguments_bytes=*/1000) {}
+            /*max_pinned_task_arguments_bytes=*/1000,
+            /*execute_after=*/[this](std::function<void()> fn, double wait_time_ns) {
+              delayed_execution_.push_back({fn, wait_time_ns});
+              return nullptr;
+            }
+                      ) {}
 
   void SetUp() {
     static rpc::GcsNodeInfo node_info;
@@ -264,6 +269,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
     ASSERT_EQ(task_manager_.pinned_task_arguments_bytes_, 0);
     ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
+    // TODO assert the new datastructure here.
   }
 
   void AssertPinnedTaskArgumentsPresent(const RayTask &task) {
@@ -300,6 +306,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
   int node_info_calls_;
   int announce_infeasible_task_calls_;
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
+  std::vector<std::pair<std::function<void()>, double>> delayed_execution_;
+  double current_time_ns_;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
@@ -1626,40 +1634,55 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
 }
 
 TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
-  std::unordered_map<std::string, double> local_node_resources;
+  absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = 0;
   local_node_resources[ray::kGPU_ResourceLabel] = 4;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
   auto scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      ClusterResourceScheduler(id_.Binary(), local_node_resources));
-  ClusterTaskManager task_manager_(
-      id_, scheduler_, dependency_manager_,
-      /* is_owner_alive= */
-      [this](const WorkerID &worker_id, const NodeID &node_id) {
-        return is_owner_alive_;
-      },
-      /* get_node_info= */
-      [this](const NodeID &node_id) {
-        node_info_calls_++;
-        return node_info_[node_id];
-      },
-      /* announce_infeasible_task= */
-      [this](const RayTask &task) { announce_infeasible_task_calls_++; }, pool_,
-      leased_workers_,
-      /* get_task_arguments= */
-      [this](const std::vector<ObjectID> &object_ids,
-             std::vector<std::unique_ptr<RayObject>> *results) {
-        for (auto &obj_id : object_ids) {
-          if (missing_objects_.count(obj_id) == 0) {
-            results->emplace_back(MakeDummyArg());
-          } else {
-            results->emplace_back(nullptr);
-          }
-        }
-        return true;
-      },
-      /*max_pinned_task_arguments_bytes=*/1000);
+                                                               ClusterResourceScheduler(id_.Binary(), local_node_resources, *gcs_client_));
+
+  std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
+                                                             double)>
+    asdf = [this](std::function<void()> fn, double wait_ns) {
+             return nullptr;
+           };
+  ClusterTaskManager 
+        task_manager_(
+            id_, scheduler_, dependency_manager_,
+            /* is_owner_alive= */
+            [this](const WorkerID &worker_id, const NodeID &node_id) {
+              return is_owner_alive_;
+            },
+            /* get_node_info= */
+            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
+              node_info_calls_++;
+              if (node_info_.count(node_id) != 0) {
+                return &node_info_[node_id];
+              }
+              return nullptr;
+            },
+            /* announce_infeasible_task= */
+            [this](const RayTask &task) { announce_infeasible_task_calls_++; }, pool_,
+            leased_workers_,
+            /* get_task_arguments= */
+            [this](const std::vector<ObjectID> &object_ids,
+                   std::vector<std::unique_ptr<RayObject>> *results) {
+              for (auto &obj_id : object_ids) {
+                if (missing_objects_.count(obj_id) == 0) {
+                  results->emplace_back(MakeDummyArg());
+                } else {
+                  results->emplace_back(nullptr);
+                }
+              }
+              return true;
+            },
+            /*max_pinned_task_arguments_bytes=*/1000,
+            /*execute_after=*/[this](std::function<void()> fn, double wait_time_ns) {
+              delayed_execution_.push_back({fn, wait_time_ns});
+              return nullptr;
+            }
+                      );
 
   RayTask task = CreateTask({}, /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({}, /*num_args=*/0, /*args=*/{});

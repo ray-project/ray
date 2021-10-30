@@ -341,15 +341,15 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   struct SchedulingClassInfo {
     SchedulingClassInfo()
-        : num_running_tasks(0), capacity(0), next_update_time(0), num_updates(0) {}
-    /// The current total number of running tasks fo this scheduling class.
-    int64_t num_running_tasks;
+        : running_tasks(), capacity(0), next_update_time(0), num_updates(0) {}
+    /// Track the running task ids in this scheduling class.
+    absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
-    int64_t capacity;
+    uint64_t capacity;
     /// The next tie to update the class's capacity.
     double next_update_time;
     /// The number of consecutive times the scheduling class has been updated.
-    int64_t num_updates;
+    uint64_t num_updates;
     /// The timer that firest on next_update_time.
     std::shared_ptr<boost::asio::deadline_timer> timer;
   };
