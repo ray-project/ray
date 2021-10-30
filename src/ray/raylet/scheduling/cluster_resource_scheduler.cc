@@ -63,7 +63,14 @@ bool ClusterResourceScheduler::NodeAlive(int64_t node_id) const {
     return false;
   }
   auto node_id_binary = string_to_int_map_.Get(node_id);
-  return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id_binary)) != nullptr;
+  auto node_id = NodeID::FromBinary(node_id_binary);
+  bool alive = gcs_client_->Nodes().Get(node_id) != nullptr;
+  if(!alive) {
+    RAY_LOG(WARNING) << "Node " << node_id.Hex() << " is not available. "
+                     << "This might be caused by inconsistency between "
+                     << "cluster resource scheduler and gcs client cache";
+  }
+  return alive;
 }
 
 void ClusterResourceScheduler::InitResourceUnitInstanceInfo() {
