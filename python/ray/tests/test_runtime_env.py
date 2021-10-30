@@ -273,8 +273,7 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     Test actor task raises an exception.
     """
     a = A.options(runtime_env=runtime_env).remote()
-    # TODO(sang): Raise a RuntimeEnvSetupError with proper error.
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(a.ready.remote())
 
 
