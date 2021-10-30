@@ -2084,7 +2084,7 @@ py_test(
 py_test(
     name = "examples/custom_torch_policy",
     tags = ["team:ml", "examples", "examples_C", "examples_C_UtoZ"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_torch_policy.py"],
     args = ["--stop-iters=2", "--num-cpus=4"]
 )
