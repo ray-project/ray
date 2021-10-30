@@ -144,8 +144,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             for read_path in read_paths:
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
                     data = read_file(f, read_path, **reader_args)
-                    if isinstance(data, pa.Table) or isinstance(
-                            data, np.ndarray):
+                    if isinstance(data, pa.Table):
                         builder.add_block(data)
                     else:
                         builder.add(data)

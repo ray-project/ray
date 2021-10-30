@@ -121,7 +121,7 @@ class Dataset(Generic[T]):
         """
 
         fn = cache_wrapper(fn)
-        context = DatasetContext.get_instance()
+        context = DatasetContext.get_current()
 
         def transform(block: Block) -> Block:
             DatasetContext._set_current(context)
@@ -188,7 +188,7 @@ class Dataset(Generic[T]):
         import pandas as pd
 
         fn = cache_wrapper(fn)
-        context = DatasetContext.get_instance()
+        context = DatasetContext.get_current()
 
         def transform(block: Block) -> Block:
             DatasetContext._set_current(context)
@@ -260,7 +260,7 @@ class Dataset(Generic[T]):
         """
 
         fn = cache_wrapper(fn)
-        context = DatasetContext.get_instance()
+        context = DatasetContext.get_current()
 
         def transform(block: Block) -> Block:
             DatasetContext._set_current(context)
@@ -302,7 +302,7 @@ class Dataset(Generic[T]):
         """
 
         fn = cache_wrapper(fn)
-        context = DatasetContext.get_instance()
+        context = DatasetContext.get_current()
 
         def transform(block: Block) -> Block:
             DatasetContext._set_current(context)

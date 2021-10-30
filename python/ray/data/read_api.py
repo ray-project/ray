@@ -159,7 +159,7 @@ def read_datasource(datasource: Datasource[T],
     """
 
     read_tasks = datasource.prepare_read(parallelism, **read_args)
-    context = DatasetContext.get_instance()
+    context = DatasetContext.get_current()
 
     def remote_read(task: ReadTask) -> Block:
         DatasetContext._set_current(context)

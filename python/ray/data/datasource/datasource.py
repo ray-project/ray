@@ -116,7 +116,7 @@ class ReadTask(Callable[[], BlockPartition]):
         return self._metadata
 
     def __call__(self) -> BlockPartition:
-        context = DatasetContext.get_instance()
+        context = DatasetContext.get_current()
         result = self._read_fn()
         if not hasattr(result, "__iter__"):
             DeprecationWarning(

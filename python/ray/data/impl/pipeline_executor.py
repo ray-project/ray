@@ -29,7 +29,7 @@ class PipelineExecutor:
             Any]]] = [None] * (len(self._pipeline._stages) + 1)
         self._iter = iter(self._pipeline._base_iterable)
         self._stages[0] = pipeline_stage.remote(
-            next(self._iter), DatasetContext.get_instance())
+            next(self._iter), DatasetContext.get_current())
 
         if self._pipeline._length and self._pipeline._length != float("inf"):
             length = self._pipeline._length
@@ -79,13 +79,13 @@ class PipelineExecutor:
                 else:
                     fn = self._pipeline._stages[i]
                     self._stages[i + 1] = pipeline_stage.remote(
-                        lambda: fn(result), DatasetContext.get_instance())
+                        lambda: fn(result), DatasetContext.get_current())
 
             # Pull a new element for the initial slot if possible.
             if self._stages[0] is None:
                 try:
                     self._stages[0] = pipeline_stage.remote(
-                        next(self._iter), DatasetContext.get_instance())
+                        next(self._iter), DatasetContext.get_current())
                 except StopIteration:
                     pass
 

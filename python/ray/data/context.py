@@ -10,17 +10,17 @@ class DatasetContext:
     """Singleton for shared Dataset resources and configurations.
 
     This object is automatically propagated to workers and can be retrieved
-    from the driver and remote workers via DatasetContext.get_instance().
+    from the driver and remote workers via DatasetContext.get_current().
     """
 
     def __init__(self, block_owner: ray.actor.ActorHandle,
                  target_max_block_size: int):
-        """Private constructor (use get_instance() instead)."""
+        """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
         self.target_max_block_size = target_max_block_size
 
     @staticmethod
-    def get_instance():
+    def get_current():
         """Get or create a singleton context.
 
         If the context has not yet been created in this process, it will be
