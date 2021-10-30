@@ -2,6 +2,7 @@ from uuid import uuid4
 import tempfile
 import os
 import time
+import psutil
 
 import pytest
 
@@ -46,59 +47,56 @@ def check_job_stopped(job_manager, job_id):
     return status == JobStatus.STOPPED
 
 
-def test_submit_basic_echo(job_manager):
-    job_id = job_manager.submit_job("echo hello")
+class TestShellScriptExecution:
+    def test_submit_basic_echo(self, job_manager):
+        job_id = job_manager.submit_job("echo hello")
 
-    wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(job_id) == b"hello"
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
+        assert job_manager.get_job_stdout(job_id) == b"hello"
 
+    def test_submit_stderr(self, job_manager):
+        job_id = job_manager.submit_job("echo error 1>&2")
 
-def test_submit_stderr(job_manager):
-    job_id = job_manager.submit_job("echo error 1>&2")
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
+        assert job_manager.get_job_stderr(job_id) == b"error"
 
-    wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stderr(job_id) == b"error"
+    def test_submit_ls_grep(self, job_manager):
+        job_id = job_manager.submit_job("ls | grep test_job_manager.py")
 
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
+        assert job_manager.get_job_stdout(job_id) == b"test_job_manager.py"
 
-def test_submit_ls_grep(job_manager):
-    job_id = job_manager.submit_job("ls | grep test_job_manager.py")
+    def test_subprocess_exception(self, job_manager):
+        """
+        Run a python script with exception, ensure:
+        1) Job status is marked as failed
+        2) Job manager can surface exception message back to stderr api
+        3) Job no hanging job supervisor actor
+        4) Empty stdout
+        """
+        job_id = job_manager.submit_job(
+            "python subprocess_driver_scripts/script_with_exception.py")
 
-    wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(job_id) == b"test_job_manager.py"
+        wait_for_condition(
+            check_job_failed, job_manager=job_manager, job_id=job_id)
+        stderr = job_manager.get_job_stderr(job_id).decode("utf-8")
+        last_line = stderr.strip().splitlines()[-1]
+        assert last_line == "Exception: Script failed with exception !"
+        assert job_manager._get_actor_for_job(job_id) is None
+        assert job_manager.get_job_stdout(job_id) == b""
 
+    def test_submit_with_s3_runtime_env(self, job_manager):
+        job_id = job_manager.submit_job(
+            "python script.py",
+            runtime_env={"working_dir": "s3://runtime-env-test/script.zip"})
 
-def test_subprocess_exception(job_manager):
-    """
-    Run a python script with exception, ensure:
-    1) Job status is marked as failed
-    2) Job manager can surface exception message back to stderr api
-    3) Job no hanging job supervisor actor
-    4) Empty stdout
-    """
-    job_id = job_manager.submit_job(
-        "python subprocess_driver_scripts/script_with_exception.py")
-
-    wait_for_condition(
-        check_job_failed, job_manager=job_manager, job_id=job_id)
-    stderr = job_manager.get_job_stderr(job_id).decode("utf-8")
-    last_line = stderr.strip().splitlines()[-1]
-    assert last_line == "Exception: Script failed with exception !"
-    assert job_manager._get_actor_for_job(job_id) is None
-    assert job_manager.get_job_stdout(job_id) == b""
-
-
-def test_submit_with_s3_runtime_env(job_manager):
-    job_id = job_manager.submit_job(
-        "python script.py",
-        runtime_env={"working_dir": "s3://runtime-env-test/script.zip"})
-
-    wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(
-        job_id) == b"Executing main() from script.py !!"
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
+        assert job_manager.get_job_stdout(
+            job_id) == b"Executing main() from script.py !!"
 
 
 class TestRuntimeEnv:
@@ -172,6 +170,45 @@ class TestRuntimeEnv:
             "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
             "are provided")
 
+    def test_failed_runtime_env_configuration(self, job_manager):
+        """Ensure job status is correctly set as failed if job supervisor
+        actor failed to setup runtime_env.
+        """
+        with pytest.raises(RuntimeError):
+            job_id = job_manager.submit_job(
+                "python subprocess_driver_scripts/override_env_var.py",
+                runtime_env={"working_dir": "path_not_exist"})
+
+            assert job_manager.get_job_status(job_id) == JobStatus.FAILED
+
+    def test_pass_metadata(self, job_manager):
+        print_metadata_cmd = (
+            "python -c\""
+            "import ray;"
+            "ray.init();"
+            "job_config=ray.worker.global_worker.core_worker.get_job_config();"
+            "print(dict(sorted(job_config.metadata.items())))"
+            "\"")
+
+        # Check that we default to no metadata.
+        job_id = job_manager.submit_job(print_metadata_cmd)
+
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
+        assert job_manager.get_job_stdout(job_id) == b"{}"
+
+        # Check that we can pass custom metadata.
+        job_id = job_manager.submit_job(
+            print_metadata_cmd, metadata={
+                "key1": "val1",
+                "key2": "val2"
+            })
+
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
+        assert job_manager.get_job_stdout(
+            job_id) == b"{'key1': 'val1', 'key2': 'val2'}"
+
 
 class TestAsyncAPI:
     def test_status_and_logs_while_blocking(self, job_manager):
@@ -206,6 +243,9 @@ class TestAsyncAPI:
             wait_for_file_cmd = (f"until [ -f {tmp_file} ]; "
                                  "do echo 'Waiting...' && sleep 1; "
                                  "done")
+
+            print(len(psutil.pids()))
+            prev = set(psutil.pids())
             job_id = job_manager.submit_job(wait_for_file_cmd)
 
             for _ in range(10):
@@ -219,10 +259,14 @@ class TestAsyncAPI:
             wait_for_condition(
                 check_job_stopped, job_manager=job_manager, job_id=job_id)
 
+            print(len(psutil.pids()))
+            print(set(psutil.pids()) - prev)
             # Assert re-stopping a stopped job also returns False
             assert job_manager.stop_job(job_id) is False
             # Assert stopping non-existent job returns False
             assert job_manager.stop_job(str(uuid4())) is False
+
+            print(len(psutil.pids()))
 
     def test_stop_job_in_pending(self, job_manager):
         """
@@ -242,32 +286,3 @@ class TestAsyncAPI:
         SIGTERM first, SIGKILL after certain timeout.
         """
         pass
-
-
-def test_pass_metadata(job_manager):
-    print_metadata_cmd = (
-        "python -c\""
-        "import ray;"
-        "ray.init();"
-        "job_config=ray.worker.global_worker.core_worker.get_job_config();"
-        "print(dict(sorted(job_config.metadata.items())))"
-        "\"")
-
-    # Check that we default to no metadata.
-    job_id = job_manager.submit_job(print_metadata_cmd)
-
-    wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(job_id) == b"{}"
-
-    # Check that we can pass custom metadata.
-    job_id = job_manager.submit_job(
-        print_metadata_cmd, metadata={
-            "key1": "val1",
-            "key2": "val2"
-        })
-
-    wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(
-        job_id) == b"{'key1': 'val1', 'key2': 'val2'}"

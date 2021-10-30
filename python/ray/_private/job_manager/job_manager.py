@@ -2,13 +2,14 @@ import asyncio
 import pickle
 import os
 import json
+import psutil
+
 from typing import Any, Dict, Tuple, Optional
 from uuid import uuid4
 
 import ray
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
-from ray.exceptions import GetTimeoutError, RayActorError
 from ray.serve.utils import get_current_node_resource_key
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
@@ -69,6 +70,7 @@ class JobStatusStorageClient:
     Handles formatting of status storage key given job id.
     """
     JOB_STATUS_KEY = "_ray_internal_job_status_{job_id}"
+    JOB_CHILD_PROCESS_PID_KEY = "_ray_internal_job_child_process_pid_{job_id}"
 
     def __init__(self):
         assert _internal_kv_initialized()
@@ -83,6 +85,16 @@ class JobStatusStorageClient:
             self.JOB_STATUS_KEY.format(job_id=job_id))
         assert pickled_status is not None, f"Status not found for {job_id}"
         return pickle.loads(pickled_status)
+
+    def put_child_process_pid(self, job_id: str, pid):
+        _internal_kv_put(
+            self.JOB_CHILD_PROCESS_PID_KEY.format(job_id=job_id),
+            pickle.dumps(pid))
+
+    def get_child_process_pid(self, job_id: str):
+        pickled_pid = _internal_kv_get(
+            self.JOB_CHILD_PROCESS_PID_KEY.format(job_id=job_id))
+        return pickle.loads(pickled_pid)
 
 
 class JobSupervisor:
@@ -115,6 +127,7 @@ class JobSupervisor:
             child = await asyncio.create_subprocess_shell(
                 cmd, stdout=stdout, stderr=stderr)
 
+            self._status_client.put_child_process_pid(self._job_id, child.pid)
             self._task_coro = asyncio.create_task(child.wait())
             exit_code = await self._task_coro
             return exit_code
@@ -143,33 +156,53 @@ class JobSupervisor:
                 self._job_id)
 
             exit_code = await self._exec_cmd(cmd, stdout_path, stderr_path)
+        except Exception as e:
+            logger.info(e)
         finally:
+            logger.debug(
+                f"Driver command coroutine returned, exit code: {exit_code}")
             # 3) Once command finishes, update status to SUCCEEDED or FAILED.
             # No action if command is stopped by user
             cur_status = self.get_status()
-            if cur_status != JobStatus.STOPPED:
+            if cur_status != JobStatus.STOPPED and exit_code is not None:
                 # Update terminal status based on subprocess return code.
                 if exit_code == 0:
-                    self._status_client.put_status(
-                        self._job_id, JobStatus.SUCCEEDED)
+                    self._status_client.put_status(self._job_id,
+                                                   JobStatus.SUCCEEDED)
                 else:
-                    self._status_client.put_status(
-                        self._job_id, JobStatus.FAILED)
+                    self._status_client.put_status(self._job_id,
+                                                   JobStatus.FAILED)
 
-            ray.actor.exit_actor()
+            if exit_code is not None:
+                # Exit code as None indicates driver command is terminated
+                # by calling stop() which cancels task coroutine. In this case
+                # we want to ensure stop() finishes with returned status and
+                # offload supervisor actor exit at job manager level to avoid
+                # race condition where supervisor actor died before
+                # job_supervisor_actor.stop.remote() returns.
+                logger.debug(
+                    "Gracefully self-exiting job supervisor actor after "
+                    "driver command finished execution.")
+                ray.actor.exit_actor()
 
     def get_status(self) -> JobStatus:
         return self._status_client.get_status(self._job_id)
 
     def stop(self):
         if self._task_coro is None:
-            logger.info("No running task to cancel.")
+            logger.debug("No running task to cancel.")
             return False
         else:
-            logger.info(f"Stopping task for job {self._job_id} ....")
+            logger.debug(f"Stopping task for job {self._job_id} ....")
+            # Put sta
+            self._status_client.put_status(self._job_id, JobStatus.STOPPED)
             self._task_coro.cancel()
-            self._status_client.put_status(
-                        self._job_id, JobStatus.STOPPED)
+            pid = self._status_client.get_child_process_pid(self._job_id)
+            if psutil.pid_exists(pid):
+                logger.debug(f"Terminating child process PID: {pid}")
+                child = psutil.Process(pid)
+                child.terminate()
+
             return True
 
 
@@ -220,27 +253,31 @@ class JobManager:
         """
         job_id = str(uuid4())
         self._status_client.put_status(job_id, JobStatus.PENDING)
-        supervisor = self._supervisor_actor_cls.options(
-            lifetime="detached",
-            name=self.JOB_ACTOR_NAME.format(job_id=job_id),
-            # Currently we assume JobManager is created by dashboard server
-            # running on headnode, same for job supervisor actors scheduled
-            resources={
-                get_current_node_resource_key(): 0.001,
-            },
-            # For now we assume supervisor actor and driver script have same
-            # runtime_env.
-            runtime_env=runtime_env
-        ).remote(job_id, metadata or {})
 
+        supervisor = None
         try:
+            supervisor = self._supervisor_actor_cls.options(
+                lifetime="detached",
+                name=self.JOB_ACTOR_NAME.format(job_id=job_id),
+                # Currently we assume JobManager is created by dashboard server
+                # running on headnode, same for job supervisor actors scheduled
+                resources={
+                    get_current_node_resource_key(): 0.001,
+                },
+                # For now we assume supervisor actor and driver script have
+                # same runtime_env.
+                runtime_env=runtime_env).remote(job_id, metadata or {})
             ray.get(
                 supervisor.ready.remote(), timeout=self.START_ACTOR_TIMEOUT_S)
-        except GetTimeoutError:
-            ray.kill(supervisor, no_restart=True)
+        except Exception as e:
+            if supervisor:
+                ray.kill(supervisor, no_restart=True)
             self._status_client.put_status(job_id, JobStatus.FAILED)
             raise RuntimeError(
-                f"Failed to start actor for job {job_id}. This could be runtime_env configuration failure, timeout after {self.START_ACTOR_TIMEOUT_S} secs. ")
+                f"Failed to start actor for job {job_id}. This could be "
+                "runtime_env configuration failure, or timed out after "
+                f"{self.START_ACTOR_TIMEOUT_S} secs. "
+                f"Exception message: {str(e)}")
 
         # Kick off the job to run in the background.
         supervisor.run.remote(entrypoint)
@@ -251,20 +288,23 @@ class JobManager:
         """Request job to exit."""
         job_supervisor_actor = self._get_actor_for_job(job_id)
         if job_supervisor_actor is not None:
-            # Actor is still alive, signal it to stop the driver.
-            return ray.get(job_supervisor_actor.stop.remote())
+            # Actor is still alive, signal it to stop the driver, then ensure
+            # job actor exits.
+            killed = ray.get(job_supervisor_actor.stop.remote())
+            ray.kill(job_supervisor_actor, no_restart=True)
+            return killed
         else:
             return False
 
     def get_job_status(self, job_id: str):
         job_supervisor_actor = self._get_actor_for_job(job_id)
         # Actor is still alive, try to get status from it.
-        if job_supervisor_actor is not None:
-            try:
-                return ray.get(job_supervisor_actor.get_status.remote())
-            except RayActorError:
-                # Actor exited, so we should fall back to internal_kv.
-                pass
+        if job_supervisor_actor is None:
+            # TODO (jiaodong): There're corner cases here where the job actor
+            # died without writing job status to status client. We need to
+            # ensure to do best effort recovery and don't leave its status
+            # in non-terminal state forever.
+            pass
 
         # Fall back to storage if the actor is dead.
         return self._status_client.get_status(job_id)
