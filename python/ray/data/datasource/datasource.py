@@ -301,7 +301,8 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
 
 
 # TODO(ekl) somehow removing this class definition will cause
-# test_dataset.py::test_callable_classes to fail, maybe due to import order.
+# test_dataset.py::test_callable_classes to fail, maybe due to import order /
+# order of registration of Ray serialization hooks.
 @ray.remote
 class _Dummy:
     def f(self):
