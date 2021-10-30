@@ -120,6 +120,7 @@ class GcsClient:
 
     @classmethod
     def connect_to_gcs(cls, address):
+        assert isinstance(str, address)
         channel = grpc.insecure_channel(address)
         stubs = [gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)]
         return cls(stubs)

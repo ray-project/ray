@@ -4,34 +4,18 @@ import os
 from typing import List, Union
 
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.gcs_utils import GcsClient
 
-redis = os.environ.get("RAY_KV_USE_GCS", "0") == "0"
-_initialized = False
+global_gcs_client = None
 
-
-def _initialize_internal_kv(gcs_client: "ray._raylet.GcsClient" = None):
-    """Initialize the internal KV for use in other function calls.
-
-    We try to use a GCS client, either passed in here or from the Ray worker
-    global scope. If that is not possible or it's feature-flagged off with the
-    RAY_KV_USE_GCS env variable, we fall back to using the Ray worker redis
-    client directly.
-    """
-    global global_gcs_client, _initialized
-
-    if not _initialized:
-        if gcs_client is not None:
-            global_gcs_client = gcs_client
-        elif redis:
-            global_gcs_client = None
-        else:
-            try:
-                ray.worker.global_worker.gcs_client.kv_exists("dummy")
-                global_gcs_client = ray.worker.global_worker.gcs_client
-            except grpc.RpcError:
-                global_gcs_client = None
-
-    _initialized = True
+def _initialize_internal_kv(gcs_client: Union[GcsClient, str]):
+    """Initialize the internal KV for use in other function calls."""
+    global global_gcs_client
+    if isinstance(gcs_client, GcsClient):
+        global_gcs_client = gcs_client
+    else:
+        assert isinstance(gcs_client, str)
+        global_gcs_client = GcsClient.connect_to_gcs(gcs_client)
     return global_gcs_client
 
 
