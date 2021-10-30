@@ -5,7 +5,8 @@ from typing import Callable, Dict, Any, Optional
 from ray._private import signature
 from ray.workflow import serialization_context
 from ray.workflow.common import (Workflow, WorkflowData, StepType,
-                                 ensure_ray_initialized, WorkflowStepRuntimeOptions)
+                                 ensure_ray_initialized,
+                                 WorkflowStepRuntimeOptions)
 from ray.util.annotations import PublicAPI
 
 

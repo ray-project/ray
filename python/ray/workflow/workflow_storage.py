@@ -12,9 +12,9 @@ import ray
 from ray import cloudpickle
 from ray._private import signature
 from ray.workflow import storage
-from ray.workflow.common import (Workflow, StepID, WorkflowMetaData,
-                                 WorkflowStatus, WorkflowRef,
-                                 WorkflowNotFoundError, WorkflowStepRuntimeOptions)
+from ray.workflow.common import (
+    Workflow, StepID, WorkflowMetaData, WorkflowStatus, WorkflowRef,
+    WorkflowNotFoundError, WorkflowStepRuntimeOptions)
 from ray.workflow import workflow_context
 from ray.workflow import serialization
 from ray.workflow import serialization_context
