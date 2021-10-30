@@ -33,7 +33,7 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
