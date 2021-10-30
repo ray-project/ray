@@ -219,4 +219,4 @@ if __name__ == "__main__":
     main(
         num_workers=args.num_workers,
         use_gpu=args.use_cuda if args.use_cuda else False,
-        kwargs=kwargs)
+        **kwargs)
