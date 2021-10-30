@@ -6,7 +6,7 @@
   <parent>
     <artifactId>ray-streaming</artifactId>
     <groupId>io.ray</groupId>
-    <version>1.8.0</version>
+    <version>1.8.0.post1</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
