@@ -668,6 +668,8 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
   absl::MutexLock lock(&mutex_);
   ReferenceTable borrowed_refs;
   for (const auto &borrowed_id : borrowed_ids) {
+    // Don't clear stored_in values, which may be from previous tasks that
+    // created this same object id.
     RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id, &borrowed_refs, /*clear_stored=*/false))
         << borrowed_id;
     // Decrease the ref count for each of the borrowed IDs. This is because we
@@ -838,7 +840,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                          const rpc::WorkerAddress &addr,
                                          const ObjectID &contained_in_id) {
   const ObjectID &object_id = ref_it->first;
-  RAY_LOG(DEBUG) << "WaitForRefRemoved " << object_id << " " << addr.worker_id;
+  RAY_LOG(DEBUG) << "WaitForRefRemoved " << object_id << ", dest=" << addr.worker_id;
   auto sub_message = std::make_unique<rpc::SubMessage>();
   auto *request = sub_message->mutable_worker_ref_removed_message();
   // Only the owner should send requests to borrowers.
@@ -856,7 +858,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
     RAY_CHECK(msg.has_worker_ref_removed_message());
     const ReferenceTable new_borrower_refs =
         ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
-    RAY_LOG(DEBUG) << "WaitForRefRemoved returned for " << object_id << " "
+    RAY_LOG(DEBUG) << "WaitForRefRemoved returned for " << object_id << ", dest="
                    << addr.worker_id;
 
     CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
@@ -872,7 +874,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
     // When the request is failed, there's no new borrowers ref published from this
     // borrower.
     const auto object_id = ObjectID::FromBinary(object_id_binary);
-    RAY_LOG(DEBUG) << "WaitForRefRemoved failed for " << object_id << " "
+    RAY_LOG(DEBUG) << "WaitForRefRemoved failed for " << object_id << ", dest="
                    << addr.worker_id;
     CleanupBorrowersOnRefRemoved({}, object_id, addr);
   };
