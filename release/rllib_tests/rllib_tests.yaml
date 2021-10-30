@@ -73,7 +73,7 @@
 - name: connect_tests
   cluster:
     app_config: app_config.yaml
-    compute_template: 1gpu_4cpus.yaml
+    compute_template: 4gpus_64cpus.yaml
 
   run:
     use_connect: True

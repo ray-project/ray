@@ -11,7 +11,7 @@ worker_node_types:
     - name: worker_node
       instance_type: m5.xlarge
       min_workers: 0
-      max_workers: 0
+      max_workers: 20
       use_spot: false
 
 aws:
