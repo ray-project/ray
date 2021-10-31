@@ -529,19 +529,34 @@ def with_common_config(
 
 @PublicAPI
 class Trainer(Trainable):
-    """A trainer coordinates the optimization of one or more RL policies.
+    """An RLlib algorithm responsible for optimizing one or more Policies.
 
-    All RLlib trainers extend this base class, e.g., the A3CTrainer implements
-    the A3C algorithm for single and multi-agent training.
+    Trainers contain a WorkerSet under `self.workers`. A WorkerSet is
+    normally composed of a single local worker
+    (self.workers.local_worker()), used to compute and apply learning updates,
+    and optionally one or more remote workers (self.workers.remote_workers()),
+    used to generate environment samples in parallel.
 
-    Trainer objects retain internal model state between calls to train(), so
-    you should create a new trainer instance for each training session.
+    Each worker (remotes or local) contains a PolicyMap, which itself
+    may contain either one policy for single-agent training or one or more
+    policies for multi-agent training. Policies are synchronized
+    automatically from time to time using ray.remote calls. The exact
+    synchronization logic depends on the specific algorithm (Trainer) used,
+    but this usually happens from local worker to all remote workers and
+    after each training update.
 
-    Attributes:
-        env_creator (func): Function that creates a new training env.
-        config (obj): Algorithm-specific configuration data.
-        logdir (str): Directory in which training outputs should be placed.
+    You can write your own Trainer sub-classes by using the
+    rllib.agents.trainer_template.py::build_trainer() utility function.
+    This allows you to provide a custom `execution_plan`. You can find the
+    different built-in algorithms' execution plans in their respective main
+    py files, e.g. rllib.agents.dqn.dqn.py or rllib.agents.impala.impala.py.
+
+    The most important API methods a Trainer exposes are `train()`,
+    `evaluate()`, `save()` and `restore()`. Trainer objects retain internal
+    model state between calls to train(), so you should create a new
+    Trainer instance for each training session.
     """
+
     # Whether to allow unknown top-level config keys.
     _allow_unknown_configs = False
 
@@ -562,15 +577,18 @@ class Trainer(Trainable):
     @PublicAPI
     def __init__(self,
                  config: TrainerConfigDict = None,
-                 env: str = None,
+                 env: Union[str, EnvType, None] = None,
                  logger_creator: Callable[[], Logger] = None):
-        """Initialize an RLLib trainer.
+        """Initializes a Trainer instance.
 
         Args:
-            config (dict): Algorithm-specific configuration data.
-            env (str): Name of the environment to use. Note that this can also
-                be specified as the `env` key in config.
-            logger_creator (func): Function that creates a ray.tune.Logger
+            config: Algorithm-specific configuration dict.
+            env: Name of the environment to use (e.g. a gym-registered str),
+                a full class path (e.g.
+                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
+                class directly. Note that this arg can also be specified via
+                the "env" key in `config`.
+            logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
 
@@ -946,10 +964,10 @@ class Trainer(Trainable):
         merging evaluation_config with the normal trainer config.
 
         Args:
-            episodes_left_fn (Optional[Callable[[int], int]]): An optional
-                callable taking the already run num episodes as only arg
-                and returning the number of episodes left to run. It's used
-                to find out whether evaluation should continue.
+            episodes_left_fn: An optional callable taking the already run
+                num episodes as only arg and returning the number of
+                episodes left to run. It's used to find out whether
+                evaluation should continue.
         """
         # In case we are evaluating (in a thread) parallel to training,
         # we may have to re-enable eager mode here (gets disabled in the
@@ -961,8 +979,8 @@ class Trainer(Trainable):
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
 
+        # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
-            # Sync weights to the evaluation WorkerSet.
             self._sync_weights_to_workers(worker_set=self.evaluation_workers)
             self._sync_filters_if_needed(self.evaluation_workers)
 
@@ -1247,7 +1265,7 @@ class Trainer(Trainable):
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
         Args:
-            observation: observation from the environment.
+            observation: Observation from the environment.
             state: RNN hidden state, if any. If state is not None,
                 then all of compute_single_action(...) is returned
                 (computed action, rnn state(s), logits dictionary).
@@ -1278,7 +1296,7 @@ class Trainer(Trainable):
         Returns:
             any: The computed action if full_fetch=False, or
             tuple: The full output of policy.compute_actions() if
-                full_fetch=True or we have an RNN-based Policy.
+            full_fetch=True or we have an RNN-based Policy.
         """
         if normalize_actions is not None:
             deprecation_warning(
@@ -1368,16 +1386,16 @@ class Trainer(Trainable):
         """Return policy for the specified id, or None.
 
         Args:
-            policy_id (PolicyID): ID of the policy to return.
+            policy_id: ID of the policy to return.
         """
         return self.workers.local_worker().get_policy(policy_id)
 
     @PublicAPI
-    def get_weights(self, policies: List[PolicyID] = None) -> dict:
+    def get_weights(self, policies: Optional[List[PolicyID]] = None) -> dict:
         """Return a dictionary of policy ids to weights.
 
         Args:
-            policies (list): Optional list of policies to return weights for,
+            policies: Optional list of policies to return weights for,
                 or None for all policies.
         """
         return self.workers.local_worker().get_weights(policies)
@@ -1387,7 +1405,7 @@ class Trainer(Trainable):
         """Set policy weights by policy id.
 
         Args:
-            weights (dict): Map of policy ids to weights to set.
+            weights: Map of policy ids to weights to set.
         """
         self.workers.local_worker().set_weights(weights)
 
@@ -1500,16 +1518,18 @@ class Trainer(Trainable):
         """Export policy model with given policy_id to local directory.
 
         Args:
-            export_dir (string): Writable local directory.
-            policy_id (string): Optional policy id to export.
-            onnx (int): If given, will export model in ONNX format. The
+            export_dir: Writable local directory.
+            policy_id: Optional policy id to export.
+            onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
+                If None, the output format will be DL framework specific.
 
         Example:
             >>> trainer = MyTrainer()
             >>> for _ in range(10):
             >>>     trainer.train()
-            >>> trainer.export_policy_model("/tmp/export_dir")
+            >>> trainer.export_policy_model("/tmp/dir")
+            >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1)
         """
         self.workers.local_worker().export_policy_model(
             export_dir, policy_id, onnx)
@@ -1522,9 +1542,9 @@ class Trainer(Trainable):
         """Export tensorflow policy model checkpoint to local directory.
 
         Args:
-            export_dir (string): Writable local directory.
-            filename_prefix (string): file name prefix of checkpoint files.
-            policy_id (string): Optional policy id to export.
+            export_dir: Writable local directory.
+            filename_prefix: file name prefix of checkpoint files.
+            policy_id: Optional policy id to export.
 
         Example:
             >>> trainer = MyTrainer()
@@ -1542,8 +1562,8 @@ class Trainer(Trainable):
         """Imports a policy's model with given policy_id from a local h5 file.
 
         Args:
-            import_file (str): The h5 file to import from.
-            policy_id (string): Optional policy id to import into.
+            import_file: The h5 file to import from.
+            policy_id: Optional policy id to import into.
 
         Example:
             >>> trainer = MyTrainer()
