@@ -160,11 +160,13 @@
     - bash streaming/src/test/run_streaming_queue_test.sh
 
 - label: ":cpp: Worker"
+  conditions: [ "RAY_CI_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/travis/ci.sh test_cpp
 
 - label: ":cpp: Tests"
+  conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=llvm $(./scripts/bazel_export_options)
@@ -173,6 +175,7 @@
       -- //:all -rllib/... -core_worker_test
 
 - label: ":cpp: Tests (ASAN)"
+  conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=asan-clang $(./scripts/bazel_export_options)
@@ -182,6 +185,7 @@
       -- //:all -//:core_worker_test
 
 - label: ":cpp: Tests (UBSAN)"
+  conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=ubsan $(./scripts/bazel_export_options)
@@ -191,6 +195,7 @@
       -- //:all -//:core_worker_test -//:logging_test
 
 - label: ":cpp: Tests (TSAN)"
+  conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=tsan-clang $(./scripts/bazel_export_options)
