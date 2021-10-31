@@ -132,7 +132,7 @@ if __name__ == "__main__":
     results = train_linear(num_workers=6, use_gpu=True, epochs=20)
 
     taken = time.time() - start
-    result = {"time_taken": taken, "train_results": results}
+    result = {"time_taken": taken}
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
                                       "/tmp/train_torc_linear_test.json")
 
