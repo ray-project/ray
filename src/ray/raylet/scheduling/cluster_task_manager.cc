@@ -1190,11 +1190,11 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   metric_tasks_spilled_++;
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
+  RAY_LOG(ERROR) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
 
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
           spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
-    RAY_LOG(DEBUG) << "Tried to allocate resources for request " << task_spec.TaskId()
+    RAY_LOG(ERROR) << "Tried to allocate resources for request " << task_spec.TaskId()
                    << " on a remote node that are no longer available";
   }
 
@@ -1370,6 +1370,11 @@ void ClusterTaskManager::SpillWaitingTasks() {
         /*requires_object_store_memory=*/true,
         task.GetTaskSpecification().IsActorCreationTask(),
         /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
+    if(node_id_string.empty()) {
+      RAY_LOG(ERROR) << "Empty  node id";
+    } else {
+      RAY_LOG(ERROR) << "BestNodeID: " << NodeID::FromBinary(node_id_string).Hex();
+    }
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, *it);
@@ -1381,11 +1386,11 @@ void ClusterTaskManager::SpillWaitingTasks() {
       it = waiting_task_queue_.erase(it);
     } else {
       if (node_id_string.empty()) {
-        RAY_LOG(DEBUG) << "RayTask " << task_id
+        RAY_LOG(ERROR) << "RayTask " << task_id
                        << " has blocked dependencies, but no other node has resources, "
                           "keeping the task local";
       } else {
-        RAY_LOG(DEBUG) << "Keeping waiting task " << task_id << " local";
+        RAY_LOG(ERROR) << "Keeping waiting task " << task_id << " local";
       }
       // We should keep the task local. Note that an earlier task in the queue
       // may have different resource requirements and could actually be

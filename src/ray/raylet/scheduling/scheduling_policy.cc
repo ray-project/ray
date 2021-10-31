@@ -74,6 +74,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   if (predicate(local_node_id, local_node_view) && !force_spillback) {
     round.push_back(local_node_id);
   }
+  RAY_LOG(ERROR) << "Round.size=" << round.size();
 
   const auto start_index = round.size();
   for (const auto &pair : nodes) {
@@ -111,7 +112,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
     }
     bool is_available = node.GetLocalView().IsAvailable(resource_request,
                                                         ignore_pull_manager_at_capacity);
-    RAY_LOG(DEBUG) << "Node " << node_id << " is "
+    RAY_LOG(ERROR) << "Node " << node_id << " is "
                    << (is_available ? "available" : "not available");
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();

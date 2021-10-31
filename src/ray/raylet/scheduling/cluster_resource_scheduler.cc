@@ -66,7 +66,7 @@ bool ClusterResourceScheduler::NodeAlive(int64_t node_id) const {
   auto id = NodeID::FromBinary(node_id_binary);
   bool alive = gcs_client_->Nodes().Get(id) != nullptr;
   if (!alive) {
-    RAY_LOG(WARNING) << "Node " << id.Hex() << " is not available. "
+    RAY_LOG(WARNING) << "Node " << id.Hex() << " is not alive. "
                      << "This might be caused by inconsistency between "
                      << "cluster resource scheduler and gcs client cache";
   }
@@ -127,6 +127,8 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
                    << NodeID::FromBinary(node_id_string)
                    << " doesn't exist.";
     return false;
+  } else {
+    RAY_LOG(INFO) << "UpdateNode with id " << NodeID::FromBinary(node_id_string);
   }
 
   auto resources_total = MapFromProtobuf(resource_data.resources_total());
@@ -297,7 +299,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     *total_violations = 0;
   }
 
-  RAY_LOG(DEBUG) << "Scheduling decision. "
+  RAY_LOG(ERROR) << "Scheduling decision. "
                  << "forcing spillback: " << force_spillback
                  << ". Best node: " << best_node_id
                  << ", is infeasible: " << *is_infeasible;
