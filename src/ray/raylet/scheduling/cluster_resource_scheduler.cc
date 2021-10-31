@@ -123,6 +123,9 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
                                           const rpc::ResourcesData &resource_data) {
   auto node_id = string_to_int_map_.Insert(node_id_string);
   if (!nodes_.contains(node_id)) {
+    RAY_LOG(ERROR) << "UpdateNode failed, because node id "
+                   << NodeID::FromBinary(node_id_string)
+                   << " doesn't exist.";
     return false;
   }
 
