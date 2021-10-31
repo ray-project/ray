@@ -58,10 +58,10 @@ void GcsResourceManager::HandleUpdateResources(
     const rpc::UpdateResourcesRequest &request, rpc::UpdateResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(INFO) << "Updating resources, node id = " << node_id;
   auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
   for (const auto &entry : request.resources()) {
     changed_resources->emplace(entry.first, entry.second.resource_capacity());
+    RAY_LOG(INFO) << "Updating resources, node id = " << node_id << "(" << entry.first << ", " << entry.second.resource_capacity() << ")";
   }
 
   auto iter = cluster_scheduling_resources_.find(node_id);
@@ -116,13 +116,13 @@ void GcsResourceManager::HandleDeleteResources(
     const rpc::DeleteResourcesRequest &request, rpc::DeleteResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
   auto resource_names = VectorFromProtobuf(request.resource_name_list());
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
     // Update `cluster_scheduling_resources_`.
     for (const auto &resource_name : resource_names) {
       iter->second.DeleteResource(resource_name);
+      RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id << ", name = " << resource_name;
     }
 
     // Update gcs storage.
@@ -151,7 +151,6 @@ void GcsResourceManager::HandleDeleteResources(
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
             &node_resource_change);
       }
-
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
     RAY_CHECK_OK(

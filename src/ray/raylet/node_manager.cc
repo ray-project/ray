@@ -798,8 +798,8 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
         }
       }));
 
-  // When new node is added, try to reschedule the tasks
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  // // When new node is added, try to reschedule the tasks
+  // cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {
