@@ -43,7 +43,7 @@ def run():
             "time_total_s": 3000,
         },
         verbose=1,
-        num_samples=2,  # Run 2 trials in parallel.
+        num_samples=1,
         progress_reporter=CLIReporter(
             metric_columns={
                 "training_iteration": "iter",
