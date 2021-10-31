@@ -221,8 +221,8 @@ def commit_step(store: workflow_storage.WorkflowStorage, step_id: "StepID",
         outer_most_step_id=context.outer_most_step_id)
 
 
-def _wrap_run(func: Callable, options: "WorkflowStepRuntimeOptions", *args,
-              **kwargs) -> Tuple[Any, Any]:
+def _wrap_run(func: Callable, runtime_options: "WorkflowStepRuntimeOptions",
+              *args, **kwargs) -> Tuple[Any, Any]:
     """Wrap the function and execute it.
 
     It returns two parts, persisted_output (p-out) and volatile_output (v-out).
@@ -244,7 +244,7 @@ def _wrap_run(func: Callable, options: "WorkflowStepRuntimeOptions", *args,
 
     Args:
         func: The function body.
-        options: Step execution params.
+        runtime_options: Step execution params.
 
     Returns:
         State and output.
@@ -253,15 +253,15 @@ def _wrap_run(func: Callable, options: "WorkflowStepRuntimeOptions", *args,
     result = None
     # max_retries are for application level failure.
     # For ray failure, we should use max_retries.
-    for i in range(options.max_retries):
+    for i in range(runtime_options.max_retries):
         logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}"
-                    f"\t[{i + 1}/{options.max_retries}]")
+                    f"\t[{i + 1}/{runtime_options.max_retries}]")
         try:
             result = func(*args, **kwargs)
             exception = None
             break
         except BaseException as e:
-            if i + 1 == options.max_retries:
+            if i + 1 == runtime_options.max_retries:
                 retry_msg = "Maximum retry reached, stop retry."
             else:
                 retry_msg = "The step will be retried."
@@ -270,8 +270,8 @@ def _wrap_run(func: Callable, options: "WorkflowStepRuntimeOptions", *args,
                 f" {e}. {retry_msg}")
             exception = e
 
-    step_type = options.step_type
-    if options.catch_exceptions:
+    step_type = runtime_options.step_type
+    if runtime_options.catch_exceptions:
         if step_type == StepType.FUNCTION:
             if isinstance(result, Workflow):
                 # When it returns a nested workflow, catch_exception
@@ -285,7 +285,7 @@ def _wrap_run(func: Callable, options: "WorkflowStepRuntimeOptions", *args,
             # virtual actors do not persist exception
             persisted_output, volatile_output = result[0], (result[1],
                                                             exception)
-        elif options.step_type == StepType.READONLY_ACTOR_METHOD:
+        elif runtime_options.step_type == StepType.READONLY_ACTOR_METHOD:
             persisted_output, volatile_output = None, (result, exception)
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
@@ -310,10 +310,10 @@ def _wrap_run(func: Callable, options: "WorkflowStepRuntimeOptions", *args,
 
 
 @ray.remote(num_returns=2)
-def _workflow_step_executor(func: Callable, context: "WorkflowStepContext",
-                            step_id: "StepID",
-                            baked_inputs: "_BakedWorkflowInputs",
-                            options: "WorkflowStepRuntimeOptions") -> Any:
+def _workflow_step_executor(
+        func: Callable, context: "WorkflowStepContext", step_id: "StepID",
+        baked_inputs: "_BakedWorkflowInputs",
+        runtime_options: "WorkflowStepRuntimeOptions") -> Any:
     """Executor function for workflow step.
 
     Args:
@@ -321,7 +321,7 @@ def _workflow_step_executor(func: Callable, context: "WorkflowStepContext",
         func: The workflow step function.
         baked_inputs: The processed inputs for the step.
         context: Workflow step context. Used to access correct storage etc.
-        options: Parameters for workflow step execution.
+        runtime_options: Parameters for workflow step execution.
 
     Returns:
         Workflow step output.
@@ -329,7 +329,7 @@ def _workflow_step_executor(func: Callable, context: "WorkflowStepContext",
     # Part 1: update the context for the step
     workflow_context.update_workflow_step_context(context, step_id)
     context = workflow_context.get_workflow_step_context()
-    step_type = options.step_type
+    step_type = runtime_options.step_type
 
     # Part 2: resolve inputs
     args, kwargs = _resolve_step_inputs(baked_inputs)
@@ -339,8 +339,8 @@ def _workflow_step_executor(func: Callable, context: "WorkflowStepContext",
     try:
         step_prerun_metadata = {"start_time": time.time()}
         store.save_step_prerun_metadata(step_id, step_prerun_metadata)
-        persisted_output, volatile_output = _wrap_run(func, options, *args,
-                                                      **kwargs)
+        persisted_output, volatile_output = _wrap_run(func, runtime_options,
+                                                      *args, **kwargs)
         step_postrun_metadata = {"end_time": time.time()}
         store.save_step_postrun_metadata(step_id, step_postrun_metadata)
     except Exception as e:

@@ -96,8 +96,8 @@ class WorkflowStepFunction:
         # TODO(suquark): The options seems drops items that we did not
         # specify (e.g., the name become "None" if we did not pass
         # name to the options). This does not seem correct to me.
-        step_options = WorkflowStepRuntimeOptions(
-            StepType.FUNCTION,
+        step_options = WorkflowStepRuntimeOptions.make(
+            step_type=StepType.FUNCTION,
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
             ray_options=ray_options,

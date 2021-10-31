@@ -184,7 +184,9 @@ class WorkflowData:
 
     def to_metadata(self) -> Dict[str, Any]:
         f = self.func_body
-        # TODO(suquark): "name" here is different from the "name" field.
+        # TODO(suquark): "name" is the field of WorkflowData,
+        # however it is not used in the metadata below.
+        # "name" in the metadata is different from the "name" field.
         # Maybe rename it to avoid confusion.
         metadata = {
             "name": get_module(f) + "." + get_qualname(f),

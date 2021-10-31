@@ -117,7 +117,7 @@ class ActorMethod(ActorMethodBase):
             catch_exceptions=catch_exceptions,
             name=name,
             metadata=metadata,
-            ray_options=ray_options,
+            **ray_options,
         )
         return ActorMethod(self._actor_ref(), self._method_name, method_helper)
 
@@ -176,7 +176,7 @@ class _VirtualActorMethodHelper:
     from raw class methods."""
 
     def __init__(self, original_class, method: Callable, method_name: str,
-                 options: WorkflowStepRuntimeOptions):
+                 runtime_options: WorkflowStepRuntimeOptions):
         self._original_class = original_class
         self._original_method = method
         # Extract the signature of the method. This will be used
@@ -199,7 +199,7 @@ class _VirtualActorMethodHelper:
 
         self._method = method
         self._method_name = method_name
-        self._options = options
+        self._options = runtime_options
         self._name = None
         self._user_metadata = {}
 
@@ -268,7 +268,7 @@ class _VirtualActorMethodHelper:
             self._original_class,
             self._original_method,
             self._method_name,
-            options=options)
+            runtime_options=options)
 
         _self._name = name
         _self._user_metadata = metadata
@@ -300,7 +300,7 @@ class VirtualActorMetadata:
                 step_type = StepType.ACTOR_METHOD
             options = WorkflowStepRuntimeOptions.make(step_type=step_type)
             self.methods[method_name] = _VirtualActorMethodHelper(
-                original_class, method, method_name, options=options)
+                original_class, method, method_name, runtime_options=options)
 
     def generate_random_actor_id(self) -> str:
         """Generate random actor ID."""
