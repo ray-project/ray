@@ -1,8 +1,9 @@
-import sys
-
 import logging
+from pathlib import Path
+import sys
+import tempfile
+
 import pytest
-from pytest_lazyfixture import lazy_fixture
 
 from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (format_web_url, wait_for_condition,
@@ -29,22 +30,71 @@ def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
     return status == JobStatus.SUCCEEDED
 
 
-@pytest.mark.parametrize(
-    "working_dir",
-    [lazy_fixture("local_working_dir"),
-     lazy_fixture("s3_working_dir")])
-def test_submit_job(job_sdk_client, working_dir):
+@pytest.fixture(
+    scope="function",
+    params=["no_working_dir", "local_working_dir", "s3_working_dir"])
+def working_dir_option(request):
+    if request.param == "no_working_dir":
+        yield {
+            "runtime_env": {},
+            "entrypoint": "echo hello",
+            "expected_stdout": "hello",
+            "expected_stderr": ""
+        }
+    elif request.param == "local_working_dir":
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir)
+
+            hello_file = path / "test.py"
+            with hello_file.open(mode="w") as f:
+                f.write("from test_module import run_test\n")
+                f.write("print(run_test())")
+
+            module_path = path / "test_module"
+            module_path.mkdir(parents=True)
+
+            test_file = module_path / "test.py"
+            with test_file.open(mode="w") as f:
+                f.write("def run_test():\n")
+                f.write("    return 'Hello from test_module!'\n")
+
+            init_file = module_path / "__init__.py"
+            with init_file.open(mode="w") as f:
+                f.write("from test_module.test import run_test\n")
+
+            yield {
+                "runtime_env": {
+                    "working_dir": tmp_dir
+                },
+                "entrypoint": "python test.py",
+                "expected_stdout": "Hello from test_module!",
+                "expected_stderr": ""
+            }
+    elif request.param == "s3_working_dir":
+        yield {
+            "runtime_env": {
+                "working_dir": "s3://runtime-env-test/script.zip",
+            },
+            "entrypoint": "python script.py",
+            "expected_stdout": "Executing main() from script.py !!",
+            "expected_stderr": ""
+        }
+    else:
+        assert False, f"Unrecognized option: {request.param}."
+
+
+def test_submit_job(job_sdk_client, working_dir_option):
     client = job_sdk_client
 
     job_id = client.submit_job(
-        entrypoint=working_dir["entrypoint"],
-        runtime_env=working_dir["runtime_env"])
+        entrypoint=working_dir_option["entrypoint"],
+        runtime_env=working_dir_option["runtime_env"])
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
     stdout, stderr = client.get_job_logs(job_id)
-    assert stdout == working_dir["expected_stdout"]
-    assert stderr == working_dir["expected_stderr"]
+    assert stdout == working_dir_option["expected_stdout"]
+    assert stderr == working_dir_option["expected_stderr"]
 
 
 def test_job_metadata(job_sdk_client):
