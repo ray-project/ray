@@ -252,7 +252,10 @@ MANUAL_TESTS = {
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
 USER_TESTS = {
-    "~/ray/release/xgboost_tests/xgboost_tests.yaml": ["train_gpu_connect"]
+    "~/ray/release/xgboost_tests/xgboost_tests.yaml": [
+        "train_gpu_connect_latest",
+        "train_gpu_connect_master",
+    ]
 }
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
