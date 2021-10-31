@@ -13,8 +13,7 @@ import ray
 import ray.experimental.internal_kv as kv
 from ray._private.test_utils import wait_for_condition
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
-from ray._private.runtime_env.packaging import (GCS_STORAGE_MAX_SIZE,
-                                                SILENT_UPLOAD_SIZE_THRESHOLD)
+from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
@@ -824,20 +823,13 @@ import ray
 ray.init("{address}", runtime_env={{"py_modules": ["{tmp_dir}"]}})
 """
 
-        size = SILENT_UPLOAD_SIZE_THRESHOLD - 1024
-        with open(filepath, "wb") as f:
-            f.write(os.urandom(size))
-
-        output = run_string_as_driver(driver_script)
-        assert "Pushing file package" not in output
-
-        size = SILENT_UPLOAD_SIZE_THRESHOLD + 1
-        with open(filepath, "wb") as f:
-            f.write(os.urandom(size))
+        with open(filepath, "w") as f:
+            f.write("Hi")
 
         output = run_string_as_driver(driver_script)
         assert "Pushing file package" in output
         assert "Successfully pushed file package" in output
+        assert "warning" not in output.lower()
 
 
 @pytest.mark.skipif(
