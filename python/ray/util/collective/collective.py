@@ -571,7 +571,8 @@ def send_multigpu(tensor,
         raise RuntimeError("The dst_rank '{}' is self. Considering "
                            "doing GPU to GPU memcpy instead?".format(dst_rank))
     if n_elements < 0:
-        raise RuntimeError("The n_elements '{}' should >= 0.".format(n_elements))
+        raise RuntimeError(
+            "The n_elements '{}' should >= 0.".format(n_elements))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
     opts.dst_gpu_index = dst_gpu_index
@@ -629,7 +630,8 @@ def recv_multigpu(tensor,
         raise RuntimeError("The dst_rank '{}' is self. Considering "
                            "doing GPU to GPU memcpy instead?".format(src_rank))
     if n_elements < 0:
-        raise RuntimeError("The n_elements '{}' should be >= 0.".format(n_elements))
+        raise RuntimeError(
+            "The n_elements '{}' should be >= 0.".format(n_elements))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
     opts.src_gpu_index = src_gpu_index
