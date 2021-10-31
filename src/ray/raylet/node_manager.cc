@@ -797,9 +797,6 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
           ResourceCreateUpdated(node_id, resource_set);
         }
       }));
-
-  // // When new node is added, try to reschedule the tasks
-  // cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {
@@ -912,6 +909,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                                         new_resource_capacity);
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
+  cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void NodeManager::ResourceDeleted(const NodeID &node_id,
