@@ -246,7 +246,8 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
   for (const auto &resource_req_custom_resource : resource_request.custom_resources) {
     auto it = this->custom_resources.find(resource_req_custom_resource.first);
     if (it == this->custom_resources.end()) {
-      // RAY_LOG(ERROR) << "Resource not available: " << resource_req_custom_resource.first;
+      // RAY_LOG(ERROR) << "Resource not available: " <<
+      // resource_req_custom_resource.first;
       return false;
     } else if (resource_req_custom_resource.second > it->second.available) {
       return false;
@@ -280,7 +281,8 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
       // RAY_LOG(ERROR) << "Resource, not found " << resource_req_custom_resource.first;
       return false;
     } else if (resource_req_custom_resource.second > it->second.total) {
-      // RAY_LOG(ERROR) << "Resource, not sufficient " << resource_req_custom_resource.first
+      // RAY_LOG(ERROR) << "Resource, not sufficient " <<
+      // resource_req_custom_resource.first
       //                << ", " << resource_req_custom_resource.second << ", "
       //                << it->second.total;
       return false;
