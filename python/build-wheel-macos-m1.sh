@@ -24,6 +24,8 @@ if ![[ -z "${SKIP_DEP_RES}" ]]; then
   ./ci/travis/install-bazel.sh
 
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+  curl -o- https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh | bash
+  source ~/.bash_profile
   conda init bash
   source ~/.bash_profile
 
