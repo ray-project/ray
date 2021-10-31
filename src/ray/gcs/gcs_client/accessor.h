@@ -680,9 +680,6 @@ class NodeResourceInfoAccessor {
       const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
       const StatusCallback &done);
 
-  /// Fill resource fields with cached resources. Used by light resource usage report.
-  virtual void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
-
  private:
   // Mutex to protect the cached_resource_usage_ field.
   absl::Mutex mutex_;
