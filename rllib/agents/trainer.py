@@ -839,6 +839,8 @@ class Trainer(Trainable):
         self.local_replay_buffer = (
             self._create_local_replay_buffer_if_necessary(self.config))
 
+        # Make the call to self._init. Sub-classes should override this
+        # method to implement custom initialization logic.
         self._init(self.config, self.env_creator)
 
         # Evaluation setup.
@@ -934,10 +936,6 @@ class Trainer(Trainable):
               env_creator: Callable[[EnvContext], EnvType]):
         """Subclasses should override this for custom initialization."""
         raise NotImplementedError
-
-    @Deprecated(new="Trainer.evaluate", error=False)
-    def _evaluate(self) -> dict:
-        return self.evaluate()
 
     @PublicAPI
     def evaluate(self, episodes_left_fn: Optional[Callable[[int], int]] = None
@@ -1222,10 +1220,6 @@ class Trainer(Trainable):
         # Ensure backward compatibility.
         else:
             return action
-
-    @Deprecated(new="compute_single_action", error=False)
-    def compute_action(self, *args, **kwargs):
-        return self.compute_single_action(*args, **kwargs)
 
     @PublicAPI
     def compute_actions(
@@ -1938,6 +1932,14 @@ class Trainer(Trainable):
             "{} is an invalid env specification. ".format(env_object) +
             "You can specify a custom env as either a class "
             "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
+
+    @Deprecated(new="Trainer.evaluate", error=False)
+    def _evaluate(self) -> dict:
+        return self.evaluate()
+
+    @Deprecated(new="compute_single_action", error=False)
+    def compute_action(self, *args, **kwargs):
+        return self.compute_single_action(*args, **kwargs)
 
     def __repr__(self):
         return self._name
