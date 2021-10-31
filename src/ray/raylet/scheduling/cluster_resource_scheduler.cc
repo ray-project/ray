@@ -124,8 +124,7 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
   auto node_id = string_to_int_map_.Insert(node_id_string);
   if (!nodes_.contains(node_id)) {
     RAY_LOG(ERROR) << "UpdateNode failed, because node id "
-                   << NodeID::FromBinary(node_id_string)
-                   << " doesn't exist.";
+                   << NodeID::FromBinary(node_id_string) << " doesn't exist.";
     return false;
   } else {
     RAY_LOG(INFO) << "UpdateNode with id " << NodeID::FromBinary(node_id_string);
@@ -322,7 +321,9 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
   }
   // Return the string name of the node.
   auto node_id_binary = string_to_int_map_.Get(node_id);
-  RAY_LOG(ERROR) << "DBG: GetBestSchedulableNode: node_id_binary.size() = " << node_id_binary.size() << " total_violations =  " << *total_violations << " is_infeasible = " << is_infeasible;
+  RAY_LOG(ERROR) << "DBG: GetBestSchedulableNode: node_id_binary.size() = "
+                 << node_id_binary.size() << " total_violations =  " << *total_violations
+                 << " is_infeasible = " << is_infeasible;
   return node_id_binary;
 }
 

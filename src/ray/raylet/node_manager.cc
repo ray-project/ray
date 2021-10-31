@@ -900,7 +900,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
                  << " with created or updated resources: "
                  << createUpdatedResources.ToString() << ". Updating resource map.";
-  if(node_id == self_node_id_) {
+  if (node_id == self_node_id_) {
     return;
   }
 

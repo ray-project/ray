@@ -416,7 +416,10 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
-    RAY_LOG(ERROR) << "DBG: " << "TryToSpillFailed: " << is_infeasible << " " << (node_id_string == self_node_id_.Binary()) << " " << node_id_string.empty();
+    RAY_LOG(ERROR) << "DBG: "
+                   << "TryToSpillFailed: " << is_infeasible << " "
+                   << (node_id_string == self_node_id_.Binary()) << " "
+                   << node_id_string.empty();
     return false;
   }
 
@@ -1371,7 +1374,7 @@ void ClusterTaskManager::SpillWaitingTasks() {
         /*requires_object_store_memory=*/true,
         task.GetTaskSpecification().IsActorCreationTask(),
         /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
-    if(node_id_string.empty()) {
+    if (node_id_string.empty()) {
       RAY_LOG(ERROR) << "Empty  node id";
     } else {
       RAY_LOG(ERROR) << "BestNodeID: " << NodeID::FromBinary(node_id_string).Hex();

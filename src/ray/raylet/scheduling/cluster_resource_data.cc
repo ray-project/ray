@@ -280,7 +280,9 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
       RAY_LOG(ERROR) << "Resource, not found " << resource_req_custom_resource.first;
       return false;
     } else if (resource_req_custom_resource.second > it->second.total) {
-      RAY_LOG(ERROR) << "Resource, not sufficient " << resource_req_custom_resource.first << ", " << resource_req_custom_resource.second << ", " << it->second.total;
+      RAY_LOG(ERROR) << "Resource, not sufficient " << resource_req_custom_resource.first
+                     << ", " << resource_req_custom_resource.second << ", "
+                     << it->second.total;
       return false;
     }
   }
