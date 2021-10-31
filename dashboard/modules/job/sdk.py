@@ -15,6 +15,7 @@ import requests
 
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
+from ray._private.job_manager import JobStatus
 from ray.dashboard.modules.job.data_types import (
     GetPackageRequest, GetPackageResponse, UploadPackageRequest, JobSpec,
     JobSubmitRequest, JobSubmitResponse, JobStatusRequest, JobStatusResponse,
@@ -116,22 +117,21 @@ class JobSubmissionClient:
     def submit_job(self,
                    entrypoint: str,
                    runtime_env: Optional[Dict[str, Any]] = None,
-                   metadata: Optional[Dict[str, str]] = None,
-                   job_id: Optional[str] = None) -> str:
+                   metadata: Optional[Dict[str, str]] = None) -> str:
         runtime_env = runtime_env or {}
         metadata = metadata or {}
 
         self._upload_working_dir_if_needed(runtime_env)
         job_spec = JobSpec(
             entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata)
-        req = JobSubmitRequest(job_spec=job_spec, job_id=job_id)
+        req = JobSubmitRequest(job_spec=job_spec)
         resp = self._do_request("POST", "submit", req, JobSubmitResponse)
         return resp.job_id
 
-    def get_job_status(self, job_id: str) -> str:
+    def get_job_status(self, job_id: str) -> JobStatus:
         req = JobStatusRequest(job_id=job_id)
         resp = self._do_request("GET", "status", req, JobStatusResponse)
-        return str(resp.job_status)
+        return resp.job_status
 
     def get_job_logs(self, job_id: str) -> Tuple[str, str]:
         req = JobLogsRequest(job_id=job_id)
