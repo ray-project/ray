@@ -72,17 +72,24 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     """
     cluster, address = start_cluster
 
-    if option == "failure":
-        # Don't pass the files at all, so it should fail!
-        ray.init(address)
-    elif option == "working_dir":
-        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
-    elif option == "py_modules":
-        ray.init(
-            address,
-            runtime_env={
-                "py_modules": [str(Path(tmp_working_dir) / "test_module")]
-            })
+    def call_ray_init():
+        if option == "failure":
+            # Don't pass the files at all, so it should fail!
+            ray.init(address)
+        elif option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+        elif option == "py_modules":
+            ray.init(
+                address,
+                runtime_env={
+                    "py_modules": [str(Path(tmp_working_dir) / "test_module")]
+                })
+
+    call_ray_init()
+
+    def reinit():
+        ray.shutdown()
+        call_ray_init()
 
     @ray.remote
     def test_import():
@@ -95,6 +102,8 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     else:
         assert ray.get(test_import.remote()) == 1
 
+    reinit()
+
     @ray.remote
     def test_read():
         return open("hello").read()
@@ -104,6 +113,8 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             ray.get(test_read.remote())
     elif option == "working_dir":
         assert ray.get(test_read.remote()) == "world"
+
+    reinit()
 
     @ray.remote
     class Actor:
@@ -135,17 +146,26 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
     """
     cluster, address = start_cluster
 
-    if option == "failure":
-        # Don't pass the files at all, so it should fail!
-        ray.init(address)
-    elif option == "working_dir":
-        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
-    elif option == "py_modules":
-        ray.init(
-            address,
-            runtime_env={
-                "py_modules": [os.path.join(tmp_working_dir, "test_module")]
-            })
+    def call_ray_init():
+        if option == "failure":
+            # Don't pass the files at all, so it should fail!
+            ray.init(address)
+        elif option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+        elif option == "py_modules":
+            ray.init(
+                address,
+                runtime_env={
+                    "py_modules": [
+                        os.path.join(tmp_working_dir, "test_module")
+                    ]
+                })
+
+    call_ray_init()
+
+    def reinit():
+        ray.shutdown()
+        call_ray_init()
 
     # Import in the driver.
     sys.path.insert(0, tmp_working_dir)
@@ -160,6 +180,8 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
             ray.get(test_import.remote())
     else:
         assert ray.get(test_import.remote()) == 1
+
+    reinit()
 
     @ray.remote
     class Actor:
@@ -196,6 +218,10 @@ def test_empty_working_dir(start_cluster):
 
         a = A.remote()
         assert len(ray.get(a.listdir.remote())) == 0
+
+        # Test that we can reconnect with no errors
+        ray.shutdown()
+        ray.init(address, runtime_env={"working_dir": working_dir})
 
 
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
