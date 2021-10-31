@@ -34,19 +34,22 @@ class TaskArgByReference : public TaskArg {
   ///
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
-  TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address)
-      : id_(object_id), owner_address_(owner_address) {}
+  TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address,
+                     const std::string &call_site)
+      : id_(object_id), owner_address_(owner_address), call_site_(call_site) {}
 
   void ToProto(rpc::TaskArg *arg_proto) const {
     auto ref = arg_proto->mutable_object_ref();
     ref->set_object_id(id_.Binary());
     ref->mutable_owner_address()->CopyFrom(owner_address_);
+    ref->set_call_site(call_site_);
   }
 
  private:
   /// Id of the argument if passed by reference, otherwise nullptr.
   const ObjectID id_;
   const rpc::Address owner_address_;
+  const std::string call_site_;
 };
 
 class TaskArgByValue : public TaskArg {
@@ -68,8 +71,8 @@ class TaskArgByValue : public TaskArg {
       const auto &metadata = value_->GetMetadata();
       arg_proto->set_metadata(metadata->Data(), metadata->Size());
     }
-    for (const auto &nested_id : value_->GetNestedIds()) {
-      arg_proto->add_nested_inlined_ids(nested_id.Binary());
+    for (const auto &nested_ref : value_->GetNestedRefs()) {
+      arg_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
     }
   }
 
@@ -103,8 +106,7 @@ class TaskSpecBuilder {
       const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint,
       const std::string &serialized_runtime_env = "{}",
-      const std::unordered_map<std::string, std::string> &override_environment_variables =
-          {},
+      const std::vector<std::string> &runtime_env_uris = {},
       const std::string &concurrency_group_name = "") {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
@@ -126,11 +128,17 @@ class TaskSpecBuilder {
     message_->set_placement_group_capture_child_tasks(
         placement_group_capture_child_tasks);
     message_->set_debugger_breakpoint(debugger_breakpoint);
-    message_->set_serialized_runtime_env(serialized_runtime_env);
-    message_->set_concurrency_group_name(concurrency_group_name);
-    for (const auto &env : override_environment_variables) {
-      (*message_->mutable_override_environment_variables())[env.first] = env.second;
+    message_->mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
+    for (const std::string &uri : runtime_env_uris) {
+      message_->mutable_runtime_env()->add_uris(uri);
     }
+    message_->set_concurrency_group_name(concurrency_group_name);
+    return *this;
+  }
+
+  TaskSpecBuilder &SetNormalTaskSpec(int max_retries, bool retry_exceptions) {
+    message_->set_max_retries(max_retries);
+    message_->set_retry_exceptions(retry_exceptions);
     return *this;
   }
 

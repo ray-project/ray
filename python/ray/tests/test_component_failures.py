@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray.test_utils import run_string_as_driver_nonblocking, SignalActor
+from ray._private.test_utils import (run_string_as_driver_nonblocking,
+                                     SignalActor)
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

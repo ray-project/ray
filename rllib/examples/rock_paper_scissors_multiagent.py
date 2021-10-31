@@ -9,19 +9,19 @@ This demonstrates running the following policies in competition:
 
 import argparse
 import os
+from pettingzoo.classic import rps_v2
 import random
 
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
 from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.env import PettingZooEnv
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import \
     BeatLastHeuristic, AlwaysSameHeuristic
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
-from ray.rllib.env import PettingZooEnv
-from pettingzoo.classic import rps_v1
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -55,7 +55,7 @@ parser.add_argument(
 
 
 def env_creator(args):
-    env = rps_v1.env()
+    env = rps_v2.env()
     return env
 
 
@@ -146,11 +146,11 @@ def run_with_custom_entropy_loss(args, stop):
     This performs about the same as the default loss does."""
 
     def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
-        logits, _ = model.from_batch(train_batch)
+        logits, _ = model(train_batch)
         action_dist = dist_class(logits, model)
         if args.framework == "torch":
-            # required by PGTorchPolicy's stats fn.
-            policy.pi_err = torch.tensor([0.0])
+            # Required by PGTorchPolicy's stats fn.
+            model.tower_stats["policy_loss"] = torch.tensor([0.0])
             return torch.mean(-0.1 * action_dist.entropy() -
                               (action_dist.logp(train_batch["actions"]) *
                                train_batch["advantages"]))

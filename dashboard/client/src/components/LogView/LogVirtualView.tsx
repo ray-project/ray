@@ -183,6 +183,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   }, [focusLine, fontSize]);
 
   useEffect(() => {
+    let outterCurrentValue: any = null;
     if (outter.current) {
       const scrollFunc = (event: any) => {
         const { target } = event;
@@ -194,9 +195,14 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
             onScrollBottom(event);
           }
         }
+        outterCurrentValue = outter.current;
       };
       outter.current.addEventListener("scroll", scrollFunc);
-      return () => outter?.current?.removeEventListener("scroll", scrollFunc);
+      return () => {
+        if (outterCurrentValue) {
+          outterCurrentValue.removeEventListener("scroll", scrollFunc);
+        }
+      };
     }
   }, [onScrollBottom]);
 
@@ -209,6 +215,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       className={`hljs-${theme}`}
       style={{
         fontSize,
+        fontFamily: "menlo, monospace",
         ...style,
       }}
       itemSize={fontSize + 6}

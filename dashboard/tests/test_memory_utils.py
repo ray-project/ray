@@ -1,5 +1,5 @@
 import ray
-from ray.new_dashboard.memory_utils import (
+from ray.dashboard.memory_utils import (
     ReferenceType, decode_object_ref_if_needed, MemoryTableEntry, MemoryTable,
     SortingType)
 """Memory Table Unit Test"""

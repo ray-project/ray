@@ -6,7 +6,7 @@ import time
 import pytest
 import ray
 from ray import serve
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -110,9 +110,9 @@ def test_http_proxy_failure(serve_instance):
 
 def _get_worker_handles(backend):
     controller = serve.api._global_client._controller
-    backend_dict = ray.get(controller._all_replica_handles.remote())
+    backend_dict = ray.get(controller._all_running_replicas.remote())
 
-    return list(backend_dict[backend].values())
+    return [replica.actor_handle for replica in backend_dict[backend]]
 
 
 # Test that a worker dying unexpectedly causes it to restart and continue

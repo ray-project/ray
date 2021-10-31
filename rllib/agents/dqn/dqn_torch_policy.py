@@ -121,7 +121,7 @@ class ComputeTDErrorMixin:
             # Do forward pass on loss to update td error attribute
             build_q_losses(self, self.model, None, input_dict)
 
-            return self.q_loss.td_error
+            return self.model.tower_stats["q_loss"].td_error
 
         self.compute_td_error = compute_td_error
 
@@ -130,7 +130,7 @@ def build_q_model_and_distribution(
         policy: Policy, obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
-    """Build q_model and target_q_model for DQN
+    """Build q_model and target_model for DQN
 
     Args:
         policy (Policy): The policy, which will use the model for optimization.
@@ -141,7 +141,7 @@ def build_q_model_and_distribution(
     Returns:
         (q_model, TorchCategorical)
             Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
+            `policy.target_model`.
     """
     if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
@@ -179,7 +179,7 @@ def build_q_model_and_distribution(
         #  generically into ModelCatalog.
         add_layer_norm=add_layer_norm)
 
-    policy.target_q_model = ModelCatalog.get_model_v2(
+    policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
@@ -204,20 +204,18 @@ def build_q_model_and_distribution(
 def get_distribution_inputs_and_class(
         policy: Policy,
         model: ModelV2,
-        obs_batch: TensorType,
+        input_dict: SampleBatch,
         *,
         explore: bool = True,
         is_training: bool = False,
         **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
     q_vals = compute_q_values(
-        policy,
-        model, {"obs": obs_batch},
-        explore=explore,
-        is_training=is_training)
+        policy, model, input_dict, explore=explore, is_training=is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
-    policy.q_values = q_vals
-    return policy.q_values, TorchCategorical, []  # state-out
+    model.tower_stats["q_values"] = q_vals
+
+    return q_vals, TorchCategorical, []  # state-out
 
 
 def build_q_losses(policy: Policy, model, _,
@@ -244,7 +242,8 @@ def build_q_losses(policy: Policy, model, _,
     # Target Q-network evaluation.
     q_tp1, q_logits_tp1, q_probs_tp1, _ = compute_q_values(
         policy,
-        policy.target_q_model, {"obs": train_batch[SampleBatch.NEXT_OBS]},
+        policy.target_models[model],
+        {"obs": train_batch[SampleBatch.NEXT_OBS]},
         explore=False,
         is_training=True)
 
@@ -252,9 +251,8 @@ def build_q_losses(policy: Policy, model, _,
     one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
                                   policy.action_space.n)
     q_t_selected = torch.sum(
-        torch.where(q_t > FLOAT_MIN, q_t,
-                    torch.tensor(0.0, device=policy.device)) *
-        one_hot_selection, 1)
+        torch.where(q_t > FLOAT_MIN, q_t, torch.tensor(0.0, device=q_t.device))
+        * one_hot_selection, 1)
     q_logits_t_selected = torch.sum(
         q_logits_t * torch.unsqueeze(one_hot_selection, -1), 1)
 
@@ -272,7 +270,7 @@ def build_q_losses(policy: Policy, model, _,
                                                  policy.action_space.n)
         q_tp1_best = torch.sum(
             torch.where(q_tp1 > FLOAT_MIN, q_tp1,
-                        torch.tensor(0.0, device=policy.device)) *
+                        torch.tensor(0.0, device=q_tp1.device)) *
             q_tp1_best_one_hot_selection, 1)
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
@@ -281,24 +279,26 @@ def build_q_losses(policy: Policy, model, _,
             torch.argmax(q_tp1, 1), policy.action_space.n)
         q_tp1_best = torch.sum(
             torch.where(q_tp1 > FLOAT_MIN, q_tp1,
-                        torch.tensor(0.0, device=policy.device)) *
+                        torch.tensor(0.0, device=q_tp1.device)) *
             q_tp1_best_one_hot_selection, 1)
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
 
-    policy.q_loss = QLoss(
-        q_t_selected, q_logits_t_selected, q_tp1_best, q_probs_tp1_best,
-        train_batch[PRIO_WEIGHTS], train_batch[SampleBatch.REWARDS],
-        train_batch[SampleBatch.DONES].float(), config["gamma"],
-        config["n_step"], config["num_atoms"], config["v_min"],
-        config["v_max"])
+    q_loss = QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,
+                   q_probs_tp1_best, train_batch[PRIO_WEIGHTS],
+                   train_batch[SampleBatch.REWARDS],
+                   train_batch[SampleBatch.DONES].float(), config["gamma"],
+                   config["n_step"], config["num_atoms"], config["v_min"],
+                   config["v_max"])
 
-    # Store td-error in model, such that for multi-GPU, we do not override
-    # them during the parallel loss phase. TD-error tensor in final stats
-    # can then be concatenated and retrieved for each individual batch item.
-    model.td_error = policy.q_loss.td_error
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["td_error"] = q_loss.td_error
+    # TD-error tensor in final stats
+    # will be concatenated and retrieved for each individual batch item.
+    model.tower_stats["q_loss"] = q_loss
 
-    return policy.q_loss.loss
+    return q_loss.loss
 
 
 def adam_optimizer(policy: Policy,
@@ -308,16 +308,22 @@ def adam_optimizer(policy: Policy,
     # can define our optimizers using the correct CUDA variables.
     if not hasattr(policy, "q_func_vars"):
         policy.q_func_vars = policy.model.variables()
-        policy.target_q_func_vars = policy.target_q_model.variables()
 
     return torch.optim.Adam(
         policy.q_func_vars, lr=policy.cur_lr, eps=config["adam_epsilon"])
 
 
 def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
-    return dict({
-        "cur_lr": policy.cur_lr,
-    }, **policy.q_loss.stats)
+    stats = {}
+    for stats_key in policy.model_gpu_towers[0].tower_stats[
+            "q_loss"].stats.keys():
+        stats[stats_key] = torch.mean(
+            torch.stack([
+                t.tower_stats["q_loss"].stats[stats_key].to(policy.device)
+                for t in policy.model_gpu_towers if "q_loss" in t.tower_stats
+            ]))
+    stats["cur_lr"] = policy.cur_lr
+    return stats
 
 
 def setup_early_mixins(policy: Policy, obs_space, action_space,
@@ -329,10 +335,7 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
                      action_space: gym.spaces.Space,
                      config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
-    # Move target net to device (this is done automatically for the
-    # policy.model, but not for any other models the policy has).
-    policy.target_q_model = policy.target_q_model.to(policy.device)
+    TargetNetworkMixin.__init__(policy)
 
 
 def compute_q_values(policy: Policy,
@@ -344,7 +347,6 @@ def compute_q_values(policy: Policy,
                      is_training: bool = False):
     config = policy.config
 
-    input_dict["is_training"] = is_training
     model_out, state = model(input_dict, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
@@ -389,7 +391,7 @@ def grad_process_and_td_error_fn(policy: Policy,
 
 def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
                         action_dist) -> Dict[str, TensorType]:
-    return {"q_values": policy.q_values}
+    return {"q_values": model.tower_stats["q_values"]}
 
 
 DQNTorchPolicy = build_policy_class(

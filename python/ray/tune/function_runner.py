@@ -10,6 +10,8 @@ import uuid
 from functools import partial
 from numbers import Number
 
+from typing import Any, Callable, Optional
+
 from six.moves import queue
 
 from ray.util.debug import log_once
@@ -530,7 +532,10 @@ class FunctionRunner(Trainable):
             pass
 
 
-def wrap_function(train_func, durable=False, warn=True):
+def wrap_function(train_func: Callable[[Any], Any],
+                  durable: bool = False,
+                  warn: bool = True,
+                  name: Optional[str] = None):
     inherit_from = (FunctionRunner, )
 
     if hasattr(train_func, "__mixins__"):
@@ -562,8 +567,8 @@ def wrap_function(train_func, durable=False, warn=True):
                 "arguments to be `func(config, checkpoint_dir=None)`.")
 
     class ImplicitFunc(*inherit_from):
-        _name = train_func.__name__ if hasattr(train_func, "__name__") \
-            else "func"
+        _name = name or (train_func.__name__
+                         if hasattr(train_func, "__name__") else "func")
 
         def _trainable_func(self, config, reporter, checkpoint_dir):
             if not use_checkpoint and not use_reporter:

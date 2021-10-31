@@ -22,8 +22,8 @@ class FullyConnectedNetwork(TFModelV2):
         super(FullyConnectedNetwork, self).__init__(
             obs_space, action_space, num_outputs, model_config, name)
 
-        hiddens = model_config.get("fcnet_hiddens", []) + \
-            model_config.get("post_fcnet_hiddens", [])
+        hiddens = list(model_config.get("fcnet_hiddens", [])) + \
+            list(model_config.get("post_fcnet_hiddens", []))
         activation = model_config.get("fcnet_activation")
         if not model_config.get("fcnet_hiddens", []):
             activation = model_config.get("post_fcnet_activation")

@@ -21,7 +21,7 @@
 #include "ray/common/id.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 class ObjectStore {
  public:
@@ -83,6 +83,10 @@ class ObjectStore {
   /// \param[in] id The binary string ID to decrease the reference count for.
   virtual void RemoveLocalReference(const std::string &id) = 0;
 
+  /// Returns a map of all ObjectIDs currently in scope with a pair of their
+  /// (local, submitted_task) reference counts. For debugging purposes.
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
+
  private:
   virtual void PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id) = 0;
 
@@ -95,5 +99,5 @@ class ObjectStore {
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(
       const std::vector<ObjectID> &ids, int timeout_ms) = 0;
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

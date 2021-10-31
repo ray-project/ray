@@ -8,7 +8,7 @@ import ray
 from ray.exceptions import TaskCancelledError, RayTaskError, \
                            GetTimeoutError, WorkerCrashedError, \
                            ObjectLostError
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 
 def valid_exceptions(use_force):
@@ -150,7 +150,7 @@ def test_comprehensive(ray_start_regular, use_force):
         ray.get(a, timeout=10)
 
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(a2, timeout=10)
+        ray.get(a2, timeout=40)
 
     signaler.send.remote()
 

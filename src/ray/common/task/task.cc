@@ -18,42 +18,38 @@
 
 namespace ray {
 
-Task::Task(const rpc::Task &message, int64_t backlog_size)
+RayTask::RayTask(const rpc::Task &message)
     : task_spec_(message.task_spec()),
-      task_execution_spec_(message.task_execution_spec()),
-      backlog_size_(backlog_size) {
+      task_execution_spec_(message.task_execution_spec()) {
   ComputeDependencies();
 }
 
-Task::Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec)
+RayTask::RayTask(TaskSpecification task_spec,
+                 TaskExecutionSpecification task_execution_spec)
     : task_spec_(std::move(task_spec)),
       task_execution_spec_(std::move(task_execution_spec)) {
   ComputeDependencies();
 }
 
-const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
+const TaskExecutionSpecification &RayTask::GetTaskExecutionSpec() const {
   return task_execution_spec_;
 }
 
-const TaskSpecification &Task::GetTaskSpecification() const { return task_spec_; }
+const TaskSpecification &RayTask::GetTaskSpecification() const { return task_spec_; }
 
-void Task::IncrementNumForwards() { task_execution_spec_.IncrementNumForwards(); }
+void RayTask::IncrementNumForwards() { task_execution_spec_.IncrementNumForwards(); }
 
-const std::vector<rpc::ObjectReference> &Task::GetDependencies() const {
+const std::vector<rpc::ObjectReference> &RayTask::GetDependencies() const {
   return dependencies_;
 }
 
-void Task::ComputeDependencies() { dependencies_ = task_spec_.GetDependencies(); }
+void RayTask::ComputeDependencies() { dependencies_ = task_spec_.GetDependencies(); }
 
-void Task::CopyTaskExecutionSpec(const Task &task) {
+void RayTask::CopyTaskExecutionSpec(const RayTask &task) {
   task_execution_spec_ = task.task_execution_spec_;
 }
 
-void Task::SetBacklogSize(int64_t backlog_size) { backlog_size_ = backlog_size; }
-
-int64_t Task::BacklogSize() const { return backlog_size_; }
-
-std::string Task::DebugString() const {
+std::string RayTask::DebugString() const {
   std::ostringstream stream;
   stream << "task_spec={" << task_spec_.DebugString() << "}, task_execution_spec={"
          << task_execution_spec_.DebugString() << "}";

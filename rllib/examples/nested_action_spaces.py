@@ -27,6 +27,10 @@ parser.add_argument(
     help="Whether this script should be run as a test: --stop-reward must "
     "be achieved within --stop-timesteps AND --stop-iters.")
 parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.")
+parser.add_argument(
     "--stop-iters",
     type=int,
     default=100,
@@ -44,7 +48,7 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
     register_env("NestedSpaceRepeatAfterMeEnv",
                  lambda c: NestedSpaceRepeatAfterMeEnv(c))
 

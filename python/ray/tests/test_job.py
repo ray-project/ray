@@ -1,14 +1,61 @@
 import time
 import os
+import sys
+import tempfile
+import subprocess
 
 import ray
 from ray.job_config import JobConfig
-from ray.test_utils import (
+import ray._private.gcs_utils as gcs_utils
+from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
     wait_for_num_actors,
 )
+
+
+def test_job_isolation(call_ray_start):
+    # Make sure two jobs with same module name
+    # don't interfere with each other
+    # (https://github.com/ray-project/ray/issues/19358).
+    address = call_ray_start
+    lib_template = """
+import ray
+
+@ray.remote
+def task():
+    return subtask()
+
+def subtask():
+    return {}
+"""
+    driver_template = """
+import ray
+import lib
+
+ray.init(address="{}")
+assert ray.get(lib.task.remote()) == {}
+"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.makedirs(os.path.join(tmpdir, "v1"))
+        v1_lib = os.path.join(tmpdir, "v1", "lib.py")
+        v1_driver = os.path.join(tmpdir, "v1", "driver.py")
+        with open(v1_lib, "w") as f:
+            f.write(lib_template.format(1))
+        with open(v1_driver, "w") as f:
+            f.write(driver_template.format(address, 1))
+
+        os.makedirs(os.path.join(tmpdir, "v2"))
+        v2_lib = os.path.join(tmpdir, "v2", "lib.py")
+        v2_driver = os.path.join(tmpdir, "v2", "driver.py")
+        with open(v2_lib, "w") as f:
+            f.write(lib_template.format(2))
+        with open(v2_driver, "w") as f:
+            f.write(driver_template.format(address, 2))
+
+        subprocess.check_call([sys.executable, v1_driver])
+        subprocess.check_call([sys.executable, v2_driver])
 
 
 def test_job_gc(call_ray_start):
@@ -55,11 +102,11 @@ _ = Actor.remote()
 def test_job_gc_with_detached_actor(call_ray_start):
     address = call_ray_start
 
-    ray.init(address=address, namespace="")
+    ray.init(address=address, namespace="test")
     driver = """
 import ray
 
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="test")
 
 @ray.remote
 class Actor:
@@ -76,7 +123,7 @@ ray.get(_.value.remote())
 
     p = run_string_as_driver_nonblocking(driver)
     # Wait for actor to be created
-    wait_for_num_actors(1, ray.gcs_utils.ActorTableData.ALIVE)
+    wait_for_num_actors(1, gcs_utils.ActorTableData.ALIVE)
 
     actor_table = ray.state.actors()
     assert len(actor_table) == 1
@@ -166,7 +213,6 @@ def test_config_metadata(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

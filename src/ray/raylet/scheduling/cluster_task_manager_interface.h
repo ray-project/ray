@@ -76,14 +76,7 @@ class ClusterTaskManagerInterface {
   ///
   /// \param worker: The worker which was running the task.
   /// \param task: Output parameter.
-  virtual void TaskFinished(std::shared_ptr<WorkerInterface> worker, Task *task) = 0;
-
-  /// Return worker resources.
-  /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
-  /// once we remove the legacy scheduler
-  ///
-  /// \param worker: The worker which was running the task.
-  virtual void ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) = 0;
+  virtual void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task) = 0;
 
   /// Attempt to cancel an already queued task.
   ///
@@ -96,12 +89,27 @@ class ClusterTaskManagerInterface {
   virtual bool CancelTask(const TaskID &task_id,
                           bool runtime_env_setup_failed = false) = 0;
 
+  /// Set the worker backlog size for a particular scheduling class.
+  ///
+  /// \param scheduling_class: The scheduling class this backlog is for.
+  /// \param worker_id: The ID of the worker that owns the backlog information.
+  /// \param backlog_size: The size of the backlog.
+  virtual void SetWorkerBacklog(SchedulingClass scheduling_class,
+                                const WorkerID &worker_id, int64_t backlog_size) = 0;
+
+  /// Remove all backlog information about the given worker.
+  ///
+  /// \param worker_id: The ID of the worker owning the backlog information
+  /// that we want to remove.
+  virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
+
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  virtual void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
+  virtual void QueueAndScheduleTask(const RayTask &task,
+                                    rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
 
   /// Return if any tasks are pending resource acquisition.
@@ -111,15 +119,18 @@ class ClusterTaskManagerInterface {
   /// \param[in] num_pending_tasks Number of pending tasks.
   /// \param[in] any_pending True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  virtual bool AnyPendingTasks(Task *exemplar, bool *any_pending,
-                               int *num_pending_actor_creation,
-                               int *num_pending_tasks) const = 0;
+  virtual bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar, bool *any_pending,
+                                                     int *num_pending_actor_creation,
+                                                     int *num_pending_tasks) const = 0;
 
   /// The helper to dump the debug state of the cluster task manater.
   virtual std::string DebugStr() const = 0;
 
   /// Report high frequency scheduling metrics.
   virtual void RecordMetrics() = 0;
+
+  /// Check if there are enough available resources for the given input.
+  virtual bool IsLocallySchedulable(const RayTask &task) const = 0;
 
   /// Calculate normal task resources.
   virtual ResourceSet CalcNormalTaskResources() const = 0;

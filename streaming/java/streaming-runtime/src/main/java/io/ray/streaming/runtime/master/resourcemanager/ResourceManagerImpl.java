@@ -145,11 +145,6 @@ public class ResourceManagerImpl implements ResourceManager {
     // failover case: container has already allocated actors
     double availableCapacity = actorNumPerContainer - container.getAllocatedActorNum();
 
-    // Create ray resource.
-    Ray.setResource(container.getNodeId(), container.getName(), availableCapacity);
-    // Mark container is already registered.
-    Ray.setResource(container.getNodeId(), CONTAINER_ENGAGED_KEY, 1);
-
     // update container's available dynamic resources
     container.getAvailableResources().put(container.getName(), availableCapacity);
 

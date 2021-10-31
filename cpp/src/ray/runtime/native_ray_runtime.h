@@ -19,12 +19,13 @@
 #include "abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 class NativeRayRuntime : public AbstractRayRuntime {
  public:
   NativeRayRuntime();
+  ActorID GetCurrentActorID();
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

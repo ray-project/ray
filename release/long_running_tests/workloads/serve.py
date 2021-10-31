@@ -38,9 +38,8 @@ def update_progress(result):
     result["last_update"] = time.time()
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
                                       "/tmp/release_test_output.json")
-    with open(test_output_json, "at") as f:
+    with open(test_output_json, "wt") as f:
         json.dump(result, f)
-        f.write("\n")
 
 
 cluster = Cluster()

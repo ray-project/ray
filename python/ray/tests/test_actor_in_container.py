@@ -7,7 +7,6 @@ import sys
 
 import ray
 import ray.job_config
-import ray.test_utils
 import ray.cluster_utils
 
 

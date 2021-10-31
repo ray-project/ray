@@ -21,7 +21,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray.resource_spec import ResourceSpec
+from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
 
@@ -323,11 +323,9 @@ class Node:
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
-        self._resource_dir = os.path.join(self._session_dir,
-                                          "runtime_resources")
-        try_to_create_directory(self._resource_dir)
-        import ray._private.runtime_env as runtime_env
-        runtime_env.PKG_DIR = self._resource_dir
+        self._runtime_env_dir = os.path.join(self._session_dir,
+                                             "runtime_resources")
+        try_to_create_directory(self._runtime_env_dir)
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -358,7 +356,11 @@ class Node:
             env_string = os.getenv(
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
-                env_resources = json.loads(env_string)
+                try:
+                    env_resources = json.loads(env_string)
+                except Exception:
+                    logger.exception("Failed to load {}".format(env_string))
+                    raise
                 logger.debug(
                     f"Autoscaler overriding resources: {env_resources}.")
             num_cpus, num_gpus, memory, object_store_memory, resources = \
@@ -574,7 +576,10 @@ class Node:
             log_stderr = os.path.join(self._logs_dir, f"{name}.err")
         return log_stdout, log_stderr
 
-    def _get_unused_port(self, close_on_exit=True):
+    def _get_unused_port(self, allocated_ports=None):
+        if allocated_ports is None:
+            allocated_ports = set()
+
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind(("", 0))
         port = s.getsockname()[1]
@@ -584,6 +589,10 @@ class Node:
         # from this method has been used by a different process.
         for _ in range(NUM_PORT_RETRIES):
             new_port = random.randint(port, 65535)
+            if new_port in allocated_ports:
+                # This port is allocated for other usage already,
+                # so we shouldn't use it even if it's not in use right now.
+                continue
             new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
                 new_s.bind(("", new_port))
@@ -591,13 +600,11 @@ class Node:
                 new_s.close()
                 continue
             s.close()
-            if close_on_exit:
-                new_s.close()
-            return new_port, new_s
+            new_s.close()
+            return new_port
         logger.error("Unable to succeed in selecting a random port.")
-        if close_on_exit:
-            s.close()
-        return port, s
+        s.close()
+        return port
 
     def _prepare_socket_file(self, socket_path, default_prefix):
         """Prepare the socket file for raylet and plasma.
@@ -615,7 +622,7 @@ class Node:
         if sys.platform == "win32":
             if socket_path is None:
                 result = (f"tcp://{self._localhost}"
-                          f":{self._get_unused_port()[0]}")
+                          f":{self._get_unused_port()}")
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -667,7 +674,8 @@ class Node:
             port = int(ports_by_node[self.unique_id][port_name])
         else:
             # Pick a new port to use and cache it at this node.
-            port = (default_port or self._get_unused_port()[0])
+            port = (default_port or self._get_unused_port(
+                set(ports_by_node[self.unique_id].values())))
             ports_by_node[self.unique_id][port_name] = port
             with open(file_path, "w") as f:
                 json.dump(ports_by_node, f)
@@ -693,10 +701,12 @@ class Node:
     def start_redis(self):
         """Start the Redis servers."""
         assert self._redis_address is None
-        redis_log_files = [self.get_log_file_handles("redis", unique=True)]
-        for i in range(self._ray_params.num_redis_shards):
-            redis_log_files.append(
-                self.get_log_file_handles(f"redis-shard_{i}", unique=True))
+        redis_log_files = []
+        if self._ray_params.external_addresses is None:
+            redis_log_files = [self.get_log_file_handles("redis", unique=True)]
+            for i in range(self._ray_params.num_redis_shards):
+                redis_log_files.append(
+                    self.get_log_file_handles(f"redis-shard_{i}", unique=True))
 
         (self._redis_address, redis_shards,
          process_infos) = ray._private.services.start_redis(
@@ -769,6 +779,7 @@ class Node:
             "gcs_server", unique=True)
         process_info = ray._private.services.start_gcs_server(
             self._redis_address,
+            self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -806,11 +817,9 @@ class Node:
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
-            self._ray_params.worker_setup_hook,
-            self._ray_params.runtime_env_setup_hook,
             self._temp_dir,
             self._session_dir,
-            self._resource_dir,
+            self._runtime_env_dir,
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
@@ -837,6 +846,7 @@ class Node:
             start_initial_python_workers_for_first_job=self._ray_params.
             start_initial_python_workers_for_first_job,
             ray_debugger_external=self._ray_params.ray_debugger_external,
+            env_updates=self._ray_params.env_vars,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -878,7 +888,8 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            metrics_agent_port=self._ray_params.metrics_agent_port)
         assert (ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in
                 self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [

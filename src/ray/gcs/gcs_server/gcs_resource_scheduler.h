@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -35,7 +36,18 @@ enum SchedulingType {
   SchedulingType_MAX = 4,
 };
 
+// Status of resource scheduling result.
+enum SchedulingResultStatus {
+  // Scheduling failed but retryable.
+  FAILED = 0,
+  // Scheduling failed and non-retryable.
+  INFEASIBLE = 1,
+  // Scheduling successful.
+  SUCCESS = 2,
+};
+
 typedef std::pair<NodeID, double> NodeScore;
+typedef std::pair<SchedulingResultStatus, std::vector<NodeID>> SchedulingResult;
 
 /// NodeScorer is a scorer to make a grade to the node, which is used for scheduling
 /// decision.
@@ -86,9 +98,10 @@ class GcsResourceScheduler {
   /// \param node_filter_func This function is used to filter candidate nodes. If a node
   /// returns true, it can be used for scheduling. By default, all nodes in the cluster
   /// can be used for scheduling.
-  /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
-  /// by one. If the scheduling fails, an empty vector is returned.
-  std::vector<NodeID> Schedule(
+  /// \return `SchedulingResult`, including the selected nodes if schedule successful,
+  /// otherwise, it will return an empty vector and a flag to indicate whether this
+  /// request can be retry or not.
+  SchedulingResult Schedule(
       const std::vector<ResourceSet> &required_resources_list,
       const SchedulingType &scheduling_type,
       const std::function<bool(const NodeID &)> &node_filter_func = nullptr);
@@ -118,9 +131,10 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources_list The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
-  /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
-  /// by one. If the scheduling fails, an empty vector is returned.
-  std::vector<NodeID> StrictSpreadSchedule(
+  /// \return `SchedulingResult`, including the selected nodes if schedule successful,
+  /// otherwise, it will return an empty vector and a flag to indicate whether this
+  /// request can be retry or not.
+  SchedulingResult StrictSpreadSchedule(
       const std::vector<ResourceSet> &required_resources_list,
       const absl::flat_hash_set<NodeID> &candidate_nodes);
 
@@ -128,19 +142,20 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources_list The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
-  /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
-  /// by one. If the scheduling fails, an empty vector is returned.
-  std::vector<NodeID> SpreadSchedule(
-      const std::vector<ResourceSet> &required_resources_list,
-      const absl::flat_hash_set<NodeID> &candidate_nodes);
+  /// \return `SchedulingResult`, including the selected nodes if schedule successful,
+  /// otherwise, it will return an empty vector and a flag to indicate whether this
+  /// request can be retry or not.
+  SchedulingResult SpreadSchedule(const std::vector<ResourceSet> &required_resources_list,
+                                  const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Schedule resources according to `STRICT_PACK` strategy.
   ///
   /// \param required_resources_list The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
-  /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
-  /// by one. If the scheduling fails, an empty vector is returned.
-  std::vector<NodeID> StrictPackSchedule(
+  /// \return `SchedulingResult`, including the selected nodes if schedule successful,
+  /// otherwise, it will return an empty vector and a flag to indicate whether this
+  /// request can be retry or not.
+  SchedulingResult StrictPackSchedule(
       const std::vector<ResourceSet> &required_resources_list,
       const absl::flat_hash_set<NodeID> &candidate_nodes);
 
@@ -148,19 +163,19 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources_list The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
-  /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
-  /// by one. If the scheduling fails, an empty vector is returned.
-  std::vector<NodeID> PackSchedule(
-      const std::vector<ResourceSet> &required_resources_list,
-      const absl::flat_hash_set<NodeID> &candidate_nodes);
+  /// \return `SchedulingResult`, including the selected nodes if schedule successful,
+  /// otherwise, it will return an empty vector and a flag to indicate whether this
+  /// request can be retry or not.
+  SchedulingResult PackSchedule(const std::vector<ResourceSet> &required_resources_list,
+                                const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Score all nodes according to the specified resources.
   ///
   /// \param required_resources The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
   /// \return Score of all nodes.
-  std::list<NodeScore> ScoreNodes(const ResourceSet &required_resources,
-                                  const absl::flat_hash_set<NodeID> &candidate_nodes);
+  std::optional<NodeID> GetBestNode(const ResourceSet &required_resources,
+                                    const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Return the resources temporarily deducted from gcs resource manager.
   ///

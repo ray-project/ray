@@ -12,58 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "process_helper.h"
+
 #include <boost/algorithm/string.hpp>
 
-#include "process_helper.h"
-#include "ray/gcs/gcs_client/global_state_accessor.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 using ray::core::CoreWorkerProcess;
 using ray::core::WorkerType;
 
-/// IP address by which the local node can be reached *from* the `address`.
-///
-/// The behavior should be the same as `node_ip_address_from_perspective` from Ray Python
-/// code. See
-/// https://stackoverflow.com/questions/2674314/get-local-ip-address-using-boost-asio.
-///
-/// TODO(kfstorm): Make this function shared code and migrate Python & Java to use this
-/// function.
-///
-/// \param address The IP address and port of any known live service on the network
-/// you care about.
-/// \return The IP address by which the local node can be reached from the address.
-static std::string GetNodeIpAddress(const std::string &address = "8.8.8.8:53") {
-  std::vector<std::string> parts;
-  boost::split(parts, address, boost::is_any_of(":"));
-  RAY_CHECK(parts.size() == 2);
-  try {
-    boost::asio::io_service netService;
-    boost::asio::ip::udp::resolver resolver(netService);
-    boost::asio::ip::udp::resolver::query query(boost::asio::ip::udp::v4(), parts[0],
-                                                parts[1]);
-    boost::asio::ip::udp::resolver::iterator endpoints = resolver.resolve(query);
-    boost::asio::ip::udp::endpoint ep = *endpoints;
-    boost::asio::ip::udp::socket socket(netService);
-    socket.connect(ep);
-    boost::asio::ip::address addr = socket.local_endpoint().address();
-    return addr.to_string();
-  } catch (std::exception &e) {
-    RAY_LOG(FATAL) << "Could not get the node IP address with socket. Exception: "
-                   << e.what();
-    return "";
+void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_password,
+                                 const std::vector<std::string> &head_args) {
+  std::vector<std::string> cmdargs(
+      {"ray", "start", "--head", "--port", std::to_string(redis_port), "--redis-password",
+       redis_password, "--node-ip-address", GetNodeIpAddress()});
+  if (!head_args.empty()) {
+    cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
-}
-
-void ProcessHelper::StartRayNode(int redis_port, std::string redis_password) {
-  std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
-                                    std::to_string(redis_port), "--redis-password",
-                                    redis_password, "--include-dashboard", "false"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -78,12 +48,21 @@ void ProcessHelper::StopRayNode() {
   return;
 }
 
+std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateAccessor(
+    const std::string &redis_address, const std::string &redis_password) {
+  auto global_state_accessor =
+      std::make_unique<ray::gcs::GlobalStateAccessor>(redis_address, redis_password);
+  RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
+  return global_state_accessor;
+}
+
 void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = ConfigInternal::Instance().redis_ip;
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
     StartRayNode(ConfigInternal::Instance().redis_port,
-                 ConfigInternal::Instance().redis_password);
+                 ConfigInternal::Instance().redis_password,
+                 ConfigInternal::Instance().head_args);
   }
   if (redis_ip == "127.0.0.1") {
     redis_ip = GetNodeIpAddress();
@@ -102,9 +81,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor = nullptr;
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
-    global_state_accessor.reset(new ray::gcs::GlobalStateAccessor(
-        redis_address, ConfigInternal::Instance().redis_password));
-    RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
+    global_state_accessor = CreateGlobalStateAccessor(
+        redis_address, ConfigInternal::Instance().redis_password);
     std::string node_to_connect;
     auto status =
         global_state_accessor->GetNodeToConnectForDriver(node_ip, &node_to_connect);
@@ -125,8 +103,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     std::string session_dir = ConfigInternal::Instance().session_dir;
     if (session_dir.empty()) {
       if (!global_state_accessor) {
-        global_state_accessor.reset(new ray::gcs::GlobalStateAccessor(
-            redis_address, ConfigInternal::Instance().redis_password));
+        global_state_accessor = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
+            redis_address, ConfigInternal::Instance().redis_password);
         RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
       }
       session_dir = *global_state_accessor->GetInternalKV("session_dir");
@@ -147,7 +125,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     if (!ConfigInternal::Instance().job_id.empty()) {
       options.job_id = JobID::FromHex(ConfigInternal::Instance().job_id);
     } else {
-      /// TODO(Guyang Song): Get next job id from core worker by GCS client.
+      /// TODO(SongGuyang): Get next job id from core worker by GCS client.
       /// Random a number to avoid repeated job ids.
       /// The repeated job ids will lead to task hang when driver connects to a existing
       /// cluster more than once.
@@ -163,10 +141,10 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
   options.raylet_ip_address = node_ip;
   options.driver_name = "cpp_worker";
-  options.ref_counting_enabled = true;
   options.num_workers = 1;
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
+  options.startup_token = ConfigInternal::Instance().startup_token;
   rpc::JobConfig job_config;
   for (const auto &path : ConfigInternal::Instance().code_search_path) {
     job_config.add_code_search_path(path);
@@ -184,5 +162,5 @@ void ProcessHelper::RayStop() {
   }
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

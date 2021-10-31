@@ -8,6 +8,7 @@ import ray
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -140,7 +141,7 @@ class ComputeTDErrorMixin:
 def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
                   action_space: gym.spaces.Space,
                   config: TrainerConfigDict) -> ModelV2:
-    """Build q_model and target_q_model for DQN
+    """Build q_model and target_model for DQN
 
     Args:
         policy (Policy): The Policy, which will use the model for optimization.
@@ -151,7 +152,7 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
     Returns:
         ModelV2: The Model for the Policy to use.
             Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
+            `policy.target_model`.
     """
     if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
@@ -185,7 +186,7 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
             getattr(policy, "exploration", None), ParameterNoise)
         or config["exploration_config"]["type"] == "ParameterNoise")
 
-    policy.target_q_model = ModelCatalog.get_model_v2(
+    policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
@@ -211,12 +212,12 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
 
 def get_distribution_inputs_and_class(policy: Policy,
                                       model: ModelV2,
-                                      obs_batch: TensorType,
+                                      input_dict: SampleBatch,
                                       *,
                                       explore=True,
                                       **kwargs):
     q_vals = compute_q_values(
-        policy, model, {"obs": obs_batch}, state_batches=None, explore=explore)
+        policy, model, input_dict, state_batches=None, explore=explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
@@ -240,18 +241,24 @@ def build_q_losses(policy: Policy, model, _,
     # q network evaluation
     q_t, q_logits_t, q_dist_t, _ = compute_q_values(
         policy,
-        model, {"obs": train_batch[SampleBatch.CUR_OBS]},
+        model,
+        SampleBatch({
+            "obs": train_batch[SampleBatch.CUR_OBS]
+        }),
         state_batches=None,
         explore=False)
 
     # target q network evalution
     q_tp1, q_logits_tp1, q_dist_tp1, _ = compute_q_values(
         policy,
-        policy.target_q_model, {"obs": train_batch[SampleBatch.NEXT_OBS]},
+        policy.target_model,
+        SampleBatch({
+            "obs": train_batch[SampleBatch.NEXT_OBS]
+        }),
         state_batches=None,
         explore=False)
     if not hasattr(policy, "target_q_func_vars"):
-        policy.target_q_func_vars = policy.target_q_model.variables()
+        policy.target_q_func_vars = policy.target_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(
@@ -266,7 +273,7 @@ def build_q_losses(policy: Policy, model, _,
         q_tp1_using_online_net, q_logits_tp1_using_online_net, \
             q_dist_tp1_using_online_net, _ = compute_q_values(
                 policy, model,
-                {"obs": train_batch[SampleBatch.NEXT_OBS]},
+                SampleBatch({"obs": train_batch[SampleBatch.NEXT_OBS]}),
                 state_batches=None,
                 explore=False)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
@@ -333,7 +340,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
 
 def compute_q_values(policy: Policy,
                      model: ModelV2,
-                     input_dict,
+                     input_batch: SampleBatch,
                      state_batches=None,
                      seq_lens=None,
                      explore=None,
@@ -341,8 +348,8 @@ def compute_q_values(policy: Policy,
 
     config = policy.config
 
-    input_dict["is_training"] = policy._get_is_training_placeholder()
-    model_out, state = model(input_dict, state_batches or [], seq_lens)
+    input_batch["is_training"] = is_training
+    model_out, state = model(input_batch, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
@@ -378,51 +385,23 @@ def compute_q_values(policy: Policy,
     return value, logits, dist, state
 
 
-def _adjust_nstep(n_step: int, gamma: int, obs: TensorType,
-                  actions: TensorType, rewards: TensorType,
-                  new_obs: TensorType, dones: TensorType):
-    """Rewrites the given trajectory fragments to encode n-step rewards.
-
-    reward[i] = (
-        reward[i] * gamma**0 +
-        reward[i+1] * gamma**1 +
-        ... +
-        reward[i+n_step-1] * gamma**(n_step-1))
-
-    The ith new_obs is also adjusted to point to the (i+n_step-1)'th new obs.
-
-    At the end of the trajectory, n is truncated to fit in the traj length.
-    """
-
-    assert not any(dones[:-1]), "Unexpected done in middle of trajectory"
-
-    traj_length = len(rewards)
-    for i in range(traj_length):
-        for j in range(1, n_step):
-            if i + j < traj_length:
-                new_obs[i] = new_obs[i + j]
-                dones[i] = dones[i + j]
-                rewards[i] += gamma**j * rewards[i + j]
-
-
 def postprocess_nstep_and_prio(policy: Policy,
                                batch: SampleBatch,
                                other_agent=None,
                                episode=None) -> SampleBatch:
     # N-step Q adjustments.
     if policy.config["n_step"] > 1:
-        _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
-                      batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
-                      batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
-                      batch[SampleBatch.DONES])
+        adjust_nstep(policy.config["n_step"], policy.config["gamma"], batch)
 
+    # Create dummy prio-weights (1.0) in case we don't have any in
+    # the batch.
     if PRIO_WEIGHTS not in batch:
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
     # Prioritize on the worker side.
     if batch.count > 0 and policy.config["worker_side_prioritization"]:
         td_errors = policy.compute_td_error(
-            batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+            batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (np.abs(convert_to_numpy(td_errors)) +

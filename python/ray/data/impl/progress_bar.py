@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any
 
 import ray
 from ray.types import ObjectRef
@@ -49,6 +49,16 @@ class ProgressBar:
         while remaining:
             done, remaining = ray.wait(remaining, fetch_local=False)
             self.update(len(done))
+
+    def fetch_until_complete(self, refs: List[ObjectRef]) -> List[Any]:
+        ref_to_result = {}
+        remaining = refs
+        while remaining:
+            done, remaining = ray.wait(remaining, fetch_local=True)
+            for ref, result in zip(done, ray.get(done)):
+                ref_to_result[ref] = result
+            self.update(len(done))
+        return [ref_to_result[ref] for ref in refs]
 
     def set_description(self, name: str) -> None:
         if self._bar:

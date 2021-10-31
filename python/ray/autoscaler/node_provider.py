@@ -33,6 +33,13 @@ class NodeProvider:
         self._internal_ip_cache: Dict[str, str] = {}
         self._external_ip_cache: Dict[str, str] = {}
 
+    def is_readonly(self) -> bool:
+        """Returns whether this provider is readonly.
+
+        Readonly node providers do not allow nodes to be created or terminated.
+        """
+        return False
+
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
 
@@ -117,20 +124,57 @@ class NodeProvider:
         """
         raise NotImplementedError
 
+    def create_node_with_resources(
+            self, node_config: Dict[str, Any], tags: Dict[str, str],
+            count: int,
+            resources: Dict[str, float]) -> Optional[Dict[str, Any]]:
+        """Create nodes with a given resource config.
+
+        This is the method actually called by the autoscaler. Prefer to
+        implement this when possible directly, otherwise it delegates to the
+        create_node() implementation.
+        """
+        return self.create_node(node_config, tags, count)
+
     def set_node_tags(self, node_id: str, tags: Dict[str, str]) -> None:
         """Sets the tag values (string dict) for the specified node."""
         raise NotImplementedError
 
-    def terminate_node(self, node_id: str) -> None:
-        """Terminates the specified node."""
+    def terminate_node(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """Terminates the specified node.
+
+        Optionally return a mapping from deleted node ids to node
+        metadata.
+        """
         raise NotImplementedError
 
-    def terminate_nodes(self, node_ids: List[str]) -> None:
-        """Terminates a set of nodes. May be overridden with a batch method."""
+    def terminate_nodes(self, node_ids: List[str]) -> Optional[Dict[str, Any]]:
+        """Terminates a set of nodes.
+
+        May be overridden with a batch method, which optionally may return a
+        mapping from deleted node ids to node metadata.
+        """
         for node_id in node_ids:
             logger.info("NodeProvider: "
                         "{}: Terminating node".format(node_id))
             self.terminate_node(node_id)
+        return None
+
+    @property
+    def max_terminate_nodes(self) -> Optional[int]:
+        """The maximum number of nodes which can be terminated in one single
+        API request. By default, this is "None", which means that the node
+        provider's underlying API allows infinite requests to be terminated
+        with one request.
+
+        For example, AWS only allows 1000 nodes to be terminated
+        at once; to terminate more, we must issue multiple separate API
+        requests. If the limit is infinity, then simply set this to None.
+
+        This may be overridden. The value may be useful when overriding the
+        "terminate_nodes" method.
+        """
+        return None
 
     @staticmethod
     def bootstrap_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:

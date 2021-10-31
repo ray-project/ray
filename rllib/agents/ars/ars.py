@@ -16,7 +16,7 @@ from ray.rllib.agents.es.es import validate_config
 from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import Deprecated, override
 from ray.rllib.utils.torch_ops import set_torch_seed
 from ray.rllib.utils import FilterManager
 
@@ -43,8 +43,8 @@ DEFAULT_CONFIG = with_common_config({
     "offset": 0,
     # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
     # Therefore, we must be careful not to use more than 1 env per eval worker
-    # (would break ARSPolicy's compute_action method) and to not do obs-
-    # filtering.
+    # (would break ARSPolicy's compute_single_action method) and to not do
+    # obs-filtering.
     "evaluation_config": {
         "num_envs_per_worker": 1,
         "observation_filter": "NoFilter"
@@ -347,11 +347,15 @@ class ARSTrainer(Trainer):
             w.__ray_terminate__.remote()
 
     @override(Trainer)
-    def compute_action(self, observation, *args, **kwargs):
+    def compute_single_action(self, observation, *args, **kwargs):
         action, _, _ = self.policy.compute_actions([observation], update=True)
         if kwargs.get("full_fetch"):
             return action[0], [], {}
         return action[0]
+
+    @Deprecated(new="compute_single_action", error=False)
+    def compute_action(self, observation, *args, **kwargs):
+        return self.compute_single_action(observation, *args, **kwargs)
 
     @override(Trainer)
     def _sync_weights_to_workers(self, *, worker_set=None, workers=None):

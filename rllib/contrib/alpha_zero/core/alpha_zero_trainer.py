@@ -33,7 +33,7 @@ class AlphaZeroDefaultCallbacks(DefaultCallbacks):
 
     def on_episode_start(self, worker, base_env, policies, episode, **kwargs):
         # save env state when an episode starts
-        env = base_env.get_unwrapped()[0]
+        env = base_env.get_sub_environments()[0]
         state = env.get_state()
         episode.user_data["initial_state"] = state
 
@@ -160,7 +160,10 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
                          _env_creator)
 
 
-def execution_plan(workers, config):
+def execution_plan(workers, config, **kwargs):
+    assert len(kwargs) == 0, (
+        "Alpha zero execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     if config["simple_optimizer"]:

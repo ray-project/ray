@@ -224,12 +224,12 @@ public abstract class ObjectStore {
   public abstract Address getOwnerAddress(ObjectId id);
 
   /**
-   * Promote the given object to the underlying object store, and get the ownership info.
+   * Get the ownership info.
    *
    * @param objectId The ID of the object to promote
    * @return the serialized ownership address
    */
-  public abstract byte[] promoteAndGetOwnershipInfo(ObjectId objectId);
+  public abstract byte[] getOwnershipInfo(ObjectId objectId);
 
   /**
    * Add a reference to an ObjectID that will deserialized. This will also start the process to

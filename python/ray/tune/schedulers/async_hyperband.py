@@ -44,7 +44,6 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
     def __init__(self,
                  time_attr: str = "training_iteration",
-                 reward_attr: Optional[str] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  max_t: int = 100,
@@ -58,14 +57,6 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         assert brackets > 0, "brackets must be positive!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor

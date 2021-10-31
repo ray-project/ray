@@ -8,8 +8,8 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name (Optional[str]): One of "relu" (default), "tanh", "swish", or
-            "linear" or None.
+        name (Optional[str]): One of "relu" (default), "tanh", "elu",
+            "swish", or "linear" (same as None).
         framework (str): One of "jax", "tf|tfe|tf2" or "torch".
 
     Returns:
@@ -35,6 +35,8 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
             return nn.ReLU
         elif name == "tanh":
             return nn.Tanh
+        elif name == "elu":
+            return nn.ELU
     elif framework == "jax":
         if name in ["linear", None]:
             return None
@@ -45,6 +47,8 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
             return jax.nn.relu
         elif name == "tanh":
             return jax.nn.hard_tanh
+        elif name == "elu":
+            return jax.nn.elu
     else:
         assert framework in ["tf", "tfe", "tf2"],\
             "Unsupported framework `{}`!".format(framework)

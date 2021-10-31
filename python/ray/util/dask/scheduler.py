@@ -357,7 +357,7 @@ def dask_task_wrapper(func, repack, key, ray_pretask_cbs, ray_posttask_cbs,
     return result
 
 
-def render_progress_bar(tracker):
+def render_progress_bar(tracker, object_refs):
     from tqdm import tqdm
     # At this time, every task should be submitted.
     total, finished = ray.get(tracker.result.remote())
@@ -365,13 +365,27 @@ def render_progress_bar(tracker):
     pb_bar = tqdm(total=total, position=0)
     pb_bar.set_description("")
 
+    ready_refs = []
+
     while finished < total:
         submitted, finished = ray.get(tracker.result.remote())
         pb_bar.update(finished - reported_finished_so_far)
         reported_finished_so_far = finished
+        ready_refs, _ = ray.wait(
+            object_refs,
+            timeout=0,
+            num_returns=len(object_refs),
+            fetch_local=False)
+        if (len(ready_refs) == len(object_refs)):
+            break
         import time
         time.sleep(0.1)
     pb_bar.close()
+    submitted, finished = ray.get(tracker.result.remote())
+    if submitted != finished:
+        print("Completed. There was state inconsistency.")
+    from pprint import pprint
+    pprint(ray.get(tracker.report.remote()))
 
 
 def ray_get_unpack(object_refs, progress_bar_actor=None):
@@ -390,7 +404,7 @@ def ray_get_unpack(object_refs, progress_bar_actor=None):
 
     def get_result(object_refs):
         if progress_bar_actor:
-            render_progress_bar(progress_bar_actor)
+            render_progress_bar(progress_bar_actor, object_refs)
         return ray.get(object_refs)
 
     if isinstance(object_refs, tuple):

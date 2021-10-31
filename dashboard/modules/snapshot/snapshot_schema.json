@@ -15,6 +15,12 @@
         "snapshot": {
           "type": "object",
           "properties": {
+            "ray_version": {
+              "type": "string"
+            },
+            "ray_commit": {
+              "type": "string"
+            },
             "jobs": {
               "type": "object",
               "patternProperties": {
@@ -33,9 +39,6 @@
                     "config": {
                       "type": "object",
                       "properties": {
-                        "envVars": {
-                          "type": "object"
-                        },
                         "namespace": {
                           "type": "string"
                         },
@@ -47,7 +50,6 @@
                         }
                       },
                       "required": [
-                        "envVars",
                         "namespace",
                         "metadata",
                         "runtimeEnv"
@@ -113,6 +115,30 @@
                   },
                   "port": {
                     "type": "integer"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "properties": {
+                      "serve": {
+                        "type": "object",
+                        "properties": {
+                          "deploymentName": {
+                            "type": "string"
+                          },
+                          "replicaTag": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "deploymentName",
+                          "replicaTag",
+                          "version"
+                        ]
+                      }
+                    }
                   },
                   "required": [
                     "jobId",
@@ -186,6 +212,8 @@
             "type": "string"
           },
           "required": [
+            "rayVersion",
+            "rayCommit",
             "jobs",
             "actors",
             "sessionName"

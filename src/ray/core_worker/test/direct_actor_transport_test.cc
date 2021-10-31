@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// clang-format off
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -21,6 +22,13 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "mock/ray/core_worker/actor_creator.h"
+#include "mock/ray/core_worker/task_manager.h"
+// clang-format on
+
+// clang-format off
+#include "mock/ray/core_worker/task_manager.h"
+// clang-format on
 
 namespace ray {
 namespace core {
@@ -85,51 +93,29 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   int64_t acked_seqno = 0;
 };
 
-class MockTaskFinisher : public TaskFinisherInterface {
- public:
-  MockTaskFinisher() {}
-
-  MOCK_METHOD3(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &,
-                                         const rpc::Address &addr));
-  MOCK_METHOD5(PendingTaskFailed,
-               bool(const TaskID &task_id, rpc::ErrorType error_type, Status *status,
-                    const std::shared_ptr<rpc::RayException> &creation_task_exception,
-                    bool immediately_mark_object_fail));
-
-  MOCK_METHOD2(OnTaskDependenciesInlined,
-               void(const std::vector<ObjectID> &, const std::vector<ObjectID> &));
-
-  MOCK_METHOD1(MarkTaskCanceled, bool(const TaskID &task_id));
-
-  MOCK_CONST_METHOD1(GetTaskSpec,
-                     absl::optional<TaskSpecification>(const TaskID &task_id));
-
-  MOCK_METHOD4(MarkPendingTaskFailed,
-               void(const TaskID &task_id, const TaskSpecification &spec,
-                    rpc::ErrorType error_type,
-                    const std::shared_ptr<rpc::RayException> &creation_task_exception));
-};
-
 class DirectActorSubmitterTest : public ::testing::Test {
  public:
   DirectActorSubmitterTest()
-      : worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
-        store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        task_finisher_(std::make_shared<MockTaskFinisher>()),
-        submitter_(
+      : client_pool_(
             std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
               num_clients_connected_++;
               return worker_client_;
-            }),
-            store_, task_finisher_, [this](const ActorID &actor_id, int64_t num_queued) {
-              last_queue_warning_ = num_queued;
-            }) {}
+            })),
+        worker_client_(std::make_shared<MockWorkerClient>()),
+        store_(std::make_shared<CoreWorkerMemoryStore>()),
+        task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
+        submitter_(*client_pool_, *store_, *task_finisher_, actor_creator_,
+                   [this](const ActorID &actor_id, int64_t num_queued) {
+                     last_queue_warning_ = num_queued;
+                   }) {}
 
   int num_clients_connected_ = 0;
   int64_t last_queue_warning_ = 0;
+  MockActorCreatorInterface actor_creator_;
+  std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
-  std::shared_ptr<MockTaskFinisher> task_finisher_;
+  std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
   CoreWorkerDirectActorTaskSubmitter submitter_;
 };
 
@@ -523,6 +509,21 @@ class MockWorkerContext : public WorkerContext {
   }
 };
 
+class MockCoreWorkerDirectTaskReceiver : public CoreWorkerDirectTaskReceiver {
+ public:
+  MockCoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
+                                   instrumented_io_context &main_io_service,
+                                   const TaskHandler &task_handler,
+                                   const OnTaskDone &task_done)
+      : CoreWorkerDirectTaskReceiver(worker_context, main_io_service, task_handler,
+                                     task_done) {}
+
+  void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
+                                    const std::vector<ConcurrencyGroup> &cgs) {
+    concurrency_groups_cache_[actor_id] = cgs;
+  }
+};
+
 class DirectActorReceiverTest : public ::testing::Test {
  public:
   DirectActorReceiverTest()
@@ -532,7 +533,7 @@ class DirectActorReceiverTest : public ::testing::Test {
     auto execute_task =
         std::bind(&DirectActorReceiverTest::MockExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
+    receiver_ = std::make_unique<MockCoreWorkerDirectTaskReceiver>(
         worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
@@ -555,7 +556,7 @@ class DirectActorReceiverTest : public ::testing::Test {
     main_io_service_.stop();
   }
 
-  std::unique_ptr<CoreWorkerDirectTaskReceiver> receiver_;
+  std::unique_ptr<MockCoreWorkerDirectTaskReceiver> receiver_;
 
  private:
   rpc::Address rpc_address_;
@@ -589,6 +590,7 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
+    receiver_->UpdateConcurrencyGroupsCache(actor_id, {});
     receiver_->HandleTask(request, &reply, reply_callback);
   }
 
@@ -659,6 +661,6 @@ int main(int argc, char **argv) {
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
   return RUN_ALL_TESTS();
 }

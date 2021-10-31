@@ -7,7 +7,8 @@ import ray
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
-from ray.test_utils import wait_for_condition, run_string_as_driver_nonblocking
+from ray._private.test_utils import (wait_for_condition,
+                                     run_string_as_driver_nonblocking)
 
 
 def get_all_ray_worker_processes():

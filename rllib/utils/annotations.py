@@ -1,3 +1,5 @@
+import inspect
+
 from ray.util import log_once
 from ray.rllib.utils.deprecation import deprecation_warning
 
@@ -65,6 +67,28 @@ def Deprecated(old=None, *, new=None, help=None, error):
     """
 
     def _inner(obj):
+        # A deprecated class.
+        if inspect.isclass(obj):
+            # Patch the class' init method to raise the warning/error.
+            obj_init = obj.__init__
+
+            def patched_init(*args, **kwargs):
+                if log_once(old or obj.__name__):
+                    deprecation_warning(
+                        old=old or obj.__name__,
+                        new=new,
+                        help=help,
+                        error=error,
+                    )
+                return obj_init(*args, **kwargs)
+
+            obj.__init__ = patched_init
+            # Return the patched class (with the warning/error when
+            # instantiated).
+            return obj
+
+        # A deprecated class method or function.
+        # Patch with the warning/error at the beginning.
         def _ctor(*args, **kwargs):
             if log_once(old or obj.__name__):
                 deprecation_warning(
@@ -73,8 +97,11 @@ def Deprecated(old=None, *, new=None, help=None, error):
                     help=help,
                     error=error,
                 )
+            # Call the deprecated method/function.
             return obj(*args, **kwargs)
 
+        # Return the patched class method/function.
         return _ctor
 
+    # Return the prepared decorator.
     return _inner

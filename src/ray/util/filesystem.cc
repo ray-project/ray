@@ -14,7 +14,7 @@
 
 #include "ray/util/filesystem.h"
 
-#include <stdlib.h>
+#include <cstdlib>
 
 #include "ray/util/logging.h"
 
@@ -80,11 +80,11 @@ std::string GetUserTempDir() {
     n = GetTempPath(static_cast<DWORD>(result.size()), &*result.begin());
   }
   result.resize(0 < n && n <= result.size() ? static_cast<size_t>(n) : 0);
-#else  // not Linux, Darwin, or Windows
+#else  // not Darwin, or Windows
   const char *candidates[] = {"TMPDIR", "TMP", "TEMP", "TEMPDIR"};
   const char *found = NULL;
   for (char const *candidate : candidates) {
-    found = getenv(candidate);
+    found = std::getenv(candidate);
     if (found) {
       break;
     }

@@ -121,7 +121,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
-      pip install ray[cpp]
+      pip install "ray[cpp]"
       mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
 
     | - The project template comes with a simple example application. You can try this example out in 2 ways:
@@ -129,14 +129,14 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
-      cd ray-template && bazel run //:example
+      cd ray-template && bash run.sh
 
     | - 2. Connect the example application to an existing Ray cluster by specifying the RAY_ADDRESS env var.
 
     .. code-block:: shell
 
       ray start --head
-      RAY_ADDRESS=127.0.0.1:6379 ./bazel-bin/example
+      RAY_ADDRESS=127.0.0.1:6379 bash run.sh
 
     | - Now you can build your own Ray C++ application based on this project template.
 
@@ -278,11 +278,26 @@ Papers
 
    data/dataset.rst
    data/dataset-pipeline.rst
+   data/examples/big_data_ingestion
+   data/dataset-tensor-support.rst
    data/package-ref.rst
    data/dask-on-ray.rst
    data/mars-on-ray.rst
    data/modin/index.rst
    data/raydp.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Workflows
+
+   workflows/concepts.rst
+   workflows/basics.rst
+   workflows/management.rst
+   workflows/actors.rst
+   workflows/events.rst
+   workflows/comparison.rst
+   workflows/package-ref.rst
 
 .. toctree::
    :hidden:
@@ -300,7 +315,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: RLlib
+   :caption: Ray RLlib
 
    rllib.rst
    rllib-toc.rst
@@ -318,14 +333,15 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray SGD
+   :caption: Ray Train
 
-   raysgd/raysgd.rst
-   raysgd/raysgd_pytorch.rst
-   raysgd/raysgd_tensorflow.rst
-   raysgd/raysgd_ptl.rst
-   raysgd/raysgd_tune.rst
-   raysgd/raysgd_ref.rst
+   train/train.rst
+   train/user_guide.rst
+   train/examples.rst
+   train/architecture.rst
+   train/api.rst
+   train/migration-guide.rst
+   RaySGD v1: Distributed Training Wrappers <raysgd/raysgd.rst>
 
 .. toctree::
    :hidden:
@@ -336,12 +352,13 @@ Papers
    joblib.rst
    xgboost-ray.rst
    lightgbm-ray.rst
+   ray-lightning.rst
    ray-collective.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Observability
+   :caption: Observability
 
    ray-metrics.rst
    ray-debugging.rst
@@ -351,17 +368,11 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Contributing
+   :caption: Contributor Guide
 
    getting-involved.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Development and Ray Internals
-
    development.rst
+   fake-autoscaler.rst
    whitepaper.rst
    debugging.rst
    profiling.rst
-   fault-tolerance.rst

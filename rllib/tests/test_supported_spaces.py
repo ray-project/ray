@@ -69,6 +69,11 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
 
         try:
             a = get_trainer_class(alg)(config=config, env=RandomEnv)
+        except ray.exceptions.RayActorError as e:
+            if isinstance(e.args[2], UnsupportedSpaceException):
+                stat = "unsupported"
+            else:
+                raise
         except UnsupportedSpaceException:
             stat = "unsupported"
         else:
@@ -99,10 +104,11 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
             _do_check(alg, config, a_name, o_name)
         # Do the remaining obs spaces.
         assert len(OBSERVATION_SPACES_TO_TEST) >= len(ACTION_SPACES_TO_TEST)
+        fixed_action_key = next(iter(ACTION_SPACES_TO_TEST.keys()))
         for i, o_name in enumerate(OBSERVATION_SPACES_TO_TEST.keys()):
             if i < len(ACTION_SPACES_TO_TEST):
                 continue
-            _do_check(alg, config, "discrete", o_name)
+            _do_check(alg, config, fixed_action_key, o_name)
 
 
 class TestSupportedSpacesPG(unittest.TestCase):

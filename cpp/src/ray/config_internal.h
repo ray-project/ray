@@ -14,12 +14,14 @@
 
 #pragma once
 #include <ray/api/ray_config.h>
+
 #include <memory>
 #include <string>
+
 #include "ray/core_worker/common.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 using ray::core::WorkerType;
 
@@ -53,12 +55,16 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
+  StartupToken startup_token;
+
+  std::vector<std::string> head_args = {};
+
   static ConfigInternal &Instance() {
     static ConfigInternal config;
     return config;
   };
 
-  void Init(RayConfig &config, int *argc, char ***argv);
+  void Init(RayConfig &config, int argc, char **argv);
 
   void SetRedisAddress(const std::string address);
 
@@ -70,5 +76,5 @@ class ConfigInternal {
   ConfigInternal(){};
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

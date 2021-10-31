@@ -16,25 +16,23 @@
 #include <ray/util/logging.h>
 
 namespace ray {
-namespace api {
 
-class RayLogImpl : public RayLog, public ray::RayLog {
+class RayLoggerImpl : public RayLogger, public ray::RayLog {
  public:
-  RayLogImpl(const char *file_name, int line_number, RayLogLevel severity)
+  RayLoggerImpl(const char *file_name, int line_number, RayLoggerLevel severity)
       : ray::RayLog(file_name, line_number, (ray::RayLogLevel)severity) {}
   bool IsEnabled() const override { return ray::RayLog::IsEnabled(); }
 
   std::ostream &Stream() override { return ray::RayLog::Stream(); }
 };
 
-std::unique_ptr<RayLog> CreateRayLog(const char *file_name, int line_number,
-                                     RayLogLevel severity) {
-  return std::make_unique<RayLogImpl>(file_name, line_number, severity);
+std::unique_ptr<RayLogger> CreateRayLogger(const char *file_name, int line_number,
+                                           RayLoggerLevel severity) {
+  return std::make_unique<RayLoggerImpl>(file_name, line_number, severity);
 }
 
-bool IsLevelEnabled(RayLogLevel log_level) {
+bool IsLevelEnabled(RayLoggerLevel log_level) {
   return ray::RayLog::IsLevelEnabled((ray::RayLogLevel)log_level);
 }
 
-}  // namespace api
 }  // namespace ray

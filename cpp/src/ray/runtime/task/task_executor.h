@@ -16,8 +16,10 @@
 
 #include <ray/api/function_manager.h>
 #include <ray/api/serializer.h>
+
 #include <boost/dll.hpp>
 #include <memory>
+
 #include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
 #include "ray/common/id.h"
@@ -30,7 +32,7 @@ namespace internal {
 
 /// Execute remote functions by networking stream.
 msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
-                                      const std::vector<msgpack::sbuffer> &args_buffer,
+                                      const ArgsBufferList &args_buffer,
                                       msgpack::sbuffer *actor_ptr);
 
 BOOST_DLL_ALIAS(internal::TaskExecutionHandler, TaskExecutionHandler);
@@ -43,7 +45,7 @@ GetRemoteFunctions();
 BOOST_DLL_ALIAS(internal::GetRemoteFunctions, GetRemoteFunctions);
 }  // namespace internal
 
-namespace api {
+namespace internal {
 
 using ray::core::RayFunction;
 
@@ -62,7 +64,7 @@ class TaskExecutor {
  public:
   TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_);
 
-  /// TODO(Guyang Song): support multiple tasks execution
+  /// TODO(SongGuyang): support multiple tasks execution
   std::unique_ptr<ObjectID> Execute(InvocationSpec &invocation);
 
   static void Invoke(
@@ -76,10 +78,13 @@ class TaskExecutor {
       const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<ray::RayObject>> &args,
-      const std::vector<ObjectID> &arg_reference_ids,
+      const std::vector<rpc::ObjectReference> &arg_refs,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<ray::RayObject>> *results,
-      std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes);
+      std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
+      bool *is_application_level_error,
+      const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
+      const std::string name_of_concurrency_group_to_execute);
 
   virtual ~TaskExecutor(){};
 
@@ -87,5 +92,5 @@ class TaskExecutor {
   AbstractRayRuntime &abstract_ray_tuntime_;
   static std::shared_ptr<msgpack::sbuffer> current_actor_;
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

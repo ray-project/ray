@@ -221,8 +221,13 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
 
 std::shared_ptr<RayObject> GenerateRandomObject(
     const std::vector<ObjectID> &inlined_ids) {
-  return std::shared_ptr<RayObject>(
-      new RayObject(GenerateRandomBuffer(), nullptr, inlined_ids));
+  std::vector<rpc::ObjectReference> refs;
+  for (const auto &inlined_id : inlined_ids) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(inlined_id.Binary());
+    refs.push_back(ref);
+  }
+  return std::shared_ptr<RayObject>(new RayObject(GenerateRandomBuffer(), nullptr, refs));
 }
 
 /// Path to redis server executable binary.

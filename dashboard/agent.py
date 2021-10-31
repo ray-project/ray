@@ -7,35 +7,26 @@ import platform
 import sys
 import socket
 import json
-import time
 import traceback
 
-try:
-    import aiohttp
-    import aiohttp.web
-    import aiohttp_cors
-    from aiohttp import hdrs
-
-    import aioredis  # noqa: F401
-except ImportError:
-    print("Not all Ray Dashboard dependencies were found. "
-          "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-          "only be usable via `pip install 'ray[default]'`. Please "
-          "update your install command.")
-    # Set an exit code different from throwing an exception.
-    sys.exit(2)
-
 from grpc.experimental import aio as aiogrpc
+from distutils.version import LooseVersion
 
 import ray
-import ray.new_dashboard.consts as dashboard_consts
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
+from ray._raylet import connect_to_gcs
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -60,7 +51,6 @@ class DashboardAgent(object):
                  temp_dir=None,
                  session_dir=None,
                  runtime_env_dir=None,
-                 runtime_env_setup_hook=None,
                  log_dir=None,
                  metrics_export_port=None,
                  node_manager_port=None,
@@ -76,7 +66,6 @@ class DashboardAgent(object):
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.runtime_env_dir = runtime_env_dir
-        self.runtime_env_setup_hook = runtime_env_setup_hook
         self.log_dir = log_dir
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
@@ -94,15 +83,17 @@ class DashboardAgent(object):
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = self.server.add_insecure_port(
-            f"[::]:{self.dashboard_agent_port}")
+        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+            self.server, f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
         options = (("grpc.enable_http_proxy", 0), )
-        self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
-            f"{self.ip}:{self.node_manager_port}", options=options)
+        self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
+            f"{self.ip}:{self.node_manager_port}", options, asynchronous=True)
         self.http_session = None
+        ip, port = redis_address.split(":")
+        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -152,8 +143,12 @@ class DashboardAgent(object):
             sys.exit(-1)
 
         # Create a http session for all modules.
-        self.http_session = aiohttp.ClientSession(
-            loop=asyncio.get_event_loop())
+        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
+        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
+            self.http_session = aiohttp.ClientSession(
+                loop=asyncio.get_event_loop())
+        else:
+            self.http_session = aiohttp.ClientSession()
 
         # Start a grpc asyncio server.
         await self.server.start()
@@ -180,7 +175,9 @@ class DashboardAgent(object):
 
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
-        site = aiohttp.web.TCPSite(runner, "0.0.0.0", self.listen_port)
+        site = aiohttp.web.TCPSite(
+            runner, "127.0.0.1"
+            if self.ip == "127.0.0.1" else "0.0.0.0", self.listen_port)
         await site.start()
         http_host, http_port, *_ = site._server.sockets[0].getsockname()
         logger.info("Dashboard agent http address: %s:%s", http_host,
@@ -330,13 +327,6 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Specify the path of the resource directory used by runtime_env.")
-    parser.add_argument(
-        "--runtime-env-setup-hook",
-        required=True,
-        type=str,
-        default=None,
-        help="The module path to a Python function that"
-        "will be imported and run to set up the runtime env.")
 
     args = parser.parse_args()
     try:
@@ -349,16 +339,6 @@ if __name__ == "__main__":
             backup_count=args.logging_rotate_backup_count)
         setup_component_logger(**logging_params)
 
-        # The dashboard is currently broken on Windows.
-        # https://github.com/ray-project/ray/issues/14026.
-        if sys.platform == "win32":
-            logger.warning(
-                "The dashboard is currently disabled on windows."
-                "See https://github.com/ray-project/ray/issues/14026"
-                "for more details")
-            while True:
-                time.sleep(999)
-
         agent = DashboardAgent(
             args.node_ip_address,
             args.redis_address,
@@ -367,7 +347,6 @@ if __name__ == "__main__":
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             runtime_env_dir=args.runtime_env_dir,
-            runtime_env_setup_hook=args.runtime_env_setup_hook,
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
@@ -375,18 +354,40 @@ if __name__ == "__main__":
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             logging_params=logging_params)
+        if os.environ.get("_RAY_AGENT_FAILING"):
+            raise Exception("Failure injection failure.")
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())
     except Exception as e:
-        # Something went wrong, so push an error to all drivers.
-        redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
-        traceback_str = ray._private.utils.format_error_message(
-            traceback.format_exc())
-        message = ("The agent on node {} failed with the following "
-                   "error:\n{}".format(platform.uname()[1], traceback_str))
-        ray._private.utils.push_error_to_driver_through_redis(
-            redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
-        logger.exception(message)
-        raise e
+        # All these env vars should be available because
+        # they are provided by the parent raylet.
+        restart_count = os.environ["RESTART_COUNT"]
+        max_restart_count = os.environ["MAX_RESTART_COUNT"]
+        raylet_pid = os.environ["RAY_RAYLET_PID"]
+        node_ip = args.node_ip_address
+        if restart_count >= max_restart_count:
+            # Agent is failed to be started many times.
+            # Push an error to all drivers, so that users can know the
+            # impact of the issue.
+            redis_client = ray._private.services.create_redis_client(
+                args.redis_address, password=args.redis_password)
+            traceback_str = ray._private.utils.format_error_message(
+                traceback.format_exc())
+            message = (
+                f"(ip={node_ip}) "
+                f"The agent on node {platform.uname()[1]} failed to "
+                f"be restarted {max_restart_count} "
+                "times. There are 3 possible problems if you see this error."
+                "\n  1. The dashboard might not display correct "
+                "information on this node."
+                "\n  2. Metrics on this node won't be reported."
+                "\n  3. runtime_env APIs won't work."
+                "\nCheck out the `dashboard_agent.log` to see the "
+                "detailed failure messages.")
+            ray._private.utils.push_error_to_driver_through_redis(
+                redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR,
+                message)
+            logger.error(message)
+        logger.exception(e)
+        exit(1)

@@ -61,6 +61,14 @@ cc_binary(
 )
 
 cc_binary(
+    name = "stats_lib.so",
+    copts = COPTS,
+    linkshared = 1,
+    visibility = ["//visibility:public"],
+    deps = ["//:stats_lib"],
+)
+
+cc_binary(
     name = "core_worker_lib.so",
     copts = COPTS,
     linkshared = 1,
@@ -90,6 +98,24 @@ cc_library(
         "ray_util.so",
         "@boost//:any",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "streaming_metrics",
+    srcs = glob([
+        "src/metrics/*.cc",
+    ]),
+    hdrs = glob([
+        "src/metrics/*.h",
+    ]),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        "stats_lib.so",
+        ":streaming_config",
+        ":streaming_util",
     ],
 )
 
@@ -235,6 +261,7 @@ cc_library(
         ":streaming_common",
         ":streaming_config",
         ":streaming_message",
+        ":streaming_metrics",
         ":streaming_queue",
         ":streaming_reliability",
         ":streaming_util",
@@ -275,6 +302,7 @@ cc_test(
         "src/test/ring_buffer_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -284,6 +312,7 @@ cc_test(
         "src/test/barrier_helper_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -293,6 +322,7 @@ cc_test(
         "src/test/message_serialization_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -302,6 +332,7 @@ cc_test(
         "src/test/mock_transfer_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -311,6 +342,17 @@ cc_test(
         "src/test/streaming_util_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
+    deps = test_common_deps,
+)
+
+cc_test(
+    name = "streaming_perf_tests",
+    srcs = [
+        "src/test/streaming_perf_tests.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -320,6 +362,7 @@ cc_test(
         "src/test/event_service_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -328,6 +371,7 @@ cc_test(
     srcs = [
         "src/test/queue_protobuf_tests.cc",
     ],
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 
@@ -337,6 +381,7 @@ cc_test(
         "src/test/data_writer_tests.cc",
     ],
     copts = COPTS,
+    tags = ["team:ant-group"],
     deps = test_common_deps,
 )
 

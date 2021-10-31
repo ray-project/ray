@@ -24,9 +24,15 @@ pkg_install_helper() {
 
 install_bazel() {
   if command -v bazel; then
-    if [ -n "${BUILDKITE-}" ]; then
-      echo "Bazel exists, skipping the install"
-      return
+    if [[ -n "${BUILDKITE-}" ]]; then
+      # Only reinstall Bazel if we need to upgrade to a different version.
+      python="$(command -v python3 || command -v python || echo python)"
+      current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
+      new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
+      if [[ "$current_version" == "$new_version" ]]; then
+        echo "Bazel of the same version already exists, skipping the install"
+        return
+      fi
     fi
   fi
 
@@ -138,6 +144,12 @@ install_miniconda() {
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
     )
+  elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
+    (
+      set +x
+      echo "Resetting Anaconda Python ${python_version}..."
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y --rev 0
+    )
   fi
 
   command -V python
@@ -244,8 +256,9 @@ install_node() {
   (
     set +x # suppress set -x since it'll get very noisy here
     . "${HOME}/.nvm/nvm.sh"
-    nvm install node
-    nvm use --silent node
+    NODE_VERSION="14"
+    nvm install $NODE_VERSION
+    nvm use --silent $NODE_VERSION
     npm config set loglevel warn  # make NPM quieter
   )
 }
@@ -253,6 +266,11 @@ install_node() {
 install_toolchains() {
   if [ -z "${BUILDKITE-}" ]; then
     "${ROOT_DIR}"/install-toolchains.sh
+  fi
+  if [[ "${OSTYPE}" = linux* ]]; then
+    pushd "${WORKSPACE_DIR}"
+      "${ROOT_DIR}"/install-llvm-binaries.sh
+    popd
   fi
 }
 
@@ -269,7 +287,7 @@ install_dependencies() {
   install_toolchains
 
   install_upgrade_pip
-  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
+  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL-}" = "1" ]; then
     install_miniconda
     # Upgrade the miniconda pip.
     install_upgrade_pip
@@ -282,9 +300,12 @@ install_dependencies() {
 
   # Install modules needed in all jobs.
   alias pip="python -m pip"
-  pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
-  if [ -n "${PYTHON-}" ]; then
+  if [ "${MINIMAL_INSTALL-}" != 1 ]; then
+    pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+  fi
+
+  if [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; then
     # Remove this entire section once Serve dependencies are fixed.
     if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # PyTorch is installed first since we are using a "-f" directive to find the wheels.
@@ -311,7 +332,9 @@ install_dependencies() {
   fi
 
   # Default requirements
-  pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
+  if [ "${MINIMAL_INSTALL-}" != 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
+  fi
 
   if [ "${LINT-}" = 1 ]; then
     install_linters
@@ -329,20 +352,37 @@ install_dependencies() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/rllib/requirements_rllib.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
+    #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch version.
+    pip install mlagents==0.27
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
+
+    # Install Atari ROMs. Previously these have been shipped with atari_py
+    if [[ "${OSTYPE}" = linux* ]]; then
+      bash "${WORKSPACE_DIR}"/rllib/utils/install_atari_roms.sh
+    else
+      echo "Not installing Atari roms on ${OSTYPE}"
+    fi
   fi
 
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_tune.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
     download_mnist
   fi
 
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_upstream.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
+  fi
+
+  # Additional dependency for Ludwig.
+  # This cannot be included in requirements_upstream.txt as it has conflicting
+  # dependencies with Modin.
+  if [ "${INSTALL_LUDWIG-}" = 1 ]; then
+    # TODO: eventually pin this to master.
+    pip install -U "ludwig[test]">=0.4
   fi
 
   # Data processing test dependencies.
@@ -354,7 +394,7 @@ install_dependencies() {
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
-  if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+  if [ "${MINIMAL_INSTALL-}" != 1 ] && [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
     # If CI has deemed that a different version of Torch
     # should be installed, then upgrade/downgrade to that specific version.
     if [ -n "${TORCH_VERSION-}" ]; then
@@ -369,7 +409,7 @@ install_dependencies() {
 
   # RLlib testing with TF 1.x.
   if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym
+    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym==0.19
   fi
 
   # Additional Tune dependency for Horovod.

@@ -1,4 +1,3 @@
-import random
 import copy
 import threading
 from collections import defaultdict, OrderedDict
@@ -81,6 +80,8 @@ def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
 
 
 class AWSNodeProvider(NodeProvider):
+    max_terminate_nodes = 1000
+
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
@@ -95,9 +96,6 @@ class AWSNodeProvider(NodeProvider):
             region=provider_config["region"],
             max_retries=0,
             aws_credentials=aws_credentials)
-
-        # Try availability zones round-robin, starting from random offset
-        self.subnet_idx = random.randint(0, 100)
 
         # Tags that we believe to actually be on EC2.
         self.tag_cache = {}
@@ -376,8 +374,13 @@ class AWSNodeProvider(NodeProvider):
             "TagSpecifications": tag_specs
         })
 
+        # Try to always launch in the first listed subnet.
+        subnet_idx = 0
         cli_logger_tags = {}
-        for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
+        # NOTE: This ensures that we try ALL availability zones before
+        # throwing an error.
+        max_tries = max(BOTO_CREATE_MAX_RETRIES, len(subnet_ids))
+        for attempt in range(1, max_tries + 1):
             try:
                 if "NetworkInterfaces" in conf:
                     net_ifs = conf["NetworkInterfaces"]
@@ -386,8 +389,7 @@ class AWSNodeProvider(NodeProvider):
                     conf.pop("SecurityGroupIds", None)
                     cli_logger_tags["network_interfaces"] = str(net_ifs)
                 else:
-                    subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
-                    self.subnet_idx += 1
+                    subnet_id = subnet_ids[subnet_idx % len(subnet_ids)]
                     conf["SubnetId"] = subnet_id
                     cli_logger_tags["subnet_id"] = subnet_id
 
@@ -419,7 +421,7 @@ class AWSNodeProvider(NodeProvider):
                                 info=state_reason["Message"]))
                 break
             except botocore.exceptions.ClientError as exc:
-                if attempt == BOTO_CREATE_MAX_RETRIES:
+                if attempt == max_tries:
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.",
                         exc=exc,
@@ -428,6 +430,9 @@ class AWSNodeProvider(NodeProvider):
                     cli_logger.warning(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
+                # Launch failure may be due to instance type availability in
+                # the given AZ
+                subnet_idx += 1
         return created_nodes_dict
 
     def terminate_node(self, node_id):
@@ -459,6 +464,21 @@ class AWSNodeProvider(NodeProvider):
     def terminate_nodes(self, node_ids):
         if not node_ids:
             return
+
+        terminate_instances_func = self.ec2.meta.client.terminate_instances
+        stop_instances_func = self.ec2.meta.client.stop_instances
+
+        # In some cases, this function stops some nodes, but terminates others.
+        # Each of these requires a different EC2 API call. So, we use the
+        # "nodes_to_terminate" dict below to keep track of exactly which API
+        # call will be used to stop/terminate which set of nodes. The key is
+        # the function to use, and the value is the list of nodes to terminate
+        # with that function.
+        nodes_to_terminate = {
+            terminate_instances_func: [],
+            stop_instances_func: []
+        }
+
         if self.cache_stopped_nodes:
             spot_ids = []
             on_demand_ids = []
@@ -478,16 +498,24 @@ class AWSNodeProvider(NodeProvider):
                         "under `provider` in the cluster configuration)"),
                     cli_logger.render_list(on_demand_ids))
 
-                self.ec2.meta.client.stop_instances(InstanceIds=on_demand_ids)
             if spot_ids:
                 cli_logger.print(
                     "Terminating instances {} " +
                     cf.dimmed("(cannot stop spot instances, only terminate)"),
                     cli_logger.render_list(spot_ids))
 
-                self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
+            nodes_to_terminate[stop_instances_func] = on_demand_ids
+            nodes_to_terminate[terminate_instances_func] = spot_ids
         else:
-            self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
+            nodes_to_terminate[terminate_instances_func] = node_ids
+
+        max_terminate_nodes = self.max_terminate_nodes if \
+            self.max_terminate_nodes is not None else len(node_ids)
+
+        for terminate_func, nodes in nodes_to_terminate.items():
+            for start in range(0, len(nodes), max_terminate_nodes):
+                terminate_func(InstanceIds=nodes[start:start +
+                                                 max_terminate_nodes])
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""

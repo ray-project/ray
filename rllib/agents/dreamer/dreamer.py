@@ -7,11 +7,12 @@ from ray.rllib.agents import with_common_config
 from ray.rllib.agents.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    LEARNER_INFO, _get_shared_metrics
+    _get_shared_metrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.agents.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
@@ -106,43 +107,12 @@ class EpisodicBuffer(object):
 
         self.timesteps += batch.count
         episodes = batch.split_by_episode()
-
-        for i, e in enumerate(episodes):
-            episodes[i] = self.preprocess_episode(e)
         self.episodes.extend(episodes)
 
         if len(self.episodes) > self.max_length:
             delta = len(self.episodes) - self.max_length
             # Drop oldest episodes
             self.episodes = self.episodes[delta:]
-
-    def preprocess_episode(self, episode: SampleBatchType):
-        """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
-        When t=0, the resetted obs is paired with action and reward of 0.
-
-        Args:
-            episode: SampleBatch representing an episode
-        """
-        obs = episode["obs"]
-        new_obs = episode["new_obs"]
-        action = episode["actions"]
-        reward = episode["rewards"]
-
-        act_shape = action.shape
-        act_reset = np.array([0.0] * act_shape[-1])[None]
-        rew_reset = np.array(0.0)[None]
-        obs_end = np.array(new_obs[act_shape[0] - 1])[None]
-
-        batch_obs = np.concatenate([obs, obs_end], axis=0)
-        batch_action = np.concatenate([act_reset, action], axis=0)
-        batch_rew = np.concatenate([rew_reset, reward], axis=0)
-
-        new_batch = {
-            "obs": batch_obs,
-            "rewards": batch_rew,
-            "actions": batch_action
-        }
-        return SampleBatch(new_batch)
 
     def sample(self, batch_size: int):
         """Samples [batch_size, length] from the list of episodes
@@ -158,13 +128,9 @@ class EpisodicBuffer(object):
                 continue
             available = episode.count - self.length
             index = int(random.randint(0, available))
-            episodes_buffer.append(episode.slice(index, index + self.length))
+            episodes_buffer.append(episode[index:index + self.length])
 
-        batch = {}
-        for k in episodes_buffer[0].keys():
-            batch[k] = np.stack([e[k] for e in episodes_buffer], axis=0)
-
-        return SampleBatch(batch)
+        return SampleBatch.concat_samples(episodes_buffer)
 
 
 def total_sampled_timesteps(worker):
@@ -182,12 +148,12 @@ class DreamerIteration:
 
     def __call__(self, samples):
 
-        # Dreamer Training Loop
+        # Dreamer training loop.
         for n in range(self.dreamer_train_iters):
-            print(n)
+            print(f"sub-iteration={n}/{self.dreamer_train_iters}")
             batch = self.episode_buffer.sample(self.batch_size)
-            if n == self.dreamer_train_iters - 1:
-                batch["log_gif"] = True
+            # if n == self.dreamer_train_iters - 1:
+            #     batch["log_gif"] = True
             fetches = self.worker.learn_on_batch(batch)
 
         # Custom Logging
@@ -219,8 +185,11 @@ class DreamerIteration:
         return fetches[DEFAULT_POLICY_ID]["learner_stats"]
 
 
-def execution_plan(workers, config):
-    # Special Replay Buffer for Dreamer agent
+def execution_plan(workers, config, **kwargs):
+    assert len(kwargs) == 0, (
+        "Dreamer execution_plan does NOT take any additional parameters")
+
+    # Special replay buffer for Dreamer agent.
     episode_buffer = EpisodicBuffer(length=config["batch_length"])
 
     local_worker = workers.local_worker()

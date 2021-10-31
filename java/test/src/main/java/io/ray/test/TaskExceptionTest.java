@@ -2,6 +2,7 @@ package io.ray.test;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
+import io.ray.runtime.exception.RayTaskException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -45,5 +46,18 @@ public class TaskExceptionTest extends BaseTest {
     ActorHandle<MyActor> myActor = Ray.actor(MyActor::new).remote();
     Assert.assertEquals("Hi", myActor.task(MyActor::sayHi).remote().get());
     Assert.assertThrows((() -> myActor.task(MyActor::throwUnserializableException).remote().get()));
+  }
+
+  private static String hello() {
+    Ray.task(TaskExceptionTest::throwUnserializableException).remote().get();
+    return "hello";
+  }
+
+  @Test
+  public void testThrowRootExceptionForChainedTasks() {
+    RayTaskException ex =
+        Assert.expectThrows(
+            RayTaskException.class, () -> Ray.task(TaskExceptionTest::hello).remote().get());
+    Assert.assertTrue(ex.getCause() instanceof RayTaskException);
   }
 }

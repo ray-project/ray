@@ -9,7 +9,6 @@ import sys
 import time
 
 import ray
-import ray.test_utils
 import ray.cluster_utils
 
 

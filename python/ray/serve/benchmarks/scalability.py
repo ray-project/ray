@@ -33,7 +33,6 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve import BackendConfig
 from ray.serve.utils import logger
 
 from ray.util.placement_group import placement_group, remove_placement_group
@@ -62,13 +61,7 @@ while True:
 logger.info("Nodes have all joined. There are %s resources.",
             ray.cluster_resources())
 
-client = serve.start()
-
-
-def hey(_):
-    time.sleep(0.01)  # Sleep for 10ms
-    return b"hey"
-
+serve.start()
 
 pg = placement_group(
     [{
@@ -76,10 +69,15 @@ pg = placement_group(
     } for _ in range(expected_num_nodes)], strategy="STRICT_SPREAD")
 ray.get(pg.ready())
 
+
+@serve.deployment(num_replicas=num_replicas)
+def hey(*args):
+    time.sleep(0.01)  # Sleep for 10ms
+    return b"hey"
+
+
 logger.info("Starting %i replicas", num_replicas)
-client.create_backend(
-    "hey", hey, config=BackendConfig(num_replicas=num_replicas))
-client.create_endpoint("hey", backend="hey", route="/hey")
+hey.deploy()
 
 
 @ray.remote(num_cpus=0)

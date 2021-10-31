@@ -27,7 +27,7 @@ tf1, tf, tfv = try_import_tf()
 def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
                      action_space: gym.spaces.Space, config: TrainerConfigDict
                      ) -> Tuple[ModelV2, ActionDistribution]:
-    """Build q_model and target_q_model for DQN
+    """Build q_model and target_model for DQN
 
     Args:
         policy (Policy): The policy, which will use the model for optimization.
@@ -38,14 +38,18 @@ def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
     Returns:
         q_model
             Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
+            `policy.target_model`.
     """
 
     # Create the policy's models.
     model = build_q_model(policy, obs_space, action_space, config)
 
-    # Assert correct model type.
-    assert model.get_initial_state() != [], \
+    # Assert correct model type by checking the init state to be present.
+    # For attention nets: These don't necessarily publish their init state via
+    # Model.get_initial_state, but may only use the trajectory view API
+    # (view_requirements).
+    assert (model.get_initial_state() != [] or
+            model.view_requirements.get("state_in_0") is not None), \
         "R2D2 requires its model to be a recurrent one! Try using " \
         "`model.use_lstm` or `model.use_attention` in your config " \
         "to auto-wrap your model with an LSTM- or attention net."
@@ -81,22 +85,22 @@ def r2d2_loss(policy: Policy, model, _,
         model,
         train_batch,
         state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
+        seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
         is_training=True)
 
     # Target Q-network evaluation (at t+1).
     q_target, _, _, _ = compute_q_values(
         policy,
-        policy.target_q_model,
+        policy.target_model,
         train_batch,
         state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
+        seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
         is_training=True)
 
     if not hasattr(policy, "target_q_func_vars"):
-        policy.target_q_func_vars = policy.target_q_model.variables()
+        policy.target_q_func_vars = policy.target_model.variables()
 
     actions = tf.cast(train_batch[SampleBatch.ACTIONS], tf.int64)
     dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
@@ -140,7 +144,8 @@ def r2d2_loss(policy: Policy, model, _,
                 config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
 
         # Seq-mask all loss-related terms.
-        seq_mask = tf.sequence_mask(train_batch["seq_lens"], T)[:, :-1]
+        seq_mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS],
+                                    T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
         burn_in = policy.config["burn_in"]
         # Making sure, this works for both static graph and eager.
@@ -151,7 +156,7 @@ def r2d2_loss(policy: Policy, model, _,
         def reduce_mean_valid(t):
             return tf.reduce_mean(tf.boolean_mask(t, seq_mask))
 
-        # Make sure use the correct time indices:
+        # Make sure to use the correct time indices:
         # Q(t) - [gamma * r + Q^(t+1)]
         q_selected = tf.reshape(q_selected, [B, T])[:, :-1]
         td_error = q_selected - tf.stop_gradient(
@@ -159,7 +164,9 @@ def r2d2_loss(policy: Policy, model, _,
         td_error = td_error * tf.cast(seq_mask, tf.float32)
         weights = tf.reshape(weights, [B, T])[:, :-1]
         policy._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
-        policy._td_error = tf.reshape(td_error, [-1])
+        # Store the TD-error per time chunk (b/c we need only one mean
+        # prioritized replay weight per stored sequence).
+        policy._td_error = tf.reduce_mean(td_error, axis=-1)
         policy._loss_stats = {
             "mean_q": reduce_mean_valid(q_selected),
             "min_q": tf.reduce_min(q_selected),

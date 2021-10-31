@@ -48,7 +48,6 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::ActorTableData;
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
 using rpc::HeartbeatTableData;
@@ -81,6 +80,8 @@ struct NodeManagerConfig {
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
   WorkerCommandMap worker_commands;
+  /// The native library path which includes the core libraries.
+  std::string native_library_path;
   /// The command used to start agent.
   std::string agent_command;
   /// The time between reports resources in milliseconds.
@@ -103,9 +104,6 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
-  // Whether to the raylet should push resource reports to GCS or wait for GCS to pull the
-  // reports from raylets.
-  bool pull_based_resource_reporting;
 };
 
 class HeartbeatSender {
@@ -249,9 +247,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// report to GCS.
   void FillResourceReport(rpc::ResourcesData &resources_data);
 
-  /// Report resource usage to the GCS.
-  void ReportResourceUsage();
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
 
@@ -279,18 +274,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// returned to idle.
   bool FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr);
 
-  /// Helper function to produce actor table data for a newly created actor.
-  ///
-  /// \param task_spec Task specification of the actor creation task that created the
-  /// actor.
-  /// \param worker The port that the actor is listening on.
-  std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
-      const TaskSpecification &task_spec, int port, const WorkerID &worker_id);
   /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
   /// \return Void.
-  void FinishAssignedActorCreationTask(WorkerInterface &worker, const Task &task);
+  void FinishAssignedActorCreationTask(WorkerInterface &worker, const RayTask &task);
 
   /// Handle blocking gets of objects. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
@@ -501,6 +489,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReportWorkerBacklog` request.
+  void HandleReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request,
+                                 rpc::ReportWorkerBacklogReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReturnWorker` request.
   void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                           rpc::ReturnWorkerReply *reply,
@@ -510,6 +503,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleReleaseUnusedWorkers(const rpc::ReleaseUnusedWorkersRequest &request,
                                   rpc::ReleaseUnusedWorkersReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `ShutdownRaylet` request.
+  void HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request,
+                            rpc::ShutdownRayletReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
   void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
@@ -577,8 +575,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
   /// print.
   ///
-  /// \param task Task that is infeasible
-  void PublishInfeasibleTaskError(const Task &task) const;
+  /// \param task RayTask that is infeasible
+  void PublishInfeasibleTaskError(const RayTask &task) const;
 
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
@@ -609,11 +607,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
-  /// Delete URI in local node.
-  ///
-  /// \param uri The URI of the resource.
-  void DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb);
-
   /// ID of this node.
   NodeID self_node_id_;
   instrumented_io_context &io_service_;
@@ -633,7 +626,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
   /// The object table. This is shared between the object manager and node
   /// manager.
-  std::unique_ptr<ObjectDirectoryInterface> object_directory_;
+  std::unique_ptr<IObjectDirectory> object_directory_;
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
@@ -682,7 +675,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       remote_node_manager_addresses_;
 
   /// Map of workers leased out to direct call clients.
-  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   /// Map from owner worker ID to a list of worker IDs that the owner has a
   /// lease on.
@@ -758,6 +751,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
+
+  /// Whether or not if the node draining process has already received.
+  bool is_node_drained_ = false;
 };
 
 }  // namespace raylet

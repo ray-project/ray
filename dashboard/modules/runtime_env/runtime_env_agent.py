@@ -1,22 +1,33 @@
 import asyncio
+from collections import defaultdict
 from dataclasses import dataclass
 import json
 import logging
-from ray._private.ray_logging import setup_component_logger
-from typing import Dict
+import os
+import time
+from typing import Dict, Set
+from ray._private.utils import import_attr
 
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
-import ray._private.runtime_env as runtime_env
-from ray._private.utils import import_attr
-from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
-                                               using_thread_local_logger)
+from ray.experimental.internal_kv import (_initialize_internal_kv,
+                                          _internal_kv_initialized)
+from ray._private.ray_logging import setup_component_logger
+from ray._private.runtime_env.conda import CondaManager
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.py_modules import PyModulesManager
+from ray._private.runtime_env.working_dir import WorkingDirManager
+from ray._private.runtime_env.container import ContainerManager
 
 logger = logging.getLogger(__name__)
+
+# TODO(edoakes): this is used for unit tests. We should replace it with a
+# better pluggability mechanism once available.
+SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
 
 
 @dataclass
@@ -38,18 +49,28 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
-        self._session_dir = dashboard_agent.session_dir
         self._runtime_env_dir = dashboard_agent.runtime_env_dir
-        self._setup = import_attr(dashboard_agent.runtime_env_setup_hook)
         self._logging_params = dashboard_agent.logging_params
         self._per_job_logger_cache = dict()
-        runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
         self._env_cache: Dict[str, CreatedEnvResult] = dict()
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
+        # Keeps track of the URIs contained within each env so we can
+        # invalidate the env cache when a URI is deleted.
+        # This is a temporary mechanism until we have per-URI caching.
+        self._working_dir_uri_to_envs: Dict[str, Set[str]] = defaultdict(set)
+
+        # Initialize internal KV to be used by the working_dir setup code.
+        _initialize_internal_kv(self._dashboard_agent.gcs_client)
+        assert _internal_kv_initialized()
+
+        self._conda_manager = CondaManager(self._runtime_env_dir)
+        self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
+        self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
+        self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
@@ -62,17 +83,48 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         return self._per_job_logger_cache[job_id]
 
     async def CreateRuntimeEnv(self, request, context):
-        async def _setup_runtime_env(serialized_runtime_env, session_dir):
+        async def _setup_runtime_env(serialized_runtime_env,
+                                     serialized_allocated_resource_instances):
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 runtime_env: dict = json.loads(serialized_runtime_env or "{}")
+                allocated_resource: dict = json.loads(
+                    serialized_allocated_resource_instances or "{}")
+
+                # Use a separate logger for each job.
                 per_job_logger = self.get_or_create_logger(request.job_id)
-                # Here we set the logger context for the setup hook execution.
-                # The logger needs to be thread local because there can be
-                # setup hooks ran for arbitrary job in arbitrary threads.
-                with using_thread_local_logger(per_job_logger):
-                    env_context = self._setup(runtime_env, session_dir)
-                return env_context
+                # TODO(chenk008): Add log about allocated_resource to
+                # avoid lint error. That will be moved to cgroup plugin.
+                per_job_logger.debug(f"Worker has resource :"
+                                     f"{allocated_resource}")
+                context = RuntimeEnvContext(
+                    env_vars=runtime_env.get("env_vars"))
+                self._conda_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._py_modules_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._working_dir_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._container_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+
+                # Add the mapping of URIs -> the serialized environment to be
+                # used for cache invalidation.
+                uri = runtime_env.get("working_dir")
+                if uri is not None:
+                    self._working_dir_uri_to_envs[uri].add(
+                        serialized_runtime_env)
+
+                # Run setup function from all the plugins
+                for plugin_class_path in runtime_env.get("plugins", {}).keys():
+                    plugin_class = import_attr(plugin_class_path)
+                    # TODO(simon): implement uri support
+                    plugin_class.create("uri not implemented", runtime_env,
+                                        context)
+                    plugin_class.modify_context("uri not implemented",
+                                                runtime_env, context)
+
+                return context
 
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, run_setup_with_logger)
@@ -102,20 +154,18 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                         status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                         error_message=error_message)
 
+            if SLEEP_FOR_TESTING_S:
+                logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
+                time.sleep(int(SLEEP_FOR_TESTING_S))
+
             logger.info(f"Creating runtime env: {serialized_env}")
-            runtime_env_dict = json.loads(serialized_env or "{}")
-            uris = runtime_env_dict.get("uris")
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
-                    if uris:
-                        # TODO(guyang.sgy): Try ensure_runtime_env_setup(uris)
-                        # to download packages.
-                        # But we don't initailize internal kv in agent now.
-                        pass
                     runtime_env_context = await _setup_runtime_env(
-                        serialized_env, self._session_dir)
+                        serialized_env,
+                        request.serialized_allocated_resource_instances)
                     break
                 except Exception as ex:
                     logger.exception("Runtime env creation failed.")
@@ -144,11 +194,26 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                 serialized_runtime_env_context=serialized_context)
 
-    async def DeleteRuntimeEnv(self, request, context):
-        # TODO(guyang.sgy): Delete runtime env local files.
-        return runtime_env_agent_pb2.DeleteRuntimeEnvReply(
-            status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-            error_message="Not implemented.")
+    async def DeleteURIs(self, request, context):
+        logger.info(f"Got request to delete URIS: {request.uris}.")
+
+        # Only a single URI is currently supported.
+        assert len(request.uris) == 1
+
+        uri = request.uris[0]
+
+        # Invalidate the env cache for any environments that contain this URI.
+        for env in self._working_dir_uri_to_envs.get(uri, []):
+            if env in self._env_cache:
+                del self._env_cache[env]
+
+        if self._working_dir_manager.delete_uri(uri):
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
+        else:
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message=f"Local file for URI {uri} not found.")
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(

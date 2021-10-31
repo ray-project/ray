@@ -92,6 +92,13 @@ if [ "${GITHUB_ACTIONS-}" = true ]; then
 fi
 if [ "${CI-}" = true ]; then
   echo "build --config=ci" >> ~/.bazelrc
+
+  # In Windows CI we want to use this to avoid long path issue
+  # https://docs.bazel.build/versions/main/windows.html#avoid-long-path-issues
+  if [ "${OSTYPE}" = msys ]; then
+    echo "startup --output_user_root=c:/tmp" >> ~/.bazelrc
+  fi
+
   # If we are in master build, we can write to the cache as well.
   upload=0
   if [ "${TRAVIS_PULL_REQUEST-false}" = false ]; then

@@ -7,6 +7,7 @@ from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.suggestion import Searcher
+from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
 from ray.tune.trial import Trial
 from ray.tune.utils.util import (flatten_dict, merge_dicts, atomic_save,
@@ -49,8 +50,9 @@ class SearchGenerator(SearchAlgorithm):
         return self.searcher.metric
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
-        return self.searcher.set_search_properties(metric, mode, config)
+                              config: Dict, **spec) -> bool:
+        return set_search_properties_backwards_compatible(
+            self.searcher.set_search_properties, metric, mode, config, **spec)
 
     @property
     def total_samples(self):

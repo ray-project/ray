@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/common/runtime_env_manager.h"
+
 #include "ray/util/logging.h"
 namespace ray {
 
@@ -20,17 +21,12 @@ void RuntimeEnvManager::AddURIReference(const std::string &hex_id,
                                         const rpc::RuntimeEnv &runtime_env) {
   const auto &uris = runtime_env.uris();
   for (const auto &uri : uris) {
-    AddURIReference(hex_id, uri);
+    if (unused_uris_.count(uri)) {
+      unused_uris_.erase(uri);
+    }
+    uri_reference_[uri]++;
+    id_to_uris_[hex_id].push_back(uri);
   }
-}
-
-void RuntimeEnvManager::AddURIReference(const std::string &hex_id,
-                                        const std::string &uri) {
-  if (unused_uris_.count(uri)) {
-    unused_uris_.erase(uri);
-  }
-  uri_reference_[uri]++;
-  id_to_uris_[hex_id].push_back(uri);
 }
 
 const std::vector<std::string> &RuntimeEnvManager::GetReferences(

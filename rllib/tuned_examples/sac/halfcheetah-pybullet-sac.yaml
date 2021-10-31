@@ -2,7 +2,7 @@ halfcheetah-pybullet-sac:
     env: HalfCheetahBulletEnv-v0
     run: SAC
     stop:
-        episode_reward_mean: 9000
+        episode_reward_mean: 800.0
     config:
         # Works for both torch and tf.
         framework: tf
@@ -16,8 +16,8 @@ halfcheetah-pybullet-sac:
           fcnet_hiddens: [256, 256]
         tau: 0.005
         target_entropy: auto
-        no_done_at_end: true
-        n_step: 1
+        no_done_at_end: false
+        n_step: 3
         rollout_fragment_length: 1
         prioritized_replay: true
         train_batch_size: 256
@@ -30,8 +30,5 @@ halfcheetah-pybullet-sac:
           entropy_learning_rate: 0.0003
         num_workers: 0
         num_gpus: 1
-        clip_actions: false
-        normalize_actions: true
-        evaluation_interval: 1
         metrics_smoothing_episodes: 5
 

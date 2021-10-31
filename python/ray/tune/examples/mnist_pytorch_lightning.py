@@ -129,8 +129,8 @@ def train_mnist(config):
 
 
 # __tune_train_begin__
-def train_mnist_tune(config, num_epochs=10, num_gpus=0):
-    data_dir = os.path.expanduser("~/data")
+def train_mnist_tune(config, num_epochs=10, num_gpus=0, data_dir="~/data"):
+    data_dir = os.path.expanduser(data_dir)
     model = LightningMNISTClassifier(config, data_dir)
     trainer = pl.Trainer(
         max_epochs=num_epochs,
@@ -155,16 +155,17 @@ def train_mnist_tune(config, num_epochs=10, num_gpus=0):
 def train_mnist_tune_checkpoint(config,
                                 checkpoint_dir=None,
                                 num_epochs=10,
-                                num_gpus=0):
-    data_dir = os.path.expanduser("~/data")
-    trainer = pl.Trainer(
-        max_epochs=num_epochs,
+                                num_gpus=0,
+                                data_dir="~/data"):
+    data_dir = os.path.expanduser(data_dir)
+    kwargs = {
+        "max_epochs": num_epochs,
         # If fractional GPUs passed in, convert to int.
-        gpus=math.ceil(num_gpus),
-        logger=TensorBoardLogger(
+        "gpus": math.ceil(num_gpus),
+        "logger": TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
-        progress_bar_refresh_rate=0,
-        callbacks=[
+        "progress_bar_refresh_rate": 0,
+        "callbacks": [
             TuneReportCheckpointCallback(
                 metrics={
                     "loss": "ptl/val_loss",
@@ -172,27 +173,22 @@ def train_mnist_tune_checkpoint(config,
                 },
                 filename="checkpoint",
                 on="validation_end")
-        ])
+        ]
+    }
+
     if checkpoint_dir:
-        # Currently, this leads to errors:
-        # model = LightningMNISTClassifier.load_from_checkpoint(
-        #     os.path.join(checkpoint, "checkpoint"))
-        # Workaround:
-        ckpt = pl_load(
-            os.path.join(checkpoint_dir, "checkpoint"),
-            map_location=lambda storage, loc: storage)
-        model = LightningMNISTClassifier._load_model_state(
-            ckpt, config=config, data_dir=data_dir)
-        trainer.current_epoch = ckpt["epoch"]
-    else:
-        model = LightningMNISTClassifier(config=config, data_dir=data_dir)
+        kwargs["resume_from_checkpoint"] = os.path.join(
+            checkpoint_dir, "checkpoint")
+
+    model = LightningMNISTClassifier(config=config, data_dir=data_dir)
+    trainer = pl.Trainer(**kwargs)
 
     trainer.fit(model)
 # __tune_train_checkpoint_end__
 
 
 # __tune_asha_begin__
-def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
+def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0, data_dir="~/data"):
     config = {
         "layer_1_size": tune.choice([32, 64, 128]),
         "layer_2_size": tune.choice([64, 128, 256]),
@@ -213,7 +209,8 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
         tune.with_parameters(
             train_mnist_tune,
             num_epochs=num_epochs,
-            num_gpus=gpus_per_trial),
+            num_gpus=gpus_per_trial,
+            data_dir=data_dir),
         resources_per_trial={
             "cpu": 1,
             "gpu": gpus_per_trial
@@ -232,7 +229,7 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
 
 # __tune_pbt_begin__
-def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
+def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0, data_dir="~/data"):
     config = {
         "layer_1_size": tune.choice([32, 64, 128]),
         "layer_2_size": tune.choice([64, 128, 256]),
@@ -255,7 +252,8 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
         tune.with_parameters(
             train_mnist_tune_checkpoint,
             num_epochs=num_epochs,
-            num_gpus=gpus_per_trial),
+            num_gpus=gpus_per_trial,
+            data_dir=data_dir),
         resources_per_trial={
             "cpu": 1,
             "gpu": gpus_per_trial
@@ -279,13 +277,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="~/data/",
+        help="Set the path of the dataset."
+    )
     args, _ = parser.parse_known_args()
+    data_dir = args.data_dir
 
     if args.smoke_test:
-        tune_mnist_asha(num_samples=1, num_epochs=6, gpus_per_trial=0)
-        tune_mnist_pbt(num_samples=1, num_epochs=6, gpus_per_trial=0)
+        tune_mnist_asha(num_samples=1, num_epochs=6, gpus_per_trial=0, data_dir=data_dir)
+        tune_mnist_pbt(num_samples=1, num_epochs=6, gpus_per_trial=0, data_dir=data_dir)
     else:
         # ASHA scheduler
-        tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0)
+        tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0, data_dir=data_dir)
         # Population based training
-        tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0)
+        tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0, data_dir=data_dir)

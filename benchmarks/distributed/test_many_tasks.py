@@ -2,7 +2,7 @@ import click
 import json
 import os
 import ray
-from ray import test_utils
+import ray._private.test_utils as test_utils
 import time
 import tqdm
 
@@ -61,7 +61,7 @@ def test(num_tasks):
 
     rate = num_tasks / (end_time - start_time - sleep_time)
 
-    print(f"Sucess! Started {num_tasks} tasks in {end_time - start_time}s. "
+    print(f"Success! Started {num_tasks} tasks in {end_time - start_time}s. "
           f"({rate} tasks/s)")
 
     if "TEST_OUTPUT_JSON" in os.environ:

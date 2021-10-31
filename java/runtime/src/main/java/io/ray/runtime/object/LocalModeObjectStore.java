@@ -117,7 +117,7 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public byte[] promoteAndGetOwnershipInfo(ObjectId objectId) {
+  public byte[] getOwnershipInfo(ObjectId objectId) {
     return new byte[0];
   }
 

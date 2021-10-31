@@ -1,8 +1,9 @@
 import sys
 
 import ray
+import ray._private.gcs_utils as gcs_utils
 import pytest
-from ray.test_utils import (
+from ray._private.test_utils import (
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
@@ -23,7 +24,7 @@ def increase(x):
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_gcs_server_restart(ray_start_regular):
@@ -150,7 +151,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular):
 
     def condition():
         actor_status = ray.state.actors(actor_id=actor_id)
-        if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD:
+        if actor_status["State"] == gcs_utils.ActorTableData.DEAD:
             return True
         else:
             return False

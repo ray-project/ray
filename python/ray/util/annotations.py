@@ -3,7 +3,7 @@ def PublicAPI(*args, **kwargs):
 
     Public APIs are classes and methods exposed to end users of Ray. You
     can expect these APIs to remain backwards compatible across minor Ray
-    releases.
+    releases (e.g., Ray 1.4 -> 1.8).
 
     Args:
         stability: Either "stable" for stable features or "beta" for APIs that

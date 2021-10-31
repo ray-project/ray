@@ -12,10 +12,9 @@ import warnings
 import aioredis
 
 import ray
-import ray.gcs_utils
-import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
-from ray.new_dashboard import k8s_utils
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
+from ray.dashboard import k8s_utils
+import ray.dashboard.utils as dashboard_utils
 import ray._private.services
 import ray._private.utils
 from ray.core.generated import reporter_pb2
@@ -241,19 +240,18 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_disk_usage():
-        dirs = [
-            os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep,
-            ray._private.utils.get_user_temp_dir(),
-        ]
         if IN_KUBERNETES_POD:
             # If in a K8s pod, disable disk display by passing in dummy values.
             return {
-                x: psutil._common.sdiskusage(
+                "/": psutil._common.sdiskusage(
                     total=1, used=0, free=1, percent=0.0)
-                for x in dirs
             }
-        else:
-            return {x: psutil.disk_usage(x) for x in dirs}
+        root = os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep
+        tmp = ray._private.utils.get_user_temp_dir()
+        return {
+            "/": psutil.disk_usage(root),
+            tmp: psutil.disk_usage(tmp),
+        }
 
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()

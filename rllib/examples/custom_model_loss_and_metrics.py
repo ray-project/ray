@@ -19,9 +19,10 @@ from ray import tune
 from ray.rllib.examples.models.custom_loss_model import CustomLossModel, \
     TorchCustomLossModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
+    LEARNER_STATS_KEY
 
 tf1, tf, tfv = try_import_tf()
 
@@ -83,9 +84,9 @@ if __name__ == "__main__":
 
     # Torch metrics structure.
     if args.framework == "torch":
-        assert LEARNER_STATS_KEY in info["learner"][DEFAULT_POLICY_ID]
-        assert "model" in info["learner"][DEFAULT_POLICY_ID]
-        assert "custom_metrics" in info["learner"][DEFAULT_POLICY_ID]
+        assert LEARNER_STATS_KEY in info[LEARNER_INFO][DEFAULT_POLICY_ID]
+        assert "model" in info[LEARNER_INFO][DEFAULT_POLICY_ID]
+        assert "custom_metrics" in info[LEARNER_INFO][DEFAULT_POLICY_ID]
 
     # TODO: (sven) Make sure the metrics structure gets unified between
     #  tf and torch. Tf should work like current torch:
@@ -96,4 +97,5 @@ if __name__ == "__main__":
     #        model: [return values of ModelV2's `metrics` method]
     #        custom_metrics: [return values of callback: `on_learn_on_batch`]
     else:
-        assert "model" in info["learner"][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
+        assert "model" in info[LEARNER_INFO][DEFAULT_POLICY_ID][
+            LEARNER_STATS_KEY]

@@ -15,14 +15,13 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Optional
-import warnings
+from typing import Optional, List
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
-from ray.util.debug import log_once
 import redis
+from ray.core.generated.common_pb2 import Language
 
 # Import psutil and colorama after ray so the packaged version is used.
 import colorama
@@ -52,8 +51,21 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
 # Location of the cpp default worker executables.
-DEFAULT_WORKER_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
+DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
+                                         "cpp/default_worker" + EXE_SUFFIX)
+
+# Location of the native libraries.
+DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
+
+DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
+    "Not all Ray Dashboard dependencies were "
+    "found. To use the dashboard please "
+    "install Ray using `pip install "
+    "ray[default]`.")
+
+RAY_JEMALLOC_LIB_PATH = "RAY_JEMALLOC_LIB_PATH"
+RAY_JEMALLOC_CONF = "RAY_JEMALLOC_CONF"
+RAY_JEMALLOC_PROFILE = "RAY_JEMALLOC_PROFILE"
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -74,6 +86,46 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
 
 def serialize_config(config):
     return base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
+
+
+def propagate_jemalloc_env_var(*, jemalloc_path: str, jemalloc_conf: str,
+                               jemalloc_comps: List[str], process_type: str):
+    """Read the jemalloc memory profiling related
+        env var and return the dictionary that translates
+        them to proper jemalloc related env vars.
+
+        For example, if users specify `RAY_JEMALLOC_LIB_PATH`,
+        it is translated into `LD_PRELOAD` which is needed to
+        run Jemalloc as a shared library.
+
+        Params:
+            jemalloc_path (str): The path to the jemalloc shared library.
+            jemalloc_conf (str): `,` separated string of jemalloc config.
+            jemalloc_comps List(str): The list of Ray components
+                that we will profile.
+            process_type (str): The process type that needs jemalloc
+                env var for memory profiling. If it doesn't match one of
+                jemalloc_comps, the function will return an empty dict.
+
+        Returns:
+            dictionary of {env_var: value}
+                that are needed to jemalloc profiling. The caller can
+                call `dict.update(return_value_of_this_func)` to
+                update the dict of env vars. If the process_type doesn't
+                match jemalloc_comps, it will return an empty dict.
+    """
+    assert isinstance(jemalloc_comps, list)
+    assert process_type is not None
+    process_type = process_type.lower()
+    if (not jemalloc_path or process_type not in jemalloc_comps):
+        return {}
+
+    env_vars = {
+        "LD_PRELOAD": jemalloc_path,
+    }
+    if jemalloc_conf:
+        env_vars.update({"MALLOC_CONF": jemalloc_conf})
+    return env_vars
 
 
 class ConsolePopen(subprocess.Popen):
@@ -154,7 +206,7 @@ def find_redis_address(address=None):
     #     --redis_password=[MASKED] --temp_dir=/tmp/ray --session_dir=...
     #     --metrics-agent-port=41856 --metrics_export_port=64229
     #     --agent_command=/usr/bin/python
-    #     -u /usr/local/lib/python3.8/dist-packages/ray/new_dashboard/agent.py
+    #     -u /usr/local/lib/python3.8/dist-packages/ray/dashboard/agent.py
     #         --redis-address=123.456.78.910:6379 --metrics-export-port=64229
     #         --dashboard-agent-port=41856 --node-manager-port=58578
     #         --object-store-name=... --raylet-name=... --temp-dir=/tmp/ray
@@ -394,6 +446,11 @@ def node_ip_address_from_perspective(address):
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray.worker._global_node is not None:
         return ray.worker._global_node.node_ip_address
+    if sys.platform == "darwin" or sys.platform == "win32":
+        # Due to the mac osx/windows firewall,
+        # we use loopback ip as the ip address
+        # to prevent security popups.
+        return "127.0.0.1"
     return node_ip_address_from_perspective(address)
 
 
@@ -498,17 +555,29 @@ def start_ray_process(command,
     if os.environ.get(gdb_env_var) == "1":
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
+    # Jemalloc memory profiling.
+    jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH)
+    jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
+    jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
+    jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
+    jemalloc_env_vars = propagate_jemalloc_env_var(
+        jemalloc_path=jemalloc_lib_path,
+        jemalloc_conf=jemalloc_conf,
+        jemalloc_comps=jemalloc_comps,
+        process_type=process_type)
+    use_jemalloc_mem_profiler = len(jemalloc_env_vars) > 0
 
     if sum([
             use_gdb,
             use_valgrind,
             use_valgrind_profiler,
             use_perftools_profiler,
+            use_jemalloc_mem_profiler,
     ]) > 1:
-        raise ValueError(
-            "At most one of the 'use_gdb', 'use_valgrind', "
-            "'use_valgrind_profiler', and 'use_perftools_profiler' flags can "
-            "be used at a time.")
+        raise ValueError("At most one of the 'use_gdb', 'use_valgrind', "
+                         "'use_valgrind_profiler', 'use_perftools_profiler', "
+                         "and 'use_jemalloc_mem_profiler' flags can "
+                         "be used at a time.")
     if env_updates is None:
         env_updates = {}
     if not isinstance(env_updates, dict):
@@ -548,6 +617,11 @@ def start_ray_process(command,
     if use_perftools_profiler:
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
+
+    if use_jemalloc_mem_profiler:
+        logger.info(f"Jemalloc profiling will be used for {process_type}. "
+                    f"env vars: {jemalloc_env_vars}")
+        modified_env.update(jemalloc_env_vars)
 
     if use_tmux:
         # The command has to be created exactly as below to ensure that it
@@ -816,17 +890,6 @@ def start_redis(node_ip_address,
             addresses for the remaining shards, and the processes that were
             started.
     """
-
-    if len(redirect_files) != 1 + num_redis_shards:
-        raise ValueError("The number of redirect file pairs should be equal "
-                         "to the number of redis shards (including the "
-                         "primary shard) we will start.")
-    if redis_shard_ports is None:
-        redis_shard_ports = num_redis_shards * [None]
-    elif len(redis_shard_ports) != num_redis_shards:
-        raise RuntimeError("The number of Redis shard ports does not match "
-                           "the number of Redis shards.")
-
     processes = []
 
     if external_addresses is not None:
@@ -839,6 +902,17 @@ def start_redis(node_ip_address,
         # Deleting the key to avoid duplicated rpush.
         primary_redis_client.delete("RedisShards")
     else:
+        if len(redirect_files) != 1 + num_redis_shards:
+            raise ValueError(
+                "The number of redirect file pairs should be equal "
+                "to the number of redis shards (including the "
+                "primary shard) we will start.")
+        if redis_shard_ports is None:
+            redis_shard_ports = num_redis_shards * [None]
+        elif len(redis_shard_ports) != num_redis_shards:
+            raise RuntimeError(
+                "The number of Redis shard ports does not match "
+                "the number of Redis shards.")
         redis_executable = REDIS_EXECUTABLE
 
         redis_stdout_file, redis_stderr_file = redirect_files[0]
@@ -862,7 +936,8 @@ def start_redis(node_ip_address,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file,
             fate_share=fate_share,
-            port_denylist=port_denylist)
+            port_denylist=port_denylist,
+            listen_to_localhost_only=(node_ip_address == "127.0.0.1"))
         processes.append(p)
         redis_address = address(node_ip_address, port)
         primary_redis_client = redis.StrictRedis(
@@ -894,7 +969,7 @@ def start_redis(node_ip_address,
     # other Redis shards at a high, random port.
     last_shard_port = new_port(denylist=port_denylist) - 1
     for i in range(num_redis_shards):
-        if external_addresses is not None and len(external_addresses) > 1:
+        if external_addresses is not None:
             shard_address = external_addresses[i + 1]
         else:
             redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
@@ -918,7 +993,8 @@ def start_redis(node_ip_address,
                 stdout_file=redis_stdout_file,
                 stderr_file=redis_stderr_file,
                 fate_share=fate_share,
-                port_denylist=port_denylist)
+                port_denylist=port_denylist,
+                listen_to_localhost_only=(node_ip_address == "127.0.0.1"))
             processes.append(p)
 
             shard_address = address(node_ip_address, redis_shard_port)
@@ -940,7 +1016,8 @@ def _start_redis_instance(executable,
                           password=None,
                           redis_max_memory=None,
                           fate_share=None,
-                          port_denylist=None):
+                          port_denylist=None,
+                          listen_to_localhost_only=False):
     """Start a single Redis server.
 
     Notes:
@@ -966,6 +1043,9 @@ def _start_redis_instance(executable,
             will start LRU eviction of entries.
         port_denylist (set): A set of denylist ports that shouldn't
             be used when allocating a new port.
+        listen_to_localhost_only (bool): Redis server only listens to
+            localhost (127.0.0.1) if it's true,
+            otherwise it listens to all network interfaces.
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -986,6 +1066,8 @@ def _start_redis_instance(executable,
                 raise ValueError("Spaces not permitted in redis password.")
             command += ["--requirepass", password]
         command += (["--port", str(port), "--loglevel", "warning"])
+        if listen_to_localhost_only:
+            command += ["--bind", "127.0.0.1"]
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -1163,7 +1245,10 @@ def start_dashboard(require_dashboard,
                 port_test_socket.bind((host, port))
                 port_test_socket.close()
             except socket.error as e:
-                if e.errno in {48, 98}:  # address already in use.
+                # 10013 on windows is a bit more broad than just
+                # "address in use": it can also indicate "permission denied".
+                # TODO: improve the error message?
+                if e.errno in {48, 98, 10013}:  # address already in use.
                     raise ValueError(
                         f"Failed to bind to {host}:{port} because it's "
                         "already occupied. You can use `ray start "
@@ -1174,33 +1259,15 @@ def start_dashboard(require_dashboard,
 
         # Make sure the process can start.
         try:
-            # These checks have to come first because aiohttp looks
-            # for opencensus, too, and raises a different error otherwise.
-            import opencensus  # noqa: F401
-            import prometheus_client  # noqa: F401
-
-            import aiohttp  # noqa: F401
-            import aioredis  # noqa: F401
-            import aiohttp_cors  # noqa: F401
-            import grpc  # noqa: F401
+            import ray.dashboard.optional_deps  # noqa: F401
         except ImportError:
-            warning_message = (
-                "Not all Ray Dashboard dependencies were found. "
-                "To use the dashboard please install Ray like so: `pip "
-                "install ray[default]`.")
             if require_dashboard:
-                raise ImportError(warning_message)
+                raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
             else:
-                if log_once("dashboard_failed_import") and not os.getenv(
-                        "RAY_DISABLE_IMPORT_WARNING") == "1":
-                    warning_message += " To disable this message, set " \
-                                       "RAY_DISABLE_IMPORT_WARNING " \
-                                       "env var to '1'."
-                    warnings.warn(warning_message)
                 return None, None
 
         # Start the dashboard process.
-        dashboard_dir = "new_dashboard"
+        dashboard_dir = "dashboard"
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir,
                                           "dashboard.py")
         command = [
@@ -1210,7 +1277,7 @@ def start_dashboard(require_dashboard,
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}"
         ]
-        if redis_password:
+        if redis_password is not None:
             command += ["--redis-password", redis_password]
         process_info = start_ray_process(
             command,
@@ -1275,6 +1342,7 @@ def start_dashboard(require_dashboard,
 
 
 def start_gcs_server(redis_address,
+                     log_dir,
                      stdout_file=None,
                      stderr_file=None,
                      redis_password=None,
@@ -1286,6 +1354,7 @@ def start_gcs_server(redis_address,
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        log_dir (str): The path of the dir where log files are created.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1309,6 +1378,7 @@ def start_gcs_server(redis_address,
         GCS_SERVER_EXECUTABLE,
         f"--redis_address={gcs_ip_address}",
         f"--redis_port={gcs_port}",
+        f"--log_dir={log_dir}",
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
@@ -1332,8 +1402,6 @@ def start_raylet(redis_address,
                  plasma_store_name,
                  worker_path,
                  setup_worker_path,
-                 worker_setup_hook,
-                 runtime_env_setup_hook,
                  temp_dir,
                  session_dir,
                  resource_dir,
@@ -1360,7 +1428,8 @@ def start_raylet(redis_address,
                  start_initial_python_workers_for_first_job=False,
                  max_bytes=0,
                  backup_count=0,
-                 ray_debugger_external=False):
+                 ray_debugger_external=False,
+                 env_updates=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1373,12 +1442,8 @@ def start_raylet(redis_address,
              to.
         worker_path (str): The path of the Python file that new worker
             processes will execute.
-        setup_worker_path (str): The path of the Python file that will run
-            worker_setup_hook to set up the environment for the worker process.
-        worker_setup_hook (str): The module path to a Python function that will
-            be imported and run to set up the environment for the worker.
-        runtime_env_setup_hook (str): The module path to a Python function that
-            will be imported and run to set up the runtime env in agent.
+        setup_worker_path (str): The path of the Python file that will set up
+            the environment for the worker process.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1410,6 +1475,8 @@ def start_raylet(redis_address,
             RotatingFileHandler's backupCount.
         ray_debugger_external (bool): True if the Ray debugger should be made
             available externally to this node.
+        env_updates (dict): Environment variable overrides.
+
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1454,6 +1521,7 @@ def start_raylet(redis_address,
             redis_password,
             session_dir,
             node_ip_address,
+            setup_worker_path,
         )
     else:
         java_worker_command = []
@@ -1472,8 +1540,6 @@ def start_raylet(redis_address,
     start_worker_command = [
         sys.executable,
         setup_worker_path,
-        f"--worker-setup-hook={worker_setup_hook}",
-        f"--session-dir={session_dir}",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1500,30 +1566,32 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
-    # Create agent command
-    agent_command = [
-        sys.executable,
-        "-u",
-        os.path.join(RAY_PATH, "new_dashboard/agent.py"),
-        f"--node-ip-address={node_ip_address}",
-        f"--redis-address={redis_address}",
-        f"--metrics-export-port={metrics_export_port}",
-        f"--dashboard-agent-port={metrics_agent_port}",
-        f"--listen-port={dashboard_agent_listen_port}",
-        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--temp-dir={temp_dir}",
-        f"--session-dir={session_dir}",
-        f"--runtime-env-dir={resource_dir}",
-        f"--runtime-env-setup-hook={runtime_env_setup_hook}",
-        f"--log-dir={log_dir}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-    ]
+    if not ray._private.utils.check_dashboard_dependencies_installed():
+        # An empty agent command will cause the raylet not to start it.
+        agent_command = []
+    else:
+        agent_command = [
+            sys.executable,
+            "-u",
+            os.path.join(RAY_PATH, "dashboard", "agent.py"),
+            f"--node-ip-address={node_ip_address}",
+            f"--redis-address={redis_address}",
+            f"--metrics-export-port={metrics_export_port}",
+            f"--dashboard-agent-port={metrics_agent_port}",
+            f"--listen-port={dashboard_agent_listen_port}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--object-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--temp-dir={temp_dir}",
+            f"--session-dir={session_dir}",
+            f"--runtime-env-dir={resource_dir}",
+            f"--log-dir={log_dir}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+        ]
 
-    if redis_password is not None and len(redis_password) != 0:
-        agent_command.append("--redis-password={}".format(redis_password))
+        if redis_password is not None and len(redis_password) != 0:
+            agent_command.append("--redis-password={}".format(redis_password))
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1541,9 +1609,11 @@ def start_raylet(redis_address,
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
+        f"--log_dir={log_dir}",
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
@@ -1571,7 +1641,8 @@ def start_raylet(redis_address,
         use_perftools_profiler=("RAYLET_PERFTOOLS_PATH" in os.environ),
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+        env_updates=env_updates)
 
     return process_info
 
@@ -1595,6 +1666,7 @@ def build_java_worker_command(
         redis_password,
         session_dir,
         node_ip_address,
+        setup_worker_path,
 ):
     """This method assembles the command used to start a Java worker.
 
@@ -1606,6 +1678,8 @@ def build_java_worker_command(
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
         node_ip_address (str): The ip address for this node.
+        setup_worker_path (str): The path of the Python file that will set up
+            the environment for the worker process.
     Returns:
         The command string for starting Java worker.
     """
@@ -1630,7 +1704,9 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
+    command = [sys.executable] + [setup_worker_path] + ["java"] + [
+        "-D{}={}".format(*pair) for pair in pairs
+    ]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
@@ -1663,14 +1739,14 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
 
     command = [
         DEFAULT_WORKER_EXECUTABLE,
-        f"--ray-plasma-store-socket-name={plasma_store_name}",
-        f"--ray-raylet-socket-name={raylet_name}",
-        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray-address={redis_address}",
-        f"--ray-redis-password={redis_password}",
-        f"--ray-session-dir={session_dir}",
-        f"--ray-logs-dir={log_dir}",
-        f"--ray-node-ip-address={node_ip_address}",
+        f"--ray_plasma_store_socket_name={plasma_store_name}",
+        f"--ray_raylet_socket_name={raylet_name}",
+        "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray_address={redis_address}",
+        f"--ray_redis_password={redis_password}",
+        f"--ray_session_dir={session_dir}",
+        f"--ray_logs_dir={log_dir}",
+        f"--ray_node_ip_address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
@@ -1881,15 +1957,16 @@ def start_monitor(redis_address,
     return process_info
 
 
-def start_ray_client_server(redis_address,
-                            ray_client_server_port,
-                            stdout_file=None,
-                            stderr_file=None,
-                            redis_password=None,
-                            fate_share=None,
-                            server_type: str = "proxy",
-                            serialized_runtime_env: Optional[str] = None,
-                            session_dir: Optional[str] = None):
+def start_ray_client_server(
+        redis_address,
+        ray_client_server_port,
+        stdout_file=None,
+        stderr_file=None,
+        redis_password=None,
+        fate_share=None,
+        metrics_agent_port=None,
+        server_type: str = "proxy",
+        serialized_runtime_env_context: Optional[str] = None):
     """Run the server process of the Ray client.
 
     Args:
@@ -1900,8 +1977,8 @@ def start_ray_client_server(redis_address,
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
         server_type (str): Whether to start the proxy version of Ray Client.
-        serialized_runtime_env (str|None): If specified, the serialized
-            runtime_env to start the client server in.
+        serialized_runtime_env_context (str|None): If specified, the serialized
+            runtime_env_context to start the client server in.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1909,26 +1986,25 @@ def start_ray_client_server(redis_address,
     root_ray_dir = Path(__file__).resolve().parents[1]
     setup_worker_path = os.path.join(root_ray_dir, "workers",
                                      ray_constants.SETUP_WORKER_FILENAME)
-    conda_shim_flag = (
-        "--worker-setup-hook=" + ray_constants.DEFAULT_WORKER_SETUP_HOOK)
 
     command = [
         sys.executable,
         setup_worker_path,
-        conda_shim_flag,  # These two args are to use the shim process.
         "-m",
         "ray.util.client.server",
-        "--redis-address=" + str(redis_address),
-        "--port=" + str(ray_client_server_port),
-        "--mode=" + server_type
+        f"--redis-address={redis_address}",
+        f"--port={ray_client_server_port}",
+        f"--mode={server_type}",
+        f"--language={Language.Name(Language.PYTHON)}",
     ]
     if redis_password:
-        command.append("--redis-password=" + redis_password)
-
-    if serialized_runtime_env:
-        command.append("--serialized-runtime-env=" + serialized_runtime_env)
-    if session_dir:
-        command.append(f"--session-dir={session_dir}")
+        command.append(f"--redis-password={redis_password}")
+    if serialized_runtime_env_context:
+        command.append(
+            f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
+        )
+    if metrics_agent_port:
+        command.append(f"--metrics-agent-port={metrics_agent_port}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,

@@ -36,11 +36,11 @@ class RNNModel(tf.keras.models.Model if tf else object):
 
     def call(self, sample_batch):
         dense_out = self.dense(sample_batch["obs"])
-        B = tf.shape(sample_batch["seq_lens"])[0]
+        B = tf.shape(sample_batch[SampleBatch.SEQ_LENS])[0]
         lstm_in = tf.reshape(dense_out, [B, -1, dense_out.shape.as_list()[1]])
         lstm_out, h, c = self.lstm(
             inputs=lstm_in,
-            mask=tf.sequence_mask(sample_batch["seq_lens"]),
+            mask=tf.sequence_mask(sample_batch[SampleBatch.SEQ_LENS]),
             initial_state=[
                 sample_batch["state_in_0"], sample_batch["state_in_1"]
             ],

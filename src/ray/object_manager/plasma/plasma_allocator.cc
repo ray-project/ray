@@ -55,33 +55,17 @@ const size_t kAllocationAlignment = 64;
 // bookkeeping.
 const int64_t kDlMallocReserved = 256 * sizeof(size_t);
 
-absl::optional<Allocation> BuildAllocation(void *addr, size_t size) {
-  if (addr == nullptr) {
-    return absl::nullopt;
-  }
-  MEMFD_TYPE fd;
-  int64_t mmap_size;
-  ptrdiff_t offset;
-
-  if (GetMallocMapinfo(addr, &fd, &mmap_size, &offset)) {
-    return Allocation(addr, static_cast<int64_t>(size), std::move(fd), offset,
-                      0 /* device_number*/, mmap_size);
-  }
-  return absl::nullopt;
-}
 }  // namespace
 
 PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
                                  const std::string &fallback_directory,
-                                 bool hugepage_enabled, int64_t footprint_limit,
-                                 bool fallback_enabled)
+                                 bool hugepage_enabled, int64_t footprint_limit)
     : kFootprintLimit(footprint_limit),
       kAlignment(kAllocationAlignment),
-      kFallbackEnabled(fallback_enabled),
       allocated_(0),
       fallback_allocated_(0) {
   internal::SetDLMallocConfig(plasma_directory, fallback_directory, hugepage_enabled,
-                              fallback_enabled);
+                              /*fallback_enabled=*/true);
   RAY_CHECK(kFootprintLimit > kDlMallocReserved)
       << "Footprint limit has to be greater than " << kDlMallocReserved;
   auto allocation = Allocate(kFootprintLimit - kDlMallocReserved);
@@ -94,15 +78,6 @@ PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
 }
 
 absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
-  if (!kFallbackEnabled) {
-    // We only check against the footprint limit in when fallback allocation is disabled.
-    // In fallback disabled mode: the check is done here; dlmemalign never returns
-    // nullptr. In fallback enabled mode: dlmemalign returns nullptr once the initial
-    // /dev/shm block fills.
-    if (allocated_ + static_cast<int64_t>(bytes) > kFootprintLimit) {
-      return absl::nullopt;
-    }
-  }
   RAY_LOG(DEBUG) << "allocating " << bytes;
   void *mem = dlmemalign(kAlignment, bytes);
   RAY_LOG(DEBUG) << "allocated " << bytes << " at " << mem;
@@ -114,9 +89,6 @@ absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
 }
 
 absl::optional<Allocation> PlasmaAllocator::FallbackAllocate(size_t bytes) {
-  if (!kFallbackEnabled) {
-    return absl::nullopt;
-  }
   // Forces allocation as a separate file.
   RAY_CHECK(dlmallopt(M_MMAP_THRESHOLD, 0));
   RAY_LOG(DEBUG) << "fallback allocating " << bytes;
@@ -142,8 +114,7 @@ void PlasmaAllocator::Free(Allocation allocation) {
   RAY_LOG(DEBUG) << "deallocating " << allocation.size << " at " << allocation.address;
   dlfree(allocation.address);
   allocated_ -= allocation.size;
-  if (RayConfig::instance().plasma_unlimited() &&
-      internal::IsOutsideInitialAllocation(allocation.address)) {
+  if (internal::IsOutsideInitialAllocation(allocation.address)) {
     fallback_allocated_ -= allocation.size;
   }
 }
@@ -153,4 +124,19 @@ int64_t PlasmaAllocator::GetFootprintLimit() const { return kFootprintLimit; }
 int64_t PlasmaAllocator::Allocated() const { return allocated_; }
 
 int64_t PlasmaAllocator::FallbackAllocated() const { return fallback_allocated_; }
+
+absl::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr, size_t size) {
+  if (addr == nullptr) {
+    return absl::nullopt;
+  }
+  MEMFD_TYPE fd;
+  int64_t mmap_size;
+  ptrdiff_t offset;
+
+  if (internal::GetMallocMapinfo(addr, &fd, &mmap_size, &offset)) {
+    return Allocation(addr, static_cast<int64_t>(size), std::move(fd), offset,
+                      0 /* device_number*/, mmap_size);
+  }
+  return absl::nullopt;
+}
 }  // namespace plasma

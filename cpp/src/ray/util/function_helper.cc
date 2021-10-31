@@ -13,13 +13,15 @@
 // limitations under the License.
 
 #include "function_helper.h"
+
 #include <boost/filesystem.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <memory>
+
 #include "ray/util/logging.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
   RAY_LOG(INFO) << "Start load library " << lib_path;
@@ -51,7 +53,7 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
 
   try {
     auto entry_func = boost::dll::import_alias<msgpack::sbuffer(
-        const std::string &, const std::vector<msgpack::sbuffer> &, msgpack::sbuffer *)>(
+        const std::string &, const ArgsBufferList &, msgpack::sbuffer *)>(
         *lib, "TaskExecutionHandler");
     auto function_names = LoadAllRemoteFunctions(lib_path.string(), *lib, entry_func);
     if (function_names.empty()) {
@@ -165,5 +167,5 @@ const EntryFuntion &FunctionHelper::GetExecutableMemberFunctions(
   }
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

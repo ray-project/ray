@@ -19,9 +19,6 @@
 #include "cpp/src/ray/runtime/task/task_executor.h"
 #include "cpp/src/ray/util/function_helper.h"
 
-using namespace ray::api;
-using namespace ray::internal;
-
 int Return() { return 1; }
 int PlusOne(int x) { return x + 1; }
 int PlusTwo(int x, int y) { return x + y; }
@@ -114,56 +111,56 @@ TEST(RayApiTest, DuplicateRegister) {
 
   /// Duplicate register
   EXPECT_THROW(FunctionManager::Instance().RegisterRemoteFunction("Return", Return),
-               RayException);
+               ray::internal::RayException);
   EXPECT_THROW(FunctionManager::Instance().RegisterRemoteFunction("PlusOne", PlusOne),
-               RayException);
+               ray::internal::RayException);
 }
 
 TEST(RayApiTest, NormalTask) {
-  auto r = Ray::Task(Return).Remote();
+  auto r = ray::Task(Return).Remote();
   EXPECT_EQ(1, *(r.Get()));
 
-  auto r1 = Ray::Task(PlusOne).Remote(1);
+  auto r1 = ray::Task(PlusOne).Remote(1);
   EXPECT_EQ(2, *(r1.Get()));
 }
 
 TEST(RayApiTest, VoidFunction) {
-  auto r2 = Ray::Task(VoidFuncNoArgs).Remote();
+  auto r2 = ray::Task(VoidFuncNoArgs).Remote();
   r2.Get();
   EXPECT_EQ(1, out_for_void_func);
 
-  auto r3 = Ray::Task(VoidFuncWithArgs).Remote(1, 2);
+  auto r3 = ray::Task(VoidFuncWithArgs).Remote(1, 2);
   r3.Get();
   EXPECT_EQ(3, out_for_void_func_no_args);
 }
 
 TEST(RayApiTest, ReferenceArgs) {
-  auto r = Ray::Task(Concat1).Remote("a", "b");
+  auto r = ray::Task(Concat1).Remote("a", "b");
   EXPECT_EQ(*(r.Get()), "ab");
   std::string a = "a";
   std::string b = "b";
-  auto r1 = Ray::Task(Concat1).Remote(std::move(a), std::move(b));
+  auto r1 = ray::Task(Concat1).Remote(std::move(a), std::move(b));
   EXPECT_EQ(*(r.Get()), *(r1.Get()));
 
   std::string str = "a";
   std::string str1 = "b";
-  auto r2 = Ray::Task(Concat2).Remote(str, std::move(str1));
+  auto r2 = ray::Task(Concat2).Remote(str, std::move(str1));
 
   std::string str2 = "b";
-  auto r3 = Ray::Task(Concat3).Remote(str, str2);
+  auto r3 = ray::Task(Concat3).Remote(str, str2);
   EXPECT_EQ(*(r2.Get()), *(r3.Get()));
 
-  ActorHandle<DummyObject> actor = Ray::Actor(DummyObject::FactoryCreate).Remote(1);
+  ray::ActorHandle<DummyObject> actor = ray::Actor(DummyObject::FactoryCreate).Remote(1);
   auto r4 = actor.Task(&DummyObject::Concat1).Remote("a", "b");
   auto r5 = actor.Task(&DummyObject::Concat2).Remote(str, "b");
   EXPECT_EQ(*(r4.Get()), *(r5.Get()));
 }
 
 TEST(RayApiTest, VirtualFunctions) {
-  ActorHandle<Base> actor = Ray::Actor(Base::FactoryCreate).Remote();
+  auto actor = ray::Actor(Base::FactoryCreate).Remote();
   auto r = actor.Task(&Base::Foo).Remote();
   auto r1 = actor.Task(&Base::Bar).Remote();
-  ActorHandle<Base1> actor1 = Ray::Actor(Base1::FactoryCreate).Remote();
+  auto actor1 = ray::Actor(Base1::FactoryCreate).Remote();
   auto r2 = actor1.Task(&Base1::Foo).Remote();
   auto r3 = actor1.Task(&Base1::Bar).Remote();
   EXPECT_EQ(*(r.Get()), 1);
@@ -171,7 +168,7 @@ TEST(RayApiTest, VirtualFunctions) {
   EXPECT_EQ(*(r2.Get()), 3);
   EXPECT_EQ(*(r3.Get()), 4);
 
-  ActorHandle<Derived> derived = Ray::Actor(Derived::FactoryCreate).Remote();
+  auto derived = ray::Actor(Derived::FactoryCreate).Remote();
   auto r4 = derived.Task(&Base::Foo).Remote();
   auto r5 = derived.Task(&Base::Bar).Remote();
   EXPECT_EQ(*(r4.Get()), 10);
@@ -179,11 +176,11 @@ TEST(RayApiTest, VirtualFunctions) {
 }
 
 TEST(RayApiTest, CallWithObjectRef) {
-  auto rt0 = Ray::Task(Return).Remote();
-  auto rt1 = Ray::Task(PlusOne).Remote(rt0);
-  auto rt2 = Ray::Task(PlusTwo).Remote(rt1, 3);
-  auto rt3 = Ray::Task(PlusOne).Remote(3);
-  auto rt4 = Ray::Task(PlusTwo).Remote(rt2, rt3);
+  auto rt0 = ray::Task(Return).Remote();
+  auto rt1 = ray::Task(PlusOne).Remote(rt0);
+  auto rt2 = ray::Task(PlusTwo).Remote(rt1, 3);
+  auto rt3 = ray::Task(PlusOne).Remote(3);
+  auto rt4 = ray::Task(PlusTwo).Remote(rt2, rt3);
 
   int return0 = *(rt0.Get());
   int return1 = *(rt1.Get());
@@ -199,9 +196,9 @@ TEST(RayApiTest, CallWithObjectRef) {
 }
 
 TEST(RayApiTest, OverloadTest) {
-  auto rt0 = Ray::Task(RAY_FUNC(OverloadFunc)).Remote();
-  auto rt1 = Ray::Task(RAY_FUNC(OverloadFunc, int)).Remote(rt0);
-  auto rt2 = Ray::Task(RAY_FUNC(OverloadFunc, int, int)).Remote(rt1, 3);
+  auto rt0 = ray::Task(RAY_FUNC(OverloadFunc)).Remote();
+  auto rt1 = ray::Task(RAY_FUNC(OverloadFunc, int)).Remote(rt0);
+  auto rt2 = ray::Task(RAY_FUNC(OverloadFunc, int, int)).Remote(rt1, 3);
 
   int return0 = *(rt0.Get());
   int return1 = *(rt1.Get());
@@ -215,11 +212,11 @@ TEST(RayApiTest, OverloadTest) {
 /// We should consider the driver so is not same with the worker so, and find the error
 /// reason.
 TEST(RayApiTest, NotExistFunction) {
-  EXPECT_THROW(Ray::Task(NotRegisteredFunc), RayException);
+  EXPECT_THROW(ray::Task(NotRegisteredFunc), ray::internal::RayException);
 }
 
 TEST(RayApiTest, ExceptionTask) {
   /// Normal task Exception.
-  auto r4 = Ray::Task(ExceptionFunc).Remote(2);
-  EXPECT_THROW(r4.Get(), RayTaskException);
+  auto r4 = ray::Task(ExceptionFunc).Remote(2);
+  EXPECT_THROW(r4.Get(), ray::internal::RayTaskException);
 }

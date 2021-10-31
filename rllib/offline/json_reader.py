@@ -123,6 +123,10 @@ class JsonReader(InputReader):
                     "from URIs like {}".format(path))
             ctx = smart_open
         else:
+            # Allow shortcut for home directory ("~/" -> env[HOME]).
+            if path.startswith("~/"):
+                path = os.path.join(os.environ.get("HOME", ""), path[2:])
+
             # If path doesn't exist, try to interpret is as relative to the
             # rllib directory (located ../../ from this very module).
             path_orig = path

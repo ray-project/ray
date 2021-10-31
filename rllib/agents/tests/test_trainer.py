@@ -1,11 +1,19 @@
+import copy
+import gym
+import numpy as np
 from random import choice
+import time
 import unittest
 
 import ray
 import ray.rllib.agents.a3c as a3c
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.pg as pg
+from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.parallel_evaluation_and_training import \
+    AssertNumEvalEpisodesCallback
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -18,6 +26,23 @@ class TestTrainer(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
+    def test_validate_config_idempotent(self):
+        """
+        Asserts that validate_config run multiple
+        times on COMMON_CONFIG will be idempotent
+        """
+        # Given:
+        standard_config = copy.deepcopy(COMMON_CONFIG)
+
+        # When (we validate config 2 times), ...
+        Trainer._validate_config(standard_config)
+        config_v1 = copy.deepcopy(standard_config)
+        Trainer._validate_config(standard_config)
+        config_v2 = copy.deepcopy(standard_config)
+
+        # ... then ...
+        self.assertEqual(config_v1, config_v2)
+
     def test_add_delete_policy(self):
         config = pg.DEFAULT_CONFIG.copy()
         config.update({
@@ -28,22 +53,30 @@ class TestTrainer(unittest.TestCase):
                 },
             },
             "num_workers": 2,  # Test on remote workers as well.
+            "model": {
+                "fcnet_hiddens": [5],
+                "fcnet_activation": "linear",
+            },
+            "train_batch_size": 100,
+            "rollout_fragment_length": 50,
             "multiagent": {
                 # Start with a single policy.
                 "policies": {"p0"},
-                "policy_mapping_fn": lambda aid, episode, **kwargs: "p0",
+                "policy_mapping_fn": lambda aid, eps, worker, **kwargs: "p0",
+                # And only two policies that can be stored in memory at a
+                # time.
                 "policy_map_capacity": 2,
             },
         })
 
         for _ in framework_iterator(config):
             trainer = pg.PGTrainer(config=config)
+            pol0 = trainer.get_policy("p0")
             r = trainer.train()
-            self.assertTrue("p0" in r["policy_reward_min"])
-            checkpoints = []
+            self.assertTrue("p0" in r["info"][LEARNER_INFO])
             for i in range(1, 3):
 
-                def new_mapping_fn(agent_id, episode, **kwargs):
+                def new_mapping_fn(agent_id, episode, worker, **kwargs):
                     return f"p{choice([i, i - 1])}"
 
                 # Add a new policy.
@@ -57,30 +90,32 @@ class TestTrainer(unittest.TestCase):
                     policies_to_train=[f"p{i}", f"p{i-1}"],
                 )
                 pol_map = trainer.workers.local_worker().policy_map
-                self.assertTrue(new_pol is not trainer.get_policy("p0"))
-                for j in range(i):
+                self.assertTrue(new_pol is not pol0)
+                for j in range(i + 1):
                     self.assertTrue(f"p{j}" in pol_map)
                 self.assertTrue(len(pol_map) == i + 1)
-                r = trainer.train()
-                self.assertTrue("p1" in r["policy_reward_min"])
-                checkpoints.append(trainer.save())
+                trainer.train()
+                checkpoint = trainer.save()
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
                 test = pg.PGTrainer(config=config)
-                test.restore(checkpoints[-1])
+                test.restore(checkpoint)
+                pol0 = test.get_policy("p0")
                 test.train()
                 # Test creating an action with the added (and restored) policy.
                 a = test.compute_single_action(
-                    test.get_policy("p0").observation_space.sample(),
+                    np.zeros_like(pol0.observation_space.sample()),
                     policy_id=pid)
-                self.assertTrue(test.get_policy("p0").action_space.contains(a))
+                self.assertTrue(pol0.action_space.contains(a))
                 test.stop()
 
             # Delete all added policies again from trainer.
             for i in range(2, 0, -1):
                 trainer.remove_policy(
                     f"p{i}",
+                    # Note that the complete signature of a policy_mapping_fn
+                    # is: `agent_id, episode, worker, **kwargs`.
                     policy_mapping_fn=lambda aid, eps, **kwargs: f"p{i - 1}",
                     policies_to_train=[f"p{i - 1}"])
 
@@ -94,7 +129,10 @@ class TestTrainer(unittest.TestCase):
             "evaluation_num_episodes": 2,
             "evaluation_config": {
                 "gamma": 0.98,
-            }
+            },
+            # Use a custom callback that asserts that we are running the
+            # configured exact number of episodes per evaluation.
+            "callbacks": AssertNumEvalEpisodesCallback,
         })
 
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
@@ -124,6 +162,9 @@ class TestTrainer(unittest.TestCase):
             "env": "CartPole-v0",
             # Switch off evaluation (this should already be the default).
             "evaluation_interval": None,
+            # Use a custom callback that asserts that we are running the
+            # configured exact number of episodes per evaluation.
+            "callbacks": AssertNumEvalEpisodesCallback,
         })
         for _ in framework_iterator(frameworks=("tf", "torch")):
             # Setup trainer w/o evaluation worker set and still call
@@ -145,6 +186,45 @@ class TestTrainer(unittest.TestCase):
             assert "episode_reward_mean" in results["evaluation"]
             trainer_w_env_on_driver.stop()
             config["create_env_on_driver"] = False
+
+    def test_space_inference_from_remote_workers(self):
+        # Expect to not do space inference if the learner has an env.
+
+        env = gym.make("CartPole-v0")
+
+        config = pg.DEFAULT_CONFIG.copy()
+        config["env"] = "CartPole-v0"
+        config["num_workers"] = 1
+
+        # No env on driver -> expect longer build time due to space
+        # "lookup" from remote worker.
+        t0 = time.time()
+        trainer = pg.PGTrainer(config=config)
+        w_lookup = time.time() - t0
+        print(f"No env on learner: {w_lookup}sec")
+        trainer.stop()
+
+        # Env on driver -> expect longer build time due to space
+        # "lookup" from remote worker.
+        config["create_env_on_driver"] = True
+        t0 = time.time()
+        trainer = pg.PGTrainer(config=config)
+        wo_lookup = time.time() - t0
+        print(f"Env on learner: {wo_lookup}sec")
+        self.assertLess(wo_lookup, w_lookup)
+        trainer.stop()
+
+        # Spaces given -> expect shorter build time due to no space
+        # "lookup" from remote worker.
+        config["create_env_on_driver"] = False
+        config["observation_space"] = env.observation_space
+        config["action_space"] = env.action_space
+        t0 = time.time()
+        trainer = pg.PGTrainer(config=config)
+        wo_lookup = time.time() - t0
+        print(f"Spaces given manually in config: {wo_lookup}sec")
+        self.assertLess(wo_lookup, w_lookup)
+        trainer.stop()
 
 
 if __name__ == "__main__":

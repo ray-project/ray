@@ -104,6 +104,9 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
       StatsConfig::instance().GetHarvestInterval());
   StatsConfig::instance().SetGlobalTags(global_tags);
+  for (auto &f : StatsConfig::instance().PopInitializers()) {
+    f();
+  }
   StatsConfig::instance().SetIsInitialized(true);
 }
 
@@ -122,6 +125,7 @@ static inline void Shutdown() {
   exporter = nullptr;
   StatsConfig::instance().SetIsInitialized(false);
 }
+
 }  // namespace stats
 
 }  // namespace ray

@@ -29,6 +29,7 @@ struct HandlerStats {
 
   // Execution stats.
   int64_t cum_execution_time = 0;
+  int64_t running_count = 0;
 };
 
 /// Count and queueing statistics over all asio handlers.
@@ -63,12 +64,13 @@ struct GuardedGlobalStats {
 
 /// An opaque stats handle, used to manually instrument event loop handlers that don't
 /// hook into a .post() call.
+// TODO Pull out the tracker from ASIO
 struct StatsHandle {
   std::string handler_name;
   int64_t start_time;
   std::shared_ptr<GuardedHandlerStats> handler_stats;
   std::shared_ptr<GuardedGlobalStats> global_stats;
-  bool execution_recorded = false;
+  std::atomic<bool> execution_recorded;
 
   StatsHandle(std::string handler_name_, int64_t start_time_,
               std::shared_ptr<GuardedHandlerStats> handler_stats_,
@@ -76,7 +78,8 @@ struct StatsHandle {
       : handler_name(std::move(handler_name_)),
         start_time(start_time_),
         handler_stats(std::move(handler_stats_)),
-        global_stats(std::move(global_stats_)) {}
+        global_stats(std::move(global_stats_)),
+        execution_recorded(false) {}
 
   void ZeroAccumulatedQueuingDelay() { start_time = absl::GetCurrentTimeNanos(); }
 
@@ -111,6 +114,15 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param handle The stats handle returned by RecordStart() previously.
   void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// A proxy post function that collects count, queueing, and execution statistics for
+  /// the given handler.
+  ///
+  /// \param handler The handler to be posted to the event loop.
+  /// \param name A human-readable name for the handler, to be used for viewing stats
+  /// for the provided handler. Defaults to UNKNOWN.
+  void dispatch(std::function<void()> handler, const std::string name = "UNKNOWN")
       LOCKS_EXCLUDED(mutex_);
 
   /// Sets the queueing start time, increments the current and cumulative counts and

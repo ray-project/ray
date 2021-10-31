@@ -4,7 +4,7 @@ import time
 import ray
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.util.queue import Queue, Empty, Full
-from ray.test_utils import wait_for_condition, BatchQueue
+from ray._private.test_utils import wait_for_condition, BatchQueue
 
 
 # Remote helper functions for testing concurrency

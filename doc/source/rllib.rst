@@ -25,14 +25,14 @@ RLlib has extra dependencies on top of ``ray``. First, you'll need to install ei
 
 .. code-block:: bash
 
-  pip install 'ray[rllib]'
+  pip install "ray[rllib]"
 
 Then, you can try out training in the following equivalent ways:
 
 .. code-block:: bash
 
   rllib train --run=PPO --env=CartPole-v0  # -v [-vv] for verbose,
-                                           # --config='{"framework": "tf2", "eager_tracing": True}' for eager,
+                                           # --config='{"framework": "tf2", "eager_tracing": true}' for eager,
                                            # --torch to use PyTorch OR --config='{"framework": "torch"}'
 
 .. code-block:: python

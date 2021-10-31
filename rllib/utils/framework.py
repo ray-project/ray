@@ -5,15 +5,9 @@ import sys
 from typing import Any, Optional
 
 from ray.rllib.utils.annotations import Deprecated
-from ray.rllib.utils.typing import TensorStructType, TensorShape, TensorType
+from ray.rllib.utils.typing import TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
-
-# Represents a generic tensor type.
-TensorType = TensorType
-
-# Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
-TensorStructType = TensorStructType
 
 
 def try_import_jax(error=False):
@@ -199,36 +193,36 @@ def _torch_stubs():
     return None, nn
 
 
-def get_variable(value,
+def get_variable(value: Any,
                  framework: str = "tf",
                  trainable: bool = False,
                  tf_name: str = "unnamed-variable",
                  torch_tensor: bool = False,
                  device: Optional[str] = None,
                  shape: Optional[TensorShape] = None,
-                 dtype: Optional[Any] = None):
+                 dtype: Optional[TensorType] = None) -> Any:
     """
     Args:
-        value (any): The initial value to use. In the non-tf case, this will
+        value: The initial value to use. In the non-tf case, this will
             be returned as is. In the tf case, this could be a tf-Initializer
             object.
-        framework (str): One of "tf", "torch", or None.
-        trainable (bool): Whether the generated variable should be
+        framework: One of "tf", "torch", or None.
+        trainable: Whether the generated variable should be
             trainable (tf)/require_grad (torch) or not (default: False).
-        tf_name (str): For framework="tf": An optional name for the
+        tf_name: For framework="tf": An optional name for the
             tf.Variable.
-        torch_tensor (bool): For framework="torch": Whether to actually create
+        torch_tensor: For framework="torch": Whether to actually create
             a torch.tensor, or just a python value (default).
-        device (Optional[torch.Device]): An optional torch device to use for
+        device: An optional torch device to use for
             the created torch tensor.
-        shape (Optional[TensorShape]): An optional shape to use iff `value`
+        shape: An optional shape to use iff `value`
             does not have any (e.g. if it's an initializer w/o explicit value).
-        dtype (Optional[TensorType]): An optional dtype to use iff `value` does
+        dtype: An optional dtype to use iff `value` does
             not have any (e.g. if it's an initializer w/o explicit value).
             This should always be a numpy dtype (e.g. np.float32, np.int64).
 
     Returns:
-        any: A framework-specific variable (tf.Variable, torch.tensor, or
+        A framework-specific variable (tf.Variable, torch.tensor, or
             python primitive).
     """
     if framework in ["tf2", "tf", "tfe"]:

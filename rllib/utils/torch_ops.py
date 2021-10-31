@@ -48,8 +48,8 @@ def atanh(x):
 def concat_multi_gpu_td_errors(policy):
     td_error = torch.cat(
         [
-            getattr(t, "td_error", torch.tensor([0.0])).to(policy.device)
-            for t in policy.model_gpu_towers
+            t.tower_stats.get("td_error", torch.tensor([0.0])).to(
+                policy.device) for t in policy.model_gpu_towers
         ],
         dim=0)
     policy.td_error = td_error
@@ -132,7 +132,7 @@ def explained_variance(y, pred):
     y_var = torch.var(y, dim=[0])
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
-    return torch.max(min_, 1 - (diff_var / y_var))
+    return torch.max(min_, 1 - (diff_var / y_var))[0]
 
 
 def global_norm(tensors):

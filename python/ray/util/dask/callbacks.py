@@ -1,5 +1,7 @@
 import contextlib
-from collections import namedtuple
+
+from collections import namedtuple, defaultdict
+from datetime import datetime
 
 from dask.callbacks import Callback
 
@@ -218,28 +220,71 @@ class ProgressBarCallback(RayDaskCallback):
         @ray.remote
         class ProgressBarActor:
             def __init__(self):
-                self.submitted = 0
-                self.finished = 0
+                self._init()
 
-            def submit(self):
-                self.submitted += 1
+            def submit(self, key, deps, now):
+                for dep in deps.keys():
+                    self.deps[key].add(dep)
+                self.submitted[key] = now
+                self.submission_queue.append((key, now))
 
-            def finish(self):
-                self.finished += 1
+            def task_scheduled(self, key, now):
+                self.scheduled[key] = now
+
+            def finish(self, key, now):
+                self.finished[key] = now
 
             def result(self):
-                return self.submitted, self.finished
+                return len(self.submitted), len(self.finished)
+
+            def report(self):
+                result = defaultdict(dict)
+                for key, finished in self.finished.items():
+                    submitted = self.submitted[key]
+                    scheduled = self.scheduled[key]
+                    # deps = self.deps[key]
+                    result[key]["execution_time"] = (
+                        finished - scheduled).total_seconds()
+                    # Calculate the scheduling time.
+                    # This is inaccurate.
+                    # We should subtract scheduled - (last dep completed).
+                    # But currently it is not easy because
+                    # of how getitem is implemented in dask on ray sort.
+                    result[key]["scheduling_time"] = (
+                        scheduled - submitted).total_seconds()
+                result["submission_order"] = self.submission_queue
+                return result
 
             def ready(self):
                 pass
 
-        self.pb = ProgressBarActor.options(name="_dask_on_ray_pb").remote()
-        ray.get(self.pb.ready.remote())
+            def reset(self):
+                self._init()
+
+            def _init(self):
+                self.submission_queue = []
+                self.submitted = defaultdict(None)
+                self.scheduled = defaultdict(None)
+                self.finished = defaultdict(None)
+                self.deps = defaultdict(set)
+
+        try:
+            self.pb = ray.get_actor("_dask_on_ray_pb")
+            ray.get(self.pb.reset.remote())
+        except ValueError:
+            self.pb = ProgressBarActor.options(name="_dask_on_ray_pb").remote()
+            ray.get(self.pb.ready.remote())
 
     def _ray_postsubmit(self, task, key, deps, object_ref):
         # Indicate the dask task is submitted.
-        self.pb.submit.remote()
+        self.pb.submit.remote(key, deps, datetime.now())
+
+    def _ray_pretask(self, key, object_refs):
+        self.pb.task_scheduled.remote(key, datetime.now())
 
     def _ray_posttask(self, key, result, pre_state):
         # Indicate the dask task is finished.
-        self.pb.finish.remote()
+        self.pb.finish.remote(key, datetime.now())
+
+    def _ray_finish(self, result):
+        print("All tasks are completed.")

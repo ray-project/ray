@@ -15,18 +15,22 @@ def timeit(name, fn, multiplier=1) -> List[Optional[Tuple[str, float, float]]]:
     if filter_pattern not in name:
         return [None]
     # warmup
-    start = time.time()
-    while time.time() - start < 1:
+    start = time.perf_counter()
+    count = 0
+    while time.perf_counter() - start < 1:
         fn()
+        count += 1
     # real run
+    step = count // 10 + 1
     stats = []
     for _ in range(4):
-        start = time.time()
+        start = time.perf_counter()
         count = 0
-        while time.time() - start < 2:
-            fn()
-            count += 1
-        end = time.time()
+        while time.perf_counter() - start < 2:
+            for _ in range(step):
+                fn()
+            count += step
+        end = time.perf_counter()
         stats.append(multiplier * count / (end - start))
 
     mean = np.mean(stats)

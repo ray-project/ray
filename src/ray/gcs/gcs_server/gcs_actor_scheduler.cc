@@ -24,20 +24,18 @@ namespace ray {
 namespace gcs {
 
 GcsActorScheduler::GcsActorScheduler(
-    instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
-    const gcs::GcsNodeManager &gcs_node_manager,
-    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
-    std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
+    instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
+    const GcsNodeManager &gcs_node_manager,
+    std::function<void(std::shared_ptr<GcsActor>, bool)> schedule_failure_handler,
+    std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
+        schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     rpc::ClientFactoryFn client_factory)
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
-      gcs_pub_sub_(std::move(gcs_pub_sub)),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
-      report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       raylet_client_pool_(raylet_client_pool),
       core_worker_clients_(client_factory) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
@@ -47,18 +45,19 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
   // Select a node to lease worker for the actor.
-  const auto &node = SelectNode(actor);
+  auto node_id = SelectNode(actor);
 
-  if (node == nullptr) {
+  auto node = gcs_node_manager_.GetAliveNode(node_id);
+  if (!node.has_value()) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
-    schedule_failure_handler_(std::move(actor));
+    schedule_failure_handler_(std::move(actor), /*destroy_actor*/ false);
     return;
   }
 
   // Update the address of the actor as it is tied to a node.
   rpc::Address address;
-  address.set_raylet_id(node->node_id());
+  address.set_raylet_id(node.value()->node_id());
   actor->UpdateAddress(address);
 
   RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
@@ -66,7 +65,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
                 .second);
 
   // Lease worker directly from the node.
-  LeaseWorkerFromNode(actor, node);
+  LeaseWorkerFromNode(actor, node.value());
 }
 
 void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
@@ -130,6 +129,7 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id, const ActorID &ac
                                         const TaskID &task_id) {
   // NOTE: This method will cancel the outstanding lease request and remove leasing
   // information from the internal state.
+  RAY_LOG(DEBUG) << "Canceling worker leasing of task " << task_id;
   auto node_it = node_to_actors_when_leasing_.find(node_id);
   RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
   node_it->second.erase(actor_id);
@@ -227,14 +227,13 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   auto lease_client = GetOrConnectLeaseClient(remote_address);
   // Actor leases should be sent to the raylet immediately, so we should never build up a
   // backlog in GCS.
-  int backlog_size = report_worker_backlog_ ? 0 : -1;
   lease_client->RequestWorkerLease(
-      actor->GetCreationTaskSpecification(),
+      actor->GetActorTableData().task_spec(),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
         HandleWorkerLeaseReply(actor, node, status, reply);
       },
-      backlog_size);
+      0);
 }
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
@@ -343,6 +342,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
         if (iter != node_to_workers_when_creating_.end()) {
           auto worker_iter = iter->second.find(actor->GetWorkerID());
           if (worker_iter != iter->second.end()) {
+            RAY_LOG(DEBUG) << "Worker " << worker_iter->first << " is in creating map.";
             // The worker is still in the creating map.
             if (status.ok()) {
               // Remove related core worker client.
@@ -356,17 +356,25 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
                             << " on worker " << worker->GetWorkerID() << " at node "
                             << actor->GetNodeID()
                             << ", job id = " << actor->GetActorID().JobId();
-              schedule_success_handler_(actor);
+              schedule_success_handler_(actor, reply);
             } else {
               RetryCreatingActorOnWorker(actor, worker);
             }
           }
+        } else {
+          RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
+                         << " has been removed from creating map. Actor status "
+                         << actor->GetState();
+          auto actor_id = status.ok() ? actor->GetActorID() : ActorID::Nil();
+          KillActorOnWorker(worker->GetAddress(), actor_id);
         }
       });
 }
 
 void GcsActorScheduler::RetryCreatingActorOnWorker(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<GcsLeasedWorker> worker) {
+  RAY_LOG(DEBUG) << "Retry creating actor " << actor->GetActorID() << " on worker "
+                 << worker->GetWorkerID();
   RAY_UNUSED(execute_after(
       io_context_, [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
       RayConfig::instance().gcs_create_actor_retry_interval_ms()));
@@ -394,8 +402,27 @@ std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient
   return raylet_client_pool_->GetOrConnectByAddress(raylet_address);
 }
 
-std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNode(
-    std::shared_ptr<GcsActor> actor) {
+bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
+                                          ActorID actor_id) {
+  if (worker_address.raylet_id().empty()) {
+    RAY_LOG(DEBUG) << "Invalid worker address, skip the killing of actor " << actor_id;
+    return false;
+  }
+
+  auto cli = core_worker_clients_.GetOrConnect(worker_address);
+  rpc::KillActorRequest request;
+  // Set it to be Nil() since it hasn't been setup yet.
+  request.set_intended_actor_id(actor_id.Binary());
+  request.set_force_kill(true);
+  request.set_no_restart(true);
+  cli->KillActor(request, [actor_id](auto &status, auto &) {
+    RAY_LOG(DEBUG) << "Killing actor " << actor_id
+                   << " with return status: " << status.ToString();
+  });
+  return true;
+}
+
+NodeID RayletBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
   std::shared_ptr<rpc::GcsNodeInfo> node;
 
@@ -409,7 +436,7 @@ std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNode(
     node = SelectNodeRandomly();
   }
 
-  return node;
+  return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNodeRandomly() const {
@@ -450,10 +477,34 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
           << actor->GetActorID()
           << " has been already cancelled. The response will be ignored. Job id = "
           << actor->GetActorID().JobId();
+      if (actor->GetState() == rpc::ActorTableData::DEAD) {
+        // If the actor has been killed, we need to kill the worker too
+        // otherwise, the worker will be leaked.
+        RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker.";
+        KillActorOnWorker(reply.worker_address(), ActorID::Nil());
+      }
       return;
     }
 
     if (status.ok()) {
+      // The runtime environment has failed by an unrecoverable error.
+      // We cannot create this actor anymore.
+      if (reply.runtime_env_setup_failed()) {
+        // Right now, the way to report error message back to actor is not that great.
+        // This message is used to notify users the cause of actor death (with ERROR
+        // severity).
+        // TODO(sang): It is a temporary solution. Improve the error reporting here.
+        RAY_LOG(ERROR)
+            << "Cannot create an actor "
+            << actor->GetCreationTaskSpecification().FunctionDescriptor()->CallString()
+            << " of an id " << actor->GetActorID()
+            << " because the runtime environment setup failed on a node of address "
+            << node->node_manager_address() << ".";
+        RAY_LOG(INFO) << "Actor failed to be scheduled on a node " << node_id;
+        schedule_failure_handler_(std::move(actor), /*destroy_actor*/ true);
+        return;
+      }
+
       if (reply.worker_address().raylet_id().empty() &&
           reply.retry_at_raylet_address().raylet_id().empty()) {
         // Actor creation task has been cancelled. It is triggered by `ray.kill`. If
@@ -477,6 +528,11 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     } else {
       RetryLeasingWorkerFromNode(actor, node);
     }
+  } else if (actor->GetState() == rpc::ActorTableData::DEAD) {
+    // If the actor has been killed, we need to kill the worker too
+    // otherwise, the worker will be leaked.
+    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker.";
+    KillActorOnWorker(reply.worker_address(), ActorID::Nil());
   }
 }
 

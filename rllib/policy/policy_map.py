@@ -2,12 +2,14 @@ from collections import deque
 import gym
 import os
 import pickle
+import threading
 from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import get_tf_eager_cls_if_necessary
+from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import PartialTrainerConfigDict, \
     PolicyID, TrainerConfigDict
 from ray.tune.utils.util import merge_dicts
@@ -79,6 +81,11 @@ class PolicyMap(dict):
         # Policies.
         self.policy_specs: Dict[PolicyID, PolicySpec] = {}
 
+        # Lock used for locking some methods on the object-level.
+        # This prevents possible race conditions when accessing the map
+        # and the underlying structures, like self.deque and others.
+        self._lock = threading.RLock()
+
     def create_policy(self, policy_id: PolicyID, policy_cls: Type["Policy"],
                       observation_space: gym.Space, action_space: gym.Space,
                       config_override: PartialTrainerConfigDict,
@@ -145,6 +152,7 @@ class PolicyMap(dict):
             action_space=action_space,
             config=config_override)
 
+    @with_lock
     @override(dict)
     def __getitem__(self, item):
         # Never seen this key -> Error.
@@ -163,6 +171,7 @@ class PolicyMap(dict):
 
         return self.cache[item]
 
+    @with_lock
     @override(dict)
     def __setitem__(self, key, value):
         # Item already in cache -> Rearrange deque (least recently used).
@@ -180,6 +189,7 @@ class PolicyMap(dict):
             self.cache[key] = value
         self.valid_keys.add(key)
 
+    @with_lock
     @override(dict)
     def __delitem__(self, key):
         # Make key invalid.
@@ -196,7 +206,7 @@ class PolicyMap(dict):
 
     @override(dict)
     def __iter__(self):
-        return self.keys()
+        return iter(self.keys())
 
     @override(dict)
     def items(self):
@@ -210,20 +220,29 @@ class PolicyMap(dict):
 
     @override(dict)
     def keys(self):
+        self._lock.acquire()
+        ks = list(self.valid_keys)
+        self._lock.release()
+
         def gen():
-            for key in self.valid_keys:
+            for key in ks:
                 yield key
 
         return gen()
 
     @override(dict)
     def values(self):
+        self._lock.acquire()
+        vs = [self[k] for k in self.valid_keys]
+        self._lock.release()
+
         def gen():
-            for key in self.valid_keys:
-                yield self[key]
+            for value in vs:
+                yield value
 
         return gen()
 
+    @with_lock
     @override(dict)
     def update(self, __m, **kwargs):
         for k, v in __m.items():
@@ -231,18 +250,21 @@ class PolicyMap(dict):
         for k, v in kwargs.items():
             self[k] = v
 
+    @with_lock
     @override(dict)
     def get(self, key):
         if key not in self.valid_keys:
             return None
         return self[key]
 
+    @with_lock
     @override(dict)
     def __len__(self):
         """Returns number of all policies, including the stashed-to-disk ones.
         """
         return len(self.valid_keys)
 
+    @with_lock
     @override(dict)
     def __contains__(self, item):
         return item in self.valid_keys

@@ -3,7 +3,7 @@ import subprocess
 
 import ray
 from ray.streaming import StreamingContext
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def map_func1(x):

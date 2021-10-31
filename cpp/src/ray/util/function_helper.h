@@ -16,6 +16,7 @@
 
 #include <ray/api/common_types.h>
 #include <ray/api/function_manager.h>
+
 #include <boost/dll.hpp>
 #include <memory>
 #include <msgpack.hpp>
@@ -25,10 +26,10 @@
 using namespace ::ray::internal;
 
 namespace ray {
-namespace api {
+namespace internal {
 
 using EntryFuntion = std::function<msgpack::sbuffer(
-    const std::string &, const std::vector<msgpack::sbuffer> &, msgpack::sbuffer *)>;
+    const std::string &, const ArgsBufferList &, msgpack::sbuffer *)>;
 
 class FunctionHelper {
  public:
@@ -59,5 +60,5 @@ class FunctionHelper {
   // Map from remote member function name to executable entry function.
   std::unordered_map<std::string, EntryFuntion> remote_member_funcs_;
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

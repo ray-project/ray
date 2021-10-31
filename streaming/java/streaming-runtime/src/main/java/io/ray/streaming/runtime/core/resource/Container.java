@@ -117,8 +117,6 @@ public class Container implements Serializable {
 
     executionVertexIds.add(vertex.getExecutionVertexId());
     vertex.setContainerIfNotExist(this.getId());
-    // Binding dynamic resource
-    vertex.getResource().put(getName(), 1.0);
     decreaseResource(vertex.getResource());
   }
 

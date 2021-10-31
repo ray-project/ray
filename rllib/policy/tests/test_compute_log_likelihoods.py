@@ -57,7 +57,7 @@ def do_test_log_likelihood(run,
                     explore=True,
                     # Do not unsquash actions
                     # (remain in normalized [-1.0; 1.0] space).
-                    unsquash_actions=False,
+                    unsquash_action=False,
                 ))
 
         # Test all taken actions for their log-likelihoods vs expected values.

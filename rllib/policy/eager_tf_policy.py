@@ -5,22 +5,24 @@ It supports both traced and non-traced eager execution modes."""
 import functools
 import logging
 import threading
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple
 
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import LocalOptimizer, TensorType
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -64,15 +66,17 @@ def convert_eager_inputs(func):
     @functools.wraps(func)
     def _func(*args, **kwargs):
         if tf.executing_eagerly():
-            args = [_convert_to_tf(x) for x in args]
+            eager_args = [_convert_to_tf(x) for x in args]
             # TODO: (sven) find a way to remove key-specific hacks.
-            kwargs = {
+            eager_kwargs = {
                 k: _convert_to_tf(
                     v, dtype=tf.int64 if k == "timestep" else None)
                 for k, v in kwargs.items()
                 if k not in {"info_batch", "episodes"}
             }
-        return func(*args, **kwargs)
+            return func(*eager_args, **eager_kwargs)
+        else:
+            return func(*args, **kwargs)
 
     return _func
 
@@ -179,6 +183,14 @@ def traced_eager_policy(eager_policy_cls):
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__
     TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__
     return TracedEagerPolicy
+
+
+class OptimizerWrapper:
+    def __init__(self, tape):
+        self.tape = tape
+
+    def compute_gradients(self, loss, var_list):
+        return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
 def build_eager_tf_policy(
@@ -322,9 +334,13 @@ def build_eager_tf_policy(
             if getattr(self, "exploration", None):
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
-            # TODO: (sven) Allow tf policy to have more than 1 optimizer.
-            #  Just like torch Policy does.
-            self._optimizer = optimizers[0] if optimizers else None
+
+            # The list of local (tf) optimizers (one per loss term).
+            self._optimizers: List[LocalOptimizer] = optimizers
+            # Backward compatibility: A user's policy may only support a single
+            # loss term and optimizer (no lists).
+            self._optimizer: LocalOptimizer = \
+                optimizers[0] if optimizers else None
 
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True,
@@ -372,7 +388,7 @@ def build_eager_tf_policy(
                 )
 
             self._is_training = True
-            postprocessed_batch["is_training"] = True
+            postprocessed_batch.is_training = True
             stats = self._learn_on_batch_eager(postprocessed_batch)
             stats.update({"custom_metrics": learn_stats})
             return stats
@@ -391,10 +407,12 @@ def build_eager_tf_policy(
                 samples,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
-                batch_divisibility_req=self.batch_divisibility_req)
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
 
             self._is_training = True
-            samples["is_training"] = True
+            samples.is_training = True
             return self._compute_gradients_eager(samples)
 
         @convert_eager_inputs
@@ -418,16 +436,17 @@ def build_eager_tf_policy(
                             **kwargs):
 
             self._is_training = False
-            self._is_recurrent = \
-                state_batches is not None and state_batches != []
 
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            input_dict = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
-                "is_training": tf.constant(False),
-            }
+            input_dict = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: tree.map_structure(
+                        lambda s: tf.convert_to_tensor(s), obs_batch),
+                },
+                _is_training=tf.constant(False))
+            self._lazy_tensor_dict(input_dict)
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
                     tf.convert_to_tensor(prev_action_batch)
@@ -461,7 +480,6 @@ def build_eager_tf_policy(
                                                explore, timestep)
 
         @with_lock
-        @convert_eager_inputs
         @convert_eager_outputs
         def _compute_action_helper(self, input_dict, state_batches, episodes,
                                    explore, timestep):
@@ -472,10 +490,13 @@ def build_eager_tf_policy(
                 self.global_timestep
             if isinstance(timestep, tf.Tensor):
                 timestep = int(timestep.numpy())
+            self._is_recurrent = state_batches is not None and \
+                state_batches != []
             self._is_training = False
             self._state_in = state_batches or []
             # Calculate RNN sequence lengths.
-            batch_size = input_dict[SampleBatch.CUR_OBS].shape[0]
+            batch_size = int(
+                tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0])
             seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches \
                 else None
 
@@ -522,7 +543,7 @@ def build_eager_tf_policy(
                                 dist_inputs, self.dist_class, state_out = \
                                     action_distribution_fn(
                                         self, self.model,
-                                        input_dict[SampleBatch.CUR_OBS],
+                                        input_dict[SampleBatch.OBS],
                                         explore=explore,
                                         timestep=timestep,
                                         is_training=False)
@@ -560,7 +581,7 @@ def build_eager_tf_policy(
                 extra_fetches.update(extra_action_out_fn(self))
 
             # Update our global timestep by the batch size.
-            self.global_timestep += int(batch_size)
+            self.global_timestep += batch_size
 
             return actions, state_out, extra_fetches
 
@@ -581,15 +602,16 @@ def build_eager_tf_policy(
                                  "`action_sampler_fn`!")
 
             seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
-            input_dict = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
-                "is_training": tf.constant(False),
-            }
+            input_batch = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch)
+                },
+                _is_training=False)
             if prev_action_batch is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = \
+                input_batch[SampleBatch.PREV_ACTIONS] = \
                     tf.convert_to_tensor(prev_action_batch)
             if prev_reward_batch is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = \
+                input_batch[SampleBatch.PREV_REWARDS] = \
                     tf.convert_to_tensor(prev_reward_batch)
 
             # Exploration hook before each forward pass.
@@ -600,12 +622,12 @@ def build_eager_tf_policy(
                 dist_inputs, dist_class, _ = action_distribution_fn(
                     self,
                     self.model,
-                    input_dict[SampleBatch.CUR_OBS],
+                    input_batch,
                     explore=False,
                     is_training=False)
             # Default log-likelihood calculation.
             else:
-                dist_inputs, _ = self.model(input_dict, state_batches,
+                dist_inputs, _ = self.model(input_batch, state_batches,
                                             seq_lens)
                 dist_class = self.dist_class
 
@@ -719,50 +741,77 @@ def build_eager_tf_policy(
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)
 
-        def _apply_gradients(self, grads_and_vars):
-            if apply_gradients_fn:
-                apply_gradients_fn(self, self._optimizer, grads_and_vars)
-            else:
-                self._optimizer.apply_gradients(
-                    [(g, v) for g, v in grads_and_vars if g is not None])
-
         @with_lock
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
 
-            with tf.GradientTape(persistent=compute_gradients_fn is not None) \
-                    as tape:
-                loss = loss_fn(self, self.model, self.dist_class, samples)
-
+            # Gather all variables for which to calculate losses.
             if isinstance(self.model, tf.keras.Model):
                 variables = self.model.trainable_variables
             else:
                 variables = self.model.trainable_variables()
 
+            # Calculate the loss(es) inside a tf GradientTape.
+            with tf.GradientTape(persistent=compute_gradients_fn is not None) \
+                    as tape:
+                losses = loss_fn(self, self.model, self.dist_class, samples)
+            losses = force_list(losses)
+
+            # User provided a compute_gradients_fn.
             if compute_gradients_fn:
-
-                class OptimizerWrapper:
-                    def __init__(self, tape):
-                        self.tape = tape
-
-                    def compute_gradients(self, loss, var_list):
-                        return list(
-                            zip(self.tape.gradient(loss, var_list), var_list))
-
-                grads_and_vars = compute_gradients_fn(self,
-                                                      OptimizerWrapper(tape),
-                                                      loss)
+                # Wrap our tape inside a wrapper, such that the resulting
+                # object looks like a "classic" tf.optimizer. This way, custom
+                # compute_gradients_fn will work on both tf static graph
+                # and tf-eager.
+                optimizer = OptimizerWrapper(tape)
+                # More than one loss terms/optimizers.
+                if self.config["_tf_policy_handles_more_than_one_loss"]:
+                    grads_and_vars = compute_gradients_fn(
+                        self, [optimizer] * len(losses), losses)
+                # Only one loss and one optimizer.
+                else:
+                    grads_and_vars = [
+                        compute_gradients_fn(self, optimizer, losses[0])
+                    ]
+            # Default: Compute gradients using the above tape.
             else:
-                grads_and_vars = list(
-                    zip(tape.gradient(loss, variables), variables))
+                grads_and_vars = [
+                    list(zip(tape.gradient(loss, variables), variables))
+                    for loss in losses
+                ]
 
             if log_once("grad_vars"):
-                for _, v in grads_and_vars:
-                    logger.info("Optimizing variable {}".format(v.name))
+                for g_and_v in grads_and_vars:
+                    for g, v in g_and_v:
+                        if g is not None:
+                            logger.info(f"Optimizing variable {v.name}")
 
-            grads = [g for g, v in grads_and_vars]
+            # `grads_and_vars` is returned a list (len=num optimizers/losses)
+            # of lists of (grad, var) tuples.
+            if self.config["_tf_policy_handles_more_than_one_loss"]:
+                grads = [[g for g, _ in g_and_v] for g_and_v in grads_and_vars]
+            # `grads_and_vars` is returned as a list of (grad, var) tuples.
+            else:
+                grads_and_vars = grads_and_vars[0]
+                grads = [g for g, _ in grads_and_vars]
+
             stats = self._stats(self, samples, grads)
             return grads_and_vars, stats
+
+        def _apply_gradients(self, grads_and_vars):
+            if apply_gradients_fn:
+                if self.config["_tf_policy_handles_more_than_one_loss"]:
+                    apply_gradients_fn(self, self._optimizers, grads_and_vars)
+                else:
+                    apply_gradients_fn(self, self._optimizer, grads_and_vars)
+            else:
+                if self.config["_tf_policy_handles_more_than_one_loss"]:
+                    for i, o in enumerate(self._optimizers):
+                        o.apply_gradients([(g, v) for g, v in grads_and_vars[i]
+                                           if g is not None])
+                else:
+                    self._optimizer.apply_gradients(
+                        [(g, v) for g, v in grads_and_vars if g is not None])
 
         def _stats(self, outputs, samples, grads):
 

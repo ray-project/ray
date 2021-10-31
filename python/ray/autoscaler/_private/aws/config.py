@@ -440,7 +440,10 @@ def _configure_subnet(config):
 
     if "availability_zone" in config["provider"]:
         azs = config["provider"]["availability_zone"].split(",")
-        subnets = [s for s in subnets if s.availability_zone in azs]
+        subnets = [
+            s for az in azs  # Iterate over AZs first to maintain the ordering
+            for s in subnets if s.availability_zone == az
+        ]
         if not subnets:
             cli_logger.abort(
                 "No usable subnets matching availability zone {} found.\n"

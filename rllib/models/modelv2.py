@@ -10,7 +10,7 @@ from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import NullContextManager
-from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
@@ -204,30 +204,44 @@ class ModelV2:
         # where tensors get automatically converted).
         if isinstance(input_dict, SampleBatch):
             restored = input_dict.copy(shallow=True)
-            # Backward compatibility.
-            if seq_lens is None:
-                seq_lens = input_dict.get("seq_lens")
-            if not state:
-                state = []
-                i = 0
-                while "state_in_{}".format(i) in input_dict:
-                    state.append(input_dict["state_in_{}".format(i)])
-                    i += 1
-            input_dict["is_training"] = input_dict.is_training
         else:
             restored = input_dict.copy()
-        restored["obs"] = restore_original_dimensions(
-            input_dict["obs"], self.obs_space, self.framework)
-        try:
-            if len(input_dict["obs"].shape) > 2:
-                restored["obs_flat"] = flatten(input_dict["obs"],
-                                               self.framework)
-            else:
-                restored["obs_flat"] = input_dict["obs"]
-        except AttributeError:
+
+        # Backward compatibility.
+        if not state:
+            state = []
+            i = 0
+            while "state_in_{}".format(i) in input_dict:
+                state.append(input_dict["state_in_{}".format(i)])
+                i += 1
+        if seq_lens is None:
+            seq_lens = input_dict.get(SampleBatch.SEQ_LENS)
+
+        # No Preprocessor used: `config._disable_preprocessor_api`=True.
+        # TODO: This is unnecessary for when no preprocessor is used.
+        #  Obs are not flat then anymore. However, we'll keep this
+        #  here for backward-compatibility until Preprocessors have
+        #  been fully deprecated.
+        if self.model_config.get("_disable_preprocessor_api"):
             restored["obs_flat"] = input_dict["obs"]
+        # Input to this Model went through a Preprocessor.
+        # Generate extra keys: "obs_flat" (vs "obs", which will hold the
+        # original obs).
+        else:
+            restored["obs"] = restore_original_dimensions(
+                input_dict["obs"], self.obs_space, self.framework)
+            try:
+                if len(input_dict["obs"].shape) > 2:
+                    restored["obs_flat"] = flatten(input_dict["obs"],
+                                                   self.framework)
+                else:
+                    restored["obs_flat"] = input_dict["obs"]
+            except AttributeError:
+                restored["obs_flat"] = input_dict["obs"]
+
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
+
         if ((not isinstance(res, list) and not isinstance(res, tuple))
                 or len(res) != 2):
             raise ValueError(
@@ -242,9 +256,7 @@ class ModelV2:
         self._last_output = outputs
         return outputs, state_out if len(state_out) > 0 else (state or [])
 
-    # TODO: (sven) obsolete this method at some point (replace by
-    #  simply calling model directly with a sample_batch as only input).
-    @PublicAPI
+    @Deprecated(new="ModelV2.__call__()", error=False)
     def from_batch(self, train_batch: SampleBatch,
                    is_training: bool = True) -> (TensorType, List[TensorType]):
         """Convenience function that calls this model with a tensor batch.
@@ -260,7 +272,8 @@ class ModelV2:
         while "state_in_{}".format(i) in input_dict:
             states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        ret = self.__call__(input_dict, states, input_dict.get("seq_lens"))
+        ret = self.__call__(input_dict, states,
+                            input_dict.get(SampleBatch.SEQ_LENS))
         return ret
 
     def import_from_h5(self, h5_file: str) -> None:

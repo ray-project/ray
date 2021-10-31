@@ -7,6 +7,7 @@ from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
     get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
+from ray.rllib.agents.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, \
@@ -31,12 +32,6 @@ def build_ddpg_models_and_action_dist(
         action_space: gym.spaces.Space,
         config: TrainerConfigDict) -> Tuple[ModelV2, ActionDistribution]:
     model = build_ddpg_models(policy, obs_space, action_space, config)
-    # TODO(sven): Unify this once we generically support creating more than
-    #  one Model per policy. Note: Device placement is done automatically
-    #  already for `policy.model` (but not for the target model).
-    device = (torch.device("cuda")
-              if torch.cuda.is_available() else torch.device("cpu"))
-    policy.target_model = policy.target_model.to(device)
 
     if isinstance(action_space, Simplex):
         return model, TorchDirichlet
@@ -46,6 +41,9 @@ def build_ddpg_models_and_action_dist(
 
 def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
                            train_batch: SampleBatch) -> TensorType:
+
+    target_model = policy.target_models[model]
+
     twin_q = policy.config["twin_q"]
     gamma = policy.config["gamma"]
     n_step = policy.config["n_step"]
@@ -64,7 +62,7 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
 
     model_out_t, _ = model(input_dict, [], None)
     model_out_tp1, _ = model(input_dict_next, [], None)
-    target_model_out_tp1, _ = policy.target_model(input_dict_next, [], None)
+    target_model_out_tp1, _ = target_model(input_dict_next, [], None)
 
     # Policy network evaluation.
     # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
@@ -72,8 +70,7 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
     # policy_batchnorm_update_ops = list(
     #    set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
-    policy_tp1 = \
-        policy.target_model.get_policy_output(target_model_out_tp1)
+    policy_tp1 = target_model.get_policy_output(target_model_out_tp1)
 
     # Action outputs.
     if policy.config["smooth_target_policy"]:
@@ -116,12 +113,12 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
     #     set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # Target q-net(s) evaluation.
-    q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
-                                             policy_tp1_smoothed)
+    q_tp1 = target_model.get_q_values(target_model_out_tp1,
+                                      policy_tp1_smoothed)
 
     if twin_q:
-        twin_q_tp1 = policy.target_model.get_twin_q_values(
-            target_model_out_tp1, policy_tp1_smoothed)
+        twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1,
+                                                    policy_tp1_smoothed)
 
     q_t_selected = torch.squeeze(q_t, axis=len(q_t.shape) - 1)
     if twin_q:
@@ -158,10 +155,10 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
 
     # Add l2-regularization if required.
     if l2_reg is not None:
-        for name, var in policy.model.policy_variables(as_dict=True).items():
+        for name, var in model.policy_variables(as_dict=True).items():
             if "bias" not in name:
                 actor_loss += (l2_reg * l2_loss(var))
-        for name, var in policy.model.q_variables(as_dict=True).items():
+        for name, var in model.q_variables(as_dict=True).items():
             if "bias" not in name:
                 critic_loss += (l2_reg * l2_loss(var))
 
@@ -175,18 +172,17 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
         [actor_loss, critic_loss] = model.custom_loss(
             [actor_loss, critic_loss], input_dict)
 
-    # Store values for stats function.
-    policy.q_t = q_t
-    policy.actor_loss = actor_loss
-    policy.critic_loss = critic_loss
-
-    # Store td-error in model, such that for multi-GPU, we do not override
-    # them during the parallel loss phase. TD-error tensor in final stats
-    # can then be concatenated and retrieved for each individual batch item.
-    model.td_error = td_error
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["q_t"] = q_t
+    model.tower_stats["actor_loss"] = actor_loss
+    model.tower_stats["critic_loss"] = critic_loss
+    # TD-error tensor in final stats
+    # will be concatenated and retrieved for each individual batch item.
+    model.tower_stats["td_error"] = td_error
 
     # Return two loss terms (corresponding to the two optimizers, we create).
-    return policy.actor_loss, policy.critic_loss
+    return actor_loss, critic_loss
 
 
 def make_ddpg_optimizers(policy: Policy,
@@ -220,12 +216,16 @@ def apply_gradients_fn(policy: Policy, gradients: GradInfoDict) -> None:
 
 def build_ddpg_stats(policy: Policy,
                      batch: SampleBatch) -> Dict[str, TensorType]:
+
+    q_t = torch.stack(policy.get_tower_stats("q_t"))
     stats = {
-        "actor_loss": policy.actor_loss,
-        "critic_loss": policy.critic_loss,
-        "mean_q": torch.mean(policy.q_t),
-        "max_q": torch.max(policy.q_t),
-        "min_q": torch.min(policy.q_t),
+        "actor_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("actor_loss"))),
+        "critic_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("critic_loss"))),
+        "mean_q": torch.mean(q_t),
+        "max_q": torch.max(q_t),
+        "min_q": torch.min(q_t),
     }
     return stats
 
@@ -254,33 +254,10 @@ class ComputeTDErrorMixin:
             # (one TD-error value per item in batch to update PR weights).
             loss_fn(self, self.model, None, input_dict)
 
-            # Self.td_error is set within actor_critic_loss call.
-            return self.model.td_error
+            # `self.model.td_error` is set within actor_critic_loss call.
+            return self.model.tower_stats["td_error"]
 
         self.compute_td_error = compute_td_error
-
-
-class TargetNetworkMixin:
-    def __init__(self):
-        # Hard initial update from Q-net(s) to target Q-net(s).
-        self.update_target(tau=1.0)
-
-    def update_target(self, tau: int = None):
-        tau = tau or self.config.get("tau")
-        # Update_target_fn will be called periodically to copy Q network to
-        # target Q network, using (soft) tau-synching.
-        # Full sync from Q-model to target Q-model.
-        if tau == 1.0:
-            self.target_model.load_state_dict(self.model.state_dict())
-        # Partial (soft) sync using tau-synching.
-        else:
-            model_vars = self.model.variables()
-            target_model_vars = self.target_model.variables()
-            assert len(model_vars) == len(target_model_vars), \
-                (model_vars, target_model_vars)
-            for var, var_target in zip(model_vars, target_model_vars):
-                var_target.data = tau * var.data + \
-                    (1.0 - tau) * var_target.data
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,

@@ -26,10 +26,12 @@ from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
     get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
+    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER, \
+    _get_shared_metrics
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 from ray.rllib.utils.typing import EnvType, TrainerConfigDict
@@ -160,17 +162,19 @@ class MetaUpdate:
             adapt_metrics_dict, prefix="MAMLIter{}".format(self.step_counter))
 
         # MAML Meta-update.
+        fetches = None
         for i in range(self.maml_optimizer_steps):
             fetches = self.workers.local_worker().learn_on_batch(samples)
-        fetches = get_learner_stats(fetches)
+        learner_stats = get_learner_stats(fetches)
 
         # Update KLs.
         def update(pi, pi_id):
-            assert "inner_kl" not in fetches, (
-                "inner_kl should be nested under policy id key", fetches)
-            if pi_id in fetches:
-                assert "inner_kl" in fetches[pi_id], (fetches, pi_id)
-                pi.update_kls(fetches[pi_id]["inner_kl"])
+            assert "inner_kl" not in learner_stats, (
+                "inner_kl should be nested under policy id key", learner_stats)
+            if pi_id in learner_stats:
+                assert "inner_kl" in learner_stats[pi_id], (learner_stats,
+                                                            pi_id)
+                pi.update_kls(learner_stats[pi_id]["inner_kl"])
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
@@ -179,6 +183,7 @@ class MetaUpdate:
         # Modify Reporting Metrics.
         metrics = _get_shared_metrics()
         metrics.info[LEARNER_INFO] = fetches
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = samples.count
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
 
         if self.step_counter == self.num_steps - 1:
@@ -331,8 +336,8 @@ def post_process_samples(samples, config: TrainerConfigDict):
     return samples, split_lst
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the PPO algorithm. Defines the distributed dataflow.
 
     Args:
@@ -344,6 +349,9 @@ def execution_plan(workers: WorkerSet,
         LocalIterator[dict]: The Policy class to use with PPOTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
+    assert len(kwargs) == 0, (
+        "MBMPO execution_plan does NOT take any additional parameters")
+
     # Train TD Models on the driver.
     workers.local_worker().foreach_policy(fit_dynamics)
 

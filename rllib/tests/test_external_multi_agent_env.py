@@ -7,6 +7,7 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.tests.test_external_env import make_simple_serving
 
 SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)
@@ -15,7 +16,7 @@ SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)
 class TestExternalMultiAgentEnv(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(ignore_reinit_error=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -31,7 +32,8 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 40)
-            self.assertEqual(len(np.unique(batch["agent_index"])), agents)
+            self.assertEqual(
+                len(np.unique(batch[SampleBatch.AGENT_INDEX])), agents)
 
     def test_external_multi_agent_env_truncate_episodes(self):
         agents = 4
@@ -43,7 +45,8 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 160)
-            self.assertEqual(len(np.unique(batch["agent_index"])), agents)
+            self.assertEqual(
+                len(np.unique(batch[SampleBatch.AGENT_INDEX])), agents)
 
     def test_external_multi_agent_env_sample(self):
         agents = 2

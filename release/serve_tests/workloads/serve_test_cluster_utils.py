@@ -6,13 +6,16 @@ from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve.utils import logger
 from ray.serve.config import DeploymentMode
-
+from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 # Cluster setup configs
 NUM_CPU_PER_NODE = 10
 NUM_CONNECTIONS = 10
 
 
-def setup_local_single_node_cluster(num_nodes):
+def setup_local_single_node_cluster(
+        num_nodes: int,
+        checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
+        namespace="serve"):
     """Setup ray cluster locally via ray.init() and Cluster()
 
     Each actor is simulated in local process on single node,
@@ -21,19 +24,23 @@ def setup_local_single_node_cluster(num_nodes):
     cluster = Cluster()
     for i in range(num_nodes):
         cluster.add_node(
-            redis_port=6379 if i == 0 else None,
+            redis_port=6380 if i == 0 else None,
             num_cpus=NUM_CPU_PER_NODE,
             num_gpus=0,
             resources={str(i): 2},
         )
-    ray.init(address=cluster.address, dashboard_host="0.0.0.0")
+    ray.init(
+        address=cluster.address, dashboard_host="0.0.0.0", namespace=namespace)
     serve_client = serve.start(
-        http_options={"location": DeploymentMode.EveryNode})
+        detached=True,
+        http_options={"location": DeploymentMode.EveryNode},
+        _checkpoint_path=checkpoint_path,
+    )
 
-    return serve_client
+    return serve_client, cluster
 
 
-def setup_anyscale_cluster():
+def setup_anyscale_cluster(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
     """Setup ray cluster at anyscale via ray.client()
 
     Note this is by default large scale and should be kicked off
@@ -44,7 +51,9 @@ def setup_anyscale_cluster():
     # ray.client().env({}).connect()
     ray.init(address="auto")
     serve_client = serve.start(
-        http_options={"location": DeploymentMode.EveryNode})
+        http_options={"location": DeploymentMode.EveryNode},
+        _checkpoint_path=checkpoint_path,
+    )
 
     return serve_client
 

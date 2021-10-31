@@ -136,20 +136,21 @@
     compute_template: shuffle/shuffle_compute_large_scale.yaml
 
   run:
-    timeout: 7200
+    timeout: 9000
     prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6
 
 # Stress test for 1TB multi node non-streaming shuffle.
-- name: non_streaming_shuffle_1tb_5000_partitions
-  cluster:
-    app_config: shuffle/shuffle_app_config.yaml
-    compute_template: shuffle/shuffle_compute_large_scale.yaml
+# - name: non_streaming_shuffle_1tb_5000_partitions
+#   stable: False
+#   cluster:
+#     app_config: shuffle/shuffle_app_config.yaml
+#     compute_template: shuffle/shuffle_compute_large_scale.yaml
 
-  run:
-    timeout: 7200
-    prepare: python wait_cluster.py 20 900
-    script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
+#   run:
+#     timeout: 7200
+#     prepare: python wait_cluster.py 20 900
+#     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
 
 # Test large scale dask on ray test without spilling.
 - name: dask_on_ray_large_scale_test_no_spilling
@@ -241,6 +242,17 @@
     timeout: 7200
     script: python stress_tests/test_placement_group.py
 
+
+- name: grpc_stress_test_placement_group
+  cluster:
+    app_config: stress_tests/stress_tests_app_config_grpc.yaml
+    compute_template: stress_tests/placement_group_tests_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python stress_tests/test_placement_group.py
+  stable: false
+
 # Test decision tree on autoscaling compute cluster.
 - name: decision_tree_autoscaling
   cluster:
@@ -256,10 +268,20 @@
   cluster:
     app_config: decision_tree/decision_tree_app_config.yaml
     compute_template: decision_tree/autoscaling_compute.yaml
-
   run:
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
+
+# Test 20 concurrent decision tree runs on autoscaling compute cluster
+# grpc broadcasting version.
+- name: grpc_decision_tree_autoscaling_20_runs
+  cluster:
+    app_config: decision_tree/decision_tree_app_config_grpc.yaml
+    compute_template: decision_tree/autoscaling_compute.yaml
+  run:
+    timeout: 9600
+    script: python decision_tree/cart_with_tree.py --concurrency=20
+  stable: false
 
 # Stress test shuffle_data_loader.
 - name: shuffle_data_loader
@@ -268,7 +290,7 @@
     compute_template: shuffle_data_loader/shuffle_data_loader_compute.yaml
 
   run:
-    timeout: 7200 
+    timeout: 7200
     script: >
       python shuffle_data_loader/benchmark.py
       --num-rows 100_000_000
@@ -309,8 +331,49 @@
 - name: dask_on_ray_1tb_sort
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
-    compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+    compute_template: dask_on_ray/1tb_sort_compute.yaml
 
   run:
-    timeout: 14400
-    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 500 --num-nodes 5 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
+    timeout: 7200
+    prepare: python wait_cluster.py 32 1000
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
+
+- name: many_nodes_actor_test
+  cluster:
+    app_config: many_nodes_tests/app_config.yaml
+    compute_template: many_nodes_tests/compute_config.yaml
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 251 5400
+    script: python many_nodes_tests/actor_test.py
+
+- name: grpc_many_nodes_actor_test
+  cluster:
+    app_config: many_nodes_tests/app_config_grpc.yaml
+    compute_template: many_nodes_tests/compute_config.yaml
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 251 5400
+    script: python many_nodes_tests/actor_test.py
+  stable: false
+
+- name: pg_autoscaling_regression_test
+  cluster:
+    app_config: placement_group_tests/app_config.yaml
+    compute_template: placement_group_tests/compute.yaml
+
+  run:
+    timeout: 1200
+    script: python placement_group_tests/pg_run.py
+
+- name: grpc_pg_autoscaling_regression_test
+  cluster:
+    app_config: placement_group_tests/app_config_grpc.yaml
+    compute_template: placement_group_tests/compute.yaml
+
+  run:
+    timeout: 1200
+    script: python placement_group_tests/pg_run.py
+  stable: false

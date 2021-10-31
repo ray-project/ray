@@ -18,6 +18,14 @@
 #include <memory>
 
 #if defined(_WIN32)
+#ifndef _WINDOWS_
+#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
+                             // headers you need manually.
+                             // (https://stackoverflow.com/a/8294669)
+#define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
+#endif
+#include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
+#endif
 #ifdef ERROR  // Should be true unless someone else undef'd it already
 #undef ERROR  // Windows GDI defines this macro; make it a global enum so it doesn't
               // conflict with our code
@@ -25,14 +33,23 @@ enum { ERROR = 0 };
 #endif
 #endif
 
+#if defined(DEBUG) && DEBUG == 1
+// Bazel defines the DEBUG macro for historical reasons:
+// https://github.com/bazelbuild/bazel/issues/3513#issuecomment-323829248
+// Undefine the DEBUG macro to prevent conflicts with our usage below
+#undef DEBUG
+// Redefine DEBUG as itself to allow any '#ifdef DEBUG' to keep working regardless
+#define DEBUG DEBUG
+#endif
+
 namespace ray {
-namespace api {
 
-enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
+enum class RayLoggerLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
 
-#define RAYLOG_INTERNAL(level) *CreateRayLog(__FILE__, __LINE__, level)
-#define RAYLOG(level) \
-  if (IsLevelEnabled(RayLogLevel::level)) RAYLOG_INTERNAL(RayLogLevel::level)
+#define RAYLOG_INTERNAL(level) *CreateRayLogger(__FILE__, __LINE__, level)
+#define RAYLOG(level)                             \
+  if (IsLevelEnabled(ray::RayLoggerLevel::level)) \
+  RAYLOG_INTERNAL(ray::RayLoggerLevel::level)
 
 // To make the logging lib pluggable with other logging libs and make
 // the implementation unaware by the user, RayLog is only a declaration
@@ -40,14 +57,14 @@ enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3
 // In logging.cc, we can choose different log libs using different macros.
 
 // This is a log interface which does not output anything.
-class RayLog {
+class RayLogger {
  public:
-  virtual ~RayLog(){};
+  virtual ~RayLogger(){};
 
   virtual bool IsEnabled() const = 0;
 
   template <typename T>
-  RayLog &operator<<(const T &t) {
+  RayLogger &operator<<(const T &t) {
     if (IsEnabled()) {
       Stream() << t;
     }
@@ -58,9 +75,8 @@ class RayLog {
   virtual std::ostream &Stream() = 0;
 };
 
-std::unique_ptr<RayLog> CreateRayLog(const char *file_name, int line_number,
-                                     RayLogLevel severity);
-bool IsLevelEnabled(RayLogLevel log_level);
+std::unique_ptr<RayLogger> CreateRayLogger(const char *file_name, int line_number,
+                                           RayLoggerLevel severity);
+bool IsLevelEnabled(RayLoggerLevel log_level);
 
-}  // namespace api
 }  // namespace ray

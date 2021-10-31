@@ -20,10 +20,8 @@ namespace pubsub {
 
 namespace pub_internal {
 
-template <typename KeyIdType>
-bool SubscriptionIndex<KeyIdType>::AddEntry(const std::string &key_id_binary,
-                                            const SubscriberID &subscriber_id) {
-  const auto key_id = KeyIdType::FromBinary(key_id_binary);
+bool SubscriptionIndex::AddEntry(const std::string &key_id,
+                                 const SubscriberID &subscriber_id) {
   auto &subscribing_key_ids = subscribers_to_key_id_[subscriber_id];
   auto key_added = subscribing_key_ids.emplace(key_id).second;
   auto &subscriber_map = key_id_to_subscribers_[key_id];
@@ -33,11 +31,8 @@ bool SubscriptionIndex<KeyIdType>::AddEntry(const std::string &key_id_binary,
   return key_added;
 }
 
-template <typename KeyIdType>
 absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
-SubscriptionIndex<KeyIdType>::GetSubscriberIdsByKeyId(
-    const std::string &key_id_binary) const {
-  const auto key_id = KeyIdType::FromBinary(key_id_binary);
+SubscriptionIndex::GetSubscriberIdsByKeyId(const std::string &key_id) const {
   auto it = key_id_to_subscribers_.find(key_id);
   if (it == key_id_to_subscribers_.end()) {
     return absl::nullopt;
@@ -46,20 +41,15 @@ SubscriptionIndex<KeyIdType>::GetSubscriberIdsByKeyId(
       std::ref(it->second)};
 }
 
-template <typename KeyIdType>
-bool SubscriptionIndex<KeyIdType>::HasKeyId(const std::string &key_id_binary) const {
-  const auto key_id = KeyIdType::FromBinary(key_id_binary);
-  return key_id_to_subscribers_.count(key_id);
+bool SubscriptionIndex::HasKeyId(const std::string &key_id) const {
+  return key_id_to_subscribers_.contains(key_id);
 }
 
-template <typename KeyIdType>
-bool SubscriptionIndex<KeyIdType>::HasSubscriber(
-    const SubscriberID &subscriber_id) const {
-  return subscribers_to_key_id_.count(subscriber_id);
+bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
+  return subscribers_to_key_id_.contains(subscriber_id);
 }
 
-template <typename KeyIdType>
-bool SubscriptionIndex<KeyIdType>::EraseSubscriber(const SubscriberID &subscriber_id) {
+bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
   auto subscribing_message_it = subscribers_to_key_id_.find(subscriber_id);
   if (subscribing_message_it == subscribers_to_key_id_.end()) {
     return false;
@@ -82,11 +72,9 @@ bool SubscriptionIndex<KeyIdType>::EraseSubscriber(const SubscriberID &subscribe
   return true;
 }
 
-template <typename KeyIdType>
-bool SubscriptionIndex<KeyIdType>::EraseEntry(const std::string &key_id_binary,
-                                              const SubscriberID &subscriber_id) {
+bool SubscriptionIndex::EraseEntry(const std::string &key_id,
+                                   const SubscriberID &subscriber_id) {
   // Erase keys from subscribers.
-  const auto key_id = KeyIdType::FromBinary(key_id_binary);
   auto subscribers_to_message_it = subscribers_to_key_id_.find(subscriber_id);
   if (subscribers_to_message_it == subscribers_to_key_id_.end()) {
     return false;
@@ -120,8 +108,7 @@ bool SubscriptionIndex<KeyIdType>::EraseEntry(const std::string &key_id_binary,
   return true;
 }
 
-template <typename KeyIdType>
-bool SubscriptionIndex<KeyIdType>::CheckNoLeaks() const {
+bool SubscriptionIndex::CheckNoLeaks() const {
   return key_id_to_subscribers_.size() == 0 && subscribers_to_key_id_.size() == 0;
 }
 
@@ -171,7 +158,7 @@ bool Subscriber::PublishIfPossible(bool force) {
     long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
 
     // Clean up & update metadata.
-    long_polling_connection_.reset(nullptr);
+    long_polling_connection_.reset();
     mailbox_.pop_front();
     last_connection_update_time_ms_ = get_time_ms_();
     return true;
@@ -192,9 +179,6 @@ bool Subscriber::IsActiveConnectionTimedOut() const {
   return long_polling_connection_ &&
          get_time_ms_() - last_connection_update_time_ms_ >= connection_timeout_ms_;
 }
-
-// We need to define this in order for the compiler to find the definition.
-template class pub_internal::SubscriptionIndex<ObjectID>;
 
 }  // namespace pub_internal
 
@@ -223,7 +207,7 @@ void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
 
 bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
                                      const SubscriberID &subscriber_id,
-                                     const std::string &key_id_binary) {
+                                     const std::string &key_id) {
   absl::MutexLock lock(&mutex_);
   if (subscribers_.count(subscriber_id) == 0) {
     subscribers_.emplace(subscriber_id,
@@ -232,19 +216,18 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
   }
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.AddEntry(key_id_binary, subscriber_id);
+  return subscription_index_it->second.AddEntry(key_id, subscriber_id);
 }
 
-void Publisher::Publish(const rpc::ChannelType channel_type,
-                        const rpc::PubMessage &pub_message,
-                        const std::string &key_id_binary) {
+void Publisher::Publish(const rpc::PubMessage &pub_message) {
+  const auto channel_type = pub_message.channel_type();
   absl::MutexLock lock(&mutex_);
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
   auto maybe_subscribers =
-      subscription_index_it->second.GetSubscriberIdsByKeyId(key_id_binary);
+      subscription_index_it->second.GetSubscriberIdsByKeyId(pub_message.key_id());
   if (!maybe_subscribers.has_value()) {
     return;
   }
@@ -260,21 +243,21 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
 }
 
 void Publisher::PublishFailure(const rpc::ChannelType channel_type,
-                               const std::string &key_id_binary) {
+                               const std::string &key_id) {
   rpc::PubMessage pub_message;
-  pub_message.set_key_id(key_id_binary);
+  pub_message.set_key_id(key_id);
   pub_message.set_channel_type(channel_type);
   pub_message.mutable_failure_message();
-  Publish(channel_type, pub_message, key_id_binary);
+  Publish(pub_message);
 }
 
 bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
                                        const SubscriberID &subscriber_id,
-                                       const std::string &key_id_binary) {
+                                       const std::string &key_id) {
   absl::MutexLock lock(&mutex_);
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.EraseEntry(key_id_binary, subscriber_id);
+  return subscription_index_it->second.EraseEntry(key_id, subscriber_id);
 }
 
 bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
@@ -282,7 +265,7 @@ bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
   return UnregisterSubscriberInternal(subscriber_id);
 }
 
-bool Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
+int Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
   int erased = 0;
   for (auto &index : subscription_index_map_) {
     if (index.second.EraseSubscriber(subscriber_id)) {
