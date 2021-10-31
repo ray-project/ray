@@ -61,8 +61,6 @@ void GcsResourceManager::HandleUpdateResources(
   auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
   for (const auto &entry : request.resources()) {
     changed_resources->emplace(entry.first, entry.second.resource_capacity());
-    // RAY_LOG(INFO) << "Updating resources, node id = " << node_id << "(" << entry.first
-    //               << ", " << entry.second.resource_capacity() << ")";
   }
 
   auto iter = cluster_scheduling_resources_.find(node_id);
