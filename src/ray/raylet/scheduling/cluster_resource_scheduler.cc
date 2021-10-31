@@ -1009,8 +1009,10 @@ void ClusterResourceScheduler::FillResourceUsage(
     capacity.available = FixedPoint(capacity.total.Double() - used);
   }
 
-  bool available_changed = !resources.AvailableEquals(last_report_node_resources);
-  bool total_changed = !resources.TotalEquals(last_report_node_resources);
+  bool available_changed = !RayConfig::instance().enable_light_weight_resource_report() ||
+                           !resources.AvailableEquals(last_report_node_resources);
+  bool total_changed = !RayConfig::instance().enable_light_weight_resource_report() ||
+                       !resources.TotalEquals(last_report_node_resources);
 
   resources_data.set_resources_available_changed(available_changed);
 
@@ -1049,10 +1051,6 @@ void ClusterResourceScheduler::FillResourceUsage(
     } else {
       resources_data.set_object_pulls_queued_changed(false);
     }
-  }
-
-  if (!RayConfig::instance().enable_light_weight_resource_report()) {
-    resources_data.set_resources_available_changed(true);
   }
 }
 
