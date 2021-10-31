@@ -287,7 +287,10 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
         "It took too much time to kill an actor: {}".format(actor_id))
 
 
-def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):
+def wait_for_condition(condition_predictor,
+                       timeout=10,
+                       retry_interval_ms=100,
+                       **kwargs: Any):
     """Wait until a condition is met or time out with an exception.
 
     Args:
@@ -300,7 +303,7 @@ def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):
     """
     start = time.time()
     while time.time() - start <= timeout:
-        if condition_predictor():
+        if condition_predictor(**kwargs):
             return
         time.sleep(retry_interval_ms / 1000.0)
     raise RuntimeError("The condition wasn't met before the timeout expired.")
@@ -548,6 +551,21 @@ def get_log_message(pub_sub,
             continue
         log_lines = structured["lines"]
         msgs = log_lines
+
+    return msgs
+
+
+def get_all_log_message(pub_sub, num, timeout=20):
+    """Get errors through pub/sub."""
+    start_time = time.time()
+    msgs = []
+    while time.time() - start_time < timeout and len(msgs) < num:
+        msg = pub_sub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
+        msgs.extend(log_lines)
 
     return msgs
 

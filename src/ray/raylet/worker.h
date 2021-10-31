@@ -106,6 +106,9 @@ class WorkerInterface {
 
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
 
+  /// Return True if the worker is available for scheduling a task or actor.
+  virtual bool IsAvailableForScheduling() const = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -201,6 +204,13 @@ class Worker : public WorkerInterface {
   void SetAssignedTask(const RayTask &assigned_task) { assigned_task_ = assigned_task; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
+
+  bool IsAvailableForScheduling() const {
+    return !IsDead()                        // Not dead
+           && !GetAssignedTaskId().IsNil()  // No assigned task
+           && !IsBlocked()                  // Not blocked
+           && GetActorId().IsNil();         // No assigned actor
+  }
 
   rpc::CoreWorkerClientInterface *rpc_client() {
     RAY_CHECK(IsRegistered());

@@ -48,7 +48,7 @@ class GroupedDataset(Generic[T]):
         Examples:
             >>> grouped_ds.aggregate(AggregateFn(
             ...     init=lambda k: [],
-            ...     accumulate=lambda a, r: a.append(r),
+            ...     accumulate=lambda a, r: a + [r],
             ...     merge=lambda a1, a2: a1 + a2,
             ...     finalize=lambda a: a
             ... ))
@@ -79,14 +79,15 @@ class GroupedDataset(Generic[T]):
         if self._dataset.num_blocks() == 0:
             return self._dataset
 
-        num_mappers = len(self._dataset._blocks)
+        blocks = list(self._dataset._blocks.iter_blocks())
+        num_mappers = len(blocks)
         num_reducers = num_mappers
         if self._key is None:
             num_reducers = 1
             boundaries = []
         else:
             boundaries = sort.sample_boundaries(
-                self._dataset._blocks, [(self._key, "ascending")]
+                blocks, [(self._key, "ascending")]
                 if isinstance(self._key, str) else self._key, num_reducers)
 
         partition_and_combine_block = cached_remote_fn(
@@ -95,7 +96,7 @@ class GroupedDataset(Generic[T]):
             _aggregate_combined_blocks, num_returns=2)
 
         map_results = np.empty((num_mappers, num_reducers), dtype=object)
-        for i, block in enumerate(self._dataset._blocks):
+        for i, block in enumerate(blocks):
             map_results[i, :] = partition_and_combine_block.remote(
                 block, boundaries, self._key, agg)
         map_bar = ProgressBar("GroupBy Map", len(map_results))

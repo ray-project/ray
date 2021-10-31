@@ -3,7 +3,10 @@ import os
 import pytest
 import pyarrow as pa
 
+import ray
+
 from ray.data.tests.mock_server import *  # noqa
+from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 
 
 @pytest.fixture(scope="function")
@@ -69,3 +72,23 @@ def local_path(tmp_path, data_dir):
 @pytest.fixture(scope="function")
 def local_fs():
     yield pa.fs.LocalFileSystem()
+
+
+@pytest.fixture(scope="function")
+def test_block_write_path_provider():
+    class TestBlockWritePathProvider(BlockWritePathProvider):
+        def _get_write_path_for_block(self,
+                                      base_path,
+                                      *,
+                                      filesystem=None,
+                                      dataset_uuid=None,
+                                      block=None,
+                                      block_index=None,
+                                      file_format=None):
+            num_rows = len(ray.get(block)[0])
+            suffix = f"{block_index:06}_{num_rows:02}_{dataset_uuid}" \
+                     f".test.{file_format}"
+            print(f"Writing to: {base_path}/{suffix}")
+            return f"{base_path}/{suffix}"
+
+    yield TestBlockWritePathProvider()
