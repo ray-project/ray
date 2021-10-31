@@ -62,7 +62,8 @@ bool ClusterResourceScheduler::NodeAlive(int64_t node_id) const {
   if (node_id == -1) {
     return false;
   }
-  return string_to_int_map_.Get(node_id) != nullptr;
+  auto node_id_binary = string_to_int_map_.Get(node_id);
+  return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id_binary)) != nullptr;
 }
 
 void ClusterResourceScheduler::InitResourceUnitInstanceInfo() {
@@ -307,7 +308,7 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
     return "";
   }
   // Return the string name of the node.
-  return node_id_binary;
+  return string_to_int_map_.Get(node_id);
 }
 
 bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
