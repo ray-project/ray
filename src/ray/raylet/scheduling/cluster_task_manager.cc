@@ -416,6 +416,7 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
+    RAY_LOG(ERROR) << "DBG: " << "TryToSpillFailed: " << is_infeasible << " " << (node_id_string == self_node_id_.Binary()) << " " << node_id_string.empty();
     return false;
   }
 

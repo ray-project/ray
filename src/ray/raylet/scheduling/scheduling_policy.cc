@@ -74,7 +74,6 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   if (predicate(local_node_id, local_node_view) && !force_spillback) {
     round.push_back(local_node_id);
   }
-  RAY_LOG(ERROR) << "Round.size=" << round.size();
 
   const auto start_index = round.size();
   for (const auto &pair : nodes) {
@@ -83,6 +82,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
       round.push_back(pair.first);
     }
   }
+  RAY_LOG(ERROR) << "Round.size=" << round.size();
   // Sort all the nodes, making sure that if we added the local node in front, it stays in
   // place.
   std::sort(round.begin() + start_index, round.end());

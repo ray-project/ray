@@ -317,10 +317,13 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
 
   if (node_id == -1) {
     // This is not a schedulable node, so return empty string.
+    RAY_LOG(ERROR) << "Fail to schedule";
     return "";
   }
   // Return the string name of the node.
-  return string_to_int_map_.Get(node_id);
+  auto node_id_binary = string_to_int_map_.Get(node_id);
+  RAY_LOG(ERROR) << "DBG: GetBestSchedulableNode: node_id_binary.size() = " << node_id_binary.size() << " total_violations =  " << *total_violations << " is_infeasible = " << is_infeasible;
+  return node_id_binary;
 }
 
 bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
