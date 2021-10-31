@@ -11,7 +11,7 @@ worker_node_types:
     - name: worker_node
       instance_type: g3.8xlarge
       max_workers: 3
-      min_workers: 3
+      min_workers: 0
       use_spot: false
 
 aws:

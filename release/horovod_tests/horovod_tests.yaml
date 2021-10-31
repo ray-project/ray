@@ -16,7 +16,7 @@
 - name: horovod_user_test
   cluster:
     app_config: app_config.yaml
-    compute_template: compute_tpl.yaml
+    compute_template: compute_tpl_autoscaling.yaml
 
   run:
     use_connect: True
