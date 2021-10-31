@@ -62,15 +62,7 @@ bool ClusterResourceScheduler::NodeAlive(int64_t node_id) const {
   if (node_id == -1) {
     return false;
   }
-  auto node_id_binary = string_to_int_map_.Get(node_id);
-  auto id = NodeID::FromBinary(node_id_binary);
-  bool alive = gcs_client_->Nodes().Get(id) != nullptr;
-  if (!alive) {
-    RAY_LOG(WARNING) << "Node " << id.Hex() << " is not alive. "
-                     << "This might be caused by inconsistency between "
-                     << "cluster resource scheduler and gcs client cache";
-  }
-  return alive;
+  return string_to_int_map_.Get(node_id) != nullptr;
 }
 
 void ClusterResourceScheduler::InitResourceUnitInstanceInfo() {
@@ -123,8 +115,6 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
                                           const rpc::ResourcesData &resource_data) {
   auto node_id = string_to_int_map_.Insert(node_id_string);
   if (!nodes_.contains(node_id)) {
-    RAY_LOG(ERROR) << "UpdateNode failed, because node id "
-                   << NodeID::FromBinary(node_id_string) << " doesn't exist.";
     return false;
   }
 
@@ -296,7 +286,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     *total_violations = 0;
   }
 
-  RAY_LOG(ERROR) << "Scheduling decision. "
+  RAY_LOG(DEBUG) << "Scheduling decision. "
                  << "forcing spillback: " << force_spillback
                  << ". Best node: " << best_node_id
                  << ", is infeasible: " << *is_infeasible;
@@ -314,14 +304,9 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
 
   if (node_id == -1) {
     // This is not a schedulable node, so return empty string.
-    RAY_LOG(ERROR) << "Fail to schedule";
     return "";
   }
   // Return the string name of the node.
-  auto node_id_binary = string_to_int_map_.Get(node_id);
-  RAY_LOG(ERROR) << "DBG: GetBestSchedulableNode: node_id_binary.size() = "
-                 << node_id_binary.size() << " total_violations =  " << *total_violations
-                 << " is_infeasible = " << is_infeasible;
   return node_id_binary;
 }
 

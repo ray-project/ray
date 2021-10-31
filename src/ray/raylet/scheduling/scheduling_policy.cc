@@ -82,7 +82,6 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
       round.push_back(pair.first);
     }
   }
-  RAY_LOG(ERROR) << "Round.size=" << round.size();
   // Sort all the nodes, making sure that if we added the local node in front, it stays in
   // place.
   std::sort(round.begin() + start_index, round.end());
@@ -112,7 +111,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
     }
     bool is_available = node.GetLocalView().IsAvailable(resource_request,
                                                         ignore_pull_manager_at_capacity);
-    RAY_LOG(ERROR) << "Node " << node_id << " is "
+    RAY_LOG(DEBUG) << "Node " << node_id << " is "
                    << (is_available ? "available" : "not available");
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();

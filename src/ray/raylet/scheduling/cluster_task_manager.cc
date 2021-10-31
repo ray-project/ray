@@ -416,10 +416,6 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
-    RAY_LOG(ERROR) << "DBG: "
-                   << "TryToSpillFailed: " << is_infeasible << " "
-                   << (node_id_string == self_node_id_.Binary()) << " "
-                   << node_id_string.empty();
     return false;
   }
 
@@ -1374,11 +1370,6 @@ void ClusterTaskManager::SpillWaitingTasks() {
         /*requires_object_store_memory=*/true,
         task.GetTaskSpecification().IsActorCreationTask(),
         /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
-    if (node_id_string.empty()) {
-      RAY_LOG(ERROR) << "Empty  node id";
-    } else {
-      RAY_LOG(ERROR) << "BestNodeID: " << NodeID::FromBinary(node_id_string).Hex();
-    }
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, *it);
@@ -1390,11 +1381,11 @@ void ClusterTaskManager::SpillWaitingTasks() {
       it = waiting_task_queue_.erase(it);
     } else {
       if (node_id_string.empty()) {
-        RAY_LOG(ERROR) << "RayTask " << task_id
+        RAY_LOG(DEBUG) << "RayTask " << task_id
                        << " has blocked dependencies, but no other node has resources, "
                           "keeping the task local";
       } else {
-        RAY_LOG(ERROR) << "Keeping waiting task " << task_id << " local";
+        RAY_LOG(DEBUG) << "Keeping waiting task " << task_id << " local";
       }
       // We should keep the task local. Note that an earlier task in the queue
       // may have different resource requirements and could actually be
