@@ -126,8 +126,6 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
     RAY_LOG(ERROR) << "UpdateNode failed, because node id "
                    << NodeID::FromBinary(node_id_string) << " doesn't exist.";
     return false;
-  } else {
-    RAY_LOG(INFO) << "UpdateNode with id " << NodeID::FromBinary(node_id_string);
   }
 
   auto resources_total = MapFromProtobuf(resource_data.resources_total());
