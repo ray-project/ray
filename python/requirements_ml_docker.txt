@@ -1,4 +1,5 @@
 ipython
+tblib
 # In TF >v2, GPU support is included in the base package.
 tensorflow==2.5.0
 tensorflow-probability==0.13.0
