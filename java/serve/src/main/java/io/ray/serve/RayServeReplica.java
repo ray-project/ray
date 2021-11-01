@@ -10,7 +10,7 @@ import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.generated.BackendVersion;
+import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.RequestWrapper;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
@@ -52,14 +52,14 @@ public class RayServeReplica {
 
   private LongPollClient longPollClient;
 
-  private BackendVersion version;
+  private DeploymentVersion version;
 
   private boolean isDeleted = false;
 
   public RayServeReplica(
       Object callable,
       BackendConfig backendConfig,
-      BackendVersion version,
+      DeploymentVersion version,
       BaseActorHandle actorHandle) {
     this.backendTag = Serve.getReplicaContext().getBackendTag();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
@@ -284,8 +284,8 @@ public class RayServeReplica {
    *
    * @param userConfig new user's configuration
    */
-  public BackendVersion reconfigure(Object userConfig) {
-    BackendVersion.Builder builder = BackendVersion.newBuilder();
+  public DeploymentVersion reconfigure(Object userConfig) {
+    DeploymentVersion.Builder builder = DeploymentVersion.newBuilder();
     builder.setCodeVersion(version.getCodeVersion());
     if (userConfig != null) {
       builder.setUserConfig(ByteString.copyFrom((byte[]) userConfig));
@@ -323,7 +323,7 @@ public class RayServeReplica {
     config = (BackendConfig) newConfig;
   }
 
-  public BackendVersion getVersion() {
+  public DeploymentVersion getVersion() {
     return version;
   }
 }
