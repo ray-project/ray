@@ -1603,6 +1603,13 @@ TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
   // Even though there are free resources, we've hit our cap of (8/4=)2 workers
   // of the given scheduling class so we shouldn't dispatch the remaining task.
   ASSERT_EQ(num_callbacks, 2);
+
+  RayTask buf;
+  task_manager_.TaskFinished(workers[1], &buf);
+
+  task_manager_.ScheduleAndDispatchTasks();
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 3);
 }
 
 TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
@@ -1706,6 +1713,10 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
   ASSERT_EQ(num_callbacks, 3);
 }
 
+/// Test that we exponentially increase the amount of time it takes to increase
+/// the dispatch cap for a scheduling class.
+
+
 // Regression test for https://github.com/ray-project/ray/issues/16935:
 // When a task requires 1 CPU and is infeasible because head node has 0 CPU,
 // make sure the task's resource demand is reported.
@@ -1755,6 +1766,8 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
     ASSERT_TRUE(one_cpu_found);
   }
 }
+
+
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

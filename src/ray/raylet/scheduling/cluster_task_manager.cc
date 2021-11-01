@@ -316,7 +316,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       }
 
       if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
-        RAY_LOG(ERROR) << "Hit cap";
         if (get_time_() > sched_cls_info.next_update_time) {
           // Don't increase the capacity on the very first update since that
           // will unblock a new task immediately, instead of after the timeout.
@@ -515,6 +514,8 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
   info_by_sched_cls_[sched_cls].running_tasks.erase(
       task->GetTaskSpecification().TaskId());
+  RAY_LOG(ERROR) << "Erasing " << task->GetTaskSpecification().TaskId();
+  RAY_LOG(ERROR) << "Size is now: " << info_by_sched_cls_[sched_cls].running_tasks.size();
   if (info_by_sched_cls_[sched_cls].running_tasks.size() == 0) {
     info_by_sched_cls_.erase(sched_cls);
   }
