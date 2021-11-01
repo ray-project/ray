@@ -6,18 +6,18 @@ public class DeploymentInfo implements Serializable {
 
   private static final long serialVersionUID = -4198364411759931955L;
 
-  private byte[] backendConfig;
+  private byte[] deploymentConfig;
 
   private ReplicaConfig replicaConfig;
 
   private byte[] deploymentVersion;
 
-  public byte[] getBackendConfig() {
-    return backendConfig;
+  public byte[] getDeploymentConfig() {
+    return deploymentConfig;
   }
 
-  public void setBackendConfig(byte[] backendConfig) {
-    this.backendConfig = backendConfig;
+  public void setDeploymentConfig(byte[] deploymentConfig) {
+    this.deploymentConfig = deploymentConfig;
   }
 
   public ReplicaConfig getReplicaConfig() {
