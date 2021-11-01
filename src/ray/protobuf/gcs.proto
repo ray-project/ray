@@ -512,11 +512,12 @@ message PlacementGroupStats {
   // The time scheduling is started after queuing.
   int64 scheduling_started_time_ns = 3;
   // The time from scheduling started <-> scheduling succeeds.
-  double scheduling_latency_us = 4;
-  // The time from first request received <-> scheduling succeeds.
+  int64 scheduling_latency_us = 4;
+  // The time from first request received <-> all placement group
+  // resources are available on all relevant nodes.
   // end_to_end_creation_latency_us - scheduling_latency_us
   // == queuing time.
-  double end_to_end_creation_latency_us = 5;
+  int64 end_to_end_creation_latency_us = 5;
   // The number of time scheduling has attempted on this placement group.
   uint32 scheduling_attempt = 6;
   // Scheduler retries the pg scheduling with

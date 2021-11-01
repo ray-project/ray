@@ -21,8 +21,10 @@
 #include "ray/stats/stats.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
+// The end to end placement group creation latency.
 // The time from placement group creation request has received
-// <-> Placement group creation succeeds.
+// <-> Placement group creation succeeds (meaning all resources
+// are committed to nodes and available).
 DEFINE_stats(placement_group_creation_latency_ms,
              "end to end latency of placement group creation", (),
              ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::Histogram);
@@ -257,11 +259,11 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
   RAY_LOG(DEBUG) << "Failed to create placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
 
+  auto stats = placement_group->GetMutableStats();
   if (!is_feasible) {
     // We will attempt to schedule this placement_group once an eligible node is
     // registered.
-    placement_group->GetMutableStats()->set_scheduling_state(
-        rpc::PlacementGroupStats::INFEASIBLE);
+    stats->set_scheduling_state(rpc::PlacementGroupStats::INFEASIBLE);
     infeasible_placement_groups_.emplace_back(std::move(placement_group));
   } else {
     auto state = placement_group->GetState();
@@ -274,11 +276,17 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       // NOTE: If a node is dead, the placement group scheduler should try to recover the
       // group by rescheduling the bundles of the dead node. This should have higher
       // priority than trying to place other placement groups.
+      stats->set_scheduling_state(rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
       AddToPendingQueue(std::move(placement_group), /* rank */ 0);
+    } else if (state == rpc::PlacementGroupTableData::PENDING) {
+      stats->set_scheduling_state(rpc::PlacementGroupStats::NO_RESOURCES);
+      AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     } else {
+      placement_group->UpdateState(rpc::PlacementGroupTableData::REMOVED);
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     }
   }
+
   io_context_.post([this] { SchedulePendingPlacementGroups(); });
   MarkSchedulingDone();
 }
@@ -291,10 +299,10 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   // Setup stats.
   auto stats = placement_group->GetMutableStats();
   auto now = absl::GetCurrentTimeNanos();
-  double scheduling_latency_us =
+  auto scheduling_latency_us =
       absl::Nanoseconds(now - stats->scheduling_started_time_ns()) /
       absl::Microseconds(1);
-  double creation_latency_us =
+  auto creation_latency_us =
       absl::Nanoseconds(now - stats->creation_request_received_ns()) /
       absl::Microseconds(1);
   stats->set_scheduling_latency_us(scheduling_latency_us);
@@ -427,8 +435,6 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     return;
   }
   auto placement_group = std::move(placement_group_it->second);
-  placement_group->GetMutableStats()->set_scheduling_state(
-      rpc::PlacementGroupStats::REMOVED);
   registered_placement_groups_.erase(placement_group_it);
   placement_group_to_register_callbacks_.erase(placement_group_id);
 
@@ -472,6 +478,8 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
 
   // Flush the status and respond to workers.
   placement_group->UpdateState(rpc::PlacementGroupTableData::REMOVED);
+  placement_group->GetMutableStats()->set_scheduling_state(
+      rpc::PlacementGroupStats::REMOVED);
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group->GetPlacementGroupID(),
       placement_group->GetPlacementGroupTableData(),
@@ -701,6 +709,8 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
       // creating until a node with the resources is added. we will solve it in next pr.
       if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
         iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+        iter->second->GetMutableStats()->set_scheduling_state(
+            rpc::PlacementGroupStats::WAITING_FOR_SCHEDULING);
         AddToPendingQueue(iter->second, 0);
       }
     }

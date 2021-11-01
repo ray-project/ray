@@ -45,7 +45,9 @@ class GcsPlacementGroup {
   ///
   /// \param placement_group_table_data Data of the placement_group (see gcs.proto).
   explicit GcsPlacementGroup(rpc::PlacementGroupTableData placement_group_table_data)
-      : placement_group_table_data_(std::move(placement_group_table_data)) {}
+      : placement_group_table_data_(std::move(placement_group_table_data)) {
+    SetupStates();
+  }
 
   /// Create a GcsPlacementGroup by CreatePlacementGroupRequest.
   ///
@@ -69,13 +71,7 @@ class GcsPlacementGroup {
         placement_group_spec.creator_actor_dead());
     placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
-    auto now = absl::GetCurrentTimeNanos();
-    auto stats = placement_group_table_data_.mutable_stats();
-    // If the value has never been set, it is 0.
-    if (stats->creation_request_received_ns() == 0) {
-      stats->set_creation_request_received_ns(now);
-    }
-    stats->set_scheduling_state(rpc::PlacementGroupStats::WAITING_FOR_SCHEDULING);
+    SetupStates();
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
@@ -137,6 +133,20 @@ class GcsPlacementGroup {
 
  private:
   FRIEND_TEST(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache);
+
+  /// Setup states other than placement_group_table_data_.
+  void SetupStates() {
+    auto stats = placement_group_table_data_.mutable_stats();
+    // If the value has never been set, it is 0.
+    if (stats->creation_request_received_ns() == 0) {
+      auto now = absl::GetCurrentTimeNanos();
+      stats->set_creation_request_received_ns(now);
+    }
+    if (stats->scheduling_state() == 0) {
+      stats->set_scheduling_state(rpc::PlacementGroupStats::WAITING_FOR_SCHEDULING);
+    }
+  }
+
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).
   rpc::PlacementGroupTableData placement_group_table_data_;
@@ -161,6 +171,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param scheduler Used to schedule placement group creation tasks.
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
+  /// \param get_ray_namespace A callback to get the ray namespace.
   explicit GcsPlacementGroupManager(
       instrumented_io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
@@ -213,6 +224,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                               StatusCallback callback);
 
   /// Schedule placement_groups in the `pending_placement_groups_` queue.
+  /// The method handles all states of placement groups
+  /// (e.g., REMOVED states should be properly ignored within the method.)
   void SchedulePendingPlacementGroups();
 
   /// Get the placement_group ID for the named placement_group. Returns nil if the

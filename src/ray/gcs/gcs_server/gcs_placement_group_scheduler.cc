@@ -135,7 +135,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                   << ", id: " << placement_group->GetPlacementGroupID() << ", because "
                   << nodes_of_releasing_unused_bundles_.size()
                   << " nodes have not released unused bundles.";
-    failure_callback(placement_group, true);
+    failure_callback(placement_group, /*is_feasible*/ true);
     return;
   }
 
@@ -156,10 +156,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
                    << ", id: " << placement_group->GetPlacementGroupID()
                    << ", because current reource can't satisfy the required resource.";
-    bool retryable = (result_status == SchedulingResultStatus::FAILED) ? true : false;
-    placement_group->GetMutableStats()->set_scheduling_state(
-        rpc::PlacementGroupStats::NO_RESOURCES);
-    failure_callback(placement_group, retryable);
+    bool infeasible = result_status == SchedulingResultStatus::INFEASIBLE;
+    // If the placement group creation has failed,
+    // but if it is not infeasible, it is retryable to create.
+    failure_callback(placement_group, /*is_feasible*/ !infeasible);
     return;
   }
 
@@ -358,7 +358,7 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
     RAY_CHECK(it != placement_group_leasing_in_progress_.end());
     placement_group_leasing_in_progress_.erase(it);
     ReturnBundleResources(lease_status_tracker->GetBundleLocations());
-    schedule_failure_handler(placement_group, true);
+    schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
 
@@ -413,7 +413,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
     DestroyPlacementGroupCommittedBundleResources(placement_group_id);
     ReturnBundleResources(lease_status_tracker->GetBundleLocations());
-    schedule_failure_handler(placement_group, true);
+    schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
 
@@ -432,9 +432,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
     }
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
     ReturnBundleResources(uncommitted_bundle_locations);
-    placement_group->GetMutableStats()->set_scheduling_state(
-        rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
-    schedule_failure_handler(placement_group, true);
+    schedule_failure_handler(placement_group, /*is_feasible*/ true);
   } else {
     schedule_success_handler(placement_group);
   }
