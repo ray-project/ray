@@ -55,12 +55,6 @@ def main():
     print(f"Total time: {actor_launch_time + actor_ready_time}"
           f" ({args.total_actors} actors)")
 
-    print(
-        f"Actor launch time: {actor_launch_time} ({args.total_actors} actors)")
-    print(f"Actor ready time: {actor_ready_time} ({args.total_actors} actors)")
-    print(f"Total time: {actor_launch_time + actor_ready_time}"
-          f" ({args.total_actors} actors)")
-
     if "TEST_OUTPUT_JSON" in os.environ and not args.no_report:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
         results = {

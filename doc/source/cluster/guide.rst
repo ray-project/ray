@@ -26,7 +26,7 @@ any cloud. It will:
 
 * provision a new instance/machine using the cloud provider's SDK.
 * execute shell commands to set up Ray with the provided options.
-* (optionally) run any custom, user defined setup commands.
+* (optionally) run any custom, user defined setup commands.  (To dynamically set up environments after the cluster has been deployed, you can use :ref:`Runtime Environments<runtime-environments>`.)
 * Initialize the Ray cluster.
 * Deploy an autoscaler process.
 
@@ -89,7 +89,7 @@ Deploying an application
 ------------------------
 
 The recommended way of connecting to a Ray cluster is to use the
-``ray.init("ray://<host>:<port>")`` API and connect via the Ray Client.
+``ray.init("ray://<host>:<port>")`` API and connect via the :ref:`Ray Client<ray-client>`.
 
 .. note::
 
@@ -101,6 +101,9 @@ To connect via Ray Client, set the ``RAY_ADDRESS`` environment variable to the
 address of the Ray client server.
 
 :ref:`Learn more about setting up the Ray client server here <Ray-client>`.
+
+You can dynamically specify local files, Python packages, and environment variables for your
+application using :ref:`Runtime Environments <runtime-environments>`.
 
 .. note::
 

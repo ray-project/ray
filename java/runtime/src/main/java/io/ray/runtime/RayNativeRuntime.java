@@ -87,8 +87,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       }
 
-      gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         GcsNodeInfo nodeInfo = gcsClient.getNodeToConnectForDriver(rayConfig.nodeIp);
         rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();

@@ -1,7 +1,11 @@
+from enum import Enum
 from typing import Any, Dict
 
-from pydantic import BaseModel
-from enum import Enum
+try:
+    from pydantic import BaseModel
+except ImportError:
+    # Lazy import without breaking class def
+    BaseModel = object
 
 
 class JobStatus(str, Enum):
