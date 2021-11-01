@@ -121,7 +121,7 @@ def traced_eager_policy(eager_policy_cls):
                 self._traced_learn_on_batch = tf.function(
                     super(TracedEagerPolicy, self)._learn_on_batch_eager,
                     autograph=False,
-                    experimental_relax_shapes=True)
+                    experimental_relax_shapes=True).consolidated_function()
 
             return self._traced_learn_on_batch(samples)
 
