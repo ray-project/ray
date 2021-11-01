@@ -1642,9 +1642,6 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
   auto scheduler_ = std::make_shared<ClusterResourceScheduler>(
       ClusterResourceScheduler(id_.Binary(), local_node_resources, *gcs_client_));
 
-  std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                             double)>
-      asdf = [this](std::function<void()> fn, double wait_ns) { return nullptr; };
   ClusterTaskManager task_manager_(
       id_, scheduler_, dependency_manager_,
       /* is_owner_alive= */

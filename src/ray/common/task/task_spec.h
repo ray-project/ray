@@ -44,6 +44,19 @@ struct SchedulingClassDescriptor {
     return depth == other.depth && resource_set == other.resource_set &&
            function_descriptor == other.function_descriptor;
   }
+
+  std::string DebugString() const {
+    std::stringstream buffer;
+    buffer << "{"
+           << "depth=" << depth << " "
+           << "function_descriptor=" << function_descriptor->ToString() << " "
+           << "resource_set=" << "{";
+    for (const auto &pair : resource_set.GetResourceMap()) {
+      buffer << pair.first << " : " << pair.second << ", ";
+    }
+    buffer << "}}";
+    return buffer.str();
+  }
 };
 }  // namespace ray
 

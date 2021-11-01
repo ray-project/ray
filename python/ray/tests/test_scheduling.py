@@ -21,6 +21,8 @@ from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
                                      Semaphore, object_memory_usage,
                                      SignalActor)
 
+from ray.tests.conftest import *
+
 logger = logging.getLogger(__name__)
 
 
@@ -532,7 +534,10 @@ def test_nested_tasks(shutdown_only):
 
         def inc(self):
             self.count += 1
-            assert self.count < 2
+            # Since we relex the cap after a timeout we can have slightly more
+            # than 1 task. We should never have 20 though since that takes 2^20
+            # * 10ms time.
+            assert self.count < 20
 
         def dec(self):
             self.count -= 1
@@ -626,7 +631,7 @@ def test_limit_concurrency(shutdown_only):
     ready, not_ready = ray.wait(block_driver_refs, timeout=1, num_returns=20)
     assert len(not_ready) == 0
 
-    ready, not_ready = ray.wait(refs, num_returns=20, timeout=1)
+    ready, not_ready = ray.wait(refs, num_returns=20, timeout=5)
     assert len(ready) == 19
     assert len(not_ready) == 1
 
