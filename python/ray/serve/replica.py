@@ -25,7 +25,7 @@ from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
 )
-from ray.serve.version import BackendVersion
+from ray.serve.version import DeploymentVersion
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -43,7 +43,7 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
                            init_kwargs, backend_config_proto_bytes: bytes,
-                           version: BackendVersion, controller_name: str,
+                           version: DeploymentVersion, controller_name: str,
                            detached: bool):
             backend = cloudpickle.loads(serialized_backend_def)
             backend_config = BackendConfig.from_proto_bytes(
@@ -109,13 +109,13 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
             return await self.backend.handle_request(query)
 
         async def reconfigure(self, user_config: Optional[Any] = None
-                              ) -> Tuple[BackendConfig, BackendVersion]:
+                              ) -> Tuple[BackendConfig, DeploymentVersion]:
             if user_config is not None:
                 await self.backend.reconfigure(user_config)
 
             return self.get_metadata()
 
-        def get_metadata(self) -> Tuple[BackendConfig, BackendVersion]:
+        def get_metadata(self) -> Tuple[BackendConfig, DeploymentVersion]:
             return self.backend.backend_config, self.backend.version
 
         async def prepare_for_shutdown(self):
@@ -147,8 +147,8 @@ class RayServeReplica:
 
     def __init__(self, _callable: Callable, backend_tag: BackendTag,
                  replica_tag: ReplicaTag, backend_config: BackendConfig,
-                 user_config: Any, version: BackendVersion, is_function: bool,
-                 controller_handle: ActorHandle) -> None:
+                 user_config: Any, version: DeploymentVersion,
+                 is_function: bool, controller_handle: ActorHandle) -> None:
         self.backend_config = backend_config
         self.backend_tag = backend_tag
         self.replica_tag = replica_tag
@@ -316,7 +316,7 @@ class RayServeReplica:
 
     async def reconfigure(self, user_config: Any):
         self.user_config = user_config
-        self.version = BackendVersion(
+        self.version = DeploymentVersion(
             self.version.code_version, user_config=user_config)
         if self.is_function:
             raise ValueError("backend_def must be a class to use user_config")
