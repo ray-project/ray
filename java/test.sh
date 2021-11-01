@@ -68,12 +68,12 @@ bazel build //java:all_tests_deploy.jar
 
 java/generate_jni_header_files.sh
 
-# if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
-#   echo "Files are changed after build. Common cases are:"
-#   echo "    * Java native methods doesn't match JNI files. You need to either update Java code or JNI code."
-#   echo "    * pom_template.xml and pom.xml doesn't match. You need to either update pom_template.xml or pom.xml."
-#   exit 1
-# fi
+if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
+  echo "Files are changed after build. Common cases are:"
+  echo "    * Java native methods doesn't match JNI files. You need to either update Java code or JNI code."
+  echo "    * pom_template.xml and pom.xml doesn't match. You need to either update pom_template.xml or pom.xml."
+  exit 1
+fi
 
 # NOTE(kfstrom): Java test troubleshooting only.
 # Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
@@ -101,42 +101,42 @@ while true; do
   fi
 done
 
-# echo "Running tests under single-process mode."
-# # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --config=ci || single_exit_code=$?
-# run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+echo "Running tests under single-process mode."
+# bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --config=ci || single_exit_code=$?
+run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
 
-# echo "Running connecting existing cluster tests."
-# case "${OSTYPE}" in
-#   linux*) ip=$(hostname -I | awk '{print $1}');;
-#   darwin*) ip=$(ipconfig getifaddr en0);;
-#   *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
-# esac
-# RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456
-# RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.address="$ip:6379"\
-#  -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
-# ray stop
+echo "Running connecting existing cluster tests."
+case "${OSTYPE}" in
+  linux*) ip=$(hostname -I | awk '{print $1}');;
+  darwin*) ip=$(ipconfig getifaddr en0);;
+  *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
+esac
+RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456
+RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.address="$ip:6379"\
+ -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
+ray stop
 
-# echo "Running documentation demo code."
-# docdemo_path="java/test/src/main/java/io/ray/docdemo/"
-# for file in "$docdemo_path"*.java; do
-#   file=${file#"$docdemo_path"}
-#   class=${file%".java"}
-#   echo "Running $class"
-#   java -cp bazel-bin/java/all_tests_deploy.jar -Dray.job.num-java-workers-per-process=1\
-#    -Dray.raylet.startup-token=0 "io.ray.docdemo.$class"
-# done
-# popd
+echo "Running documentation demo code."
+docdemo_path="java/test/src/main/java/io/ray/docdemo/"
+for file in "$docdemo_path"*.java; do
+  file=${file#"$docdemo_path"}
+  class=${file%".java"}
+  echo "Running $class"
+  java -cp bazel-bin/java/all_tests_deploy.jar -Dray.job.num-java-workers-per-process=1\
+   -Dray.raylet.startup-token=0 "io.ray.docdemo.$class"
+done
+popd
 
-# pushd "$ROOT_DIR"
-# echo "Testing maven install."
-# mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip
-# # Ensure mvn test works
-# mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
-# popd
+pushd "$ROOT_DIR"
+echo "Testing maven install."
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip
+# Ensure mvn test works
+mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
+popd
 
-# pushd "$ROOT_DIR"
-# echo "Running performance test."
-# run_timeout 60 java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar io.ray.performancetest.test.ActorPerformanceTestCase1
-# # The performance process may be killed by run_timeout, so clear ray here.
-# ray stop
-# popd
+pushd "$ROOT_DIR"
+echo "Running performance test."
+run_timeout 60 java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar io.ray.performancetest.test.ActorPerformanceTestCase1
+# The performance process may be killed by run_timeout, so clear ray here.
+ray stop
+popd
