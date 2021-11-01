@@ -247,7 +247,7 @@ message GetSystemConfigReply {
 }
 
 message RequestResourceReportRequest {
-  bool initial_report = 1;
+  bool require_snapshot = 1;
 }
 
 message RequestResourceReportReply {

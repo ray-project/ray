@@ -59,12 +59,12 @@ class GcsResourceReportPoller {
           request_report =
               [](const rpc::Address &address,
                  std::shared_ptr<rpc::NodeManagerClientPool> &raylet_client_pool,
-                 const bool &initial_report,
+                 const bool &require_snapshot,
                  std::function<void(const Status &,
                                     const rpc::RequestResourceReportReply &)>
                      callback) {
                 auto raylet_client = raylet_client_pool->GetOrConnectByAddress(address);
-                raylet_client->RequestResourceReport(initial_report, callback);
+                raylet_client->RequestResourceReport(require_snapshot, callback);
               });
 
   ~GcsResourceReportPoller();

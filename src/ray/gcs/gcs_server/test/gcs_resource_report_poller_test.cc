@@ -32,12 +32,12 @@ class GcsResourceReportPollerTest : public ::testing::Test {
             [this]() { return current_time_; },
             [this](const rpc::Address &address,
                    std::shared_ptr<rpc::NodeManagerClientPool> &client_pool,
-                   const bool &initial_report,
+                   const bool &require_snapshot,
                    std::function<void(const Status &,
                                       const rpc::RequestResourceReportReply &)>
                        callback) {
               if (request_report_) {
-                request_report_(address, client_pool, initial_report, callback);
+                request_report_(address, client_pool, require_snapshot, callback);
               }
             }
 

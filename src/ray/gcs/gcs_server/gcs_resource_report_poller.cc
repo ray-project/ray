@@ -125,9 +125,9 @@ void GcsResourceReportPoller::TryPullResourceReport() {
 void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState> state) {
   inflight_pulls_++;
 
-  const bool &initial_report = state->next_pull_time == -1 ? true : false;
+  const bool &require_snapshot = state->next_pull_time == -1 ? true : false;
   request_report_(
-      state->address, raylet_client_pool_, initial_report,
+      state->address, raylet_client_pool_, require_snapshot,
       [this, state](const Status &status, const rpc::RequestResourceReportReply &reply) {
         bool need_full_report = false;
         if (status.ok()) {

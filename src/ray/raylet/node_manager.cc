@@ -1507,7 +1507,7 @@ void NodeManager::HandleRequestResourceReport(
     const rpc::RequestResourceReportRequest &request,
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
   // When gcs server restarts, it requires all nodes' initial report.
-  if (request.initial_report()) {
+  if (request.require_snapshot()) {
     last_resource_usage_->SetAvailableResources(ResourceSet());
     last_resource_usage_->SetTotalResources(ResourceSet());
     last_resource_usage_->SetLoadResources(ResourceSet());
