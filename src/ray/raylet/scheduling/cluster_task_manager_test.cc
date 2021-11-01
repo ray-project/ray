@@ -1499,7 +1499,13 @@ TEST_F(ClusterTaskManagerTest, TestResourceDiff) {
   SchedulingResources last_resource_usage_;
   // Same resources(empty), not changed.
   task_manager_.FillResourceUsage(resource_data, last_resource_usage_);
-  ASSERT_FALSE(resource_data.resource_load_changed());
+  if (RayConfig::instance().enable_light_weight_resource_report()) {
+    ASSERT_FALSE(resource_data.resource_load_changed());
+  } else {
+    // Always changed when lightweight report disabled.
+    ASSERT_TRUE(resource_data.resource_load_changed());
+  }
+
   // Resource changed.
   resource_data.set_resource_load_changed(false);
   ResourceSet res;
