@@ -21,7 +21,7 @@ post_build_cmds:
   # Upgrade to 1.9.0+cu111 to avoid a segfault error.
   # TODO(jungong): also remove after product ray-ml docker gets upgraded.
   - pip uninstall -y torch
-  - pip install torch==1.9.0+cu111
+  - pip install torch==1.9.0
   # END: TODO
 
   - pip uninstall -y ray || true
