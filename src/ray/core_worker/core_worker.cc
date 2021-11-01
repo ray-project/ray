@@ -1788,11 +1788,15 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.serialized_runtime_env,
                       actor_creation_options.runtime_env_uris);
 
+  int max_pending_calls = -1;
+  if (actor_creation_options.max_pending_calls == -1) {
+    max_pending_calls = job_config_->max_pending_calls();
+  }
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id,
       /*actor_cursor=*/ObjectID::FromIndex(actor_creation_task_id, 1),
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
-      actor_creation_options.max_task_retries, actor_creation_options.max_pending_calls);
+      actor_creation_options.max_task_retries, max_pending_calls);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(

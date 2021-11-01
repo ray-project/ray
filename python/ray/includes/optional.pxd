@@ -1,4 +1,5 @@
 # Currently Cython does not support std::optional.
+# See: https://github.com/cython/cython/pull/3294
 from libcpp cimport bool
 
 cdef extern from "<optional>" namespace "std" nogil:
@@ -20,7 +21,7 @@ cdef extern from "<optional>" namespace "std" nogil:
         void reset()
         T& emplace(...)
         T& operator*()
-        #T* operator->() # Not Supported
+        # T* operator->() # Not Supported
         optional& operator=(optional&)
         optional& operator=[U](U&)
         bool operator bool()

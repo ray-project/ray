@@ -3,6 +3,7 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
+import io.ray.runtime.exception.BackPressureException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -29,16 +30,25 @@ public class BackPressureTest extends BaseTest {
     /// set max concurrency to 11, 10 of them for executing waitSignal, and 1
     /// of them for executing sendSignal.
     ActorHandle<SignalActor> signalActor =
-        Ray.actor(SignalActor::new).setMaxConcurrency(11).setMaxPendingCalls(1023).remote();
+        Ray.actor(SignalActor::new).setMaxConcurrency(11).remote();
     /// Ping the actor to insure the actor is alive already.
     signalActor.task(SignalActor::ping).remote().get();
 
     for (int i = 0; i < 10; i++) {
+      LOGGER.info("call waitSignal");
       Assert.assertNotNull(signalActor.task(SignalActor::waitSignal).remote());
     }
 
     // Check backpressure occur.
-    Assert.assertNull(signalActor.task(SignalActor::waitSignal).remote());
+    boolean backPressure = false;
+    try {
+      LOGGER.info("call waitSignal");
+      signalActor.task(SignalActor::waitSignal).remote();
+    } catch (BackPressureException e) {
+      backPressure = true;
+    } finally {
+      Assert.assertTrue(backPressure);
+    }
 
     // Unblock signal actor, to make all backpressured raycall executed.
     for (int i = 0; i < 10; i++) {

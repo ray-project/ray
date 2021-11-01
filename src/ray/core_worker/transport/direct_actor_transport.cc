@@ -285,7 +285,6 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
     RAY_CHECK(!client_queue.worker_id.empty());
     PushActorTask(client_queue, task_spec, skip_queue);
     client_queue.next_send_position++;
-    client_queue.cur_pending_calls++;
   }
 }
 
@@ -445,6 +444,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushTaskToClientQueue(
         }
       },
       "CoreWorker.SubmitActorTask");
+  it->second.cur_pending_calls++;
 }
 
 void CoreWorkerDirectActorTaskSubmitter::WaitForShutdown() {
@@ -464,7 +464,6 @@ bool CoreWorkerDirectActorTaskSubmitter::IsClientQueueFull(const ActorID &actor_
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
-
   return it->second.cur_pending_calls >= it->second.max_pending_calls;
 }
 

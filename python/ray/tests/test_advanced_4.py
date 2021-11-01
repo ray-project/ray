@@ -2,6 +2,7 @@ import pytest
 import ray
 import subprocess
 import sys
+from ray._private.test_utils import Semaphore
 
 
 @pytest.fixture
@@ -97,21 +98,41 @@ def test_jemalloc_env_var_propagate():
 
 
 def test_back_pressure():
-    ray.init(job_config=ray.job_config.JobConfig(max_pending_calls=-1))
+    ray.init(job_config=ray.job_config.JobConfig(max_pending_calls=10))
+
+    signal_actor = Semaphore.remote(value=0)
+
+    try:
+        for i in range(10):
+            signal_actor.acquire.remote()
+    except ray.exceptions.BackPressureError:
+        assert False
+
+    back_pressured = False
+    try:
+        signal_actor.acquire.remote()
+    except ray.exceptions.BackPressureError:
+        back_pressured = True
+        print("BackPressureError")
+    finally:
+        assert back_pressured
 
     @ray.remote
-    class Foo:
-        def ping(self):
-            print("ping called")
-            return 1
+    def release(signal_actor):
+        ray.get(signal_actor.release.remote())
+        return 1
 
-    foo = Foo.remote()
-    ray.get(foo.ping.remote())
+    # Release signal actor through common task,
+    # because actor tasks will be back pressured
+    for i in range(10):
+        ray.get(release.remote(signal_actor))
 
-    foo2 = Foo.options(max_pending_calls=100).remote()
-    ray.get(foo2.ping.remote())
-
-    ray.shutdown()
+    # Check whether we can call remote actor normally after
+    # back presssure released.
+    try:
+        signal_actor.acquire.remote()
+    except ray.exceptions.BackPressureError:
+        assert False
 
 
 if __name__ == "__main__":
