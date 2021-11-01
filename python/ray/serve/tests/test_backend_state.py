@@ -8,7 +8,7 @@ import pytest
 
 from ray.actor import ActorHandle
 from ray.serve.common import (
-    BackendConfig,
+    DeploymentConfig,
     BackendInfo,
     BackendTag,
     ReplicaConfig,
@@ -130,7 +130,7 @@ class MockReplicaActorWrapper:
     def graceful_stop(self) -> None:
         assert self.started
         self.stopped = True
-        return self.backend_info.backend_config.graceful_shutdown_timeout_s
+        return self.backend_info.deployment_config.graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:
         return self.done_stopping
@@ -154,7 +154,7 @@ def backend_info(version: Optional[str] = None,
         actor_def=None,
         version=version,
         start_time_ms=0,
-        backend_config=BackendConfig(
+        deployment_config=DeploymentConfig(
             num_replicas=num_replicas, user_config=user_config, **config_opts),
         replica_config=ReplicaConfig(lambda x: x))
 
@@ -163,7 +163,8 @@ def backend_info(version: Optional[str] = None,
     else:
         code_version = get_random_letters()
 
-    version = DeploymentVersion(code_version, info.backend_config.user_config)
+    version = DeploymentVersion(code_version,
+                                info.deployment_config.user_config)
 
     return info, version
 

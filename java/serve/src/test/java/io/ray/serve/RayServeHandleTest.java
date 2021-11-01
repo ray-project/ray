@@ -5,8 +5,8 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.DeploymentConfig;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.DeploymentVersion;
 import java.util.HashMap;
 import org.testng.Assert;
@@ -31,15 +31,15 @@ public class RayServeHandleTest {
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
       // Replica
-      BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();
-      backendConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);
-      byte[] backendConfigBytes = backendConfigBuilder.build().toByteArray();
+      DeploymentConfig.Builder deploymentConfigBuilder = DeploymentConfig.newBuilder();
+      deploymentConfigBuilder.setDeploymentLanguage(DeploymentLanguage.JAVA);
+      byte[] deploymentConfigBytes = deploymentConfigBuilder.build().toByteArray();
 
       Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
       byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
       DeploymentInfo deploymentInfo = new DeploymentInfo();
-      deploymentInfo.setBackendConfig(backendConfigBytes);
+      deploymentInfo.setDeploymentConfig(deploymentConfigBytes);
       deploymentInfo.setDeploymentVersion(
           DeploymentVersion.newBuilder().setCodeVersion(version).build().toByteArray());
       deploymentInfo.setReplicaConfig(
