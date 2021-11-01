@@ -164,8 +164,9 @@ def create_logdir(dirname, local_dir):
     return logdir
 
 
-def to_pg_factory(resources: Optional[Resources],
-                  placement_group_factory: Optional[PlacementGroupFactory]):
+def _to_pg_factory(resources: Optional[Resources],
+                   placement_group_factory: Optional[PlacementGroupFactory]
+                   ) -> PlacementGroupFactory:
     """Outputs resources requirement in the form of PGF.
 
     In case that `placement_group_factory` is None, `resources` will be
@@ -282,8 +283,8 @@ class Trial:
                     resources = default_resources
         self.location = Location()
 
-        self.placement_group_factory = to_pg_factory(resources,
-                                                     placement_group_factory)
+        self.placement_group_factory = _to_pg_factory(resources,
+                                                      placement_group_factory)
 
         self.stopping_criterion = stopping_criterion or {}
 
@@ -499,8 +500,8 @@ class Trial:
         else:
             resources = Resources(**resources)
 
-        self.placement_group_factory = to_pg_factory(resources,
-                                                     placement_group_factory)
+        self.placement_group_factory = _to_pg_factory(resources,
+                                                      placement_group_factory)
 
         self.invalidate_json_state()
 

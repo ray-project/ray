@@ -674,7 +674,6 @@ class TrialRunner:
 
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
-
         # Create pending trials. If the queue was updated before, only
         # continue updating if this was successful (next_trial is not None)
         if not self._updated_queue or (self._updated_queue and next_trial):
@@ -1090,7 +1089,6 @@ class TrialRunner:
         """
         logger.debug("Trial %s: Processing trial save.", trial)
         checkpoint_value = None
-
         try:
             results = self.trial_executor.fetch_result(trial)
             checkpoint_value = results[-1]
@@ -1217,7 +1215,6 @@ class TrialRunner:
             trial.clear_checkpoint()
         self.trial_executor.stop_trial(
             trial, error=error_msg is not None, error_msg=error_msg)
-
         if self.trial_executor.has_resources_for_trial(trial):
             requeue_trial = False
             logger.info(

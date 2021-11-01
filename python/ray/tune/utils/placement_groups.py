@@ -3,7 +3,7 @@ from inspect import signature
 import json
 import os
 import time
-from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Union
 import uuid
 
 import ray
@@ -119,16 +119,18 @@ class PlacementGroupFactory:
     """
 
     def __init__(self,
-                 bundles: List[Dict[str, float]],
+                 bundles: List[Dict[str, Union[int, float]]],
                  strategy: str = "PACK",
                  *args,
                  **kwargs):
-        if len(bundles) > 0 and not bundles[0]:
-            # This is when trainable itself doesn't need CPU resources.
-            self._first_bundle_is_empty = True
+        assert len(bundles) > 0, (
+            "Cannot initialize a PlacementGroupFactory with zero bundles.")
+        if not bundles[0]:
+            # This is when trainable itself doesn't need resources.
+            self._head_bundle_is_empty = True
             bundles.pop(0)
         else:
-            self._first_bundle_is_empty = False
+            self._head_bundle_is_empty = False
 
         self._bundles = [{k: float(v)
                           for k, v in bundle.items()} for bundle in bundles]
@@ -142,8 +144,18 @@ class PlacementGroupFactory:
         self._bind()
 
     @property
-    def first_bundle_is_empty(self):
-        return self._first_bundle_is_empty
+    def head_bundle_is_empty(self):
+        """Returns True if head bundle is empty while child bundles
+        need resources.
+
+        This is considered an internal API within Tune.
+        """
+        return self._head_bundle_is_empty
+
+    @property
+    def head_cpus(self) -> float:
+        return 0.0 if self._head_bundle_is_empty else self._bundles[0].get(
+            "CPU", 0.0)
 
     @property
     def required_resources(self) -> Dict[str, float]:
@@ -451,14 +463,14 @@ class PlacementGroupManager:
         self._in_use_trials[trial] = pg
 
         # We still have to pass resource specs
-        if not pgf.first_bundle_is_empty:
+        if not pgf.head_bundle_is_empty:
             # Pass the full resource specs of the first bundle per default
-            first_bundle = pg.bundle_specs[0].copy()
-            num_cpus = first_bundle.pop("CPU", None)
-            num_gpus = first_bundle.pop("GPU", None)
+            head_bundle = pg.bundle_specs[0].copy()
+            num_cpus = head_bundle.pop("CPU", None)
+            num_gpus = head_bundle.pop("GPU", None)
 
-            # Only custom resources remain in `first_bundle`
-            resources = first_bundle or None
+            # Only custom resources remain in `head_bundle`
+            resources = head_bundle
         else:
             num_cpus = None
             num_gpus = None
@@ -766,37 +778,3 @@ class PlacementGroupManager:
                     resources[key] = resources.get(key, 0) + val
 
         return resources
-
-    def total_used_resources(self, committed_resources: Resources) -> dict:
-        """Dict of total used resources incl. placement groups
-
-        Args:
-            committed_resources (Resources): Additional commited resources
-                from (legacy) Ray Tune resource management.
-        """
-        committed = committed_resources._asdict()
-
-        # Make dict compatible with pg resource dict
-        committed.pop("has_placement_group", None)
-        committed["CPU"] = committed.pop("cpu", 0) + committed.pop(
-            "extra_cpu", 0)
-        committed["GPU"] = committed.pop("gpu", 0) + committed.pop(
-            "extra_gpu", 0)
-        committed["memory"] += committed.pop("extra_memory", 0.)
-        committed["object_store_memory"] += committed.pop(
-            "extra_object_store_memory", 0.)
-
-        custom = committed.pop("custom_resources", {})
-        extra_custom = committed.pop("extra_custom_resources", {})
-
-        for k, v in extra_custom.items():
-            custom[k] = custom.get(k, 0.) + v
-
-        committed.update(custom)
-
-        pg_resources = self.occupied_resources()
-
-        for k, v in committed.items():
-            pg_resources[k] = pg_resources.get(k, 0.) + v
-
-        return pg_resources

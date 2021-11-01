@@ -249,7 +249,6 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testChangeResources(self):
         """Checks that resource requirements can be changed on fly."""
-        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
         ray.init(num_cpus=2)
 
         class ChangingScheduler(FIFOScheduler):
@@ -274,13 +273,17 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(runner.trial_executor._committed_resources.cpu, 1)
+        self.assertEqual(
+            runner.trial_executor._pg_manager.occupied_resources().get("CPU"),
+            1)
         self.assertRaises(
             ValueError, lambda: trials[0].update_resources(dict(cpu=2, gpu=0)))
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(runner.trial_executor._committed_resources.cpu, 2)
+        self.assertEqual(
+            runner.trial_executor._pg_manager.occupied_resources().get("CPU"),
+            2)
 
     def testQueueFilling(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"

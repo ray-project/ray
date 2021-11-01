@@ -189,7 +189,6 @@ class RayTrialExecutor(TrialExecutor):
         self._cached_actor_pg = deque(maxlen=1)
 
         self._avail_resources = Resources(cpu=0, gpu=0)
-        self._committed_resources = Resources(cpu=0, gpu=0)
         self._pg_manager = PlacementGroupManager(prefix=get_tune_pg_prefix())
         self._staged_trials = set()
         self._just_staged_trials = set()
@@ -823,7 +822,7 @@ class RayTrialExecutor(TrialExecutor):
         self._resources_initialized = True
 
     def has_resources_for_trial(self, trial: Trial) -> bool:
-        """Returns whether there is resources available for this trial.
+        """Returns whether there are resources available for this trial.
 
         This will return True as long as we didn't reach the maximum number
         of pending trials. It will also return True if the trial placement
@@ -842,8 +841,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def debug_string(self) -> str:
         """Returns a human readable message for printing to the console."""
-        total_resources = self._pg_manager.total_used_resources(
-            self._committed_resources)
+        total_resources = self._pg_manager.occupied_resources()
 
         if self._resources_initialized:
             status = ("Resources requested: {}/{} CPUs, {}/{} GPUs, "
