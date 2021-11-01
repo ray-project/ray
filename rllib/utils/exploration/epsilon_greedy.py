@@ -128,11 +128,13 @@ class EpsilonGreedy(Exploration):
             ),
             false_fn=lambda: exploit_action)
 
-        if self.framework in ["tf2", "tfe"]:
+        if self.framework in ["tf2", "tfe"
+                              ] and not self.policy_config["eager_tracing"]:
             self.last_timestep = timestep
             return action, tf.zeros_like(action, dtype=tf.float32)
         else:
-            assign_op = tf1.assign(self.last_timestep, timestep)
+            assign_op = tf1.assign(self.last_timestep,
+                                   tf.cast(timestep, tf.int64))
             with tf1.control_dependencies([assign_op]):
                 return action, tf.zeros_like(action, dtype=tf.float32)
 
