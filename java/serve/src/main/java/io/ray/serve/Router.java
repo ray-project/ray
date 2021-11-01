@@ -38,7 +38,7 @@ public class Router {
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
         new KeyType(LongPollNamespace.BACKEND_CONFIGS, backendTag),
-        backendConfig -> replicaSet.setMaxConcurrentQueries(backendConfig)); // cross language
+        deploymentConfig -> replicaSet.setMaxConcurrentQueries(deploymentConfig)); // cross language
     keyListeners.put(
         new KeyType(LongPollNamespace.REPLICA_HANDLES, backendTag),
         workerReplicas -> replicaSet.updateWorkerReplicas(workerReplicas)); // cross language
