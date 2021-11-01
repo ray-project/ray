@@ -59,7 +59,7 @@ from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
-    _internal_kv_initialized
+    _internal_kv_initialized, _initialize_internal_kv
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -1304,7 +1304,7 @@ def connect(node,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
-
+    _initialize_internal_kv(gcs_utils.GcsClient.connect_to_gcs_by_redis_cli(worker.redis_client))
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 

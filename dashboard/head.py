@@ -13,6 +13,7 @@ from grpc.experimental import aio as aiogrpc
 import grpc
 
 import ray._private.utils
+from ray._private.gcs_utils import GcsClient
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -115,7 +116,6 @@ class DashboardHead:
         self.http_session = None
         self.ip = ray.util.get_node_ip_address()
         ip, port = redis_address.split(":")
-        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
             self.server, "[::]:0")
@@ -190,6 +190,7 @@ class DashboardHead:
 
         # Waiting for GCS is ready.
         gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
+        self.gcs_client = GcsClient(gcs_address)
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
 

@@ -1,8 +1,11 @@
 from ray.core.generated.common_pb2 import ErrorType
+import enum
 import inspect
 import grpc
 import logging
+from typing import List
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated import gcs_service_pb2
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
@@ -110,28 +113,65 @@ def construct_error_message(job_id, error_type, message, timestamp):
     return data.SerializeToString()
 
 
+class GcsCode(enum.IntEnum):
+    # corresponding to ray/src/ray/common/status.h
+    OK = 0
+    NotFound = 17
+
 class GcsClient:
-    def __init__(self, stubs):
-        self._methods = {}
-        for stub in stubs:
-            for (name, method) in inspect.getmembers(
-                    stub, predicate=inspect.ismethod):
-                self._methods[name] = method
-
-    def __getattr__(self, key: str):
-        return self._methods[key]
-
-    @classmethod
-    def connect_to_gcs(cls, address):
-        assert isinstance(str, address)
-        channel = grpc.insecure_channel(address)
+    def __init__(self, address):
         logger.debug(f"Connecting to gcs address: {address}")
-        stubs = [gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)]
-        return cls(stubs)
+        channel = grpc.insecure_channel(address)
+        self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)
+
+    def internal_kv_get(self, key: bytes) -> bytes:
+        req = gcs_service_pb2.InternalKVGetRequest(key=key)
+        reply = self._kv_stub.InternalKVGet(req)
+        if reply.status.code == GcsCode.OK:
+            return reply.value
+        elif reply.status.code == GcsCode.NotFound:
+            return None
+        else:
+            raise RuntimeError(f"Failed to get value for key {key} due to error {reply.status.message}")
+
+    def internal_kv_put(self, key: bytes, value: bytes, overwrite: bool) -> int:
+        req = gcs_service_pb2.InternalKVPutRequest(
+            key=key,
+            value=value,
+            overwrite=overwrite)
+        reply = self._kv_stub.InternalKVPut(req)
+        if reply.status.code == GcsCode.OK:
+            return reply.added_num
+        else:
+            raise RuntimeError(f"Failed to put value {value} to key {key} due to error {reply.status.message}")
+
+    def internal_kv_del(self, key: bytes) -> int:
+        req = gcs_service_pb2.InternalKVDelRequest(key=key)
+        reply = self._kv_stub.InternalKVDel(req)
+        if reply.status.code == GcsCode.OK:
+            return reply.deleted_num
+        else:
+            raise RuntimeError(f"Failed to delete key {key} due to error {reply.status.message}")
+
+    def internal_kv_exists(self, key: bytes) -> bool:
+        req = gcs_service_pb2.InternalKVExistsRequest(key=key)
+        reply = self._kv_stub.InternalKVExists(req)
+        if reply.status.code == GcsCode.OK:
+            return reply.exists
+        else:
+            raise RuntimeError(f"Failed to check existence of key {key} due to error {reply.status.message}")
+
+    def internal_kv_keys(self, prefix: bytes) -> List[bytes]:
+        req = gcs_service_pb2.InternalKVKeysRequest(prefix=prefix)
+        reply = self._kv_stub.InternalKVKeys(req)
+        if reply.status.code == GcsCode.OK:
+            return list(reply.results)
+        else:
+            raise RuntimeError(f"Failed to list prefix of key {key} due to error {reply.status.message}")
 
     @staticmethod
     def connect_to_gcs_by_redis_cli(redis_cli):
         gcs_address = redis_cli.get("GcsServerAddress")
         if gcs_address is None:
             raise RuntimeError("Failed to look up gcs address through redis")
-        return GcsClient.connect_to_gcs(gcs_address.decode())
+        return GcsClient(gcs_address.decode())
