@@ -8,6 +8,7 @@ from ray._private.gcs_utils import GcsClient
 
 global_gcs_client = None
 
+
 def _initialize_internal_kv(gcs_client: Union[GcsClient, str]):
     """Initialize the internal KV for use in other function calls."""
     global global_gcs_client

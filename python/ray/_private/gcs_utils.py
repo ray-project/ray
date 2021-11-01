@@ -1,6 +1,7 @@
 from ray.core.generated.common_pb2 import ErrorType
 import inspect
 import grpc
+import logging
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
@@ -26,6 +27,8 @@ from ray.core.generated.gcs_pb2 import (
     WorkerTableData,
     PlacementGroupTableData,
 )
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ActorTableData",
@@ -122,5 +125,13 @@ class GcsClient:
     def connect_to_gcs(cls, address):
         assert isinstance(str, address)
         channel = grpc.insecure_channel(address)
+        logger.debug(f"Connecting to gcs address: {address}")
         stubs = [gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)]
         return cls(stubs)
+
+    @staticmethod
+    def connect_to_gcs_by_redis_cli(redis_cli):
+        gcs_address = redis_cli.get("GcsServerAddress")
+        if gcs_address is None:
+            raise RuntimeError("Failed to look up gcs address through redis")
+        return GcsClient.connect_to_gcs(gcs_address.decode())
