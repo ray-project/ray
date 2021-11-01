@@ -1479,7 +1479,8 @@ void NodeManager::HandleUpdateResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
-
+  // When next_resource_seq_no_ == 0 it means it just started.
+  // TODO: Fetch a snapshot from gcs for lightweight resource broadcasting
   if (next_resource_seq_no_ != 0 &&
       resource_usage_batch.seq_no() != next_resource_seq_no_) {
     RAY_LOG(WARNING)
