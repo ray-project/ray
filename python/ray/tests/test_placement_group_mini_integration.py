@@ -117,7 +117,7 @@ def test_placement_group_create_only(ray_start_cluster, execution_number):
     When there are failures, this will help identifying if issues are
     from removal or not.
     """
-    run_mini_integration_test(ray_start_cluster, pg_removal=False, num_pgs=666)
+    run_mini_integration_test(ray_start_cluster, pg_removal=False, num_pgs=333)
 
 
 @pytest.mark.parametrize("execution_number", range(3))
