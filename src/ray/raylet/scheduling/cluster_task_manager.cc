@@ -327,11 +327,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           double wait_time =
               (1e6 * sched_cls_cap_interval_ms_) * (1L << sched_cls_info.num_updates++);
           sched_cls_info.next_update_time = get_time_() + wait_time;
-          sched_cls_info.timer = execute_after_(
-              [this]() {
-                ScheduleAndDispatchTasks();
-              },
-              wait_time);
+          sched_cls_info.timer =
+              execute_after_([this]() { ScheduleAndDispatchTasks(); }, wait_time);
         }
         work_it++;
         continue;
