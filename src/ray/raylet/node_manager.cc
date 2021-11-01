@@ -1483,14 +1483,18 @@ void NodeManager::HandleUpdateResourceUsage(
   // TODO: Fetch a snapshot from gcs for lightweight resource broadcasting
   if (next_resource_seq_no_ != 0 &&
       resource_usage_batch.seq_no() != next_resource_seq_no_) {
-    RAY_LOG(WARNING)
-        << "Raylet may have missed a resource broadcast. This either means that GCS has "
-           "restarted, the network is heavily congested and is dropping, reordering, or "
-           "duplicating packets. Expected seq#: "
-        << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
     // TODO (Alex): Ideally we would be really robust, and potentially eagerly
     // pull a full resource "snapshot" from gcs to make sure our state doesn't
     // diverge from GCS.
+    RAY_LOG(WARNING)
+        << "Raylet may have missed a resource broadcast. This either means that GCS has "
+        "restarted, the network is heavily congested and is dropping, reordering, or "
+        "duplicating packets. Expected seq#: "
+        << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
+    if(resource_usage_batch.seq_no() < next_resource_seq_no_) {
+      RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
+      return;
+    }
   }
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
 
@@ -1498,8 +1502,8 @@ void NodeManager::HandleUpdateResourceUsage(
     if (resource_change_or_data.has_data()) {
       const auto &resource_usage = resource_change_or_data.data();
       auto node_id = NodeID::FromBinary(resource_usage.node_id());
+      // Skip messages from self.
       if (node_id != self_node_id_) {
-        // Skip messages from self.
         UpdateResourceUsage(node_id, resource_usage);
       }
     } else if (resource_change_or_data.has_change()) {
