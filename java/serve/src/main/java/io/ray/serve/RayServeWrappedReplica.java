@@ -208,6 +208,12 @@ public class RayServeWrappedReplica implements RayServeReplica {
         : deploymentVersion;
   }
 
+  /**
+   * Get the deployment version of the current replica.
+   *
+   * @return DeploymentVersion. If the current invocation is crossing language, the
+   *     DeploymentVersion is serialized to protobuf byte[].
+   */
   public Object getVersion() {
     DeploymentVersion deploymentVersion = backend.getVersion();
     return deploymentInfo.getBackendConfig().isCrossLanguage()
