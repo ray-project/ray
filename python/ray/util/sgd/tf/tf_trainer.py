@@ -167,7 +167,7 @@ class TFTrainable(Trainable):
         return PlacementGroupFactory([{}] + [{
             "CPU": 1,
             "GPU": int(config["use_gpu"])
-        } * config["num_replicas"]])
+        }] * config["num_replicas"])
 
     def setup(self, config):
         self._trainer = TFTrainer(
