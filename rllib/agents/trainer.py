@@ -676,15 +676,6 @@ class Trainer(Trainable):
             ] if cf["evaluation_interval"] else []),
             strategy=config.get("placement_strategy", "PACK"))
 
-    def _sync_filters_if_needed(self, workers: WorkerSet):
-        if self.config.get("observation_filter", "NoFilter") != "NoFilter":
-            FilterManager.synchronize(
-                workers.local_worker().filters,
-                workers.remote_workers(),
-                update_remote=self.config["synchronize_filters"])
-            logger.debug("synchronized filters: {}".format(
-                workers.local_worker().filters))
-
     @override(Trainable)
     def log_result(self, result: ResultDict):
         self.callbacks.on_train_result(trainer=self, result=result)
@@ -883,43 +874,18 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(
-            self, *, env_creator: Callable[[EnvContext], EnvType],
-            validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-            policy_class: Type[Policy], config: TrainerConfigDict,
-            num_workers: int) -> WorkerSet:
-        """Default factory method for a WorkerSet running under this Trainer.
+    def _init(self, config: TrainerConfigDict,
+              env_creator: Callable[[EnvContext], EnvType]) -> None:
+        """Subclasses should override this for custom initialization.
 
-        Override this method by passing a custom `make_workers` into
-        `build_trainer`.
+        In the case of Trainer, this is called from inside `self.setup()`.
 
         Args:
-            env_creator (callable): A function that return and Env given an env
-                config.
-            validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
-                Optional callable to validate the generated environment (only
-                on worker=0).
-            policy (Type[Policy]): The Policy class to use for creating the
-                policies of the workers.
-            config (TrainerConfigDict): The Trainer's config.
-            num_workers (int): Number of remote rollout workers to create.
-                0 for local only.
-
-        Returns:
-            WorkerSet: The created WorkerSet.
+            config: Algorithm-specific configuration dict.
+            env_creator: A callable taking an EnvContext as only arg and
+                returning an environment (of any type: e.g. gym.Env, RLlib
+                BaseEnv, MultiAgentEnv, etc..).
         """
-        return WorkerSet(
-            env_creator=env_creator,
-            validate_env=validate_env,
-            policy_class=policy_class,
-            trainer_config=config,
-            num_workers=num_workers,
-            logdir=self.logdir)
-
-    @DeveloperAPI
-    def _init(self, config: TrainerConfigDict,
-              env_creator: Callable[[EnvContext], EnvType]):
-        """Subclasses should override this for custom initialization."""
         raise NotImplementedError
 
     @override(Trainable)
@@ -1502,15 +1468,16 @@ class Trainer(Trainable):
             >>> trainer.export_policy_model("/tmp/dir")
             >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1)
         """
-        self.workers.local_worker().export_policy_model(
-            export_dir, policy_id, onnx)
+        self.get_policy(policy_id).export_model(export_dir, onnx)
 
     @DeveloperAPI
-    def export_policy_checkpoint(self,
-                                 export_dir: str,
-                                 filename_prefix: str = "model",
-                                 policy_id: PolicyID = DEFAULT_POLICY_ID):
-        """Export tensorflow policy model checkpoint to local directory.
+    def export_policy_checkpoint(
+            self,
+            export_dir: str,
+            filename_prefix: str = "model",
+            policy_id: PolicyID = DEFAULT_POLICY_ID,
+    ) -> None:
+        """Exports policy model checkpoint to a local directory.
 
         Args:
             export_dir: Writable local directory.
@@ -1523,13 +1490,15 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_checkpoint("/tmp/export_dir")
         """
-        self.workers.local_worker().export_policy_checkpoint(
-            export_dir, filename_prefix, policy_id)
+        self.get_policy(policy_id).export_checkpoint(export_dir,
+                                                     filename_prefix)
 
     @DeveloperAPI
-    def import_policy_model_from_h5(self,
-                                    import_file: str,
-                                    policy_id: PolicyID = DEFAULT_POLICY_ID):
+    def import_policy_model_from_h5(
+            self,
+            import_file: str,
+            policy_id: PolicyID = DEFAULT_POLICY_ID,
+    ) -> None:
         """Imports a policy's model with given policy_id from a local h5 file.
 
         Args:
@@ -1542,8 +1511,9 @@ class Trainer(Trainable):
             >>> for _ in range(10):
             >>>     trainer.train()
         """
-        self.workers.local_worker().import_policy_model_from_h5(
-            import_file, policy_id)
+        self.get_policy(policy_id).import_model_from_h5(import_file)
+        # Sync new weights to remote workers.
+        self._sync_weights_to_workers()
 
     @DeveloperAPI
     def collect_metrics(self,
@@ -1561,6 +1531,55 @@ class Trainer(Trainable):
     def _before_evaluate(self):
         """Pre-evaluation callback."""
         pass
+
+    @DeveloperAPI
+    def _make_workers(
+            self,
+            *,
+            env_creator: Callable[[EnvContext], EnvType],
+            validate_env: Optional[Callable[[EnvType, EnvContext], None]],
+            policy_class: Type[Policy],
+            config: TrainerConfigDict,
+            num_workers: int,
+    ) -> WorkerSet:
+        """Default factory method for a WorkerSet running under this Trainer.
+
+        Override this method by passing a custom `make_workers` into
+        `build_trainer`.
+
+        Args:
+            env_creator: A function that return and Env given an env
+                config.
+            validate_env: Optional callable to validate the generated
+                environment. The env to be checked is the one returned from
+                the env creator, which may be a (single, not-yet-vectorized)
+                gym.Env or your custom RLlib env type (e.g. MultiAgentEnv,
+                VectorEnv, BaseEnv, etc..).
+            policy_class: The Policy class to use for creating the policies
+                of the workers.
+            config: The Trainer's config.
+            num_workers: Number of remote rollout workers to create.
+                0 for local only.
+
+        Returns:
+            The created WorkerSet.
+        """
+        return WorkerSet(
+            env_creator=env_creator,
+            validate_env=validate_env,
+            policy_class=policy_class,
+            trainer_config=config,
+            num_workers=num_workers,
+            logdir=self.logdir)
+
+    def _sync_filters_if_needed(self, workers: WorkerSet):
+        if self.config.get("observation_filter", "NoFilter") != "NoFilter":
+            FilterManager.synchronize(
+                workers.local_worker().filters,
+                workers.remote_workers(),
+                update_remote=self.config["synchronize_filters"])
+            logger.debug("synchronized filters: {}".format(
+                workers.local_worker().filters))
 
     @DeveloperAPI
     def _sync_weights_to_workers(
