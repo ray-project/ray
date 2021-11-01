@@ -22,7 +22,6 @@ from ray._private.gcs_utils import GcsClient
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
-from ray._raylet import connect_to_gcs
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
@@ -151,7 +150,8 @@ class DashboardAgent(object):
 
         # Start a grpc asyncio server.
         await self.server.start()
-        gcs_address = await self.aioredis_client.get(dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
+        gcs_address = await self.aioredis_client.get(
+            dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
         self.gcs_client = GcsClient(gcs_address.decode())
         modules = self._load_modules()
 

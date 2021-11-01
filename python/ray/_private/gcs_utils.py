@@ -1,6 +1,5 @@
 from ray.core.generated.common_pb2 import ErrorType
 import enum
-import inspect
 import grpc
 import logging
 from typing import List
@@ -118,6 +117,7 @@ class GcsCode(enum.IntEnum):
     OK = 0
     NotFound = 17
 
+
 class GcsClient:
     def __init__(self, address):
         logger.debug(f"Connecting to gcs address: {address}")
@@ -132,18 +132,23 @@ class GcsClient:
         elif reply.status.code == GcsCode.NotFound:
             return None
         else:
-            raise RuntimeError(f"Failed to get value for key {key} due to error {reply.status.message}")
+            raise RuntimeError(
+                f"Failed to get value for key {key} "
+                f"due to error {reply.status.message}"
+            )
 
-    def internal_kv_put(self, key: bytes, value: bytes, overwrite: bool) -> int:
+    def internal_kv_put(self, key: bytes, value: bytes,
+                        overwrite: bool) -> int:
         req = gcs_service_pb2.InternalKVPutRequest(
-            key=key,
-            value=value,
-            overwrite=overwrite)
+            key=key, value=value, overwrite=overwrite)
         reply = self._kv_stub.InternalKVPut(req)
         if reply.status.code == GcsCode.OK:
             return reply.added_num
         else:
-            raise RuntimeError(f"Failed to put value {value} to key {key} due to error {reply.status.message}")
+            raise RuntimeError(
+                f"Failed to put value {value} to key {key} "
+                f"due to error {reply.status.message}"
+            )
 
     def internal_kv_del(self, key: bytes) -> int:
         req = gcs_service_pb2.InternalKVDelRequest(key=key)
@@ -151,7 +156,10 @@ class GcsClient:
         if reply.status.code == GcsCode.OK:
             return reply.deleted_num
         else:
-            raise RuntimeError(f"Failed to delete key {key} due to error {reply.status.message}")
+            raise RuntimeError(
+                f"Failed to delete key {key} "
+                f"due to error {reply.status.message}"
+            )
 
     def internal_kv_exists(self, key: bytes) -> bool:
         req = gcs_service_pb2.InternalKVExistsRequest(key=key)
@@ -159,7 +167,10 @@ class GcsClient:
         if reply.status.code == GcsCode.OK:
             return reply.exists
         else:
-            raise RuntimeError(f"Failed to check existence of key {key} due to error {reply.status.message}")
+            raise RuntimeError(
+                f"Failed to check existence of key {key} "
+                f"due to error {reply.status.message}"
+            )
 
     def internal_kv_keys(self, prefix: bytes) -> List[bytes]:
         req = gcs_service_pb2.InternalKVKeysRequest(prefix=prefix)
@@ -167,7 +178,10 @@ class GcsClient:
         if reply.status.code == GcsCode.OK:
             return list(reply.results)
         else:
-            raise RuntimeError(f"Failed to list prefix of key {key} due to error {reply.status.message}")
+            raise RuntimeError(
+                f"Failed to list prefix of key {key} "
+                f"due to error {reply.status.message}"
+            )
 
     @staticmethod
     def connect_to_gcs_by_redis_cli(redis_cli):

@@ -9,6 +9,7 @@ from ray._private.gcs_utils import GcsClient
 _initialized = False
 global_gcs_client = None
 
+
 def _initialize_internal_kv(gcs_client: GcsClient):
     """Initialize the internal KV for use in other function calls.
     """
@@ -16,9 +17,11 @@ def _initialize_internal_kv(gcs_client: GcsClient):
     global_gcs_client = gcs_client
     _initialized = True
 
+
 @client_mode_hook(auto_init=False)
 def _internal_kv_initialized():
     return global_gcs_client is not None
+
 
 @client_mode_hook(auto_init=False)
 def _internal_kv_get(key: Union[str, bytes]) -> bytes:
@@ -39,6 +42,7 @@ def _internal_kv_exists(key: Union[str, bytes]) -> bool:
     assert isinstance(key, bytes)
     return global_gcs_client.internal_kv_exists(key)
 
+
 @client_mode_hook(auto_init=False)
 def _internal_kv_put(key: Union[str, bytes],
                      value: Union[str, bytes],
@@ -57,7 +61,8 @@ def _internal_kv_put(key: Union[str, bytes],
     if isinstance(value, str):
         value = value.encode()
 
-    assert isinstance(key, bytes) and isinstance(value, bytes) and isinstance(overwrite, bool)
+    assert isinstance(key, bytes) and isinstance(value, bytes) and isinstance(
+        overwrite, bool)
     return global_gcs_client.internal_kv_put(key, value, overwrite) == 0
 
 

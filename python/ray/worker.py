@@ -1304,7 +1304,8 @@ def connect(node,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
-    _initialize_internal_kv(gcs_utils.GcsClient.connect_to_gcs_by_redis_cli(worker.redis_client))
+    _initialize_internal_kv(
+        gcs_utils.GcsClient.connect_to_gcs_by_redis_cli(worker.redis_client))
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 
