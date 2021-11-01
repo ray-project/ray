@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -10,7 +10,7 @@ def post_process_advantages(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[List[SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
     """Adds the "advantages" column to `sample_batch`.
 
     Args:
@@ -18,7 +18,7 @@ def post_process_advantages(
         sample_batch (SampleBatch): The actual sample batch to post-process.
         other_agent_batches (Optional[List[SampleBatch]]): Optional list of
             other agents' SampleBatch objects.
-        episode (MultiAgentEpisode): The multi-agent episode object, from which
+        episode (Episode): The multi-agent episode object, from which
             `sample_batch` was generated.
 
     Returns:

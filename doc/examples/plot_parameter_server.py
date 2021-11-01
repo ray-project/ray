@@ -284,6 +284,6 @@ print("Final accuracy is {:.1f}.".format(accuracy))
 # parameter servers and to modify the behavior of the parameter server.
 #
 # For example, sharding the parameter server, changing the update rule,
-# switch between asynchronous and synchronous updates, ignoring
+# switching between asynchronous and synchronous updates, ignoring
 # straggler workers, or any number of other customizations,
 # will only require a few extra lines of code.
