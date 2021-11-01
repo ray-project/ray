@@ -36,7 +36,8 @@ class MockSubscriberInterface : public SubscriberInterface {
                const std::string &key_id),
               (override));
   MOCK_METHOD(bool, Unsubscribe,
-              (const rpc::ChannelType channel_type, const rpc::Address &publisher_address),
+              (const rpc::ChannelType channel_type,
+               const rpc::Address &publisher_address),
               (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
 };

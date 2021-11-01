@@ -226,17 +226,41 @@ Status GcsPublisher::PublishActor(const ActorID &id, const rpc::ActorTableData &
 
 Status GcsPublisher::PublishJob(const JobID &id, const rpc::JobTableData &message,
                                 const StatusCallback &done) {
+  if (publisher_ != nullptr) {
+    rpc::PubMessage msg;
+    msg.set_channel_type(rpc::ChannelType::GCS_JOB_CHANNEL);
+    msg.set_key_id(id.Binary());
+    *msg.mutable_job_message() = message;
+    publisher_->Publish(msg);
+    return Status::OK();
+  }
   return pubsub_->Publish(JOB_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
 Status GcsPublisher::PublishNodeInfo(const NodeID &id, const rpc::GcsNodeInfo &message,
                                      const StatusCallback &done) {
+  if (publisher_ != nullptr) {
+    rpc::PubMessage msg;
+    msg.set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
+    msg.set_key_id(id.Binary());
+    *msg.mutable_node_info_message() = message;
+    publisher_->Publish(msg);
+    return Status::OK();
+  }
   return pubsub_->Publish(NODE_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
 Status GcsPublisher::PublishNodeResource(const NodeID &id,
                                          const rpc::NodeResourceChange &message,
                                          const StatusCallback &done) {
+  if (publisher_ != nullptr) {
+    rpc::PubMessage msg;
+    msg.set_channel_type(rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL);
+    msg.set_key_id(id.Binary());
+    *msg.mutable_node_resource_message() = message;
+    publisher_->Publish(msg);
+    return Status::OK();
+  }
   return pubsub_->Publish(NODE_RESOURCE_CHANNEL, id.Hex(), message.SerializeAsString(),
                           done);
 }
@@ -274,6 +298,26 @@ std::string GcsPublisher::DebugString() const {
 Status GcsSubscriber::SubscribeAllJobs(
     const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
     const StatusCallback &done) {
+  if (subscriber_ != nullptr) {
+    auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
+      RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_JOB_CHANNEL);
+      const JobID id = JobID::FromBinary(msg.key_id());
+      subscribe(id, msg.job_message());
+    };
+    auto subscription_failure_callback = [](const std::string &, const Status &status) {
+      RAY_LOG(WARNING) << "Subscription to Job channel failed: " << status.ToString();
+    };
+    if (subscriber_->SubscribeAll(
+            std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_JOB_CHANNEL,
+            gcs_address_, [done](Status status) { done(status); },
+            std::move(subscribe_item_callback),
+            std::move(subscription_failure_callback))) {
+      return Status::OK();
+    }
+    return Status::ObjectExists(
+        "Job channel already subscribed. Please unsubscribe first if it needs to be "
+        "resubscribed.");
+  }
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::JobTableData job_data;
     job_data.ParseFromString(data);
@@ -286,15 +330,13 @@ Status GcsSubscriber::SubscribeActor(
     const ActorID &id, const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
   if (subscriber_ != nullptr) {
-    const std::string raw_id = id.Binary();
-    auto subscription_callback = [id, subscribe, done,
-                                  raw_id](const rpc::PubMessage &msg) {
+    auto subscription_callback = [id, subscribe](const rpc::PubMessage &msg) {
       RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
       RAY_CHECK(msg.key_id() == id.Binary());
       subscribe(id, msg.actor_message());
     };
-    auto subscription_failure_callback = [id, done](const std::string &failed_id,
-                                                    const Status &status) {
+    auto subscription_failure_callback = [id](const std::string &failed_id,
+                                              const Status &status) {
       RAY_CHECK(failed_id == id.Binary());
       RAY_LOG(WARNING) << "Subscription to Actor " << id.Hex()
                        << " failed: " << status.ToString();
@@ -336,12 +378,62 @@ bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
 
 Status GcsSubscriber::SubscribeAllNodeInfo(
     const ItemCallback<rpc::GcsNodeInfo> &subscribe, const StatusCallback &done) {
+  if (subscriber_ != nullptr) {
+    auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
+      RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
+      subscribe(msg.node_info_message());
+    };
+    auto subscription_failure_callback = [](const std::string &, const Status &status) {
+      RAY_LOG(WARNING) << "Subscription to NodeInfo channel failed: "
+                       << status.ToString();
+    };
+    if (subscriber_->SubscribeAll(
+            std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+            gcs_address_, [done](Status status) { done(status); },
+            std::move(subscribe_item_callback),
+            std::move(subscription_failure_callback))) {
+      return Status::OK();
+    }
+    return Status::ObjectExists(
+        "NodeInfo channel already subscribed. Please unsubscribe first if it needs to be "
+        "resubscribed.");
+  }
   auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
     rpc::GcsNodeInfo node_info;
     node_info.ParseFromString(data);
     subscribe(node_info);
   };
   return pubsub_->SubscribeAll(NODE_CHANNEL, on_subscribe, done);
+}
+
+Status GcsSubscriber::SubscribeAllNodeResources(
+    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
+  if (subscriber_ != nullptr) {
+    auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
+      RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL);
+      subscribe(msg.node_resource_message());
+    };
+    auto subscription_failure_callback = [](const std::string &, const Status &status) {
+      RAY_LOG(WARNING) << "Subscription to NodeResource channel failed: "
+                       << status.ToString();
+    };
+    if (subscriber_->SubscribeAll(
+            std::make_unique<rpc::SubMessage>(),
+            rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL, gcs_address_,
+            [done](Status status) { done(status); }, std::move(subscribe_item_callback),
+            std::move(subscription_failure_callback))) {
+      return Status::OK();
+    }
+    return Status::ObjectExists(
+        "NodeResource channel already subscribed. Please unsubscribe first if it needs "
+        "to be resubscribed.");
+  }
+  auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
+    rpc::NodeResourceChange node_resource_change;
+    node_resource_change.ParseFromString(data);
+    subscribe(node_resource_change);
+  };
+  return pubsub_->SubscribeAll(NODE_RESOURCE_CHANNEL, on_subscribe, done);
 }
 
 Status GcsSubscriber::SubscribeResourcesBatch(
@@ -353,16 +445,6 @@ Status GcsSubscriber::SubscribeResourcesBatch(
     subscribe(resources_batch_data);
   };
   return pubsub_->Subscribe(RESOURCES_BATCH_CHANNEL, "", on_subscribe, done);
-}
-
-Status GcsSubscriber::SubscribeAllNodeResources(
-    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
-  auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
-    rpc::NodeResourceChange node_resource_change;
-    node_resource_change.ParseFromString(data);
-    subscribe(node_resource_change);
-  };
-  return pubsub_->SubscribeAll(NODE_RESOURCE_CHANNEL, on_subscribe, done);
 }
 
 Status GcsSubscriber::SubscribeTaskLease(
