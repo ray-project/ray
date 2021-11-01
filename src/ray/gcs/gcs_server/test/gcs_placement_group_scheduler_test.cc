@@ -1071,6 +1071,38 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestReleaseUnusedBundles) {
   ASSERT_EQ(1, raylet_clients_[0]->num_release_unused_bundles_requested);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
+  auto node0 = Mocker::GenNodeInfo(0);
+  auto node1 = Mocker::GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
+  placement_group->GetMutableBundle(0)->set_node_id(node0->node_id());
+  placement_group->GetMutableBundle(1)->set_node_id(node1->node_id());
+
+  std::unordered_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
+      group_to_bundles;
+  group_to_bundles[placement_group->GetPlacementGroupID()].emplace_back(
+      std::make_shared<BundleSpecification>(*placement_group->GetMutableBundle(0)));
+  group_to_bundles[placement_group->GetPlacementGroupID()].emplace_back(
+      std::make_shared<BundleSpecification>(*placement_group->GetMutableBundle(1)));
+  scheduler_->Initialize(group_to_bundles);
+
+  auto bundles = scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
+  ASSERT_EQ(1, bundles.size());
+  ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()].size());
+  ASSERT_EQ(0, bundles[placement_group->GetPlacementGroupID()][0]);
+
+  bundles = scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
+  ASSERT_EQ(1, bundles.size());
+  ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()].size());
+  ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()][0]);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

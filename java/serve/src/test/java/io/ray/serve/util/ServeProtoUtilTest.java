@@ -2,7 +2,7 @@ package io.ray.serve.util;
 
 import com.google.protobuf.ByteString;
 import io.ray.serve.BackendConfig;
-import io.ray.serve.BackendVersion;
+import io.ray.serve.DeploymentVersion;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -65,25 +65,25 @@ public class ServeProtoUtilTest {
   }
 
   @Test
-  public void parseBackendVersionTest() {
-    String codeVersion = "parseBackendVersionTest";
-    io.ray.serve.generated.BackendVersion pbBackendVersion =
-        io.ray.serve.generated.BackendVersion.newBuilder().setCodeVersion(codeVersion).build();
+  public void parseDeploymentVersionTest() {
+    String codeVersion = "parseDeploymentVersionTest";
+    io.ray.serve.generated.DeploymentVersion pbDeploymentVersion =
+        io.ray.serve.generated.DeploymentVersion.newBuilder().setCodeVersion(codeVersion).build();
 
-    BackendVersion backendVersion =
-        ServeProtoUtil.parseBackendVersion(pbBackendVersion.toByteArray());
-    Assert.assertNotNull(backendVersion);
-    Assert.assertEquals(backendVersion.getCodeVersion(), codeVersion);
+    DeploymentVersion deploymentVersion =
+        ServeProtoUtil.parseDeploymentVersion(pbDeploymentVersion.toByteArray());
+    Assert.assertNotNull(deploymentVersion);
+    Assert.assertEquals(deploymentVersion.getCodeVersion(), codeVersion);
   }
 
   @Test
-  public void toBackendVersionProtobufTest() {
-    String codeVersion = "toBackendVersionProtobufTest";
-    BackendVersion backendVersion = new BackendVersion(codeVersion);
-    io.ray.serve.generated.BackendVersion pbBackendVersion =
-        ServeProtoUtil.toProtobuf(backendVersion);
+  public void toDeploymentVersionProtobufTest() {
+    String codeVersion = "toDeploymentVersionProtobufTest";
+    DeploymentVersion deploymentVersion = new DeploymentVersion(codeVersion);
+    io.ray.serve.generated.DeploymentVersion pbDeploymentVersion =
+        ServeProtoUtil.toProtobuf(deploymentVersion);
 
-    Assert.assertNotNull(pbBackendVersion);
-    Assert.assertEquals(pbBackendVersion.getCodeVersion(), codeVersion);
+    Assert.assertNotNull(pbDeploymentVersion);
+    Assert.assertEquals(pbDeploymentVersion.getCodeVersion(), codeVersion);
   }
 }

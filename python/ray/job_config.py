@@ -102,3 +102,18 @@ class JobConfig:
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""
         return self._validate_runtime_env()[0].serialize()
+
+    @classmethod
+    def from_json(cls, job_config_json):
+        """
+        Generates a JobConfig object from json.
+        """
+        return cls(
+            num_java_workers_per_process=job_config_json.get(
+                "num_java_workers_per_process", 1),
+            jvm_options=job_config_json.get("jvm_options", None),
+            code_search_path=job_config_json.get("code_search_path", None),
+            runtime_env=job_config_json.get("runtime_env", None),
+            client_job=job_config_json.get("client_job", False),
+            metadata=job_config_json.get("metadata", None),
+            ray_namespace=job_config_json.get("ray_namespace", None))

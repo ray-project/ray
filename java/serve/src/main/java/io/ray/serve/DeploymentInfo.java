@@ -15,7 +15,7 @@ public class DeploymentInfo implements Serializable {
 
   private BackendConfig backendConfig;
 
-  private BackendVersion backendVersion;
+  private DeploymentVersion deploymentVersion;
 
   private Map<String, String> config;
 
@@ -55,12 +55,12 @@ public class DeploymentInfo implements Serializable {
     return this;
   }
 
-  public BackendVersion getBackendVersion() {
-    return backendVersion;
+  public DeploymentVersion getDeploymentVersion() {
+    return deploymentVersion;
   }
 
-  public DeploymentInfo setBackendVersion(BackendVersion backendVersion) {
-    this.backendVersion = backendVersion;
+  public DeploymentInfo setDeploymentVersion(DeploymentVersion deploymentVersion) {
+    this.deploymentVersion = deploymentVersion;
     return this;
   }
 

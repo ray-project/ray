@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
+
+#include <utility>
 
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/pubsub/subscriber.h"
 
 extern "C" {
 #include "hiredis/hiredis.h"
@@ -23,16 +26,66 @@ extern "C" {
 
 namespace ray {
 namespace gcs {
+namespace {
 
-ServiceBasedGcsClient::ServiceBasedGcsClient(
+/// Adapts GcsRpcClient to SubscriberClientInterface for making RPC calls. Thread safe.
+class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
+ public:
+  explicit GcsSubscriberClient(const std::shared_ptr<rpc::GcsRpcClient> &rpc_client)
+      : rpc_client_(rpc_client) {}
+
+  ~GcsSubscriberClient() final = default;
+
+  void PubsubLongPolling(
+      const rpc::PubsubLongPollingRequest &request,
+      const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final;
+
+  void PubsubCommandBatch(
+      const rpc::PubsubCommandBatchRequest &request,
+      const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final;
+
+ private:
+  const std::shared_ptr<rpc::GcsRpcClient> rpc_client_;
+};
+
+void GcsSubscriberClient::PubsubLongPolling(
+    const rpc::PubsubLongPollingRequest &request,
+    const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) {
+  rpc::GcsSubscriberPollRequest req;
+  req.set_subscriber_id(request.subscriber_id());
+  rpc_client_->GcsSubscriberPoll(
+      req,
+      [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
+        rpc::PubsubLongPollingReply reply;
+        *reply.mutable_pub_messages() = poll_reply.pub_messages();
+        callback(status, reply);
+      });
+}
+
+void GcsSubscriberClient::PubsubCommandBatch(
+    const rpc::PubsubCommandBatchRequest &request,
+    const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) {
+  rpc::GcsSubscriberCommandBatchRequest req;
+  req.set_subscriber_id(request.subscriber_id());
+  rpc_client_->GcsSubscriberCommandBatch(
+      req, [callback](const Status &status,
+                      const rpc::GcsSubscriberCommandBatchReply &batch_reply) {
+        rpc::PubsubCommandBatchReply reply;
+        callback(status, reply);
+      });
+}
+
+}  // namespace
+
+GcsClient::GcsClient(
     const GcsClientOptions &options,
     std::function<bool(std::pair<std::string, int> *)> get_gcs_server_address_func)
-    : GcsClient(options),
-      get_server_address_func_(get_gcs_server_address_func),
+    : options_(options),
+      get_server_address_func_(std::move(get_gcs_server_address_func)),
       last_reconnect_timestamp_ms_(0),
       last_reconnect_address_(std::make_pair("", -1)) {}
 
-Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
+Status GcsClient::Connect(instrumented_io_context &io_service) {
   RAY_CHECK(!is_connected_);
 
   if (options_.server_ip_.empty()) {
@@ -47,11 +100,8 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
       options_.server_ip_, options_.server_port_, options_.password_,
       /*enable_sharding_conn=*/false, options_.enable_sync_conn_,
       options_.enable_async_conn_, options_.enable_subscribe_conn_);
-  redis_client_.reset(new RedisClient(redis_client_options));
+  redis_client_ = std::make_shared<RedisClient>(redis_client_options);
   RAY_CHECK_OK(redis_client_->Connect(io_service));
-
-  // Init gcs pub sub instance.
-  gcs_pub_sub_.reset(new GcsPubSub(redis_client_));
 
   // Get gcs service address.
   if (get_server_address_func_) {
@@ -86,24 +136,52 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   };
 
   // Connect to gcs service.
-  client_call_manager_.reset(new rpc::ClientCallManager(io_service));
-  gcs_rpc_client_.reset(new rpc::GcsRpcClient(
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service);
+  gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       current_gcs_server_address_.first, current_gcs_server_address_.second,
       *client_call_manager_,
-      [this](rpc::GcsServiceFailureType type) { GcsServiceFailureDetected(type); }));
-  job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
-  actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
-  node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
-  node_resource_accessor_.reset(new ServiceBasedNodeResourceInfoAccessor(this));
-  task_accessor_.reset(new ServiceBasedTaskInfoAccessor(this));
-  object_accessor_.reset(new ServiceBasedObjectInfoAccessor(this));
-  stats_accessor_.reset(new ServiceBasedStatsInfoAccessor(this));
-  error_accessor_.reset(new ServiceBasedErrorInfoAccessor(this));
-  worker_accessor_.reset(new ServiceBasedWorkerInfoAccessor(this));
-  placement_group_accessor_.reset(new ServiceBasedPlacementGroupInfoAccessor(this));
-  internal_kv_accessor_ = std::make_unique<ServiceBasedInternalKVAccessor>(this);
+      [this](rpc::GcsServiceFailureType type) { GcsServiceFailureDetected(type); });
+
+  rpc::Address gcs_address;
+  gcs_address.set_ip_address(current_gcs_server_address_.first);
+  gcs_address.set_port(current_gcs_server_address_.second);
+  /// TODO: refactor pubsub::Subscriber to avoid this.
+  gcs_address.set_worker_id(UniqueID::FromRandom().Binary());
+
+  std::unique_ptr<pubsub::Subscriber> subscriber;
+  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
+    subscriber = std::make_unique<pubsub::Subscriber>(
+        /*subscriber_id=*/gcs_client_id_,
+        /*channels=*/
+        std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                                      rpc::ChannelType::GCS_JOB_CHANNEL,
+                                      rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+                                      rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL},
+        /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
+        /*get_client=*/
+        [this](const rpc::Address &) {
+          return std::make_shared<GcsSubscriberClient>(gcs_rpc_client_);
+        },
+        /*callback_service*/ &io_service);
+  }
+
+  // Init GCS subscriber instance.
+  gcs_subscriber_ =
+      std::make_unique<GcsSubscriber>(redis_client_, gcs_address, std::move(subscriber));
+
+  job_accessor_ = std::make_unique<JobInfoAccessor>(this);
+  actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
+  node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
+  node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);
+  task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
+  object_accessor_ = std::make_unique<ObjectInfoAccessor>(this);
+  stats_accessor_ = std::make_unique<StatsInfoAccessor>(this);
+  error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
+  worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);
+  placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);
+  internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   // Init gcs service address check timer.
-  periodical_runner_.reset(new PeriodicalRunner(io_service));
+  periodical_runner_ = std::make_unique<PeriodicalRunner>(io_service);
   periodical_runner_->RunFnPeriodically(
       [this] { PeriodicallyCheckGcsServerAddress(); },
       RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
@@ -111,35 +189,36 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
 
   is_connected_ = true;
 
-  RAY_LOG(DEBUG) << "ServiceBasedGcsClient connected.";
+  RAY_LOG(DEBUG) << "GcsClient connected.";
   return Status::OK();
 }
 
-void ServiceBasedGcsClient::Disconnect() {
+void GcsClient::Disconnect() {
   if (!is_connected_) {
-    RAY_LOG(WARNING) << "ServiceBasedGcsClient has been disconnected.";
+    RAY_LOG(WARNING) << "GcsClient has been disconnected.";
     return;
   }
   is_connected_ = false;
   periodical_runner_.reset();
-  gcs_pub_sub_.reset();
+  gcs_subscriber_.reset();
   redis_client_->Disconnect();
   redis_client_.reset();
-  RAY_LOG(DEBUG) << "ServiceBasedGcsClient Disconnected.";
+  RAY_LOG(DEBUG) << "GcsClient Disconnected.";
 }
 
-std::pair<std::string, int> ServiceBasedGcsClient::GetGcsServerAddress() {
+std::pair<std::string, int> GcsClient::GetGcsServerAddress() {
   return current_gcs_server_address_;
 }
 
-bool ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
-    redisContext *context, std::pair<std::string, int> *address, int max_attempts) {
+bool GcsClient::GetGcsServerAddressFromRedis(redisContext *context,
+                                             std::pair<std::string, int> *address,
+                                             int max_attempts) {
   // Get gcs server address.
   int num_attempts = 0;
   redisReply *reply = nullptr;
   while (num_attempts < max_attempts) {
     reply = reinterpret_cast<redisReply *>(redisCommand(context, "GET GcsServerAddress"));
-    if (reply && reply->type != REDIS_REPLY_NIL) {
+    if ((reply != nullptr) && reply->type != REDIS_REPLY_NIL) {
       break;
     }
 
@@ -171,7 +250,7 @@ bool ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
   return false;
 }
 
-void ServiceBasedGcsClient::PeriodicallyCheckGcsServerAddress() {
+void GcsClient::PeriodicallyCheckGcsServerAddress() {
   std::pair<std::string, int> address;
   if (get_server_address_func_(&address)) {
     if (address != current_gcs_server_address_) {
@@ -183,7 +262,7 @@ void ServiceBasedGcsClient::PeriodicallyCheckGcsServerAddress() {
   }
 }
 
-void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
+void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
   switch (type) {
   case rpc::GcsServiceFailureType::RPC_DISCONNECT:
     // If the GCS server address does not change, reconnect to GCS server.
@@ -206,7 +285,7 @@ void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType
   }
 }
 
-void ServiceBasedGcsClient::ReconnectGcsServer() {
+void GcsClient::ReconnectGcsServer() {
   std::pair<std::string, int> address;
   int index = 0;
   for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {

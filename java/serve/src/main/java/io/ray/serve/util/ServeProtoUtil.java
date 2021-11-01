@@ -6,8 +6,8 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.BackendConfig;
-import io.ray.serve.BackendVersion;
 import io.ray.serve.Constants;
+import io.ray.serve.DeploymentVersion;
 import io.ray.serve.RayServeException;
 import io.ray.serve.generated.BackendLanguage;
 import io.ray.serve.generated.EndpointInfo;
@@ -155,45 +155,48 @@ public class ServeProtoUtil {
     return endpointSet.getEndpointsMap();
   }
 
-  public static BackendVersion parseBackendVersion(byte[] backendVersionBytes) {
-    if (backendVersionBytes == null) {
-      return new BackendVersion();
+  public static DeploymentVersion parseDeploymentVersion(byte[] deploymentVersionBytes) {
+    if (deploymentVersionBytes == null) {
+      return new DeploymentVersion();
     }
 
-    io.ray.serve.generated.BackendVersion pbBackendVersion = null;
+    io.ray.serve.generated.DeploymentVersion pbDeploymentVersion = null;
     try {
-      pbBackendVersion = io.ray.serve.generated.BackendVersion.parseFrom(backendVersionBytes);
+      pbDeploymentVersion =
+          io.ray.serve.generated.DeploymentVersion.parseFrom(deploymentVersionBytes);
     } catch (InvalidProtocolBufferException e) {
-      throw new RayServeException("Failed to parse BackendVersion from protobuf bytes.", e);
+      throw new RayServeException("Failed to parse DeploymentVersion from protobuf bytes.", e);
     }
-    if (pbBackendVersion == null) {
-      return new BackendVersion();
+    if (pbDeploymentVersion == null) {
+      return new DeploymentVersion();
     }
-    return new BackendVersion(
-        pbBackendVersion.getCodeVersion(),
-        pbBackendVersion.getUserConfig() != null && pbBackendVersion.getUserConfig().size() != 0
+    return new DeploymentVersion(
+        pbDeploymentVersion.getCodeVersion(),
+        pbDeploymentVersion.getUserConfig() != null
+                && pbDeploymentVersion.getUserConfig().size() != 0
             ? new Object[] {
               MessagePackSerializer.decode(
-                  pbBackendVersion.getUserConfig().toByteArray(), Object.class)
+                  pbDeploymentVersion.getUserConfig().toByteArray(), Object.class)
             }
             : null);
   }
 
-  public static io.ray.serve.generated.BackendVersion toProtobuf(BackendVersion backendVersion) {
-    io.ray.serve.generated.BackendVersion.Builder pbBackendVersion =
-        io.ray.serve.generated.BackendVersion.newBuilder();
-    if (backendVersion == null) {
-      return pbBackendVersion.build();
+  public static io.ray.serve.generated.DeploymentVersion toProtobuf(
+      DeploymentVersion deploymentVersion) {
+    io.ray.serve.generated.DeploymentVersion.Builder pbDeploymentVersion =
+        io.ray.serve.generated.DeploymentVersion.newBuilder();
+    if (deploymentVersion == null) {
+      return pbDeploymentVersion.build();
     }
 
-    if (StringUtils.isNotBlank(backendVersion.getCodeVersion())) {
-      pbBackendVersion.setCodeVersion(backendVersion.getCodeVersion());
+    if (StringUtils.isNotBlank(deploymentVersion.getCodeVersion())) {
+      pbDeploymentVersion.setCodeVersion(deploymentVersion.getCodeVersion());
     }
-    if (backendVersion.getUserConfig() != null) {
-      pbBackendVersion.setUserConfig(
+    if (deploymentVersion.getUserConfig() != null) {
+      pbDeploymentVersion.setUserConfig(
           ByteString.copyFrom(
-              MessagePackSerializer.encode(backendVersion.getUserConfig()).getLeft()));
+              MessagePackSerializer.encode(deploymentVersion.getUserConfig()).getLeft()));
     }
-    return pbBackendVersion.build();
+    return pbDeploymentVersion.build();
   }
 }

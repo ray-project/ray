@@ -90,8 +90,8 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
         return MARWILTorchPolicy
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the MARWIL/BC algorithm. Defines the distributed
     dataflow.
 
@@ -103,6 +103,9 @@ def execution_plan(workers: WorkerSet,
     Returns:
         LocalIterator[dict]: A local iterator over training metrics.
     """
+    assert len(kwargs) == 0, (
+        "Marwill execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
     replay_buffer = LocalReplayBuffer(
         learning_starts=config["learning_starts"],

@@ -19,10 +19,11 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -706,6 +707,67 @@ class Trainer(Trainable):
         # to mutate the result
         Trainable.log_result(self, result)
 
+    @DeveloperAPI
+    def _create_local_replay_buffer_if_necessary(self, config):
+        """Create a LocalReplayBuffer instance if necessary.
+
+        Args:
+            config (dict): Algorithm-specific configuration data.
+
+        Returns:
+            LocalReplayBuffer instance based on trainer config.
+            None, if local replay buffer is not needed.
+        """
+        # These are the agents that utilizes a local replay buffer.
+        if ("replay_buffer_config" not in config
+                or not config["replay_buffer_config"]):
+            # Does not need a replay buffer.
+            return None
+
+        replay_buffer_config = config["replay_buffer_config"]
+        if ("type" not in replay_buffer_config
+                or replay_buffer_config["type"] != "LocalReplayBuffer"):
+            # DistributedReplayBuffer coming soon.
+            return None
+
+        capacity = config.get("buffer_size", DEPRECATED_VALUE)
+        if capacity != DEPRECATED_VALUE:
+            # Print a deprecation warning.
+            deprecation_warning(
+                old="config['buffer_size']",
+                new="config['replay_buffer_config']['capacity']",
+                error=False)
+        else:
+            # Get capacity out of replay_buffer_config.
+            capacity = replay_buffer_config["capacity"]
+
+        if config.get("prioritized_replay"):
+            prio_args = {
+                "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+                "prioritized_replay_beta": config["prioritized_replay_beta"],
+                "prioritized_replay_eps": config["prioritized_replay_eps"],
+            }
+        else:
+            prio_args = {}
+
+        return LocalReplayBuffer(
+            num_shards=1,
+            learning_starts=config["learning_starts"],
+            capacity=capacity,
+            replay_batch_size=config["train_batch_size"],
+            replay_mode=config["multiagent"]["replay_mode"],
+            replay_sequence_length=config.get("replay_sequence_length", 1),
+            replay_burn_in=config.get("burn_in", 0),
+            replay_zero_init_states=config.get("zero_init_states", True),
+            **prio_args)
+
+    @DeveloperAPI
+    def _kwargs_for_execution_plan(self):
+        kwargs = {}
+        if self.local_replay_buffer:
+            kwargs["local_replay_buffer"] = self.local_replay_buffer
+        return kwargs
+
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
@@ -772,6 +834,10 @@ class Trainer(Trainable):
                         "-vv flags.".format(log_level))
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
+
+        # Create local replay buffer if necessary.
+        self.local_replay_buffer = (
+            self._create_local_replay_buffer_if_necessary(self.config))
 
         self._init(self.config, self.env_creator)
 
@@ -1020,7 +1086,7 @@ class Trainer(Trainable):
             full_fetch: bool = False,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            episode: Optional[MultiAgentEpisode] = None,
+            episode: Optional[Episode] = None,
             unsquash_action: Optional[bool] = None,
             clip_action: Optional[bool] = None,
 
@@ -1174,7 +1240,7 @@ class Trainer(Trainable):
             full_fetch: bool = False,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List[MultiAgentEpisode]] = None,
+            episodes: Optional[List[Episode]] = None,
             unsquash_actions: Optional[bool] = None,
             clip_actions: Optional[bool] = None,
             # Deprecated.
@@ -1747,7 +1813,8 @@ class Trainer(Trainable):
 
         logger.warning("Recreating execution plan after failure")
         workers.reset(healthy_workers)
-        self.train_exec_impl = self.execution_plan(workers, self.config)
+        self.train_exec_impl = self.execution_plan(
+            workers, self.config, **self._kwargs_for_execution_plan())
 
     @override(Trainable)
     def _export_model(self, export_formats: List[str],

@@ -50,7 +50,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   private LongPollClient longPollClient;
 
-  private BackendVersion version;
+  private DeploymentVersion version;
 
   private boolean isDeleted = false;
 
@@ -61,7 +61,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
   public RayServeReplicaImpl(
       Object callable,
       BackendConfig backendConfig,
-      BackendVersion version,
+      DeploymentVersion version,
       BaseActorHandle actorHandle) {
     this.backendTag = Serve.getReplicaContext().getBackendTag();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
@@ -300,11 +300,12 @@ public class RayServeReplicaImpl implements RayServeReplica {
   }
 
   @Override
-  public BackendVersion reconfigure(Object userConfig) {
-    BackendVersion backendVersion = new BackendVersion(version.getCodeVersion(), userConfig);
-    version = backendVersion;
+  public DeploymentVersion reconfigure(Object userConfig) {
+    DeploymentVersion deploymentVersion =
+        new DeploymentVersion(version.getCodeVersion(), userConfig);
+    version = deploymentVersion;
     if (userConfig == null) {
-      return backendVersion;
+      return deploymentVersion;
     }
 
     LOGGER.info(
@@ -351,7 +352,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
     config = (BackendConfig) newConfig;
   }
 
-  public BackendVersion getVersion() {
+  public DeploymentVersion getVersion() {
     return version;
   }
 

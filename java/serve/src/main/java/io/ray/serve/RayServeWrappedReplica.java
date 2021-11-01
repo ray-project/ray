@@ -31,7 +31,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       String backendDef,
       byte[] initArgsbytes,
       byte[] backendConfigBytes,
-      byte[] backendVersionBytes,
+      byte[] deploymentVersionBytes,
       String controllerName) {
 
     // Parse BackendConfig.
@@ -56,7 +56,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
         new DeploymentInfo()
             .setName(backendTag)
             .setBackendConfig(backendConfig)
-            .setBackendVersion(ServeProtoUtil.parseBackendVersion(backendVersionBytes))
+            .setDeploymentVersion(ServeProtoUtil.parseDeploymentVersion(deploymentVersionBytes))
             .setBackendDef(backendDef)
             .setInitArgs(initArgs),
         replicaTag,
@@ -105,7 +105,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
           new RayServeReplicaImpl(
               callable,
               deploymentInfo.getBackendConfig(),
-              deploymentInfo.getBackendVersion(),
+              deploymentInfo.getDeploymentVersion(),
               optional.get());
       this.deploymentInfo = deploymentInfo;
     } catch (Throwable e) {
@@ -193,26 +193,26 @@ public class RayServeWrappedReplica implements RayServeReplica {
    * Reconfigure user's configuration in the callable object through its reconfigure method.
    *
    * @param userConfig new user's configuration
-   * @return BackendVersion. If the current invocation is crossing language, the BackendVersion is
-   *     serialized to protobuf byte[].
+   * @return DeploymentVersion. If the current invocation is crossing language, the
+   *     DeploymentVersion is serialized to protobuf byte[].
    */
   @Override
   public Object reconfigure(Object userConfig) {
-    BackendVersion backendVersion =
+    DeploymentVersion deploymentVersion =
         backend.reconfigure(
             deploymentInfo.getBackendConfig().isCrossLanguage() && userConfig != null
                 ? MessagePackSerializer.decode((byte[]) userConfig, Object.class)
                 : userConfig);
     return deploymentInfo.getBackendConfig().isCrossLanguage()
-        ? ServeProtoUtil.toProtobuf(backendVersion).toByteArray()
-        : backendVersion;
+        ? ServeProtoUtil.toProtobuf(deploymentVersion).toByteArray()
+        : deploymentVersion;
   }
 
   public Object getVersion() {
-    BackendVersion backendVersion = backend.getVersion();
+    DeploymentVersion deploymentVersion = backend.getVersion();
     return deploymentInfo.getBackendConfig().isCrossLanguage()
-        ? ServeProtoUtil.toProtobuf(backendVersion).toByteArray()
-        : backendVersion;
+        ? ServeProtoUtil.toProtobuf(deploymentVersion).toByteArray()
+        : deploymentVersion;
   }
 
   public Object getCallable() {

@@ -39,7 +39,7 @@ public class RouterTest {
           new DeploymentInfo()
               .setName(backendTag)
               .setBackendConfig(backendConfig)
-              .setBackendVersion(new BackendVersion(version))
+              .setDeploymentVersion(new DeploymentVersion(version))
               .setBackendDef("io.ray.serve.ReplicaContext")
               .setInitArgs(initArgs);
 

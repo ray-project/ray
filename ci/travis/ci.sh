@@ -420,6 +420,10 @@ build_wheels() {
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
 
+        # Sync the directory to buildkite artifacts
+        rm -rf /artifact-mount/.whl || true
+        cp -r .whl /artifact-mount/.whl
+
       validate_wheels_commit_str
       fi
       ;;

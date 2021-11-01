@@ -36,7 +36,7 @@ public class RayServeReplicaTest {
           new DeploymentInfo()
               .setName(backendTag)
               .setBackendConfig(backendConfig)
-              .setBackendVersion(new BackendVersion(version))
+              .setDeploymentVersion(new DeploymentVersion(version))
               .setBackendDef(DummyBackendReplica.class.getName());
 
       ActorHandle<RayServeWrappedReplica> backendHandle =
@@ -69,7 +69,7 @@ public class RayServeReplicaTest {
       // reconfigure
       ObjectRef<Object> versionRef =
           backendHandle.task(RayServeWrappedReplica::reconfigure, (Object) null).remote();
-      Assert.assertEquals(((BackendVersion) versionRef.get()).getCodeVersion(), version);
+      Assert.assertEquals(((DeploymentVersion) versionRef.get()).getCodeVersion(), version);
 
       backendHandle.task(RayServeWrappedReplica::reconfigure, new Object()).remote().get();
       resultRef =
@@ -96,7 +96,7 @@ public class RayServeReplicaTest {
 
       // get version
       versionRef = backendHandle.task(RayServeWrappedReplica::getVersion).remote();
-      Assert.assertEquals(((BackendVersion) versionRef.get()).getCodeVersion(), version);
+      Assert.assertEquals(((DeploymentVersion) versionRef.get()).getCodeVersion(), version);
 
       // prepare for shutdown
       ObjectRef<Boolean> shutdownRef =
