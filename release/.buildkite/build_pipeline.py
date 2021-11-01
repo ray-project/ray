@@ -189,8 +189,7 @@ NIGHTLY_TESTS = {
         "serve_cluster_fault_tolerance",
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
-        "rte_many_tasks_actors",
-        "wheel_urls",
+        "rte_many_tasks_actors", "wheel_urls", "rte_ray_client"
     ],
 }
 

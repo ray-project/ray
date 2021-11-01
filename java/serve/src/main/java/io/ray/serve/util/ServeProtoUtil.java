@@ -9,7 +9,7 @@ import io.ray.serve.Constants;
 import io.ray.serve.RayServeException;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.BackendVersion;
+import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.generated.LongPollResult;
@@ -157,14 +157,14 @@ public class ServeProtoUtil {
     return endpointSet.getEndpointsMap();
   }
 
-  public static BackendVersion parseBackendVersion(byte[] backendVersionBytes) {
-    if (backendVersionBytes == null) {
+  public static DeploymentVersion parseDeploymentVersion(byte[] deploymentVersionBytes) {
+    if (deploymentVersionBytes == null) {
       return null;
     }
     try {
-      return BackendVersion.parseFrom(backendVersionBytes);
+      return DeploymentVersion.parseFrom(deploymentVersionBytes);
     } catch (InvalidProtocolBufferException e) {
-      throw new RayServeException("Failed to parse BackendVersion from protobuf bytes.", e);
+      throw new RayServeException("Failed to parse DeploymentVersion from protobuf bytes.", e);
     }
   }
 }
