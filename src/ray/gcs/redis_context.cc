@@ -37,7 +37,7 @@ void ProcessCallback(int64_t callback_index,
                                  << "but it actually is " << callback_index;
   auto callback_item =
       ray::gcs::RedisCallbackManager::instance().GetCallback(callback_index);
-  if (!callback_item->is_subscription_) {
+  if (!callback_item->IsSubscription()) {
     // Record the redis latency for non-subscription redis operations.
     auto end_time = absl::GetCurrentTimeNanos() / 1000;
     ray::stats::GcsLatency().Record(end_time - callback_item->start_time_);
@@ -46,7 +46,7 @@ void ProcessCallback(int64_t callback_index,
   // Dispatch the callback.
   callback_item->Dispatch(callback_reply);
 
-  if (!callback_item->is_subscription_) {
+  if (!callback_item->IsSubscription()) {
     // Delete the callback if it's not a subscription callback.
     ray::gcs::RedisCallbackManager::instance().RemoveCallback(callback_index);
   }
@@ -220,11 +220,13 @@ int64_t RedisCallbackManager::AllocateCallbackIndex() {
 }
 
 int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
-                                          bool is_subscription,
+                                          std::optional<std::string> subscribe_channel,
                                           instrumented_io_context &io_service,
                                           int64_t callback_index) {
   auto start_time = absl::GetCurrentTimeNanos() / 1000;
-
+  if(subscribe_channel) {
+    RAY_LOG(DEBUG) << "Add callback for channel " << *subscribe_channel;
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   if (callback_index == -1) {
     // No callback index was specified. Allocate a new callback index.
@@ -233,7 +235,7 @@ int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
   }
   callback_items_.emplace(
       callback_index,
-      std::make_shared<CallbackItem>(function, is_subscription, start_time, io_service));
+      std::make_shared<CallbackItem>(function, subscribe_channel, start_time, io_service));
   return callback_index;
 }
 
@@ -435,7 +437,7 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
     argc.push_back(args[i].size());
   }
   int64_t callback_index =
-      RedisCallbackManager::instance().AddCallback(redis_callback, false, io_service_);
+      RedisCallbackManager::instance().AddCallback(redis_callback, std::nullopt, io_service_);
   // Run the Redis command.
   Status status = redis_async_context_->RedisAsyncCommandArgv(
       reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
@@ -450,9 +452,9 @@ Status RedisContext::SubscribeAsync(const NodeID &node_id,
   RAY_CHECK(pubsub_channel != TablePubsub::NO_PUBLISH)
       << "Client requested subscribe on a table that does not support pubsub";
   RAY_CHECK(async_redis_subscribe_context_);
-
+  auto channel_name = rpc::TablePubsub_descriptor()->FindValueByNumber(pubsub_channel)->name();
   int64_t callback_index =
-      RedisCallbackManager::instance().AddCallback(redisCallback, true, io_service_);
+      RedisCallbackManager::instance().AddCallback(redisCallback, channel_name, io_service_);
   RAY_CHECK(out_callback_index != nullptr);
   *out_callback_index = callback_index;
   Status status = Status::OK();
@@ -479,7 +481,7 @@ Status RedisContext::SubscribeAsync(const std::string &channel,
                                     int64_t callback_index) {
   RAY_CHECK(async_redis_subscribe_context_);
 
-  RAY_UNUSED(RedisCallbackManager::instance().AddCallback(redisCallback, true,
+  RAY_UNUSED(RedisCallbackManager::instance().AddCallback(redisCallback, channel,
                                                           io_service_, callback_index));
   std::string redis_command = "SUBSCRIBE %b";
   return async_redis_subscribe_context_->RedisAsyncCommand(
@@ -503,7 +505,7 @@ Status RedisContext::PSubscribeAsync(const std::string &pattern,
                                      int64_t callback_index) {
   RAY_CHECK(async_redis_subscribe_context_);
 
-  RAY_UNUSED(RedisCallbackManager::instance().AddCallback(redisCallback, true,
+  RAY_UNUSED(RedisCallbackManager::instance().AddCallback(redisCallback, pattern,
                                                           io_service_, callback_index));
   std::string redis_command = "PSUBSCRIBE %b";
   return async_redis_subscribe_context_->RedisAsyncCommand(

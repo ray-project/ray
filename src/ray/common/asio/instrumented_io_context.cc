@@ -67,23 +67,24 @@ std::string to_human_readable(int64_t duration) {
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    const std::string name) {
-  if (!RayConfig::instance().event_stats()) {
-    return boost::asio::io_context::post(std::move(handler));
+
+  if (RayConfig::instance().event_stats()) {
+    // References are only invalidated upon deletion of the corresponding item from the
+    // table, which we won't do until this io_context is deleted. Provided that
+    // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
+    // handler stats it->second from multiple threads without acquiring a table-level
+    // readers lock in the callback.
+    const auto stats_handle = RecordStart(name);
+    handler = [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
+                RecordExecution(handler, std::move(stats_handle));
+              };
   }
-  const auto stats_handle = RecordStart(name);
-  // References are only invalidated upon deletion of the corresponding item from the
-  // table, which we won't do until this io_context is deleted. Provided that
-  // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
-  // handler stats it->second from multiple threads without acquiring a table-level
-  // readers lock in the callback.
   auto defer_ms = ray::asio::testing::get_delay_ms(name);
-  auto tsk = [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-               RecordExecution(handler, std::move(stats_handle));
-             };
   if(defer_ms == 0) {
-    boost::asio::io_context::post(std::move(tsk));
+    boost::asio::io_context::post(std::move(handler));
   } else {
-    execute_after(*this, std::move(tsk), defer_ms);
+    RAY_LOG(ERROR) << "Defer " << name << " by " << defer_ms << "ms";
+    execute_after(*this, std::move(handler), defer_ms);
   }
 }
 
