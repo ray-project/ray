@@ -5,8 +5,8 @@ import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.generated.BackendVersion;
+import io.ray.serve.generated.DeploymentConfig;
+import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
@@ -51,9 +51,9 @@ public class ProxyActorTest {
 
       // Replica
       DeploymentInfo deploymentInfo = new DeploymentInfo();
-      deploymentInfo.setBackendConfig(BackendConfig.newBuilder().build().toByteArray());
-      deploymentInfo.setBackendVersion(
-          BackendVersion.newBuilder().setCodeVersion(version).build().toByteArray());
+      deploymentInfo.setDeploymentConfig(DeploymentConfig.newBuilder().build().toByteArray());
+      deploymentInfo.setDeploymentVersion(
+          DeploymentVersion.newBuilder().setCodeVersion(version).build().toByteArray());
       deploymentInfo.setReplicaConfig(
           new ReplicaConfig(DummyBackendReplica.class.getName(), null, new HashMap<>()));
 
