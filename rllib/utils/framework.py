@@ -4,20 +4,20 @@ import os
 import sys
 from typing import Any, Optional
 
-from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
 
 
-def try_import_jax(error=False):
+def try_import_jax(error: bool = False):
     """Tries importing JAX and FLAX and returns both modules (or Nones).
 
     Args:
-        error (bool): Whether to raise an error if JAX/FLAX cannot be imported.
+        error: Whether to raise an error if JAX/FLAX cannot be imported.
 
     Returns:
-        Tuple: The jax- and the flax modules.
+        Tuple containing the jax- and the flax modules.
 
     Raises:
         ImportError: If error=True and JAX is not installed.
@@ -39,18 +39,17 @@ def try_import_jax(error=False):
     return jax, flax
 
 
-def try_import_tf(error=False):
+def try_import_tf(error: bool = False):
     """Tries importing tf and returns the module (or None).
 
     Args:
-        error (bool): Whether to raise an error if tf cannot be imported.
+        error: Whether to raise an error if tf cannot be imported.
 
     Returns:
-        Tuple:
-            - tf1.x module (either from tf2.x.compat.v1 OR as tf1.x).
-            - tf module (resulting from `import tensorflow`).
-                Either tf1.x or 2.x.
-            - The actually installed tf version as int: 1 or 2.
+        Tuple containing
+        1) tf1.x module (either from tf2.x.compat.v1 OR as tf1.x).
+        2) tf module (resulting from `import tensorflow`). Either tf1.x or
+        2.x. 3) The actually installed tf version as int: 1 or 2.
 
     Raises:
         ImportError: If error=True and tf is not installed.
@@ -119,11 +118,11 @@ def tf_function(tf_module):
     return decorator
 
 
-def try_import_tfp(error=False):
+def try_import_tfp(error: bool = False):
     """Tries importing tfp and returns the module (or None).
 
     Args:
-        error (bool): Whether to raise an error if tfp cannot be imported.
+        error: Whether to raise an error if tfp cannot be imported.
 
     Returns:
         The tfp module.
@@ -159,14 +158,14 @@ class ModuleStub:
         raise ImportError("Could not import `torch`.")
 
 
-def try_import_torch(error=False):
+def try_import_torch(error: bool = False):
     """Tries importing torch and returns the module (or None).
 
     Args:
-        error (bool): Whether to raise an error if torch cannot be imported.
+        error: Whether to raise an error if torch cannot be imported.
 
     Returns:
-        tuple: torch AND torch.nn modules.
+        Tuple consisting of the torch- AND torch.nn modules.
 
     Raises:
         ImportError: If error=True and PyTorch is not installed.
@@ -201,7 +200,8 @@ def get_variable(value: Any,
                  device: Optional[str] = None,
                  shape: Optional[TensorShape] = None,
                  dtype: Optional[TensorType] = None) -> Any:
-    """
+    """Creates a tf variable, a torch tensor, or a python primitive.
+
     Args:
         value: The initial value to use. In the non-tf case, this will
             be returned as is. In the tf case, this could be a tf-Initializer
@@ -223,7 +223,7 @@ def get_variable(value: Any,
 
     Returns:
         A framework-specific variable (tf.Variable, torch.tensor, or
-            python primitive).
+        python primitive).
     """
     if framework in ["tf2", "tf", "tfe"]:
         import tensorflow as tf
@@ -258,8 +258,8 @@ def get_variable(value: Any,
 
 
 @Deprecated(
-    old="rllib/models/utils.py::get_activation_fn",
-    new="rllib/utils/framework.py::get_activation_fn",
+    old="rllib/utils/framework.py::get_activation_fn",
+    new="rllib/models/utils.py::get_activation_fn",
     error=False)
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
