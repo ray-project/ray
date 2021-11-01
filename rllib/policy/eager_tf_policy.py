@@ -676,7 +676,7 @@ def build_eager_tf_policy(
 
         @override(Policy)
         def get_exploration_state(self):
-            return _convert_to_numpy(self.exploration.get_state())
+            return convert_to_numpy(self.exploration.get_state())
 
         @override(Policy)
         def get_weights(self, as_dict=False):
