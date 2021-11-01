@@ -641,109 +641,6 @@ class Trainer(Trainable):
 
         super().__init__(config, logger_creator)
 
-    @classmethod
-    @override(Trainable)
-    def default_resource_request(
-            cls, config: PartialTrainerConfigDict) -> \
-            Union[Resources, PlacementGroupFactory]:
-        cf = dict(cls._default_config, **config)
-
-        eval_config = cf["evaluation_config"]
-
-        # TODO(ekl): add custom resources here once tune supports them
-        # Return PlacementGroupFactory containing all needed resources
-        # (already properly defined as device bundles).
-        return PlacementGroupFactory(
-            bundles=[{
-                # Driver.
-                "CPU": cf["num_cpus_for_driver"],
-                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
-            }] + [
-                {
-                    # RolloutWorkers.
-                    "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"],
-                } for _ in range(cf["num_workers"])
-            ] + ([
-                {
-                    # Evaluation workers.
-                    # Note: The local eval worker is located on the driver CPU.
-                    "CPU": eval_config.get("num_cpus_per_worker",
-                                           cf["num_cpus_per_worker"]),
-                    "GPU": eval_config.get("num_gpus_per_worker",
-                                           cf["num_gpus_per_worker"]),
-                } for _ in range(cf["evaluation_num_workers"])
-            ] if cf["evaluation_interval"] else []),
-            strategy=config.get("placement_strategy", "PACK"))
-
-    @override(Trainable)
-    def log_result(self, result: ResultDict):
-        self.callbacks.on_train_result(trainer=self, result=result)
-        # log after the callback is invoked, so that the user has a chance
-        # to mutate the result
-        Trainable.log_result(self, result)
-
-    @DeveloperAPI
-    def _create_local_replay_buffer_if_necessary(self, config):
-        """Create a LocalReplayBuffer instance if necessary.
-
-        Args:
-            config (dict): Algorithm-specific configuration data.
-
-        Returns:
-            LocalReplayBuffer instance based on trainer config.
-            None, if local replay buffer is not needed.
-        """
-        # These are the agents that utilizes a local replay buffer.
-        if ("replay_buffer_config" not in config
-                or not config["replay_buffer_config"]):
-            # Does not need a replay buffer.
-            return None
-
-        replay_buffer_config = config["replay_buffer_config"]
-        if ("type" not in replay_buffer_config
-                or replay_buffer_config["type"] != "LocalReplayBuffer"):
-            # DistributedReplayBuffer coming soon.
-            return None
-
-        capacity = config.get("buffer_size", DEPRECATED_VALUE)
-        if capacity != DEPRECATED_VALUE:
-            # Print a deprecation warning.
-            deprecation_warning(
-                old="config['buffer_size']",
-                new="config['replay_buffer_config']['capacity']",
-                error=False)
-        else:
-            # Get capacity out of replay_buffer_config.
-            capacity = replay_buffer_config["capacity"]
-
-        if config.get("prioritized_replay"):
-            prio_args = {
-                "prioritized_replay_alpha": config["prioritized_replay_alpha"],
-                "prioritized_replay_beta": config["prioritized_replay_beta"],
-                "prioritized_replay_eps": config["prioritized_replay_eps"],
-            }
-        else:
-            prio_args = {}
-
-        return LocalReplayBuffer(
-            num_shards=1,
-            learning_starts=config["learning_starts"],
-            capacity=capacity,
-            replay_batch_size=config["train_batch_size"],
-            replay_mode=config["multiagent"]["replay_mode"],
-            replay_sequence_length=config.get("replay_sequence_length", 1),
-            replay_burn_in=config.get("burn_in", 0),
-            replay_zero_init_states=config.get("zero_init_states", True),
-            **prio_args)
-
-    @DeveloperAPI
-    def _kwargs_for_execution_plan(self):
-        kwargs = {}
-        if self.local_replay_buffer:
-            kwargs["local_replay_buffer"] = self.local_replay_buffer
-        return kwargs
-
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
@@ -1527,6 +1424,56 @@ class Trainer(Trainable):
             min_history=self.config["metrics_smoothing_episodes"],
             selected_workers=selected_workers)
 
+    @override(Trainable)
+    def log_result(self, result: ResultDict) -> None:
+        # Log after the callback is invoked, so that the user has a chance
+        # to mutate the result.
+        self.callbacks.on_train_result(trainer=self, result=result)
+        # Then log according to Trainable's logging logic.
+        Trainable.log_result(self, result)
+
+    @classmethod
+    @override(Trainable)
+    def default_resource_request(
+            cls, config: PartialTrainerConfigDict) -> \
+            Union[Resources, PlacementGroupFactory]:
+
+        # Default logic for RLlib algorithms (Trainers):
+        # Create one bundle per individual worker (local or remote).
+        # Use `num_cpus_for_driver` and `num_gpus` for the local worker and
+        # `num_cpus_per_worker` and `num_gpus_per_worker` for the remote
+        # workers to determine their CPU/GPU resource needs.
+
+        # Convenience config handles.
+        cf = dict(cls._default_config, **config)
+        eval_cf = cf["evaluation_config"]
+
+        # TODO(ekl): add custom resources here once tune supports them
+        # Return PlacementGroupFactory containing all needed resources
+        # (already properly defined as device bundles).
+        return PlacementGroupFactory(
+            bundles=[{
+                # Local worker.
+                "CPU": cf["num_cpus_for_driver"],
+                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+            }] + [
+                {
+                    # RolloutWorkers.
+                    "CPU": cf["num_cpus_per_worker"],
+                    "GPU": cf["num_gpus_per_worker"],
+                } for _ in range(cf["num_workers"])
+            ] + ([
+                {
+                    # Evaluation workers.
+                    # Note: The local eval worker is located on the driver CPU.
+                    "CPU": eval_cf.get("num_cpus_per_worker",
+                                       cf["num_cpus_per_worker"]),
+                    "GPU": eval_cf.get("num_gpus_per_worker",
+                                       cf["num_gpus_per_worker"]),
+                } for _ in range(cf["evaluation_num_workers"])
+            ] if cf["evaluation_interval"] else []),
+            strategy=config.get("placement_strategy", "PACK"))
+
     @DeveloperAPI
     def _before_evaluate(self):
         """Pre-evaluation callback."""
@@ -1941,6 +1888,69 @@ class Trainer(Trainable):
             "`with_updates` may only be called on Trainer sub-classes "
             "that were generated via the `ray.rllib.agents.trainer_template."
             "build_trainer()` function!")
+
+    @DeveloperAPI
+    def _create_local_replay_buffer_if_necessary(
+            self,
+            config: PartialTrainerConfigDict) -> Optional[LocalReplayBuffer]:
+        """Create a LocalReplayBuffer instance if necessary.
+
+        Args:
+            config: Algorithm-specific configuration data.
+
+        Returns:
+            LocalReplayBuffer instance based on trainer config.
+            None, if local replay buffer is not needed.
+        """
+        # These are the agents that utilizes a local replay buffer.
+        if ("replay_buffer_config" not in config
+                or not config["replay_buffer_config"]):
+            # Does not need a replay buffer.
+            return None
+
+        replay_buffer_config = config["replay_buffer_config"]
+        if ("type" not in replay_buffer_config
+                or replay_buffer_config["type"] != "LocalReplayBuffer"):
+            # DistributedReplayBuffer coming soon.
+            return None
+
+        capacity = config.get("buffer_size", DEPRECATED_VALUE)
+        if capacity != DEPRECATED_VALUE:
+            # Print a deprecation warning.
+            deprecation_warning(
+                old="config['buffer_size']",
+                new="config['replay_buffer_config']['capacity']",
+                error=False)
+        else:
+            # Get capacity out of replay_buffer_config.
+            capacity = replay_buffer_config["capacity"]
+
+        if config.get("prioritized_replay"):
+            prio_args = {
+                "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+                "prioritized_replay_beta": config["prioritized_replay_beta"],
+                "prioritized_replay_eps": config["prioritized_replay_eps"],
+            }
+        else:
+            prio_args = {}
+
+        return LocalReplayBuffer(
+            num_shards=1,
+            learning_starts=config["learning_starts"],
+            capacity=capacity,
+            replay_batch_size=config["train_batch_size"],
+            replay_mode=config["multiagent"]["replay_mode"],
+            replay_sequence_length=config.get("replay_sequence_length", 1),
+            replay_burn_in=config.get("burn_in", 0),
+            replay_zero_init_states=config.get("zero_init_states", True),
+            **prio_args)
+
+    @DeveloperAPI
+    def _kwargs_for_execution_plan(self):
+        kwargs = {}
+        if self.local_replay_buffer:
+            kwargs["local_replay_buffer"] = self.local_replay_buffer
+        return kwargs
 
     def _register_if_needed(self, env_object: Union[str, EnvType, None],
                             config) -> Optional[str]:
