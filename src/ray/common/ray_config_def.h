@@ -92,6 +92,12 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
+/// The maximum ratio of lineage to objects in scope to keep. If the amount of
+/// lineage exceeds this ratio, we will evict the lineage to bound its memory
+/// usage. Subsequent attempts to reconstruct that object will throw an error
+/// to the application.
+RAY_CONFIG(int64_t, lineage_eviction_factor, 100)
+
 /// Whether to re-populate plasma memory. This avoids memory allocation failures
 /// at runtime (SIGBUS errors creating new objects), however it will use more memory
 /// upfront and can slow down Ray startup.

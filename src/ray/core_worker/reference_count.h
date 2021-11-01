@@ -65,9 +65,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,
                    bool lineage_pinning_enabled = false,
+                   int64_t lineage_eviction_factor = -1,
                    rpc::ClientFactoryFn client_factory = nullptr)
       : rpc_address_(rpc_address),
         lineage_pinning_enabled_(lineage_pinning_enabled),
+        lineage_eviction_factor_(lineage_eviction_factor),
         borrower_pool_(client_factory),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber) {}
@@ -468,7 +470,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddBorrowerAddress(const ObjectID &object_id, const rpc::Address &borrower_address)
       LOCKS_EXCLUDED(mutex_);
 
-  bool IsObjectReconstructable(const ObjectID &object_id) const;
+  bool IsObjectReconstructable(const ObjectID &object_id, bool *lineage_evicted) const;
 
  private:
   struct Reference {
@@ -614,6 +616,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// is inlined (not stored in plasma), then its lineage ref count is 0
     /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
+    bool lineage_evicted = false;
     /// Whether this object has been spilled to external storage.
     bool spilled = false;
     /// For objects that have been spilled to external storage, the URL from which
@@ -785,6 +788,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// tasks that depend on that object that may be retried in the future.
   const bool lineage_pinning_enabled_;
 
+  /// A parameter to bound the amount of lineage that we keep for objects still
+  /// in scope. If the eviction factor * the number of lineage entries exceeds
+  /// the number of objects in scope, we will evict all pinned lineage.
+  const int64_t lineage_eviction_factor_;
+
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;
 
@@ -804,6 +812,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// removed from this set once its Reference has been deleted
   /// locally.
   absl::flat_hash_set<ObjectID> freed_objects_ GUARDED_BY(mutex_);
+
+  /// Objects that we own that are still in scope.
+  absl::flat_hash_set<ObjectID> owned_objects_in_scope_ GUARDED_BY(mutex_);
+
+  /// Lineage of objects that we own that are still in scope. This includes the
+  /// objects in scope. We should evict lineage once this exceeds the number of
+  /// objects in scope times the lineage eviction factor.
+  absl::flat_hash_set<ObjectID> owned_lineage_ GUARDED_BY(mutex_);
 
   /// The callback to call once an object ID that we own is no longer in scope
   /// and it has no tasks that depend on it that may be retried in the future.

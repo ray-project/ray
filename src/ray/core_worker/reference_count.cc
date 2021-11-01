@@ -185,6 +185,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
     // We eagerly add the pinned location to the set of object locations.
     AddObjectLocationInternal(it, pinned_at_raylet_id.value());
   }
+  owned_objects_in_scope_.insert(object_id);
+  owned_lineage_.insert(object_id);
 }
 
 void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {
@@ -334,14 +336,10 @@ void ReferenceCounter::ReleaseLineageReferencesInternal(
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
-      // References can get evicted early when lineage pinning is disabled.
-      RAY_CHECK(!lineage_pinning_enabled_);
       continue;
     }
 
     if (it->second.lineage_ref_count == 0) {
-      // References can get evicted early when lineage pinning is disabled.
-      RAY_CHECK(!lineage_pinning_enabled_);
       continue;
     }
 
@@ -372,9 +370,6 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     if (release_lineage) {
       if (it->second.lineage_ref_count > 0) {
         it->second.lineage_ref_count--;
-      } else {
-        // References can get evicted early when lineage pinning is disabled.
-        RAY_CHECK(!lineage_pinning_enabled_);
       }
     }
     if (it->second.RefCount() == 0) {
@@ -472,7 +467,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   // Whether it is safe to unpin the value.
   bool should_delete_value = false;
   bool should_delete_ref = true;
-
   if (it->second.OutOfScope(lineage_pinning_enabled_)) {
     // If distributed ref counting is enabled, then delete the object once its
     // ref count across all processes is 0.
@@ -492,6 +486,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         DeleteReferenceInternal(inner_it, deleted);
       }
     }
+
+    owned_objects_in_scope_.erase(id);
   }
 
   // Perform the deletion.
@@ -503,6 +499,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   }
   if (it->second.ShouldDelete(lineage_pinning_enabled_) && should_delete_ref) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
+    owned_lineage_.erase(id);
     // TODO(swang): Update lineage_ref_count for nested objects?
     if (on_lineage_released_ && it->second.owned_by_us) {
       RAY_LOG(DEBUG) << "Releasing lineage for object " << id;
@@ -514,6 +511,24 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     freed_objects_.erase(id);
     object_id_refs_.erase(it);
     ShutdownIfNeeded();
+  }
+
+  if (lineage_eviction_factor_ > 0 &&
+      owned_lineage_.size() > owned_objects_in_scope_.size() * lineage_eviction_factor_) {
+    RAY_LOG(INFO) << "Evicting object lineage because there are "
+                  << owned_objects_in_scope_.size() << " owned objects in scope and "
+                  << owned_lineage_.size()
+                  << " lineage entries, which exceeds the maximum lineage size of "
+                  << owned_objects_in_scope_.size() * lineage_eviction_factor_;
+    for (const auto &obj_id : owned_objects_in_scope_) {
+      RAY_LOG(DEBUG) << "Evicting lineage for object " << obj_id;
+      auto it = object_id_refs_.find(obj_id);
+      RAY_CHECK(it != object_id_refs_.end());
+      it->second.lineage_evicted = true;
+      std::vector<ObjectID> ids_to_release;
+      on_lineage_released_(obj_id, &ids_to_release);
+      ReleaseLineageReferencesInternal(ids_to_release);
+    }
   }
 }
 
@@ -1161,7 +1176,8 @@ void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
   }
 }
 
-bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id) const {
+bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
+                                               bool *lineage_evicted) const {
   if (!lineage_pinning_enabled_) {
     return false;
   }
@@ -1170,6 +1186,7 @@ bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id) const 
   if (it == object_id_refs_.end()) {
     return false;
   }
+  *lineage_evicted = it->second.lineage_evicted;
   return it->second.is_reconstructable;
 }
 

@@ -681,6 +681,78 @@ def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
             ray.get(x)
 
 
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_lineage_evicted(ray_start_cluster, reconstruction_enabled):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "object_timeout_milliseconds": 200,
+        "lineage_eviction_factor": 10,
+    }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = False
+
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+        object_store_memory=10**8,
+        enable_object_reconstruction=reconstruction_enabled)
+    ray.init(address=cluster.address)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_retries=1 if reconstruction_enabled else 0)
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def chain(x):
+        return x
+
+    @ray.remote
+    def dependent_task(x):
+        return x
+
+    obj = large_object.remote()
+    for _ in range(5):
+        obj = chain.remote(obj)
+    ray.get(dependent_task.remote(obj))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    if reconstruction_enabled:
+        ray.get(dependent_task.remote(obj))
+    else:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(dependent_task.remote(obj))
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(obj)
+
+    # Lineage now exceeds the eviction factor.
+    for _ in range(10):
+        obj = chain.remote(obj)
+    ray.get(dependent_task.remote(obj))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    if reconstruction_enabled:
+        try:
+            ray.get(dependent_task.remote(obj))
+            assert False
+        except ray.exceptions.RayTaskError as e:
+            assert "ObjectReconstructionFailedError" in str(e)
+    else:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(dependent_task.remote(obj))
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(obj)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

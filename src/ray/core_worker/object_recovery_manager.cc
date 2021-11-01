@@ -126,7 +126,8 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
-  if (!reference_counter_->IsObjectReconstructable(object_id)) {
+  bool lineage_evicted = false;
+  if (!reference_counter_->IsObjectReconstructable(object_id, &lineage_evicted)) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is not reconstructable";
     recovery_failure_callback_(object_id, rpc::ErrorType::OBJECT_LOST,
                                /*pin_object=*/true);
