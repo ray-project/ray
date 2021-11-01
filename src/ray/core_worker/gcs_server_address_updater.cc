@@ -70,7 +70,8 @@ void GcsServerAddressUpdater::UpdateGcsServerAddress() {
         if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
           RAY_LOG(WARNING) << os.str()
                            << "raylet has died, and it couldn't obtain the GCS address "
-                              "from the raylet anymore.";
+                              "from the raylet anymore. Please check the log from "
+                              "raylet.err on this address.";
         } else {
           RAY_LOG(ERROR)
               << os.str()
