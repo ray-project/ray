@@ -229,7 +229,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /*execute_after=*/
             [this](std::function<void()> fn, double wait_time_ns) {
               delayed_execution_.push_back({fn, wait_time_ns});
-              return nullptr;
+              return (double) nullptr;
             }) {}
 
   void SetUp() {
