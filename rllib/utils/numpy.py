@@ -281,7 +281,8 @@ def convert_to_numpy(x, reduce_floats=False):
         if torch and isinstance(item, torch.Tensor):
             ret = item.cpu().item() if len(item.size()) == 0 else \
                 item.detach().cpu().numpy()
-        elif tf and isinstance(item, (tf.Tensor, tf.Variable)):
+        elif tf and isinstance(item, (tf.Tensor, tf.Variable)) and \
+                hasattr(item, "numpy"):
             assert tf.executing_eagerly()
             ret = item.numpy()
         else:
