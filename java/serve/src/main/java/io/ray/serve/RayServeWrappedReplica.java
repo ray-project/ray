@@ -51,7 +51,6 @@ public class RayServeWrappedReplica implements RayServeReplica {
       throw new RayServeException(errMsg, e);
     }
 
-    // Init replica.
     init(
         new DeploymentInfo()
             .setName(backendTag)
