@@ -1488,10 +1488,10 @@ void NodeManager::HandleUpdateResourceUsage(
     // diverge from GCS.
     RAY_LOG(WARNING)
         << "Raylet may have missed a resource broadcast. This either means that GCS has "
-        "restarted, the network is heavily congested and is dropping, reordering, or "
-        "duplicating packets. Expected seq#: "
+           "restarted, the network is heavily congested and is dropping, reordering, or "
+           "duplicating packets. Expected seq#: "
         << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
-    if(resource_usage_batch.seq_no() < next_resource_seq_no_) {
+    if (resource_usage_batch.seq_no() < next_resource_seq_no_) {
       RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
       return;
     }
