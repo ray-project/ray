@@ -6,11 +6,6 @@ set -e
 # Show explicitly which commands are currently running.
 set -x
 
-# Much of this is taken from https://github.com/matthew-brett/multibuild.
-# This script uses "sudo", so you may need to type in a password a couple times.
-
-MACPYTHON_URL=https://www.python.org/ftp/python
-MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
@@ -20,7 +15,7 @@ PY_MMS=("3.8"
         "3.9")
 
 
-if ![[ -z "${SKIP_DEP_RES}" ]]; then
+if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/travis/install-bazel.sh
 
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
@@ -45,7 +40,7 @@ mkdir -p .whl
 
 for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PY_MM=${PY_MMS[i]}
-  CONDA_ENV_NAME=p$PY_MM
+  CONDA_ENV_NAME="p$PY_MM"
  
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
@@ -55,10 +50,10 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
   # Install python using conda. This should be easier to produce consistent results in buildkite and locally.
   source ~/.bash_profile
-  conda create -y -n $CONDA_ENV_NAME
-  conda activate $CONDA_ENV_NAME
+  conda create -y -n "$CONDA_ENV_NAME"
+  conda activate "$CONDA_ENV_NAME"
   conda remove -y python || true
-  conda install -y python=$PY_MM
+  conda install -y python="$PY_MM"
 
   # NOTE: We expect conda to set the PATH properly.
   PIP_CMD=pip
@@ -84,7 +79,6 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
       TRAVIS_COMMIT=$(git rev-parse HEAD)
     fi
 
-    echo $TRAVIS_COMMIT
     sed -i .bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
 
     # Add the correct Python to the path and build the wheel. This is only
