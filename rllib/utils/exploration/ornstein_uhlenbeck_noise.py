@@ -142,7 +142,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             if timestep is None:
                 self.last_timestep.assign_add(1)
             else:
-                self.last_timestep.assign(timestep)
+                self.last_timestep.assign(tf.cast(timestep, tf.int64))
         else:
             assign_op = (tf1.assign_add(self.last_timestep, 1)
                          if timestep is None else tf1.assign(
@@ -234,7 +234,8 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                   sess: Optional["tf.Session"] = None) -> None:
         if self.framework == "tf":
             self.ou_state.load(state["ou_state"], session=sess)
-        elif isinstance(self.ou_state, np.ndarray):
+        elif isinstance(self.ou_state, np.ndarray) or \
+                (torch and torch.is_tensor(self.ou_state)):
             self.ou_state = state["ou_state"]
         else:
             self.ou_state.assign(state["ou_state"])

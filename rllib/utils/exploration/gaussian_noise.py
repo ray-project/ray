@@ -139,7 +139,7 @@ class GaussianNoise(Exploration):
             if timestep is None:
                 self.last_timestep.assign_add(1)
             else:
-                self.last_timestep.assign(timestep)
+                self.last_timestep.assign(tf.cast(timestep, tf.int64))
             return action, logp
         else:
             assign_op = (tf1.assign_add(self.last_timestep, 1)
