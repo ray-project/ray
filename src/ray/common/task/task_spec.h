@@ -50,7 +50,8 @@ struct SchedulingClassDescriptor {
     buffer << "{"
            << "depth=" << depth << " "
            << "function_descriptor=" << function_descriptor->ToString() << " "
-           << "resource_set=" << "{";
+           << "resource_set="
+           << "{";
     for (const auto &pair : resource_set.GetResourceMap()) {
       buffer << pair.first << " : " << pair.second << ", ";
     }

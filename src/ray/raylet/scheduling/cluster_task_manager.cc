@@ -338,7 +338,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         work_it++;
         continue;
       } else {
-        RAY_LOG(ERROR) << "Didn't hit cap! " << scheduling_class << "\t" << spec.DebugString();
+        RAY_LOG(ERROR) << "Didn't hit cap! " << scheduling_class << "\t"
+                       << spec.DebugString();
       }
 
       bool args_missing = false;
