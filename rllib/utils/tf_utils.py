@@ -84,7 +84,7 @@ def get_placeholder(*,
                     value: Optional[Any] = None,
                     name: Optional[str] = None,
                     time_axis: bool = False,
-                    flatten: bool = True) -> tf1.placeholder:
+                    flatten: bool = True) -> "tf1.placeholder":
     """Returns a tf1.placeholder object given optional hints, such as a space.
 
     Note that the returned placeholder will always have a leading batch
@@ -196,7 +196,7 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     )
 
 
-def make_tf_callable(session_or_none: Optional[tf1.Session],
+def make_tf_callable(session_or_none: Optional["tf1.Session"],
                      dynamic_shape: bool = False) -> Callable:
     """Returns a function that can be executed in either graph or eager mode.
 
@@ -288,7 +288,7 @@ def make_tf_callable(session_or_none: Optional[tf1.Session],
 def minimize_and_clip(
         optimizer: LocalOptimizer,
         objective: TensorType,
-        var_list: List[tf.Variable],
+        var_list: List["tf.Variable"],
         clip_val: float = 10.0,
 ) -> ModelGradients:
     """Computes, then clips gradients using objective, optimizer and var list.
@@ -383,8 +383,8 @@ def reduce_mean_ignore_inf(x: TensorType,
         tf.cast(mask, tf.float32), axis))
 
 
-def scope_vars(scope: Union[str, tf1.VariableScope],
-               trainable_only: bool = False) -> List[tf.Variable]:
+def scope_vars(scope: Union[str, "tf1.VariableScope"],
+               trainable_only: bool = False) -> List["tf.Variable"]:
     """Get variables inside a given scope.
 
     Args:
