@@ -15,10 +15,11 @@ be trained, checkpointed, or an action computed. In multi-agent training, the tr
 
 .. image:: rllib-api.svg
 
-You can train a simple DQN trainer with the following command:
+You can train a simple DQN trainer with the following commands:
 
 .. code-block:: bash
 
+    pip install "ray[rllib]" tensorflow
     rllib train --run DQN --env CartPole-v0  # --config '{"framework": "tf2", "eager_tracing": true}' for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
@@ -56,6 +57,7 @@ An example of evaluating a previously trained DQN policy is as follows:
 
 .. code-block:: bash
 
+    pip install gym
     rllib rollout \
         ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1 \
         --run DQN --env CartPole-v0 --steps 10000
