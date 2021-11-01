@@ -248,7 +248,7 @@ class ParsedRuntimeEnv(dict):
         "working_dir",
         "conda",
         "pip",
-        "containers",
+        "container",
         "excludes",
         "env_vars",
         "_ray_release",
