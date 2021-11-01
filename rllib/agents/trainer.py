@@ -546,7 +546,7 @@ class Trainer(Trainable):
     after each training update.
 
     You can write your own Trainer sub-classes by using the
-    rllib.agents.trainer_template.py::build_traing() utility function.
+    rllib.agents.trainer_template.py::build_trainer() utility function.
     This allows you to provide a custom `execution_plan`. You can find the
     different built-in algorithms' execution plans in their respective main
     py files, e.g. rllib.agents.dqn.dqn.py or rllib.agents.impala.impala.py.
@@ -1511,7 +1511,7 @@ class Trainer(Trainable):
                 0 for local only.
 
         Returns:
-            WorkerSet: The created WorkerSet.
+            The created WorkerSet.
         """
         return WorkerSet(
             env_creator=env_creator,
@@ -1892,11 +1892,13 @@ class Trainer(Trainable):
             "build_trainer()` function!")
 
     @DeveloperAPI
-    def _create_local_replay_buffer_if_necessary(self, config):
+    def _create_local_replay_buffer_if_necessary(
+            self,
+            config: PartialTrainerConfigDict) -> Optional[LocalReplayBuffer]:
         """Create a LocalReplayBuffer instance if necessary.
 
         Args:
-            config (dict): Algorithm-specific configuration data.
+            config: Algorithm-specific configuration data.
 
         Returns:
             LocalReplayBuffer instance based on trainer config.
