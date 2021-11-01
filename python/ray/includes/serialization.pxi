@@ -13,6 +13,7 @@ DEF kMajorBufferSize = 2048
 DEF kMemcopyDefaultBlocksize = 64
 DEF kMemcopyDefaultThreshold = 1024 * 1024
 DEF kLanguageSpecificTypeExtensionId = 101
+DEF kObjectRefTypeExtensionId = 102
 DEF kMessagePackOffset = 9
 
 cdef extern from "ray/util/memory.h" namespace "ray" nogil:
@@ -174,6 +175,33 @@ cdef class MessagePackSerializer(object):
                 if python_deserializer is not None:
                     return python_deserializer(msgpack.loads(data))
                 raise Exception('Unrecognized ext type id: {}'.format(code))
+            if code == kObjectRefTypeExtensionId:
+                from io import BytesIO
+                buf = BytesIO(data)
+                buf.seek(0)
+                unpacker = msgpack.Unpacker(buf, raw=False)
+                unpacked_list = []
+                for unpacked in unpacker:
+                    unpacked_list.append(unpacked)
+                id_bytes = unpacked_list[1]
+                owner_address_bytes = unpacked_list[2]
+
+                ret = ray.ObjectRef(id_bytes, owner_address_bytes, "")
+                if owner_address_bytes:
+                    worker = ray.worker.global_worker
+                    worker.check_connected()
+                    context = worker.get_serialization_context()
+                    outer_id = context.get_outer_object_ref()
+                    # outer_id is None in the case that this ObjectRef was closed
+                    # over in a function or pickled directly using pickle.dumps().
+                    if outer_id is None:
+                        outer_id = ray.ObjectRef.nil()
+                    # TODO(qwang): object_status
+                    object_status = None
+                    worker.core_worker.deserialize_and_register_object_ref(
+                        # TODO(qwang): Fix object_status
+                        ret.binary(), outer_id, owner_address_bytes, b"")
+                    return ret
         try:
             gc.disable()  # Performance optimization for msgpack.
             return msgpack.loads(s, ext_hook=_ext_hook, raw=False,

@@ -4,16 +4,24 @@ import com.google.common.base.FinalizableReferenceQueue;
 import com.google.common.base.FinalizableWeakReference;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
+import com.google.gson.Gson;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
+import org.msgpack.core.MessageBufferPacker;
+import org.msgpack.core.MessagePack;
+import org.msgpack.core.MessagePacker;
+
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.lang.ref.Reference;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -84,6 +92,53 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
             this.id, ObjectSerializer.getOuterObjectId(), ownerAddress);
   }
 
+//  /// JSON version
+//  public byte[] toCrossLanguageBytes() {
+//    Gson gson = new Gson();
+//    Map<String, byte[]> fields = new HashMap<>();
+//    /// id type owner addr
+//    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+//    fields.put("id", this.getId().getBytes());
+//    byte[] t = new byte[]{ getCrossLanguageTypeHint(type) };
+//    fields.put("type", t);
+//    fields.put("ownerAddress", runtime.getObjectStore().getOwnershipInfo(this.getId()));
+//    return gson.toJson(fields).getBytes(StandardCharsets.UTF_8);
+//  }
+
+  /// Message pack version
+  public byte[] toCrossLanguageBytes() throws IOException {
+    Gson gson = new Gson();
+    Map<String, byte[]> fields = new HashMap<>();
+    /// id type owner addr
+    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+
+    MessageBufferPacker packer = MessagePack.newDefaultBufferPacker();
+    packer.packByte(getCrossLanguageTypeHint(type));
+    final byte[] idBytes = this.getId().getBytes();
+    packer.packBinaryHeader(idBytes.length);
+    packer.writePayload(idBytes);
+    final byte[] ownerAddressBytes = runtime.getObjectStore().getOwnershipInfo(this.getId());
+    packer.packBinaryHeader(ownerAddressBytes.length);
+    packer.writePayload(ownerAddressBytes);
+    return packer.toByteArray();
+  }
+
+  public static ObjectRefImpl<?> fromCrossLanguageBytes(byte[] from) {
+    return null;
+  }
+
+  private static byte getCrossLanguageTypeHint(Object type) {
+    /// null type?
+    if (type.getClass().equals(Integer.class)) {
+      return 0x01;
+    } else if (type.getClass().equals(Boolean.class)) {
+      return 0x02;
+    }
+
+    /// Unsupported type
+    return 0x00;
+  }
+
   private void addLocalReference() {
     Preconditions.checkState(workerId == null);
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
@@ -121,5 +176,6 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
         }
       }
     }
+
   }
 }

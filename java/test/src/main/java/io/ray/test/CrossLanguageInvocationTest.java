@@ -9,6 +9,7 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.runtime.actor.NativeActorHandle;
+import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.exception.CrossLanguageException;
 import io.ray.runtime.exception.RayException;
 import io.ray.runtime.generated.Common.Language;
@@ -16,8 +17,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
+import io.ray.runtime.object.ObjectSerializer;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -286,6 +290,18 @@ public class CrossLanguageInvocationTest extends BaseTest {
     Assert.fail();
   }
 
+  @Test
+  public void testReturnObject() {
+    ObjectRef<Integer> s = Ray.put(100);
+    NativeRayObject x = ObjectSerializer.serialize(s);
+
+    ObjectRef<Object> res =
+      Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_call_java_ctor_and_return_object_ref", Object.class))
+        .remote();
+    /// TODO(qwang):  Address type converting implicitly.
+    Assert.assertEquals((short) 857, res.get());
+  }
+
   public static Object[] pack(int i, String s, double f, Object[] o) {
     // This function will be called from test_cross_language_invocation.py
     return new Object[] {i, s, f, o};
@@ -357,4 +373,28 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
     private byte[] value;
   }
+
+  public static class RichTypeActor {
+
+    public RichTypeActor() {}
+
+    public ObjectRef<Integer> getObject() {
+      ObjectRef<Integer> ret = Ray.put(857);
+      return ret;
+    }
+
+    public Integer getInJava(ObjectRef<Integer> arg) {
+      return Ray.get(arg);
+    }
+
+    public List<ObjectRef<Integer>> getObjects(int count) {
+      List<ObjectRef<Integer>> ret = new ArrayList<>();
+      for (int i = 0; i < count; ++i) {
+        ret.add(Ray.put(i));
+      }
+      return ret;
+    }
+
+  }
+
 }

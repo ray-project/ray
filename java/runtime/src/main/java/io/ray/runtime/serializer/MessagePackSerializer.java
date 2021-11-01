@@ -8,6 +8,9 @@ import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.google.gson.Gson;
+import io.ray.runtime.object.ObjectRefImpl;
 import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -25,6 +28,9 @@ import org.msgpack.value.ValueType;
 public class MessagePackSerializer {
 
   private static final byte LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID = 101;
+
+  private static final byte OBEJECT_REF_TYPE_EXTENSION_ID = 102;
+
   // MessagePack length is an int takes up to 9 bytes.
   // https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family
   private static final int MESSAGE_PACK_OFFSET = 9;
@@ -83,6 +89,11 @@ public class MessagePackSerializer {
           packer.packBinaryHeader(bytes.length);
           packer.writePayload(bytes);
         }));
+    packers.put(ObjectRefImpl.class, (object, packer, javaSerializer) -> {
+        byte[] payload = ((ObjectRefImpl<?>) object).toCrossLanguageBytes();
+        packer.packExtensionTypeHeader(OBEJECT_REF_TYPE_EXTENSION_ID, payload.length);
+        packer.addPayload(payload);
+    });
 
     // ===== Initialize unpackers =====
     List<Class<?>> booleanClasses = ImmutableList.of(Boolean.class, boolean.class);

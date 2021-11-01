@@ -216,4 +216,12 @@ public class ObjectSerializer {
           "Can't deserialize RayActorCreationTaskException object: " + objectId.toString());
     }
   }
+
+  private static boolean isSupportedInCrossLanguage(Object obj) {
+    if (obj.getClass().equals(Integer.class)) {
+      return true;
+    }
+
+    return false;
+  }
 }
