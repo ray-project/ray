@@ -139,15 +139,15 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] task The task spec to push.
   /// \param[in] callback  The callback function to be called after the task spec be sent
   /// out. Only used in test code. \return void.
-  void PushTaskToClientQueue(
-      const TaskSpecification &task_spec,
-      const std::function<void(const ActorID &)> &callback = nullptr);
+  void AppendTask(const TaskSpecification &task_spec,
+                  const std::function<void(const ActorID &)> &callback = nullptr);
 
   /// If the the number of tasks in requests is greater than or equal to
   /// max_pending_calls.
+  ///
   /// \param[in] actor_id Actor id.
   /// \return Whether the corresponding client queue is full or not.
-  bool IsClientQueueFull(const ActorID &actor_id);
+  bool FullOfPendingTasks(const ActorID &actor_id);
 
  private:
   struct ClientQueue {

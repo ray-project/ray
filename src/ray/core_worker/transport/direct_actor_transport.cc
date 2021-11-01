@@ -418,11 +418,11 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != client_queues_.end() && iter->second.rpc_client);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::PushTaskToClientQueue(
+void CoreWorkerDirectActorTaskSubmitter::AppendTask(
     const TaskSpecification &task_spec,
     const std::function<void(const ActorID &)> &callback) {
   auto actor_id = task_spec.ActorId();
-  RAY_LOG(DEBUG) << "PushTaskToClientQueue task: " << task_spec.DebugString();
+  RAY_LOG(DEBUG) << "AppendTask task: " << task_spec.DebugString();
   RAY_CHECK(task_spec.IsActorTask());
   uint64_t send_pos = 0;
   absl::MutexLock lock(&mu_);
@@ -460,7 +460,7 @@ void CoreWorkerDirectActorTaskSubmitter::RunActorTaskIOService() {
   actor_task_io_service_.run();
 }
 
-bool CoreWorkerDirectActorTaskSubmitter::IsClientQueueFull(const ActorID &actor_id) {
+bool CoreWorkerDirectActorTaskSubmitter::FullOfPendingTasks(const ActorID &actor_id) {
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());

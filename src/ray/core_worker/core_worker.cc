@@ -605,7 +605,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
-            direct_actor_submitter_->PushTaskToClientQueue(spec);
+            direct_actor_submitter_->AppendTask(spec);
           } else {
             RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
           }
@@ -1020,7 +1020,7 @@ void CoreWorker::InternalHeartbeat() {
 
   for (auto &spec : tasks_to_resubmit) {
     if (spec.IsActorTask()) {
-      direct_actor_submitter_->PushTaskToClientQueue(spec);
+      direct_actor_submitter_->AppendTask(spec);
     } else {
       RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
     }
@@ -1956,7 +1956,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     const ActorID &actor_id, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options) {
   /// Determine if there will be backpressure at the very beginning of submitting a task.
-  if (direct_actor_submitter_->IsClientQueueFull(actor_id)) {
+  if (direct_actor_submitter_->FullOfPendingTasks(actor_id)) {
     RAY_LOG(DEBUG) << "Back pressure occur. actor_id: " << actor_id;
     return std::nullopt;
   }
@@ -2000,7 +2000,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-    direct_actor_submitter_->PushTaskToClientQueue(task_spec);
+    direct_actor_submitter_->AppendTask(task_spec);
   }
   return {returned_refs};
 }
