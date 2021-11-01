@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
-
 #include "absl/time/clock.h"
+
 #include "ray/common/ray_config.h"
+#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 namespace plasma {
 using namespace flatbuf;
@@ -37,8 +37,6 @@ std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::Cre
   RAY_LOG(DEBUG) << "attempting to create object " << object_info.object_id << " size "
                  << object_info.data_size;
   if (object_store_->GetObject(object_info.object_id) != nullptr) {
-    RAY_LOG(INFO) << "ObjectLifecycleManager::CreateObject exists "
-                  << object_info.object_id;
     return {nullptr, PlasmaError::ObjectExists};
   }
   auto entry = CreateObjectInternal(object_info, source, fallback_allocator);

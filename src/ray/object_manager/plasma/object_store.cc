@@ -75,7 +75,6 @@ bool ObjectStore::DeleteObject(const ObjectID &object_id) {
     return false;
   }
   allocator_.Free(std::move(entry->allocation));
-  RAY_LOG(INFO) << "ObjectStore::DeleteObject " << object_id;
   object_table_.erase(object_id);
   return true;
 }
