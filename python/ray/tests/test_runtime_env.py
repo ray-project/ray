@@ -261,6 +261,7 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
     assert len(errors) == 0
 
 
+@pytest.fixture
 def set_agent_failure_env_var():
     os.environ["_RAY_AGENT_FAILING"] = "1"
     yield
