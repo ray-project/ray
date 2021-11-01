@@ -660,7 +660,9 @@ def find_cloud_by_name(sdk: AnyscaleSDK, cloud_name: str,
     paging_token = None
     while not cloud_id:
         result = sdk.search_clouds(
-            clouds_query=dict(count=50, paging_token=paging_token))
+            clouds_query=dict(
+                paging=dict(count=50, paging_token=paging_token)))
+
         paging_token = result.metadata.next_paging_token
 
         for res in result.results:
@@ -672,13 +674,6 @@ def find_cloud_by_name(sdk: AnyscaleSDK, cloud_name: str,
 
         if not paging_token or cloud_id or not len(result.results):
             break
-
-        # TODO: Currently the sdk.search_clouds API does not work
-        # and always returns the same 10 results. Thus we break here
-        # - if the cloud is not found in the first 10 results, this will
-        # throw an error downstream. Remove this comment and break in the next
-        # line once the issue is resolved.
-        break
 
     return cloud_id
 

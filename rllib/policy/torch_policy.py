@@ -31,7 +31,7 @@ from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
     TensorStructType, TrainerConfigDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode  # noqa
+    from ray.rllib.evaluation import Episode  # noqa
 
 torch, nn = try_import_torch()
 
@@ -279,7 +279,7 @@ class TorchPolicy(Policy):
             prev_reward_batch: Union[List[TensorStructType],
                                      TensorStructType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List["Episode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs) -> \

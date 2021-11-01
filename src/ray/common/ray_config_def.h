@@ -171,6 +171,9 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 /// starting_worker_timeout_callback() is called.
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 
+/// The maximum number of workers to iterate whenever we analyze the resources usage.
+RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
+
 /// Allow up to 5 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)

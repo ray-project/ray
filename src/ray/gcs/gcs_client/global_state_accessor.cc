@@ -37,7 +37,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   options.enable_sync_conn_ = true;
   options.enable_async_conn_ = false;
   options.enable_subscribe_conn_ = false;
-  gcs_client_ = std::make_unique<ServiceBasedGcsClient>(options);
+  gcs_client_ = std::make_unique<GcsClient>(options);
 
   io_service_ = std::make_unique<instrumented_io_context>();
 
