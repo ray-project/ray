@@ -676,39 +676,6 @@ class Trainer(Trainable):
             ] if cf["evaluation_interval"] else []),
             strategy=config.get("placement_strategy", "PACK"))
 
-    @override(Trainable)
-    @PublicAPI
-    def train(self) -> ResultDict:
-        """Overrides super.train to synchronize global vars."""
-
-        result = None
-        for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
-            try:
-                result = Trainable.train(self)
-            except RayError as e:
-                if self.config["ignore_worker_failures"]:
-                    logger.exception(
-                        "Error in train call, attempting to recover")
-                    self._try_recover()
-                else:
-                    logger.info(
-                        "Worker crashed during call to train(). To attempt to "
-                        "continue training without the failed worker, set "
-                        "`'ignore_worker_failures': True`.")
-                    raise e
-            except Exception as e:
-                time.sleep(0.5)  # allow logs messages to propagate
-                raise e
-            else:
-                break
-        if result is None:
-            raise RuntimeError("Failed to recover from worker crash")
-
-        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
-            self._sync_filters_if_needed(self.workers)
-
-        return result
-
     def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
@@ -955,6 +922,39 @@ class Trainer(Trainable):
         """Subclasses should override this for custom initialization."""
         raise NotImplementedError
 
+    @override(Trainable)
+    @PublicAPI
+    def train(self) -> ResultDict:
+        """Overrides super.train to synchronize global vars."""
+
+        result = None
+        for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
+            try:
+                result = Trainable.train(self)
+            except RayError as e:
+                if self.config["ignore_worker_failures"]:
+                    logger.exception(
+                        "Error in train call, attempting to recover")
+                    self._try_recover()
+                else:
+                    logger.info(
+                        "Worker crashed during call to train(). To attempt to "
+                        "continue training without the failed worker, set "
+                        "`'ignore_worker_failures': True`.")
+                    raise e
+            except Exception as e:
+                time.sleep(0.5)  # allow logs messages to propagate
+                raise e
+            else:
+                break
+        if result is None:
+            raise RuntimeError("Failed to recover from worker crash")
+
+        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
+            self._sync_filters_if_needed(self.workers)
+
+        return result
+
     @PublicAPI
     def evaluate(self, episodes_left_fn: Optional[Callable[[int], int]] = None
                  ) -> dict:
@@ -1068,25 +1068,6 @@ class Trainer(Trainable):
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers())
         return {"evaluation": metrics}
-
-    @DeveloperAPI
-    def _before_evaluate(self):
-        """Pre-evaluation callback."""
-        pass
-
-    @DeveloperAPI
-    def _sync_weights_to_workers(
-            self,
-            *,
-            worker_set: Optional[WorkerSet] = None,
-            workers: Optional[List[RolloutWorker]] = None,
-    ) -> None:
-        """Sync "main" weights to given WorkerSet or list of workers."""
-        assert worker_set is not None
-        # Broadcast the new policy weights to all evaluation workers.
-        logger.info("Synchronizing weights to workers.")
-        weights = ray.put(self.workers.local_worker().save())
-        worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     @PublicAPI
     def compute_single_action(
@@ -1371,16 +1352,6 @@ class Trainer(Trainable):
         else:
             return actions
 
-    @property
-    def _name(self) -> str:
-        """Subclasses should override this to declare their name."""
-        raise NotImplementedError
-
-    @property
-    def _default_config(self) -> TrainerConfigDict:
-        """Subclasses should override this to declare their default config."""
-        raise NotImplementedError
-
     @PublicAPI
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
@@ -1514,8 +1485,8 @@ class Trainer(Trainable):
     def export_policy_model(self,
                             export_dir: str,
                             policy_id: PolicyID = DEFAULT_POLICY_ID,
-                            onnx: Optional[int] = None):
-        """Export policy model with given policy_id to local directory.
+                            onnx: Optional[int] = None) -> None:
+        """Exports policy model with given policy_id to a local directory.
 
         Args:
             export_dir: Writable local directory.
@@ -1585,6 +1556,35 @@ class Trainer(Trainable):
             self.config["collect_metrics_timeout"],
             min_history=self.config["metrics_smoothing_episodes"],
             selected_workers=selected_workers)
+
+    @DeveloperAPI
+    def _before_evaluate(self):
+        """Pre-evaluation callback."""
+        pass
+
+    @DeveloperAPI
+    def _sync_weights_to_workers(
+            self,
+            *,
+            worker_set: Optional[WorkerSet] = None,
+            workers: Optional[List[RolloutWorker]] = None,
+    ) -> None:
+        """Sync "main" weights to given WorkerSet or list of workers."""
+        assert worker_set is not None
+        # Broadcast the new policy weights to all evaluation workers.
+        logger.info("Synchronizing weights to workers.")
+        weights = ray.put(self.workers.local_worker().save())
+        worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
+
+    @property
+    def _name(self) -> str:
+        """Subclasses should override this to declare their name."""
+        raise NotImplementedError
+
+    @property
+    def _default_config(self) -> TrainerConfigDict:
+        """Subclasses should override this to declare their default config."""
+        raise NotImplementedError
 
     @classmethod
     @override(Trainable)
