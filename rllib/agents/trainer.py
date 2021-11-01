@@ -750,26 +750,6 @@ class Trainer(Trainable):
                 config=evaluation_config,
                 num_workers=self.config["evaluation_num_workers"])
 
-    @override(Trainable)
-    def cleanup(self):
-        if hasattr(self, "workers"):
-            self.workers.stop()
-        if hasattr(self, "optimizer") and self.optimizer:
-            self.optimizer.stop()
-
-    @override(Trainable)
-    def save_checkpoint(self, checkpoint_dir: str) -> str:
-        checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
-
-        return checkpoint_path
-
-    @override(Trainable)
-    def load_checkpoint(self, checkpoint_path: str):
-        extra_data = pickle.load(open(checkpoint_path, "rb"))
-        self.__setstate__(extra_data)
-
     @DeveloperAPI
     def _init(self, config: TrainerConfigDict,
               env_creator: Callable[[EnvContext], EnvType]) -> None:
@@ -1425,12 +1405,34 @@ class Trainer(Trainable):
             selected_workers=selected_workers)
 
     @override(Trainable)
+    def save_checkpoint(self, checkpoint_dir: str) -> str:
+        checkpoint_path = os.path.join(checkpoint_dir,
+                                       "checkpoint-{}".format(self.iteration))
+        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+
+        return checkpoint_path
+
+    @override(Trainable)
+    def load_checkpoint(self, checkpoint_path: str) -> None:
+        extra_data = pickle.load(open(checkpoint_path, "rb"))
+        self.__setstate__(extra_data)
+
+    @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
         # Log after the callback is invoked, so that the user has a chance
         # to mutate the result.
         self.callbacks.on_train_result(trainer=self, result=result)
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
+
+    @override(Trainable)
+    def cleanup(self) -> None:
+        # Stop all workers.
+        if hasattr(self, "workers"):
+            self.workers.stop()
+        # Stop all optimizers.
+        if hasattr(self, "optimizer") and self.optimizer:
+            self.optimizer.stop()
 
     @classmethod
     @override(Trainable)
