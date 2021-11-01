@@ -664,11 +664,12 @@ class RolloutWorker(ParallelIteratorWorker):
                     "will discard all sampler outputs and keep only metrics.")
                 sample_async = True
             elif method == "is":
-                ise = ImportanceSamplingEstimator.create(self.io_context)
+                ise = ImportanceSamplingEstimator.\
+                    create_from_io_context(self.io_context)
                 self.reward_estimators.append(ise)
             elif method == "wis":
-                wise = WeightedImportanceSamplingEstimator.create(
-                    self.io_context)
+                wise = WeightedImportanceSamplingEstimator.\
+                    create_from_io_context(self.io_context)
                 self.reward_estimators.append(wise)
             else:
                 raise ValueError(
