@@ -646,7 +646,7 @@ def test_placement_group_removal_leak_regression(ray_start_cluster):
     wait_for_condition(check_bundle_leaks)
 
 
-def test_placement_group_local_resource_view(monkeypatch, shutdown_only):
+def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
     """Please refer to https://github.com/ray-project/ray/pull/19911
     for more details.
     """
@@ -655,7 +655,7 @@ def test_placement_group_local_resource_view(monkeypatch, shutdown_only):
         # at raylet after local resource all being allocated.
         m.setenv("RAY_raylet_report_resources_period_milliseconds", "2000")
         m.setenv("RAY_grpc_based_resource_broadcast", "true")
-        cluster = ray.cluster_utils.Cluster()
+        cluster = ray_start_cluster
 
         cluster.add_node(num_cpus=16, object_store_memory=1e9)
         cluster.wait_for_nodes()
