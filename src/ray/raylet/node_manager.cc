@@ -1518,10 +1518,8 @@ void NodeManager::HandleRequestResourceReport(
   bool resource_deadlock_warned = resource_deadlock_warned_ >= 1;
   if (last_report_resource_deadlock_warned_ != resource_deadlock_warned) {
     last_report_resource_deadlock_warned_ = resource_deadlock_warned;
-    resources_data->set_cluster_full_of_actors_detected_changed(true);
-    resources_data->set_cluster_full_of_actors_detected(resource_deadlock_warned);
-  } else {
-    resources_data->set_cluster_full_of_actors_detected_changed(false);
+    resources_data->mutable_cluster_full_of_actors_status()
+        ->set_cluster_full_of_actors_detected(resource_deadlock_warned);
   }
 
   if (ResourcesDataChanged(*resources_data)) {
@@ -1553,8 +1551,8 @@ bool NodeManager::ResourcesDataChanged(rpc::ResourcesData &resources_data) {
          resources_data.resource_load_changed() ||
          resources_data.resources_normal_task_changed() ||
          resources_data.should_global_gc() ||
-         resources_data.object_pulls_queued_changed() ||
-         resources_data.cluster_full_of_actors_detected_changed();
+         resources_data.has_object_pulls_queued_status() ||
+         resources_data.has_cluster_full_of_actors_status();
 }
 
 void NodeManager::HandleReportWorkerBacklog(

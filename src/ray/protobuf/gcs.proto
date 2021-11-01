@@ -464,17 +464,23 @@ message ResourcesData {
   int64 resources_normal_task_timestamp = 11;
 
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 121;
-  // Whether the `object_pulls_queued` changed.
-  bool object_pulls_queued_changed = 13;
+  bool should_global_gc = 12;
+  // Status of the `object_pulls_queued` to be updated.
+  ObjectPullsQueuedStatus object_pulls_queued_status = 13;
+  // Status of the `cluster_full_of_actors_detected` to be updated.
+  ClusterFullOfActorsStatus cluster_full_of_actors_status = 14;
+}
+
+message ObjectPullsQueuedStatus {
   // Whether this node has object pulls queued. This can happen if
   // the node has more pull requests than available object store
   // memory. This is a proxy for available object store memory.
-  bool object_pulls_queued = 14;
-  // Whether the `cluster_full_of_actors_detected` changed.
-  bool cluster_full_of_actors_detected_changed = 15;
+  bool object_pulls_queued = 1;
+}
+
+message ClusterFullOfActorsStatus {
   // Whether this node has detected a resource deadlock (full of actors).
-  bool cluster_full_of_actors_detected = 16;
+  bool cluster_full_of_actors_detected = 1;
 }
 
 message ResourceUsageBatchData {

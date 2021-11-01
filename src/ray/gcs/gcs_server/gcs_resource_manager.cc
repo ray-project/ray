@@ -199,7 +199,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
 
   if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
-      resources_data->object_pulls_queued_changed()) {
+      resources_data->has_object_pulls_queued_status()) {
     absl::MutexLock guard(&resource_buffer_mutex_);
     resources_buffer_[node_id] = *resources_data;
   }
@@ -282,12 +282,14 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     if (resources.resources_normal_task_changed()) {
       *iter->second.mutable_resources_normal_task() = resources.resources_normal_task();
     }
-    if (resources.cluster_full_of_actors_detected_changed()) {
-      iter->second.set_cluster_full_of_actors_detected(
-          resources.cluster_full_of_actors_detected());
+    if (resources.has_cluster_full_of_actors_status()) {
+      iter->second.mutable_cluster_full_of_actors_status()
+          ->set_cluster_full_of_actors_detected(resources.cluster_full_of_actors_status()
+                                                    .cluster_full_of_actors_detected());
     }
-    if (resources.object_pulls_queued_changed()) {
-      iter->second.set_object_pulls_queued(resources.object_pulls_queued());
+    if (resources.has_object_pulls_queued_status()) {
+      iter->second.mutable_object_pulls_queued_status()->set_object_pulls_queued(
+          resources.object_pulls_queued_status().object_pulls_queued());
     }
   }
 }

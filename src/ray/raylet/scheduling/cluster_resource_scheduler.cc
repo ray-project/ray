@@ -146,8 +146,9 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
     }
   }
 
-  if (resource_data.object_pulls_queued_changed()) {
-    local_view.object_pulls_queued = resource_data.object_pulls_queued();
+  if (resource_data.has_object_pulls_queued_status()) {
+    local_view.object_pulls_queued =
+        resource_data.object_pulls_queued_status().object_pulls_queued();
   }
 
   AddOrUpdateNode(node_id, local_view);
@@ -1055,10 +1056,7 @@ void ClusterResourceScheduler::FillResourceUsage(
     resources.object_pulls_queued = get_pull_manager_at_capacity_();
     if (last_report_object_pulls_queued_ != resources.object_pulls_queued) {
       last_report_object_pulls_queued_ = resources.object_pulls_queued;
-      resources_data.set_object_pulls_queued_changed(true);
-      resources_data.set_object_pulls_queued(resources.object_pulls_queued);
-    } else {
-      resources_data.set_object_pulls_queued_changed(false);
+      resources_data.mutable_object_pulls_queued_status()->set_object_pulls_queued(true);
     }
   }
 }
