@@ -196,7 +196,6 @@ if setup_spec.type == SetupType.RAY:
             "aioredis < 2",
             "colorful",
             "py-spy >= 0.2.0",
-            "jsonschema",
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
@@ -210,6 +209,10 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-exporter-otlp==1.1.0"
         ],
     }
+
+    # Ray Serve depends on the Ray dashboard components.
+    setup_spec.extras["serve"] = list(
+        set(setup_spec.extras["serve"] + setup_spec.extras["default"]))
 
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
@@ -242,6 +245,7 @@ if setup_spec.type == SetupType.RAY:
         "dataclasses; python_version < '3.7'",
         "filelock",
         "grpcio >= 1.28.1",
+        "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",

@@ -5,7 +5,8 @@ from typing import Optional
 from uuid import UUID
 
 from ray.actor import ActorClass, ActorHandle
-from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.config import DeploymentConfig, ReplicaConfig
+from ray.serve.autoscaling_policy import AutoscalingPolicy
 
 BackendTag = str
 EndpointTag = str
@@ -22,14 +23,15 @@ class EndpointInfo:
 
 class BackendInfo:
     def __init__(self,
-                 backend_config: BackendConfig,
+                 deployment_config: DeploymentConfig,
                  replica_config: ReplicaConfig,
                  start_time_ms: int,
                  actor_def: Optional[ActorClass] = None,
                  version: Optional[str] = None,
                  deployer_job_id: "Optional[ray._raylet.JobID]" = None,
-                 end_time_ms: Optional[int] = None):
-        self.backend_config = backend_config
+                 end_time_ms: Optional[int] = None,
+                 autoscaling_policy: Optional[AutoscalingPolicy] = None):
+        self.deployment_config = deployment_config
         self.replica_config = replica_config
         # The time when .deploy() was first called for this deployment.
         self.start_time_ms = start_time_ms
@@ -38,6 +40,7 @@ class BackendInfo:
         self.deployer_job_id = deployer_job_id
         # The time when this deployment was deleted.
         self.end_time_ms = end_time_ms
+        self.autoscaling_policy = autoscaling_policy
 
 
 @dataclass

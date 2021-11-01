@@ -388,7 +388,7 @@ def build_eager_tf_policy(
                 )
 
             self._is_training = True
-            postprocessed_batch["is_training"] = True
+            postprocessed_batch.is_training = True
             stats = self._learn_on_batch_eager(postprocessed_batch)
             stats.update({"custom_metrics": learn_stats})
             return stats
@@ -412,7 +412,7 @@ def build_eager_tf_policy(
             )
 
             self._is_training = True
-            samples["is_training"] = True
+            samples.is_training = True
             return self._compute_gradients_eager(samples)
 
         @convert_eager_inputs
@@ -602,15 +602,16 @@ def build_eager_tf_policy(
                                  "`action_sampler_fn`!")
 
             seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
-            input_dict = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
-                "is_training": tf.constant(False),
-            }
+            input_batch = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch)
+                },
+                _is_training=False)
             if prev_action_batch is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = \
+                input_batch[SampleBatch.PREV_ACTIONS] = \
                     tf.convert_to_tensor(prev_action_batch)
             if prev_reward_batch is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = \
+                input_batch[SampleBatch.PREV_REWARDS] = \
                     tf.convert_to_tensor(prev_reward_batch)
 
             # Exploration hook before each forward pass.
@@ -621,12 +622,12 @@ def build_eager_tf_policy(
                 dist_inputs, dist_class, _ = action_distribution_fn(
                     self,
                     self.model,
-                    input_dict[SampleBatch.CUR_OBS],
+                    input_batch,
                     explore=False,
                     is_training=False)
             # Default log-likelihood calculation.
             else:
-                dist_inputs, _ = self.model(input_dict, state_batches,
+                dist_inputs, _ = self.model(input_batch, state_batches,
                                             seq_lens)
                 dist_class = self.dist_class
 

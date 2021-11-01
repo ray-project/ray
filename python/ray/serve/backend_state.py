@@ -11,14 +11,14 @@ from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag, ReplicaName, RunningReplicaInfo)
-from ray.serve.config import BackendConfig
+from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
     CONTROLLER_STARTUP_GRACE_PERIOD_S, SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT, MAX_NUM_DELETED_DEPLOYMENTS)
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
-from ray.serve.version import BackendVersion, VersionedReplica
+from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
 
 
@@ -150,15 +150,15 @@ class ActorReplicaWrapper:
 
         return self._placement_group
 
-    def start(self, backend_info: BackendInfo, version: BackendVersion):
+    def start(self, backend_info: BackendInfo, version: DeploymentVersion):
         """
         Start a new actor for current BackendReplica instance.
         """
         self._actor_resources = backend_info.replica_config.resource_dict
         self._max_concurrent_queries = (
-            backend_info.backend_config.max_concurrent_queries)
+            backend_info.deployment_config.max_concurrent_queries)
         self._graceful_shutdown_timeout_s = (
-            backend_info.backend_config.graceful_shutdown_timeout_s)
+            backend_info.deployment_config.graceful_shutdown_timeout_s)
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources)
@@ -177,11 +177,11 @@ class ActorReplicaWrapper:
                 self.backend_tag, self.replica_tag,
                 backend_info.replica_config.init_args,
                 backend_info.replica_config.init_kwargs,
-                backend_info.backend_config.to_proto_bytes(), version,
+                backend_info.deployment_config.to_proto_bytes(), version,
                 self._controller_name, self._detached)
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            backend_info.backend_config.user_config)
+            backend_info.deployment_config.user_config)
 
     def update_user_config(self, user_config: Any):
         """
@@ -215,7 +215,7 @@ class ActorReplicaWrapper:
         self._ready_obj_ref = self._actor_handle.get_metadata.remote()
 
     def check_ready(
-            self) -> Tuple[ReplicaStartupStatus, Optional[BackendVersion]]:
+            self) -> Tuple[ReplicaStartupStatus, Optional[DeploymentVersion]]:
         """
         Check if current replica has started by making ray API calls on
         relevant actor / object ref.
@@ -228,7 +228,7 @@ class ActorReplicaWrapper:
                     - replica __init__() failed.
                 SUCCEEDED:
                     - replica __init__() and reconfigure() succeeded.
-            version (BackendVersion):
+            version (DeploymentVersion):
                 None:
                     - replica reconfigure() haven't returned OR
                     - replica __init__() failed.
@@ -242,11 +242,11 @@ class ActorReplicaWrapper:
             return ReplicaStartupStatus.PENDING, None
         elif len(ready) > 0:
             try:
-                backend_config, version = ray.get(ready)[0]
+                deployment_config, version = ray.get(ready)[0]
                 self._max_concurrent_queries = (
-                    backend_config.max_concurrent_queries)
+                    deployment_config.max_concurrent_queries)
                 self._graceful_shutdown_timeout_s = (
-                    backend_config.graceful_shutdown_timeout_s)
+                    deployment_config.graceful_shutdown_timeout_s)
             except Exception:
                 return ReplicaStartupStatus.FAILED, None
 
@@ -325,7 +325,7 @@ class BackendReplica(VersionedReplica):
 
     def __init__(self, controller_name: str, detached: bool,
                  replica_tag: ReplicaTag, backend_tag: BackendTag,
-                 version: BackendVersion):
+                 version: DeploymentVersion):
         self._actor = ActorReplicaWrapper(
             format_actor_name(replica_tag), detached, controller_name,
             replica_tag, backend_tag)
@@ -367,7 +367,7 @@ class BackendReplica(VersionedReplica):
     def actor_handle(self) -> ActorHandle:
         return self._actor.actor_handle
 
-    def start(self, backend_info: BackendInfo, version: BackendVersion):
+    def start(self, backend_info: BackendInfo, version: DeploymentVersion):
         """
         Start a new actor for current BackendReplica instance.
         """
@@ -382,7 +382,7 @@ class BackendReplica(VersionedReplica):
         BackendReplica instance.
         """
         self._actor.update_user_config(user_config)
-        self._version = BackendVersion(
+        self._version = DeploymentVersion(
             self._version.code_version, user_config=user_config)
 
     def recover(self):
@@ -410,7 +410,7 @@ class BackendReplica(VersionedReplica):
             if time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
                 status = ReplicaStartupStatus.PENDING_SLOW_START
         elif status == ReplicaStartupStatus.SUCCEEDED:
-            # Re-assign BackendVersion if start / update / recover succeeded
+            # Re-assign DeploymentVersion if start / update / recover succeeded
             # by reading re-computed version in RayServeReplica
             if version is not None:
                 self._version = version
@@ -511,7 +511,7 @@ class ReplicaStateContainer:
         return sum((self._replicas[state] for state in states), [])
 
     def pop(self,
-            exclude_version: Optional[BackendVersion] = None,
+            exclude_version: Optional[DeploymentVersion] = None,
             states: Optional[List[ReplicaState]] = None,
             max_replicas: Optional[int] = math.inf) -> List[VersionedReplica]:
         """Get and remove all replicas of the given states.
@@ -520,7 +520,7 @@ class ReplicaStateContainer:
         in order of state as passed in.
 
         Args:
-            exclude_version (BackendVersion): if specified, replicas of the
+            exclude_version (DeploymentVersion): if specified, replicas of the
                 provided version will *not* be removed.
             states (str): states to consider. If not specified, all replicas
                 are considered.
@@ -531,7 +531,7 @@ class ReplicaStateContainer:
             states = ALL_REPLICA_STATES
 
         assert (exclude_version is None
-                or isinstance(exclude_version, BackendVersion))
+                or isinstance(exclude_version, DeploymentVersion))
         assert isinstance(states, list)
 
         replicas = []
@@ -552,15 +552,15 @@ class ReplicaStateContainer:
         return replicas
 
     def count(self,
-              exclude_version: Optional[BackendVersion] = None,
-              version: Optional[BackendVersion] = None,
+              exclude_version: Optional[DeploymentVersion] = None,
+              version: Optional[DeploymentVersion] = None,
               states: Optional[List[ReplicaState]] = None):
         """Get the total count of replicas of the given states.
 
         Args:
-            exclude_version(BackendVersion): version to exclude. If not
+            exclude_version(DeploymentVersion): version to exclude. If not
                 specified, all versions are considered.
-            version(BackendVersion): version to filter to. If not specified,
+            version(DeploymentVersion): version to filter to. If not specified,
                 all versions are considered.
             states (str): states to consider. If not specified, all replicas
                 are considered.
@@ -569,8 +569,8 @@ class ReplicaStateContainer:
             states = ALL_REPLICA_STATES
         assert isinstance(states, list)
         assert (exclude_version is None
-                or isinstance(exclude_version, BackendVersion))
-        assert version is None or isinstance(version, BackendVersion)
+                or isinstance(exclude_version, DeploymentVersion))
+        assert version is None or isinstance(version, DeploymentVersion)
         if exclude_version is None and version is None:
             return sum(len(self._replicas[state]) for state in states)
         elif exclude_version is None and version is not None:
@@ -618,7 +618,7 @@ class BackendState:
         self._rollback_info: BackendInfo = None
         self._target_replicas: int = -1
         self._curr_goal: Optional[GoalId] = None
-        self._target_version: BackendVersion = None
+        self._target_version: DeploymentVersion = None
         self._prev_startup_warning: float = time.time()
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
@@ -726,10 +726,11 @@ class BackendState:
 
         if backend_info is not None:
             self._target_info = backend_info
-            self._target_replicas = backend_info.backend_config.num_replicas
-            self._target_version = BackendVersion(
+            self._target_replicas = backend_info.deployment_config.num_replicas
+
+            self._target_version = DeploymentVersion(
                 backend_info.version,
-                user_config=backend_info.backend_config.user_config)
+                user_config=backend_info.deployment_config.user_config)
 
         else:
             self._target_replicas = 0
@@ -745,7 +746,7 @@ class BackendState:
                backend_info: BackendInfo) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
-        If the backend already exists with the same version and BackendConfig,
+        If the backend already exists with the same version and config,
         this is a no-op and returns the GoalId corresponding to the existing
         update if there is one.
 
@@ -759,7 +760,8 @@ class BackendState:
             # Redeploying should not reset the deployment's start time.
             backend_info.start_time_ms = existing_info.start_time_ms
 
-            if (existing_info.backend_config == backend_info.backend_config
+            if (existing_info.deployment_config ==
+                    backend_info.deployment_config
                     and backend_info.version is not None
                     and existing_info.version == backend_info.version):
                 return self._curr_goal, False
@@ -1290,19 +1292,20 @@ class BackendStateManager:
 
         return replicas
 
-    def get_backend_configs(self,
-                            filter_tag: Optional[BackendTag] = None,
-                            include_deleted: Optional[bool] = False
-                            ) -> Dict[BackendTag, BackendConfig]:
-        configs: Dict[BackendTag, BackendConfig] = {}
+    def get_deployment_configs(self,
+                               filter_tag: Optional[BackendTag] = None,
+                               include_deleted: Optional[bool] = False
+                               ) -> Dict[BackendTag, DeploymentConfig]:
+        configs: Dict[BackendTag, DeploymentConfig] = {}
         for backend_tag, backend_state in self._backend_states.items():
             if filter_tag is None or backend_tag == filter_tag:
-                configs[backend_tag] = backend_state.target_info.backend_config
+                configs[
+                    backend_tag] = backend_state.target_info.deployment_config
 
         if include_deleted:
             for backend_tag, info in self._deleted_backend_metadata.items():
                 if filter_tag is None or backend_tag == filter_tag:
-                    configs[backend_tag] = info.backend_config
+                    configs[backend_tag] = info.deployment_config
 
         return configs
 
@@ -1321,7 +1324,7 @@ class BackendStateManager:
                        ) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
-        If the backend already exists with the same version and BackendConfig,
+        If the backend already exists with the same version and config,
         this is a no-op and returns the GoalId corresponding to the existing
         update if there is one.
 

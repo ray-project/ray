@@ -208,6 +208,61 @@ Please refer to the Kubernetes documentation for more information.
 .. _`NodePort`: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 
 
+Failure Recovery
+================
+Ray Serve is resilient to any component failures within the Ray cluster out of the box.
+You can checkout the detail of how process and worker node failure handled at :ref:`serve-ft-detail`.
+However, when the Ray head node goes down, you would need to recover the state by creating a new
+Ray cluster and re-deploys all Serve deployments into that cluster.
+
+.. note::
+  Ray currently cannot survive head node failure and we recommend using application specific
+  failure recovery solutions. Although Ray is not currently highly available (HA), it is on
+  the long term roadmap and being actively worked on.
+
+Ray Serve added an experimental feature to help recovering the state.
+This features enables Serve to write all your deployment configuration and code into a storage location. 
+Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state. 
+
+Here is how to use it:
+
+.. warning::
+  The API is experimental and subject to change. We welcome you to test it out
+  and leave us feedback through github issues or discussion forum!
+
+
+You can use both the start argument and the CLI to specify it:
+
+.. code-block:: python
+
+    serve.start(_checkpoint_path=...)
+
+or 
+
+.. code-block:: shell
+
+    serve start --checkpoint-path ...
+
+
+The checkpoint path argument accepts the following format:
+
+- ``file://local_file_path``
+- ``s3://bucket/path``
+- ``custom://importable.custom_python.Class/path``
+
+While we have native support for on disk and AWS S3 storage, there is no reason we cannot support more. 
+
+In Kubernetes environment, we recommend using `Persistent Volumes`_ to create a disk and mount it into the Ray head node.
+For example, you can provision Azure Disk, AWS Elastic Block Store, or GCP Persistent Disk using the K8s `Persistent Volumes`_ API.
+Alternatively, you can also directly write to object store like S3.
+
+You can easily try to plug into your own implementation using the ``custom://`` path and inherit the `KVStoreBase`_ class.
+Feel free to open new github issues and contribute more storage backends!
+
+.. _`Persistent Volumes`: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
+
+.. _`KVStoreBase`: https://github.com/ray-project/ray/blob/master/python/ray/serve/storage/kv_store_base.py
+
 .. _serve-monitoring:
 
 Monitoring
@@ -245,7 +300,6 @@ To automatically include the current deployment and replica in your logs, simply
 ``logger = logging.getLogger("ray")``, and use ``logger`` within your deployment code:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
-  :lines: 1, 9, 11-14, 16-17
 
 Querying a Serve endpoint with the above deployment will produce a log line like the following:
 
@@ -396,11 +450,12 @@ For example, after running the script for some time and refreshing ``localhost:8
 
 which indicates that the average processing latency is just over one second, as expected.
 
-You can even define a `custom metric <..ray-metrics.html#custom-metrics>`__ to use in your deployment, and tag it with the current deployment or replica.
+You can even define a :ref:`custom metric <ray-metrics>` to use in your deployment, and tag it with the current deployment or replica.
 Here's an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
-  :lines: 11-23
+  :start-after: __custom_metrics_deployment_start__
+  :end-before: __custom_metrics_deployment_end__
 
 See the
-`Ray Metrics documentation <../ray-metrics.html>`__ for more details, including instructions for scraping these metrics using Prometheus.
+:ref:`Ray Metrics documentation <ray-metrics>` for more details, including instructions for scraping these metrics using Prometheus.

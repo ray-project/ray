@@ -83,14 +83,14 @@ class DashboardAgent(object):
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = self.server.add_insecure_port(
-            f"[::]:{self.dashboard_agent_port}")
+        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+            self.server, f"[::]:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
                     self.grpc_port)
         self.aioredis_client = None
         options = (("grpc.enable_http_proxy", 0), )
-        self.aiogrpc_raylet_channel = aiogrpc.insecure_channel(
-            f"{self.ip}:{self.node_manager_port}", options=options)
+        self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
+            f"{self.ip}:{self.node_manager_port}", options, asynchronous=True)
         self.http_session = None
         ip, port = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
@@ -175,7 +175,9 @@ class DashboardAgent(object):
 
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
-        site = aiohttp.web.TCPSite(runner, "0.0.0.0", self.listen_port)
+        site = aiohttp.web.TCPSite(
+            runner, "127.0.0.1"
+            if self.ip == "127.0.0.1" else "0.0.0.0", self.listen_port)
         await site.start()
         http_host, http_port, *_ = site._server.sockets[0].getsockname()
         logger.info("Dashboard agent http address: %s:%s", http_host,
@@ -352,6 +354,8 @@ if __name__ == "__main__":
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             logging_params=logging_params)
+        if os.environ.get("_RAY_AGENT_FAILING"):
+            raise Exception("Failure injection failure.")
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())

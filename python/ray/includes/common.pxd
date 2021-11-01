@@ -2,7 +2,7 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 
-from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t
+from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t, uint32_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
@@ -255,7 +255,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
             c_string serialized_runtime_env,
-            c_vector[c_string] runtime_env_uris)
+            c_vector[c_string] runtime_env_uris,
+            const c_vector[CConcurrencyGroup] &concurrency_groups)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -275,7 +276,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
 
-cdef extern from "ray/gcs/gcs_client.h" nogil:
+cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &ip, int port,
                           const c_string &password)
@@ -283,3 +284,14 @@ cdef extern from "ray/gcs/gcs_client.h" nogil:
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         const c_string &SerializeAsString()
+
+cdef extern from "ray/common/task/task_spec.h" nogil:
+    cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
+        CConcurrencyGroup(
+            const c_string &name,
+            uint32_t max_concurrency,
+            const c_vector[CFunctionDescriptor] &c_fds)
+        CConcurrencyGroup()
+        c_string GetName() const
+        uint32_t GetMaxConcurrency() const
+        c_vector[CFunctionDescriptor] GetFunctionDescriptors() const

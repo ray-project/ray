@@ -1,4 +1,5 @@
 import gym
+from typing import Type
 
 from ray.rllib.utils.annotations import override
 
@@ -18,7 +19,7 @@ class ActionTransform(gym.ActionWrapper):
             self.env.action_space.low) + self.env.action_space.low
 
 
-def transform_action_space(env_name_or_creator):
+def transform_action_space(env_name_or_creator) -> Type[gym.Env]:
     """Wrapper for gym.Envs to have their action space transformed.
 
     Args:
@@ -26,11 +27,11 @@ def transform_action_space(env_name_or_creator):
             env_maker function.
 
     Returns:
-        Type[TransformedActionSpaceEnv]: New TransformedActionSpaceEnv class
+        New TransformedActionSpaceEnv class
             to be used as env. The constructor takes a config dict with `_low`
             and `_high` keys specifying the new action range
             (default -1.0 to 1.0). The reset of the config dict will be
-            passed on to the underlying env's constructor.
+            passed on to the underlying/wrapped env's constructor.
 
     Examples:
          >>> # By gym string:

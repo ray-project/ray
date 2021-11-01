@@ -55,6 +55,9 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "num_gpus": 1,
         "num_workers": 32,
         "buffer_size": 2000000,
+        # TODO(jungong) : add proper replay_buffer_config after
+        #     DistributedReplayBuffer type is supported.
+        "replay_buffer_config": None,
         "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
@@ -141,8 +144,11 @@ class UpdateWorkerWeights:
             metrics.counters["num_weight_syncs"] += 1
 
 
-def apex_execution_plan(workers: WorkerSet,
-                        config: dict) -> LocalIterator[dict]:
+def apex_execution_plan(workers: WorkerSet, config: dict,
+                        **kwargs) -> LocalIterator[dict]:
+    assert len(kwargs) == 0, (
+        "Apex execution_plan does NOT take any additional parameters")
+
     # Create a number of replay buffer actors.
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
     replay_actors = create_colocated(ReplayActor, [

@@ -882,7 +882,7 @@ a) a latent space learning ("feature") model, taking an environment observation 
 b) a "forward" model, predicting the next latent vector, given the current observation vector and an action to take next.
 c) a so-called "inverse" net, only used to train the "feature" net. The inverse net tries to predict the action taken between two latent vectors (obs and next obs).
 
-All the above extra Models are trained inside the ``postprocess_trajectory()`` call.
+All the above extra Models are trained inside the modified ``Exploration.postprocess_trajectory()`` call.
 
 Using the (ever changing) "forward" model, our Curiosity module calculates an artificial (intrinsic) reward signal, weights it via the ``eta`` parameter, and then adds it to the environment's (extrinsic) reward.
 Intrinsic rewards for each env-step are calculated by taking the euclidian distance between the latent-space encoded next observation ("feature" model) and the **predicted** latent-space encoding for the next observation

@@ -17,6 +17,7 @@ from ray.includes.common cimport (
     CBuffer,
     CRayObject,
     CAddress,
+    CConcurrencyGroup,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -117,6 +118,11 @@ cdef class CoreWorker:
         object current_runtime_env
         c_bool is_local_mode
 
+        object cgname_to_eventloop_dict
+        object eventloop_for_default_cg
+        object thread_for_default_cg
+        object fd_to_cgname_dict
+
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
@@ -130,6 +136,10 @@ cdef class CoreWorker:
             c_vector[shared_ptr[CRayObject]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
+    cdef c_function_descriptors_to_python(
+        self, const c_vector[CFunctionDescriptor] &c_function_descriptors)
+    cdef initialize_eventloops_for_actor_concurrency_group(
+        self, const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups)
 
 cdef class FunctionDescriptor:
     cdef:

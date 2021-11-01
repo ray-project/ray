@@ -267,7 +267,8 @@ class CommandBasedClient(SyncClient):
         if self.is_running:
             logger.warning("Last sync client cmd still in progress, skipping.")
             return False
-        final_cmd = self.delete_template.format(target=quote(target))
+        final_cmd = self.delete_template.format(
+            target=quote(target), options="")
         logger.debug("Running delete: {}".format(final_cmd))
         self.cmd_process = subprocess.Popen(
             final_cmd,

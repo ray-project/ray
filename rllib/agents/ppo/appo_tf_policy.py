@@ -13,14 +13,15 @@ from typing import Dict, List, Optional, Type, Union
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
     clip_gradients, choose_optimizer
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
+from ray.rllib.policy.tf_policy import EntropyCoeffSchedule, \
+    LearningRateSchedule, TFPolicy
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -98,7 +99,7 @@ def appo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
@@ -122,7 +123,7 @@ def appo_surrogate_loss(
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
-    target_model_out, _ = policy.target_model.from_batch(train_batch)
+    target_model_out, _ = policy.target_model(train_batch)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
     values_time_major = make_time_major(values)
@@ -252,7 +253,7 @@ def appo_surrogate_loss(
 
     # The summed weighted loss.
     total_loss = mean_policy_loss - \
-        mean_entropy * policy.config["entropy_coeff"]
+        mean_entropy * policy.entropy_coeff
     # Optional KL loss.
     if policy.config["use_kl_loss"]:
         total_loss += policy.kl_coeff * mean_kl_loss
@@ -304,7 +305,8 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy._value_targets, [-1]),
-            tf.reshape(values_batched, [-1]))
+            tf.reshape(values_batched, [-1])),
+        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
     }
 
     if policy.config["vtrace"]:
@@ -323,7 +325,7 @@ def postprocess_trajectory(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
     """Postprocesses a trajectory and returns the processed trajectory.
 
     The trajectory contains only data from one episode and from one agent.
@@ -341,7 +343,7 @@ def postprocess_trajectory(
         other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
             dict of AgentIDs mapping to other agents' trajectory data (from the
             same episode). NOTE: The other agents use the same policy.
-        episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
+        episode (Optional[Episode]): Optional multi-agent episode
             object in which the agents operated.
 
     Returns:
@@ -400,6 +402,8 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
@@ -430,7 +434,10 @@ AsyncPPOTFPolicy = build_tf_policy(
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
     mixins=[
-        LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
-        ValueNetworkMixin
+        LearningRateSchedule,
+        KLCoeffMixin,
+        TargetNetworkMixin,
+        ValueNetworkMixin,
+        EntropyCoeffSchedule,
     ],
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])

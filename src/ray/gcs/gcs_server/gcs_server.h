@@ -26,9 +26,9 @@
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
+#include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
-#include "ray/pubsub/publisher.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -56,7 +56,7 @@ class GcsJobManager;
 class GcsWorkerManager;
 class GcsPlacementGroupManager;
 
-/// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
+/// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
 /// In the future, GCS server's main responsibility is to manage meta data
 /// and the management of actor creation.
@@ -121,6 +121,9 @@ class GcsServer {
 
   /// Initialize KV manager.
   void InitKVManager();
+
+  /// Initializes PubSub handler.
+  void InitPubSubHandler();
 
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
@@ -211,12 +214,13 @@ class GcsServer {
   /// Global KV storage handler and service.
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
+  /// GCS PubSub handler and service.
+  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  std::unique_ptr<rpc::InternalPubSubGrpcService> pubsub_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
-  /// Grpc based pubsub.
-  std::shared_ptr<pubsub::Publisher> grpc_pubsub_publisher_;
+  std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
   PeriodicalRunner pubsub_periodical_runner_;
   /// The gcs table storage.

@@ -17,6 +17,7 @@ supersuit==2.6.6
 pybullet==3.1.7
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
+tensorflow_estimator==2.6.0
 
 # Other.
 # ------
@@ -27,7 +28,7 @@ pyglet==1.5.15
 # For JSON reader/writer.
 smart_open==5.0.0
 # Ray Serve example
-starlette==0.14.2
+starlette==0.16.0
 # ONNX
 onnx==1.9.0
 onnxruntime==1.8.0

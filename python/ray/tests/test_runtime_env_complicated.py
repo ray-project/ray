@@ -215,11 +215,11 @@ def test_job_eager_install(shutdown_only):
     ray.init(runtime_env=runtime_env)
     with pytest.raises(RuntimeError):
         wait_for_condition(
-            lambda: len(get_conda_env_list()) == env_count + 2, timeout=60)
+            lambda: len(get_conda_env_list()) == env_count + 2, timeout=5)
     ray.shutdown()
     # Test unavailable type
     runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         ray.init(runtime_env=runtime_env)
     ray.shutdown()
 
@@ -908,7 +908,6 @@ def test_runtime_env_override(call_ray_start):
         parent = ray.get_actor("parent")
 
         env = ray.get_runtime_context().runtime_env
-        del env["working_dir"]  # make sure to directly use the direcotry
         print("Spawning with env:", env)
         ray.get(parent.spawn_child.remote("child", env))
 
@@ -919,39 +918,6 @@ def test_runtime_env_override(call_ray_start):
         assert ray.get(child.read.remote("hello")) == "world"
 
         ray.shutdown()
-
-
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.")
-def test_runtime_env_inheritance_regression(shutdown_only):
-    # https://github.com/ray-project/ray/issues/16479
-    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
-        with open("hello", "w") as f:
-            f.write("world")
-
-        job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
-        ray.init(job_config=job_config)
-
-        with open("hello", "w") as f:
-            f.write("file should already been cached")
-
-        @ray.remote
-        class Test:
-            def f(self):
-                return open("hello").read()
-
-        env1 = ray.get_runtime_context().runtime_env
-        del env1["working_dir"]
-        print("Using env:", env1)
-        t = Test.options(runtime_env=env1).remote()
-        assert ray.get(t.f.remote()) == "world"
-
-        # Using working_dir is not supported
-        env2 = ray.get_runtime_context().runtime_env
-        assert "working_dir" in env2
-        with pytest.raises(NotImplementedError):
-            t = Test.options(runtime_env=env2).remote()
 
 
 @pytest.mark.skipif(

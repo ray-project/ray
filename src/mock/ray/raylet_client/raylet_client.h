@@ -181,6 +181,10 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(void, RequestResourceReport,
               (const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback),
               (override));
+  MOCK_METHOD(void, ShutdownRaylet,
+              (const NodeID &node_id, bool graceful,
+               const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback),
+              (override));
 };
 
 }  // namespace ray

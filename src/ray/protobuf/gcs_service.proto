@@ -18,6 +18,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/pubsub.proto";
 
 message AddJobRequest {
   JobTableData data = 1;
@@ -164,15 +165,6 @@ message RegisterNodeReply {
   GcsStatus status = 1;
 }
 
-message UnregisterNodeRequest {
-  // The ID of node.
-  bytes node_id = 1;
-}
-
-message UnregisterNodeReply {
-  GcsStatus status = 1;
-}
-
 message GetAllNodeInfoRequest {
 }
 
@@ -202,18 +194,6 @@ message GetInternalConfigRequest {
 message GetInternalConfigReply {
   GcsStatus status = 1;
   string config = 2;
-}
-
-// Service for node info access.
-service NodeInfoGcsService {
-  // Register a node to GCS Service.
-  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
-  // Unregister a node from GCS Service.
-  rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
-  // Get information of all nodes from GCS Service.
-  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
-  // Get cluster internal config.
-  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 
 message GetResourcesRequest {
@@ -573,6 +553,28 @@ autoscaler in a separate pod, if the user upgrades the ray version on the head
 pod autoscaler can crash (if the newer version of ray modified the messages
 below). */
 
+message DrainNodeData {
+  // The id of the node to drain.
+  bytes node_id = 1;
+}
+
+message DrainNodeRequest {
+  // Batched information of nodes to drain.
+  repeated DrainNodeData drain_node_data = 1;
+}
+
+message DrainNodeStatus {
+  // The node id that is successfully drained from GCS.
+  bytes node_id = 1;
+}
+
+message DrainNodeReply {
+  // Whether or not the RPC succeeds.
+  GcsStatus status = 1;
+  // Batched status of nodes that are drained.
+  repeated DrainNodeStatus drain_node_status = 2;
+}
+
 message InternalKVGetRequest {
   bytes key = 1;
 }
@@ -629,6 +631,42 @@ service InternalKVGcsService {
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
 }
 
+message GcsSubscriberPollRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+}
+
+message GcsSubscriberPollReply {
+  /// The messages that are published.
+  repeated PubMessage pub_messages = 1;
+  // Not populated.
+  GcsStatus status = 100;
+}
+
+message GcsSubscriberCommandBatchRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+  /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
+  repeated Command commands = 2;
+}
+
+message GcsSubscriberCommandBatchReply {
+  // Not populated.
+  GcsStatus status = 100;
+}
+
+/// This supports subscribing updates from GCS with long poll, and registering /
+/// de-registering subscribers.
+service InternalPubSubGcsService {
+  /// The long polling request sent to GCS for pubsub operations.
+  /// The long poll request will be replied once there are a batch of messages that
+  /// need to be published to the caller (subscriber).
+  rpc GcsSubscriberPoll(GcsSubscriberPollRequest) returns (GcsSubscriberPollReply);
+  /// A batch of subscribe / unsubscribe requests sent by the subscriber.
+  rpc GcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest)
+      returns (GcsSubscriberCommandBatchReply);
+}
+
 message GetAllResourceUsageRequest {
 }
 
@@ -657,5 +695,21 @@ service NodeResourceInfoGcsService {
 message GcsStatus {
   int32 code = 1;
   string message = 2;
+}
+
+// Service for node info access.
+service NodeInfoGcsService {
+  // Register a node to GCS Service.
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
+  // Drain a node from GCS Service.
+  // When the RPC is replied,
+  // - It is guaranteed that the requested nodes are going to be drained eventually.
+  // - It is guaranteed that GCS has persisted the draining states.
+  // - It is **not** guarateed that nodes receive the drain requests from GCS.
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
+  // Get information of all nodes from GCS Service.
+  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
+  // Get cluster internal config.
+  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 ///////////////////////////////////////////////////////////////////////////////

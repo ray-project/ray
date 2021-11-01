@@ -88,3 +88,4 @@ smart_open[s3]
 tqdm
 async-exit-stack
 async-generator
+cryptography>=3.0.0

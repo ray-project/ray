@@ -5,19 +5,20 @@ import gym
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import ValueNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tf_policy import LearningRateSchedule, \
+    EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance
-from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
     PolicyID, LocalOptimizer, ModelGradients
-from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.evaluation import MultiAgentEpisode
 
 tf1, tf, tfv = try_import_tf()
 
@@ -30,7 +31,7 @@ def postprocess_advantages(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
 
     return compute_gae_for_sample_batch(policy, sample_batch,
                                         other_agent_batches, episode)
@@ -72,7 +73,7 @@ class A3CLoss:
 def actor_critic_loss(policy: Policy, model: ModelV2,
                       dist_class: ActionDistribution,
                       train_batch: SampleBatch) -> TensorType:
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
     if policy.is_recurrent():
         max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
@@ -84,8 +85,7 @@ def actor_critic_loss(policy: Policy, model: ModelV2,
                           train_batch[Postprocessing.ADVANTAGES],
                           train_batch[Postprocessing.VALUE_TARGETS],
                           model.value_function(), mask,
-                          policy.config["vf_loss_coeff"],
-                          policy.config["entropy_coeff"],
+                          policy.config["vf_loss_coeff"], policy.entropy_coeff,
                           policy.config.get("use_critic", True))
     return policy.loss.total_loss
 
@@ -97,6 +97,7 @@ def add_value_function_fetch(policy: Policy) -> Dict[str, TensorType]:
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     return {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "policy_entropy": policy.loss.entropy,
         "var_gnorm": tf.linalg.global_norm(
@@ -130,6 +131,8 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
                  config: TrainerConfigDict) -> None:
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
 
 
 A3CTFPolicy = build_tf_policy(
@@ -142,4 +145,4 @@ A3CTFPolicy = build_tf_policy(
     postprocess_fn=compute_gae_for_sample_batch,
     extra_action_out_fn=add_value_function_fetch,
     before_loss_init=setup_mixins,
-    mixins=[ValueNetworkMixin, LearningRateSchedule])
+    mixins=[ValueNetworkMixin, LearningRateSchedule, EntropyCoeffSchedule])

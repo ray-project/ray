@@ -1,5 +1,5 @@
-ARG GPU=""
-FROM rayproject/base-deps:nightly"$GPU"
+ARG BASE_IMAGE=""
+FROM rayproject/base-deps:nightly"$BASE_IMAGE"
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ARG AUTOSCALER="autoscaler"
 ARG WHEEL_PATH

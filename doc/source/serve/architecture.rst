@@ -49,6 +49,9 @@ handler to run; otherwise, the replica will block until the handler returns.
 
 FAQ
 ---
+
+.. _serve-ft-detail:
+
 How does Serve handle fault tolerance?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 
 namespace ray {
@@ -60,6 +61,7 @@ int64_t HybridPolicy(
     const ResourceRequest &resource_request, const int64_t local_node_id,
     const absl::flat_hash_map<int64_t, Node> &nodes, float spread_threshold,
     bool force_spillback, bool require_available,
+    std::function<bool(int64_t)> is_node_available,
     bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
 
 enum class NodeFilter {
@@ -88,6 +90,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
                                const absl::flat_hash_map<int64_t, Node> &nodes,
                                float spread_threshold, bool force_spillback,
                                bool require_available,
+                               std::function<bool(int64_t)> is_node_available,
                                NodeFilter node_filter = NodeFilter::kAny);
 
 }  // namespace raylet_scheduling_policy

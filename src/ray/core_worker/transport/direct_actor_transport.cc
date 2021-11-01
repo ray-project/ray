@@ -524,6 +524,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
           return_object->add_nested_inlined_refs()->CopyFrom(nested_ref);
         }
       }
+
       if (task_spec.IsActorCreationTask()) {
         /// The default max concurrency for creating PoolManager should
         /// be 0 if this is an asyncio actor.
@@ -531,6 +532,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
             task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
         pool_manager_ = std::make_shared<PoolManager>(task_spec.ConcurrencyGroups(),
                                                       default_max_concurrency);
+        concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
+            task_spec.ConcurrencyGroups();
         RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
                       << ", actor_id: " << task_spec.ActorCreationId();
         // Tell raylet that an actor creation task has finished execution, so that
@@ -573,11 +576,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
+      auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
+      RAY_CHECK(cg_it != concurrency_groups_cache_.end());
       auto result = actor_scheduling_queues_.emplace(
           task_spec.CallerWorkerId(),
-          std::unique_ptr<SchedulingQueue>(
-              new ActorSchedulingQueue(task_main_io_service_, *waiter_, pool_manager_,
-                                       is_asyncio_, fiber_max_concurrency_)));
+          std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(
+              task_main_io_service_, *waiter_, pool_manager_, is_asyncio_,
+              fiber_max_concurrency_, cg_it->second)));
       it = result.first;
     }
 
@@ -629,6 +634,12 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
       << "SetMaxActorConcurrency should only be called at most once.";
   is_asyncio_ = is_asyncio;
   fiber_max_concurrency_ = fiber_max_concurrency;
+}
+
+void CoreWorkerDirectTaskReceiver::Stop() {
+  for (const auto &it : actor_scheduling_queues_) {
+    it.second->Stop();
+  }
 }
 
 }  // namespace core
