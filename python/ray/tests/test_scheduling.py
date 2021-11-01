@@ -21,8 +21,6 @@ from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
                                      Semaphore, object_memory_usage,
                                      SignalActor)
 
-from ray.tests.conftest import *
-
 logger = logging.getLogger(__name__)
 
 
