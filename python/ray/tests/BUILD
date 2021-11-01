@@ -376,6 +376,7 @@ py_test_module_list(
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
     "test_scheduling.py",
+    "test_scheduling_2.py",
     "test_array.py"
   ],
   size = "medium",
@@ -391,6 +392,7 @@ py_test_module_list(
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
     "test_scheduling.py",
+    "test_scheduling_2.py",
     "test_array.py"
   ],
   size = "large",
