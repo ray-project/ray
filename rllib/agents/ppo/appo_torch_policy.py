@@ -56,7 +56,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     """
     target_model = policy.target_models[model]
 
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
@@ -79,7 +79,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
-    target_model_out, _ = target_model.from_batch(train_batch)
+    target_model_out, _ = target_model(train_batch)
 
     prev_action_dist = dist_class(behaviour_logits, model)
     values = model.value_function()

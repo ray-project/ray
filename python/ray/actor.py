@@ -493,7 +493,13 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
+        if runtime_env is not None:
+            new_runtime_env = ParsedRuntimeEnv(runtime_env)
+        else:
+            # Keep the runtime_env as None.  In .remote(), we need to know if
+            # runtime_env is None to know whether or not to fall back to the
+            # runtime_env specified in the @ray.remote decorator.
+            new_runtime_env = runtime_env
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):

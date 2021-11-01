@@ -36,6 +36,9 @@ def get_ray_status_output(address):
     }
 
 
+@pytest.mark.skip(
+    reason=("Flaky in the master. The feature is not officially "
+            "supported yet, so we just disable it."))
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(

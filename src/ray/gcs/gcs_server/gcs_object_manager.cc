@@ -96,8 +96,7 @@ void GcsObjectManager::HandleAddObjectLocation(
         notification.set_spilled_node_id(spilled_node_id.Binary());
       }
       notification.set_size(size);
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(OBJECT_CHANNEL, object_id.Hex(),
-                                         notification.SerializeAsString(), nullptr));
+      RAY_CHECK_OK(gcs_publisher_->PublishObject(object_id, notification, nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id << ", task id = " << object_id.TaskId()
@@ -136,9 +135,8 @@ void GcsObjectManager::HandleRemoveObjectLocation(
   auto on_done = [this, object_id, node_id, reply,
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(
-          OBJECT_CHANNEL, object_id.Hex(),
-          gcs::CreateObjectLocationChange(node_id, false)->SerializeAsString(), nullptr));
+      RAY_CHECK_OK(gcs_publisher_->PublishObject(
+          object_id, *gcs::CreateObjectLocationChange(node_id, false), nullptr));
       RAY_LOG(DEBUG) << "Finished removing object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id;

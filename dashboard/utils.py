@@ -231,7 +231,8 @@ class CustomEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
+def rest_response(success, message, convert_google_style=True,
+                  **kwargs) -> aiohttp.web.Response:
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
     # cross-origin access
@@ -243,7 +244,7 @@ def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
         {
             "result": success,
             "msg": message,
-            "data": to_google_style(kwargs)
+            "data": to_google_style(kwargs) if convert_google_style else kwargs
         },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers)

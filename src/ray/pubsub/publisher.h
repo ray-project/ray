@@ -156,11 +156,11 @@ class PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id_binary The key_id that the subscriber is subscribing to.
+  /// \param key_id The key_id that the subscriber is subscribing to.
   /// \return True if registration is new. False otherwise.
   virtual bool RegisterSubscription(const rpc::ChannelType channel_type,
                                     const SubscriberID &subscriber_id,
-                                    const std::string &key_id_binary) = 0;
+                                    const std::string &key_id) = 0;
 
   /// Publish the given object id to subscribers.
   ///
@@ -172,20 +172,20 @@ class PublisherInterface {
   /// It will invoke the failure callback on the subscriber side.
   ///
   /// \param channel_type The type of the channel.
-  /// \param key_id_binary The message id to publish.
+  /// \param key_id The message id to publish.
   virtual void PublishFailure(const rpc::ChannelType channel_type,
-                              const std::string &key_id_binary) = 0;
+                              const std::string &key_id) = 0;
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id_binary The key_id of the subscriber.
+  /// \param key_id The key_id of the subscriber.
   /// \return True if erased. False otherwise.
   virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
                                       const SubscriberID &subscriber_id,
-                                      const std::string &key_id_binary) = 0;
+                                      const std::string &key_id) = 0;
 };
 
 /// Protocol detail
@@ -246,11 +246,11 @@ class Publisher : public PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id_binary The key_id that the subscriber is subscribing to.
+  /// \param key_id The key_id that the subscriber is subscribing to.
   /// \return True if the registration is new. False otherwise.
   bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const SubscriberID &subscriber_id,
-                            const std::string &key_id_binary) override;
+                            const std::string &key_id) override;
 
   /// Publish the given object id to subscribers.
   ///
@@ -262,20 +262,20 @@ class Publisher : public PublisherInterface {
   /// It will invoke the failure callback on the subscriber side.
   ///
   /// \param channel_type The type of the channel.
-  /// \param key_id_binary The message id to publish.
+  /// \param key_id The message id to publish.
   void PublishFailure(const rpc::ChannelType channel_type,
-                      const std::string &key_id_binary) override;
+                      const std::string &key_id) override;
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id_binary The key_id of the subscriber.
+  /// \param key_id The key_id of the subscriber.
   /// \return True if erased. False otherwise.
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const SubscriberID &subscriber_id,
-                              const std::string &key_id_binary) override;
+                              const std::string &key_id) override;
 
   /// Remove the subscriber. Once the subscriber is removed, messages won't be published
   /// to it anymore.

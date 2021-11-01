@@ -212,6 +212,11 @@ cdef class NodeID(UniqueID):
         check_id(id)
         self.data = CNodeID.FromBinary(<c_string>id)
 
+    @classmethod
+    def from_hex(cls, hex_id):
+        binary_id = CNodeID.FromHex(<c_string>hex_id).Binary()
+        return cls(binary_id)
+
     cdef CNodeID native(self):
         return <CNodeID>self.data
 

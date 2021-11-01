@@ -49,6 +49,11 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
       ReleaseUnusedBundles,
       void(const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles));
 
+  MOCK_METHOD1(Initialize,
+               void(const std::unordered_map<
+                    PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
+                        &group_to_bundles));
+
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
       const NodeID &node_id) override {
     absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles;
@@ -71,7 +76,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
  public:
   GcsPlacementGroupManagerTest()
       : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()) {
-    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    gcs_publisher_ = std::make_shared<GcsPublisher>(
+        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_resource_manager_ =
         std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
@@ -129,6 +135,14 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     promise.get_future().get();
   }
 
+  std::shared_ptr<GcsInitData> LoadDataFromDataStorage() {
+    auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
+    std::promise<void> promise;
+    gcs_init_data->AsyncLoad([&promise] { promise.set_value(); });
+    promise.get_future().get();
+    return gcs_init_data;
+  }
+
   void WaitForExpectedPgCount(int expected_count) {
     auto condition = [this, expected_count]() {
       return mock_placement_group_scheduler_->GetPlacementGroupCount() == expected_count;
@@ -147,7 +161,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
-  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
 };
 
@@ -411,6 +425,36 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   WaitForExpectedPgCount(1);
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
             placement_group->GetPlacementGroupID());
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
+  // Create a placement group and make sure it has been created successfully.
+  auto request = Mocker::GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_placement_group_count(0);
+  RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
+    ++registered_placement_group_count;
+  });
+  ASSERT_EQ(registered_placement_group_count, 1);
+  WaitForExpectedPgCount(1);
+
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  placement_group->GetMutableBundle(0)->set_node_id(NodeID::FromRandom().Binary());
+  placement_group->GetMutableBundle(1)->set_node_id(NodeID::FromRandom().Binary());
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
+  OnPlacementGroupCreationSuccess(placement_group);
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+  // Reinitialize the placement group manager and test the node dead case.
+  auto gcs_init_data = LoadDataFromDataStorage();
+  ASSERT_EQ(1, gcs_init_data->PlacementGroups().size());
+  EXPECT_TRUE(
+      gcs_init_data->PlacementGroups().find(placement_group->GetPlacementGroupID()) !=
+      gcs_init_data->PlacementGroups().end());
+  EXPECT_CALL(*mock_placement_group_scheduler_, ReleaseUnusedBundles(_)).Times(1);
+  EXPECT_CALL(
+      *mock_placement_group_scheduler_,
+      Initialize(testing::Contains(testing::Key(placement_group->GetPlacementGroupID()))))
+      .Times(1);
+  gcs_placement_group_manager_->Initialize(*gcs_init_data);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestAutomaticCleanupWhenActorDeadAndJobDead) {

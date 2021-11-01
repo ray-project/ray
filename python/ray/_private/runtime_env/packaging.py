@@ -15,11 +15,17 @@ from ray._private.thirdparty.pathspec import PathSpec
 
 default_logger = logging.getLogger(__name__)
 
+# If an individual file is beyond this size, print a warning.
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
 # limit, but for some reason that causes failures when downloading.
 GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
 RAY_PKG_PREFIX = "_ray_pkg_"
+
+
+def _mib_string(num_bytes: float) -> str:
+    size_mib = float(num_bytes / 1024**2)
+    return f"{size_mib:.2f}MiB"
 
 
 class Protocol(Enum):
@@ -73,29 +79,6 @@ def _dir_travel(
         excludes.pop()
 
 
-def _zip_module(root: Path,
-                relative_path: Path,
-                excludes: Optional[Callable],
-                zip_handler: ZipFile,
-                logger: Optional[logging.Logger] = default_logger) -> None:
-    """Go through all files and zip them into a zip file."""
-
-    def handler(path: Path):
-        # Pack this path if it's an empty directory or it's a file.
-        if path.is_dir() and next(path.iterdir(),
-                                  None) is None or path.is_file():
-            file_size = path.stat().st_size
-            if file_size >= FILE_SIZE_WARNING:
-                logger.warning(
-                    f"File {path} is very large ({file_size} bytes). "
-                    "Consider excluding this file from the working directory.")
-            to_path = path.relative_to(relative_path)
-            zip_handler.write(path, to_path)
-
-    excludes = [] if excludes is None else [excludes]
-    _dir_travel(root, excludes, handler, logger=logger)
-
-
 def _hash_directory(
         root: Path,
         relative_path: Path,
@@ -107,7 +90,7 @@ def _hash_directory(
     It'll go through all the files in the directory and xor
     hash(file_name, file_content) to create a hash value.
     """
-    hash_val = b"0"
+    hash_val = b"0" * 8
     BUF_SIZE = 4096 * 1024
 
     def handler(path: Path):
@@ -183,14 +166,22 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return None
 
 
-def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
+def _store_package_in_gcs(
+        pkg_uri: str,
+        data: bytes,
+        logger: Optional[logging.Logger] = default_logger) -> int:
+    file_size = len(data)
+    size_str = _mib_string(file_size)
     if len(data) >= GCS_STORAGE_MAX_SIZE:
         raise RuntimeError(
-            "working_dir package exceeds the maximum size of 100MiB. You "
-            "can exclude large files using the 'excludes' option to the "
-            "runtime_env.")
+            f"Package size ({size_str}) exceeds the maximum size of "
+            f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
+            "files using the 'excludes' option to the runtime_env.")
 
-    _internal_kv_put(gcs_key, data)
+    logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to "
+                "Ray cluster...")
+    _internal_kv_put(pkg_uri, data)
+    logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
 
 
@@ -202,47 +193,40 @@ def _get_local_path(base_directory: str, pkg_uri: str) -> str:
 def _zip_directory(directory: str,
                    excludes: List[str],
                    output_path: str,
+                   include_parent_dir: bool = False,
                    logger: Optional[logging.Logger] = default_logger) -> None:
     """Zip the target directory and write it to the output_path.
 
-    Args:
         directory (str): The directory to zip.
         excludes (List(str)): The directories or file to be excluded.
         output_path (str): The output path for the zip file.
+        include_parent_dir: If true, includes the top-level directory as a
+            directory inside the zip file.
     """
     pkg_file = Path(output_path).absolute()
     with ZipFile(pkg_file, "w") as zip_handler:
-        # Put all files in /path/directory into the zip file.
-        working_path = Path(directory).absolute()
-        _zip_module(
-            working_path,
-            working_path,
-            _get_excludes(working_path, excludes),
-            zip_handler,
-            logger=logger)
+        # Put all files in the directory into the zip file.
+        dir_path = Path(directory).absolute()
 
+        def handler(path: Path):
+            # Pack this path if it's an empty directory or it's a file.
+            if path.is_dir() and next(path.iterdir(),
+                                      None) is None or path.is_file():
+                file_size = path.stat().st_size
+                if file_size >= FILE_SIZE_WARNING:
+                    logger.warning(
+                        f"File {path} is very large "
+                        f"({_mib_string(file_size)}). Consider adding this "
+                        "file to the 'excludes' list to skip uploading it: "
+                        "`ray.init(..., "
+                        f"runtime_env={{'excludes': ['{path}']}})`")
+                to_path = path.relative_to(dir_path)
+                if include_parent_dir:
+                    to_path = dir_path.name / to_path
+                zip_handler.write(path, to_path)
 
-def _push_package(pkg_uri: str, pkg_path: str) -> int:
-    """Push a package to a given URI.
-
-    This function is to push a local file to remote URI. Right now, only
-    storing in the GCS is supported.
-
-    Args:
-        pkg_uri (str): The URI of the package to upload to.
-        pkg_path (str): Path of the local file.
-
-    Returns:
-        The number of bytes uploaded.
-    """
-    protocol, pkg_name = parse_uri(pkg_uri)
-    data = Path(pkg_path).read_bytes()
-    if protocol == Protocol.GCS:
-        return _store_package_in_gcs(pkg_uri, data)
-    elif protocol == Protocol.S3:
-        raise RuntimeError("push_package should not be called with s3 path.")
-    else:
-        raise NotImplementedError(f"Protocol {protocol} is not supported")
+        excludes = [_get_excludes(dir_path, excludes)]
+        _dir_travel(dir_path, excludes, handler, logger=logger)
 
 
 def _package_exists(pkg_uri: str) -> bool:
@@ -302,18 +286,27 @@ def get_uri_for_directory(directory: str,
         protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex())
 
 
-def upload_package_if_needed(pkg_uri: str,
-                             base_directory: str,
-                             directory: str,
-                             excludes: Optional[List[str]] = None,
-                             logger: Optional[logging.Logger] = default_logger
-                             ) -> Tuple[bool, bool]:
+def upload_package_if_needed(
+        pkg_uri: str,
+        base_directory: str,
+        directory: str,
+        include_parent_dir: bool = False,
+        excludes: Optional[List[str]] = None,
+        logger: Optional[logging.Logger] = default_logger) -> bool:
     """Upload the contents of the directory under the given URI.
 
     This will first create a temporary zip file under the passed
     base_directory.
 
     If the package already exists in storage, this is a no-op.
+
+    Args:
+        pkg_uri: URI of the package to upload.
+        base_directory: Directory where package files are stored.
+        directory: Directory to be uploaded.
+        include_parent_dir: If true, includes the top-level directory as a
+            directory inside the zip file.
+        excludes: List specifying files to exclude.
     """
     if excludes is None:
         excludes = []
@@ -321,26 +314,41 @@ def upload_package_if_needed(pkg_uri: str,
     if logger is None:
         logger = default_logger
 
-    created, uploaded = False, False
-    if not _package_exists(pkg_uri):
-        pkg_file = Path(_get_local_path(base_directory, pkg_uri))
-        if not pkg_file.exists():
-            created = True
-            logger.info(f"Creating a new package for directory {directory}.")
-            _zip_directory(directory, excludes, pkg_file, logger=logger)
-        # Push the data to remote storage
-        pkg_size = _push_package(pkg_uri, pkg_file)
-        logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes.")
-        uploaded = True
+    if _package_exists(pkg_uri):
+        return False
 
-    return created, uploaded
+    pkg_file = Path(_get_local_path(base_directory, pkg_uri))
+    if not pkg_file.exists():
+        logger.info(f"Creating a file package '{pkg_uri}' "
+                    f"for local directory '{directory}'.")
+        _zip_directory(
+            directory,
+            excludes,
+            pkg_file,
+            include_parent_dir=include_parent_dir,
+            logger=logger)
+
+    # Push the data to remote storage
+    protocol, pkg_name = parse_uri(pkg_uri)
+    data = Path(pkg_file).read_bytes()
+    if protocol == Protocol.GCS:
+        _store_package_in_gcs(pkg_uri, data)
+    elif protocol == Protocol.S3:
+        raise RuntimeError("push_package should not be called with s3 path.")
+    else:
+        raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+    # Remove the local file to avoid accumulating temporary zip files.
+    pkg_file.unlink()
+
+    return True
 
 
 def download_and_unpack_package(
         pkg_uri: str,
         base_directory: str,
         logger: Optional[logging.Logger] = default_logger,
-) -> Optional[str]:
+) -> str:
     """Download the package corresponding to this URI and unpack it.
 
     Will be written to a directory named {base_directory}/{uri}.

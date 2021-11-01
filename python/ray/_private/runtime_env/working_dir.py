@@ -6,13 +6,15 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
-    parse_uri, upload_package_if_needed)
+    parse_uri, Protocol, upload_package_if_needed)
 
 default_logger = logging.getLogger(__name__)
 
 
-def upload_working_dir_if_needed(runtime_env: Dict[str, Any],
-                                 scratch_dir: str) -> Dict[str, Any]:
+def upload_working_dir_if_needed(
+        runtime_env: Dict[str, Any],
+        scratch_dir: str,
+        logger: Optional[logging.Logger] = default_logger) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
 
     If the working_dir is already a URI, this is a no-op.
@@ -28,23 +30,33 @@ def upload_working_dir_if_needed(runtime_env: Dict[str, Any],
 
     # working_dir is already a URI -- just pass it through.
     try:
-        parse_uri(working_dir)
-        return runtime_env
+        protocol, path = parse_uri(working_dir)
     except ValueError:
-        pass
+        protocol, path = None, None
 
-    # Remove excludes, it isn't relevant after the upload step.
-    excludes = runtime_env.pop("excludes", None)
+    if protocol is not None:
+        if protocol == Protocol.S3 and not path.endswith(".zip"):
+            raise ValueError("Only .zip files supported for S3 URIs.")
+        return runtime_env
+
+    excludes = runtime_env.get("excludes", None)
     working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
-    upload_package_if_needed(working_dir_uri, scratch_dir, working_dir,
-                             excludes)
+    upload_package_if_needed(
+        working_dir_uri,
+        scratch_dir,
+        working_dir,
+        include_parent_dir=False,
+        excludes=excludes,
+        logger=logger)
     runtime_env["working_dir"] = working_dir_uri
     return runtime_env
 
 
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
-        self._resources_dir = resources_dir
+        self._resources_dir = os.path.join(resources_dir, "working_dir_files")
+        if not os.path.isdir(self._resources_dir):
+            os.makedirs(self._resources_dir)
         assert _internal_kv_initialized()
 
     def delete_uri(self,
@@ -66,8 +78,6 @@ class WorkingDirManager:
 
         working_dir = download_and_unpack_package(
             runtime_env["working_dir"], self._resources_dir, logger=logger)
-        if working_dir is None:
-            return
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is
