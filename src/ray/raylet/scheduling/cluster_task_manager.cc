@@ -327,19 +327,14 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           double wait_time =
               (1e6 * sched_cls_cap_interval_ms_) * (1L << sched_cls_info.num_updates++);
           sched_cls_info.next_update_time = get_time_() + wait_time;
-          RAY_LOG(ERROR) << "Next cap update: " << (wait_time / 1e9);
           sched_cls_info.timer = execute_after_(
               [this]() {
-                RAY_LOG(ERROR) << "DELAYED EXECUTION HIT";
                 ScheduleAndDispatchTasks();
               },
               wait_time);
         }
         work_it++;
         continue;
-      } else {
-        RAY_LOG(ERROR) << "Didn't hit cap! " << scheduling_class << "\t"
-                       << spec.DebugString();
       }
 
       bool args_missing = false;
@@ -383,6 +378,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
         RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
+        auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
+        if (info_by_sched_cls_[sched_cls].running_tasks.size() == 0) {
+          info_by_sched_cls_.erase(sched_cls);
+        }
         if (!spec.GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(task_id);
         }

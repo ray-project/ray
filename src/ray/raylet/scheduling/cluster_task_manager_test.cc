@@ -229,7 +229,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /*execute_after=*/
             [this](std::function<void()> fn, double wait_time_ns) {
               delayed_execution_.push_back({fn, wait_time_ns});
-              return (double)nullptr;
+              return nullptr;
             }) {}
 
   void SetUp() {
@@ -268,8 +268,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(task_manager_.executing_task_args_.empty());
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
     ASSERT_EQ(task_manager_.pinned_task_arguments_bytes_, 0);
+    ASSERT_TRUE(task_manager_.info_by_sched_cls_.empty());
     ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
-    // TODO assert the new datastructure here.
   }
 
   void AssertPinnedTaskArgumentsPresent(const RayTask &task) {
@@ -1017,6 +1017,7 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
+
   AssertNoLeaks();
 }
 
