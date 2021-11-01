@@ -14,7 +14,7 @@ TEST_NAMESPACE = "jobs_test_namespace"
 
 @pytest.fixture(scope="session")
 def shared_ray_instance():
-    yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE)
+    yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE, log_to_driver=True)
 
 
 @pytest.fixture
