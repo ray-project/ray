@@ -661,7 +661,6 @@ def test_placement_group_local_resource_view(monkeypatch, shutdown_only):
         cluster.wait_for_nodes()
         cluster.add_node(num_cpus=16, num_gpus=1)
         cluster.wait_for_nodes()
-        RUNTIME = 600
         NUM_CPU_BUNDLES = 30
 
         @ray.remote(num_cpus=1)
@@ -672,7 +671,6 @@ def test_placement_group_local_resource_view(monkeypatch, shutdown_only):
             def work(self):
                 time.sleep(0.1)
                 print("work ", self.i)
-
 
         @ray.remote(num_cpus=1, num_gpus=1)
         class Trainer(object):
