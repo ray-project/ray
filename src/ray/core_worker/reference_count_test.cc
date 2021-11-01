@@ -84,7 +84,8 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
 class MockDistributedSubscriber;
 class MockDistributedPublisher;
 
-using ObjectToCallbackMap = std::unordered_map<ObjectID, pubsub::SubscriptionCallback>;
+using ObjectToCallbackMap =
+    std::unordered_map<ObjectID, pubsub::SubscriptionItemCallback>;
 using ObjectToFailureCallbackMap =
     std::unordered_map<ObjectID, pubsub::SubscriptionFailureCallback>;
 using SubscriptionCallbackMap = std::unordered_map<std::string, ObjectToCallbackMap>;
@@ -125,11 +126,12 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
   ~MockDistributedSubscriber() = default;
 
-  void Subscribe(
+  bool Subscribe(
       const std::unique_ptr<rpc::SubMessage> sub_message,
       const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
       const std::string &key_id_binary,
-      pubsub::SubscriptionCallback subscription_callback,
+      pubsub::SubscribeDoneCallback subscribe_done_callback,
+      pubsub::SubscriptionItemCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
     const auto &request = sub_message->worker_ref_removed_message();
     // Register the borrower callback first. It will be flushable by
@@ -163,12 +165,27 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
     const auto oid = ObjectID::FromBinary(key_id_binary);
     callback_it->second.emplace(oid, subscription_callback);
-    failure_callback_it->second.emplace(oid, subscription_failure_callback);
+    return failure_callback_it->second.emplace(oid, subscription_failure_callback).second;
+  }
+
+  bool SubscribeAll(
+      const std::unique_ptr<rpc::SubMessage> sub_message,
+      const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
+      pubsub::SubscribeDoneCallback subscribe_done_callback,
+      pubsub::SubscriptionItemCallback subscription_callback,
+      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
+    RAY_LOG(FATAL) << "Unimplemented!";
+    return false;
   }
 
   bool Unsubscribe(const rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
                    const std::string &key_id_binary) override {
+    return true;
+  }
+
+  bool Unsubscribe(const rpc::ChannelType channel_type,
+                   const rpc::Address &publisher_address) override {
     return true;
   }
 
@@ -206,7 +223,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const pubsub::SubscriberID &subscriber_id,
-                            const std::string &key_id_binary) {
+                            const std::optional<std::string> &key_id_binary) {
     RAY_CHECK(false) << "No need to implement it for testing.";
     return false;
   }
@@ -232,7 +249,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const pubsub::SubscriberID &subscriber_id,
-                              const std::string &key_id_binary) {
+                              const std::optional<std::string> &key_id_binary) {
     return true;
   }
 
@@ -308,7 +325,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
       for (const auto &callback_it : callback_map) {
         const auto object_id = callback_it.first;
         const auto failure_callback = callback_it.second;
-        failure_callback(object_id.Binary());
+        failure_callback(object_id.Binary(), Status::UnknownError("Test failure"));
       }
     }
     subscription_failure_callback_map.clear();

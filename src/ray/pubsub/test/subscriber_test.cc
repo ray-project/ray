@@ -302,8 +302,51 @@ TEST_F(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject) {
   objects_batched.push_back(object_id_not_subscribed);
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   ASSERT_EQ(object_subscribed_.count(object_id), 0);
-  // Since this object id wasn't subscribed, the callback shouldn't be called.
-  ASSERT_EQ(object_subscribed_.count(object_id_not_subscribed), 0);
+}
+
+TEST_F(SubscriberTest, TestSubscribeAllEntities) {
+  ///
+  /// Make sure SubscribeAll() can receive all entities from a channel.
+  ///
+
+  auto subscription_callback = [this](const rpc::PubMessage &msg) {
+    object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
+  };
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
+
+  const auto owner_addr = GenerateOwnerAddress();
+  subscriber_->SubscribeAll(std::make_unique<rpc::SubMessage>(), channel, owner_addr,
+                            /*subscribe_done_callback=*/{}, subscription_callback,
+                            failure_callback);
+  ASSERT_TRUE(owner_client->ReplyCommandBatch());
+  ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
+
+  // The object information is published.
+  std::vector<ObjectID> objects_batched;
+  for (int i = 0; i < 5; ++i) {
+    objects_batched.push_back(ObjectID::FromRandom());
+  }
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_EQ(object_subscribed_.count(objects_batched[i]), 1);
+  }
+  objects_batched.clear();
+  object_subscribed_.clear();
+
+  // New long polling should be made because the subscription is still alive.
+  ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
+
+  // The object information is published.
+  for (int i = 0; i < 10; ++i) {
+    objects_batched.push_back(ObjectID::FromRandom());
+  }
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_EQ(object_subscribed_.count(objects_batched[i]), 1);
+  }
+
+  // Unsubscribe from the channel.
+  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr));
 }
 
 TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
@@ -332,6 +375,37 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
   ASSERT_EQ(object_subscribed_.count(object_id), 0);
   // Make sure the long polling is not invoked since there's no more subscribed object to
   // this owner.
+  ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
+  ASSERT_TRUE(subscriber_->CheckNoLeaks());
+}
+
+TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscribeFromAll) {
+  ///
+  /// Make sure long polling is ignored after unsubscription from channel.
+  ///
+
+  auto subscription_callback = [this](const rpc::PubMessage &msg) {
+    object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
+  };
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
+
+  const auto owner_addr = GenerateOwnerAddress();
+  subscriber_->SubscribeAll(std::make_unique<rpc::SubMessage>(), channel, owner_addr,
+                            /*subscribe_done_callback=*/{}, subscription_callback,
+                            failure_callback);
+  ASSERT_TRUE(owner_client->ReplyCommandBatch());
+  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr));
+  ASSERT_TRUE(owner_client->ReplyCommandBatch());
+
+  const auto object_id = ObjectID::FromRandom();
+  std::vector<ObjectID> objects_batched;
+  objects_batched.push_back(object_id);
+  ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
+  // Make sure the returned object won't invoke the callback since the channel is already
+  // unsubscribed before long polling is replied.
+  ASSERT_EQ(object_subscribed_.count(object_id), 0);
+  // After the previous reply, no new long polling is invoked since the channel has been
+  // unsubscribed.
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
   ASSERT_TRUE(subscriber_->CheckNoLeaks());
 }

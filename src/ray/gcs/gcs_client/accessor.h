@@ -143,11 +143,11 @@ class ActorInfoAccessor {
   virtual bool IsActorUnsubscribed(const ActorID &actor_id);
 
  private:
-  // Mutex to protect the subscribe_operations_ field and fetch_data_operations_ field.
+  // Mutex to protect the resubscribe_operations_ field and fetch_data_operations_ field.
   absl::Mutex mutex_;
 
-  /// Save the subscribe operation of actors.
-  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_
+  /// Resubscribe operations for actors.
+  std::unordered_map<ActorID, SubscribeOperation> resubscribe_operations_
       GUARDED_BY(mutex_);
 
   /// Save the fetch data operation of actors.

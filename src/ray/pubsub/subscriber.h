@@ -83,7 +83,8 @@ class SubscriberChannel {
   /// \param publisher_address The publisher address that it will unsubscribe to.
   /// \param key_id The entity id to unsubscribe.
   /// \return True if the publisher is unsubscribed.
-  bool Unsubscribe(const rpc::Address &publisher_address, const std::string &key_id);
+  bool Unsubscribe(const rpc::Address &publisher_address,
+                   const std::optional<std::string> &key_id);
 
   /// Test only.
   /// Checks if the entity key_id is being subscribed to specifically.
@@ -203,10 +204,10 @@ class SubscriberInterface {
  public:
   /// There are two modes of subscriptions. Each channel can only be subscribed in one
   /// mode, i.e.
-  /// - Calling Subscribe() to subscribe to one or more entities from a channel
-  /// - Calling SubscribeAll() once to subscribe to all entities from a channel
-  /// It is an error to call Subscribe() and SubscribeAll() on the same channel type.
-  /// This restriction can be relaxed later, but we need a use case for it.
+  /// - Calling Subscribe() to subscribe to one or more entities in a channel
+  /// - Calling SubscribeAll() once to subscribe to all entities in a channel
+  /// It is an error to call both Subscribe() and SubscribeAll() on the same channel type.
+  /// This restriction can be relaxed later, if there is a use case.
 
   /// Subscribe to entity key_id in channel channel_type.
   /// NOTE(sang): All the callbacks could be executed in a different thread from a caller.
@@ -246,13 +247,22 @@ class SubscriberInterface {
   /// Unsubscribe the entity if the entity has been subscribed with Subscribe().
   /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
   ///
-  /// \param channel_type The channel to unsubscribe to.
-  /// \param publisher_address The publisher address that it will unsubscribe to.
+  /// \param channel_type The channel to unsubscribe from.
+  /// \param publisher_address The publisher address that it will unsubscribe from.
   /// \param key_id The entity id to unsubscribe.
   /// \return Returns whether the entity key_id has been subscribed before.
   virtual bool Unsubscribe(const rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
                            const std::string &key_id) = 0;
+
+  /// Unsubscribe from the channel_type. Must be paired with SubscribeAll().
+  /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
+  ///
+  /// \param channel_type The channel to unsubscribe from.
+  /// \param publisher_address The publisher address that it will unsubscribe from.
+  /// \return Returns whether the entity key_id has been subscribed before.
+  virtual bool Unsubscribe(const rpc::ChannelType channel_type,
+                           const rpc::Address &publisher_address) = 0;
 
   /// Test only.
   /// Checks if the entity key_id is being subscribed to specifically.
@@ -336,6 +346,9 @@ class Subscriber : public SubscriberInterface {
                    const rpc::Address &publisher_address,
                    const std::string &key_id) override;
 
+  bool Unsubscribe(const rpc::ChannelType channel_type,
+                   const rpc::Address &publisher_address) override;
+
   bool IsSubscribed(const rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
                     const std::string &key_id) const override;
@@ -362,6 +375,7 @@ class Subscriber : public SubscriberInterface {
   FRIEND_TEST(SubscriberTest, TestMultiLongPollingWithTheSameSubscription);
   FRIEND_TEST(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject);
   FRIEND_TEST(SubscriberTest, TestIgnoreBatchAfterUnsubscription);
+  FRIEND_TEST(SubscriberTest, TestIgnoreBatchAfterUnsubscribeFromAll);
   FRIEND_TEST(SubscriberTest, TestLongPollingFailure);
   FRIEND_TEST(SubscriberTest, TestUnsubscribeInSubscriptionCallback);
   FRIEND_TEST(SubscriberTest, TestCommandsCleanedUponPublishFailure);

@@ -293,18 +293,21 @@ Status GcsSubscriber::SubscribeActor(
       RAY_CHECK(msg.key_id() == id.Binary());
       subscribe(id, msg.actor_message());
     };
-    // TODO: fix error propagation.
     auto subscription_failure_callback = [id, done](const std::string &failed_id,
                                                     const Status &status) {
       RAY_CHECK(failed_id == id.Binary());
       RAY_LOG(WARNING) << "Subscription to Actor " << id.Hex()
                        << " failed: " << status.ToString();
     };
-    RAY_CHECK(subscriber_->Subscribe(
-        std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_ACTOR_CHANNEL,
-        gcs_address_, id.Binary(), [done](Status status) { done(status); },
-        std::move(subscription_callback), std::move(subscription_failure_callback)));
-    return Status::OK();
+    if (subscriber_->Subscribe(
+            std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_ACTOR_CHANNEL,
+            gcs_address_, id.Binary(), [done](Status status) { done(status); },
+            std::move(subscription_callback), std::move(subscription_failure_callback))) {
+      return Status::OK();
+    }
+    return Status::ObjectExists(
+        "Actor already subscribed. Please unsubscribe first if it needs to be "
+        "resubscribed.");
   }
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::ActorTableData actor_data;

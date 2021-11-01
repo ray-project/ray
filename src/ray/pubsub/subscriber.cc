@@ -48,7 +48,7 @@ bool SubscriberChannel::Subscribe(
 }
 
 bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
-                                    const std::string &key_id) {
+                                    const std::optional<std::string> &key_id) {
   cum_unsubscribe_requests_++;
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
 
@@ -56,15 +56,25 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
   if (subscription_it == subscription_map_.end()) {
     return false;
   }
-  RAY_CHECK(subscription_it->second.all_entities_subscription == nullptr);
-  auto &per_entity_subscription = subscription_it->second.per_entity_subscription;
-  auto subscription_callback_it = per_entity_subscription.find(key_id);
+  auto &subscription_index = subscription_it->second;
+
+  if (!key_id) {
+    RAY_CHECK(subscription_index.per_entity_subscription.empty());
+    const bool unsubscribed = subscription_index.all_entities_subscription != nullptr;
+    subscription_index.all_entities_subscription.reset();
+    subscription_map_.erase(subscription_it);
+    return unsubscribed;
+  }
+
+  RAY_CHECK(subscription_index.all_entities_subscription == nullptr);
+  auto &per_entity_subscription = subscription_index.per_entity_subscription;
+
+  auto subscription_callback_it = per_entity_subscription.find(*key_id);
   if (subscription_callback_it == per_entity_subscription.end()) {
     return false;
   }
   per_entity_subscription.erase(subscription_callback_it);
-  subscription_it = subscription_map_.find(publisher_id);
-  if (subscription_it->second.per_entity_subscription.size() == 0) {
+  if (per_entity_subscription.empty()) {
     subscription_map_.erase(subscription_it);
   }
   return true;
@@ -248,6 +258,21 @@ bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
   SendCommandBatchIfPossible(publisher_address);
 
   return Channel(channel_type)->Unsubscribe(publisher_address, key_id);
+}
+
+bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
+                             const rpc::Address &publisher_address) {
+  // Batch the unsubscribe command.
+  auto command = std::make_unique<CommandItem>();
+  command->cmd.set_channel_type(channel_type);
+  command->cmd.mutable_unsubscribe_message();
+
+  absl::MutexLock lock(&mutex_);
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  commands_[publisher_id].emplace(std::move(command));
+  SendCommandBatchIfPossible(publisher_address);
+
+  return Channel(channel_type)->Unsubscribe(publisher_address, std::nullopt);
 }
 
 bool Subscriber::IsSubscribed(const rpc::ChannelType channel_type,

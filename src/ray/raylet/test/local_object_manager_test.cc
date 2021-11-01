@@ -36,14 +36,16 @@ using ::testing::_;
 
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
-  void Subscribe(
+  bool Subscribe(
       const std::unique_ptr<rpc::SubMessage> sub_message,
       const rpc::ChannelType channel_type, const rpc::Address &owner_address,
       const std::string &key_id_binary,
-      pubsub::SubscriptionCallback subscription_callback,
+      pubsub::SubscribeDoneCallback subscribe_done_callback,
+      pubsub::SubscriptionItemCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
     callbacks.push_back(
         std::make_pair(ObjectID::FromBinary(key_id_binary), subscription_callback));
+    return true;
   }
 
   bool PublishObjectEviction() {
@@ -62,9 +64,20 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     return true;
   }
 
+  MOCK_METHOD6(SubscribeAll,
+               bool(std::unique_ptr<rpc::SubMessage> sub_message,
+                    const rpc::ChannelType channel_type,
+                    const rpc::Address &owner_address,
+                    pubsub::SubscribeDoneCallback subscribe_done_callback,
+                    pubsub::SubscriptionItemCallback subscription_callback,
+                    pubsub::SubscriptionFailureCallback subscription_failure_callback));
+
   MOCK_METHOD3(Unsubscribe, bool(const rpc::ChannelType channel_type,
                                  const rpc::Address &publisher_address,
                                  const std::string &key_id_binary));
+
+  MOCK_METHOD2(Unsubscribe, bool(const rpc::ChannelType channel_type,
+                                 const rpc::Address &publisher_address));
 
   MOCK_CONST_METHOD3(IsSubscribed, bool(const rpc::ChannelType channel_type,
                                         const rpc::Address &publisher_address,
@@ -73,7 +86,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
   MOCK_CONST_METHOD0(DebugString, std::string());
 
   rpc::ChannelType channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
-  std::deque<std::pair<ObjectID, pubsub::SubscriptionCallback>> callbacks;
+  std::deque<std::pair<ObjectID, pubsub::SubscriptionItemCallback>> callbacks;
 };
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
