@@ -28,10 +28,11 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
+from ray.rllib.utils.annotations import DeveloperAPI, override, \
     PublicAPI
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning, \
+    DEPRECATED_VALUE
 from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
