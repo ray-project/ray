@@ -170,7 +170,7 @@ class GcsClient:
         if reply.status.code == GcsCode.OK:
             return list(reply.results)
         else:
-            raise RuntimeError(f"Failed to list prefix of key {key} "
+            raise RuntimeError(f"Failed to list prefix {prefix} "
                                f"due to error {reply.status.message}")
 
     @staticmethod
