@@ -16,7 +16,7 @@
 #include "gtest/gtest.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/common/test_util.h"
-#include "mock/ray/gcs/gcs_client.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on
 
 namespace ray {

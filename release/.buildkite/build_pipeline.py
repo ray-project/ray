@@ -147,6 +147,12 @@ NIGHTLY_TESTS = {
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
     ],
+    "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
+        "aws_no_sync_down",
+        "aws_ssh_sync",
+        "aws_durable_upload",
+        "gcp_k8s_durable_upload",
+    ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "bookkeeping_overhead",
         "durable_trainable",
@@ -183,8 +189,7 @@ NIGHTLY_TESTS = {
         "serve_cluster_fault_tolerance",
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
-        "rte_many_tasks_actors",
-        "wheel_urls",
+        "rte_many_tasks_actors", "wheel_urls", "rte_ray_client"
     ],
 }
 
@@ -235,7 +240,7 @@ MANUAL_TESTS = {
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("serve"),
         SmokeTest("serve_failure"),
-    ]
+    ],
 }
 
 # This test suite holds "user" tests to test important user workflows
