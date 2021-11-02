@@ -476,7 +476,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Visible for testing.
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id, bool for_ref_removed,
                                          ReferenceTableProto *proto)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      LOCKS_EXCLUDED(mutex_);
 
  private:
   struct Reference {

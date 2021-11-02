@@ -703,6 +703,7 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
 bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
     const ObjectID &object_id, bool for_ref_removed,
     ReferenceCounter::ReferenceTableProto *proto) {
+  absl::MutexLock lock(&mutex_);
   ReferenceTable table;
   bool result = GetAndClearLocalBorrowersInternal(object_id, for_ref_removed, &table);
   ReferenceTableToProto(table, proto);
