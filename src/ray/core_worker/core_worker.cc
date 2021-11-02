@@ -654,7 +654,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
-  if (job_config_->max_pending_calls() != -1) {
+  if (job_config_->max_pending_calls() > 0) {
     RAY_LOG(INFO) << "Core worker actor task back pressure enabled. max_pending_calls "
                   << job_config_->max_pending_calls();
   } else {

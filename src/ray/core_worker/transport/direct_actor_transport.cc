@@ -63,7 +63,7 @@ void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
-  absl::MutexLock lock(&mu_);
+  absl::ReleasableMutexLock lock(&mu_);
   auto task_id = task_spec.TaskId();
   auto actor_id = task_spec.ActorId();
   RAY_LOG(DEBUG) << "Submitting task " << task_id;
@@ -75,6 +75,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   if (queue->second.state != rpc::ActorTableData::DEAD) {
     // We must release the lock before resolving the task dependencies since
     // the callback may get called in the same call stack.
+    lock.Release();
     uint64_t send_pos = task_spec.ActorCounter();
     resolver_.ResolveDependencies(task_spec, [this, send_pos, actor_id](Status status) {
       absl::MutexLock lock(&mu_);
@@ -460,7 +461,7 @@ bool CoreWorkerDirectActorTaskSubmitter::FullOfPendingTasks(const ActorID &actor
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
-  return it->second.max_pending_calls != -1 &&
+  return it->second.max_pending_calls > 0 &&
          it->second.cur_pending_calls >= it->second.max_pending_calls;
 }
 
