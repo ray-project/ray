@@ -2515,6 +2515,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/tune/framework",
+    main = "examples/tune/framework.py",
+    tags = ["team:ml", "examples", "examples_F"],
+    size = "medium",
+    srcs = ["examples/tune/framework.py"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "examples/two_trainer_workflow_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],

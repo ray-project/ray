@@ -13,7 +13,16 @@ logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger("tune_framework")
 
 
-def run():
+def run(smoke_test=False):
+    if smoke_test:
+        stop = {
+            "episode_reward_mean": 18.0,
+            "timesteps_total": 5000,
+            "time_total_s": 3000,
+        }
+    else:
+        stop = {"timesteps_total": 10}
+
     config = {
         "env": "PongNoFrameskip-v4",
         "framework": tune.grid_search(["tf", "torch"]),
@@ -37,11 +46,7 @@ def run():
     return tune.run(
         "APPO",
         config=config,
-        stop={
-            "episode_reward_mean": 18.0,
-            "timesteps_total": 5000000,
-            "time_total_s": 3000,
-        },
+        stop=stop,
         verbose=1,
         num_samples=1,
         progress_reporter=CLIReporter(
@@ -59,8 +64,24 @@ def run():
 
 
 if __name__ == "__main__":
-    ray.init()
+    import argparse
 
-    logger.info(run())
+    parser = argparse.ArgumentParser(
+        description="Tune+RLlib Example",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="Finish quickly for testing.")
+
+    args = parser.parse_args()
+
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    else:
+        ray.init()
+
+    run(smoke_test=args.smoke_test)
     ray.shutdown()

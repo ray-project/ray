@@ -28,9 +28,8 @@ if __name__ == "__main__":
 
     result = {
         "time_taken": end_time - start_time,
-        "trial_states": {
-            _get_trial_name(t): t.status for t in trials
-        },
+        "trial_states": {_get_trial_name(t): t.status
+                         for t in trials},
         # This test is to make sure Tune and RLlib run fine
         # using Anyscale connect. So we do NOT check the actual
         # learning results.
