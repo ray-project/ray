@@ -39,7 +39,7 @@ from ray.rllib.utils.error import EnvError, ERR_MSG_NO_GPUS, \
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
-from ray.rllib.utils.tf_ops import get_gpu_devices as get_tf_gpu_devices
+from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
@@ -664,11 +664,12 @@ class RolloutWorker(ParallelIteratorWorker):
                     "will discard all sampler outputs and keep only metrics.")
                 sample_async = True
             elif method == "is":
-                ise = ImportanceSamplingEstimator.create(self.io_context)
+                ise = ImportanceSamplingEstimator.\
+                    create_from_io_context(self.io_context)
                 self.reward_estimators.append(ise)
             elif method == "wis":
-                wise = WeightedImportanceSamplingEstimator.create(
-                    self.io_context)
+                wise = WeightedImportanceSamplingEstimator.\
+                    create_from_io_context(self.io_context)
                 self.reward_estimators.append(wise)
             else:
                 raise ValueError(

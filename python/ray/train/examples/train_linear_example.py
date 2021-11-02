@@ -25,8 +25,9 @@ class LinearDataset(torch.utils.data.Dataset):
         return len(self.x)
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer):
+def train_epoch(dataloader, model, loss_fn, optimizer, device):
     for X, y in dataloader:
+        X, y = X.to(device), y.to(device)
         # Compute prediction error
         pred = model(X)
         loss = loss_fn(pred, y)
@@ -37,12 +38,13 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
         optimizer.step()
 
 
-def validate_epoch(dataloader, model, loss_fn):
+def validate_epoch(dataloader, model, loss_fn, device):
     num_batches = len(dataloader)
     model.eval()
     loss = 0
     with torch.no_grad():
         for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
@@ -58,6 +60,9 @@ def train_func(config):
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
+    device = torch.device(f"cuda:{train.local_rank()}"
+                          if torch.cuda.is_available() else "cpu")
+
     train_dataset = LinearDataset(2, 5, size=data_size)
     val_dataset = LinearDataset(2, 5, size=val_size)
     train_loader = torch.utils.data.DataLoader(
@@ -70,7 +75,10 @@ def train_func(config):
         sampler=DistributedSampler(val_dataset))
 
     model = nn.Linear(1, hidden_size)
-    model = DistributedDataParallel(model)
+    model.to(device)
+    model = DistributedDataParallel(
+        model,
+        device_ids=[device.index] if torch.cuda.is_available() else None)
 
     loss_fn = nn.MSELoss()
 
@@ -79,17 +87,20 @@ def train_func(config):
     results = []
 
     for _ in range(epochs):
-        train_epoch(train_loader, model, loss_fn, optimizer)
-        result = validate_epoch(validation_loader, model, loss_fn)
+        train_epoch(train_loader, model, loss_fn, optimizer, device)
+        result = validate_epoch(validation_loader, model, loss_fn, device)
         train.report(**result)
         results.append(result)
 
     return results
 
 
-def train_linear(num_workers=2):
-    trainer = Trainer(TorchConfig(backend="gloo"), num_workers=num_workers)
-    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
+def train_linear(num_workers=2, use_gpu=False, epochs=3):
+    trainer = Trainer(
+        backend=TorchConfig(backend="gloo"),
+        num_workers=num_workers,
+        use_gpu=use_gpu)
+    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer.start()
     results = trainer.run(
         train_func,
@@ -116,6 +127,12 @@ if __name__ == "__main__":
         default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        help="Whether to use GPU for training.")
+    parser.add_argument(
+        "--epochs", type=int, default=3, help="Number of epochs to train for.")
+    parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
@@ -127,7 +144,10 @@ if __name__ == "__main__":
 
     if args.smoke_test:
         ray.init(num_cpus=2)
+        train_linear()
     else:
         ray.init(address=args.address)
-
-    train_linear(num_workers=args.num_workers)
+        train_linear(
+            num_workers=args.num_workers,
+            use_gpu=args.use_gpu,
+            epochs=args.epochs)
