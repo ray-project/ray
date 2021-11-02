@@ -1674,8 +1674,7 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
         }
         return true;
       },
-      /*max_pinned_task_arguments_bytes=*/1000
-      );
+      /*max_pinned_task_arguments_bytes=*/1000);
 
   RayTask task = CreateTask({}, /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({}, /*num_args=*/0, /*args=*/{});
@@ -1746,7 +1745,6 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   task_manager_.ScheduleAndDispatchTasks();
 
   ASSERT_EQ(num_callbacks, 1);
-
 
   current_time_ns_ += UNIT;
   ASSERT_FALSE(workers.back()->IsBlocked());
