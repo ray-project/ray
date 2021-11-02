@@ -85,7 +85,7 @@ class Experiment:
             max_failures=2)
     """
 
-    # Keys that will be present in `public_spec` dict.
+    # keys that will be present in `public_spec` dict
     PUBLIC_KEYS = {"stop", "num_samples"}
 
     def __init__(self,

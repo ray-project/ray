@@ -14,7 +14,6 @@ from ray.rllib.utils.typing import AgentID, PolicyID
 import psutil
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.trainer import Trainer
     from ray.rllib.evaluation import RolloutWorker
 
 
@@ -52,6 +51,8 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index: Obsoleted: The ID of the environment, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -72,17 +73,19 @@ class DefaultCallbacks:
         """Runs on each episode step.
 
         Args:
-            worker: Reference to the current rollout worker.
-            base_env: BaseEnv running the episode. The underlying
+            worker (RolloutWorker): Reference to the current rollout worker.
+            base_env (BaseEnv): BaseEnv running the episode. The underlying
                 sub environment objects can be retrieved by calling
                 `base_env.get_sub_environments()`.
-            policies: Mapping of policy id
+            policies (Optional[Dict[PolicyID, Policy]]): Mapping of policy id
                 to policy objects. In single agent mode there will only be a
                 single "default_policy".
-            episode: Episode object which contains episode
+            episode (Episode): Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -98,17 +101,19 @@ class DefaultCallbacks:
         """Runs when an episode is done.
 
         Args:
-            worker: Reference to the current rollout worker.
-            base_env: BaseEnv running the episode. The underlying
+            worker (RolloutWorker): Reference to the current rollout worker.
+            base_env (BaseEnv): BaseEnv running the episode. The underlying
                 sub environment objects can be retrieved by calling
                 `base_env.get_sub_environments()`.
-            policies: Mapping of policy id to policy
+            policies (Dict[PolicyID, Policy]): Mapping of policy id to policy
                 objects. In single agent mode there will only be a single
                 "default_policy".
-            episode: Episode object which contains episode
+            episode (Episode): Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
+                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -131,16 +136,16 @@ class DefaultCallbacks:
         settings.
 
         Args:
-            worker: Reference to the current rollout worker.
-            episode: Episode object.
-            agent_id: Id of the current agent.
-            policy_id: Id of the current policy for the agent.
-            policies: Mapping of policy id to policy objects. In single
+            worker (RolloutWorker): Reference to the current rollout worker.
+            episode (Episode): Episode object.
+            agent_id (str): Id of the current agent.
+            policy_id (str): Id of the current policy for the agent.
+            policies (dict): Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default_policy".
-            postprocessed_batch: The postprocessed sample batch
+            postprocessed_batch (SampleBatch): The postprocessed sample batch
                 for this agent. You can mutate this object to apply your own
                 trajectory postprocessing.
-            original_batches: Mapping of agents to their unpostprocessed
+            original_batches (dict): Mapping of agents to their unpostprocessed
                 trajectory data. You should not mutate this object.
             kwargs: Forward compatibility placeholder.
         """
@@ -159,8 +164,8 @@ class DefaultCallbacks:
         """Called at the end of RolloutWorker.sample().
 
         Args:
-            worker: Reference to the current rollout worker.
-            samples: Batch to be returned. You can mutate this
+            worker (RolloutWorker): Reference to the current rollout worker.
+            samples (SampleBatch): Batch to be returned. You can mutate this
                 object to modify the samples generated.
             kwargs: Forward compatibility placeholder.
         """
@@ -179,22 +184,21 @@ class DefaultCallbacks:
         `pad_batch_to_sequences_of_same_size`.
 
         Args:
-            policy: Reference to the current Policy object.
-            train_batch: SampleBatch to be trained on. You can
+            policy (Policy): Reference to the current Policy object.
+            train_batch (SampleBatch): SampleBatch to be trained on. You can
                 mutate this object to modify the samples generated.
-            result: A results dict to add custom metrics to.
+            result (dict): A results dict to add custom metrics to.
             kwargs: Forward compatibility placeholder.
         """
 
         pass
 
-    def on_train_result(self, *, trainer: "Trainer", result: dict,
-                        **kwargs) -> None:
+    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
         """Called at the end of Trainable.train().
 
         Args:
-            trainer: Current trainer instance.
-            result: Dict of results returned from trainer.train() call.
+            trainer (Trainer): Current trainer instance.
+            result (dict): Dict of results returned from trainer.train() call.
                 You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
