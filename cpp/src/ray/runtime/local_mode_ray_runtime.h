@@ -27,6 +27,7 @@ class LocalModeRayRuntime : public AbstractRayRuntime {
 
   ActorID GetNextActorID();
   ActorID GetCurrentActorID();
+  bool IsLocalMode() { return true; }
 };
 
 }  // namespace internal

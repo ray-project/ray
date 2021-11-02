@@ -1,7 +1,11 @@
-from typing import Any, Dict, Optional
-
-from pydantic import BaseModel
 from enum import Enum
+from typing import Any, Dict
+
+try:
+    from pydantic import BaseModel
+except ImportError:
+    # Lazy import without breaking class def
+    BaseModel = object
 
 
 class JobStatus(str, Enum):
@@ -29,13 +33,6 @@ class JobSpec(BaseModel):
 
 class JobSubmitRequest(BaseModel):
     job_spec: JobSpec
-    # Globally unique job id. It’s recommended to generate this id from
-    # external job manager first, then pass into this API.
-    # If job server never had a job running with given id:
-    #   - Start new job execution
-    # Else if job server has a running job with given id:
-    #   - Fail, deployment update and reconfigure should happen in job manager
-    job_id: Optional[str] = None
 
 
 class JobSubmitResponse(BaseModel):

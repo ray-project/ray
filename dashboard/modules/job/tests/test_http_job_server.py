@@ -2,7 +2,6 @@ import sys
 
 import logging
 import requests
-from uuid import uuid4
 import pytest
 from pytest_lazyfixture import lazy_fixture
 
@@ -36,22 +35,22 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
         runtime_env=working_dir["runtime_env"],
         entrypoint=working_dir["entrypoint"],
         metadata=dict())
-    submit_request = JobSubmitRequest(job_spec=job_spec, job_id=str(uuid4()))
+    submit_request = JobSubmitRequest(job_spec=job_spec)
 
     resp = requests.post(f"{webui_url}/submit", json=submit_request.dict())
     resp.raise_for_status()
     data = resp.json()["data"]["data"]
     response = JobSubmitResponse(**data)
-    assert response.job_id == submit_request.job_id
+    job_id = response.job_id
 
-    status_request = JobStatusRequest(job_id=submit_request.job_id)
+    status_request = JobStatusRequest(job_id=job_id)
     resp = requests.get(f"{webui_url}/status", json=status_request.dict())
     resp.raise_for_status()
     data = resp.json()["data"]["data"]
     response = JobStatusResponse(**data)
     assert response.job_status == JobStatus.SUCCEEDED
 
-    logs_request = JobLogsRequest(job_id=submit_request.job_id)
+    logs_request = JobLogsRequest(job_id=job_id)
     resp = requests.get(f"{webui_url}/logs", json=logs_request.dict())
     resp.raise_for_status()
     data = resp.json()["data"]["data"]

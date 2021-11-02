@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Type, Union
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
     clip_gradients, choose_optimizer
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -28,7 +28,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
+from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import AgentID, TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
@@ -325,7 +325,7 @@ def postprocess_trajectory(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
     """Postprocesses a trajectory and returns the processed trajectory.
 
     The trajectory contains only data from one episode and from one agent.
@@ -343,7 +343,7 @@ def postprocess_trajectory(
         other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
             dict of AgentIDs mapping to other agents' trajectory data (from the
             same episode). NOTE: The other agents use the same policy.
-        episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
+        episode (Optional[Episode]): Optional multi-agent episode
             object in which the agents operated.
 
     Returns:

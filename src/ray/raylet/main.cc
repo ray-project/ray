@@ -20,7 +20,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
       /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
+  gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet(nullptr);
