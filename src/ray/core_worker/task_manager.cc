@@ -350,7 +350,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
 }
 
 bool TaskManager::PendingTaskFailed(
-    const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+    const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
     const std::shared_ptr<rpc::RayException> &creation_task_exception,
     bool immediately_mark_object_fail) {
   // Note that this might be the __ray_terminate__ task, so we don't log
