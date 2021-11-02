@@ -147,7 +147,7 @@ class ParameterNoise(Exploration):
     def before_compute_actions(self,
                                *,
                                timestep: Optional[int] = None,
-                               explore: bool = None,
+                               explore: Optional[bool] = None,
                                tf_sess: Optional["tf.Session"] = None):
         explore = explore if explore is not None else \
             self.policy_config["explore"]
@@ -219,12 +219,8 @@ class ParameterNoise(Exploration):
         # Also see [1] for details.
         # TODO(sven): Find out whether this can be scrapped by simply using
         #  the `sample_batch` to get the noisy/noise-free action dist.
-        _, _, fetches = policy.compute_actions(
-            obs_batch=sample_batch[SampleBatch.CUR_OBS],
-            # TODO(sven): What about state-ins and seq-lens?
-            prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=sample_batch.get(SampleBatch.PREV_REWARDS),
-            explore=self.weights_are_currently_noisy)
+        _, _, fetches = policy.compute_actions_from_input_dict(
+            input_dict=sample_batch, explore=self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
         if policy.dist_class in (Categorical, TorchCategorical):
@@ -240,10 +236,8 @@ class ParameterNoise(Exploration):
         else:
             noise_free_action_dist = action_dist
 
-        _, _, fetches = policy.compute_actions(
-            obs_batch=sample_batch[SampleBatch.CUR_OBS],
-            prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=sample_batch.get(SampleBatch.PREV_REWARDS),
+        _, _, fetches = policy.compute_actions_from_input_dict(
+            input_dict=sample_batch,
             explore=not self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
@@ -424,5 +418,7 @@ class ParameterNoise(Exploration):
         # Set self.stddev to calculated value.
         if self.framework == "tf":
             self.stddev.load(self.stddev_val, session=sess)
-        else:
+        elif isinstance(self.stddev, float):
             self.stddev = self.stddev_val
+        else:
+            self.stddev.assign(self.stddev_val)

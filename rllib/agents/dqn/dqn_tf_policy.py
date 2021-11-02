@@ -20,8 +20,8 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.tf_ops import (huber_loss, make_tf_callable,
-                                    minimize_and_clip, reduce_mean_ignore_inf)
+from ray.rllib.utils.tf_utils import (
+    huber_loss, make_tf_callable, minimize_and_clip, reduce_mean_ignore_inf)
 from ray.rllib.utils.typing import (ModelGradients, TensorType,
                                     TrainerConfigDict)
 
@@ -348,7 +348,6 @@ def compute_q_values(policy: Policy,
 
     config = policy.config
 
-    input_batch["is_training"] = is_training
     model_out, state = model(input_batch, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:

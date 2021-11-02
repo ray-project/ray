@@ -5,6 +5,7 @@ Runs a couple of hard learning tests using Anyscale connect.
 
 import json
 import os
+import time
 
 import ray
 from ray.rllib.examples.tune.framework import run
@@ -17,11 +18,13 @@ if __name__ == "__main__":
     else:
         ray.init(address="auto")
 
+    start_time = time.time()
     results = run()
+    end_time = time.time()
 
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
                                       "/tmp/rllib_connect_tests.json")
     with open(test_output_json, "wt") as f:
-        json.dump(results, f)
+        json.dump({"time_taken": end_time - start_time}, f)
 
     print("Ok.")
