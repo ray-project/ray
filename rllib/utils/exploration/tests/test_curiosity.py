@@ -129,7 +129,7 @@ class TestCuriosity(unittest.TestCase):
         config = ppo.DEFAULT_CONFIG.copy()
         # A very large frozen-lake that's hard for a random policy to solve
         # due to 0.0 feedback.
-        config["env"] = "FrozenLake-v1"
+        config["env"] = "FrozenLake-v0"
         config["env_config"] = {
             "desc": [
                 "SFFFFFFF",

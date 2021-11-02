@@ -1,7 +1,7 @@
 # Pendulum SAC can attain -150+ reward in 6-7k
 # Configurations are the similar to original softlearning/sac codebase
 pendulum-sac:
-    env: Pendulum-v1
+    env: Pendulum-v0
     run: SAC
     stop:
         episode_reward_mean: -600

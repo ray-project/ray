@@ -29,7 +29,7 @@ class TestPG(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config):
-            for env in ["FrozenLake-v1", "CartPole-v0"]:
+            for env in ["FrozenLake-v0", "CartPole-v0"]:
                 trainer = pg.PGTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
