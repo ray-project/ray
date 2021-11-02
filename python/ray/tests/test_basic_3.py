@@ -4,7 +4,6 @@ import logging
 import os
 import sys
 import time
-import psutil
 import subprocess
 
 import numpy as np
@@ -20,6 +19,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from pathlib import Path
 
 import ray
+import psutil
 
 logger = logging.getLogger(__name__)
 
