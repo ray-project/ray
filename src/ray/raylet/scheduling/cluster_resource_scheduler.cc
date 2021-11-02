@@ -271,10 +271,15 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
+  auto spread_threshold = spread_threshold_;
+  // If the scheduling decision is made by gcs, we ignore the spread threshold
+  if (actor_creation && RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    spread_threshold = 1.0;
+  }
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      resource_request, local_node_id_, nodes_, spread_threshold_, force_spillback,
+      resource_request, local_node_id_, nodes_, spread_threshold, force_spillback,
       force_spillback, [this](auto node_id) { return this->NodeAlive(node_id); });
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
@@ -787,6 +792,10 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
         }
       }
     } else {
+      // Allocation failed because the custom resources don't exist in this local node.
+      // Restore node's local resources by freeing the resources
+      // of the failed allocation.
+      FreeTaskResourceInstances(task_allocation);
       return false;
     }
   }

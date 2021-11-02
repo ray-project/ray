@@ -115,6 +115,8 @@ class GcsRpcClient {
                                                                    client_call_manager);
     internal_kv_grpc_client_ = std::make_unique<GrpcClient<InternalKVGcsService>>(
         address, port, client_call_manager);
+    internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
+        address, port, client_call_manager);
   }
 
   /// Add job info to GCS Service.
@@ -292,6 +294,11 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVKeys,
                              internal_kv_grpc_client_, )
 
+  /// Operations for pubsub
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsSubscriberPoll,
+                             internal_pubsub_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsSubscriberCommandBatch,
+                             internal_pubsub_grpc_client_, )
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
@@ -308,6 +315,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
+  std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
 };
 
 }  // namespace rpc

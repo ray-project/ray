@@ -95,7 +95,7 @@ class TorchBackend(Backend):
     share_cuda_visible_devices: bool = True
 
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-        if len(worker_group) > 1 and dist.is_available():
+        if dist.is_available():
             # Set the appropriate training backend.
             if backend_config.backend is None:
                 if worker_group.num_gpus_per_worker > 0:
@@ -137,7 +137,7 @@ class TorchBackend(Backend):
                         timeout_s=backend_config.timeout_s))
             ray.get(setup_futures)
         else:
-            logger.info("Distributed torch is not being used.")
+            raise RuntimeError("Distributed torch is not available.")
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TorchConfig):

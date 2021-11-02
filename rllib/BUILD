@@ -1751,12 +1751,12 @@ py_test(
     srcs = ["tests/test_gpus.py"]
 )
 
-#py_test(
-#    name = "tests/test_ignore_worker_failure",
-#    tags = ["team:ml", "tests_dir", "tests_dir_I"],
-#    size = "large",
-#    srcs = ["tests/test_ignore_worker_failure.py"]
-#)
+py_test(
+    name = "tests/test_ignore_worker_failure",
+    tags = ["team:ml", "tests_dir", "tests_dir_I"],
+    size = "large",
+    srcs = ["tests/test_ignore_worker_failure.py"]
+)
 
 py_test(
     name = "tests/test_io",
@@ -2010,7 +2010,7 @@ py_test(
     name = "examples/bare_metal_policy_with_custom_view_reqs",
     main = "examples/bare_metal_policy_with_custom_view_reqs.py",
     tags = ["team:ml", "examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/bare_metal_policy_with_custom_view_reqs.py"],
 )
 
@@ -2716,14 +2716,6 @@ py_test(
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole_embeddings_learnt_by_model.py"],
     args = ["--as-test", "--stop-reward=80.0"]
-)
-
-py_test(
-    name = "examples/pettingzoo_env",
-    main = "examples/pettingzoo_env.py",
-    tags = ["team:ml", "examples", "examples_P"],
-    size = "medium",
-    srcs = ["examples/pettingzoo_env.py"],
 )
 
 py_test(

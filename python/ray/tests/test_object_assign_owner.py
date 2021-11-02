@@ -3,6 +3,31 @@ import ray
 import time
 
 
+# https://github.com/ray-project/ray/issues/19659
+def test_owner_assign_bug(ray_start_regular):
+    @ray.remote
+    class Owner:
+        pass
+
+    owner = Owner.remote()
+
+    @ray.remote
+    class Executor:
+        def f(self):
+            x = [ray.put("World", _owner=owner)]
+            print("World id:", x)
+            return x
+
+    e = Executor.remote()
+    [ref] = ray.get(e.f.remote())
+
+    time.sleep(1)
+    del e  # <------ this also seems to delete the "World" object
+    time.sleep(1)
+
+    print("Hello", ray.get(ref))
+
+
 @pytest.mark.parametrize(
     "actor_resources",
     [

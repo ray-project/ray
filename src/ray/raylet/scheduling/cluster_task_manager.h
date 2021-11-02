@@ -31,33 +31,81 @@
 namespace ray {
 namespace raylet {
 
-/// Work represents all the information needed to make a scheduling decision.
-/// This includes the task, the information we need to communicate to
-/// dispatch/spillback and the callback to trigger it.
-enum WorkStatus {
+namespace internal {
+
+enum class WorkStatus {
+  /// Waiting to be scheduled.
   WAITING,
+  /// Waiting for a worker to start.
   WAITING_FOR_WORKER,
+  /// Queued task has been cancelled.
   CANCELLED,
 };
 
-struct Work {
+/// This enum represents the cause of why work hasn't been scheduled yet.
+enum class UnscheduledWorkCause {
+  /// Waiting for acquiring resources.
+  WAITING_FOR_RESOURCE_ACQUISITION,
+  /// Waiting for more plasma store memory to be available. This is set when we can't pin
+  /// task
+  /// arguments due to the lack of memory.
+  WAITING_FOR_AVAILABLE_PLASMA_MEMORY,
+  /// Pending because there's no node that satisfies the resource in the cluster.
+  WAITING_FOR_RESOURCES_AVAILABLE,
+  /// Waiting because the worker wasn't available since job config for the worker wasn't
+  /// registered yet.
+  WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST,
+  /// Waiting becasue the worker wasn't available since it has registration timeout.
+  WORKER_NOT_FOUND_REGISTRATION_TIMEOUT,
+  /// Waiting because the worker wasn't available since it was rate limited.
+  WORKER_NOT_FOUND_RATE_LIMITED,
+};
+
+/// Work represents all the information needed to make a scheduling decision.
+/// This includes the task, the information we need to communicate to
+/// dispatch/spillback and the callback to trigger it.
+class Work {
+ public:
   RayTask task;
   rpc::RequestWorkerLeaseReply *reply;
   std::function<void(void)> callback;
   std::shared_ptr<TaskResourceInstances> allocated_instances;
-  WorkStatus status = WorkStatus::WAITING;
   Work(RayTask task, rpc::RequestWorkerLeaseReply *reply,
        std::function<void(void)> callback, WorkStatus status = WorkStatus::WAITING)
       : task(task),
         reply(reply),
         callback(callback),
         allocated_instances(nullptr),
-        status(status){};
+        status_(status){};
   Work(const Work &Work) = delete;
   Work &operator=(const Work &work) = delete;
+  ~Work() = default;
+
+  /// Set the state as waiting with the cause.
+  void SetStateWaiting(const UnscheduledWorkCause &cause) {
+    status_ = WorkStatus::WAITING;
+    unscheduled_work_cause_ = cause;
+  }
+
+  /// Set the state as waiting for workers, meaning it is waiting for workers to start.
+  void SetStateWaitingForWorker() { status_ = WorkStatus::WAITING_FOR_WORKER; }
+
+  /// Set the state as cancelled, meaning this task has to be unqueued from the node.
+  void SetStateCancelled() { status_ = WorkStatus::CANCELLED; }
+
+  WorkStatus GetState() const { return status_; }
+
+  UnscheduledWorkCause GetUnscheduledCause() const { return unscheduled_work_cause_; }
+
+ private:
+  WorkStatus status_ = WorkStatus::WAITING;
+  UnscheduledWorkCause unscheduled_work_cause_ =
+      UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION;
 };
 
 typedef std::function<const rpc::GcsNodeInfo *(const NodeID &node_id)> NodeInfoGetter;
+
+}  // namespace internal
 
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
 /// 1. Queue tasks for scheduling.
@@ -92,7 +140,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       TaskDependencyManagerInterface &task_dependency_manager,
       std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
-      NodeInfoGetter get_node_info,
+      internal::NodeInfoGetter get_node_info,
       std::function<void(const RayTask &)> announce_infeasible_task,
       WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -161,9 +209,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in] num_pending_tasks Number of pending tasks.
   /// \param[in] any_pending True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasks(RayTask *exemplar, bool *any_pending,
-                       int *num_pending_actor_creation,
-                       int *num_pending_tasks) const override;
+  bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar, bool *any_pending,
+                                             int *num_pending_actor_creation,
+                                             int *num_pending_tasks) const override;
 
   /// (Step 5) Call once a task finishes (i.e. a worker is returned).
   ///
@@ -215,8 +263,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   bool PoppedWorkerHandler(const std::shared_ptr<WorkerInterface> worker,
                            PopWorkerStatus status, const TaskID &task_id,
                            SchedulingClass scheduling_class,
-                           const std::shared_ptr<Work> &work, bool is_detached_actor,
-                           const rpc::Address &owner_address);
+                           const std::shared_ptr<internal::Work> &work,
+                           bool is_detached_actor, const rpc::Address &owner_address);
 
   /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
@@ -235,7 +283,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \returns true if the task was spilled. The task may not be spilled if the
   /// spillback policy specifies the local node (which may happen if no other nodes have
   /// the available resources).
-  bool TrySpillback(const std::shared_ptr<Work> &work, bool &is_infeasible);
+  bool TrySpillback(const std::shared_ptr<internal::Work> &work, bool &is_infeasible);
 
   /// Reiterate all local infeasible tasks and register them to task_to_schedule_ if it
   /// becomes feasible to schedule.
@@ -253,7 +301,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Function to check if the owner is alive on a given node.
   std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   /// Function to get the node information of a given node id.
-  NodeInfoGetter get_node_info_;
+  internal::NodeInfoGetter get_node_info_;
   /// Function to announce infeasible task to GCS.
   std::function<void(const RayTask &)> announce_infeasible_task_;
 
@@ -263,7 +311,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// through queues to cancel tasks, etc.
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
@@ -273,7 +321,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, in case a dependency gets evicted while the task
   /// is still queued.
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       tasks_to_dispatch_;
 
   /// Tasks waiting for arguments to be transferred locally.
@@ -292,15 +340,15 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// in this queue may not match the order in which we initially received the
   /// tasks. This also means that the PullManager may request dependencies for
   /// these tasks in a different order than the waiting task queue.
-  std::list<std::shared_ptr<Work>> waiting_task_queue_;
+  std::list<std::shared_ptr<internal::Work>> waiting_task_queue_;
 
   /// An index for the above queue.
-  absl::flat_hash_map<TaskID, std::list<std::shared_ptr<Work>>::iterator>
+  absl::flat_hash_map<TaskID, std::list<std::shared_ptr<internal::Work>>::iterator>
       waiting_tasks_index_;
 
   /// Queue of lease requests that are infeasible.
   /// Tasks go between scheduling <-> infeasible.
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       infeasible_tasks_;
 
   /// Track the backlog of all workers belonging to this raylet.
@@ -346,7 +394,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// or placed on a wait queue.
   ///
   /// \return True if the work can be immediately dispatched.
-  bool WaitForTaskArgsRequests(std::shared_ptr<Work> work);
+  bool WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work);
 
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
@@ -355,7 +403,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);
 
-  void Spillback(const NodeID &spillback_to, const std::shared_ptr<Work> &work);
+  void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
 
   /// Sum up the backlog size across all workers for a given scheduling class.
   int64_t TotalBacklogSize(SchedulingClass scheduling_class);
