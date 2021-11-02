@@ -1,0 +1,6 @@
+absl-py
+boto3
+botocore
+Cython
+IPython
+jinja2

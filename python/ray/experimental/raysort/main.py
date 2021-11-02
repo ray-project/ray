@@ -1,11 +1,13 @@
 import argparse
 import contextlib
 import csv
+import datetime
 import logging
 import os
 import random
 import subprocess
 import tempfile
+import time
 from typing import Callable, Dict, Iterable, List
 
 import numpy as np
@@ -24,6 +26,8 @@ Args = argparse.Namespace
 #     Parse Arguments
 # ------------------------------------------------------------
 
+STEPS = ["generate_input", "sort", "validate_output"]
+
 
 def get_args(*args, **kwargs):
     parser = argparse.ArgumentParser()
@@ -35,33 +39,33 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--total_data_size",
-        default=1 * 1000 * 1024 * 1024 * 1024,
+        default=2 * 1000 * 1024 * 1024 * 1024,
         type=ByteCount,
         help="total data size in bytes",
     )
     parser.add_argument(
-        "--num_mappers",
-        default=256,
-        type=int,
-        help="number of map tasks",
-    )
-    parser.add_argument(
-        "--num_mappers_per_round",
-        default=16,
-        type=int,
-        help="number of map tasks per first-stage merge tasks",
-    )
-    parser.add_argument(
-        "--num_reducers",
-        default=16,
-        type=int,
-        help="number of second-stage reduce tasks",
+        "--input_part_size",
+        default=2500 * 1024 * 1024,
+        type=ByteCount,
+        help="size in bytes of each map partition",
     )
     parser.add_argument(
         "--num_concurrent_rounds",
-        default=4,
+        default=2,
         type=int,
-        help="max number of rounds of map/merge tasks in flight",
+        help="how many rounds of tasks to run concurrently (1 or 2)",
+    )
+    parser.add_argument(
+        "--map_parallelism",
+        default=2,
+        type=int,
+        help="each round has `map_parallelism` map tasks per node",
+    )
+    parser.add_argument(
+        "--merge_factor",
+        default=2,
+        type=int,
+        help="each round has `map_parallelism / merge_factor` per node",
     )
     parser.add_argument(
         "--reducer_input_chunk",
@@ -87,24 +91,38 @@ def get_args(*args, **kwargs):
         action="store_true",
         help="if set, reducers will not write out results to disk",
     )
-    # Which tasks to run?
-    tasks_group = parser.add_argument_group(
-        "tasks to run", "if no task is specified, will run all tasks")
-    tasks = ["generate_input", "sort", "validate_output"]
-    for task in tasks:
-        tasks_group.add_argument(f"--{task}", action="store_true")
+    parser.add_argument(
+        "--skip_final_merge",
+        default=False,
+        action="store_true",
+        help="if set, will skip the second stage reduce tasks",
+    )
+    # Which steps to run?
+    steps_grp = parser.add_argument_group(
+        "steps to run", "if no  is specified, will run all steps")
+    for step in STEPS:
+        steps_grp.add_argument(f"--{step}", action="store_true")
+    return parser.parse_args(*args, **kwargs)
 
-    args = parser.parse_args(*args, **kwargs)
-    # Derive additional arguments.
-    args.input_part_size = ByteCount(args.total_data_size / args.num_mappers)
-    assert args.num_mappers % args.num_mappers_per_round == 0
-    args.num_rounds = int(args.num_mappers / args.num_mappers_per_round)
-    args.mount_points = _get_mount_points()
-    # If no tasks are specified, run all tasks.
+
+def derive_additional_args(args: Args):
+    args.run_id = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    # If no steps are specified, run all steps.
     args_dict = vars(args)
-    if not any(args_dict[task] for task in tasks):
-        for task in tasks:
-            args_dict[task] = True
+    if not any(args_dict[step] for step in STEPS):
+        for step in STEPS:
+            args_dict[step] = True
+
+    # Calculate additional parameters.
+    assert isinstance(args.num_workers, int), args
+    args.num_mappers = int(
+        np.ceil(args.total_data_size / args.input_part_size))
+    args.num_reducers = args.num_workers
+    assert args.map_parallelism % args.merge_factor == 0, args
+    args.merge_parallelism = args.map_parallelism // args.merge_factor
+    args.num_rounds = int(
+        np.ceil(args.num_mappers / args.num_workers / args.map_parallelism))
+    args.mount_points = _get_mount_points()
     return args
 
 
@@ -124,7 +142,7 @@ def _get_mount_points():
 
 
 def _part_info(args: Args, part_id: PartId, kind="input") -> PartInfo:
-    node = ray.worker.global_worker.node_ip_address
+    node = ray.util.get_node_ip_address()
     mnt = random.choice(args.mount_points)
     filepath = _get_part_path(mnt, part_id, kind)
     return PartInfo(part_id, node, filepath)
@@ -150,24 +168,28 @@ def generate_part(args: Args, part_id: PartId, size: RecordCount,
         [constants.GENSORT_PATH, f"-b{offset}", f"{size}", pinfo.path],
         check=True)
     logging.info(f"Generated input {pinfo}")
-    return pinfo
+    return pinfo, size
 
 
 def generate_input(args: Args):
     if args.skip_input:
         return
+    total_size = constants.bytes_to_records(args.total_data_size)
     size = constants.bytes_to_records(args.input_part_size)
     offset = 0
     tasks = []
     for part_id in range(args.num_mappers):
-        tasks.append(generate_part.remote(args, part_id, size, offset))
+        node = args.node_resources[part_id % args.num_workers]
+        tasks.append(
+            generate_part.options(**_node_res(node)).remote(
+                args, part_id, min(size, total_size - offset), offset))
         offset += size
-    assert offset == constants.bytes_to_records(args.total_data_size), args
     logging.info(f"Generating {len(tasks)} partitions")
     parts = ray.get(tasks)
+    assert sum([s for _, s in parts]) == total_size, (parts, args)
     with open(constants.INPUT_MANIFEST_FILE, "w") as fout:
         writer = csv.writer(fout)
-        writer.writerows(parts)
+        writer.writerows([p for p, _ in parts])
 
 
 # ------------------------------------------------------------
@@ -177,7 +199,10 @@ def generate_input(args: Args):
 
 def _load_manifest(args: Args, path: Path) -> List[PartInfo]:
     if args.skip_input:
-        return [PartInfo(i, None, None) for i in range(args.num_mappers)]
+        return [
+            PartInfo(i, args.node_resources[i % args.num_workers], None)
+            for i in range(args.num_mappers)
+        ]
     with open(path) as fin:
         reader = csv.reader(fin)
         return [
@@ -186,10 +211,18 @@ def _load_manifest(args: Args, path: Path) -> List[PartInfo]:
         ]
 
 
+def _generate_partition(part_size: int) -> np.ndarray:
+    num_records = part_size // 100
+    mat = np.empty((num_records, 100), dtype=np.uint8)
+    mat[:, :10] = np.frombuffer(
+        np.random.default_rng().bytes(num_records * 10),
+        dtype=np.uint8).reshape((num_records, -1))
+    return mat.flatten()
+
+
 def _load_partition(args: Args, path: Path) -> np.ndarray:
     if args.skip_input:
-        return np.frombuffer(
-            np.random.bytes(args.input_part_size), dtype=np.uint8).copy()
+        return _generate_partition(args.input_part_size)
     return np.fromfile(path, dtype=np.uint8)
 
 
@@ -209,11 +242,13 @@ def _dummy_sort_and_partition(part: np.ndarray,
 @tracing_utils.timeit("map")
 def mapper(args: Args, mapper_id: PartId, boundaries: List[int],
            path: Path) -> List[np.ndarray]:
-    logging_utils.init()
+    start_time = time.time()
     part = _load_partition(args, path)
+    load_duration = time.time() - start_time
     sort_fn = _dummy_sort_and_partition \
         if args.skip_sorting else sortlib.sort_and_partition
     blocks = sort_fn(part, boundaries)
+    tracing_utils.record_value("map_disk_time", load_duration)
     return [part[offset:offset + size] for offset, size in blocks]
 
 
@@ -239,22 +274,25 @@ def _merge_impl(args: Args,
     merge_fn = _dummy_merge if args.skip_sorting else sortlib.merge_partitions
     merger = merge_fn(M, get_block)
 
+    total_disk_time = 0
     if skip_output:
         for datachunk in merger:
             del datachunk
     else:
         with open(pinfo.path, "wb") as fout:
             for datachunk in merger:
+                start = time.time()
                 fout.write(datachunk)
-    return pinfo
+                total_disk_time += time.time() - start
+    return pinfo, total_disk_time
 
 
 # See worker_placement_groups() for why `num_cpus=0`.
 @ray.remote(num_cpus=0, resources={"worker": 1})
 @tracing_utils.timeit("merge")
-def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
+def merge_mapper_blocks(args: Args, reducer_id: PartId, merge_id: PartId,
                         *blocks: List[np.ndarray]) -> PartInfo:
-    part_id = constants.merge_part_ids(reducer_id, mapper_id)
+    part_id = constants.merge_part_ids(reducer_id, merge_id)
     pinfo = _part_info(args, part_id, kind="temp")
     M = len(blocks)
 
@@ -263,7 +301,9 @@ def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
             return None
         return blocks[i]
 
-    return _merge_impl(args, M, pinfo, get_block)
+    _, total_disk_time = _merge_impl(args, M, pinfo, get_block)
+    tracing_utils.record_value("merge_disk_time", total_disk_time)
+    return pinfo
 
 
 # See worker_placement_groups() for why `num_cpus=0`.
@@ -271,9 +311,12 @@ def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
 @tracing_utils.timeit("reduce")
 def final_merge(args: Args, reducer_id: PartId,
                 *merged_parts: List[PartInfo]) -> PartInfo:
-    M = len(merged_parts)
+    if args.skip_final_merge:
+        return
 
     def _load_block_chunk(pinfo: PartInfo, d: int) -> np.ndarray:
+        if pinfo is None:
+            return None
         return np.fromfile(
             pinfo.path,
             dtype=np.uint8,
@@ -282,12 +325,14 @@ def final_merge(args: Args, reducer_id: PartId,
 
     def get_block(i, d):
         ret = _load_block_chunk(merged_parts[i], d)
-        if ret.size == 0:
+        if ret is None or ret.size == 0:
             return None
         return ret
 
+    M = len(merged_parts)
     pinfo = _part_info(args, reducer_id, "output")
-    return _merge_impl(args, M, pinfo, get_block, args.skip_output)
+    ret, _ = _merge_impl(args, M, pinfo, get_block, args.skip_output)
+    return ret
 
 
 def _node_res(node: str) -> Dict[str, float]:
@@ -316,48 +361,68 @@ def worker_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
             ray.util.remove_placement_group(pg)
 
 
+@ray.remote(num_cpus=0)
+def benchmark(args):
+    boundaries = sortlib.get_boundaries(16)
+    start = time.time()
+    part = _generate_partition(args.input_part_size)
+    sort_start = time.time()
+    sortlib.sort_and_partition(part, boundaries)
+    sort_duration = time.time() - sort_start
+    gen_duration = sort_start - start
+    return gen_duration, sort_duration
+
+
 @tracing_utils.timeit("sort", report_time=True)
 def sort_main(args: Args):
     parts = _load_manifest(args, constants.INPUT_MANIFEST_FILE)
     assert len(parts) == args.num_mappers
     boundaries = sortlib.get_boundaries(args.num_reducers)
 
-    mapper_opt = {
-        "num_returns": args.num_reducers,
-        "num_cpus": os.cpu_count() / args.num_concurrent_rounds,
-    }  # Load balance across worker nodes by setting `num_cpus`.
+    mapper_opt = {"num_returns": args.num_reducers}
     merge_results = np.empty(
-        (args.num_rounds, args.num_reducers), dtype=object)
+        (args.num_rounds * args.merge_parallelism, args.num_reducers),
+        dtype=object)
+    num_map_tasks_per_round = args.num_workers * args.map_parallelism
 
     part_id = 0
     with worker_placement_groups(args) as pgs:
         for round in range(args.num_rounds):
-            # Limit the number of in-flight rounds.
+            # Submit map tasks.
+            num_map_tasks = min(num_map_tasks_per_round,
+                                args.num_mappers - part_id)
+            map_results = np.empty(
+                (num_map_tasks, args.num_reducers), dtype=object)
+            for _ in range(num_map_tasks):
+                _, node, path = parts[part_id]
+                opt = dict(**mapper_opt, **_node_res(node))
+                m = part_id % num_map_tasks_per_round
+                map_results[m, :] = mapper.options(**opt).remote(
+                    args, part_id, boundaries, path)
+                part_id += 1
+
+            # Make sure previous rounds finish before scheduling merge tasks.
             num_extra_rounds = round - args.num_concurrent_rounds + 1
             if num_extra_rounds > 0:
                 ray.wait(
                     [f for f in merge_results.flatten() if f is not None],
                     num_returns=num_extra_rounds * args.num_reducers)
 
-            # Submit map tasks.
-            mapper_results = np.empty(
-                (args.num_mappers_per_round, args.num_reducers), dtype=object)
-            for _ in range(args.num_mappers_per_round):
-                _, node, path = parts[part_id]
-                m = part_id % args.num_mappers_per_round
-                mapper_results[m, :] = mapper.options(**mapper_opt).remote(
-                    args, part_id, boundaries, path)
-                part_id += 1
-
             # Submit merge tasks.
-            merge_results[round, :] = [
-                merge_mapper_blocks.options(placement_group=pgs[r]).remote(
-                    args, r, round, *mapper_results[:, r].tolist())
-                for r in range(args.num_reducers)
-            ]
+            for j in range(args.merge_parallelism):
+                m = round * args.merge_parallelism + j
+                f = int(np.ceil(num_map_tasks / args.merge_parallelism))
+                merge_results[m, :] = [
+                    merge_mapper_blocks.options(placement_group=pgs[r]).remote(
+                        args, r, m,
+                        *map_results[j * f:(j + 1) * f, r].flatten().tolist())
+                    for r in range(args.num_reducers)
+                ]
 
-            # Delete local references to mapper results.
-            mapper_results = None
+            # Wait for at least one map task from this round to finish before
+            # scheduling the next round.
+            ray.wait(map_results.flatten().tolist(), num_returns=1)
+            map_results = None
 
         # Submit second-stage reduce tasks.
         reducer_results = [
@@ -367,7 +432,7 @@ def sort_main(args: Args):
         ]
         reducer_results = ray.get(reducer_results)
 
-    if not args.skip_output:
+    if not args.skip_output and not args.skip_final_merge:
         with open(constants.OUTPUT_MANIFEST_FILE, "w") as fout:
             writer = csv.writer(fout)
             writer.writerows(reducer_results)
@@ -421,24 +486,44 @@ def validate_output(args: Args):
 # ------------------------------------------------------------
 
 
+def performance_report(args: Args, agent: ray.actor.ActorHandle):
+    report = agent.report.remote()
+    trace = agent.create_trace.remote()
+    print(ray.get(report))
+    filename = f"/tmp/raysort-{args.run_id}.json"
+    with open(filename, "w") as fout:
+        fout.write(ray.get(trace))
+    logging.info(f"Exported RaySort timeline to {filename}")
+
+
 def init(args: Args):
     if not args.ray_address:
-        ray.init(resources={"worker": os.cpu_count()})
+        ray.init(resources={"worker": os.cpu_count() // 2})
     else:
         ray.init(address=args.ray_address)
     logging_utils.init()
-    logging.info(args)
     os.makedirs(constants.WORK_DIR, exist_ok=True)
     resources = ray.cluster_resources()
-    logging.info(resources)
-    args.num_workers = resources["worker"]
+    logging.info(f"Cluster resources: {resources}")
+    args.num_workers = int(resources["worker"])
+    head_addr = ray.util.get_node_ip_address()
+    if not args.ray_address:
+        args.node_resources = [head_addr] * args.num_workers
+    else:
+        args.node_resources = [
+            r.split(":")[1] for r in resources
+            if r.startswith("node:") and r != f"node:{head_addr}"
+        ]
+    assert args.num_workers == len(args.node_resources), args
+    derive_additional_args(args)
+    logging.info(args)
     progress_tracker = tracing_utils.create_progress_tracker(args)
     return progress_tracker
 
 
 def main(args: Args):
     # Keep the actor handle in scope for the duration of the program.
-    _progress_tracker = init(args)  # noqa F841
+    agent = init(args)  # noqa F841
 
     if args.generate_input:
         generate_input(args)
@@ -448,6 +533,8 @@ def main(args: Args):
 
     if args.validate_output:
         validate_output(args)
+
+    performance_report(args, agent)
 
 
 if __name__ == "__main__":
