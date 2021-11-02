@@ -499,7 +499,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
   builder.SetCommonTaskSpec(TaskID::Nil(), "dummy_task", Language::PYTHON,
                             function_descriptor, JobID::Nil(), TaskID::Nil(), 0,
                             TaskID::Nil(), empty_address, 1, resources, resources,
-                            std::make_pair(PlacementGroupID::Nil(), -1), true, "");
+                            std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0);
   return builder.Build();
 }
 
@@ -1228,12 +1228,6 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   RAY_LOG(INFO) << "Test different resources";
   TestSchedulingKey(store, BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources2, descriptor1));
-
-  // Tasks with different function descriptors do not request different worker leases.
-  RAY_LOG(INFO) << "Test different descriptors";
-  TestSchedulingKey(store, BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources1, descriptor2),
                     BuildTaskSpec(resources2, descriptor1));
 
   ObjectID direct1 = ObjectID::FromRandom();
