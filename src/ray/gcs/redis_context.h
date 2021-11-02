@@ -122,8 +122,7 @@ class RedisCallbackManager {
     CallbackItem() = default;
 
     CallbackItem(const RedisCallback &callback,
-                 std::optional<std::string> subscribe_channel,
-                 int64_t start_time,
+                 std::optional<std::string> subscribe_channel, int64_t start_time,
                  instrumented_io_context &io_service)
         : callback_(callback),
           subscribe_channel_(subscribe_channel),
@@ -133,7 +132,7 @@ class RedisCallbackManager {
     void Dispatch(std::shared_ptr<CallbackReply> &reply) {
       std::shared_ptr<CallbackItem> self = shared_from_this();
       if (callback_ != nullptr) {
-        if(subscribe_channel_) {
+        if (subscribe_channel_) {
           io_service_->post([self, reply]() { self->callback_(std::move(reply)); },
                             "RedisCallbackManager.Pubsub." + *subscribe_channel_);
         } else {
@@ -143,9 +142,7 @@ class RedisCallbackManager {
       }
     }
 
-    bool IsSubscription() const {
-      return subscribe_channel_ != std::nullopt;
-    }
+    bool IsSubscription() const { return subscribe_channel_ != std::nullopt; }
 
     RedisCallback callback_;
     std::optional<std::string> subscribe_channel_;
@@ -157,7 +154,8 @@ class RedisCallbackManager {
   int64_t AllocateCallbackIndex();
 
   /// Add a callback at an optionally specified index.
-  int64_t AddCallback(const RedisCallback &function, std::optional<std::string> subscribe_channel,
+  int64_t AddCallback(const RedisCallback &function,
+                      std::optional<std::string> subscribe_channel,
                       instrumented_io_context &io_service, int64_t callback_index = -1);
 
   /// Remove a callback.

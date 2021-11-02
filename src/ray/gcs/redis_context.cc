@@ -224,7 +224,7 @@ int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
                                           instrumented_io_context &io_service,
                                           int64_t callback_index) {
   auto start_time = absl::GetCurrentTimeNanos() / 1000;
-  if(subscribe_channel) {
+  if (subscribe_channel) {
     RAY_LOG(DEBUG) << "Add callback for channel " << *subscribe_channel;
   }
   std::lock_guard<std::mutex> lock(mutex_);
@@ -233,9 +233,9 @@ int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
     callback_index = num_callbacks_;
     num_callbacks_++;
   }
-  callback_items_.emplace(
-      callback_index,
-      std::make_shared<CallbackItem>(function, subscribe_channel, start_time, io_service));
+  callback_items_.emplace(callback_index,
+                          std::make_shared<CallbackItem>(function, subscribe_channel,
+                                                         start_time, io_service));
   return callback_index;
 }
 
@@ -436,8 +436,8 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
     argv.push_back(args[i].data());
     argc.push_back(args[i].size());
   }
-  int64_t callback_index =
-      RedisCallbackManager::instance().AddCallback(redis_callback, std::nullopt, io_service_);
+  int64_t callback_index = RedisCallbackManager::instance().AddCallback(
+      redis_callback, std::nullopt, io_service_);
   // Run the Redis command.
   Status status = redis_async_context_->RedisAsyncCommandArgv(
       reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
@@ -452,9 +452,10 @@ Status RedisContext::SubscribeAsync(const NodeID &node_id,
   RAY_CHECK(pubsub_channel != TablePubsub::NO_PUBLISH)
       << "Client requested subscribe on a table that does not support pubsub";
   RAY_CHECK(async_redis_subscribe_context_);
-  auto channel_name = rpc::TablePubsub_descriptor()->FindValueByNumber(pubsub_channel)->name();
-  int64_t callback_index =
-      RedisCallbackManager::instance().AddCallback(redisCallback, channel_name, io_service_);
+  auto channel_name =
+      rpc::TablePubsub_descriptor()->FindValueByNumber(pubsub_channel)->name();
+  int64_t callback_index = RedisCallbackManager::instance().AddCallback(
+      redisCallback, channel_name, io_service_);
   RAY_CHECK(out_callback_index != nullptr);
   *out_callback_index = callback_index;
   Status status = Status::OK();

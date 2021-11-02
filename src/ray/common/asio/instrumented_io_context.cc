@@ -13,14 +13,16 @@
 // limitations under the License.
 
 #include "ray/common/asio/instrumented_io_context.h"
+
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <utility>
-#include "ray/stats/metric.h"
+
 #include "ray/common/asio/asio_chaos.h"
 #include "ray/common/asio/asio_util.h"
+#include "ray/stats/metric.h"
 
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(operation_run_time_ms, "operation execution time", ("Method"), (),
@@ -67,7 +69,6 @@ std::string to_human_readable(int64_t duration) {
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    const std::string name) {
-
   if (RayConfig::instance().event_stats()) {
     // References are only invalidated upon deletion of the corresponding item from the
     // table, which we won't do until this io_context is deleted. Provided that
@@ -76,11 +77,11 @@ void instrumented_io_context::post(std::function<void()> handler,
     // readers lock in the callback.
     const auto stats_handle = RecordStart(name);
     handler = [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-                RecordExecution(handler, std::move(stats_handle));
-              };
+      RecordExecution(handler, std::move(stats_handle));
+    };
   }
   auto defer_ms = ray::asio::testing::get_delay_ms(name);
-  if(defer_ms == 0) {
+  if (defer_ms == 0) {
     boost::asio::io_context::post(std::move(handler));
   } else {
     RAY_LOG(ERROR) << "Defer " << name << " by " << defer_ms << "ms";
@@ -91,7 +92,7 @@ void instrumented_io_context::post(std::function<void()> handler,
 void instrumented_io_context::post(std::function<void()> handler,
                                    std::shared_ptr<StatsHandle> stats_handle) {
   size_t defer_ms = 0;
-  if(stats_handle) {
+  if (stats_handle) {
     defer_ms = ray::asio::testing::get_delay_ms(stats_handle->handler_name);
   }
   if (RayConfig::instance().event_stats()) {
@@ -100,10 +101,10 @@ void instrumented_io_context::post(std::function<void()> handler,
     // TODO(ekl) it would be nice to track this delay too,.
     stats_handle->ZeroAccumulatedQueuingDelay();
     handler = [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-                RecordExecution(handler, std::move(stats_handle));
-              };
+      RecordExecution(handler, std::move(stats_handle));
+    };
   }
-  if(defer_ms == 0) {
+  if (defer_ms == 0) {
     return boost::asio::io_context::post(std::move(handler));
   } else {
     execute_after(*this, std::move(handler), defer_ms);
