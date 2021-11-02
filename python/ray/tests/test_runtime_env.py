@@ -247,6 +247,8 @@ def runtime_env_local_dev_env_var():
     del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_runtime_env_no_spurious_resource_deadlock_msg(
         runtime_env_local_dev_env_var, ray_start_regular, error_pubsub):
     p = error_pubsub
