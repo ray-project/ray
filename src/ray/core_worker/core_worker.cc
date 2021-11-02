@@ -553,8 +553,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       rpc_address_,
       /*object_info_publisher=*/object_info_publisher_.get(),
       /*object_info_subscriber=*/object_info_subscriber_.get(),
-      RayConfig::instance().lineage_pinning_enabled(),
-      RayConfig::instance().lineage_eviction_factor(), [this](const rpc::Address &addr) {
+      RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
@@ -632,7 +631,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           }
         }
       },
-      check_node_alive_fn, reconstruct_object_callback, push_error_callback));
+      check_node_alive_fn, reconstruct_object_callback, push_error_callback,
+      RayConfig::instance().max_lineage_bytes()));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors

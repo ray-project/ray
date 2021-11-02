@@ -84,9 +84,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   {
     absl::MutexLock lock(&mu_);
-    RAY_CHECK(submissible_tasks_
-                  .emplace(spec.TaskId(), TaskEntry(spec, max_retries, num_returns))
-                  .second);
+    auto inserted = submissible_tasks_.emplace(spec.TaskId(),
+                                               TaskEntry(spec, max_retries, num_returns));
+    RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
 
@@ -107,6 +107,10 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     if (!it->second.pending) {
       resubmit = true;
       it->second.pending = true;
+
+      total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
+      it->second.lineage_footprint_bytes = 0;
+
       if (it->second.num_retries_left > 0) {
         it->second.num_retries_left--;
       } else {
@@ -273,6 +277,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
   TaskSpecification spec;
   bool release_lineage = true;
+  bool evict_all_lineage = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -304,12 +309,24 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
+      it->second.lineage_footprint_bytes = it->second.spec.GetMessage().ByteSizeLong();
+      total_lineage_footprint_bytes_ += it->second.lineage_footprint_bytes;
+      if (total_lineage_footprint_bytes_ > max_lineage_bytes_) {
+        RAY_LOG(INFO) << "Evicting task lineage. Total lineage size is "
+                      << total_lineage_footprint_bytes_ / 1e6
+                      << "MB, which exceeds the limit of " << max_lineage_bytes_ / 1e6
+                      << "MB";
+        evict_all_lineage = true;
+      }
     } else {
       submissible_tasks_.erase(it);
     }
   }
 
   RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
+  if (evict_all_lineage) {
+    reference_counter_->EvictAllLineage();
+  }
 
   ShutdownIfNeeded();
 }

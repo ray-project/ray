@@ -687,7 +687,7 @@ def test_lineage_evicted(ray_start_cluster, reconstruction_enabled):
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
         "object_timeout_milliseconds": 200,
-        "lineage_eviction_factor": 10,
+        "max_lineage_bytes": 10_000,
     }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
@@ -704,7 +704,7 @@ def test_lineage_evicted(ray_start_cluster, reconstruction_enabled):
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
-    @ray.remote(max_retries=1 if reconstruction_enabled else 0)
+    @ray.remote
     def large_object():
         return np.zeros(10**7, dtype=np.uint8)
 
@@ -733,7 +733,7 @@ def test_lineage_evicted(ray_start_cluster, reconstruction_enabled):
             ray.get(obj)
 
     # Lineage now exceeds the eviction factor.
-    for _ in range(10):
+    for _ in range(100):
         obj = chain.remote(obj)
     ray.get(dependent_task.remote(obj))
 

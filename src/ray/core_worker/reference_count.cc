@@ -185,8 +185,6 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
     // We eagerly add the pinned location to the set of object locations.
     AddObjectLocationInternal(it, pinned_at_raylet_id.value());
   }
-  owned_objects_in_scope_.insert(object_id);
-  owned_lineage_.insert(object_id);
 }
 
 void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {
@@ -486,8 +484,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         DeleteReferenceInternal(inner_it, deleted);
       }
     }
-
-    owned_objects_in_scope_.erase(id);
   }
 
   // Perform the deletion.
@@ -499,7 +495,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   }
   if (it->second.ShouldDelete(lineage_pinning_enabled_) && should_delete_ref) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
-    owned_lineage_.erase(id);
     // TODO(swang): Update lineage_ref_count for nested objects?
     if (on_lineage_released_ && it->second.owned_by_us) {
       RAY_LOG(DEBUG) << "Releasing lineage for object " << id;
@@ -512,23 +507,23 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     object_id_refs_.erase(it);
     ShutdownIfNeeded();
   }
+}
 
-  if (lineage_eviction_factor_ > 0 &&
-      owned_lineage_.size() > owned_objects_in_scope_.size() * lineage_eviction_factor_) {
-    RAY_LOG(INFO) << "Evicting object lineage because there are "
-                  << owned_objects_in_scope_.size() << " owned objects in scope and "
-                  << owned_lineage_.size()
-                  << " lineage entries, which exceeds the maximum lineage size of "
-                  << owned_objects_in_scope_.size() * lineage_eviction_factor_;
-    for (const auto &obj_id : owned_objects_in_scope_) {
-      RAY_LOG(DEBUG) << "Evicting lineage for object " << obj_id;
-      auto it = object_id_refs_.find(obj_id);
-      RAY_CHECK(it != object_id_refs_.end());
-      it->second.lineage_evicted = true;
-      std::vector<ObjectID> ids_to_release;
-      on_lineage_released_(obj_id, &ids_to_release);
-      ReleaseLineageReferencesInternal(ids_to_release);
+void ReferenceCounter::EvictAllLineage() {
+  absl::MutexLock lock(&mutex_);
+  // Make a copy since we will mutate object_id_refs_.
+  std::vector<ObjectID> owned_objects_in_scope;
+  for (auto &ref : object_id_refs_) {
+    if (!ref.second.OutOfScope(lineage_pinning_enabled_) && ref.second.owned_by_us) {
+      owned_objects_in_scope.push_back(ref.first);
+      ref.second.lineage_evicted = true;
     }
+  }
+
+  for (const auto &obj_id : owned_objects_in_scope) {
+    std::vector<ObjectID> ids_to_release;
+    on_lineage_released_(obj_id, &ids_to_release);
+    ReleaseLineageReferencesInternal(ids_to_release);
   }
 }
 

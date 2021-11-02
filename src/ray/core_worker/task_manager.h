@@ -77,14 +77,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               RetryTaskCallback retry_task_callback,
               const std::function<bool(const NodeID &node_id)> &check_node_alive,
               ReconstructObjectCallback reconstruct_object_callback,
-              PushErrorCallback push_error_callback)
+              PushErrorCallback push_error_callback, int64_t max_lineage_bytes)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),
         retry_task_callback_(retry_task_callback),
         check_node_alive_(check_node_alive),
         reconstruct_object_callback_(reconstruct_object_callback),
-        push_error_callback_(push_error_callback) {
+        push_error_callback_(push_error_callback),
+        max_lineage_bytes_(max_lineage_bytes) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           RemoveLineageReference(object_id, ids_to_release);
@@ -243,6 +244,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     //    pending tasks and tasks that finished execution but that may be
     //    retried in the future.
     absl::flat_hash_set<ObjectID> reconstructable_return_ids;
+    // The size of this (serialized) task spec in bytes, if the task spec is
+    // not pending, i.e. it is being pinned because it's in another object's
+    // lineage. We cache this because the task spec protobuf can mutate
+    // out-of-band.
+    int64_t lineage_footprint_bytes = 0;
   };
 
   /// Remove a lineage reference to this object ID. This should be called
@@ -292,6 +298,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   // Called to push an error to the relevant driver.
   const PushErrorCallback push_error_callback_;
 
+  const int64_t max_lineage_bytes_;
+
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;
 
@@ -311,6 +319,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// submissible_tasks_ that have been submitted and are currently pending
   /// execution.
   size_t num_pending_tasks_ = 0;
+
+  int64_t total_lineage_footprint_bytes_ = 0 GUARDED_BY(mu_);
 
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
