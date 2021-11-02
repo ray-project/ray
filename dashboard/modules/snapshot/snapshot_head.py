@@ -70,6 +70,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
     def _get_job_status(self, metadata: Dict[str, str]) -> Optional[str]:
         status = None
         job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+        # If a job submission ID has been added to a job, the status is
+        # guaranteed to be returned.
         if job_submission_id is not None:
             status = str(self._job_status_client.get_status(job_submission_id))
 
