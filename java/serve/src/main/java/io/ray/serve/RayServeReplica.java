@@ -308,7 +308,8 @@ public class RayServeReplica {
           Constants.BACKEND_RECONFIGURE_METHOD);
     } catch (Throwable e) {
       throw new RayServeException(
-          LogUtil.format("Backend {} failed to reconfigure user_config {}", deploymentName, userConfig),
+          LogUtil.format(
+              "Backend {} failed to reconfigure user_config {}", deploymentName, userConfig),
           e);
     }
     return version;

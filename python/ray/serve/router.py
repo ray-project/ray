@@ -192,7 +192,9 @@ class Router:
             "serve_num_router_requests",
             description="The number of requests processed by the router.",
             tag_keys=("deployment", ))
-        self.num_router_requests.set_default_tags({"deployment": deployment_name})
+        self.num_router_requests.set_default_tags({
+            "deployment": deployment_name
+        })
 
         self.long_poll_client = LongPollClient(
             controller_handle,

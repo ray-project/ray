@@ -9,8 +9,8 @@ import ray
 from ray import cloudpickle, ObjectRef
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.common import (DeploymentInfo, Duration, GoalId,
-                              ReplicaTag, ReplicaName, RunningReplicaInfo)
+from ray.serve.common import (DeploymentInfo, Duration, GoalId, ReplicaTag,
+                              ReplicaName, RunningReplicaInfo)
 from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
     CONTROLLER_STARTUP_GRACE_PERIOD_S, SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
@@ -697,8 +697,7 @@ class BackendState:
             self._replicas.add(ReplicaState.RECOVERING, new_backend_replica)
             logger.debug(
                 "Adding RECOVERING to replica_tag: "
-                f"{new_backend_replica.replica_tag}, deployment_name: {self._name}"
-            )
+                f"{new_backend_replica.replica_tag}, deployment: {self._name}")
 
         # Blocking grace period to avoid controller thrashing when cover
         # from replica actor names
@@ -1221,8 +1220,8 @@ class BackendStateManager:
 
         self._recover_from_checkpoint(all_current_actor_names)
 
-    def _map_actor_names_to_deployment(self, all_current_actor_names: List[str]
-                                       ) -> Dict[str, List[str]]:
+    def _map_actor_names_to_deployment(
+            self, all_current_actor_names: List[str]) -> Dict[str, List[str]]:
         """
         Given a list of all actor names queried from current ray cluster,
         map them to corresponding deployments.
@@ -1330,7 +1329,8 @@ class BackendStateManager:
         for deployment_name, backend_state in self._backend_states.items():
             if filter_tag is None or deployment_name == filter_tag:
                 replicas[
-                    deployment_name] = backend_state.get_running_replica_infos()
+                    deployment_name] = backend_state.get_running_replica_infos(
+                    )
 
         return replicas
 
@@ -1341,11 +1341,12 @@ class BackendStateManager:
         configs: Dict[str, DeploymentConfig] = {}
         for deployment_name, backend_state in self._backend_states.items():
             if filter_tag is None or deployment_name == filter_tag:
-                configs[
-                    deployment_name] = backend_state.target_info.deployment_config
+                configs[deployment_name] = (
+                    backend_state.target_info.deployment_config)
 
         if include_deleted:
-            for deployment_name, info in self._deleted_backend_metadata.items():
+            for deployment_name, info in self._deleted_backend_metadata.items(
+            ):
                 if filter_tag is None or deployment_name == filter_tag:
                     configs[deployment_name] = info.deployment_config
 
@@ -1357,7 +1358,8 @@ class BackendStateManager:
                     ) -> Optional[DeploymentInfo]:
         if deployment_name in self._backend_states:
             return self._backend_states[deployment_name].target_info
-        elif include_deleted and deployment_name in self._deleted_backend_metadata:
+        elif (include_deleted
+              and deployment_name in self._deleted_backend_metadata):
             return self._deleted_backend_metadata[deployment_name]
         else:
             return None
@@ -1405,7 +1407,8 @@ class BackendStateManager:
                 if (len(self._deleted_backend_metadata) >
                         MAX_NUM_DELETED_DEPLOYMENTS):
                     self._deleted_backend_metadata.popitem(last=False)
-                self._deleted_backend_metadata[deployment_name] = deployment_info
+                self._deleted_backend_metadata[
+                    deployment_name] = deployment_info
 
         for tag in deleted_tags:
             del self._backend_states[tag]

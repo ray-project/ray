@@ -63,7 +63,10 @@ public class RayServeWrappedReplica {
   }
 
   public RayServeWrappedReplica(
-      String deploymentName, String replicaTag, DeploymentInfo deploymentInfo, String controllerName)
+      String deploymentName,
+      String replicaTag,
+      DeploymentInfo deploymentInfo,
+      String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
     this(

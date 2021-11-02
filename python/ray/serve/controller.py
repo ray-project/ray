@@ -78,7 +78,7 @@ class ServeController:
             checkpoint_path, namespace=kv_store_namespace)
         self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
 
-        # Dictionary of deployment_name -> proxy_name -> most recent queue length.
+        # Dictionary of deployment_name -> proxy_name -> queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))
 
         # Used to ensure that only a single state-changing operation happens
@@ -245,8 +245,7 @@ class ServeController:
             val[deployment_name] = entry
         self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
-    def _all_running_replicas(
-            self) -> Dict[str, List[RunningReplicaInfo]]:
+    def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing."""
         return self.backend_state_manager.get_running_replica_infos()
 
