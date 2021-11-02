@@ -271,11 +271,11 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
-  auto spread_threshold = spread_threshold_;
-  // If the scheduling decision is made by gcs, we ignore the spread threshold
+  // If the scheduling decision is made by gcs, we just return the local node.
   if (actor_creation && RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    spread_threshold = 1.0;
+    return local_node_id_;
   }
+  auto spread_threshold = spread_threshold_;
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(

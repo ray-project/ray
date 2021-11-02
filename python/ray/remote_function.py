@@ -18,9 +18,11 @@ from ray._private.runtime_env.validation import (
     override_task_or_actor_runtime_env, ParsedRuntimeEnv)
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
+from ray.ray_constants import (
+    gcs_actor_scheduling_enabled, )
 
 # Default parameters for remote functions.
-DEFAULT_REMOTE_FUNCTION_CPUS = 1
+DEFAULT_REMOTE_FUNCTION_CPUS = 0.01 if gcs_actor_scheduling_enabled() else 1
 DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS = 1
 DEFAULT_REMOTE_FUNCTION_MAX_CALLS = 0
 # Normal tasks may be retried on failure this many times.

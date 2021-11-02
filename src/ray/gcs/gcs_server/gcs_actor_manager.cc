@@ -128,7 +128,9 @@ GcsActorManager::GcsActorManager(
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled() &&
+      std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_) !=
+          nullptr) {
     auto gcs_actor_scheduler =
         std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_);
     gcs_actor_scheduler->AddResourcesChangedListener([this] {
