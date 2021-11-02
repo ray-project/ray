@@ -103,12 +103,6 @@ def test_dedupe_downloads_list(workflow_start_regular):
         assert get_objects_count == 5
 
 
-@pytest.mark.parametrize(
-    "workflow_start_regular",
-    [{
-        "num_cpus": 4,  # increase CPUs to add pressure
-    }],
-    indirect=True)
 def test_dedupe_download_raw_ref(workflow_start_regular):
     with tempfile.TemporaryDirectory() as temp_dir:
         debug_store = DebugStorage(get_global_storage(), temp_dir)
@@ -127,12 +121,6 @@ def test_dedupe_download_raw_ref(workflow_start_regular):
         assert get_objects_count == 1
 
 
-@pytest.mark.parametrize(
-    "workflow_start_regular",
-    [{
-        "num_cpus": 4,  # increase CPUs to add pressure
-    }],
-    indirect=True)
 def test_nested_workflow_no_download(workflow_start_regular):
     """Test that we _only_ load from storage on recovery. For a nested workflow
     step, we should checkpoint the input/output, but continue to reuse the

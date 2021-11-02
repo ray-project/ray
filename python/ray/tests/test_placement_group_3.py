@@ -459,7 +459,7 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
 
-    @ray.remote(num_cpus=1)
+    @ray.remote
     class A:
         def ready(self):
             pass
