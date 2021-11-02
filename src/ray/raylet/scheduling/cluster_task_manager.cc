@@ -330,10 +330,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           sched_cls_info.next_update_time = get_time_() + wait_time;
           sched_cls_info.timer =
               execute_after_([this]() { ScheduleAndDispatchTasks(); }, wait_time);
+          continue;
         } else {
-          work_it++;
+          break;
         }
-        continue;
       }
 
       bool args_missing = false;
@@ -1446,19 +1446,12 @@ uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
   auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
   double cpu_req = sched_cls.resource_set.GetNumCpusDouble();
-  // Handle the num_cpus=0 edge case.
-  cpu_req = std::max(cpu_req, 0.01);
   uint64_t total_cpus = cluster_resource_scheduler_->GetNumCpus();
-  if (total_cpus == 0) {
-    total_cpus = std::numeric_limits<uint64_t>::max();
-  }
-  double target = total_cpus / cpu_req;
-  if (target >= static_cast<double>(std::numeric_limits<uint64_t>::max())) {
-    // Casting a large value to uint64_t may result in 0.
+
+  if (cpu_req == 0 || total_cpus == 0) {
     return std::numeric_limits<uint64_t>::max();
-  } else {
-    return static_cast<uint64_t>(std::ceil(target));
   }
+  return static_cast<uint64_t>(std::round(total_cpus/cpu_req));
 }
 
 }  // namespace raylet

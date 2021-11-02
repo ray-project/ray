@@ -98,10 +98,12 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-/// The interval before the scheduling class capacity is increased. If set to
-/// 0, disables the cap on the tasks per scheduling class. As it approaches
-/// infinity, the cap becomes a hard cap. If set to something in the middle,
-/// the time between increases will grow exponentially.
+/// We place a soft cap on the number of tasks of a given scheduling class that
+/// can run at once. After the specified interval, a the new task above that
+/// cap is allowed to run. The time before the next tasks (above the cap) are
+/// allowed to run increases exponentially. The soft cap is needed to prevent
+/// deadlock in the case where a task begins to execute and tries to `ray.get`
+/// another task of the same class.
 RAY_CONFIG(int64_t, scheduling_class_capacity_interval_ms, 10)
 
 /// The fraction of resource utilization on a node after which the scheduler starts

@@ -39,9 +39,6 @@ def test_release_resources_race(shutdown_only):
         object_store_memory=700e6,
         _system_config={
             "inline_object_status_in_refs": True,
-            # Prevent the test from becoming flaky due to worker lease
-            # expirations.
-            "worker_lease_timeout_milliseconds": 10000
         })
     refs = []
     for _ in range(10):

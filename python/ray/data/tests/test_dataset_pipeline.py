@@ -204,11 +204,7 @@ def test_split(ray_start_regular_shared):
         .map(lambda x: x + 1) \
         .repeat(10)
 
-    # We need all the `consume` tasks to run concurrently. Since the
-    # PipelineSplitExecutorCoordinator won't move on to the next chunk until
-    # all the shards of the first split are processed. Note that the other
-    # consume tasks can't run when one of them releases its cpu.
-    @ray.remote(num_cpus=0)
+    @ray.remote
     def consume(shard, i):
         total = 0
         for row in shard.iter_rows():
@@ -228,11 +224,7 @@ def test_split_at_indices(ray_start_regular_shared):
         .map(lambda x: x + 1) \
         .repeat(2)
 
-    # We need all the `consume` tasks to run concurrently. Since the
-    # PipelineSplitExecutorCoordinator won't move on to the next chunk until
-    # all the shards of the first split are processed. Note that the other
-    # consume tasks can't run when one of them releases its cpu.
-    @ray.remote(num_cpus=0)
+    @ray.remote
     def consume(shard, i):
         total = 0
         out = []
