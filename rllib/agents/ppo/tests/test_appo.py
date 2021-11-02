@@ -24,7 +24,7 @@ class TestAPPO(unittest.TestCase):
         config["num_workers"] = 1
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             print("w/o v-trace")
             _config = config.copy()
             _config["vtrace"] = False

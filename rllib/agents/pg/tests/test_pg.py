@@ -28,7 +28,7 @@ class TestPG(unittest.TestCase):
         config["rollout_fragment_length"] = 500
         num_iterations = 1
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v0", "CartPole-v0"]:
                 trainer = pg.PGTrainer(config=config, env=env)
                 for i in range(num_iterations):

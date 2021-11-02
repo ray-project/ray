@@ -7,12 +7,13 @@ import random
 import re
 import time
 import tree  # pip install dm_tree
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import yaml
 
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
+from ray.rllib.utils.typing import PartialTrainerConfigDict
 from ray.tune import run_experiments
 
 jax, _ = try_import_jax()
@@ -28,34 +29,47 @@ torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
+# Dict holding the run-times of each frameworks' `framework_iterator`.
+# This only gets written to if `framework_iterator()` is called with the
+# `time_iterations=True` argument.
+FRAMEWORK_ITERATOR_LAST_RUN_TIMES = {}
 
-def framework_iterator(config=None,
-                       frameworks=("tf2", "tf", "tfe", "torch"),
-                       session=False,
-                       with_eager_tracing=False):
+
+def framework_iterator(
+        config: Optional[PartialTrainerConfigDict] = None,
+        frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
+        session: bool = False,
+        with_eager_tracing: bool = False,
+        time_iterations: bool = False,
+) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
     """An generator that allows for looping through n frameworks for testing.
 
     Provides the correct config entries ("framework") as well
     as the correct eager/non-eager contexts for tfe/tf.
 
     Args:
-        config (Optional[dict]): An optional config dict to alter in place
-            depending on the iteration.
-        frameworks (Tuple[str]): A list/tuple of the frameworks to be tested.
+        config: An optional config dict to alter in place depending on the
+            iteration.
+        frameworks: A list/tuple of the frameworks to be tested.
             Allowed are: "tf2", "tf", "tfe", "torch", and None.
-        session (bool): If True and only in the tf-case: Enter a tf.Session()
+        session: If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
         with_eager_tracing: Include `eager_tracing=True` in the returned
             configs, when framework=[tfe|tf2].
+        time_iterations: Whether to time each (framework's) iteration.
+            The timing results can be retrieved after the generator finished
+            via `from ray.rllib.utils.test_utils import
+            FRAMEWORK_ITERATOR_LAST_RUN_TIMES`.
 
     Yields:
-        str: If enter_session is False:
-            The current framework ("tf2", "tf", "tfe", "torch") used.
-        Tuple(str, Union[None,tf.Session]: If enter_session is True:
-            A tuple of the current fw and the tf.Session if fw="tf".
+        If `session` is False: The current framework [tf2|tf|tfe|torch] used.
+        If `session` is True: A tuple consisting of the current framework
+        string and the tf1.Session (if fw="tf", otherwise None).
     """
+    global FRAMEWORK_ITERATOR_LAST_RUN_TIMES
+
     config = config or {}
     frameworks = [frameworks] if isinstance(frameworks, str) else \
         list(frameworks)
@@ -111,12 +125,24 @@ def framework_iterator(config=None,
             for tracing in [True, False]:
                 config["eager_tracing"] = tracing
                 print(f"framework={fw} (eager-tracing={tracing})")
+                time_started = time.time()
                 yield fw if session is False else (fw, sess)
+                if time_iterations:
+                    time_total = time.time() - time_started
+                    FRAMEWORK_ITERATOR_LAST_RUN_TIMES[
+                        fw + ("+tracing" if tracing else "")] = time_total
+                    print(f".. took {time_total}sec")
                 config["eager_tracing"] = False
         # Yield current framework + tf-session (if necessary).
         else:
             print(f"framework={fw}")
+            time_started = time.time()
             yield fw if session is False else (fw, sess)
+            if time_iterations:
+                time_total = time.time() - time_started
+                FRAMEWORK_ITERATOR_LAST_RUN_TIMES[
+                    fw + ("+tracing" if tracing else "")] = time_total
+                print(f".. took {time_total}sec")
 
         # Exit any context we may have entered.
         if eager_ctx:

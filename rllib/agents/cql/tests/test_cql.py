@@ -66,7 +66,7 @@ class TestCQL(unittest.TestCase):
         num_iterations = 4
 
         # Test for tf/torch frameworks.
-        for fw in framework_iterator(config):
+        for fw in framework_iterator(config, with_eager_tracing=True):
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
                 results = trainer.train()
