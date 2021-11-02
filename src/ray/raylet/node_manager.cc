@@ -511,8 +511,6 @@ ray::Status NodeManager::RegisterGcs() {
   return ray::Status::OK();
 }
 
-void NodeManager::ExecuteAfter(std::function<void()> fn, int64_t wait_ns) {}
-
 void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 #ifdef _WIN32
 // TODO(mehrdadn): implement graceful process termination mechanism

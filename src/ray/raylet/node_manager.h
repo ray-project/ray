@@ -146,8 +146,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
               const ObjectManagerConfig &object_manager_config,
               std::shared_ptr<gcs::GcsClient> gcs_client);
 
-  void ExecuteAfter(std::function<void()> fn, int64_t wait_ns);
-
   /// Process a new client connection.
   ///
   /// \param client The client to process.

@@ -306,33 +306,28 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     /// dependencies are resolved.
     bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
-      RAY_LOG(ERROR) << "Top of loop";
       auto &work = *work_it;
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
-        RAY_LOG(ERROR) << "Skipping, already waiting for worker";
         work_it++;
         continue;
       }
 
       if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
-        RAY_LOG(ERROR) << "Hit cap! time=" << get_time_()
+        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_()
                        << " next update time=" << sched_cls_info.next_update_time;
         if (get_time_() >= sched_cls_info.next_update_time) {
           // Don't increase the capacity on the very first update since that
           // will unblock a new task immediately, instead of after the timeout.
           if (sched_cls_info.num_updates > 0) {
             sched_cls_info.capacity++;
-            RAY_LOG(ERROR) << "Increasing capacity!!! new capacity="
-                           << sched_cls_info.capacity;
           }
 
           int64_t wait_time =
               (1e6 * sched_cls_cap_interval_ms_) * (1L << sched_cls_info.num_updates++);
           sched_cls_info.next_update_time = get_time_() + wait_time;
-          RAY_LOG(ERROR) << "Setting timer!!!" << sched_cls_info.next_update_time;
           sched_cls_info.timer =
               execute_after_([this]() { ScheduleAndDispatchTasks(); }, wait_time);
         } else {
@@ -374,8 +369,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         continue;
       }
 
-      RAY_LOG(ERROR) << "Boop";
-
       const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
       const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
 
@@ -402,7 +395,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
 
-      RAY_LOG(ERROR) << "Schedulable: " << schedulable;
 
       if (!schedulable) {
         ReleaseTaskArgs(task_id);
@@ -1313,9 +1305,7 @@ bool ClusterTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
       worker->MarkBlocked();
       return true;
     }
-    RAY_LOG(ERROR) << "NO cpu instances";
   }
-  RAY_LOG(ERROR) << "No allocated instances";
 
   return false;
 }
