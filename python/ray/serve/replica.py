@@ -15,7 +15,7 @@ from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
 from ray.serve.common import BackendTag, ReplicaTag
-from ray.serve.config import BackendConfig
+from ray.serve.config import DeploymentConfig
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
@@ -31,30 +31,30 @@ from ray.exceptions import RayTaskError
 logger = _get_logger()
 
 
-def create_replica_wrapper(name: str, serialized_backend_def: bytes):
+def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
-    serialized_backend_def = serialized_backend_def
+    serialized_deployment_def = serialized_deployment_def
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
-                           init_kwargs, backend_config_proto_bytes: bytes,
+                           init_kwargs, deployment_config_proto_bytes: bytes,
                            version: DeploymentVersion, controller_name: str,
                            detached: bool):
-            backend = cloudpickle.loads(serialized_backend_def)
-            backend_config = BackendConfig.from_proto_bytes(
-                backend_config_proto_bytes)
+            backend = cloudpickle.loads(serialized_deployment_def)
+            deployment_config = DeploymentConfig.from_proto_bytes(
+                deployment_config_proto_bytes)
 
             if inspect.isfunction(backend):
                 is_function = True
             elif inspect.isclass(backend):
                 is_function = False
             else:
-                assert False, ("backend_def must be function, class, or "
+                assert False, ("deployment_def must be function, class, or "
                                "corresponding import path.")
 
             # Set the controller name so that serve.connect() in the user's
@@ -85,10 +85,10 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
                 detached)
             controller_handle = ray.get_actor(
                 controller_name, namespace=controller_namespace)
-            self.backend = RayServeReplica(_callable, backend_tag, replica_tag,
-                                           backend_config,
-                                           backend_config.user_config, version,
-                                           is_function, controller_handle)
+            self.backend = RayServeReplica(
+                _callable, backend_tag, replica_tag, deployment_config,
+                deployment_config.user_config, version, is_function,
+                controller_handle)
 
             # asyncio.Event used to signal that the replica is shutting down.
             self.shutdown_event = asyncio.Event()
@@ -109,14 +109,14 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
             return await self.backend.handle_request(query)
 
         async def reconfigure(self, user_config: Optional[Any] = None
-                              ) -> Tuple[BackendConfig, DeploymentVersion]:
+                              ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             if user_config is not None:
                 await self.backend.reconfigure(user_config)
 
             return self.get_metadata()
 
-        def get_metadata(self) -> Tuple[BackendConfig, DeploymentVersion]:
-            return self.backend.backend_config, self.backend.version
+        def get_metadata(self) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            return self.backend.deployment_config, self.backend.version
 
         async def prepare_for_shutdown(self):
             self.shutdown_event.set()
@@ -146,10 +146,10 @@ class RayServeReplica:
     """Handles requests with the provided callable."""
 
     def __init__(self, _callable: Callable, backend_tag: BackendTag,
-                 replica_tag: ReplicaTag, backend_config: BackendConfig,
+                 replica_tag: ReplicaTag, deployment_config: DeploymentConfig,
                  user_config: Any, version: DeploymentVersion,
                  is_function: bool, controller_handle: ActorHandle) -> None:
-        self.backend_config = backend_config
+        self.deployment_config = deployment_config
         self.backend_tag = backend_tag
         self.replica_tag = replica_tag
         self.callable = _callable
@@ -211,10 +211,10 @@ class RayServeReplica:
         self.restart_counter.inc()
 
         self._shutdown_wait_loop_s = (
-            backend_config.graceful_shutdown_wait_loop_s)
+            deployment_config.graceful_shutdown_wait_loop_s)
 
-        if backend_config.autoscaling_config:
-            config = backend_config.autoscaling_config
+        if deployment_config.autoscaling_config:
+            config = deployment_config.autoscaling_config
             start_metrics_pusher(
                 interval_s=config.metrics_interval_s,
                 collection_callback=self._collect_autoscaling_metrics,
@@ -319,7 +319,8 @@ class RayServeReplica:
         self.version = DeploymentVersion(
             self.version.code_version, user_config=user_config)
         if self.is_function:
-            raise ValueError("backend_def must be a class to use user_config")
+            raise ValueError(
+                "deployment_def must be a class to use user_config")
         elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
             raise RayServeException("user_config specified but backend " +
                                     self.backend_tag + " missing " +
