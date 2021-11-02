@@ -25,7 +25,7 @@ RLlib has extra dependencies on top of ``ray``. You'll need to install either `P
 
 .. code-block:: bash
 
-  # if you want to use PyTorch or TF, only need one of the last two
+  # Note: You will only need either `torch` or `tensorflow`, but feel free to install both:
   pip install "ray[rllib]" pandas tensorflow torch
 
 Then, you can try out training in the following equivalent ways:
