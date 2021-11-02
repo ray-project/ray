@@ -266,15 +266,18 @@ class GcsPublisher {
 class GcsSubscriber {
  public:
   /// Initializes GcsSubscriber with both Redis and GCS based GcsSubscribers.
-  /// Subscribe*() member functions below would be incrementally converted to use the GCS
-  /// based subscriber, if available.
-  // TODO: Support restarting GCS publisher at another address.
+  // TODO: Support restarted GCS publisher, at the same or a different address.
   GcsSubscriber(const std::shared_ptr<RedisClient> &redis_client,
                 const rpc::Address &gcs_address,
                 std::unique_ptr<pubsub::Subscriber> subscriber)
       : pubsub_(std::make_unique<GcsPubSub>(redis_client)),
         gcs_address_(gcs_address),
         subscriber_(std::move(subscriber)) {}
+
+  /// Subscribe*() member functions below would be incrementally converted to use the GCS
+  /// based subscriber, if available.
+  /// The `subscribe` callbacks must not be empty. The `done` callbacks can optionally be
+  /// empty.
 
   /// Uses GCS pubsub when created with `subscriber`.
   Status SubscribeActor(const ActorID &id,
