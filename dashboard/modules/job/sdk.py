@@ -22,8 +22,8 @@ from ray.dashboard.modules.job.data_types import (
     JobLogsRequest, JobLogsResponse)
 
 from ray.dashboard.modules.job.job_head import (
-    JOB_API_ROUTE_LOGS, JOB_API_ROUTE_SUBMIT, JOB_API_ROUTE_STATUS,
-    JOB_API_ROUTE_PACKAGE)
+    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STATUS,
+    JOBS_API_ROUTE_PACKAGE)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -67,7 +67,7 @@ class JobSubmissionClient:
         req = GetPackageRequest(package_uri=package_uri)
         resp = self._do_request(
             "GET",
-            JOB_API_ROUTE_PACKAGE,
+            JOBS_API_ROUTE_PACKAGE,
             req,
             response_type=GetPackageResponse)
         return resp.package_exists
@@ -88,7 +88,7 @@ class JobSubmissionClient:
             req = UploadPackageRequest(
                 package_uri=package_uri,
                 encoded_package_bytes=b64encode(package_file.read_bytes()))
-            self._do_request("PUT", JOB_API_ROUTE_PACKAGE, req)
+            self._do_request("PUT", JOBS_API_ROUTE_PACKAGE, req)
             package_file.unlink()
 
     def _upload_package_if_needed(self,
@@ -132,18 +132,18 @@ class JobSubmissionClient:
         job_spec = JobSpec(
             entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata)
         req = JobSubmitRequest(job_spec=job_spec)
-        resp = self._do_request("POST", JOB_API_ROUTE_SUBMIT, req,
+        resp = self._do_request("POST", JOBS_API_ROUTE_SUBMIT, req,
                                 JobSubmitResponse)
         return resp.job_id
 
     def get_job_status(self, job_id: str) -> JobStatus:
         req = JobStatusRequest(job_id=job_id)
-        resp = self._do_request("GET", JOB_API_ROUTE_STATUS, req,
+        resp = self._do_request("GET", JOBS_API_ROUTE_STATUS, req,
                                 JobStatusResponse)
         return resp.job_status
 
     def get_job_logs(self, job_id: str) -> Tuple[str, str]:
         req = JobLogsRequest(job_id=job_id)
-        resp = self._do_request("GET", JOB_API_ROUTE_LOGS, req,
+        resp = self._do_request("GET", JOBS_API_ROUTE_LOGS, req,
                                 JobLogsResponse)
         return resp.stdout, resp.stderr
