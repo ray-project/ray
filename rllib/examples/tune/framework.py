@@ -15,13 +15,9 @@ logger = logging.getLogger("tune_framework")
 
 def run(smoke_test=False):
     if smoke_test:
-        stop = {
-            "episode_reward_mean": 18.0,
-            "timesteps_total": 5000,
-            "time_total_s": 3000,
-        }
+        stop = {"training_iteration": 1}
     else:
-        stop = {"timesteps_total": 10}
+        stop = {"training_iteration": 50}
 
     config = {
         "env": "PongNoFrameskip-v4",
