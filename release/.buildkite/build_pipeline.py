@@ -269,6 +269,16 @@ HOROVOD_SETUP_COMMANDS = [
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
 USER_TESTS = {
+    "~/ray/release/ray_lightning_tests/ray_lightning_tests.yaml": [
+        ConnectTest(
+            "ray_lightning_user_test_latest",
+            requirements_file="release/ray_lightning_tests"
+            "/driver_requirements.txt"),
+        ConnectTest(
+            "ray_lightning_user_test_master",
+            requirements_file="release/ray_lightning_tests"
+            "/driver_requirements.txt")
+    ],
     "~/ray/release/horovod_tests/horovod_tests.yaml": [
         ConnectTest(
             "horovod_user_test_latest",
