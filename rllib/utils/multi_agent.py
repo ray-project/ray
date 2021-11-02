@@ -11,12 +11,11 @@ def check_multi_agent(config: PartialTrainerConfigDict) -> \
     """Checks, whether a (partial) config defines a multi-agent setup.
 
     Args:
-        config (PartialTrainerConfigDict): The user/Trainer/Policy config
-            to check for multi-agent.
+        config: The user/Trainer/Policy config to check for multi-agent.
 
     Returns:
-        The resulting (all fixed) multi-agent policy dict and whether we
-            have a multi-agent setup or not.
+        Tuple consisting of the resulting (all fixed) multi-agent policy
+        dict and bool indicating whether we have a multi-agent setup or not.
     """
     multiagent_config = config["multiagent"]
     policies = multiagent_config.get("policies")
