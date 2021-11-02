@@ -311,9 +311,8 @@ class ServeController:
             autoscaling_policy = None
 
         backend_info = BackendInfo(
-            actor_def=ray.remote(
-                create_replica_wrapper(
-                    name, replica_config.serialized_deployment_def)),
+            actor_name=name,
+            serialized_deployment_def=replica_config.serialized_deployment_def,
             version=version,
             deployment_config=deployment_config,
             replica_config=replica_config,

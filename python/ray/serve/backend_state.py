@@ -630,36 +630,14 @@ class BackendState:
         """
         return (self._target_info, self._target_replicas, self._target_version)
 
-    def get_current_state_checkpoint_data(self):
-        """
-        Return deployment's current state specific to the ray cluster it's
-        running in. Might be lost or re-constructed upon ray cluster failure.
-        """
-        return (self._rollback_info, self._curr_goal,
-                self._prev_startup_warning,
-                self._replica_constructor_retry_counter, self._replicas)
-
     def get_checkpoint_data(self):
-        return (self.get_target_state_checkpoint_data(),
-                self.get_current_state_checkpoint_data())
+        return self.get_target_state_checkpoint_data()
 
     def recover_target_state_from_checkpoint(self, target_state_checkpoint):
         logger.info("Recovering target state for deployment "
                     f"{self._name} from checkpoint..")
         (self._target_info, self._target_replicas,
          self._target_version) = target_state_checkpoint
-
-    def recover_current_state_from_checkpoint(self, current_state_checkpoint):
-        logger.info("Recovering current state for deployment "
-                    f"{self._name} from checkpoint..")
-        (self._rollback_info, self._curr_goal, self._prev_startup_warning,
-         self._replica_constructor_retry_counter,
-         self._replicas) = current_state_checkpoint
-
-        if self._curr_goal is not None:
-            self._goal_manager.create_goal(self._curr_goal)
-
-        self._notify_running_replicas_changed()
 
     def recover_current_state_from_replica_actor_names(
             self, replica_actor_names: List[str]):
@@ -1230,17 +1208,13 @@ class BackendStateManager:
             for deployment_tag, checkpoint_data in backend_state_info.items():
                 backend_state: BackendState = self._create_backend_state(
                     deployment_tag)
-                (target_state_checkpoint,
-                 current_state_checkpoint) = checkpoint_data
 
+                target_state_checkpoint = checkpoint_data
                 backend_state.recover_target_state_from_checkpoint(
                     target_state_checkpoint)
                 if len(deployment_to_current_replicas[deployment_tag]) > 0:
                     backend_state.recover_current_state_from_replica_actor_names(  # noqa: E501
                         deployment_to_current_replicas[deployment_tag])
-                else:
-                    backend_state.recover_current_state_from_checkpoint(
-                        current_state_checkpoint)
                 self._backend_states[deployment_tag] = backend_state
 
     def shutdown(self) -> List[GoalId]:
