@@ -35,9 +35,10 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
-from ray.experimental.internal_kv import _internal_kv_put, \
-    _internal_kv_initialized, _internal_kv_get, _internal_kv_del
-from ray._raylet import connect_to_gcs, disconnect_from_gcs
+from ray._private.gcs_utils import GcsClient
+from ray.experimental.internal_kv import _initialize_internal_kv, \
+    _internal_kv_put, _internal_kv_initialized, _internal_kv_get, \
+    _internal_kv_del
 import ray._private.utils
 
 logger = logging.getLogger(__name__)
@@ -159,7 +160,8 @@ class Monitor:
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
-        worker.gcs_client = self.gcs_client
+        gcs_client = GcsClient.connect_to_gcs_by_redis_cli(self.redis)
+        _initialize_internal_kv(gcs_client)
         worker.mode = 0
         head_node_ip = redis_address.split(":")[0]
         self.redis_address = redis_address
