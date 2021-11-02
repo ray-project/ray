@@ -39,8 +39,8 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    size_t max_pinned_task_arguments_bytes,
-    std::function<int64_t(void)> get_time, int64_t sched_cls_cap_interval_ms)
+    size_t max_pinned_task_arguments_bytes, std::function<int64_t(void)> get_time,
+    int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
