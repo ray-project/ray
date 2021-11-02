@@ -66,8 +66,6 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
     response = JobSubmitResponse(**data)
     job_id = response.job_id
 
-    print(f">>> response:{response}, job_id: {job_id}")
-
     wait_for_condition(
         _check_job_succeeded, job_id=job_id, endpoint=f"{webui_url}/status")
 

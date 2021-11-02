@@ -42,17 +42,14 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.post("/submit")
     @_ensure_ray_initialized
     async def submit(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        submit_request = JobSubmitRequest(json.loads(await req.json()))
+        submit_request = JobSubmitRequest(
+            job_spec=json.loads(await req.json()).get("job_spec"))
         # TODO: (jiaodong) Validate if job request is valid without using
         # pydantic
-        job_spec = submit_request.job_spec.get("job_spec")
         job_id = self._job_manager.submit_job(
-            entrypoint=job_spec.get("entrypoint"),
-            runtime_env=job_spec.get("runtime_env", {}),
-            metadata=job_spec.get("metadata", {}))
-        with open("/tmp/2", "a+") as file:
-            file.write(f"job_spec: {job_spec}, type: {type(job_spec)} \n")
-            file.write(f"{job_spec.get('entrypoint')} \n")
+            entrypoint=submit_request.job_spec.get("entrypoint"),
+            runtime_env=submit_request.job_spec.get("runtime_env", {}),
+            metadata=submit_request.job_spec.get("metadata", {}))
         resp = JobSubmitResponse(job_id=job_id)
 
         return aiohttp.web.Response(
@@ -62,7 +59,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/status")
     @_ensure_ray_initialized
     async def status(self, req) -> aiohttp.web.Response:
-        status_request = JobStatusRequest(json.loads((await req.json())))
+        status_request = JobStatusRequest(job_id=json.loads(await req.json()))
         status: JobStatus = self._job_manager.get_job_status(
             status_request.job_id.get("job_id"))
         resp = JobStatusResponse(job_status=status)
