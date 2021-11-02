@@ -705,7 +705,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
   {
     ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 1);
     ASSERT_EQ(placement_group->GetStats().scheduling_state(),
-              rpc::PlacementGroupStats::WAITING_FOR_SCHEDULING);
+              rpc::PlacementGroupStats::QUEUED);
     gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
         placement_group, GetExpBackOff(), /*is_feasible*/ true);
     WaitForExpectedPgCount(1);

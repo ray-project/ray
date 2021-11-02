@@ -282,7 +282,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       stats->set_scheduling_state(rpc::PlacementGroupStats::NO_RESOURCES);
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     } else {
-      placement_group->UpdateState(rpc::PlacementGroupTableData::REMOVED);
+      stats->set_scheduling_state(rpc::PlacementGroupTableData::REMOVED);
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     }
   }
@@ -710,7 +710,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
       if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
         iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
         iter->second->GetMutableStats()->set_scheduling_state(
-            rpc::PlacementGroupStats::WAITING_FOR_SCHEDULING);
+            rpc::PlacementGroupStats::QUEUED);
         AddToPendingQueue(iter->second, 0);
       }
     }

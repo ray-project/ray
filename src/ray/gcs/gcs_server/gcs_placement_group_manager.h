@@ -143,7 +143,7 @@ class GcsPlacementGroup {
       stats->set_creation_request_received_ns(now);
     }
     if (stats->scheduling_state() == 0) {
-      stats->set_scheduling_state(rpc::PlacementGroupStats::WAITING_FOR_SCHEDULING);
+      stats->set_scheduling_state(rpc::PlacementGroupStats::QUEUED);
     }
   }
 

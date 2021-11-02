@@ -490,22 +490,41 @@ message PlacementGroupStats {
   // This is purely for observability and the
   // information could not be consistent
   // if GCS restarts.
+  // QUEUED / REMOVED <-----------------------------
+  //          |                                     |
+  // SCHEDULING_STARTED / NO_RESOURCES / INFEASIBLE |
+  //          |                                     |
+  // FINISHED / FAILED_TO_COMMIT_RESOURCES ----------
   enum SchedulingState {
-    // The initial state.
-    WAITING_FOR_SCHEDULING = 0;
+    //
+    // Initial scheduling states.
+    //
+    // Queued for scheduling.
+    QUEUED = 0;
+    // Scheduling has cancelled because it is removed.
+    REMOVED = 1;
+
+    //
+    // Scheduling In Progress.
+    //
+    // Scheduling has started.
+    SCHEDULING_STARTED = 2;
     // Placement group creation failed because there was
     // no nodes that satisfy resources.
-    NO_RESOURCES = 1;
-    // Placement group creation failed because there was
-    // an issue commiting resources to nodes.
-    FAILED_TO_COMMIT_RESOURCES = 2;
-    // Scheduling has cancelled because it is removed.
-    REMOVED = 3;
-    // Scheduling has finished properly.
-    FINISHED = 4;
+    NO_RESOURCES = 3;
     // Placement group creation has failed because the
     // requested resources are infeasible.
-    INFEASIBLE = 5;
+    INFEASIBLE = 4;
+
+    //
+    // Scheduling Finished.
+    //
+    // Placement group creation failed because there was
+    // an issue commiting resources to nodes
+    // (e.g., node failures).
+    FAILED_TO_COMMIT_RESOURCES = 5;
+    // Scheduling has finished properly.
+    FINISHED = 6;
   }
   // The time creation request is first received.
   int64 creation_request_received_ns = 2;
