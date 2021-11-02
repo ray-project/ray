@@ -301,7 +301,10 @@ USER_TESTS = {
             "/driver_requirements.txt")
     ],
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
-        "connect_tests",
+        ConnectTest(
+            "connect_tests",
+            requirements_file="release/rllib_tests"
+            "/connect_driver_requirements.txt")
     ],
 }
 
