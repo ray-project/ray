@@ -11,7 +11,7 @@ python:
     - tblib
     - torch==1.9.0
     - torchvision==0.10.0
-    - ray-lightning
+    - git+https://github.com/ray-project/ray_lightning#ray_lightning
   conda_packages: []
 
 post_build_cmds:
