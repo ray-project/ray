@@ -146,6 +146,7 @@ class MemoryMonitor:
                         used_gb = \
                             used_gb - int(line.split(" ")[1]) / (1024**3)
             assert used_gb >= 0
+        assert used_gb >= 0
         return used_gb, total_gb
 
     def raise_if_low_memory(self):
