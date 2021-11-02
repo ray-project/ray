@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #include "ray/common/asio/asio_chaos.h"
 
-#include <string_view>
 #include <cstdlib>
+#include <string_view>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
@@ -32,19 +31,20 @@ class DelayManager {
  public:
   DelayManager() {
     auto delay_env = std::getenv("RAY_TESTING_ASIO_DELAY");
-    if(delay_env == nullptr) {
+    if (delay_env == nullptr) {
       return;
     }
     std::vector<std::string_view> items = absl::StrSplit(delay_env, ",");
-    for(const auto& item : items) {
+    for (const auto &item : items) {
       std::vector<std::string_view> delay = absl::StrSplit(item, "=");
       size_t delay_ms = 0;
-      if(delay.size() != 2 || !absl::SimpleAtoi(delay[1], &delay_ms)) {
+      if (delay.size() != 2 || !absl::SimpleAtoi(delay[1], &delay_ms)) {
         RAY_LOG(ERROR) << "Error syntax: " << item << ", it has to be name=time";
         continue;
       }
-      RAY_LOG(WARNING) << "Inject asio delay on method = " << delay[0] << " for " << delay_ms << "ms";
-      if(delay[0] == "*") {
+      RAY_LOG(WARNING) << "Inject asio delay on method = " << delay[0] << " for "
+                       << delay_ms << "ms";
+      if (delay[0] == "*") {
         random_delay_ms_ = delay_ms;
       } else {
         delay_[std::string{delay[0]}] = delay_ms;
@@ -52,9 +52,9 @@ class DelayManager {
     }
   }
 
-  size_t GetMethodDelay(const std::string& name) {
+  size_t GetMethodDelay(const std::string &name) {
     auto it = delay_.find(name);
-    if(it == delay_.end()) {
+    if (it == delay_.end()) {
       return GenRandomDelay(random_delay_ms_);
     }
     return GenRandomDelay(it->second);
@@ -62,7 +62,7 @@ class DelayManager {
 
  private:
   size_t GenRandomDelay(size_t delay_ms) const {
-    if(delay_ms == 0) {
+    if (delay_ms == 0) {
       return 0;
     }
     return std::rand() % delay_ms;
@@ -73,12 +73,12 @@ class DelayManager {
 };
 
 static DelayManager _delay_manager;
-}
+}  // namespace
 
-size_t get_delay_ms(const std::string& name) {
+size_t get_delay_ms(const std::string &name) {
   return _delay_manager.GetMethodDelay(name);
 }
 
-}
-}
-}
+}  // namespace testing
+}  // namespace asio
+}  // namespace ray
