@@ -222,7 +222,7 @@ class TestEvaluate1(unittest.TestCase):
         evaluate_test("A3C")
 
     def test_ddpg(self):
-        evaluate_test("DDPG", env="Pendulum-v1")
+        evaluate_test("DDPG", env="Pendulum-v0")
 
 
 class TestEvaluate2(unittest.TestCase):
@@ -243,7 +243,7 @@ class TestEvaluate3(unittest.TestCase):
 
 class TestEvaluate4(unittest.TestCase):
     def test_sac(self):
-        evaluate_test("SAC", env="Pendulum-v1")
+        evaluate_test("SAC", env="Pendulum-v0")
 
 
 class TestTrainAndEvaluate(unittest.TestCase):

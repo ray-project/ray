@@ -27,7 +27,7 @@ def do_test_log_likelihood(run,
     config["num_workers"] = 0
     # Env setup.
     if continuous:
-        env = "Pendulum-v1"
+        env = "Pendulum-v0"
         obs_batch = preprocessed_obs_batch = np.array([[0.0, 0.1, -0.1]])
     else:
         env = "FrozenLake-v1"

@@ -13,7 +13,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.exceptions import GetTimeoutError, RayActorError
+from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -34,7 +34,6 @@ from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
-CHECKPOINT_DELETER_NODE_IP_GET_TIMEOUT = 15
 logger = logging.getLogger(__name__)
 
 
@@ -86,26 +85,9 @@ class ExportFormat:
 class CheckpointDeleter:
     """Checkpoint deleter callback for a runner."""
 
-    def __init__(self,
-                 trial_id,
-                 runner,
-                 node_ip,
-                 timeout: int = CHECKPOINT_DELETER_NODE_IP_GET_TIMEOUT):
+    def __init__(self, trial_id, runner):
         self.trial_id = trial_id
         self.runner = runner
-        self.node_ip = node_ip
-        self._runner_ip = None
-        self.timeout = timeout
-
-    @property
-    def runner_ip(self):
-        if not self._runner_ip:
-            try:
-                self._runner_ip = ray.get(
-                    self.runner.get_current_ip.remote(), timeout=self.timeout)
-            except GetTimeoutError:
-                pass
-        return self._runner_ip
 
     def __call__(self, checkpoint):
         """Requests checkpoint deletion asynchronously.
@@ -117,22 +99,25 @@ class CheckpointDeleter:
             return
 
         if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
-            logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
-                         checkpoint.value)
             checkpoint_path = checkpoint.value
 
+            logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
+                         checkpoint_path)
+
+            # TODO(ujvl): Batch remote deletes.
+            # We first delete the remote checkpoint. If it is on the same
+            # node as the driver, it will also remove the local copy.
+            ray.get(self.runner.delete_checkpoint.remote(checkpoint_path))
+
             # Delete local copy, if any exists.
-            if self.runner_ip != self.node_ip and os.path.exists(
-                    checkpoint_path):
+            if os.path.exists(checkpoint_path):
                 try:
                     checkpoint_dir = TrainableUtil.find_checkpoint_dir(
                         checkpoint_path)
                     shutil.rmtree(checkpoint_dir)
                 except FileNotFoundError:
-                    logger.warning("Checkpoint dir not found during deletion.")
-
-            # TODO(ujvl): Batch remote deletes.
-            self.runner.delete_checkpoint.remote(checkpoint.value)
+                    logger.debug(
+                        "Local checkpoint dir not found during deletion.")
 
 
 class TrialInfo:
@@ -339,8 +324,7 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            CheckpointDeleter(self._trainable_name(), self.runner,
-                              self.node_ip))
+            CheckpointDeleter(self._trainable_name(), self.runner))
 
         # Restoration fields
         self.restore_path = restore_path
@@ -554,15 +538,13 @@ class Trial:
             self._default_result_or_future = (
                 runner.get_auto_filled_metrics.remote(debug_metrics_only=True))
         self.checkpoint_manager.delete = CheckpointDeleter(
-            self._trainable_name(), runner, self.node_ip)
+            self._trainable_name(), runner)
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
     def set_location(self, location):
         """Sets the location of the trial."""
         self.location = location
-        if self.checkpoint_manager.delete:
-            self.checkpoint_manager.delete.node_ip = self.node_ip
         # No need to invalidate state cache: location is not stored in json
         # self.invalidate_json_state()
 

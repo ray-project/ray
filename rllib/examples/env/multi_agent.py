@@ -4,7 +4,7 @@ import random
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
 from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.utils.deprecation import Deprecated
 
 
 @Deprecated(
@@ -200,6 +200,6 @@ class RoundRobinMultiAgent(MultiAgentEnv):
 
 MultiAgentCartPole = make_multi_agent("CartPole-v0")
 MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
-MultiAgentPendulum = make_multi_agent("Pendulum-v1")
+MultiAgentPendulum = make_multi_agent("Pendulum-v0")
 MultiAgentStatelessCartPole = make_multi_agent(
     lambda config: StatelessCartPole(config))

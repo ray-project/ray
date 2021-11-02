@@ -55,7 +55,7 @@ if __name__ == "__main__":
         if args.run != "PPO" else BatchNormModel)
 
     config = {
-        "env": "Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v0",
+        "env": "Pendulum-v0" if args.run in ["DDPG", "SAC"] else "CartPole-v0",
         "model": {
             "custom_model": "bn_model",
         },

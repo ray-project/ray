@@ -25,17 +25,16 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   const rpc::Address worker_address = request.worker_failure().worker_address();
   const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
-  std::stringstream log_stream;
-  log_stream << "Reporting worker failure, worker id = " << worker_id
-             << ", node id = " << node_id << ", address = " << worker_address.ip_address()
-             << ", exit_type = "
-             << rpc::WorkerExitType_Name(request.worker_failure().exit_type())
-             << ", has creation task exception = "
-             << request.worker_failure().has_creation_task_exception();
-  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT) {
-    RAY_LOG(INFO) << log_stream.str();
+  std::string message = absl::StrCat(
+      "Reporting worker exit, worker id = ", worker_id.Hex(),
+      ", node id = ", node_id.Hex(), ", address = ", worker_address.ip_address(),
+      ", exit_type = ", rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
+      request.worker_failure().has_creation_task_exception());
+  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT ||
+      request.worker_failure().exit_type() == rpc::WorkerExitType::IDLE_EXIT) {
+    RAY_LOG(DEBUG) << message;
   } else {
-    RAY_LOG(WARNING) << log_stream.str()
+    RAY_LOG(WARNING) << message
                      << ". Unintentional worker failures have been reported. If there "
                         "are lots of this logs, that might indicate there are "
                         "unexpected failures in the cluster.";

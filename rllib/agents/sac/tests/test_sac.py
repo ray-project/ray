@@ -104,12 +104,12 @@ class TestSAC(unittest.TestCase):
                     simple_space, Discrete(2), image_space]),
                 "action_space": Box(-1.0, 1.0, shape=(1, )), }))
 
-        for fw in framework_iterator(config):
+        for fw in framework_iterator(config, with_eager_tracing=True):
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
                     "random_dict_env",
                     "random_tuple_env",
-                    "MsPacmanNoFrameskip-v4",
+                    # "MsPacmanNoFrameskip-v4",
                     "CartPole-v0",
             ]:
                 print("Env={}".format(env))

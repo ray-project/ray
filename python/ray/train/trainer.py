@@ -375,14 +375,17 @@ class Trainer:
         return self._executor.latest_checkpoint_dir
 
     @property
-    def latest_checkpoint_path(self) -> Optional[Path]:
-        """Path to the latest persisted checkpoint from the latest run.
+    def best_checkpoint_path(self) -> Optional[Path]:
+        """Path to the best persisted checkpoint from the latest run.
+
+        "Best" is defined by the input ``CheckpointStrategy``.
+        Default behavior is to return the most recent checkpoint.
 
         Returns ``None`` if ``run()`` has not been called or if
         ``train.checkpoint()`` has not been called from ``train_func`` within
         the most recent call to ``run``.
         """
-        return self._executor.latest_checkpoint_path
+        return self._executor.best_checkpoint_path
 
     @property
     def latest_checkpoint(self) -> Optional[Dict]:

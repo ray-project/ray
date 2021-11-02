@@ -319,7 +319,10 @@ def gather_experiences_directly(workers, config):
     return train_batches
 
 
-def execution_plan(workers, config):
+def execution_plan(workers, config, **kwargs):
+    assert len(kwargs) == 0, (
+        "IMPALA execution_plan does NOT take any additional parameters")
+
     if config["num_aggregation_workers"] > 0:
         train_batches = gather_experiences_tree_aggregation(workers, config)
     else:

@@ -21,6 +21,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -279,6 +280,11 @@ struct GcsServerMocker {
       RAY_CHECK(false) << "Unused";
     };
 
+    /// ShutdownRaylet
+    void ShutdownRaylet(
+        const NodeID &node_id, bool graceful,
+        const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
+
     ~MockRayletClient() {}
 
     int num_workers_requested = 0;
@@ -387,7 +393,7 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status UnregisterSelf() override { return Status::NotImplemented(""); }
+    Status DrainSelf() override { return Status::NotImplemented(""); }
 
     const NodeID &GetSelfId() const override {
       static NodeID node_id;
@@ -404,8 +410,8 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncUnregister(const NodeID &node_id,
-                           const gcs::StatusCallback &callback) override {
+    Status AsyncDrainNode(const NodeID &node_id,
+                          const gcs::StatusCallback &callback) override {
       if (callback) {
         callback(Status::OK());
       }

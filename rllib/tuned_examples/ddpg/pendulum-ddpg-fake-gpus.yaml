@@ -1,5 +1,5 @@
 pendulum-ddpg-fake-gpus:
-    env: Pendulum-v1
+    env: Pendulum-v0
     run: DDPG
     stop:
         episode_reward_mean: -700

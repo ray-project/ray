@@ -263,5 +263,127 @@ std::string GcsPublisher::DebugString() const {
   return "GcsPublisher {}";
 }
 
+Status GcsSubscriber::SubscribeAllJobs(
+    const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+    const StatusCallback &done) {
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::JobTableData job_data;
+    job_data.ParseFromString(data);
+    subscribe(JobID::FromHex(id), job_data);
+  };
+  return pubsub_->SubscribeAll(JOB_CHANNEL, on_subscribe, done);
+}
+
+Status GcsSubscriber::SubscribeAllActors(
+    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+    const StatusCallback &done) {
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::ActorTableData actor_data;
+    actor_data.ParseFromString(data);
+    subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
+  };
+  return pubsub_->SubscribeAll(ACTOR_CHANNEL, on_subscribe, done);
+}
+
+Status GcsSubscriber::SubscribeActor(
+    const ActorID &id, const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+    const StatusCallback &done) {
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::ActorTableData actor_data;
+    actor_data.ParseFromString(data);
+    subscribe(ActorID::FromHex(id), actor_data);
+  };
+  return pubsub_->Subscribe(ACTOR_CHANNEL, id.Hex(), on_subscribe, done);
+}
+
+Status GcsSubscriber::UnsubscribeActor(const ActorID &id) {
+  return pubsub_->Unsubscribe(ACTOR_CHANNEL, id.Hex());
+}
+
+bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
+  return pubsub_->IsUnsubscribed(ACTOR_CHANNEL, id.Hex());
+}
+
+Status GcsSubscriber::SubscribeAllNodeInfo(
+    const ItemCallback<rpc::GcsNodeInfo> &subscribe, const StatusCallback &done) {
+  auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
+    rpc::GcsNodeInfo node_info;
+    node_info.ParseFromString(data);
+    subscribe(node_info);
+  };
+  return pubsub_->SubscribeAll(NODE_CHANNEL, on_subscribe, done);
+}
+
+Status GcsSubscriber::SubscribeResourcesBatch(
+    const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
+    const StatusCallback &done) {
+  auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
+    rpc::ResourceUsageBatchData resources_batch_data;
+    resources_batch_data.ParseFromString(data);
+    subscribe(resources_batch_data);
+  };
+  return pubsub_->Subscribe(RESOURCES_BATCH_CHANNEL, "", on_subscribe, done);
+}
+
+Status GcsSubscriber::SubscribeAllNodeResources(
+    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
+  auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
+    rpc::NodeResourceChange node_resource_change;
+    node_resource_change.ParseFromString(data);
+    subscribe(node_resource_change);
+  };
+  return pubsub_->SubscribeAll(NODE_RESOURCE_CHANNEL, on_subscribe, done);
+}
+
+Status GcsSubscriber::SubscribeTaskLease(
+    const TaskID &id,
+    const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
+    const StatusCallback &done) {
+  auto on_subscribe = [id, subscribe](const std::string &, const std::string &data) {
+    rpc::TaskLeaseData task_lease_data;
+    task_lease_data.ParseFromString(data);
+    subscribe(id, task_lease_data);
+  };
+  return pubsub_->Subscribe(TASK_LEASE_CHANNEL, id.Hex(), on_subscribe, done);
+}
+
+Status GcsSubscriber::UnsubscribeTaskLease(const TaskID &id) {
+  return pubsub_->Unsubscribe(TASK_LEASE_CHANNEL, id.Hex());
+}
+
+bool GcsSubscriber::IsTaskLeaseUnsubscribed(const TaskID &id) {
+  return pubsub_->IsUnsubscribed(TASK_LEASE_CHANNEL, id.Hex());
+}
+
+Status GcsSubscriber::SubscribeObject(
+    const ObjectID &id,
+    const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
+    const StatusCallback &done) {
+  auto on_subscribe = [id, subscribe](const std::string &, const std::string &data) {
+    rpc::ObjectLocationChange object_location_change;
+    object_location_change.ParseFromString(data);
+    subscribe(id, {object_location_change});
+  };
+  return pubsub_->Subscribe(OBJECT_CHANNEL, id.Hex(), on_subscribe, done);
+}
+
+Status GcsSubscriber::UnsubscribeObject(const ObjectID &id) {
+  return pubsub_->Unsubscribe(OBJECT_CHANNEL, id.Hex());
+}
+
+bool GcsSubscriber::IsObjectUnsubscribed(const ObjectID &id) {
+  return pubsub_->IsUnsubscribed(OBJECT_CHANNEL, id.Hex());
+}
+
+Status GcsSubscriber::SubscribeAllWorkerFailures(
+    const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
+  auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
+    rpc::WorkerDeltaData worker_failure_data;
+    worker_failure_data.ParseFromString(data);
+    subscribe(worker_failure_data);
+  };
+  return pubsub_->SubscribeAll(WORKER_CHANNEL, on_subscribe, done);
+}
+
 }  // namespace gcs
 }  // namespace ray

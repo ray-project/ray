@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     # Example config causing
     config = {
-        # Also try common gym envs like: "CartPole-v0" or "Pendulum-v1".
+        # Also try common gym envs like: "CartPole-v0" or "Pendulum-v0".
         "env": (MultiAgentCustomRenderedEnv
                 if args.multi_agent else CustomRenderedEnv),
         "env_config": {

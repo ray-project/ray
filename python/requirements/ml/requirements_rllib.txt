@@ -17,6 +17,7 @@ supersuit==2.6.6
 pybullet==3.1.7
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
+tensorflow_estimator==2.6.0
 
 # Other.
 # ------

@@ -20,7 +20,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
@@ -65,15 +65,6 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
 
 /// The global instance of `CoreWorkerProcess`.
 std::unique_ptr<CoreWorkerProcess> core_worker_process;
-
-/// Teriminate the process without cleaning up the resources.
-/// It will flush the log if logging_enabled is set to true.
-void QuickExit(bool logging_enabled) {
-  if (logging_enabled) {
-    RayLog::ShutDownRayLog();
-  }
-  _Exit(1);
-}
 }  // namespace
 
 thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
@@ -85,6 +76,7 @@ void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
 }
 
 void CoreWorkerProcess::Shutdown() {
+  RAY_LOG(DEBUG) << "Shutdown. Core worker process will be deleted";
   if (!core_worker_process) {
     return;
   }
@@ -190,10 +182,20 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   }
 }
 
-void CoreWorkerProcess::EnsureInitialized() {
-  RAY_CHECK(core_worker_process)
-      << "The core worker process is not initialized yet or already "
-      << "shutdown.";
+void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
+  if (core_worker_process != nullptr) {
+    return;
+  }
+
+  if (quick_exit) {
+    RAY_LOG(ERROR) << "The core worker process is not initialized yet or already "
+                   << "shutdown.";
+    QuickExit();
+  } else {
+    RAY_CHECK(core_worker_process)
+        << "The core worker process is not initialized yet or already "
+        << "shutdown.";
+  }
 }
 
 void CoreWorkerProcess::HandleAtExit() { core_worker_process.reset(); }
@@ -211,26 +213,45 @@ void CoreWorkerProcess::InitializeSystemConfig() {
         options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
     raylet::RayletClient raylet_client(grpc_client);
 
-    std::function<void(int64_t)> get_once = [&get_once, &raylet_client, &promise,
+    std::function<void(int64_t)> get_once = [this, &get_once, &raylet_client, &promise,
                                              &io_service](int64_t num_attempts) {
-      raylet_client.GetSystemConfig([num_attempts, &get_once, &promise, &io_service](
-                                        const Status &status,
-                                        const rpc::GetSystemConfigReply &reply) {
-        RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
-                       << num_attempts;
-        if (!status.ok()) {
-          if (num_attempts <= 1) {
-            RAY_LOG(FATAL) << "Failed to get the system config from Raylet: " << status;
-          } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(
-                RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
-            get_once(num_attempts - 1);
-          }
-        } else {
-          promise.set_value(reply.system_config());
-          io_service.stop();
-        }
-      });
+      raylet_client.GetSystemConfig(
+          [this, num_attempts, &get_once, &promise, &io_service](
+              const Status &status, const rpc::GetSystemConfigReply &reply) {
+            RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
+                           << num_attempts;
+            if (status.ok()) {
+              promise.set_value(reply.system_config());
+              io_service.stop();
+              return;
+            }
+
+            if (num_attempts > 1) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(
+                  RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
+              get_once(num_attempts - 1);
+              return;
+            }
+
+            // If there's no more attempt to try.
+            if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+              std::ostringstream ss;
+              ss << "Failed to get the system config from raylet because "
+                 << "it is dead. Worker will terminate. Status: " << status;
+              if (options_.worker_type == WorkerType::DRIVER) {
+                // If it is the driver, surface the issue to the user.
+                RAY_LOG(ERROR) << ss.str();
+              } else {
+                RAY_LOG(WARNING) << ss.str();
+              }
+              QuickExit();
+            }
+
+            // Unexpected.
+            RAY_LOG(FATAL)
+                << "Failed to get the system config from Raylet on time unexpectedly."
+                << status;
+          });
     };
 
     get_once(RayConfig::instance().raylet_client_num_connect_attempts());
@@ -266,7 +287,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &work
 }
 
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ true);
   if (core_worker_process->options_.num_workers == 1) {
     auto global_worker = core_worker_process->GetGlobalWorker();
     if (core_worker_process->ShouldCreateGlobalWorkerOnConstruction() && !global_worker) {
@@ -277,7 +298,7 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
       RAY_LOG(ERROR) << "The global worker has already been shutdown. This happens when "
                         "the language frontend accesses the Ray's worker after it is "
                         "shutdown. The process will exit";
-      QuickExit(core_worker_process->options_.enable_logging);
+      QuickExit();
     }
     RAY_CHECK(global_worker) << "global_worker_ must not be NULL";
     return *global_worker;
@@ -289,9 +310,11 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 }
 
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ false);
   if (core_worker_process->options_.num_workers == 1) {
-    RAY_CHECK(core_worker_process->GetGlobalWorker()->GetWorkerID() == worker_id);
+    auto global_worker = core_worker_process->GetGlobalWorker();
+    RAY_CHECK(global_worker) << "Global worker must not be NULL.";
+    RAY_CHECK(global_worker->GetWorkerID() == worker_id);
     return;
   }
   current_core_worker_ = core_worker_process->GetWorker(worker_id);
@@ -345,7 +368,7 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
 }
 
 void CoreWorkerProcess::RunTaskExecutionLoop() {
-  EnsureInitialized();
+  EnsureInitialized(/*quick_exit*/ false);
   RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::WORKER);
   if (core_worker_process->options_.num_workers == 1) {
     // Run the task loop in the current thread only if the number of workers is 1.
@@ -354,6 +377,7 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
       worker = core_worker_process->CreateWorker();
     }
     worker->RunTaskExecutionLoop();
+    RAY_LOG(DEBUG) << "Task execution loop terminated. Removing the global worker.";
     core_worker_process->RemoveWorker(worker);
   } else {
     std::vector<std::thread> worker_threads;
@@ -362,6 +386,8 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
         SetThreadName("worker.task" + std::to_string(i));
         auto worker = core_worker_process->CreateWorker();
         worker->RunTaskExecutionLoop();
+        RAY_LOG(INFO) << "Task execution loop terminated for a thread "
+                      << std::to_string(i) << ". Removing a worker.";
         core_worker_process->RemoveWorker(worker);
       });
     }
@@ -425,7 +451,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     RAY_LOG(ERROR) << "Failed to register worker " << worker_id << " to Raylet. "
                    << raylet_client_status;
     // Quit the process immediately.
-    QuickExit(options_.enable_logging);
+    QuickExit();
   }
 
   connected_ = true;
@@ -472,7 +498,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.gcs_options.password_,
       /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
       /*enable_subscribe_conn=*/true);
-  gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(
+  gcs_client_ = std::make_shared<gcs::GcsClient>(
       gcs_options, [this](std::pair<std::string, int> *address) {
         absl::MutexLock lock(&gcs_server_address_mutex_);
         if (gcs_server_address_.second != 0) {
@@ -517,7 +543,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                     rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
-      // /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
       /*get_client=*/
       [this](const rpc::Address &address) {
         return core_worker_client_pool_->GetOrConnect(address);
@@ -768,6 +793,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 void CoreWorker::Shutdown() {
   io_service_.stop();
   if (options_.worker_type == WorkerType::WORKER) {
+    direct_task_receiver_->Stop();
     task_execution_service_.stop();
   }
   if (options_.on_worker_shutdown) {
@@ -803,19 +829,8 @@ void CoreWorker::Exit(
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type);
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
-  auto status =
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
-  if (status.IsIOError()) {
-    // If the core worker fails to be connected to raylet due to broken pipe, we just exit
-    // quickly without proceeding graceful shutdown. This happens if
-    // - raylet is already crashed.
-    // - Raylet already unregistered this worker.
-    RAY_LOG(INFO)
-        << "Failed to notify that the direct call task has blocked. Call status: "
-        << status;
-    QuickExit(options_.enable_logging);
-    RAY_LOG(FATAL) << "Unreachable.";
-  }
+  RAY_CHECK_OK(
+      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {
@@ -824,7 +839,8 @@ void CoreWorker::Exit(
     task_execution_service_.post(
         [this, exit_type, creation_task_exception_pb_bytes]() {
           if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR ||
-              exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
+              exit_type == rpc::WorkerExitType::INTENDED_EXIT ||
+              exit_type == rpc::WorkerExitType::IDLE_EXIT) {
             // Notify the raylet about this exit.
             // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect
             // manually.
@@ -970,20 +986,17 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::CheckForRayletFailure() {
-  bool should_shutdown = false;
-  // When running worker process in container, the worker parent process is not raylet.
-  // So we add RAY_RAYLET_PID enviroment to ray worker process.
-  if (auto env_pid = RayConfig::instance().RAYLET_PID(); !env_pid.empty()) {
-    auto pid = static_cast<pid_t>(std::stoi(env_pid));
-    if (!IsProcessAlive(pid)) {
-      RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
-      should_shutdown = true;
-    }
-  } else if (!IsParentProcessAlive()) {
-    RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
-    should_shutdown = true;
-  }
+  auto env_pid = RayConfig::instance().RAYLET_PID();
+  bool should_shutdown = IsRayletFailed(env_pid);
   if (should_shutdown) {
+    std::ostringstream stream;
+    stream << "Shutting down the core worker because the local raylet failed. "
+           << "Check out the raylet.out log file.";
+    if (!env_pid.empty()) {
+      auto pid = static_cast<pid_t>(std::stoi(env_pid));
+      stream << " Raylet pid: " << pid;
+    }
+    RAY_LOG(WARNING) << stream.str();
     if (options_.worker_type == WorkerType::WORKER) {
       task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
     } else {
@@ -1081,7 +1094,8 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner
          "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
          "which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+         "at https://github.com/ray-project/ray/issues/: "
+      << object_id;
 
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
@@ -1197,7 +1211,8 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
     // the current worker. So we need to make sure ref count is > 0
-    // by invoking `AddLocalReference` first.
+    // by invoking `AddLocalReference` first. Note that in worker.py we set
+    // skip_adding_local_ref=True to avoid double referencing the object.
     AddLocalReference(*object_id);
     RAY_UNUSED(reference_counter_->AddBorrowedObject(*object_id, ObjectID::Nil(),
                                                      real_owner_address));
@@ -2934,7 +2949,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
     // `exit()` will destruct static objects in an incorrect order, which will lead to
     // core dumps.
-    QuickExit(options_.enable_logging);
+    QuickExit();
   }
 }
 
@@ -2970,7 +2985,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
     // `exit()` will destruct static objects in an incorrect order, which will lead to
     // core dumps.
-    QuickExit(options_.enable_logging);
+    QuickExit();
   } else {
     Exit(rpc::WorkerExitType::INTENDED_EXIT);
   }
