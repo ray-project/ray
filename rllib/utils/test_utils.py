@@ -591,6 +591,10 @@ def run_learning_tests_from_yaml(
 
     start_time = time.monotonic()
 
+    # Keep track of those experiments we still have to run.
+    # If an experiment passes, we'll remove it from this dict.
+    experiments_to_run = experiments.copy()
+
     # Loop through all collected files and gather experiments.
     # Augment all by `torch` framework.
     for yaml_file in yaml_files:
@@ -603,8 +607,7 @@ def run_learning_tests_from_yaml(
             if "framework" in e["config"]:
                 frameworks = [e["config"]["framework"]]
             else:
-                frameworks = ["tf", "torch"]
-                e["config"]["framework"] = "tf"
+                frameworks = ["tf", "tf2", "torch"]
 
             e["stop"] = e["stop"] or {}
             e["pass_criteria"] = e["pass_criteria"] or {}
@@ -623,47 +626,31 @@ def run_learning_tests_from_yaml(
                 if min_reward is not None:
                     e["stop"]["episode_reward_mean"] = min_reward
 
-            keys = []
-            # Generate the torch copy of the experiment.
-            if len(frameworks) == 2:
-                e_torch = copy.deepcopy(e)
-                e_torch["config"]["framework"] = "torch"
-                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
-                keys.append(re.sub("-tf-", "-torch-", keys[0]))
-                experiments[keys[0]] = e
-                experiments[keys[1]] = e_torch
-            # tf-only.
-            elif frameworks[0] == "tf":
-                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
-                experiments[keys[0]] = e
-            # torch-only.
-            else:
-                keys.append(re.sub("^(\\w+)-", "\\1-torch-", k))
-                experiments[keys[0]] = e
+            # Generate `checks` dict for all experiments (tf, tf2 and/or torch).
+            for framework in frameworks:
+                k_ = k + "-" + framework
+                ec = copy.deepcopy(e)
+                ec["config"]["framework"] = framework
 
-            # Generate `checks` dict for all experiments (tf and/or torch).
-            for k_ in keys:
-                e = experiments[k_]
                 checks[k_] = {
-                    "min_reward": e["pass_criteria"].get(
+                    "min_reward": ec["pass_criteria"].get(
                         "episode_reward_mean"),
-                    "min_throughput": e["pass_criteria"].get(
+                    "min_throughput": ec["pass_criteria"].get(
                         "timesteps_total", 0.0) /
-                    (e["stop"].get("time_total_s", 1.0) or 1.0),
-                    "time_total_s": e["stop"].get("time_total_s"),
+                    (ec["stop"].get("time_total_s", 1.0) or 1.0),
+                    "time_total_s": ec["stop"].get("time_total_s"),
                     "failures": 0,
                     "passed": False,
                 }
                 # This key would break tune.
-                e.pop("pass_criteria", None)
+                ec.pop("pass_criteria", None)
+
+                # One experiment to run.
+                experiments_to_run[k_] = ec
 
     # Print out the actual config.
     print("== Test config ==")
     print(yaml.dump(experiments))
-
-    # Keep track of those experiments we still have to run.
-    # If an experiment passes, we'll remove it from this dict.
-    experiments_to_run = experiments.copy()
 
     try:
         ray.init(address="auto")
