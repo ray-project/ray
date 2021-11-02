@@ -2,12 +2,13 @@ from uuid import uuid4
 import tempfile
 import os
 import time
+import psutil
 
 import pytest
 
 import ray
 from ray._private.job_manager import JobManager, JobStatus
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 TEST_NAMESPACE = "jobs_test_namespace"
 
@@ -44,6 +45,10 @@ def check_job_stopped(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
     assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
     return status == JobStatus.STOPPED
+
+
+def check_subprocess_cleaned(pid):
+    return psutil.pid_exists(pid) is False
 
 
 class TestShellScriptExecution:
@@ -210,27 +215,43 @@ class TestRuntimeEnv:
 
 
 class TestAsyncAPI:
-    def _run_hanging_command(self, job_manager, tmp_dir):
+    def _run_hanging_command(self,
+                             job_manager,
+                             tmp_dir,
+                             _start_signal_actor=None):
         tmp_file = os.path.join(tmp_dir, "hello")
+        pid_file = os.path.join(tmp_dir, "pid")
 
-        # Block until file is present.
-        wait_for_file_cmd = (f"until [ -f {tmp_file} ]; "
+        # Write subprocess pid to pid_file and block until tmp_file is present.
+        wait_for_file_cmd = (f"echo $$ > {pid_file} && "
+                             f"until [ -f {tmp_file} ]; "
                              "do echo 'Waiting...' && sleep 1; "
                              "done")
-        job_id = job_manager.submit_job(wait_for_file_cmd)
+        job_id = job_manager.submit_job(
+            wait_for_file_cmd, _start_signal_actor=_start_signal_actor)
 
         for _ in range(10):
             time.sleep(0.1)
             status = job_manager.get_job_status(job_id)
-            assert status == JobStatus.RUNNING
-            stdout = job_manager.get_job_stdout(job_id)
-            assert b"Waiting..." in stdout
+            if _start_signal_actor:
+                assert status == JobStatus.PENDING
+                stdout = job_manager.get_job_stdout(job_id)
+                assert b"No stdout log available yet." in stdout
+            else:
+                assert status == JobStatus.RUNNING
+                stdout = job_manager.get_job_stdout(job_id)
+                assert b"Waiting..." in stdout
 
-        return tmp_file, job_id
+        return pid_file, tmp_file, job_id
 
     def test_status_and_logs_while_blocking(self, job_manager):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_file, job_id = self._run_hanging_command(job_manager, tmp_dir)
+            pid_file, tmp_file, job_id = self._run_hanging_command(
+                job_manager, tmp_dir)
+            with open(pid_file, "r") as file:
+                pid = int(file.read())
+                assert psutil.pid_exists(pid), (
+                    "driver subprocess should be running")
 
             # Signal the job to exit by writing to the file.
             with open(tmp_file, "w") as f:
@@ -238,10 +259,13 @@ class TestAsyncAPI:
 
             wait_for_condition(
                 check_job_succeeded, job_manager=job_manager, job_id=job_id)
+            # Ensure driver subprocess gets cleaned up after job reached
+            # termination state
+            wait_for_condition(check_subprocess_cleaned, pid=pid)
 
     def test_stop_job(self, job_manager):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            _, job_id = self._run_hanging_command(job_manager, tmp_dir)
+            _, _, job_id = self._run_hanging_command(job_manager, tmp_dir)
 
             assert job_manager.stop_job(job_id) is True
             wait_for_condition(
@@ -260,32 +284,67 @@ class TestAsyncAPI:
         1) Job status is correctly marked as failed
         2) No hanging subprocess from failed job
         """
+
         with tempfile.TemporaryDirectory() as tmp_dir:
-            _, job_id = self._run_hanging_command(job_manager, tmp_dir)
+            pid_file, _, job_id = self._run_hanging_command(
+                job_manager, tmp_dir)
+            with open(pid_file, "r") as file:
+                pid = int(file.read())
+                assert psutil.pid_exists(pid), (
+                    "driver subprocess should be running")
 
             actor = job_manager._get_actor_for_job(job_id)
             ray.kill(actor, no_restart=True)
+            wait_for_condition(
+                check_job_failed, job_manager=job_manager, job_id=job_id)
 
-            assert job_manager.get_job_status(job_id) == JobStatus.FAILED
+            # Ensure driver subprocess gets cleaned up after job reached
+            # termination state
+            wait_for_condition(check_subprocess_cleaned, pid=pid)
 
     def test_stop_job_in_pending(self, job_manager):
         """
-        Kick off a job that took a while to reaching RUNNING state, stop the
-        job and ensure
+        Kick off a job that is in PENDING state, stop the job and ensure
 
         1) Job can correctly be stop immediately with correct JobStatus
         2) No dangling subprocess left.
         """
-        pass
+        _start_signal_actor = SignalActor.remote()
 
-    def test_stop_job_subprocess_cleanup_upon_success(self, job_manager):
-        """
-        Ensure driver scripts' subprocess is cleaned up properly when we
-        successfully finished a job.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pid_file, _, job_id = self._run_hanging_command(
+                job_manager, tmp_dir, _start_signal_actor=_start_signal_actor)
+            assert not os.path.exists(pid_file), (
+                "driver subprocess should NOT be running while job is "
+                "still PENDING.")
 
-        SIGTERM first, SIGKILL after 3 seconds.
+            assert job_manager.stop_job(job_id) is True
+            # Send run signal to unblock run function
+            ray.get(_start_signal_actor.send.remote())
+            wait_for_condition(
+                check_job_stopped, job_manager=job_manager, job_id=job_id)
+
+    def test_kill_job_actor_in_pending(self, job_manager):
         """
-        pass
+        Kick off a job that is in PENDING state, kill the job actor and ensure
+
+        1) Job can correctly be stop immediately with correct JobStatus
+        2) No dangling subprocess left.
+        """
+        _start_signal_actor = SignalActor.remote()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pid_file, _, job_id = self._run_hanging_command(
+                job_manager, tmp_dir, _start_signal_actor=_start_signal_actor)
+
+            assert not os.path.exists(pid_file), (
+                "driver subprocess should NOT be running while job is "
+                "still PENDING.")
+
+            actor = job_manager._get_actor_for_job(job_id)
+            ray.kill(actor, no_restart=True)
+            wait_for_condition(
+                check_job_failed, job_manager=job_manager, job_id=job_id)
 
     def test_stop_job_subprocess_cleanup_upon_stop(self, job_manager):
         """
@@ -294,4 +353,18 @@ class TestAsyncAPI:
 
         SIGTERM first, SIGKILL after 3 seconds.
         """
-        pass
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pid_file, _, job_id = self._run_hanging_command(
+                job_manager, tmp_dir)
+            with open(pid_file, "r") as file:
+                pid = int(file.read())
+                assert psutil.pid_exists(pid), (
+                    "driver subprocess should be running")
+
+            assert job_manager.stop_job(job_id) is True
+            wait_for_condition(
+                check_job_stopped, job_manager=job_manager, job_id=job_id)
+
+            # Ensure driver subprocess gets cleaned up after job reached
+            # termination state
+            wait_for_condition(check_subprocess_cleaned, pid=pid)

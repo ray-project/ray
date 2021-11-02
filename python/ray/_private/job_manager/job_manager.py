@@ -5,6 +5,7 @@ import os
 import json
 import logging
 import traceback
+import subprocess
 
 from typing import Any, Dict, Tuple, Optional
 from uuid import uuid4
@@ -19,9 +20,10 @@ from ray.experimental.internal_kv import (
 )
 from ray.dashboard.modules.job.data_types import JobStatus
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+# Used in testing only to cover job status under concurrency
+from ray._private.test_utils import SignalActor
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 class JobLogStorageClient:
@@ -119,19 +121,42 @@ class JobSupervisor:
         """
         with open(stdout_path, "a+") as stdout, open(stderr_path,
                                                      "a+") as stderr:
-            child = await asyncio.create_subprocess_shell(
-                cmd, stdout=stdout, stderr=stderr)
-            logger.debug(f"Started driver command subprocess PID: {child.pid}")
-            # Let child process run in the background
-            return child.wait(), child
+            parent_pid = os.getpid()
+            # Create new pgid with new subprocess to execute driver command
+            child_process = await asyncio.create_subprocess_shell(
+                cmd, start_new_session=True, stdout=stdout, stderr=stderr)
+            child_pid = child_process.pid
+            child_pgid = os.getpgid(child_pid)
 
-    async def run(self, cmd: str):
+            # Open a new subprocess to kill the child process when the parent
+            # process dies kill -s 0 parent_pid will succeed if the parent is
+            # alive. If it fails, SIGKILL the child process group and exit
+            subprocess.Popen(
+                f"while kill -s 0 {parent_pid}; do sleep 1; done; kill -9 -{child_pgid}",  # noqa: E501
+                shell=True,
+                # Suppress output
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            return asyncio.create_task(child_process.wait()), child_process
+
+    async def run(
+            self,
+            cmd: str,
+            # Signal actor used in testing to capture PENDING -> RUNNING cases
+            _start_signal_actor: Optional[SignalActor] = None):
         """Run the command, then exit afterwards.
         Should update state and logs.
         """
         cur_status = self.get_status()
         assert cur_status == JobStatus.PENDING, (
             "Run should only be called once.")
+
+        if _start_signal_actor:
+            # Block in PENDING state until start signal received.
+            await _start_signal_actor.wait.remote()
+
         self._status_client.put_status(self._job_id, JobStatus.RUNNING)
 
         try:
@@ -221,12 +246,11 @@ class JobManager:
             raise ValueError(
                 "Cannot found the node dictionary for current node.")
 
-    def submit_job(
-            self,
-            entrypoint: str,
-            runtime_env: Optional[Dict[str, Any]] = None,
-            metadata: Optional[Dict[str, str]] = None,
-    ) -> str:
+    def submit_job(self,
+                   entrypoint: str,
+                   runtime_env: Optional[Dict[str, Any]] = None,
+                   metadata: Optional[Dict[str, str]] = None,
+                   _start_signal_actor: Optional[SignalActor] = None) -> str:
         """
         Job execution happens asynchronously.
 
@@ -273,7 +297,7 @@ class JobManager:
                 f"Exception message: {str(e)}")
 
         # Kick off the job to run in the background.
-        supervisor.run.remote(entrypoint)
+        supervisor.run.remote(entrypoint, _start_signal_actor)
 
         return job_id
 
