@@ -29,6 +29,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -134,11 +135,14 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Block the actor_task_io_thread_ until the submitter is shutdown.
   void WaitForShutdown();
 
+  void Shutdown();
+
   /// Push a task to corresponding client queue by the actor id.
   ///
   /// \param[in] task The task spec to push.
   /// \param[in] callback  The callback function to be called after the task spec be sent
-  /// out. Only used in test code. \return void.
+  /// out. Only used in test code.
+  /// \return void.
   void AppendTask(const TaskSpecification &task_spec,
                   const std::function<void(const ActorID &)> &callback = nullptr);
 
@@ -287,14 +291,12 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Submit a task to an actor for execution.
   ///
   /// \param[in] task_spec The task spec to submit.
-  /// \param[in] send_pos The key of task_spec in ClientQueue;
+  ///
   /// \return Status::Invalid if the task is not yet supported.
-  Status SubmitTask(TaskSpecification task_spec, uint64_t send_pos);
+  Status SubmitTask(TaskSpecification task_spec);
 
   /// Run the actor_task_io_service_ event loop.
   void RunActorTaskIOService();
-
-  void Shutdown();
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;

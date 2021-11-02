@@ -117,6 +117,14 @@ class DirectActorSubmitterTest : public ::testing::Test {
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
   CoreWorkerDirectActorTaskSubmitter submitter_;
+
+ public:
+  void AppendTask(CoreWorkerDirectActorTaskSubmitter &submitter, TaskSpecification task) {
+    std::promise<bool> promise;
+    submitter.AppendTask(
+        task, [&promise](const ActorID &actor_id) { promise.set_value(true); });
+    promise.get_future().get();
+  }
 };
 
 TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
@@ -124,17 +132,17 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1);
 
   auto task = CreateActorTaskHelper(actor_id, worker_id, 0);
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  AppendTask(submitter_, task);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   task = CreateActorTaskHelper(actor_id, worker_id, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  AppendTask(submitter_, task);
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
   EXPECT_CALL(*task_finisher_, CompletePendingTask(TaskID::Nil(), _, _))
@@ -150,6 +158,9 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
   // not reset `received_seq_nos`.
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
+
+  submitter_.Shutdown();
+  submitter_.WaitForShutdown();
 }
 
 TEST_F(DirectActorSubmitterTest, TestQueueingWarning) {
@@ -157,29 +168,32 @@ TEST_F(DirectActorSubmitterTest, TestQueueingWarning) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1);
   submitter_.ConnectActor(actor_id, addr, 0);
 
   for (int i = 0; i < 7500; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    AppendTask(submitter_, task);
     worker_client_->acked_seqno = i;
   }
   ASSERT_EQ(last_queue_warning_, 0);
 
   for (int i = 7500; i < 15000; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    AppendTask(submitter_, task);
     /* no ack */
   }
   ASSERT_EQ(last_queue_warning_, 5000);
 
   for (int i = 15000; i < 35000; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    AppendTask(submitter_, task);
     /* no ack */
   }
   ASSERT_EQ(last_queue_warning_, 20000);
+
+  submitter_.Shutdown();
+  submitter_.WaitForShutdown();
 }
 
 TEST_F(DirectActorSubmitterTest, TestDependencies) {
@@ -187,7 +201,7 @@ TEST_F(DirectActorSubmitterTest, TestDependencies) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -203,8 +217,8 @@ TEST_F(DirectActorSubmitterTest, TestDependencies) {
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  AppendTask(submitter_, task1);
+  AppendTask(submitter_, task2);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Put the dependencies in the store in the same order as task submission.
@@ -214,6 +228,9 @@ TEST_F(DirectActorSubmitterTest, TestDependencies) {
   ASSERT_TRUE(store_->Put(*data, obj2));
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
+
+  submitter_.Shutdown();
+  submitter_.WaitForShutdown();
 }
 
 TEST_F(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
@@ -221,7 +238,7 @@ TEST_F(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -237,8 +254,8 @@ TEST_F(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  AppendTask(submitter_, task1);
+  AppendTask(submitter_, task2);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Put the dependencies in the store in the opposite order of task
@@ -249,6 +266,9 @@ TEST_F(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
   ASSERT_TRUE(store_->Put(*data, obj1));
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
+
+  submitter_.Shutdown();
+  submitter_.WaitForShutdown();
 }
 
 TEST_F(DirectActorSubmitterTest, TestActorDead) {
@@ -256,7 +276,7 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -265,8 +285,8 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   ObjectID obj = ObjectID::FromRandom();
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  AppendTask(submitter_, task1);
+  AppendTask(submitter_, task2);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   // Simulate the actor dying. All in-flight tasks should get failed.
@@ -281,6 +301,9 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   // Actor marked as dead. All queued tasks should get failed.
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(1);
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/true);
+
+  submitter_.Shutdown();
+  submitter_.WaitForShutdown();
 }
 
 TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
@@ -288,7 +311,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1);
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -299,9 +322,9 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
   // Submit three tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  AppendTask(submitter_, task1);
+  AppendTask(submitter_, task2);
+  AppendTask(submitter_, task3);
 
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(2);
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(2);
@@ -318,11 +341,14 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   // Actor gets restarted.
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
+  AppendTask(submitter_, task4);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   ASSERT_TRUE(worker_client_->callbacks.empty());
   // Actor counter restarts at 0 after the actor is restarted.
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 0));
+
+  submitter_.Shutdown();
+  submitter_.WaitForShutdown();
 }
 
 TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
@@ -330,7 +356,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1);
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -341,9 +367,9 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
   // Submit three tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  AppendTask(submitter_, task1);
+  AppendTask(submitter_, task2);
+  AppendTask(submitter_, task3);
 
   // All tasks will eventually finish.
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(4);
@@ -364,16 +390,19 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
   // A new task is submitted.
-  ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
+  AppendTask(submitter_, task4);
   // Tasks 2 and 3 get retried.
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  AppendTask(submitter_, task2);
+  AppendTask(submitter_, task3);
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   }
   // Actor counter restarts at 0 after the actor is restarted. New task cannot
   // execute until after tasks 2 and 3 are re-executed.
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 2, 0, 1));
+
+  submitter_.Shutdown();
+  submitter_.WaitForShutdown();
 }
 
 TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
@@ -381,7 +410,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1);
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -391,9 +420,9 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   // Submit three tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  AppendTask(submitter_, task1);
+  AppendTask(submitter_, task2);
+  AppendTask(submitter_, task3);
   // All tasks will eventually finish.
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(3);
 
@@ -414,7 +443,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   // Upon re-connect, task 2 (failed) and 3 (completed) should be both retried.
   // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
   // Retry task 3 should happen via event loop
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  AppendTask(submitter_, task2);
 
   // Both task2 and task3 should be submitted.
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
@@ -423,6 +452,9 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   }
+
+  submitter_.Shutdown();
+  submitter_.WaitForShutdown();
 }
 
 TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
@@ -430,7 +462,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1);
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -439,7 +471,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Create four tasks for the actor.
   auto task = CreateActorTaskHelper(actor_id, worker_id, 0);
   // Submit a task.
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  AppendTask(submitter_, task);
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
@@ -449,7 +481,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  AppendTask(submitter_, task);
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
@@ -458,7 +490,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 2);
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  AppendTask(submitter_, task);
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
@@ -467,7 +499,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 3);
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  AppendTask(submitter_, task);
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(0);
   ASSERT_FALSE(worker_client_->ReplyPushTask(Status::OK()));
 
@@ -490,7 +522,10 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 4);
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task.TaskId(), _, _, _, _)).Times(1);
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  AppendTask(submitter_, task);
+
+  submitter_.Shutdown();
+  submitter_.WaitForShutdown();
 }
 
 class MockDependencyWaiter : public DependencyWaiter {

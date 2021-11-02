@@ -63,6 +63,14 @@ class DirectTaskTransportTest : public ::testing::Test {
   std::shared_ptr<MockTaskFinisherInterface> task_finisher;
   std::unique_ptr<DefaultActorCreator> actor_creator;
   std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
+
+ public:
+  void AppendTask(CoreWorkerDirectActorTaskSubmitter &submitter, TaskSpecification task) {
+    std::promise<bool> promise;
+    submitter.AppendTask(
+        task, [&promise](const ActorID &actor_id) { promise.set_value(true); });
+    promise.get_future().get();
+  }
 };
 
 TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
@@ -81,8 +89,8 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
                                  ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  actor_task_submitter->AddActorQueueIfNotExists(actor_id);
-  ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
+  actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
+  AppendTask(*actor_task_submitter, task_spec);
   EXPECT_CALL(*task_finisher,
               PendingTaskFailed(task_spec.TaskId(),
                                 rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
@@ -105,8 +113,8 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
                                  ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  actor_task_submitter->AddActorQueueIfNotExists(actor_id);
-  ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
+  actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
+  AppendTask(*actor_task_submitter, task_spec);
   EXPECT_CALL(*task_finisher, PendingTaskFailed(_, _, _, _, _)).Times(0);
   register_cb(Status::OK());
 }

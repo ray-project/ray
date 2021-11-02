@@ -786,6 +786,7 @@ void CoreWorker::Shutdown() {
   if (options_.on_worker_shutdown) {
     options_.on_worker_shutdown(GetWorkerID());
   }
+  direct_actor_submitter_->Shutdown();
 }
 
 void CoreWorker::ConnectToRaylet() {

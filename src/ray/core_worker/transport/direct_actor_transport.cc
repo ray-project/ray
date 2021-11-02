@@ -62,8 +62,7 @@ void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
   SendPendingTasks(actor_id);
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec,
-                                                      uint64_t send_pos) {
+Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   auto task_id = task_spec.TaskId();
   auto actor_id = task_spec.ActorId();
   RAY_LOG(DEBUG) << "Submitting task " << task_id;
@@ -75,6 +74,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   if (queue->second.state != rpc::ActorTableData::DEAD) {
     // We must release the lock before resolving the task dependencies since
     // the callback may get called in the same call stack.
+    uint64_t send_pos = task_spec.ActorCounter();
     resolver_.ResolveDependencies(task_spec, [this, send_pos, actor_id](Status status) {
       absl::MutexLock lock(&mu_);
       auto queue = client_queues_.find(actor_id);
@@ -437,8 +437,8 @@ void CoreWorkerDirectActorTaskSubmitter::AppendTask(
   auto inserted = it->second.requests.emplace(send_pos, std::make_pair(task_spec, false));
   RAY_CHECK(inserted.second);
   actor_task_io_service_.post(
-      [this, task_spec, send_pos, callback, actor_id]() {
-        RAY_UNUSED(SubmitTask(task_spec, send_pos));
+      [this, task_spec, callback, actor_id]() {
+        RAY_UNUSED(SubmitTask(task_spec));
         if (callback) {
           callback(actor_id);
         }
