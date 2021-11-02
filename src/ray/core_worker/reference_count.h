@@ -37,7 +37,8 @@ class ReferenceCounterInterface {
   virtual void AddLocalReference(const ObjectID &object_id,
                                  const std::string &call_site) = 0;
   virtual bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const rpc::Address &owner_address) = 0;
+                                 const rpc::Address &owner_address,
+                                 bool foreign_owner_already_monitoring = false) = 0;
   virtual void AddOwnedObject(
       const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
       const rpc::Address &owner_address, const std::string &call_site,
@@ -209,7 +210,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
   bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                         const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
+                         const rpc::Address &owner_address,
+                         bool foreign_owner_already_monitoring = false)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner address of the given object.
   ///
@@ -489,6 +492,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
         : call_site(call_site),
           object_size(object_size),
           owned_by_us(true),
+          foreign_owner_already_monitoring(false),
           owner_address(owner_address),
           pinned_at_raylet_id(pinned_at_raylet_id),
           is_reconstructable(is_reconstructable) {}
@@ -551,6 +555,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
     bool owned_by_us = false;
+    /// Whether the object was created with a foreign owner (i.e., _owner set).
+    /// In this case, the owner is already monitoring this reference with a
+    /// WaitForRefRemoved() call, and it is an error to return borrower
+    /// metadata to the parent of the current task.
+    /// See https://github.com/ray-project/ray/pull/19910 for more context.
+    bool foreign_owner_already_monitoring = false;
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
@@ -705,7 +715,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///   that the borrowed ID contained another ID in the returned
   ///   borrowed_refs.
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
-                                         ReferenceTable *borrowed_refs, bool clear_stored)
+                                         ReferenceTable *borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge remote borrowers into our local ref count. This will add any
@@ -743,7 +753,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// deserializing IDs from a task's arguments, or when deserializing an ID
   /// during ray.get().
   bool AddBorrowedObjectInternal(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const rpc::Address &owner_address)
+                                 const rpc::Address &owner_address,
+                                 bool foreign_owner_already_monitoring)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
