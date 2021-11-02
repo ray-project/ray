@@ -95,7 +95,7 @@ class JobSupervisor:
     """
     Ray actor created by JobManager for each submitted job, responsible to
     setup runtime_env, execute given shell command in subprocess, update job
-    status and persist job logs.
+    status, persist job logs and manage subprocess group cleaning.
 
     One job supervisor actor maps to one subprocess, for one job_id.
     Job supervisor actor should fate share with subprocess it created.
@@ -112,19 +112,44 @@ class JobSupervisor:
         self._stop_event = asyncio.Event()
 
     async def ready(self):
+        """Dummy object ref. Return of this function represents job supervisor
+        actor stated successfully with runtime_env configured, and is ready to
+        move on to running state.
+        """
         pass
 
-    async def _exec_cmd(self, cmd: str, stdout_path: str, stderr_path: str):
+    async def _exec_entrypoint_cmd(
+            self, entrypoint_cmd: str, stdout_path: str,
+            stderr_path: str) -> Tuple[asyncio.coroutine, asyncio.Process]:
         """
         Runs a command as a child process, streaming stderr & stdout to given
         log files.
+
+        Meanwhile we start a demon process and group driver
+        subprocess in same pgid, such that if job actor dies, entire process
+        group also fate share with it.
+
+        Args:
+            entrypoint_cmd: Driver command to execute in subprocess.
+            stdout_path: File path on head node's local disk to store driver
+                command's stdout.
+            stderr_path: File path on head node's local disk to store driver
+                command's stderr.
+        Returns:
+            task_coro: Asyncio coroutine that is reponsible for driver command
+                execution. Can be canceled upon user calling stop().
+            child_process: Child process that runs the driver command. Can be
+                terminated or killed upon user claling stop().
         """
         with open(stdout_path, "a+") as stdout, open(stderr_path,
                                                      "a+") as stderr:
             parent_pid = os.getpid()
             # Create new pgid with new subprocess to execute driver command
             child_process = await asyncio.create_subprocess_shell(
-                cmd, start_new_session=True, stdout=stdout, stderr=stderr)
+                entrypoint_cmd,
+                start_new_session=True,
+                stdout=stdout,
+                stderr=stderr)
             child_pid = child_process.pid
             child_pgid = os.getpgid(child_pid)
 
@@ -143,13 +168,19 @@ class JobSupervisor:
 
     async def run(
             self,
-            cmd: str,
+            entrypoint_cmd: str,
             # Signal actor used in testing to capture PENDING -> RUNNING cases
             _start_signal_actor: Optional[SignalActor] = None):
-        """Run the command, then exit afterwards.
-        Should update state and logs.
         """
-        cur_status = self.get_status()
+        Stop and start both happen asynchrously, coordinated by asyncio event
+        and coroutine, respectively.
+
+        1) Sets job status as running
+        2) Pass runtime env and metadata to subprocess as serialized env
+            variables.
+        3) Handle concurrent events of driver execution and
+        """
+        cur_status = self._get_status()
         assert cur_status == JobStatus.PENDING, (
             "Run should only be called once.")
 
@@ -172,38 +203,43 @@ class JobSupervisor:
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
 
-            task, child_proc = await self._exec_cmd(cmd, stdout_path,
-                                                    stderr_path)
+            task, child_proc = await self._exec_entrypoint_cmd(
+                entrypoint_cmd, stdout_path, stderr_path)
 
             finished, _ = await asyncio.wait(
                 [task, self._stop_event.wait()], return_when=FIRST_COMPLETED)
 
             if self._stop_event.is_set():
-                self._status_client.put_status(self._job_id, JobStatus.STOPPED)
                 task.cancel()
                 child_proc.kill()
+                self._status_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
-                # Child process finished execution
+                # Child process finished execution and no stop event is set
+                # at the same time
                 assert len(
                     finished) == 1, "Should have only one coroutine done"
-                for task in finished:
-                    return_code = task.result()
-                    if return_code == 0:
-                        self._status_client.put_status(self._job_id,
-                                                       JobStatus.SUCCEEDED)
-                    else:
-                        self._status_client.put_status(self._job_id,
-                                                       JobStatus.FAILED)
+                [child_process_task] = finished
+                return_code = child_process_task.result()
+                if return_code == 0:
+                    self._status_client.put_status(self._job_id,
+                                                   JobStatus.SUCCEEDED)
+                else:
+                    self._status_client.put_status(self._job_id,
+                                                   JobStatus.FAILED)
         except Exception:
-            logger.error(traceback.format_exc())
+            logger.error(
+                "Got unexpected exception while trying to execute driver "
+                f"command. {traceback.format_exc()}")
         finally:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 
-    def get_status(self) -> JobStatus:
+    def _get_status(self) -> JobStatus:
         return self._status_client.get_status(self._job_id)
 
     def stop(self):
+        """Set step_event and let run() handle the rest in its asyncio.wait().
+        """
         self._stop_event.set()
 
 
@@ -254,17 +290,32 @@ class JobManager:
         """
         Job execution happens asynchronously.
 
-        1) Generate a new unique id for this job submission, expected to be
-            executed in complete isolation.
+        1) Generate a new unique id for this job submission, each call of this
+            method assumes they're independent submission with its own new
+            uuid, job supervisor actor and child process.
         2) Create new detached actor with same runtime_env as job spec
-        3) Get task / actor level runtime_env as env var and pass into
-            subprocess
-        4) asyncio.create_subprocess_shell(entrypoint)
+
+        Actual setting up runtime_env, subprocess group, driver command
+        execution, subprocess cleaning up and running status update to GCS
+        is all handled by job supervisor actor.
 
         Args:
+            entrypoint: Driver command to execute in subprocess shell.
+                Represents the entrypoint to start user application.
+            runtime_env: Runtime environment used to execute driver command,
+                which could contain its own ray.init() to configure runtime
+                env at ray cluster, task and actor level. For now, we
+                assume same runtime_env used for job supervisor actor and
+                driver command.
+            metadata: Support passing arbitrary data to driver command in
+                case needed.
+            _start_signal_actor: Used in testing only to capture state
+                transitions between PENDING -> RUNNING. Regular user shouldn't
+                need this.
 
         Returns:
-
+            job_id: Generated uuid for further job management. Only valid
+                within the same ray cluster.
         """
         job_id = str(uuid4())
         self._status_client.put_status(job_id, JobStatus.PENDING)
@@ -302,10 +353,13 @@ class JobManager:
         return job_id
 
     def stop_job(self, job_id) -> bool:
-        """Request job to exit.
+        """Request job to exit, fire and forget.
 
+        Args:
+            job_id: Generated uuid from submit_job. Only valid in same ray
+                cluster.
         Returns:
-            stopped (bool):
+            stopped:
                 True if there's running actor job we intend to stop
                 False if no running actor for the job found
         """
@@ -318,7 +372,19 @@ class JobManager:
         else:
             return False
 
-    def get_job_status(self, job_id: str):
+    def get_job_status(self, job_id: str) -> JobStatus:
+        """Get latest status of a job. If job supervisor actor is no longer
+        alive, it will also attempt to make adjustments needed to bring job
+        to correct terminiation state.
+
+        All job status is stored and read only from GCS.
+
+        Args:
+            job_id: Generated uuid from submit_job. Only valid in same ray
+                cluster.
+        Returns:
+            job_status: Latest known job status
+        """
         job_supervisor_actor = self._get_actor_for_job(job_id)
         if job_supervisor_actor is None:
             # Job actor either exited or failed, we need to ensure never left
