@@ -158,7 +158,6 @@ def test_exponential_wait(shutdown_only):
             while self.i < self.limit:
                 await asyncio.sleep(1)
 
-
     b = Barrier.remote(num_tasks)
 
     @ray.remote
@@ -174,9 +173,8 @@ def test_exponential_wait(shutdown_only):
     last_wait = results[-1] - results[-2]
     second_last = results[-2] - results[-3]
 
-    assert 1.5 < last_wait/second_last < 2.5
+    assert 1.5 < last_wait / second_last < 2.5
     assert 5 < last_wait < 8
-
 
 
 if __name__ == "__main__":
