@@ -20,7 +20,7 @@ from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
-from ray.rllib.utils.tf_ops import get_gpu_devices
+from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import LocalOptimizer, TensorType
 
@@ -724,7 +724,7 @@ def build_eager_tf_policy(
         def get_placeholder(self, ph):
             raise ValueError(
                 "get_placeholder() is not allowed in eager mode. Try using "
-                "rllib.utils.tf_ops.make_tf_callable() to write "
+                "rllib.utils.tf_utils.make_tf_callable() to write "
                 "functions that work in both graph and eager mode.")
 
         def loss_initialized(self):
