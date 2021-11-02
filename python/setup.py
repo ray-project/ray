@@ -83,6 +83,8 @@ class SetupSpec:
             self.version: str = f"{version}+dbg"
         elif build_type == BuildType.ASAN:
             self.version: str = f"{version}+asan"
+        elif build_type == BuildType.TSAN:
+            self.version: str = f"{version}+tsan"
         else:
             self.version = version
         self.description: str = description
