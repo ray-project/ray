@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Optional
 import hashlib
 
 import ray
@@ -8,6 +8,8 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import (_initialize_internal_kv,
                                           _internal_kv_initialized,
                                           _internal_kv_get, _internal_kv_list)
+from ray._private.job_manager import (JOB_ID_METADATA_KEY,
+                                      JobStatusStorageClient)
 import ray.dashboard.utils as dashboard_utils
 
 import json
@@ -23,9 +25,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
 
-        # Initialize internal KV to be used by the working_dir setup code.
         _initialize_internal_kv(dashboard_head.gcs_client)
         assert _internal_kv_initialized()
+        self._job_status_client = JobStatusStorageClient()
 
     @routes.get("/api/actors/kill")
     async def kill_actor_gcs(self, req) -> aiohttp.web.Response:
@@ -65,16 +67,26 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         return dashboard_utils.rest_response(
             success=True, message="hello", snapshot=snapshot)
 
+    def _get_job_status(self, metadata: Dict[str, str]) -> Optional[str]:
+        status = None
+        job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+        if job_submission_id is not None:
+            status = str(self._job_status_client.get_status(job_submission_id))
+
+        return status
+
     async def get_job_info(self):
         request = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
 
         jobs = {}
         for job_table_entry in reply.job_info_list:
+            metadata = dict(job_table_entry.config.metadata)
+
             job_id = job_table_entry.job_id.hex()
             config = {
                 "namespace": job_table_entry.config.ray_namespace,
-                "metadata": dict(job_table_entry.config.metadata),
+                "metadata": metadata,
                 "runtime_env": json.loads(
                     job_table_entry.config.runtime_env.serialized_runtime_env),
             }
@@ -84,6 +96,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 "end_time": job_table_entry.end_time,
                 "config": config,
             }
+            status = self._get_job_status(metadata)
+            if status is not None:
+                entry["status"] = status
             jobs[job_id] = entry
 
         return jobs

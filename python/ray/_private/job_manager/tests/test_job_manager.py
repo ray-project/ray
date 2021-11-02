@@ -1,7 +1,8 @@
 import pytest
 
 import ray
-from ray._private.job_manager import JobManager, JobStatus
+from ray._private.job_manager import (JobManager, JobStatus,
+                                      JOB_ID_METADATA_KEY)
 from ray._private.test_utils import wait_for_condition
 
 TEST_NAMESPACE = "jobs_test_namespace"
@@ -161,6 +162,9 @@ class TestRuntimeEnv:
 
 
 def test_pass_metadata(job_manager):
+    def dict_to_binary(d):
+        return str(dict(sorted(d.items()))).encode("utf-8")
+
     print_metadata_cmd = (
         "python -c\""
         "import ray;"
@@ -174,7 +178,9 @@ def test_pass_metadata(job_manager):
 
     wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(job_id) == b"{}"
+    assert job_manager.get_job_stdout(job_id) == dict_to_binary({
+        JOB_ID_METADATA_KEY: job_id
+    })
 
     # Check that we can pass custom metadata.
     job_id = job_manager.submit_job(
@@ -185,5 +191,8 @@ def test_pass_metadata(job_manager):
 
     wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(
-        job_id) == b"{'key1': 'val1', 'key2': 'val2'}"
+    assert job_manager.get_job_stdout(job_id) == dict_to_binary({
+        JOB_ID_METADATA_KEY: job_id,
+        "key1": "val1",
+        "key2": "val2"
+    })
