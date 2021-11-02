@@ -14,7 +14,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     check_train_results, framework_iterator
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()

@@ -28,7 +28,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance,\
+from ray.rllib.utils.torch_utils import apply_grad_clipping, explained_variance,\
     global_norm, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
