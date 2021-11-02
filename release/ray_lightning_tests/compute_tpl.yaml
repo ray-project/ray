@@ -10,8 +10,8 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: g3.8xlarge
-      max_workers: 3
-      min_workers: 3
+      min_workers: 0
+      max_workers: 2
       use_spot: false
 
 aws:
@@ -22,8 +22,3 @@ aws:
           Value: '{{env["ANYSCALE_USER"]}}'
         - Key: anyscale-expiration
           Value: '{{env["EXPIRATION_1D"]}}'
-
-  BlockDeviceMappings:
-    - DeviceName: /dev/sda1
-      Ebs:
-        VolumeSize: 500

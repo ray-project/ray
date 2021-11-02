@@ -110,7 +110,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   }
 
   bool PendingTaskFailed(
-      const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+      const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
       bool immediately_mark_object_fail = true) override {
     num_tasks_failed++;
