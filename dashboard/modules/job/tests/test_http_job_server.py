@@ -1,5 +1,6 @@
 import sys
-
+import dataclasses
+import json
 import logging
 import requests
 import pytest
@@ -14,6 +15,7 @@ from ray.dashboard.modules.job.data_types import (
     JobLogsRequest, JobLogsResponse, JobSpec)
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 def _setup_webui_url(ray_start_with_dashboard):
@@ -27,9 +29,11 @@ def _check_job_succeeded(job_id, endpoint):
     # Job execution happens in background async run(), while job manager
     # and web request APIs are synchronous.
     status_request = JobStatusRequest(job_id=job_id)
-    resp = requests.get(endpoint, json=status_request.dict())
+    resp = requests.get(
+        endpoint, json=json.dumps(dataclasses.asdict(status_request)))
     resp.raise_for_status()
-    data = resp.json()["data"]["data"]
+
+    data = resp.json()
     response = JobStatusResponse(**data)
     status = response.job_status
 
@@ -51,21 +55,28 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
         runtime_env=working_dir["runtime_env"],
         entrypoint=working_dir["entrypoint"],
         metadata=dict())
+
     submit_request = JobSubmitRequest(job_spec=job_spec)
 
-    resp = requests.post(f"{webui_url}/submit", json=submit_request.dict())
+    resp = requests.post(
+        f"{webui_url}/submit",
+        json=json.dumps(dataclasses.asdict(submit_request)))
     resp.raise_for_status()
-    data = resp.json()["data"]["data"]
+    data = resp.json()
     response = JobSubmitResponse(**data)
     job_id = response.job_id
+
+    print(f">>> response:{response}, job_id: {job_id}")
 
     wait_for_condition(
         _check_job_succeeded, job_id=job_id, endpoint=f"{webui_url}/status")
 
     logs_request = JobLogsRequest(job_id=job_id)
-    resp = requests.get(f"{webui_url}/logs", json=logs_request.dict())
+    resp = requests.get(
+        f"{webui_url}/logs", json=json.dumps(dataclasses.asdict(logs_request)))
     resp.raise_for_status()
-    data = resp.json()["data"]["data"]
+
+    data = resp.json()
     response = JobLogsResponse(**data)
     assert response.stdout == working_dir["expected_stdout"]
     assert response.stderr == working_dir["expected_stderr"]
@@ -92,9 +103,11 @@ def test_job_metadata(disable_aiohttp_cache, enable_test_module,
         })
     submit_request = JobSubmitRequest(job_spec=job_spec)
 
-    resp = requests.post(f"{webui_url}/submit", json=submit_request.dict())
+    resp = requests.post(
+        f"{webui_url}/submit",
+        json=json.dumps(dataclasses.asdict(submit_request)))
     resp.raise_for_status()
-    data = resp.json()["data"]["data"]
+    data = resp.json()
     response = JobSubmitResponse(**data)
     job_id = response.job_id
 
@@ -102,9 +115,10 @@ def test_job_metadata(disable_aiohttp_cache, enable_test_module,
         _check_job_succeeded, job_id=job_id, endpoint=f"{webui_url}/status")
 
     logs_request = JobLogsRequest(job_id=job_id)
-    resp = requests.get(f"{webui_url}/logs", json=logs_request.dict())
+    resp = requests.get(
+        f"{webui_url}/logs", json=json.dumps(dataclasses.asdict(logs_request)))
     resp.raise_for_status()
-    data = resp.json()["data"]["data"]
+    data = resp.json()
     response = JobLogsResponse(**data)
     assert response.stdout == "{'key1': 'val1', 'key2': 'val2'}"
 

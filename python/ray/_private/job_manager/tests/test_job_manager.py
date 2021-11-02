@@ -210,22 +210,27 @@ class TestRuntimeEnv:
 
 
 class TestAsyncAPI:
+    def _run_hanging_command(self, job_manager, tmp_dir):
+        tmp_file = os.path.join(tmp_dir, "hello")
+
+        # Block until file is present.
+        wait_for_file_cmd = (f"until [ -f {tmp_file} ]; "
+                             "do echo 'Waiting...' && sleep 1; "
+                             "done")
+        job_id = job_manager.submit_job(wait_for_file_cmd)
+
+        for _ in range(10):
+            time.sleep(0.1)
+            status = job_manager.get_job_status(job_id)
+            assert status == JobStatus.RUNNING
+            stdout = job_manager.get_job_stdout(job_id)
+            assert b"Waiting..." in stdout
+
+        return tmp_file, job_id
+
     def test_status_and_logs_while_blocking(self, job_manager):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_file = os.path.join(tmp_dir, "hello")
-
-            # Block until file is present.
-            wait_for_file_cmd = (f"until [ -f {tmp_file} ]; "
-                                 "do echo 'Waiting...' && sleep 1; "
-                                 "done")
-            job_id = job_manager.submit_job(wait_for_file_cmd)
-
-            for _ in range(10):
-                time.sleep(0.1)
-                status = job_manager.get_job_status(job_id)
-                assert status == JobStatus.RUNNING
-                stdout = job_manager.get_job_stdout(job_id)
-                assert b"Waiting..." in stdout
+            tmp_file, job_id = self._run_hanging_command(job_manager, tmp_dir)
 
             # Signal the job to exit by writing to the file.
             with open(tmp_file, "w") as f:
@@ -236,21 +241,7 @@ class TestAsyncAPI:
 
     def test_stop_job(self, job_manager):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_file = os.path.join(tmp_dir, "hello")
-
-            # Block until file is present.
-            wait_for_file_cmd = (f"until [ -f {tmp_file} ]; "
-                                 "do echo 'Waiting...' && sleep 1; "
-                                 "done")
-
-            job_id = job_manager.submit_job(wait_for_file_cmd)
-
-            for _ in range(10):
-                time.sleep(0.1)
-                status = job_manager.get_job_status(job_id)
-                assert status == JobStatus.RUNNING
-                stdout = job_manager.get_job_stdout(job_id)
-                assert b"Waiting..." in stdout
+            _, job_id = self._run_hanging_command(job_manager, tmp_dir)
 
             assert job_manager.stop_job(job_id) is True
             wait_for_condition(
@@ -269,7 +260,13 @@ class TestAsyncAPI:
         1) Job status is correctly marked as failed
         2) No hanging subprocess from failed job
         """
-        pass
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            _, job_id = self._run_hanging_command(job_manager, tmp_dir)
+
+            actor = job_manager._get_actor_for_job(job_id)
+            ray.kill(actor, no_restart=True)
+
+            assert job_manager.get_job_status(job_id) == JobStatus.FAILED
 
     def test_stop_job_in_pending(self, job_manager):
         """

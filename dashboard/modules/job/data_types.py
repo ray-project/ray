@@ -1,11 +1,6 @@
 from enum import Enum
 from typing import Any, Dict
-
-try:
-    from pydantic import BaseModel
-except ImportError:
-    # Lazy import without breaking class def
-    BaseModel = object
+from dataclasses import dataclass
 
 
 class JobStatus(str, Enum):
@@ -16,7 +11,8 @@ class JobStatus(str, Enum):
     FAILED = "FAILED"
 
 
-class JobSpec(BaseModel):
+@dataclass
+class JobSpec:
     # Dict to setup execution environment, better to have schema for this
     runtime_env: Dict[str, Any]
     # Command to start execution, ex: "python script.py"
@@ -31,33 +27,39 @@ class JobSpec(BaseModel):
 # ==== Job Submit ====
 
 
-class JobSubmitRequest(BaseModel):
+@dataclass
+class JobSubmitRequest:
     job_spec: JobSpec
 
 
-class JobSubmitResponse(BaseModel):
+@dataclass
+class JobSubmitResponse:
     job_id: str
 
 
 # ==== Job Status ====
 
 
-class JobStatusRequest(BaseModel):
+@dataclass
+class JobStatusRequest:
     job_id: str
 
 
-class JobStatusResponse(BaseModel):
+@dataclass
+class JobStatusResponse:
     job_status: JobStatus
 
 
 # ==== Job Logs ====
 
 
-class JobLogsRequest(BaseModel):
+@dataclass
+class JobLogsRequest:
     job_id: str
 
 
 # TODO(jiaodong): Support log streaming #19415
-class JobLogsResponse(BaseModel):
+@dataclass
+class JobLogsResponse:
     stdout: str
     stderr: str

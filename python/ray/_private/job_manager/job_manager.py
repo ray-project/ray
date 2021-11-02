@@ -4,6 +4,7 @@ import pickle
 import os
 import json
 import logging
+import traceback
 
 from typing import Any, Dict, Tuple, Optional
 from uuid import uuid4
@@ -105,9 +106,6 @@ class JobSupervisor:
         self._runtime_env = ray.get_runtime_context().runtime_env
         self._metadata = metadata
 
-        # Subprocess run coroutine and
-        self._task = None
-        self._child_proc = None
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
 
@@ -149,17 +147,16 @@ class JobSupervisor:
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
 
-            self._task, self._child_proc = await self._exec_cmd(
-                cmd, stdout_path, stderr_path)
+            task, child_proc = await self._exec_cmd(cmd, stdout_path,
+                                                    stderr_path)
 
             finished, _ = await asyncio.wait(
-                [self._task, self._stop_event.wait()],
-                return_when=FIRST_COMPLETED)
+                [task, self._stop_event.wait()], return_when=FIRST_COMPLETED)
 
             if self._stop_event.is_set():
                 self._status_client.put_status(self._job_id, JobStatus.STOPPED)
-                self._task.cancel()
-                self._child_proc.kill()
+                task.cancel()
+                child_proc.kill()
             else:
                 # Child process finished execution
                 assert len(
@@ -172,6 +169,8 @@ class JobSupervisor:
                     else:
                         self._status_client.put_status(self._job_id,
                                                        JobStatus.FAILED)
+        except Exception:
+            logger.error(traceback.format_exc())
         finally:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
@@ -279,13 +278,18 @@ class JobManager:
         return job_id
 
     def stop_job(self, job_id) -> bool:
-        """Request job to exit."""
+        """Request job to exit.
+
+        Returns:
+            stopped (bool):
+                True if there's running actor job we intend to stop
+                False if no running actor for the job found
+        """
         job_supervisor_actor = self._get_actor_for_job(job_id)
         if job_supervisor_actor is not None:
             # Actor is still alive, signal it to stop the driver, fire and
             # forget
             job_supervisor_actor.stop.remote()
-            # Ensure job actor exits
             return True
         else:
             return False
