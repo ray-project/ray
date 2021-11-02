@@ -25,7 +25,9 @@ def assert_no_system_failure(p, total_lines, timeout):
     "ray_start_chaos_cluster", [{
         "kill_interval": 3,
         "timeout": 45,
-        "head_resources": {"CPU": 0},
+        "head_resources": {
+            "CPU": 0
+        },
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
@@ -36,7 +38,8 @@ def assert_no_system_failure(p, total_lines, timeout):
                 "max_workers": 4,
             },
         },
-    }], indirect=True)
+    }],
+    indirect=True)
 def test_chaos_task_retry(ray_start_chaos_cluster, log_pubsub):
     chaos_test_thread = ray_start_chaos_cluster
     p = log_pubsub
@@ -77,7 +80,9 @@ def test_chaos_task_retry(ray_start_chaos_cluster, log_pubsub):
     "ray_start_chaos_cluster", [{
         "kill_interval": 30,
         "timeout": 30,
-        "head_resources": {"CPU": 0},
+        "head_resources": {
+            "CPU": 0
+        },
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
@@ -88,10 +93,11 @@ def test_chaos_task_retry(ray_start_chaos_cluster, log_pubsub):
                 "max_workers": 4,
             },
         },
-    }], indirect=True)
+    }],
+    indirect=True)
 def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
     chaos_test_thread = ray_start_chaos_cluster
-    p = log_pubsub
+    # p = log_pubsub
     chaos_test_thread.start()
 
     # Chaos testing.
@@ -102,10 +108,10 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
 
         def add(self, letter):
             self.letter_dict.add(letter)
-        
+
         def get(self):
             return self.letter_dict
-    
+
     NUM_CPUS = 32
     TOTAL_TASKS = 300
 
