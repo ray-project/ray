@@ -250,7 +250,18 @@ MANUAL_TESTS = {
 #   2. Use autoscaling/scale up (no wait_cluster.py)
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
-USER_TESTS = {}
+USER_TESTS = {
+    "~/ray/release/train_tests/train_tests.yaml": [
+        ConnectTest(
+            "train_tensorflow_mnist_test",
+            requirements_file="release/train_tests"
+            "/driver_requirements.txt"),
+        ConnectTest(
+            "train_torch_linear_test",
+            requirements_file="release/train_tests"
+            "/driver_requirements.txt")
+    ]
+}
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
