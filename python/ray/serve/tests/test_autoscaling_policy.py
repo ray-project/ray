@@ -100,8 +100,8 @@ def get_deployment_start_time(controller: ServeController,
                               deployment: Deployment):
     """ Return start time for given deployment """
     deployments = ray.get(controller.list_deployments.remote())
-    backend_info, _route_prefix = deployments[deployment.name]
-    return backend_info.start_time_ms
+    deployment_info, _route_prefix = deployments[deployment.name]
+    return deployment_info.start_time_ms
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
