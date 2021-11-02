@@ -14,7 +14,7 @@ class ImportanceSamplingEstimator(OffPolicyEstimator):
         self.check_can_estimate_for(batch)
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
-        new_prob = self.action_prob(batch)
+        new_prob = self.action_log_likelihood(batch)
 
         # calculate importance ratios
         p = []
