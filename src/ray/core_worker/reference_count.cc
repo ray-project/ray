@@ -947,8 +947,8 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
           WaitForRefRemoved(inner_it, owner_address, object_id);
         }
       } else {
-        auto inserted = inner_it->second.stored_in_objects.emplace(
-            object_id, owner_address).second;
+        auto inserted =
+            inner_it->second.stored_in_objects.emplace(object_id, owner_address).second;
         // This should be the first time that we have stored this object ID
         // inside this return ID.
         RAY_CHECK(inserted);
