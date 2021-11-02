@@ -23,7 +23,7 @@ public class RayServeWrappedReplica {
 
   @SuppressWarnings("rawtypes")
   public RayServeWrappedReplica(
-      String backendTag,
+      String deploymentName,
       String replicaTag,
       String backendDef,
       byte[] initArgsbytes,
@@ -51,7 +51,7 @@ public class RayServeWrappedReplica {
 
     // Set the controller name so that Serve.connect() in the user's backend code will connect to
     // the instance that this backend is running in.
-    Serve.setInternalReplicaContext(backendTag, replicaTag, controllerName, callable);
+    Serve.setInternalReplicaContext(deploymentName, replicaTag, controllerName, callable);
 
     // Construct worker replica.
     backend =
@@ -63,11 +63,11 @@ public class RayServeWrappedReplica {
   }
 
   public RayServeWrappedReplica(
-      String backendTag, String replicaTag, DeploymentInfo deploymentInfo, String controllerName)
+      String deploymentName, String replicaTag, DeploymentInfo deploymentInfo, String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
     this(
-        backendTag,
+        deploymentName,
         replicaTag,
         deploymentInfo.getReplicaConfig().getBackendDef(),
         deploymentInfo.getReplicaConfig().getInitArgs(),

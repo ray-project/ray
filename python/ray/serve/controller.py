@@ -13,7 +13,7 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.backend_state import ReplicaState, BackendStateManager
 from ray.serve.common import (
     DeploymentInfo,
-    BackendTag,
+    str,
     EndpointTag,
     EndpointInfo,
     GoalId,
@@ -78,7 +78,7 @@ class ServeController:
             checkpoint_path, namespace=kv_store_namespace)
         self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
 
-        # Dictionary of backend_tag -> proxy_name -> most recent queue length.
+        # Dictionary of deployment_name -> proxy_name -> most recent queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))
 
         # Used to ensure that only a single state-changing operation happens
@@ -130,7 +130,7 @@ class ServeController:
         return await (
             self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
-    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
+    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         """Returns a dictionary of backend tag to backend config."""
         return self.endpoint_state.get_endpoints()
 
@@ -246,7 +246,7 @@ class ServeController:
         self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
     def _all_running_replicas(
-            self) -> Dict[BackendTag, List[RunningReplicaInfo]]:
+            self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing."""
         return self.backend_state_manager.get_running_replica_infos()
 
