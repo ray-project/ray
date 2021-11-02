@@ -226,12 +226,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
               return true;
             },
             /*max_pinned_task_arguments_bytes=*/1000,
-            /*execute_after=*/
-            [this](std::function<void()> fn, int64_t wait_time_ns) {
-              RAY_LOG(ERROR) << "In execute after!!!";
-              delayed_execution_.push_back({fn, wait_time_ns});
-              return nullptr;
-            },
             /*get_time=*/[this]() { return current_time_ns_; }) {}
 
   void SetUp() {
@@ -308,8 +302,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   int node_info_calls_;
   int announce_infeasible_task_calls_;
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
-  std::vector<std::pair<std::function<void()>, int64_t>> delayed_execution_;
-  int64_t current_time_ns_;
+  int64_t current_time_ns_ = 0;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
@@ -1681,12 +1674,8 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
         }
         return true;
       },
-      /*max_pinned_task_arguments_bytes=*/1000,
-      /*execute_after=*/
-      [this](std::function<void()> fn, int64_t wait_time_ns) {
-        delayed_execution_.push_back({fn, wait_time_ns});
-        return nullptr;
-      });
+      /*max_pinned_task_arguments_bytes=*/1000
+      );
 
   RayTask task = CreateTask({}, /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({}, /*num_args=*/0, /*args=*/{});
@@ -1728,7 +1717,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
     return nullptr;
   };
 
-  int64_t UNIT = 10 * 1e6;
+  int64_t UNIT = RayConfig::instance().scheduling_class_capacity_interval_ms() * 1e6;
   std::vector<RayTask> tasks;
   for (int i = 0; i < 10; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
@@ -1757,23 +1746,16 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   task_manager_.ScheduleAndDispatchTasks();
 
   ASSERT_EQ(num_callbacks, 1);
-  ASSERT_EQ(delayed_execution_.size(), 1);
 
-  ASSERT_EQ(delayed_execution_[0].second, UNIT);
 
   current_time_ns_ += UNIT;
   ASSERT_FALSE(workers.back()->IsBlocked());
-  for (const auto &worker : workers) {
-    const auto allocated_instances = worker->GetAllocatedInstances();
-    RAY_LOG(ERROR) << allocated_instances;
-  }
   ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(
       get_unblocked_worker(workers)));
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
+  task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(delayed_execution_.size(), 2);
-  ASSERT_EQ(delayed_execution_[1].second, 2 * UNIT);
 
   // Since we're increasing exponentially, increasing by a unit show no longer be enough.
   current_time_ns_ += UNIT;
@@ -1781,22 +1763,21 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
       get_unblocked_worker(workers)));
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
+  task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(delayed_execution_.size(), 2);
-  ASSERT_EQ(delayed_execution_[0].second, UNIT);
 
   // Now it should run
-  current_time_ns_ = 3 * UNIT;
+  task_manager_.ScheduleAndDispatchTasks();
+  current_time_ns_ += UNIT;
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
+  task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 3);
-  ASSERT_EQ(delayed_execution_.size(), 3);
-  ASSERT_EQ(delayed_execution_[2].second, 4 * UNIT);
 }
 
 /// Ensure we reset the cap after we've finished executing through the queue.
 TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
-  int64_t UNIT = 10 * 1e6;
+  int64_t UNIT = RayConfig::instance().scheduling_class_capacity_interval_ms() * 1e6;
   std::vector<RayTask> tasks;
   for (int i = 0; i < 2; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
@@ -1831,7 +1812,6 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
   pool_.TriggerCallbacks();
 
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(delayed_execution_.back().second, 2 * UNIT);
 
   RayTask buf;
   task_manager_.TaskFinished(worker1, &buf);
@@ -1862,7 +1842,6 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
   pool_.TriggerCallbacks();
 
   ASSERT_EQ(num_callbacks, 4);
-  ASSERT_EQ(delayed_execution_.back().second, 2 * UNIT);
 }
 
 // Regression test for https://github.com/ray-project/ray/issues/16935:

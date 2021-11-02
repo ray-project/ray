@@ -398,6 +398,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         }
         work_it = dispatch_queue.erase(work_it);
       } else {
+        sched_cls_info.running_tasks.insert(spec.TaskId());
         if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
           int64_t current_capacity = sched_cls_info.running_tasks.size();
           int64_t allowed_capacity = sched_cls_info.capacity;
@@ -1130,8 +1131,6 @@ void ClusterTaskManager::Dispatch(
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
-  const auto &sched_cls = task_spec.GetSchedulingClass();
-  info_by_sched_cls_[sched_cls].running_tasks.insert(task_spec.TaskId());
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
