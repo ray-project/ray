@@ -465,6 +465,7 @@ def ray_start_chaos_cluster(request):
     chaos_thread = threading.Thread(target=run_chaos_cluster)
     yield chaos_thread
     chaos_thread.join()
+    ray.shutdown()
     cluster.shutdown()
     del os.environ["RAY_num_heartbeats_timeout"]
     del os.environ["RAY_raylet_heartbeat_period_milliseconds"]
