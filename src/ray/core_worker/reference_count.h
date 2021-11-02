@@ -479,6 +479,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// scheduled/executing).
   bool IsObjectPendingCreation(const ObjectID &object_id) const;
 
+  /// Visible for testing.
+  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id, bool for_ref_removed,
+                                         ReferenceTableProto *proto)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -714,7 +719,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///   that contained it. We don't need this anymore because we already marked
   ///   that the borrowed ID contained another ID in the returned
   ///   borrowed_refs.
-  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
+  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id, bool for_ref_removed,
                                          ReferenceTable *borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

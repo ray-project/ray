@@ -322,6 +322,11 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     rc_.AddLocalReference(object_id, "");
   }
 
+  void PutWithForeignOwner(const ObjectID &object_id, const rpc::Address &owner_address) {
+    rc_.AddLocalReference(object_id, "");
+    rc_.AddBorrowedObject(object_id, {}, owner_address, /*foreign=*/true);
+  }
+
   void PutWrappedId(const ObjectID outer_id, const ObjectID &inner_id) {
     rc_.AddOwnedObject(outer_id, {inner_id}, address_, "", 0, false);
     rc_.AddLocalReference(outer_id, "");
@@ -1554,6 +1559,89 @@ TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
   ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
   ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
   ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+}
+
+// Two tasks execute on the same worker. After the inner object id returned is
+// transited twice on the same worker, a WaitForRefRemoved RPC is still able
+// to retrieve the right containment metadata about the inner id.
+//
+// This unit test covers scenarios from test_dataset.py::test_callable_classes
+// and test_dataset_pipeline.py::test_pipeline_actors.
+//
+// @ray.remote
+// def owner_task1():
+//     inner_id = ray.put(data, _owner=owner)
+//     return inner_id
+//
+// @ray.remote
+// def owner_task2(x):
+//     ray.put(data, _owner=owner)
+//
+// return_id = owner_task1.remote()
+// inner_id = ray.get(outer_id)[0]
+// return_id2 = owner_task2.remote(inner_id)
+//
+TEST(DistributedReferenceCountTest, TestForeignOwner) {
+  auto caller = std::make_shared<MockWorkerClient>("1");
+  auto owner = std::make_shared<MockWorkerClient>("2");
+  auto foreign_owner = std::make_shared<MockWorkerClient>("3");
+
+  //
+  // Phase 1 -- submit and execute owner_task1()
+  //
+  // Caller submits a task.
+  auto return_id = caller->SubmitTaskWithArg(ObjectID::Nil());
+  // Task returns inner_id as its return value.
+  auto inner_id = ObjectID::FromRandom();
+  owner->PutWithForeignOwner(inner_id, foreign_owner->address_);
+  rpc::WorkerAddress addr(caller->address_);
+  auto refs = owner->FinishExecutingTask(ObjectID::Nil(), return_id, &inner_id, &addr);
+  ASSERT_TRUE(refs.empty());
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  // Caller receives the owner's message, but inner_id is still in scope
+  // because caller has a reference to return_id.
+  caller->HandleSubmittedTaskFinished(return_id, ObjectID::Nil(),
+                                      {{return_id, {inner_id}}});
+
+  //
+  // Phase 2 -- submit and execute owner_task2(x)
+  //
+  auto return_id2 = caller->SubmitTaskWithArg(return_id);
+  caller->rc_.RemoveLocalReference(return_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  caller->rc_.RemoveLocalReference(return_id2, nullptr);
+  // Owner receives a reference to inner_id. It still has a reference when
+  // the task returns.
+  owner->ExecuteTaskWithArg(return_id, inner_id, owner->address_);
+  auto refs2 = owner->FinishExecutingTask(return_id, return_id);
+  // owner merges ref count into the caller.
+  caller->HandleSubmittedTaskFinished(return_id2, return_id, {}, owner->address_, refs2);
+  ASSERT_FALSE(owner->rc_.HasReference(return_id));
+  ASSERT_FALSE(caller->rc_.HasReference(return_id));
+  ASSERT_FALSE(owner->rc_.HasReference(return_id2));
+  ASSERT_FALSE(caller->rc_.HasReference(return_id2));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  //
+  // Phase 3 -- foreign owner gets ref removed information.
+  //
+  // Emulate ref removed callback.
+  ReferenceCounter::ReferenceTableProto refs_proto;
+  owner->rc_.GetAndClearLocalBorrowersInternal(inner_id, /*for_ref_removed=*/true,
+                                               &refs_proto);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // This is the key assert checking the info is still available.
+  ASSERT_EQ(refs_proto[0].stored_in_objects().size(), 1);
+
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_.RemoveLocalReference(return_id, nullptr);
+  owner->rc_.RemoveLocalReference(return_id2, nullptr);
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(foreign_owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
 }
 
 // A borrower is given references to 2 different objects, which each contain a

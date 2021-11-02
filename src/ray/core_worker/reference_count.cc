@@ -103,7 +103,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   it->second.owner_address = owner_address;
-  it->second.foreign_owner_already_monitoring = foreign_owner_already_monitoring;
+  it->second.foreign_owner_already_monitoring |= foreign_owner_already_monitoring;
 
   if (!outer_id.IsNil()) {
     auto outer_it = object_id_refs_.find(outer_id);
@@ -672,9 +672,9 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
   absl::MutexLock lock(&mutex_);
   ReferenceTable borrowed_refs;
   for (const auto &borrowed_id : borrowed_ids) {
-    // Don't clear stored_in values, which may be from previous tasks that
-    // created this same object id.
-    RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id, &borrowed_refs))
+    RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id,
+                                                /*for_ref_removed=*/false,
+                                                &borrowed_refs))
         << borrowed_id;
     // Decrease the ref count for each of the borrowed IDs. This is because we
     // artificially increment each borrowed ID to keep it pinned during task
@@ -710,9 +710,19 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
   }
 }
 
+bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
+    const ObjectID &object_id, bool for_ref_removed,
+    ReferenceCounter::ReferenceTableProto *proto) {
+  ReferenceTable table;
+  bool result = GetAndClearLocalBorrowersInternal(object_id, for_ref_removed, &table);
+  ReferenceTableToProto(table, proto);
+  return result;
+}
+
 bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
+                                                         bool for_ref_removed,
                                                          ReferenceTable *borrowed_refs) {
-  RAY_LOG(DEBUG) << "Pop " << object_id;
+  RAY_LOG(DEBUG) << "Pop " << object_id << " for_ref_removed " << for_ref_removed;
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
@@ -736,12 +746,12 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_
   // If a foreign owner process is waiting for this ref to be removed already,
   // then don't clear its stored metadata. Clearing this will prevent the
   // foreign owner from learning about the parent task borrowing this value.
-  if (!it->second.foreign_owner_already_monitoring) {
+  if (for_ref_removed || !it->second.foreign_owner_already_monitoring) {
     it->second.stored_in_objects.clear();
   }
   // Attempt to pop children.
   for (const auto &contained_id : it->second.contains) {
-    GetAndClearLocalBorrowersInternal(contained_id, borrowed_refs);
+    GetAndClearLocalBorrowersInternal(contained_id, for_ref_removed, borrowed_refs);
   }
   // We've reported our nested refs.
   it->second.has_nested_refs_to_report = false;
@@ -965,7 +975,8 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
     PRINT_REF_COUNT(it);
   }
   ReferenceTable borrowed_refs;
-  RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id, &borrowed_refs));
+  RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id,
+                                               /*for_ref_removed=*/true, &borrowed_refs));
   for (const auto &pair : borrowed_refs) {
     RAY_LOG(DEBUG) << pair.first << " has " << pair.second.borrowers.size()
                    << " borrowers, stored in " << pair.second.stored_in_objects.size();
