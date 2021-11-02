@@ -282,7 +282,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       stats->set_scheduling_state(rpc::PlacementGroupStats::NO_RESOURCES);
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     } else {
-      stats->set_scheduling_state(rpc::PlacementGroupTableData::REMOVED);
+      stats->set_scheduling_state(rpc::PlacementGroupStats::REMOVED);
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     }
   }
