@@ -11,7 +11,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.torch_ops import atanh
 from ray.rllib.utils.typing import TensorType, List, Union, \
     Tuple, ModelConfigDict
 
@@ -300,7 +299,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         # Stabilize input to atanh.
         save_normed_values = torch.clamp(normed_values, -1.0 + SMALL_NUMBER,
                                          1.0 - SMALL_NUMBER)
-        unsquashed = atanh(save_normed_values)
+        unsquashed = torch.atanh(save_normed_values)
         return unsquashed
 
     @staticmethod

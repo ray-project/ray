@@ -194,8 +194,7 @@ NIGHTLY_TESTS = {
         "serve_cluster_fault_tolerance",
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
-        "rte_many_tasks_actors",
-        "wheel_urls",
+        "rte_many_tasks_actors", "wheel_urls", "rte_ray_client"
     ],
 }
 
@@ -280,7 +279,17 @@ USER_TESTS = {
             setup_commands=HOROVOD_SETUP_COMMANDS,
             requirements_file="release/horovod_tests"
             "/driver_requirements_master.txt")
-    ]
+    ],
+    "~/ray/release/train_tests/train_tests.yaml": [
+        ConnectTest(
+            "train_tensorflow_mnist_test",
+            requirements_file="release/train_tests"
+            "/driver_requirements.txt"),
+        ConnectTest(
+            "train_torch_linear_test",
+            requirements_file="release/train_tests"
+            "/driver_requirements.txt")
+    ],
 }
 
 SUITES = {
