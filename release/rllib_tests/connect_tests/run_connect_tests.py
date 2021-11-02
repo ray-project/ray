@@ -5,6 +5,7 @@ Runs a couple of hard learning tests using Anyscale connect.
 
 import json
 import os
+import re
 import time
 
 import ray
@@ -19,12 +20,26 @@ if __name__ == "__main__":
         ray.init(address="auto")
 
     start_time = time.time()
-    results = run()
+    trials = run()
     end_time = time.time()
 
+    def _get_trial_name(trial):
+        return re.sub(".+/([^/]+)$", "\\1", trial.local_dir)
+
+    result = {
+        "time_taken": end_time - start_time,
+        "trial_states": {
+            _get_trial_name(t): t.status for t in trials
+        },
+        # This test is to make sure Tune and RLlib run fine
+        # using Anyscale connect. So we do NOT check the actual
+        # learning results.
+        "passed": True,
+    }
+
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/rllib_connect_tests.json")
+                                      "/tmp/release_test_out.json")
     with open(test_output_json, "wt") as f:
-        json.dump({"time_taken": end_time - start_time}, f)
+        json.dump(result, f)
 
     print("Ok.")
