@@ -250,6 +250,13 @@ extern jclass java_resource_value_class;
 /// Construtor of ResourceValue class
 extern jmethodID java_resource_value_init;
 
+/// OwnershipInfo class
+extern jclass java_ownership_info_class;
+/// Constructor of OwnershipInfo class
+extern jmethodID java_ownership_info_init;
+extern jmethodID java_ownership_info_get_serialized_owner_address;
+extern jmethodID java_ownership_info_get_serialized_object_status;
+
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
 extern JavaVM *jvm;

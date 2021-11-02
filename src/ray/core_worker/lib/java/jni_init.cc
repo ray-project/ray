@@ -140,6 +140,11 @@ jfieldID java_placement_group_id;
 jclass java_resource_value_class;
 jmethodID java_resource_value_init;
 
+jclass java_ownership_info_class;
+jmethodID java_ownership_info_init;
+jmethodID java_ownership_info_get_serialized_owner_address;
+jmethodID java_ownership_info_get_serialized_object_status;
+
 JavaVM *jvm;
 
 inline jclass LoadClass(JNIEnv *env, const char *class_name) {
@@ -347,6 +352,13 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_resource_value_class = LoadClass(env, "io/ray/api/runtimecontext/ResourceValue");
   java_resource_value_init =
       env->GetMethodID(java_resource_value_class, "<init>", "(JD)V");
+  java_ownership_info_class = LoadClass(env, "io/ray/runtime/object/OwnershipInfo");
+  java_ownership_info_init =
+      env->GetMethodID(java_ownership_info_class, "<init>", "([B[B)V");
+  java_ownership_info_get_serialized_owner_address =
+      env->GetMethodID(java_ownership_info_class, "getSerializedOwnerAddress", "()[B");
+  java_ownership_info_get_serialized_object_status =
+      env->GetMethodID(java_ownership_info_class, "getSerializedObjectStatus", "()[B");
   return CURRENT_JNI_VERSION;
 }
 
@@ -385,4 +397,5 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_native_task_executor_class);
   env->DeleteGlobalRef(java_concurrency_group_impl_class);
   env->DeleteGlobalRef(java_resource_value_class);
+  env->DeleteGlobalRef(java_ownership_info_class);
 }

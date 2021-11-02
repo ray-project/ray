@@ -216,37 +216,42 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *env, 
   return NativeStringToJavaByteArray(env, rpc_address.SerializeAsString());
 }
 
-JNIEXPORT jbyteArray JNICALL
+JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *env, jclass,
                                                                     jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ObjectID>(env, objectId);
   rpc::Address address;
-  // TODO(ekl) send serialized object status to Java land.
+
   std::string serialized_object_status;
   CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address,
                                                       &serialized_object_status);
   auto address_str = address.SerializeAsString();
   auto arr = NativeStringToJavaByteArray(env, address_str);
+
   return arr;
 }
 
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResolveFuture(
     JNIEnv *env, jclass, jbyteArray objectId, jbyteArray outerObjectId,
-    jbyteArray ownerAddress) {
+    jobject ownershipInfo) {
   auto object_id = JavaByteArrayToId<ObjectID>(env, objectId);
   auto outer_objectId = ObjectID::Nil();
   if (outerObjectId != NULL) {
     outer_objectId = JavaByteArrayToId<ObjectID>(env, outerObjectId);
   }
-  auto ownerAddressStr = JavaByteArrayToNativeString(env, ownerAddress);
+
+  jbyteArray serialized_owner_address = (jbyteArray)env->CallObjectMethod(
+      ownershipInfo, java_ownership_info_get_serialized_owner_address);
+  jbyteArray serialized_object_status = (jbyteArray)env->CallObjectMethod(
+      ownershipInfo, java_ownership_info_get_serialized_object_status);
+
+  auto owner_address_str = JavaByteArrayToNativeString(env, serialized_owner_address);
   rpc::Address address;
-  address.ParseFromString(ownerAddressStr);
-  // TODO(ekl) populate serialized object status from Java land.
-  rpc::GetObjectStatusReply object_status;
-  auto serialized_status = object_status.SerializeAsString();
+  address.ParseFromString(owner_address_str);
+  auto serialized_status_str = JavaByteArrayToNativeString(env, serialized_object_status);
   CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
-      object_id, outer_objectId, address, serialized_status);
+      object_id, outer_objectId, address, serialized_status_str);
 }
 
 #ifdef __cplusplus

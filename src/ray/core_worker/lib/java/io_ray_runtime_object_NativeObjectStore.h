@@ -106,20 +106,20 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *, jcl
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeGetOwnershipInfo
- * Signature: ([B)[B
+ * Signature: ([B)Lio/ray/runtime/object/OwnershipInfo;
  */
-JNIEXPORT jbyteArray JNICALL
+JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *, jclass,
                                                                     jbyteArray);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeRegisterOwnershipInfoAndResolveFuture
- * Signature: ([B[B[B)V
+ * Signature: ([B[BLio/ray/runtime/object/OwnershipInfo;)V
  */
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResolveFuture(
-    JNIEnv *, jclass, jbyteArray, jbyteArray, jbyteArray);
+    JNIEnv *, jclass, jbyteArray, jbyteArray, jobject);
 
 #ifdef __cplusplus
 }

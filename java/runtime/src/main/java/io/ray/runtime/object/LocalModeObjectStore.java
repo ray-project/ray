@@ -117,11 +117,11 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public byte[] getOwnershipInfo(ObjectId objectId) {
-    return new byte[0];
+  public OwnershipInfo getOwnershipInfo(ObjectId objectId) {
+    return null;
   }
 
   @Override
   public void registerOwnershipInfoAndResolveFuture(
-      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress) {}
+      ObjectId objectId, ObjectId outerObjectId, OwnershipInfo ownershipInfo) {}
 }

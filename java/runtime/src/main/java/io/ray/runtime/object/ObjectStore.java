@@ -229,7 +229,7 @@ public abstract class ObjectStore {
    * @param objectId The ID of the object to promote
    * @return the serialized ownership address
    */
-  public abstract byte[] getOwnershipInfo(ObjectId objectId);
+  public abstract OwnershipInfo getOwnershipInfo(ObjectId objectId);
 
   /**
    * Add a reference to an ObjectID that will deserialized. This will also start the process to
@@ -244,5 +244,5 @@ public abstract class ObjectStore {
    * @param ownerAddress The address of the object's owner.
    */
   public abstract void registerOwnershipInfoAndResolveFuture(
-      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress);
+      ObjectId objectId, ObjectId outerObjectId, OwnershipInfo ownershipInfo);
 }
