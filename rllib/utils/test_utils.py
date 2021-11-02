@@ -94,8 +94,6 @@ def framework_iterator(config=None,
             sess.__enter__()
             tf1.set_random_seed(42)
 
-        print("framework={}".format(fw))
-
         config["framework"] = fw
 
         eager_ctx = None
@@ -112,10 +110,12 @@ def framework_iterator(config=None,
         if fw in ["tf2", "tfe"] and with_eager_tracing:
             for tracing in [True, False]:
                 config["eager_tracing"] = tracing
+                print(f"framework={fw} (eager-tracing={tracing})")
                 yield fw if session is False else (fw, sess)
                 config["eager_tracing"] = False
         # Yield current framework + tf-session (if necessary).
         else:
+            print(f"framework={fw}")
             yield fw if session is False else (fw, sess)
 
         # Exit any context we may have entered.
