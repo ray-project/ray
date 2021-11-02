@@ -337,8 +337,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       tasks_to_schedule_;
 
   struct SchedulingClassInfo {
-    SchedulingClassInfo()
-        : running_tasks(), capacity(0), next_update_time(-1) {}
+    SchedulingClassInfo() : running_tasks(), capacity(0), next_update_time(-1) {}
     /// Track the running task ids in this scheduling class.
     absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
