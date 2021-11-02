@@ -5,7 +5,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import java.util.Map;
 import java.util.Set;
@@ -20,8 +20,8 @@ public class ReplicaSetTest {
   @Test
   public void setMaxConcurrentQueriesTest() {
     ReplicaSet replicaSet = new ReplicaSet(backendTag);
-    io.ray.serve.generated.BackendConfig.Builder builder =
-        io.ray.serve.generated.BackendConfig.newBuilder();
+    io.ray.serve.generated.DeploymentConfig.Builder builder =
+        io.ray.serve.generated.DeploymentConfig.newBuilder();
     builder.setMaxConcurrentQueries(200);
 
     replicaSet.setMaxConcurrentQueries(builder.build());
@@ -56,15 +56,15 @@ public class ReplicaSetTest {
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
       // Replica
-      BackendConfig backendConfig =
-          new BackendConfig().setBackendLanguage(BackendLanguage.JAVA.getNumber());
+      DeploymentConfig deploymentConfig =
+          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
 
       Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
 
       DeploymentInfo deploymentInfo =
           new DeploymentInfo()
               .setName(backendTag)
-              .setBackendConfig(backendConfig)
+              .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
               .setBackendDef("io.ray.serve.ReplicaContext")
               .setInitArgs(initArgs);

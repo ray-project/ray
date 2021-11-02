@@ -13,7 +13,7 @@ public class DeploymentInfo implements Serializable {
 
   private Object[] initArgs;
 
-  private BackendConfig backendConfig;
+  private DeploymentConfig deploymentConfig;
 
   private DeploymentVersion deploymentVersion;
 
@@ -46,12 +46,12 @@ public class DeploymentInfo implements Serializable {
     return this;
   }
 
-  public BackendConfig getBackendConfig() {
-    return backendConfig;
+  public DeploymentConfig getDeploymentConfig() {
+    return deploymentConfig;
   }
 
-  public DeploymentInfo setBackendConfig(BackendConfig backendConfig) {
-    this.backendConfig = backendConfig;
+  public DeploymentInfo setDeploymentConfig(DeploymentConfig deploymentConfig) {
+    this.deploymentConfig = deploymentConfig;
     return this;
   }
 

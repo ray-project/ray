@@ -9,7 +9,7 @@ import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.DeploymentConfig;
 import io.ray.serve.util.CollectionUtil;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -48,8 +48,8 @@ public class ReplicaSet {
                     .register());
   }
 
-  public void setMaxConcurrentQueries(Object backendConfig) {
-    int newValue = ((BackendConfig) backendConfig).getMaxConcurrentQueries();
+  public void setMaxConcurrentQueries(Object deploymentConfig) {
+    int newValue = ((DeploymentConfig) deploymentConfig).getMaxConcurrentQueries();
     if (newValue != this.maxConcurrentQueries) {
       this.maxConcurrentQueries = newValue;
       LOGGER.info("ReplicaSet: changing max_concurrent_queries to {}", newValue);

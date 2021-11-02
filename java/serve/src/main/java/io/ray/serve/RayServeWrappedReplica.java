@@ -30,17 +30,17 @@ public class RayServeWrappedReplica implements RayServeReplica {
       String replicaTag,
       String backendDef,
       byte[] initArgsbytes,
-      byte[] backendConfigBytes,
+      byte[] deploymentConfigBytes,
       byte[] deploymentVersionBytes,
       String controllerName) {
 
-    // Parse BackendConfig.
-    BackendConfig backendConfig = ServeProtoUtil.parseBackendConfig(backendConfigBytes);
+    // Parse DeploymentConfig.
+    DeploymentConfig deploymentConfig = ServeProtoUtil.parseDeploymentConfig(deploymentConfigBytes);
 
     // Parse init args.
     Object[] initArgs = null;
     try {
-      initArgs = parseInitArgs(initArgsbytes, backendConfig);
+      initArgs = parseInitArgs(initArgsbytes, deploymentConfig);
     } catch (IOException e) {
       String errMsg =
           LogUtil.format(
@@ -51,10 +51,11 @@ public class RayServeWrappedReplica implements RayServeReplica {
       throw new RayServeException(errMsg, e);
     }
 
+    // Init replica.
     init(
         new DeploymentInfo()
             .setName(backendTag)
-            .setBackendConfig(backendConfig)
+            .setDeploymentConfig(deploymentConfig)
             .setDeploymentVersion(ServeProtoUtil.parseDeploymentVersion(deploymentVersionBytes))
             .setBackendDef(backendDef)
             .setInitArgs(initArgs),
@@ -103,7 +104,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       this.backend =
           new RayServeReplicaImpl(
               callable,
-              deploymentInfo.getBackendConfig(),
+              deploymentInfo.getDeploymentConfig(),
               deploymentInfo.getDeploymentVersion(),
               optional.get());
       this.deploymentInfo = deploymentInfo;
@@ -131,14 +132,14 @@ public class RayServeWrappedReplica implements RayServeReplica {
             });
   }
 
-  private Object[] parseInitArgs(byte[] initArgsbytes, BackendConfig backendConfig)
+  private Object[] parseInitArgs(byte[] initArgsbytes, DeploymentConfig deploymentConfig)
       throws IOException {
 
     if (initArgsbytes == null || initArgsbytes.length == 0) {
       return new Object[0];
     }
 
-    if (backendConfig.isCrossLanguage()) {
+    if (deploymentConfig.isCrossLanguage()) {
       // For other language like Python API, not support Array type.
       return new Object[] {MessagePackSerializer.decode(initArgsbytes, Object.class)};
     } else {
@@ -199,10 +200,10 @@ public class RayServeWrappedReplica implements RayServeReplica {
   public Object reconfigure(Object userConfig) {
     DeploymentVersion deploymentVersion =
         backend.reconfigure(
-            deploymentInfo.getBackendConfig().isCrossLanguage() && userConfig != null
+            deploymentInfo.getDeploymentConfig().isCrossLanguage() && userConfig != null
                 ? MessagePackSerializer.decode((byte[]) userConfig, Object.class)
                 : userConfig);
-    return deploymentInfo.getBackendConfig().isCrossLanguage()
+    return deploymentInfo.getDeploymentConfig().isCrossLanguage()
         ? ServeProtoUtil.toProtobuf(deploymentVersion).toByteArray()
         : deploymentVersion;
   }
@@ -215,7 +216,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
    */
   public Object getVersion() {
     DeploymentVersion deploymentVersion = backend.getVersion();
-    return deploymentInfo.getBackendConfig().isCrossLanguage()
+    return deploymentInfo.getDeploymentConfig().isCrossLanguage()
         ? ServeProtoUtil.toProtobuf(deploymentVersion).toByteArray()
         : deploymentVersion;
   }

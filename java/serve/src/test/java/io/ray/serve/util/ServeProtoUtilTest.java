@@ -1,7 +1,7 @@
 package io.ray.serve.util;
 
 import com.google.protobuf.ByteString;
-import io.ray.serve.BackendConfig;
+import io.ray.serve.DeploymentConfig;
 import io.ray.serve.DeploymentVersion;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
@@ -12,20 +12,21 @@ import org.testng.annotations.Test;
 public class ServeProtoUtilTest {
 
   @Test
-  public void parseBackendConfigTest() {
+  public void parseDeploymentConfigTest() {
     int numReplicas = 10;
-    io.ray.serve.generated.BackendConfig pbBackendConfig =
-        io.ray.serve.generated.BackendConfig.newBuilder().setNumReplicas(numReplicas).build();
+    io.ray.serve.generated.DeploymentConfig pbDeploymentConfig =
+        io.ray.serve.generated.DeploymentConfig.newBuilder().setNumReplicas(numReplicas).build();
 
-    BackendConfig backendConfig = ServeProtoUtil.parseBackendConfig(pbBackendConfig.toByteArray());
-    Assert.assertNotNull(backendConfig);
-    Assert.assertEquals(backendConfig.getNumReplicas(), numReplicas);
-    Assert.assertEquals(backendConfig.getBackendLanguage(), 0);
-    Assert.assertEquals(backendConfig.getGracefulShutdownTimeoutS(), 20);
-    Assert.assertEquals(backendConfig.getGracefulShutdownWaitLoopS(), 2);
-    Assert.assertEquals(backendConfig.getMaxConcurrentQueries(), 100);
-    Assert.assertNull(backendConfig.getUserConfig());
-    Assert.assertEquals(backendConfig.isCrossLanguage(), false);
+    DeploymentConfig deploymentConfig =
+        ServeProtoUtil.parseDeploymentConfig(pbDeploymentConfig.toByteArray());
+    Assert.assertNotNull(deploymentConfig);
+    Assert.assertEquals(deploymentConfig.getNumReplicas(), numReplicas);
+    Assert.assertEquals(deploymentConfig.getDeploymentLanguage(), 0);
+    Assert.assertEquals(deploymentConfig.getGracefulShutdownTimeoutS(), 20);
+    Assert.assertEquals(deploymentConfig.getGracefulShutdownWaitLoopS(), 2);
+    Assert.assertEquals(deploymentConfig.getMaxConcurrentQueries(), 100);
+    Assert.assertNull(deploymentConfig.getUserConfig());
+    Assert.assertEquals(deploymentConfig.isCrossLanguage(), false);
   }
 
   @Test

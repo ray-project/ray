@@ -5,7 +5,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
-import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
 import java.io.IOException;
@@ -30,12 +30,12 @@ public class RayServeReplicaTest {
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
-      BackendConfig backendConfig =
-          new BackendConfig().setBackendLanguage(BackendLanguage.JAVA.getNumber());
+      DeploymentConfig deploymentConfig =
+          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
       DeploymentInfo deploymentInfo =
           new DeploymentInfo()
               .setName(backendTag)
-              .setBackendConfig(backendConfig)
+              .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
               .setBackendDef(DummyBackendReplica.class.getName());
 

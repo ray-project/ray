@@ -5,7 +5,7 @@ import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
@@ -52,8 +52,8 @@ public class ProxyActorTest {
       DeploymentInfo deploymentInfo =
           new DeploymentInfo()
               .setName(deploymentName)
-              .setBackendConfig(
-                  new BackendConfig().setBackendLanguage(BackendLanguage.JAVA.getNumber()))
+              .setDeploymentConfig(
+                  new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber()))
               .setDeploymentVersion(new DeploymentVersion(version))
               .setBackendDef(DummyBackendReplica.class.getName());
 

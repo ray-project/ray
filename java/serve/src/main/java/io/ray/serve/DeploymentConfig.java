@@ -3,7 +3,7 @@ package io.ray.serve;
 import com.google.common.base.Preconditions;
 import java.io.Serializable;
 
-public class BackendConfig implements Serializable {
+public class DeploymentConfig implements Serializable {
 
   private static final long serialVersionUID = 4037621960087621036L;
 
@@ -19,13 +19,13 @@ public class BackendConfig implements Serializable {
 
   private boolean isCrossLanguage;
 
-  private int backendLanguage = 1;
+  private int deploymentLanguage = 1;
 
   public int getNumReplicas() {
     return numReplicas;
   }
 
-  public BackendConfig setNumReplicas(int numReplicas) {
+  public DeploymentConfig setNumReplicas(int numReplicas) {
     this.numReplicas = numReplicas;
     return this;
   }
@@ -34,7 +34,7 @@ public class BackendConfig implements Serializable {
     return maxConcurrentQueries;
   }
 
-  public BackendConfig setMaxConcurrentQueries(int maxConcurrentQueries) {
+  public DeploymentConfig setMaxConcurrentQueries(int maxConcurrentQueries) {
     Preconditions.checkArgument(maxConcurrentQueries >= 0, "max_concurrent_queries must be >= 0");
     this.maxConcurrentQueries = maxConcurrentQueries;
     return this;
@@ -44,7 +44,7 @@ public class BackendConfig implements Serializable {
     return userConfig;
   }
 
-  public BackendConfig setUserConfig(Object userConfig) {
+  public DeploymentConfig setUserConfig(Object userConfig) {
     this.userConfig = userConfig;
     return this;
   }
@@ -53,7 +53,7 @@ public class BackendConfig implements Serializable {
     return gracefulShutdownWaitLoopS;
   }
 
-  public BackendConfig setGracefulShutdownWaitLoopS(double gracefulShutdownWaitLoopS) {
+  public DeploymentConfig setGracefulShutdownWaitLoopS(double gracefulShutdownWaitLoopS) {
     this.gracefulShutdownWaitLoopS = gracefulShutdownWaitLoopS;
     return this;
   }
@@ -62,7 +62,7 @@ public class BackendConfig implements Serializable {
     return gracefulShutdownTimeoutS;
   }
 
-  public BackendConfig setGracefulShutdownTimeoutS(double gracefulShutdownTimeoutS) {
+  public DeploymentConfig setGracefulShutdownTimeoutS(double gracefulShutdownTimeoutS) {
     this.gracefulShutdownTimeoutS = gracefulShutdownTimeoutS;
     return this;
   }
@@ -71,17 +71,17 @@ public class BackendConfig implements Serializable {
     return isCrossLanguage;
   }
 
-  public BackendConfig setCrossLanguage(boolean isCrossLanguage) {
+  public DeploymentConfig setCrossLanguage(boolean isCrossLanguage) {
     this.isCrossLanguage = isCrossLanguage;
     return this;
   }
 
-  public int getBackendLanguage() {
-    return backendLanguage;
+  public int getDeploymentLanguage() {
+    return deploymentLanguage;
   }
 
-  public BackendConfig setBackendLanguage(int backendLanguage) {
-    this.backendLanguage = backendLanguage;
+  public DeploymentConfig setDeploymentLanguage(int deploymentLanguage) {
+    this.deploymentLanguage = deploymentLanguage;
     return this;
   }
 }

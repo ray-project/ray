@@ -5,11 +5,11 @@ import com.google.gson.Gson;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.BackendConfig;
 import io.ray.serve.Constants;
+import io.ray.serve.DeploymentConfig;
 import io.ray.serve.DeploymentVersion;
 import io.ray.serve.RayServeException;
-import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.generated.LongPollResult;
@@ -25,51 +25,54 @@ public class ServeProtoUtil {
 
   private static final Gson GSON = new Gson();
 
-  public static BackendConfig parseBackendConfig(byte[] backendConfigBytes) {
+  public static DeploymentConfig parseDeploymentConfig(byte[] deploymentConfigBytes) {
 
-    BackendConfig backendConfig = new BackendConfig();
-    if (backendConfigBytes == null) {
-      return backendConfig;
+    DeploymentConfig deploymentConfig = new DeploymentConfig();
+    if (deploymentConfigBytes == null) {
+      return deploymentConfig;
     }
 
-    io.ray.serve.generated.BackendConfig pbBackendConfig = null;
+    io.ray.serve.generated.DeploymentConfig pbDeploymentConfig = null;
     try {
-      pbBackendConfig = io.ray.serve.generated.BackendConfig.parseFrom(backendConfigBytes);
+      pbDeploymentConfig = io.ray.serve.generated.DeploymentConfig.parseFrom(deploymentConfigBytes);
     } catch (InvalidProtocolBufferException e) {
-      throw new RayServeException("Failed to parse BackendConfig from protobuf bytes.", e);
+      throw new RayServeException("Failed to parse DeploymentConfig from protobuf bytes.", e);
     }
 
-    if (pbBackendConfig == null) {
-      return backendConfig;
+    if (pbDeploymentConfig == null) {
+      return deploymentConfig;
     }
 
-    if (pbBackendConfig.getNumReplicas() != 0) {
-      backendConfig.setNumReplicas(pbBackendConfig.getNumReplicas());
+    if (pbDeploymentConfig.getNumReplicas() != 0) {
+      deploymentConfig.setNumReplicas(pbDeploymentConfig.getNumReplicas());
     }
-    if (pbBackendConfig.getMaxConcurrentQueries() != 0) {
-      backendConfig.setMaxConcurrentQueries(pbBackendConfig.getMaxConcurrentQueries());
+    if (pbDeploymentConfig.getMaxConcurrentQueries() != 0) {
+      deploymentConfig.setMaxConcurrentQueries(pbDeploymentConfig.getMaxConcurrentQueries());
     }
-    if (pbBackendConfig.getGracefulShutdownWaitLoopS() != 0) {
-      backendConfig.setGracefulShutdownWaitLoopS(pbBackendConfig.getGracefulShutdownWaitLoopS());
+    if (pbDeploymentConfig.getGracefulShutdownWaitLoopS() != 0) {
+      deploymentConfig.setGracefulShutdownWaitLoopS(
+          pbDeploymentConfig.getGracefulShutdownWaitLoopS());
     }
-    if (pbBackendConfig.getGracefulShutdownTimeoutS() != 0) {
-      backendConfig.setGracefulShutdownTimeoutS(pbBackendConfig.getGracefulShutdownTimeoutS());
+    if (pbDeploymentConfig.getGracefulShutdownTimeoutS() != 0) {
+      deploymentConfig.setGracefulShutdownTimeoutS(
+          pbDeploymentConfig.getGracefulShutdownTimeoutS());
     }
-    backendConfig.setCrossLanguage(pbBackendConfig.getIsCrossLanguage());
-    if (pbBackendConfig.getBackendLanguage() == BackendLanguage.UNRECOGNIZED) {
+    deploymentConfig.setCrossLanguage(pbDeploymentConfig.getIsCrossLanguage());
+    if (pbDeploymentConfig.getDeploymentLanguage() == DeploymentLanguage.UNRECOGNIZED) {
       throw new RayServeException(
           LogUtil.format(
-              "Unrecognized backend language {}. Backend language must be in {}.",
-              pbBackendConfig.getBackendLanguageValue(),
-              Lists.newArrayList(BackendLanguage.values())));
+              "Unrecognized deployment language {}. Deployment language must be in {}.",
+              pbDeploymentConfig.getDeploymentLanguage(),
+              Lists.newArrayList(DeploymentLanguage.values())));
     }
-    backendConfig.setBackendLanguage(pbBackendConfig.getBackendLanguageValue());
-    if (pbBackendConfig.getUserConfig() != null && pbBackendConfig.getUserConfig().size() != 0) {
-      backendConfig.setUserConfig(
+    deploymentConfig.setDeploymentLanguage(pbDeploymentConfig.getDeploymentLanguageValue());
+    if (pbDeploymentConfig.getUserConfig() != null
+        && pbDeploymentConfig.getUserConfig().size() != 0) {
+      deploymentConfig.setUserConfig(
           MessagePackSerializer.decode(
-              pbBackendConfig.getUserConfig().toByteArray(), Object.class));
+              pbDeploymentConfig.getUserConfig().toByteArray(), Object.class));
     }
-    return backendConfig;
+    return deploymentConfig;
   }
 
   public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes) {
