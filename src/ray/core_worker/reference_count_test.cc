@@ -1569,8 +1569,7 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
   ASSERT_TRUE(owner->rc_.HasReference(inner_id));
   // Caller receives the owner's message, but inner_id is still in scope
   // because caller has a reference to return_id.
-  caller->HandleSubmittedTaskFinished(return_id, ObjectID::Nil(),
-                                      {{return_id, {inner_id}}});
+  caller->HandleSubmittedTaskFinished(ObjectID::Nil(), {{return_id, {inner_id}}});
 
   //
   // Phase 2 -- submit and execute owner_task2(x)
@@ -1584,7 +1583,7 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
   owner->ExecuteTaskWithArg(return_id, inner_id, owner->address_);
   auto refs2 = owner->FinishExecutingTask(return_id, return_id);
   // owner merges ref count into the caller.
-  caller->HandleSubmittedTaskFinished(return_id2, return_id, {}, owner->address_, refs2);
+  caller->HandleSubmittedTaskFinished(return_id, {}, owner->address_, refs2);
   ASSERT_FALSE(owner->rc_.HasReference(return_id));
   ASSERT_FALSE(caller->rc_.HasReference(return_id));
   ASSERT_FALSE(owner->rc_.HasReference(return_id2));
