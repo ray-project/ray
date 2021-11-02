@@ -2,15 +2,27 @@ RLlib: Industry-Grade Reinforcement Learning with TF and Torch
 ==============================================================
 
 **RLlib** is an open-source library for reinforcement learning, offering support for
-industry-grade, highly distributed reinforcement learning (RL) workloads while maintaining
-unified and simple APIs for a variety of applications. Whether you would like to learn in
-multi-agent setups, purely with offline (historic) datasets, or require external
-connections from your simulators into an central learning server, RLlib
+production-level, highly distributed reinforcement learning (RL) workloads while maintaining
+unified and simple APIs for a large variety of industry applications.
+Whether you would like to train your agents in multi-agent setups,
+purely from offline (historic) datasets, or using externally
+connected simulators, RLlib offers simple solutions for your decision making needs.
+
+You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
+other of its libraries! If you either have your problem coded (in python) as an
+"`RL environment <https://github.com/openai/gym>`_" or own lots of pre-recorded, historic
+behavioral data to learn from, you will be up and running in only a few days.
+
+RLlib is already used in production by industry leaders in many different verticals,
+such as manufacturing, logistics, finance, gaming, automakers, robotics,
+and many others.
 
 
+Quick Setup
+-----------
 
-Quick 30sec Setup
------------------
+You'll only need 30 seconds (and the following commands) to get your first RLlib workload
+up and running on your laptop:
 
 **TensorFlow:**
 
@@ -34,10 +46,10 @@ Quick 30sec Setup
     $ rllib train --run APPO --env CartPole-v0 --torch
 
 
-Feature Highlights
-------------------
+Feature Overview
+----------------
 
-The following is a high level overview of RLlib's countless valuable features.
+The following is a summary of RLlib's most striking features (for an in-depth overview, check out our `documentation <http://docs.ray.io/en/master/rllib.html>`_).
 
 In particular, RLlib offers and supports:
 
@@ -80,16 +92,18 @@ In particular, RLlib offers and supports:
    the historic system (the one that recorded your historic data) or learn how to improve
    over that system.
 
-In-Deth Documentation
----------------------
+In-Depth Documentation
+----------------------
 
-For an overview of RLlib, see the [documentation](http://docs.ray.io/en/master/rllib.html).
+For an in-depth overview of RLlib and everything it has to offer, including
+hand-on tutorials of important industry use cases and workflows, head over to
+our `documentation pages <https://docs.ray.io/en/master/rllib.html>`_.
 
 
 Cite our Paper
 --------------
 
-If you've found RLlib useful for your research, please cite our [paper](https://arxiv.org/abs/1712.09381) as follows:
+If you've found RLlib useful for your research, please cite our `paper <https://arxiv.org/abs/1712.09381>`_ as follows:
 
 .. code-block::
 
