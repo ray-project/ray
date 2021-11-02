@@ -81,9 +81,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         jobs = {}
         for job_table_entry in reply.job_info_list:
-            metadata = dict(job_table_entry.config.metadata)
-
             job_id = job_table_entry.job_id.hex()
+            metadata = dict(job_table_entry.config.metadata)
             config = {
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": metadata,
