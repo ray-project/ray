@@ -31,8 +31,6 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
 
   AsyncLoadNodeTableData(on_load_finished);
 
-  AsyncLoadObjectTableData(on_load_finished);
-
   AsyncLoadResourceTableData(on_load_finished);
 
   AsyncLoadActorTableData(on_load_finished);
@@ -62,19 +60,6 @@ void GcsInitData::AsyncLoadNodeTableData(const EmptyCallback &on_done) {
         on_done();
       };
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(load_node_table_data_callback));
-}
-
-void GcsInitData::AsyncLoadObjectTableData(const EmptyCallback &on_done) {
-  RAY_LOG(INFO) << "Loading object table data.";
-  auto load_object_table_data_callback =
-      [this,
-       on_done](const std::unordered_map<ObjectID, rpc::ObjectLocationInfo> &result) {
-        object_table_data_ = result;
-        RAY_LOG(INFO) << "Finished loading object table data, size = "
-                      << object_table_data_.size();
-        on_done();
-      };
-  RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(load_object_table_data_callback));
 }
 
 void GcsInitData::AsyncLoadResourceTableData(const EmptyCallback &on_done) {

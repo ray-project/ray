@@ -450,60 +450,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool SubscribeToLocations(
-      const ObjectID &object_id,
-      const gcs::SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
-          &subscribe) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncSubscribeToLocations(
-        object_id, subscribe,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  void UnsubscribeToLocations(const ObjectID &object_id) {
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id));
-  }
-
-  void WaitForObjectUnsubscribed(const ObjectID &object_id) {
-    auto condition = [this, object_id]() {
-      return gcs_client_->Objects().IsObjectUnsubscribed(object_id);
-    };
-    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-  }
-
-  bool AddLocation(const ObjectID &object_id, const NodeID &node_id) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
-        object_id, node_id, 0,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool RemoveLocation(const ObjectID &object_id, const NodeID &node_id) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncRemoveLocation(
-        object_id, node_id,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  std::vector<rpc::ObjectTableData> GetLocations(const ObjectID &object_id) {
-    std::promise<bool> promise;
-    std::vector<rpc::ObjectTableData> locations;
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(
-        object_id,
-        [&locations, &promise](Status status,
-                               const boost::optional<rpc::ObjectLocationInfo> &result) {
-          for (const auto &loc : result->locations()) {
-            locations.push_back(loc);
-          }
-          promise.set_value(status.ok());
-        }));
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return locations;
-  }
-
   bool AddProfileData(const std::shared_ptr<rpc::ProfileTableData> &profile_table_data) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
@@ -915,52 +861,6 @@ TEST_P(GcsClientTest, TestTaskInfo) {
   ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
 }
 
-TEST_P(GcsClientTest, TestObjectInfo) {
-  ObjectID object_id = ObjectID::FromRandom();
-  NodeID node_id = NodeID::FromRandom();
-
-  // Subscribe to any update of an object's location.
-  std::atomic<int> object_add_count(0);
-  std::atomic<int> object_remove_count(0);
-  auto on_subscribe = [&object_add_count, &object_remove_count](
-                          const ObjectID &object_id,
-                          const std::vector<rpc::ObjectLocationChange> &result) {
-    for (const auto &res : result) {
-      if (res.is_add()) {
-        ++object_add_count;
-      } else {
-        ++object_remove_count;
-      }
-    }
-  };
-  ASSERT_TRUE(SubscribeToLocations(object_id, on_subscribe));
-
-  // Add location of object to GCS.
-  ASSERT_TRUE(AddLocation(object_id, node_id));
-  WaitForExpectedCount(object_add_count, 1);
-
-  // Get object's locations from GCS.
-  auto locations = GetLocations(object_id);
-  ASSERT_EQ(locations.size(), 1);
-  ASSERT_EQ(locations.back().manager(), node_id.Binary());
-
-  // Remove location of object from GCS.
-  ASSERT_TRUE(RemoveLocation(object_id, node_id));
-  WaitForExpectedCount(object_remove_count, 1);
-  ASSERT_TRUE(GetLocations(object_id).empty());
-
-  // Cancel subscription to any update of an object's location.
-  UnsubscribeToLocations(object_id);
-  WaitForObjectUnsubscribed(object_id);
-
-  // Add location of object to GCS again.
-  ASSERT_TRUE(AddLocation(object_id, node_id));
-
-  // Assert unsubscribe succeeded.
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  ASSERT_EQ(object_add_count, 1);
-}
-
 TEST_P(GcsClientTest, TestStats) {
   // Add profile data to GCS.
   NodeID node_id = NodeID::FromRandom();
@@ -1114,54 +1014,6 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   EXPECT_TRUE(WaitForCondition(condition_subscribe_all_restart, timeout_ms_.count()));
 }
 
-TEST_P(GcsClientTest, TestObjectTableResubscribe) {
-  ObjectID object1_id = ObjectID::FromRandom();
-  ObjectID object2_id = ObjectID::FromRandom();
-  NodeID node_id = NodeID::FromRandom();
-
-  // Subscribe to any update of an object's location.
-  std::atomic<int> object1_change_count(0);
-  std::atomic<int> object2_change_count(0);
-  ASSERT_TRUE(SubscribeToLocations(
-      object1_id,
-      [&object1_change_count](const ObjectID &object_id,
-                              const std::vector<rpc::ObjectLocationChange> &result) {
-        if (!result.empty()) {
-          ++object1_change_count;
-        }
-      }));
-  ASSERT_TRUE(SubscribeToLocations(
-      object2_id,
-      [&object2_change_count](const ObjectID &object_id,
-                              const std::vector<rpc::ObjectLocationChange> &result) {
-        if (!result.empty()) {
-          ++object2_change_count;
-        }
-      }));
-
-  ASSERT_TRUE(AddLocation(object1_id, node_id));
-  WaitForExpectedCount(object1_change_count, 1);
-  ASSERT_TRUE(AddLocation(object2_id, node_id));
-  WaitForExpectedCount(object2_change_count, 1);
-
-  // Cancel subscription to any update of an object's location.
-  UnsubscribeToLocations(object1_id);
-  WaitForObjectUnsubscribed(object1_id);
-
-  // Restart GCS.
-  RestartGcsServer();
-  // When GCS client detects that GCS server has restarted, but the pub-sub server
-  // didn't restart, it will fetch the subscription data again from the GCS server, so
-  // `object2_change_count` plus 1.
-  WaitForExpectedCount(object2_change_count, 2);
-
-  // Add location of object to GCS again and check if resubscribe works.
-  ASSERT_TRUE(AddLocation(object1_id, node_id));
-  WaitForExpectedCount(object1_change_count, 1);
-  ASSERT_TRUE(AddLocation(object2_id, node_id));
-  WaitForExpectedCount(object2_change_count, 3);
-}
-
 TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
@@ -1267,15 +1119,9 @@ TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestGcsTableReload) {
-  ObjectID object_id = ObjectID::FromRandom();
-  NodeID node_id = NodeID::FromRandom();
-
   // Register node to GCS.
   auto node_info = Mocker::GenNodeInfo();
   ASSERT_TRUE(RegisterNode(*node_info));
-
-  // Add location of object to GCS.
-  ASSERT_TRUE(AddLocation(object_id, node_id));
 
   // Restart GCS.
   RestartGcsServer();
@@ -1283,11 +1129,6 @@ TEST_P(GcsClientTest, TestGcsTableReload) {
   // Get information of nodes from GCS.
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 1);
-
-  // Get object's locations from GCS.
-  auto locations = GetLocations(object_id);
-  ASSERT_EQ(locations.size(), 1);
-  ASSERT_EQ(locations.back().manager(), node_id.Binary());
 }
 
 TEST_P(GcsClientTest, TestGcsRedisFailureDetector) {
@@ -1324,23 +1165,7 @@ TEST_P(GcsClientTest, TestMultiThreadSubAndUnsub) {
       }
     }));
   }
-  for (auto &thread : threads) {
-    thread->join();
-    thread.reset();
-  }
 
-  // Multithreading subscribe/unsubscribe objects.
-  for (int index = 0; index < size; ++index) {
-    threads[index].reset(new std::thread([this, sub_and_unsub_loop_count] {
-      for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
-        auto object_id = ObjectID::FromRandom();
-        ASSERT_TRUE(SubscribeToLocations(
-            object_id, [](const ObjectID &id,
-                          const std::vector<rpc::ObjectLocationChange> &result) {}));
-        UnsubscribeToLocations(object_id);
-      }
-    }));
-  }
   for (auto &thread : threads) {
     thread->join();
     thread.reset();
