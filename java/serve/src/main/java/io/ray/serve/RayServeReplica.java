@@ -9,7 +9,7 @@ import io.ray.runtime.metric.Histogram;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
-import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.DeploymentConfig;
 import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.RequestWrapper;
 import io.ray.serve.poll.KeyListener;
@@ -34,7 +34,7 @@ public class RayServeReplica {
 
   private String replicaTag;
 
-  private BackendConfig config;
+  private DeploymentConfig config;
 
   private AtomicInteger numOngoingRequests = new AtomicInteger();
 
@@ -58,19 +58,19 @@ public class RayServeReplica {
 
   public RayServeReplica(
       Object callable,
-      BackendConfig backendConfig,
+      DeploymentConfig deploymentConfig,
       DeploymentVersion version,
       BaseActorHandle actorHandle) {
     this.backendTag = Serve.getReplicaContext().getBackendTag();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
-    this.config = backendConfig;
+    this.config = deploymentConfig;
     this.version = version;
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
         new KeyType(LongPollNamespace.BACKEND_CONFIGS, backendTag),
-        newConfig -> updateBackendConfigs(newConfig));
+        newConfig -> updateDeploymentConfigs(newConfig));
     this.longPollClient = new LongPollClient(actorHandle, keyListeners);
     this.longPollClient.start();
     registerMetrics();
@@ -319,8 +319,8 @@ public class RayServeReplica {
    *
    * @param newConfig the new configuration of backend
    */
-  private void updateBackendConfigs(Object newConfig) {
-    config = (BackendConfig) newConfig;
+  private void updateDeploymentConfigs(Object newConfig) {
+    config = (DeploymentConfig) newConfig;
   }
 
   public DeploymentVersion getVersion() {

@@ -47,7 +47,7 @@ public class LongPollClient {
 
   static {
     DESERIALIZERS.put(
-        LongPollNamespace.BACKEND_CONFIGS, body -> ServeProtoUtil.parseBackendConfig(body));
+        LongPollNamespace.BACKEND_CONFIGS, body -> ServeProtoUtil.parseDeploymentConfig(body));
     DESERIALIZERS.put(
         LongPollNamespace.REPLICA_HANDLES, body -> ServeProtoUtil.parseEndpointSet(body));
     DESERIALIZERS.put(
