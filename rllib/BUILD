@@ -1436,7 +1436,7 @@ py_test(
 
 py_test(
     name = "tests/test_model_imports",
-    tags = ["team:ml", "tests_dir", "tests_dir_M", "model_imports", "flaky"],
+    tags = ["team:ml", "tests_dir", "tests_dir_M", "model_imports"],
     size = "medium",
     data = glob(["tests/data/model_weights/**"]),
     srcs = ["tests/test_model_imports.py"]
