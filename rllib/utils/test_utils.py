@@ -631,6 +631,8 @@ def run_learning_tests_from_yaml(
                 k_ = k + "-" + framework
                 ec = copy.deepcopy(e)
                 ec["config"]["framework"] = framework
+                if framework == "tf2":
+                    ec["config"]["eager_tracing"] = True
 
                 checks[k_] = {
                     "min_reward": ec["pass_criteria"].get(
