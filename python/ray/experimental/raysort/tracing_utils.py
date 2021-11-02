@@ -154,3 +154,13 @@ def export_timeline(args):
     filename = f"/tmp/ray-{args.run_id}.json"
     ray.timeline(filename=filename)
     logging.info(f"Exported Ray timeline to {filename}")
+
+
+def performance_report(run_id: str, agent: ray.actor.ActorHandle):
+    report = agent.report.remote()
+    trace = agent.create_trace.remote()
+    print(ray.get(report))
+    filename = f"/tmp/raysort-{run_id}.json"
+    with open(filename, "w") as fout:
+        fout.write(ray.get(trace))
+    logging.info(f"Exported RaySort timeline to {filename}")

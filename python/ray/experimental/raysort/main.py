@@ -39,7 +39,7 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--total_data_size",
-        default=2 * 1000 * 1024 * 1024 * 1024,
+        default=1 * 1000 * 1024 * 1024 * 1024,
         type=ByteCount,
         help="total data size in bytes",
     )
@@ -361,18 +361,6 @@ def worker_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
             ray.util.remove_placement_group(pg)
 
 
-@ray.remote(num_cpus=0)
-def benchmark(args):
-    boundaries = sortlib.get_boundaries(16)
-    start = time.time()
-    part = _generate_partition(args.input_part_size)
-    sort_start = time.time()
-    sortlib.sort_and_partition(part, boundaries)
-    sort_duration = time.time() - sort_start
-    gen_duration = sort_start - start
-    return gen_duration, sort_duration
-
-
 @tracing_utils.timeit("sort", report_time=True)
 def sort_main(args: Args):
     parts = _load_manifest(args, constants.INPUT_MANIFEST_FILE)
@@ -486,16 +474,6 @@ def validate_output(args: Args):
 # ------------------------------------------------------------
 
 
-def performance_report(args: Args, agent: ray.actor.ActorHandle):
-    report = agent.report.remote()
-    trace = agent.create_trace.remote()
-    print(ray.get(report))
-    filename = f"/tmp/raysort-{args.run_id}.json"
-    with open(filename, "w") as fout:
-        fout.write(ray.get(trace))
-    logging.info(f"Exported RaySort timeline to {filename}")
-
-
 def init(args: Args):
     if not args.ray_address:
         ray.init(resources={"worker": os.cpu_count() // 2})
@@ -522,8 +500,7 @@ def init(args: Args):
 
 
 def main(args: Args):
-    # Keep the actor handle in scope for the duration of the program.
-    agent = init(args)  # noqa F841
+    agent = init(args)
 
     if args.generate_input:
         generate_input(args)
@@ -534,7 +511,7 @@ def main(args: Args):
     if args.validate_output:
         validate_output(args)
 
-    performance_report(args, agent)
+    tracing_utils.performance_report(args.run_id, agent)
 
 
 if __name__ == "__main__":
