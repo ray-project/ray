@@ -219,6 +219,9 @@ Status GcsPublisher::PublishActor(const ActorID &id, const rpc::ActorTableData &
     msg.set_key_id(id.Binary());
     *msg.mutable_actor_message() = message;
     publisher_->Publish(msg);
+    if (done != nullptr) {
+      done(Status::OK());
+    }
     return Status::OK();
   }
   return pubsub_->Publish(ACTOR_CHANNEL, id.Hex(), message.SerializeAsString(), done);
@@ -232,6 +235,9 @@ Status GcsPublisher::PublishJob(const JobID &id, const rpc::JobTableData &messag
     msg.set_key_id(id.Binary());
     *msg.mutable_job_message() = message;
     publisher_->Publish(msg);
+    if (done != nullptr) {
+      done(Status::OK());
+    }
     return Status::OK();
   }
   return pubsub_->Publish(JOB_CHANNEL, id.Hex(), message.SerializeAsString(), done);
@@ -245,6 +251,9 @@ Status GcsPublisher::PublishNodeInfo(const NodeID &id, const rpc::GcsNodeInfo &m
     msg.set_key_id(id.Binary());
     *msg.mutable_node_info_message() = message;
     publisher_->Publish(msg);
+    if (done != nullptr) {
+      done(Status::OK());
+    }
     return Status::OK();
   }
   return pubsub_->Publish(NODE_CHANNEL, id.Hex(), message.SerializeAsString(), done);
@@ -259,6 +268,9 @@ Status GcsPublisher::PublishNodeResource(const NodeID &id,
     msg.set_key_id(id.Binary());
     *msg.mutable_node_resource_message() = message;
     publisher_->Publish(msg);
+    if (done != nullptr) {
+      done(Status::OK());
+    }
     return Status::OK();
   }
   return pubsub_->Publish(NODE_RESOURCE_CHANNEL, id.Hex(), message.SerializeAsString(),
@@ -298,6 +310,7 @@ std::string GcsPublisher::DebugString() const {
 Status GcsSubscriber::SubscribeAllJobs(
     const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
     const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
   if (subscriber_ != nullptr) {
     auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
       RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_JOB_CHANNEL);
@@ -309,7 +322,12 @@ Status GcsSubscriber::SubscribeAllJobs(
     };
     if (subscriber_->SubscribeAll(
             std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_JOB_CHANNEL,
-            gcs_address_, [done](Status status) { done(status); },
+            gcs_address_,
+            [done](Status status) {
+              if (done != nullptr) {
+                done(status);
+              }
+            },
             std::move(subscribe_item_callback),
             std::move(subscription_failure_callback))) {
       return Status::OK();
@@ -329,6 +347,7 @@ Status GcsSubscriber::SubscribeAllJobs(
 Status GcsSubscriber::SubscribeActor(
     const ActorID &id, const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
   if (subscriber_ != nullptr) {
     auto subscription_callback = [id, subscribe](const rpc::PubMessage &msg) {
       RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
@@ -343,7 +362,12 @@ Status GcsSubscriber::SubscribeActor(
     };
     if (subscriber_->Subscribe(
             std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_ACTOR_CHANNEL,
-            gcs_address_, id.Binary(), [done](Status status) { done(status); },
+            gcs_address_, id.Binary(),
+            [done](Status status) {
+              if (done != nullptr) {
+                done(status);
+              }
+            },
             std::move(subscription_callback), std::move(subscription_failure_callback))) {
       return Status::OK();
     }
@@ -378,6 +402,7 @@ bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
 
 Status GcsSubscriber::SubscribeAllNodeInfo(
     const ItemCallback<rpc::GcsNodeInfo> &subscribe, const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
   if (subscriber_ != nullptr) {
     auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
       RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
@@ -389,7 +414,12 @@ Status GcsSubscriber::SubscribeAllNodeInfo(
     };
     if (subscriber_->SubscribeAll(
             std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-            gcs_address_, [done](Status status) { done(status); },
+            gcs_address_,
+            [done](Status status) {
+              if (done != nullptr) {
+                done(status);
+              }
+            },
             std::move(subscribe_item_callback),
             std::move(subscription_failure_callback))) {
       return Status::OK();
@@ -408,6 +438,7 @@ Status GcsSubscriber::SubscribeAllNodeInfo(
 
 Status GcsSubscriber::SubscribeAllNodeResources(
     const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
   if (subscriber_ != nullptr) {
     auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
       RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL);
@@ -420,7 +451,13 @@ Status GcsSubscriber::SubscribeAllNodeResources(
     if (subscriber_->SubscribeAll(
             std::make_unique<rpc::SubMessage>(),
             rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL, gcs_address_,
-            [done](Status status) { done(status); }, std::move(subscribe_item_callback),
+
+            [done](Status status) {
+              if (done != nullptr) {
+                done(status);
+              }
+            },
+            std::move(subscribe_item_callback),
             std::move(subscription_failure_callback))) {
       return Status::OK();
     }

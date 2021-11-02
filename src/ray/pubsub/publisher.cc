@@ -216,8 +216,9 @@ bool Subscriber::IsActiveConnectionTimedOut() const {
 void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
                                     rpc::PubsubLongPollingReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id;
+  RAY_CHECK(reply != nullptr);
   RAY_CHECK(send_reply_callback != nullptr);
+  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id;
 
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
