@@ -21,6 +21,10 @@ from ray.dashboard.modules.job.data_types import (
     JobSubmitRequest, JobSubmitResponse, JobStatusRequest, JobStatusResponse,
     JobLogsRequest, JobLogsResponse)
 
+from ray.dashboard.modules.job.job_head import (
+    JOB_API_ROUTE_LOGS, JOB_API_ROUTE_SUBMIT, JOB_API_ROUTE_STATUS,
+    JOB_API_ROUTE_PACKAGE)
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -43,7 +47,7 @@ class JobSubmissionClient:
             endpoint: str,
             data: BaseModel,
             response_type: Optional[ModelMetaclass] = None) -> Dict[Any, Any]:
-        url = f"{self._address}/{endpoint}"
+        url = self._address + endpoint
         json_payload = data.dict()
         logger.debug(f"Sending request to {url} with payload {json_payload}.")
         r = requests.request(method, url, json=json_payload)
@@ -62,7 +66,10 @@ class JobSubmissionClient:
     def _package_exists(self, package_uri: str) -> bool:
         req = GetPackageRequest(package_uri=package_uri)
         resp = self._do_request(
-            "GET", "package", req, response_type=GetPackageResponse)
+            "GET",
+            JOB_API_ROUTE_PACKAGE,
+            req,
+            response_type=GetPackageResponse)
         return resp.package_exists
 
     def _upload_package(self,
@@ -81,7 +88,7 @@ class JobSubmissionClient:
             req = UploadPackageRequest(
                 package_uri=package_uri,
                 encoded_package_bytes=b64encode(package_file.read_bytes()))
-            self._do_request("PUT", "package", req)
+            self._do_request("PUT", JOB_API_ROUTE_PACKAGE, req)
             package_file.unlink()
 
     def _upload_package_if_needed(self,
@@ -125,15 +132,18 @@ class JobSubmissionClient:
         job_spec = JobSpec(
             entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata)
         req = JobSubmitRequest(job_spec=job_spec)
-        resp = self._do_request("POST", "submit", req, JobSubmitResponse)
+        resp = self._do_request("POST", JOB_API_ROUTE_SUBMIT, req,
+                                JobSubmitResponse)
         return resp.job_id
 
     def get_job_status(self, job_id: str) -> JobStatus:
         req = JobStatusRequest(job_id=job_id)
-        resp = self._do_request("GET", "status", req, JobStatusResponse)
+        resp = self._do_request("GET", JOB_API_ROUTE_STATUS, req,
+                                JobStatusResponse)
         return resp.job_status
 
     def get_job_logs(self, job_id: str) -> Tuple[str, str]:
         req = JobLogsRequest(job_id=job_id)
-        resp = self._do_request("GET", "logs", req, JobLogsResponse)
+        resp = self._do_request("GET", JOB_API_ROUTE_LOGS, req,
+                                JobLogsResponse)
         return resp.stdout, resp.stderr

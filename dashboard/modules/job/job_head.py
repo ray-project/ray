@@ -19,6 +19,11 @@ routes = dashboard_utils.ClassMethodRouteTable
 
 RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs_"
 
+JOB_API_ROUTE_LOGS = "/api/jobs/logs"
+JOB_API_ROUTE_SUBMIT = "/api/jobs/submit"
+JOB_API_ROUTE_STATUS = "/api/jobs/status"
+JOB_API_ROUTE_PACKAGE = "/api/jobs/package"
+
 
 def _ensure_ray_initialized(f: Callable) -> Callable:
     @wraps(f)
@@ -36,7 +41,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         self._job_manager = None
 
-    @routes.get("/package")
+    @routes.get("/api/jobs/package")
     @_ensure_ray_initialized
     async def get_package(self,
                           req: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -50,7 +55,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             data=GetPackageResponse(package_exists=already_exists).dict(),
             message=f"Package {package_uri} {exists_str}.")
 
-    @routes.put("/package")
+    @routes.put("/api/jobs/package")
     @_ensure_ray_initialized
     async def upload_package(self,
                              req: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -65,7 +70,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             convert_google_style=False,
             message=f"Successfully uploaded {package_uri}.")
 
-    @routes.post("/submit")
+    @routes.post("/api/jobs/submit")
     @_ensure_ray_initialized
     async def submit(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         req_data = await req.json()
@@ -82,7 +87,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             data=resp.dict(),
             message=f"Submitted job {job_id}.")
 
-    @routes.get("/status")
+    @routes.get("/api/jobs/status")
     @_ensure_ray_initialized
     async def status(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         req_data = dict(await req.json())
@@ -97,7 +102,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             data=resp.dict(),
             message=f"Queried status for job {status_request.job_id}")
 
-    @routes.get("/logs")
+    @routes.get("/api/jobs/logs")
     @_ensure_ray_initialized
     async def logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         req_data = dict(await req.json())
