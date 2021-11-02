@@ -11,17 +11,26 @@ class JobStatus(str, Enum):
     FAILED = "FAILED"
 
 
+# ==== Get Package ====
+
+
 @dataclass
-class JobSpec:
-    # Dict to setup execution environment, better to have schema for this
-    runtime_env: Dict[str, Any]
-    # Command to start execution, ex: "python script.py"
-    entrypoint: str
-    # Metadata to pass in to configure job behavior or use as tags
-    # Required by Anyscale product and already supported in Ray drivers
-    metadata: Dict[str, str]
-    # Likely there will be more fields needed later on for different apps
-    # but we should keep it minimal and delegate policies to job manager
+class GetPackageRequest:
+    package_uri: str
+
+
+@dataclass
+class GetPackageResponse:
+    package_exists: bool
+
+
+# ==== Upload Package ====
+
+
+@dataclass
+class UploadPackageRequest:
+    package_uri: str
+    encoded_package_bytes: str
 
 
 # ==== Job Submit ====
@@ -29,7 +38,12 @@ class JobSpec:
 
 @dataclass
 class JobSubmitRequest:
-    job_spec: JobSpec
+    # Dict to setup execution environment.
+    runtime_env: Dict[str, Any]
+    # Command to start execution, ex: "python script.py"
+    entrypoint: str
+    # Metadata to pass in to the JobConfig.
+    metadata: Dict[str, str]
 
 
 @dataclass
