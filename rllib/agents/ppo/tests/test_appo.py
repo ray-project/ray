@@ -86,7 +86,6 @@ class TestAPPO(unittest.TestCase):
         config["entropy_coeff"] = 0.01
         schedule = [
             [0, 0.01],
-            [60, 0.001],
             [120, 0.0001],
         ]
         config["entropy_coeff_schedule"] = schedule
@@ -99,23 +98,19 @@ class TestAPPO(unittest.TestCase):
             """
             for _ in range(n):
                 results = trainer.train()
-            print(results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
-                LEARNER_STATS_KEY])
             return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
                 LEARNER_STATS_KEY]["entropy_coeff"]
 
         for _ in framework_iterator(config):
             trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
 
-            coeff = _step_n_times(trainer, 3)  # 60 timesteps
-            # PiecewiseSchedule does interpolation. So roughly 0.001 here.
-            self.assertLessEqual(coeff, 0.005)
-            self.assertGreaterEqual(coeff, 0.0005)
+            coeff = _step_n_times(trainer, 1)  # 20 timesteps
+            # Should be close to the starting coeff of 0.01.
+            self.assertGreaterEqual(coeff, 0.005)
 
-            coeff = _step_n_times(trainer, 3)  # 120 timesteps
-            # PiecewiseSchedule does interpolation. So roughly 0.0001 here.
-            self.assertLessEqual(coeff, 0.0005)
-            self.assertGreaterEqual(coeff, 0.00005)
+            coeff = _step_n_times(trainer, 10)  # 200 timesteps
+            # Should have annealed to the final coeff of 0.0001.
+            self.assertLessEqual(coeff, 0.00011)
 
             trainer.stop()
 
