@@ -347,7 +347,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
         return GetObjectsFromPlasma(object_ids, results);
       },
       max_task_args_memory,
-      [this](std::function<void()> fn, double wait_ns) {
+      [this](std::function<void()> fn, int64_t wait_ns) {
         return execute_after(io_service_, fn, wait_ns * 1e6);
       });
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
@@ -511,7 +511,7 @@ ray::Status NodeManager::RegisterGcs() {
   return ray::Status::OK();
 }
 
-void NodeManager::ExecuteAfter(std::function<void()> fn, double wait_ns) {}
+void NodeManager::ExecuteAfter(std::function<void()> fn, int64_t wait_ns) {}
 
 void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 #ifdef _WIN32

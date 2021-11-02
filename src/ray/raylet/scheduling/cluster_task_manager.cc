@@ -41,9 +41,9 @@ ClusterTaskManager::ClusterTaskManager(
         get_task_arguments,
     size_t max_pinned_task_arguments_bytes,
     std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                               double)>
+                                                               int64_t)>
         execute_after,
-    std::function<double(void)> get_time, int64_t sched_cls_cap_interval_ms)
+    std::function<int64_t(void)> get_time, int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -306,30 +306,36 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     /// dependencies are resolved.
     bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
+      RAY_LOG(ERROR) << "Top of loop";
       auto &work = *work_it;
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+        RAY_LOG(ERROR) << "Skipping, already waiting for worker";
         work_it++;
         continue;
       }
 
       if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
-        if (get_time_() > sched_cls_info.next_update_time) {
+        RAY_LOG(ERROR) << "Hit cap! time=" << get_time_() << " next update time=" << sched_cls_info.next_update_time;
+        if (get_time_() >= sched_cls_info.next_update_time) {
           // Don't increase the capacity on the very first update since that
           // will unblock a new task immediately, instead of after the timeout.
           if (sched_cls_info.num_updates > 0) {
             sched_cls_info.capacity++;
+            RAY_LOG(ERROR) << "Increasing capacity!!! new capacity=" << sched_cls_info.capacity;
           }
 
-          double wait_time =
+          int64_t wait_time =
               (1e6 * sched_cls_cap_interval_ms_) * (1L << sched_cls_info.num_updates++);
           sched_cls_info.next_update_time = get_time_() + wait_time;
+          RAY_LOG(ERROR) << "Setting timer!!!" << sched_cls_info.next_update_time;
           sched_cls_info.timer =
               execute_after_([this]() { ScheduleAndDispatchTasks(); }, wait_time);
+        } else {
+          work_it++;
         }
-        work_it++;
         continue;
       }
 
@@ -366,6 +372,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         continue;
       }
 
+      RAY_LOG(ERROR) << "Boop";
+
       const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
       const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
 
@@ -391,6 +399,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
+
+      RAY_LOG(ERROR) << "Schedulable: " << schedulable;
 
       if (!schedulable) {
         ReleaseTaskArgs(task_id);
@@ -514,8 +524,6 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
   info_by_sched_cls_[sched_cls].running_tasks.erase(
       task->GetTaskSpecification().TaskId());
-  RAY_LOG(ERROR) << "Erasing " << task->GetTaskSpecification().TaskId();
-  RAY_LOG(ERROR) << "Size is now: " << info_by_sched_cls_[sched_cls].running_tasks.size();
   if (info_by_sched_cls_[sched_cls].running_tasks.size() == 0) {
     info_by_sched_cls_.erase(sched_cls);
   }
@@ -1303,7 +1311,9 @@ bool ClusterTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
       worker->MarkBlocked();
       return true;
     }
+    RAY_LOG(ERROR) << "NO cpu instances";
   }
+  RAY_LOG(ERROR) << "No allocated instances";
 
   return false;
 }

@@ -160,9 +160,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes,
       std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                                 double)>
+                                                                 int64_t)>
           execute_after,
-      std::function<double(void)> get_time = absl::GetCurrentTimeNanos,
+      std::function<int64_t(void)> get_time = absl::GetCurrentTimeNanos,
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().scheduling_class_capacity_interval_ms());
 
@@ -341,13 +341,13 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   struct SchedulingClassInfo {
     SchedulingClassInfo()
-        : running_tasks(), capacity(0), next_update_time(0), num_updates(0) {}
+        : running_tasks(), capacity(0), next_update_time(-1), num_updates(0) {}
     /// Track the running task ids in this scheduling class.
     absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
     uint64_t capacity;
     /// The next tie to update the class's capacity.
-    double next_update_time;
+    int64_t next_update_time;
     /// The number of consecutive times the scheduling class has been updated.
     uint64_t num_updates;
     /// The timer that firest on next_update_time.
@@ -429,11 +429,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// Executes a function after a given time.
   std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                             double)>
+                                                             int64_t)>
       execute_after_;
 
   /// Returns the current time in seconds
-  std::function<double()> get_time_;
+  std::function<int64_t()> get_time_;
 
   /// The initial interval before the cap on the number of worker processes is increased.
   const int64_t sched_cls_cap_interval_ms_;

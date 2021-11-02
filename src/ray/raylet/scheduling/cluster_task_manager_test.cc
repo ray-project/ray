@@ -62,7 +62,7 @@ class MockWorkerPool : public WorkerPoolInterface {
 
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers) const {
-    RAY_CHECK(false) << "Not used.";
+    // RAY_CHECK(false) << "Not used.";
     return {};
   }
 
@@ -227,10 +227,15 @@ class ClusterTaskManagerTest : public ::testing::Test {
             },
             /*max_pinned_task_arguments_bytes=*/1000,
             /*execute_after=*/
-            [this](std::function<void()> fn, double wait_time_ns) {
+            [this](std::function<void()> fn, int64_t wait_time_ns) {
+              RAY_LOG(ERROR) << "In execute after!!!";
               delayed_execution_.push_back({fn, wait_time_ns});
               return nullptr;
-            }) {}
+            },
+            /*get_time=*/[this]() {
+              return current_time_ns_;
+            }
+                      ) {}
 
   void SetUp() {
     static rpc::GcsNodeInfo node_info;
@@ -306,8 +311,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
   int node_info_calls_;
   int announce_infeasible_task_calls_;
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
-  std::vector<std::pair<std::function<void()>, double>> delayed_execution_;
-  double current_time_ns_;
+  std::vector<std::pair<std::function<void()>, int64_t>> delayed_execution_;
+  int64_t current_time_ns_;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
@@ -1681,7 +1686,7 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
       },
       /*max_pinned_task_arguments_bytes=*/1000,
       /*execute_after=*/
-      [this](std::function<void()> fn, double wait_time_ns) {
+      [this](std::function<void()> fn, int64_t wait_time_ns) {
         delayed_execution_.push_back({fn, wait_time_ns});
         return nullptr;
       });
@@ -1715,6 +1720,155 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
 
 /// Test that we exponentially increase the amount of time it takes to increase
 /// the dispatch cap for a scheduling class.
+TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
+
+  auto get_unblocked_worker = [](std::vector<std::shared_ptr<MockWorker>> &workers) -> std::shared_ptr<MockWorker> {
+    for (auto &worker : workers) {
+      if (worker->GetAllocatedInstances() != nullptr && !worker->IsBlocked()) {
+        return worker;
+      }
+    }
+    return nullptr;
+  };
+
+
+  int64_t UNIT = 10 * 1e6;
+  std::vector<RayTask> tasks;
+  for (int i = 0; i < 10; i++) {
+    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
+                              /*num_args=*/0, /*args=*/{});
+    tasks.emplace_back(task);
+  }
+
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+  for (const auto &task : tasks) {
+    task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  }
+
+  auto runtime_env_hash = tasks[0].GetTaskSpecification().GetRuntimeEnvHash();
+  std::vector<std::shared_ptr<MockWorker>> workers;
+  for (int i = 0; i < 10; i++) {
+    std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+    pool_.TriggerCallbacks();
+    workers.push_back(worker);
+  }
+  task_manager_.ScheduleAndDispatchTasks();
+
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(delayed_execution_.size(), 1);
+
+  ASSERT_EQ(delayed_execution_[0].second, UNIT);
+
+  current_time_ns_ += UNIT;
+  ASSERT_FALSE(workers.back()->IsBlocked());
+  for (const auto &worker : workers) {
+    const auto allocated_instances = worker->GetAllocatedInstances();
+    RAY_LOG(ERROR) << allocated_instances;
+  }
+  ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(get_unblocked_worker(workers)));
+  task_manager_.ScheduleAndDispatchTasks();
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(delayed_execution_.size(), 2);
+  ASSERT_EQ(delayed_execution_[1].second, 2*UNIT);
+
+  // Since we're increasing exponentially, increasing by a unit show no longer be enough.
+  current_time_ns_ += UNIT;
+  ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(get_unblocked_worker(workers)));
+  task_manager_.ScheduleAndDispatchTasks();
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(delayed_execution_.size(), 2);
+  ASSERT_EQ(delayed_execution_[0].second, UNIT);
+
+  // Now it should run
+  current_time_ns_ = 3*UNIT;
+  task_manager_.ScheduleAndDispatchTasks();
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 3);
+  ASSERT_EQ(delayed_execution_.size(), 3);
+  ASSERT_EQ(delayed_execution_[2].second, 4*UNIT);
+}
+
+
+/// Ensure we reset the cap after we've finished executing through the queue.
+TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
+
+  int64_t UNIT = 10 * 1e6;
+  std::vector<RayTask> tasks;
+  for (int i = 0; i < 2; i++) {
+    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
+                              /*num_args=*/0, /*args=*/{});
+    tasks.emplace_back(task);
+  }
+
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+  for (const auto &task : tasks) {
+    task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  }
+
+  auto runtime_env_hash = tasks[0].GetTaskSpecification().GetRuntimeEnvHash();
+
+  std::shared_ptr<MockWorker> worker1 =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
+  pool_.TriggerCallbacks();
+  task_manager_.ScheduleAndDispatchTasks();
+
+  ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker1));
+  current_time_ns_ += UNIT;
+
+  std::shared_ptr<MockWorker> worker2 =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+  task_manager_.ScheduleAndDispatchTasks();
+  pool_.TriggerCallbacks();
+
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(delayed_execution_.back().second, 2 * UNIT);
+
+  RayTask buf;
+  task_manager_.TaskFinished(worker1, &buf);
+  task_manager_.TaskFinished(worker2, &buf);
+
+  AssertNoLeaks();
+
+
+  for (int i = 0; i < 2; i++) {
+    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
+                              /*num_args=*/0, /*args=*/{});
+    task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  }
+
+  std::shared_ptr<MockWorker> worker3 =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
+  pool_.TriggerCallbacks();
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 3);
+
+  ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker3));
+  current_time_ns_ += UNIT;
+
+  std::shared_ptr<MockWorker> worker4 =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker4));
+  task_manager_.ScheduleAndDispatchTasks();
+  pool_.TriggerCallbacks();
+
+  ASSERT_EQ(num_callbacks, 4);
+  ASSERT_EQ(delayed_execution_.back().second, 2 * UNIT);
+}
 
 
 // Regression test for https://github.com/ray-project/ray/issues/16935:
