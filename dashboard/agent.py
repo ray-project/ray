@@ -150,6 +150,7 @@ class DashboardAgent(object):
 
         # Start a grpc asyncio server.
         await self.server.start()
+        # TODO: use grpc address directly
         gcs_address = await self.aioredis_client.get(
             dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
         self.gcs_client = GcsClient(gcs_address.decode())
