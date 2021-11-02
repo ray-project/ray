@@ -28,7 +28,7 @@
                   "type": "object",
                   "properties": {
                     "status": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     },
                     "isDead": {
                       "type": "boolean"

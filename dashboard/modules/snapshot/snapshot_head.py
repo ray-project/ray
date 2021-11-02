@@ -90,14 +90,12 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     job_table_entry.config.runtime_env.serialized_runtime_env),
             }
             entry = {
+                "status": self._get_job_status(metadata),
                 "is_dead": job_table_entry.is_dead,
                 "start_time": job_table_entry.start_time,
                 "end_time": job_table_entry.end_time,
                 "config": config,
             }
-            status = self._get_job_status(metadata)
-            if status is not None:
-                entry["status"] = status
             jobs[job_id] = entry
 
         return jobs
