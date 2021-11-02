@@ -119,8 +119,8 @@ class JobSupervisor:
         pass
 
     async def _exec_entrypoint_cmd(
-            self, entrypoint_cmd: str, stdout_path: str,
-            stderr_path: str) -> Tuple[asyncio.coroutine, asyncio.Process]:
+            self, entrypoint_cmd: str, stdout_path: str, stderr_path: str
+    ) -> Tuple[asyncio.coroutine, asyncio.subprocess.Process]:
         """
         Runs a command as a child process, streaming stderr & stdout to given
         log files.
