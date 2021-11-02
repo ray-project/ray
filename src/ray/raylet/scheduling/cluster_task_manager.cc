@@ -40,9 +40,6 @@ ClusterTaskManager::ClusterTaskManager(
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
     size_t max_pinned_task_arguments_bytes,
-    std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                               int64_t)>
-        execute_after,
     std::function<int64_t(void)> get_time, int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -56,7 +53,6 @@ ClusterTaskManager::ClusterTaskManager(
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
-      execute_after_(execute_after),
       get_time_(get_time),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       metric_tasks_queued_(0),
@@ -328,8 +324,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           int64_t wait_time =
               (1e6 * sched_cls_cap_interval_ms_) * (1L << sched_cls_info.num_updates++);
           sched_cls_info.next_update_time = get_time_() + wait_time;
-          sched_cls_info.timer =
-              execute_after_([this]() { ScheduleAndDispatchTasks(); }, wait_time);
           continue;
         } else {
           break;

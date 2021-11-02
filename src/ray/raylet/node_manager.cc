@@ -346,10 +346,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
              std::vector<std::unique_ptr<RayObject>> *results) {
         return GetObjectsFromPlasma(object_ids, results);
       },
-      max_task_args_memory,
-      [this](std::function<void()> fn, int64_t wait_ns) {
-        return execute_after(io_service_, fn, wait_ns * 1e6);
-      });
+      max_task_args_memory);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       // TODO (Alex): Ideally we could do these in a more robust way (retry
@@ -362,6 +359,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
         RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(
             self_node_id_, resource_names, nullptr));
       });
+
+  periodical_runner_.RunFnPeriodically([this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); }, RayConfig::instance().scheduling_class_capacity_interval_ms());
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.

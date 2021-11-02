@@ -104,7 +104,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// allowed to run increases exponentially. The soft cap is needed to prevent
 /// deadlock in the case where a task begins to execute and tries to `ray.get`
 /// another task of the same class.
-RAY_CONFIG(int64_t, scheduling_class_capacity_interval_ms, 10)
+RAY_CONFIG(int64_t, scheduling_class_capacity_interval_ms, 100)
 
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and

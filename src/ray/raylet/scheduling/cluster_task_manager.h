@@ -159,9 +159,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes,
-      std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                                 int64_t)>
-          execute_after,
       std::function<int64_t(void)> get_time = absl::GetCurrentTimeNanos,
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().scheduling_class_capacity_interval_ms());
@@ -350,8 +347,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
     int64_t next_update_time;
     /// The number of consecutive times the scheduling class has been updated.
     uint64_t num_updates;
-    /// The timer that firest on next_update_time.
-    std::shared_ptr<boost::asio::deadline_timer> timer;
   };
 
   absl::flat_hash_map<SchedulingClass, SchedulingClassInfo> info_by_sched_cls_;
@@ -426,11 +421,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// The maximum amount of bytes that can be used by executing task arguments.
   size_t max_pinned_task_arguments_bytes_;
-
-  /// Executes a function after a given time.
-  std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                             int64_t)>
-      execute_after_;
 
   /// Returns the current time in seconds
   std::function<int64_t()> get_time_;
