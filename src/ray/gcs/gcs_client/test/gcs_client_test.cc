@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
@@ -26,9 +26,9 @@
 
 namespace ray {
 
-class ServiceBasedGcsClientTest : public ::testing::TestWithParam<bool> {
+class GcsClientTest : public ::testing::TestWithParam<bool> {
  public:
-  ServiceBasedGcsClientTest() {
+  GcsClientTest() {
     RayConfig::instance().initialize(absl::Substitute(R"(
 {
   "ping_gcs_rpc_server_max_retries": 60,
@@ -41,7 +41,7 @@ class ServiceBasedGcsClientTest : public ::testing::TestWithParam<bool> {
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
-  virtual ~ServiceBasedGcsClientTest() { TestSetupUtil::ShutDownRedisServers(); }
+  virtual ~GcsClientTest() { TestSetupUtil::ShutDownRedisServers(); }
 
  protected:
   void SetUp() override {
@@ -81,7 +81,7 @@ class ServiceBasedGcsClientTest : public ::testing::TestWithParam<bool> {
     // Create GCS client.
     gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
                                   config_.redis_password);
-    gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
+    gcs_client_.reset(new gcs::GcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
 
@@ -575,9 +575,9 @@ class ServiceBasedGcsClientTest : public ::testing::TestWithParam<bool> {
   const std::chrono::milliseconds timeout_ms_{2000};
 };
 
-INSTANTIATE_TEST_SUITE_P(RedisMigration, ServiceBasedGcsClientTest, testing::Bool());
+INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());
 
-TEST_P(ServiceBasedGcsClientTest, TestJobInfo) {
+TEST_P(GcsClientTest, TestJobInfo) {
   // Create job table data.
   JobID add_job_id = JobID::FromInt(1);
   auto job_table_data = Mocker::GenJobTableData(add_job_id);
@@ -594,13 +594,13 @@ TEST_P(ServiceBasedGcsClientTest, TestJobInfo) {
   WaitForExpectedCount(job_updates, 2);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestGetNextJobID) {
+TEST_P(GcsClientTest, TestGetNextJobID) {
   JobID job_id1 = GetNextJobID();
   JobID job_id2 = GetNextJobID();
   ASSERT_TRUE(job_id1.ToInt() + 1 == job_id2.ToInt());
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
+TEST_P(GcsClientTest, TestActorSubscribeAll) {
   // NOTE: `TestActorSubscribeAll` will subscribe to all actor messages, so we need to
   // execute it before `TestActorInfo`, otherwise `TestActorSubscribeAll` will receive
   // messages from `TestActorInfo`.
@@ -630,7 +630,7 @@ TEST_P(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestActorInfo) {
+TEST_P(GcsClientTest, TestActorInfo) {
   // Create actor table data.
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);
@@ -654,7 +654,7 @@ TEST_P(ServiceBasedGcsClientTest, TestActorInfo) {
   WaitForActorUnsubscribed(actor_id);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestNodeInfo) {
+TEST_P(GcsClientTest, TestNodeInfo) {
   // Create gcs node info.
   auto gcs_node1_info = Mocker::GenNodeInfo();
   NodeID node1_id = NodeID::FromBinary(gcs_node1_info->node_id());
@@ -708,7 +708,7 @@ TEST_P(ServiceBasedGcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestNodeResources) {
+TEST_P(GcsClientTest, TestNodeResources) {
   // Subscribe to node resource changes.
   std::atomic<int> add_count(0);
   std::atomic<int> remove_count(0);
@@ -739,7 +739,7 @@ TEST_P(ServiceBasedGcsClientTest, TestNodeResources) {
   ASSERT_TRUE(GetResources(node_id).empty());
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestNodeResourceUsage) {
+TEST_P(GcsClientTest, TestNodeResourceUsage) {
   // Subscribe batched state of all nodes from GCS.
   std::atomic<int> resource_batch_count(0);
   auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
@@ -768,7 +768,7 @@ TEST_P(ServiceBasedGcsClientTest, TestNodeResourceUsage) {
             resource_value);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
+TEST_P(GcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
   // Subscribe batched state of all nodes from GCS.
   std::atomic<int> resource_batch_count(0);
   auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
@@ -795,7 +795,7 @@ TEST_P(ServiceBasedGcsClientTest, TestNodeResourceUsageWithLightResourceUsageRep
   WaitForExpectedCount(resource_batch_count, 1);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
+TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   // Subscribe batched state of all nodes from GCS.
   std::atomic<int> resource_batch_count(0);
   auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
@@ -826,8 +826,7 @@ TEST_P(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
   EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
 }
 
-TEST_P(ServiceBasedGcsClientTest,
-       TestGetAllAvailableResourcesWithLightResourceUsageReport) {
+TEST_P(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) {
   // Subscribe batched state of all nodes from GCS.
   std::atomic<int> resource_batch_count(0);
   auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
@@ -871,7 +870,7 @@ TEST_P(ServiceBasedGcsClientTest,
   EXPECT_EQ((*resources1[0].mutable_resources_available())["GPU"], 10.0);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestTaskInfo) {
+TEST_P(GcsClientTest, TestTaskInfo) {
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);
   TaskID task_id = TaskID::ForDriverTask(job_id);
@@ -916,7 +915,7 @@ TEST_P(ServiceBasedGcsClientTest, TestTaskInfo) {
   ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestObjectInfo) {
+TEST_P(GcsClientTest, TestObjectInfo) {
   ObjectID object_id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
 
@@ -962,14 +961,14 @@ TEST_P(ServiceBasedGcsClientTest, TestObjectInfo) {
   ASSERT_EQ(object_add_count, 1);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestStats) {
+TEST_P(GcsClientTest, TestStats) {
   // Add profile data to GCS.
   NodeID node_id = NodeID::FromRandom();
   auto profile_table_data = Mocker::GenProfileTableData(node_id);
   ASSERT_TRUE(AddProfileData(profile_table_data));
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestWorkerInfo) {
+TEST_P(GcsClientTest, TestWorkerInfo) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
   auto on_subscribe = [&worker_failure_count](const rpc::WorkerDeltaData &result) {
@@ -991,14 +990,14 @@ TEST_P(ServiceBasedGcsClientTest, TestWorkerInfo) {
   WaitForExpectedCount(worker_failure_count, 2);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestErrorInfo) {
+TEST_P(GcsClientTest, TestErrorInfo) {
   // Report a job error to GCS.
   JobID job_id = JobID::FromInt(1);
   auto error_table_data = Mocker::GenErrorTableData(job_id);
   ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
+TEST_P(GcsClientTest, TestJobTableResubscribe) {
   // Test that subscription of the job table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   auto job_table_data = Mocker::GenJobTableData(job_id);
@@ -1022,7 +1021,7 @@ TEST_P(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
   WaitForExpectedCount(job_update_count, 3);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
+TEST_P(GcsClientTest, TestActorTableResubscribe) {
   // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);
@@ -1115,7 +1114,7 @@ TEST_P(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   EXPECT_TRUE(WaitForCondition(condition_subscribe_all_restart, timeout_ms_.count()));
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
+TEST_P(GcsClientTest, TestObjectTableResubscribe) {
   ObjectID object1_id = ObjectID::FromRandom();
   ObjectID object2_id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
@@ -1163,7 +1162,7 @@ TEST_P(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
   WaitForExpectedCount(object2_change_count, 3);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
+TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
@@ -1215,7 +1214,7 @@ TEST_P(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   WaitForExpectedCount(batch_resource_usage_count, 2);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
+TEST_P(GcsClientTest, TestTaskTableResubscribe) {
   JobID job_id = JobID::FromInt(6);
   AddJob(job_id);
   TaskID task_id = TaskID::ForDriverTask(job_id);
@@ -1246,7 +1245,7 @@ TEST_P(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   WaitForExpectedCount(task_lease_count, 3);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
+TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
   auto on_subscribe = [&worker_failure_count](const rpc::WorkerDeltaData &result) {
@@ -1267,7 +1266,7 @@ TEST_P(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   WaitForExpectedCount(worker_failure_count, 1);
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestGcsTableReload) {
+TEST_P(GcsClientTest, TestGcsTableReload) {
   ObjectID object_id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
 
@@ -1291,7 +1290,7 @@ TEST_P(ServiceBasedGcsClientTest, TestGcsTableReload) {
   ASSERT_EQ(locations.back().manager(), node_id.Binary());
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
+TEST_P(GcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
   TestSetupUtil::ShutDownRedisServers();
 
@@ -1304,7 +1303,7 @@ TEST_P(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   RAY_CHECK(gcs_server_->IsStopped());
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
+TEST_P(GcsClientTest, TestMultiThreadSubAndUnsub) {
   auto sub_finished_count = std::make_shared<std::atomic<int>>(0);
   int size = 5;
   std::vector<std::unique_ptr<std::thread>> threads;
@@ -1350,7 +1349,7 @@ TEST_P(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
 
 // This UT is only used to test the query actor info performance.
 // We disable it by default.
-TEST_P(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
+TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
   // Register actors.
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);
@@ -1379,7 +1378,7 @@ TEST_P(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
                 << actor_count << " actors.";
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
+TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   // Register actors and the actors will be destroyed.
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);
@@ -1415,7 +1414,7 @@ TEST_P(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
   }
 }
 
-TEST_P(ServiceBasedGcsClientTest, TestEvictExpiredDeadNodes) {
+TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
   // Simulate the scenario of node dead.
   int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
   RegisterNodeAndMarkDead(node_count);
