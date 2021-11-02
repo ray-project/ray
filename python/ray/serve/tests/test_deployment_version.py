@@ -1,27 +1,27 @@
 import pytest
 
 import ray
-from ray.serve.backend_state import BackendVersion
+from ray.serve.backend_state import DeploymentVersion
 
 
 def test_validation():
     # Code version must be a string.
     with pytest.raises(TypeError):
-        BackendVersion(123, None)
+        DeploymentVersion(123, None)
 
     # Can't pass unhashable type as user config.
     with pytest.raises(TypeError):
-        BackendVersion(123, set())
+        DeploymentVersion(123, set())
 
     # Can't pass nested unhashable type as user config.
     with pytest.raises(TypeError):
-        BackendVersion(123, {"set": set()})
+        DeploymentVersion(123, {"set": set()})
 
 
 def test_code_version():
-    v1 = BackendVersion("1", None)
-    v2 = BackendVersion("1", None)
-    v3 = BackendVersion("2", None)
+    v1 = DeploymentVersion("1", None)
+    v2 = DeploymentVersion("1", None)
+    v3 = DeploymentVersion("2", None)
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
@@ -30,9 +30,9 @@ def test_code_version():
 
 
 def test_user_config_basic():
-    v1 = BackendVersion("1", "1")
-    v2 = BackendVersion("1", "1")
-    v3 = BackendVersion("1", "2")
+    v1 = DeploymentVersion("1", "1")
+    v2 = DeploymentVersion("1", "1")
+    v3 = DeploymentVersion("1", "2")
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
@@ -41,9 +41,9 @@ def test_user_config_basic():
 
 
 def test_user_config_hashable():
-    v1 = BackendVersion("1", ("1", "2"))
-    v2 = BackendVersion("1", ("1", "2"))
-    v3 = BackendVersion("1", ("1", "3"))
+    v1 = DeploymentVersion("1", ("1", "2"))
+    v2 = DeploymentVersion("1", ("1", "2"))
+    v3 = DeploymentVersion("1", ("1", "3"))
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
@@ -52,9 +52,9 @@ def test_user_config_hashable():
 
 
 def test_user_config_list():
-    v1 = BackendVersion("1", ["1", "2"])
-    v2 = BackendVersion("1", ["1", "2"])
-    v3 = BackendVersion("1", ["1", "3"])
+    v1 = DeploymentVersion("1", ["1", "2"])
+    v2 = DeploymentVersion("1", ["1", "2"])
+    v3 = DeploymentVersion("1", ["1", "3"])
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
@@ -63,9 +63,9 @@ def test_user_config_list():
 
 
 def test_user_config_dict_keys():
-    v1 = BackendVersion("1", {"1": "1"})
-    v2 = BackendVersion("1", {"1": "1"})
-    v3 = BackendVersion("1", {"2": "1"})
+    v1 = DeploymentVersion("1", {"1": "1"})
+    v2 = DeploymentVersion("1", {"1": "1"})
+    v3 = DeploymentVersion("1", {"2": "1"})
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
@@ -74,9 +74,9 @@ def test_user_config_dict_keys():
 
 
 def test_user_config_dict_vals():
-    v1 = BackendVersion("1", {"1": "1"})
-    v2 = BackendVersion("1", {"1": "1"})
-    v3 = BackendVersion("1", {"1": "2"})
+    v1 = DeploymentVersion("1", {"1": "1"})
+    v2 = DeploymentVersion("1", {"1": "1"})
+    v3 = DeploymentVersion("1", {"1": "2"})
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
@@ -85,9 +85,9 @@ def test_user_config_dict_vals():
 
 
 def test_user_config_nested():
-    v1 = BackendVersion("1", [{"1": "2"}, {"1": "2"}])
-    v2 = BackendVersion("1", [{"1": "2"}, {"1": "2"}])
-    v3 = BackendVersion("1", [{"1": "2"}, {"1": "3"}])
+    v1 = DeploymentVersion("1", [{"1": "2"}, {"1": "2"}])
+    v2 = DeploymentVersion("1", [{"1": "2"}, {"1": "2"}])
+    v3 = DeploymentVersion("1", [{"1": "2"}, {"1": "3"}])
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
@@ -96,9 +96,9 @@ def test_user_config_nested():
 
 
 def test_user_config_nested_in_hashable():
-    v1 = BackendVersion("1", ([{"1": "2"}, {"1": "2"}], ))
-    v2 = BackendVersion("1", ([{"1": "2"}, {"1": "2"}], ))
-    v3 = BackendVersion("1", ([{"1": "2"}, {"1": "3"}], ))
+    v1 = DeploymentVersion("1", ([{"1": "2"}, {"1": "2"}], ))
+    v2 = DeploymentVersion("1", ([{"1": "2"}, {"1": "2"}], ))
+    v3 = DeploymentVersion("1", ([{"1": "2"}, {"1": "3"}], ))
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
@@ -109,7 +109,7 @@ def test_user_config_nested_in_hashable():
 def test_hash_consistent_across_processes(serve_instance):
     @ray.remote
     def get_version():
-        return BackendVersion("1", ([{"1": "2"}, {"1": "2"}], ))
+        return DeploymentVersion("1", ([{"1": "2"}, {"1": "2"}], ))
 
     assert len(set(ray.get([get_version.remote() for _ in range(100)]))) == 1
 
