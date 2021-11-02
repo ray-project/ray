@@ -31,8 +31,8 @@ class ReplicaState(Enum):
 
 
 class ReplicaStartupStatus(Enum):
-    PENDING = 1
-    PENDING_SLOW_START = 2
+    PENDING_ALLOCATION = 1
+    PENDING_INITIALIZATION = 2
     SUCCEEDED = 3
     FAILED = 4
 
@@ -74,8 +74,10 @@ class ActorReplicaWrapper:
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
 
-        # Populated in self.start().
+        # Populated in either self.start() or self.recover()
+        self._allocated_obj_ref: ObjectRef = None
         self._ready_obj_ref: ObjectRef = None
+
         self._actor_resources: Dict[str, float] = None
         self._max_concurrent_queries: int = None
         self._graceful_shutdown_timeout_s: float = 0.0
@@ -180,6 +182,7 @@ class ActorReplicaWrapper:
                 backend_info.deployment_config.to_proto_bytes(), version,
                 self._controller_name, self._detached)
 
+        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.deployment_config.user_config)
 
@@ -210,6 +213,9 @@ class ActorReplicaWrapper:
             self._placement_group = self.get_placement_group(
                 self._placement_group_name)
 
+        # Re-fetch initialization proof
+        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
         self._ready_obj_ref = self._actor_handle.get_metadata.remote()
@@ -222,7 +228,9 @@ class ActorReplicaWrapper:
 
         Returns:
             state (ReplicaStartupStatus):
-                PENDING:
+                PENDING_ALLOCATION:
+                    - replica is waiting for a worker to start
+                PENDING_INITIALIZATION
                     - replica reconfigure() haven't returned.
                 FAILED:
                     - replica __init__() failed.
@@ -235,11 +243,18 @@ class ActorReplicaWrapper:
                 version:
                     - replica __init__() and reconfigure() succeeded.
         """
+
+        # check whether the replica has been allocated
+        ready, _ = ray.wait([self._allocated_obj_ref], timeout=0)
+        if len(ready) == 0:
+            return ReplicaStartupStatus.PENDING_ALLOCATION, None
+
+        # check whether relica initialization has completed
         ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if len(ready) == 0:
-            return ReplicaStartupStatus.PENDING, None
+            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         elif len(ready) > 0:
             try:
                 deployment_config, version = ray.get(ready)[0]
@@ -406,11 +421,8 @@ class BackendReplica(VersionedReplica):
         """
         status, version = self._actor.check_ready()
 
-        if status == ReplicaStartupStatus.PENDING:
-            if time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
-                status = ReplicaStartupStatus.PENDING_SLOW_START
-        elif status == ReplicaStartupStatus.SUCCEEDED:
-            # Re-assign DeploymentVersion if start / update / recover succeeded
+        if status == ReplicaStartupStatus.SUCCEEDED:
+            # Re-assign BackendVersion if start / update / recover succeeded
             # by reading re-computed version in RayServeReplica
             if version is not None:
                 self._version = version
@@ -1003,10 +1015,9 @@ class BackendState:
 
         return GoalStatus.PENDING
 
-    def _check_startup_replicas(self,
-                                original_state: ReplicaState,
-                                stop_on_slow=False
-                                ) -> Tuple[List[BackendReplica], bool]:
+    def _check_startup_replicas(
+            self, original_state: ReplicaState, stop_on_slow=False
+    ) -> Tuple[List[Tuple[BackendReplica, ReplicaStartupStatus]], bool]:
         """
         Common helper function for startup actions tracking and status
         transition: STARTING, UPDATING and RECOVERING.
@@ -1032,18 +1043,24 @@ class BackendState:
 
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
-            elif start_status == ReplicaStartupStatus.PENDING:
-                # Not done yet, remain at same state
-                self._replicas.add(original_state, replica)
-            else:
-                # Slow start, remain at same state but also add to
-                # slow start replicas.
-                if not stop_on_slow:
-                    self._replicas.add(original_state, replica)
-                else:
+            elif start_status in [
+                    ReplicaStartupStatus.PENDING_ALLOCATION,
+                    ReplicaStartupStatus.PENDING_INITIALIZATION,
+            ]:
+
+                is_slow = time.time(
+                ) - replica._start_time > SLOW_STARTUP_WARNING_S
+
+                if is_slow:
+                    slow_replicas.append((replica, start_status))
+
+                # Does it make sense to stop replicas in PENDING_ALLOCATION
+                # state?
+                if is_slow and stop_on_slow:
                     replica.stop(graceful=False)
                     self._replicas.add(ReplicaState.STOPPING, replica)
-                slow_replicas.append(replica)
+                else:
+                    self._replicas.add(original_state, replica)
 
         return slow_replicas, transitioned_to_running
 
@@ -1086,17 +1103,38 @@ class BackendState:
         if (len(slow_start_replicas)
                 and time.time() - self._prev_startup_warning >
                 SLOW_STARTUP_WARNING_PERIOD_S):
-            required, available = slow_start_replicas[
-                0].resource_requirements()
-            logger.warning(
-                f"Deployment '{self._name}' has "
-                f"{len(slow_start_replicas)} replicas that have taken "
-                f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
-                "may be caused by waiting for the cluster to auto-scale, "
-                "waiting for a runtime environment to install, or a slow "
-                "constructor. Resources required "
-                f"for each replica: {required}, resources available: "
-                f"{available}. component=serve deployment={self._name}")
+
+            pending_allocation = []
+            pending_initialization = []
+
+            for replica, startup_status in slow_start_replicas:
+                if startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
+                    pending_allocation.append(replica)
+                if startup_status \
+                        == ReplicaStartupStatus.PENDING_INITIALIZATION:
+                    pending_initialization.append(replica)
+
+            if len(pending_allocation) > 0:
+                required, available = slow_start_replicas[0][
+                    0].resource_requirements()
+                logger.warning(
+                    f"Deployment '{self._name}' has "
+                    f"{len(pending_allocation)} replicas that have taken "
+                    f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
+                    f"This may be caused by waiting for the cluster to "
+                    f"auto-scale, or waiting for a runtime environment "
+                    f"to install. "
+                    f"Resources required for each replica: {required}, "
+                    f"resources available: {available}. "
+                    f"component=serve deployment={self._name}")
+
+            if len(pending_initialization) > 0:
+                logger.warning(
+                    f"Deployment '{self._name}' has "
+                    f"{len(pending_initialization)} replicas that have taken "
+                    f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
+                    f"may be caused by a slow __init__ or reconfigure method."
+                    f"component=serve deployment={self._name}")
 
             self._prev_startup_warning = time.time()
 

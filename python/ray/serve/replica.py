@@ -65,30 +65,48 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
                 replica_tag,
                 controller_name,
                 servable_object=None)
-            if is_function:
-                _callable = backend
-            else:
-                # This allows backends to define an async __init__ method
-                # (required for FastAPI backend definition).
-                _callable = backend.__new__(backend)
-                await sync_to_async(_callable.__init__)(*init_args,
-                                                        **init_kwargs)
-            # Setting the context again to update the servable_object.
-            ray.serve.api._set_internal_replica_context(
-                backend_tag,
-                replica_tag,
-                controller_name,
-                servable_object=_callable)
 
             assert controller_name, "Must provide a valid controller_name"
+
             controller_namespace = ray.serve.api._get_controller_namespace(
                 detached)
             controller_handle = ray.get_actor(
                 controller_name, namespace=controller_namespace)
-            self.backend = RayServeReplica(
-                _callable, backend_tag, replica_tag, deployment_config,
-                deployment_config.user_config, version, is_function,
-                controller_handle)
+
+            # This closure initializes user code and finalizes replica
+            # startup. By splitting the initialization step like this,
+            # we can already access this actor before the user code
+            # has finished initializing.
+            # The supervising state manager can then wait
+            # for allocation of this replica by using the `is_allocated`
+            # method. After that, it calls `reconfigure` to trigger
+            # user code initialization.
+            async def initialize_backend():
+                if is_function:
+                    _callable = backend
+                else:
+                    # This allows backends to define an async __init__ method
+                    # (required for FastAPI backend definition).
+                    _callable = backend.__new__(backend)
+                    await sync_to_async(_callable.__init__)(*init_args,
+                                                            **init_kwargs)
+                # Setting the context again to update the servable_object.
+                ray.serve.api._set_internal_replica_context(
+                    backend_tag,
+                    replica_tag,
+                    controller_name,
+                    servable_object=_callable)
+
+                self.backend = RayServeReplica(
+                    _callable, backend_tag, replica_tag, deployment_config,
+                    deployment_config.user_config, version, is_function,
+                    controller_handle)
+
+            # Is it fine that backend is None here?
+            # Should we add a check in all methods that use self.backend
+            # or, alternatively, create an async get_backend() method?
+            self.backend = None
+            self._initialize_backend = initialize_backend
 
             # asyncio.Event used to signal that the replica is shutting down.
             self.shutdown_event = asyncio.Event()
@@ -108,8 +126,21 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
+        async def is_allocated(self):
+            """poke the replica to check whether it's alive.
+
+            When calling this method on an ActorHandle, it will complete as
+            soon as the actor has started running. We use this mechanism to
+            detect when a replica has been allocated a worker slot.
+            At this time, the replica can transition from PENDING_ALLOCATION
+            to PENDING_INITIALIZATION startup state.
+            """
+            pass
+
         async def reconfigure(self, user_config: Optional[Any] = None
                               ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            if self.backend is None:
+                await self._initialize_backend()
             if user_config is not None:
                 await self.backend.reconfigure(user_config)
 

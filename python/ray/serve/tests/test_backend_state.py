@@ -42,8 +42,8 @@ class MockReplicaActorWrapper:
         self.recovering = False
         # Will be set when `start()` is called.
         self.version = None
-        # Expected to be set in the test.
-        self.ready = False
+        # Initial state for a replica is PENDING_ALLOCATION.
+        self.ready = ReplicaStartupStatus.PENDING_ALLOCATION
         # Will be set when `graceful_stop()` is called.
         self.stopped = False
         # Expected to be set in the test.
@@ -106,7 +106,7 @@ class MockReplicaActorWrapper:
 
     def check_ready(self) -> ReplicaStartupStatus:
         ready = self.ready
-        self.ready = ReplicaStartupStatus.PENDING
+        self.ready = ReplicaStartupStatus.PENDING_INITIALIZATION
         if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
             self.recovering = False
             self.started = True
