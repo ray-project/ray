@@ -27,6 +27,7 @@ from ray.exceptions import AsyncioActorExit
 from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
                                              _tracing_actor_method_invocation,
                                              _inject_tracing_into_class)
+from ray.core.generated.common_pb2 import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 
@@ -410,6 +411,8 @@ class ActorClass:
         new_runtime_env = bytes()
         if isinstance(runtime_env, bytes):
             new_runtime_env = runtime_env
+        elif isinstance(runtime_env, RuntimeEnv):
+            new_runtime_env = runtime_env.SerializeToString()
         else:
             new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
 
@@ -434,6 +437,8 @@ class ActorClass:
         new_runtime_env = bytes()
         if isinstance(runtime_env, bytes):
             new_runtime_env = runtime_env
+        elif isinstance(runtime_env, RuntimeEnv):
+            new_runtime_env = runtime_env.SerializeToString()
         else:
             new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
 
@@ -504,6 +509,8 @@ class ActorClass:
         new_runtime_env = bytes()
         if isinstance(runtime_env, bytes):
             new_runtime_env = runtime_env
+        elif isinstance(runtime_env, RuntimeEnv):
+            new_runtime_env = runtime_env.SerializeToString()
         else:
             new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
 
@@ -763,6 +770,8 @@ class ActorClass:
             if isinstance(runtime_env, bytes):
                 # Serialzed protobuf runtime env from Ray client.
                 new_runtime_env = runtime_env
+            elif isinstance(runtime_env, RuntimeEnv):
+                new_runtime_env = runtime_env.SerializeToString()
             elif isinstance(runtime_env, ParsedRuntimeEnv):
                 new_runtime_env = runtime_env.serialize()
             else:
@@ -793,6 +802,7 @@ class ActorClass:
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
                 PythonFunctionDescriptor(module_name, method_name, class_name))
 
+        logger.info(f"create actor with runtime env {new_runtime_env}")
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,

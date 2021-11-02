@@ -229,7 +229,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = \
                     rtc.should_capture_child_tasks_in_placement_group
-                ctx.runtime_env = rtc.runtime_env
+                ctx.runtime_env = rtc.runtime_env.SerializeToString()
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
@@ -542,6 +542,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
         arglist, kwargs = self._convert_args(task.args, task.kwargs)
         opts = decode_options(task.options)
+        logger.info(f"_schedule_actor {remote_class} {opts}")
         if opts is not None:
             remote_class = remote_class.options(**opts)
         with current_server(self):

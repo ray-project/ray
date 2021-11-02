@@ -18,6 +18,7 @@ from ray._private.runtime_env.validation import (
     override_task_or_actor_runtime_env, ParsedRuntimeEnv)
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
+from ray.core.generated.common_pb2 import RuntimeEnv
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -112,7 +113,7 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        self._runtime_env = runtime_env
+        self._runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
         self._placement_group = placement_group
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
@@ -172,9 +173,11 @@ class RemoteFunction:
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
         new_runtime_env = bytes()
-        if runtime_env and isinstance(runtime_env, bytes):
+        if isinstance(runtime_env, bytes):
             # Serialzed protobuf runtime env from Ray client.
             new_runtime_env = runtime_env
+        elif isinstance(runtime_env, RuntimeEnv):
+            new_runtime_env = runtime_env.SerializeToString()
         else:
             new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
 
@@ -304,7 +307,7 @@ class RemoteFunction:
             accelerator_type)
 
         if not runtime_env:
-            runtime_env = ParsedRuntimeEnv(self._runtime_env or {}).serialize()
+            runtime_env = self._runtime_env
 
         # parent_runtime_env = worker.core_worker.get_current_runtime_env()
         # parsed_runtime_env = override_task_or_actor_runtime_env(

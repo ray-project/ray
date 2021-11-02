@@ -1,9 +1,10 @@
 import json
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ray.runtime_context import RuntimeContext
     from ray import JobID
     from ray import NodeID
+from ray.core.generated.common_pb2 import RuntimeEnv
 
 
 class ClientWorkerPropertyAPI:
@@ -48,5 +49,7 @@ class ClientWorkerPropertyAPI:
         return self._fetch_runtime_context().capture_client_tasks
 
     @property
-    def runtime_env(self) -> Dict:
-        return self._fetch_runtime_context().runtime_env
+    def runtime_env(self) -> RuntimeEnv:
+        runtime_env = RuntimeEnv()
+        runtime_env.ParseFromString(self._fetch_runtime_context().runtime_env)
+        return runtime_env

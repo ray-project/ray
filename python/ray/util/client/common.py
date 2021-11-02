@@ -239,6 +239,7 @@ class ClientActorClass(ClientStub):
         task.name = self._name
         task.payload_id = self._ref.id
         set_task_options(task, self._options, "baseline_options")
+        print(f"task option {task.options.serialized_runtime_env}")
         return task
 
     @staticmethod
@@ -413,7 +414,7 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     if options is None:
         task.ClearField(field)
         return
-
+    print(f"options {options}")
     # If there's a non-null "placement_group" in `options`, convert the
     # placement group to a dict so that `options` can be passed to json.dumps.
     pg = options.get("placement_group", None)

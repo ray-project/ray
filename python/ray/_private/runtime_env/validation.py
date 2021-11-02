@@ -324,7 +324,7 @@ class ParsedRuntimeEnv(dict):
         if self._cached_pb is None:
             pb = RuntimeEnv()
             pb.working_dir = self.get("working_dir", "")
-            pb.uris.extend(self.get("uris", []))
+            pb.uris.extend(self.get_uris())
             env_vars = self.get("env_vars", {})
             if env_vars:
                 # fix this

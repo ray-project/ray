@@ -293,6 +293,7 @@ def check_local_files_gced(cluster):
         # Check that there are no files remaining except for .lock files.
         # TODO(edoakes): the lock files should get cleaned up too!
         if len(list(filter(lambda f: not f.endswith(".lock"), all_files))) > 0:
+            print(all_files)
             return False
 
     return True
@@ -629,11 +630,13 @@ def test_inheritance(start_cluster):
         @ray.remote
         class Test:
             def f(self):
+                print(f"os.getcwd() {os.getcwd()}")
                 return open("hello").read()
 
         # Passing working_dir URI through directly should work.
         env1 = ray.get_runtime_context().runtime_env
         assert env1.working_dir
+        print(f"env1.working_dir {env1.working_dir}")
         t = Test.options(runtime_env=env1).remote()
         assert ray.get(t.f.remote()) == "world"
 
@@ -641,7 +644,7 @@ def test_inheritance(start_cluster):
         env2 = ray.get_runtime_context().runtime_env
         env2.working_dir = "."
         with pytest.raises(ValueError):
-            t = Test.options(runtime_env=env2.SerializeToString()).remote()
+            t = Test.options(runtime_env=env2).remote()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

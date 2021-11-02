@@ -51,6 +51,7 @@ class RuntimeEnvContext:
 
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
+        print(f"command_str {command_str}")
 
         if sys.platform == "win32":
             os.system(command_str)
