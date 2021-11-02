@@ -167,13 +167,12 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     const rpc::GetAllAvailableResourcesRequest &request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &iter : cluster_scheduling_resources_) {
-    rpc::AvailableResources resource;
-    resource.set_node_id(iter.first.Binary());
-    for (const auto &res : iter.second.GetAvailableResources().GetResourceAmountMap()) {
-      (*resource.mutable_resources_available())[res.first] = res.second.Double();
-    }
-    reply->add_resources_list()->CopyFrom(resource);
+  for (const auto &iter : node_resource_usages_) {
+    auto resource = reply->add_resources_list();
+    resource->set_node_id(iter.first.Binary());
+    resource->mutable_resources_available()->insert(
+        iter.second.resources_available().begin(),
+        iter.second.resources_available().end());
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
@@ -186,12 +185,13 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, *resources_data);
-  }
-
-  if (node_resource_usages_.count(node_id) == 0 ||
-      resources_data->resources_available_changed()) {
-    const auto &resource_changed = MapFromProtobuf(resources_data->resources_available());
-    SetAvailableResources(node_id, ResourceSet(resource_changed));
+  } else {
+    if (node_resource_usages_.count(node_id) == 0 ||
+        resources_data->resources_available_changed()) {
+      const auto &resource_changed =
+          MapFromProtobuf(resources_data->resources_available());
+      SetAvailableResources(node_id, ResourceSet(resource_changed));
+    }
   }
 
   UpdateNodeResourceUsage(node_id, data);
