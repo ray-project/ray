@@ -19,6 +19,7 @@ public class AnonymousNamespaceTest {
 
   public void testIsolationBetweenAnonymousNamespaces() throws IOException, InterruptedException {
     NamespaceTest.testIsolation(
+        AnonymousNamespaceTest.class,
         () ->
             Assert.assertThrows(
                 NoSuchElementException.class,

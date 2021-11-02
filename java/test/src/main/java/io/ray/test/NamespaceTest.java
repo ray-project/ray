@@ -21,6 +21,7 @@ public class NamespaceTest {
   public void testIsolationBetweenNamespaces() throws IOException, InterruptedException {
     System.setProperty("ray.job.namespace", "test2");
     testIsolation(
+        NamespaceTest.class,
         () ->
             Assert.assertThrows(
                 NoSuchElementException.class,
@@ -33,6 +34,7 @@ public class NamespaceTest {
   public void testIsolationInTheSameNamespaces() throws IOException, InterruptedException {
     System.setProperty("ray.job.namespace", "test1");
     testIsolation(
+        NamespaceTest.class,
         () -> {
           ActorHandle<A> a = (ActorHandle<A>) Ray.getGlobalActor("a").get();
           Assert.assertEquals("hello", a.task(A::hello).remote().get());
@@ -51,11 +53,12 @@ public class NamespaceTest {
     Ray.shutdown();
   }
 
-  static void testIsolation(Runnable runnable) throws IOException, InterruptedException {
+  static void testIsolation(Class<?> driverClass, Runnable runnable)
+      throws IOException, InterruptedException {
     Process driver = null;
     try {
       Ray.init();
-      ProcessBuilder builder = TestUtils.buildDriver(NamespaceTest.class, null);
+      ProcessBuilder builder = TestUtils.buildDriver(driverClass, null);
       builder.redirectError(ProcessBuilder.Redirect.INHERIT);
       driver = builder.start();
       // Wait for driver to start.
