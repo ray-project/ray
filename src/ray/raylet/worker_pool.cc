@@ -357,9 +357,6 @@ Process WorkerPool::StartWorkerProcess(
   if (language == Language::PYTHON || language == Language::JAVA) {
     if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
       worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
-      // Allocated_resource_json is only used in "shim process".
-      worker_command_args.push_back("--allocated-instances-serialized-json=" +
-                                    allocated_instances_serialized_json);
 
       worker_command_args.push_back("--language=" + Language_Name(language));
 

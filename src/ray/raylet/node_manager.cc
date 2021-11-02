@@ -253,12 +253,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
               result = std::move(results[0]);
             }
             return result;
-          },
-          /*fail_pull_request=*/
-          [this](const ObjectID &object_id) {
-            rpc::ObjectReference ref;
-            ref.set_object_id(object_id.Binary());
-            MarkObjectsAsFailed(rpc::ErrorType::OBJECT_LOST, {ref}, JobID::Nil());
           }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -897,9 +891,9 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
                  << " with created or updated resources: "
                  << createUpdatedResources.ToString() << ". Updating resource map.";
-  // if (node_id == self_node_id_) {
-  //   return;
-  // }
+  if (node_id == self_node_id_) {
+    return;
+  }
 
   // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
@@ -1479,17 +1473,22 @@ void NodeManager::HandleUpdateResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
-
+  // When next_resource_seq_no_ == 0 it means it just started.
+  // TODO: Fetch a snapshot from gcs for lightweight resource broadcasting
   if (next_resource_seq_no_ != 0 &&
       resource_usage_batch.seq_no() != next_resource_seq_no_) {
+    // TODO (Alex): Ideally we would be really robust, and potentially eagerly
+    // pull a full resource "snapshot" from gcs to make sure our state doesn't
+    // diverge from GCS.
     RAY_LOG(WARNING)
         << "Raylet may have missed a resource broadcast. This either means that GCS has "
            "restarted, the network is heavily congested and is dropping, reordering, or "
            "duplicating packets. Expected seq#: "
         << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
-    // TODO (Alex): Ideally we would be really robust, and potentially eagerly
-    // pull a full resource "snapshot" from gcs to make sure our state doesn't
-    // diverge from GCS.
+    if (resource_usage_batch.seq_no() < next_resource_seq_no_) {
+      RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
+      return;
+    }
   }
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
 
@@ -1497,8 +1496,8 @@ void NodeManager::HandleUpdateResourceUsage(
     if (resource_change_or_data.has_data()) {
       const auto &resource_usage = resource_change_or_data.data();
       auto node_id = NodeID::FromBinary(resource_usage.node_id());
+      // Skip messages from self.
       if (node_id != self_node_id_) {
-        // Skip messages from self.
         UpdateResourceUsage(node_id, resource_usage);
       }
     } else if (resource_change_or_data.has_change()) {

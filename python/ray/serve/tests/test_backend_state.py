@@ -8,7 +8,7 @@ import pytest
 
 from ray.actor import ActorHandle
 from ray.serve.common import (
-    BackendConfig,
+    DeploymentConfig,
     BackendInfo,
     BackendTag,
     ReplicaConfig,
@@ -17,7 +17,7 @@ from ray.serve.common import (
 from ray.serve.backend_state import (
     BackendState,
     BackendStateManager,
-    BackendVersion,
+    DeploymentVersion,
     ReplicaStartupStatus,
     ReplicaState,
     ReplicaStateContainer,
@@ -85,18 +85,18 @@ class MockReplicaActorWrapper:
     def set_unhealthy(self):
         self.healthy = False
 
-    def set_starting_version(self, version: BackendVersion):
+    def set_starting_version(self, version: DeploymentVersion):
         """Mocked backend_worker return version from reconfigure()"""
         self.starting_version = version
 
-    def start(self, backend_info: BackendInfo, version: BackendVersion):
+    def start(self, backend_info: BackendInfo, version: DeploymentVersion):
         self.started = True
         self.version = version
         self.backend_info = backend_info
 
     def update_user_config(self, user_config: Any):
         self.started = True
-        self.version = BackendVersion(
+        self.version = DeploymentVersion(
             self.version.code_version, user_config=user_config)
 
     def recover(self):
@@ -130,7 +130,7 @@ class MockReplicaActorWrapper:
     def graceful_stop(self) -> None:
         assert self.started
         self.stopped = True
-        return self.backend_info.backend_config.graceful_shutdown_timeout_s
+        return self.backend_info.deployment_config.graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:
         return self.done_stopping
@@ -149,12 +149,12 @@ class MockReplicaActorWrapper:
 def backend_info(version: Optional[str] = None,
                  num_replicas: Optional[int] = 1,
                  user_config: Optional[Any] = None,
-                 **config_opts) -> Tuple[BackendInfo, BackendVersion]:
+                 **config_opts) -> Tuple[BackendInfo, DeploymentVersion]:
     info = BackendInfo(
         actor_def=None,
         version=version,
         start_time_ms=0,
-        backend_config=BackendConfig(
+        deployment_config=DeploymentConfig(
             num_replicas=num_replicas, user_config=user_config, **config_opts),
         replica_config=ReplicaConfig(lambda x: x))
 
@@ -163,7 +163,8 @@ def backend_info(version: Optional[str] = None,
     else:
         code_version = get_random_letters()
 
-    version = BackendVersion(code_version, info.backend_config.user_config)
+    version = DeploymentVersion(code_version,
+                                info.deployment_config.user_config)
 
     return info, version
 
@@ -196,12 +197,12 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
         yield backend_state, timer, goal_manager
 
 
-def replica(version: Optional[BackendVersion] = None) -> VersionedReplica:
+def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
     if version is None:
-        version = BackendVersion(get_random_letters(), None)
+        version = DeploymentVersion(get_random_letters(), None)
 
     class MockVersionedReplica(VersionedReplica):
-        def __init__(self, version: BackendVersion):
+        def __init__(self, version: DeploymentVersion):
             self._version = version
 
         @property
@@ -214,8 +215,8 @@ def replica(version: Optional[BackendVersion] = None) -> VersionedReplica:
 class TestReplicaStateContainer:
     def test_count(self):
         c = ReplicaStateContainer()
-        r1, r2, r3 = replica(BackendVersion("1")), replica(
-            BackendVersion("2")), replica(BackendVersion("2"))
+        r1, r2, r3 = replica(DeploymentVersion("1")), replica(
+            DeploymentVersion("2")), replica(DeploymentVersion("2"))
         c.add(ReplicaState.STARTING, r1)
         c.add(ReplicaState.STARTING, r2)
         c.add(ReplicaState.STOPPING, r3)
@@ -228,29 +229,31 @@ class TestReplicaStateContainer:
         assert c.count(states=[ReplicaState.STOPPING]) == 1
 
         # Test filtering by version.
-        assert c.count(version=BackendVersion("1")) == 1
-        assert c.count(version=BackendVersion("2")) == 2
-        assert c.count(version=BackendVersion("3")) == 0
-        assert c.count(exclude_version=BackendVersion("1")) == 2
-        assert c.count(exclude_version=BackendVersion("2")) == 1
-        assert c.count(exclude_version=BackendVersion("3")) == 3
+        assert c.count(version=DeploymentVersion("1")) == 1
+        assert c.count(version=DeploymentVersion("2")) == 2
+        assert c.count(version=DeploymentVersion("3")) == 0
+        assert c.count(exclude_version=DeploymentVersion("1")) == 2
+        assert c.count(exclude_version=DeploymentVersion("2")) == 1
+        assert c.count(exclude_version=DeploymentVersion("3")) == 3
 
         # Test filtering by state and version.
         assert c.count(
-            version=BackendVersion("1"), states=[ReplicaState.STARTING]) == 1
-        assert c.count(
-            version=BackendVersion("3"), states=[ReplicaState.STARTING]) == 0
-        assert c.count(
-            version=BackendVersion("2"),
-            states=[ReplicaState.STARTING, ReplicaState.STOPPING]) == 2
-        assert c.count(
-            exclude_version=BackendVersion("1"),
+            version=DeploymentVersion("1"),
             states=[ReplicaState.STARTING]) == 1
         assert c.count(
-            exclude_version=BackendVersion("3"),
+            version=DeploymentVersion("3"),
+            states=[ReplicaState.STARTING]) == 0
+        assert c.count(
+            version=DeploymentVersion("2"),
+            states=[ReplicaState.STARTING, ReplicaState.STOPPING]) == 2
+        assert c.count(
+            exclude_version=DeploymentVersion("1"),
+            states=[ReplicaState.STARTING]) == 1
+        assert c.count(
+            exclude_version=DeploymentVersion("3"),
             states=[ReplicaState.STARTING]) == 2
         assert c.count(
-            exclude_version=BackendVersion("2"),
+            exclude_version=DeploymentVersion("2"),
             states=[ReplicaState.STARTING, ReplicaState.STOPPING]) == 1
 
     def test_get(self):
@@ -277,16 +280,16 @@ class TestReplicaStateContainer:
 
     def test_pop_exclude_version(self):
         c = ReplicaStateContainer()
-        r1, r2, r3 = replica(BackendVersion("1")), replica(
-            BackendVersion("1")), replica(BackendVersion("2"))
+        r1, r2, r3 = replica(DeploymentVersion("1")), replica(
+            DeploymentVersion("1")), replica(DeploymentVersion("2"))
 
         c.add(ReplicaState.STARTING, r1)
         c.add(ReplicaState.STARTING, r2)
         c.add(ReplicaState.STARTING, r3)
-        assert c.pop(exclude_version=BackendVersion("1")) == [r3]
-        assert not c.pop(exclude_version=BackendVersion("1"))
-        assert c.pop(exclude_version=BackendVersion("2")) == [r1, r2]
-        assert not c.pop(exclude_version=BackendVersion("2"))
+        assert c.pop(exclude_version=DeploymentVersion("1")) == [r3]
+        assert not c.pop(exclude_version=DeploymentVersion("1"))
+        assert c.pop(exclude_version=DeploymentVersion("2")) == [r1, r2]
+        assert not c.pop(exclude_version=DeploymentVersion("2"))
         assert not c.pop()
 
     def test_pop_max_replicas(self):
@@ -334,42 +337,42 @@ class TestReplicaStateContainer:
 
     def test_pop_integration(self):
         c = ReplicaStateContainer()
-        r1, r2, r3, r4 = replica(BackendVersion("1")), replica(
-            BackendVersion("2")), replica(BackendVersion("2")), replica(
-                BackendVersion("3"))
+        r1, r2, r3, r4 = replica(DeploymentVersion("1")), replica(
+            DeploymentVersion("2")), replica(DeploymentVersion("2")), replica(
+                DeploymentVersion("3"))
 
         c.add(ReplicaState.STOPPING, r1)
         c.add(ReplicaState.STARTING, r2)
         c.add(ReplicaState.RUNNING, r3)
         c.add(ReplicaState.RUNNING, r4)
         assert not c.pop(
-            exclude_version=BackendVersion("1"),
+            exclude_version=DeploymentVersion("1"),
             states=[ReplicaState.STOPPING])
         assert c.pop(
-            exclude_version=BackendVersion("1"),
+            exclude_version=DeploymentVersion("1"),
             states=[ReplicaState.RUNNING],
             max_replicas=1) == [r3]
         assert c.pop(
-            exclude_version=BackendVersion("1"),
+            exclude_version=DeploymentVersion("1"),
             states=[ReplicaState.RUNNING],
             max_replicas=1) == [r4]
         c.add(ReplicaState.RUNNING, r3)
         c.add(ReplicaState.RUNNING, r4)
         assert c.pop(
-            exclude_version=BackendVersion("1"),
+            exclude_version=DeploymentVersion("1"),
             states=[ReplicaState.RUNNING]) == [r3, r4]
         assert c.pop(
-            exclude_version=BackendVersion("1"),
+            exclude_version=DeploymentVersion("1"),
             states=[ReplicaState.STARTING]) == [r2]
         c.add(ReplicaState.STARTING, r2)
         c.add(ReplicaState.RUNNING, r3)
         c.add(ReplicaState.RUNNING, r4)
         assert c.pop(
-            exclude_version=BackendVersion("1"),
+            exclude_version=DeploymentVersion("1"),
             states=[ReplicaState.RUNNING,
                     ReplicaState.STARTING]) == [r3, r4, r2]
         assert c.pop(
-            exclude_version=BackendVersion("nonsense"),
+            exclude_version=DeploymentVersion("nonsense"),
             states=[ReplicaState.STOPPING]) == [r1]
 
 
