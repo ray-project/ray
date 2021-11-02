@@ -1451,7 +1451,7 @@ uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
   if (cpu_req == 0 || total_cpus == 0) {
     return std::numeric_limits<uint64_t>::max();
   }
-  return static_cast<uint64_t>(std::round(total_cpus/cpu_req));
+  return static_cast<uint64_t>(std::round(total_cpus / cpu_req));
 }
 
 }  // namespace raylet
