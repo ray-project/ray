@@ -21,7 +21,7 @@ class EndpointInfo:
     route: Optional[str] = None
 
 
-class BackendInfo:
+class DeploymentInfo:
     def __init__(self,
                  deployment_config: DeploymentConfig,
                  replica_config: ReplicaConfig,

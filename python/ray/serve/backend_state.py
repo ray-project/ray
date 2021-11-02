@@ -9,7 +9,7 @@ import ray
 from ray import cloudpickle, ObjectRef
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
+from ray.serve.common import (DeploymentInfo, BackendTag, Duration, GoalId,
                               ReplicaTag, ReplicaName, RunningReplicaInfo)
 from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
@@ -152,15 +152,16 @@ class ActorReplicaWrapper:
 
         return self._placement_group
 
-    def start(self, backend_info: BackendInfo, version: DeploymentVersion):
+    def start(self, deployment_info: DeploymentInfo,
+              version: DeploymentVersion):
         """
         Start a new actor for current BackendReplica instance.
         """
-        self._actor_resources = backend_info.replica_config.resource_dict
+        self._actor_resources = deployment_info.replica_config.resource_dict
         self._max_concurrent_queries = (
-            backend_info.deployment_config.max_concurrent_queries)
+            deployment_info.deployment_config.max_concurrent_queries)
         self._graceful_shutdown_timeout_s = (
-            backend_info.deployment_config.graceful_shutdown_timeout_s)
+            deployment_info.deployment_config.graceful_shutdown_timeout_s)
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources)
@@ -169,22 +170,22 @@ class ActorReplicaWrapper:
                      f"{self.backend_tag} component=serve deployment="
                      f"{self.backend_tag} replica={self.replica_tag}")
 
-        self._actor_handle = backend_info.actor_def.options(
+        self._actor_handle = deployment_info.actor_def.options(
             name=self._actor_name,
             namespace=self._controller_namespace,
             lifetime="detached" if self._detached else None,
             placement_group=self._placement_group,
             placement_group_capture_child_tasks=False,
-            **backend_info.replica_config.ray_actor_options).remote(
+            **deployment_info.replica_config.ray_actor_options).remote(
                 self.backend_tag, self.replica_tag,
-                backend_info.replica_config.init_args,
-                backend_info.replica_config.init_kwargs,
-                backend_info.deployment_config.to_proto_bytes(), version,
+                deployment_info.replica_config.init_args,
+                deployment_info.replica_config.init_kwargs,
+                deployment_info.deployment_config.to_proto_bytes(), version,
                 self._controller_name, self._detached)
 
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            backend_info.deployment_config.user_config)
+            deployment_info.deployment_config.user_config)
 
     def update_user_config(self, user_config: Any):
         """
@@ -382,11 +383,12 @@ class BackendReplica(VersionedReplica):
     def actor_handle(self) -> ActorHandle:
         return self._actor.actor_handle
 
-    def start(self, backend_info: BackendInfo, version: DeploymentVersion):
+    def start(self, deployment_info: DeploymentInfo,
+              version: DeploymentVersion):
         """
         Start a new actor for current BackendReplica instance.
         """
-        self._actor.start(backend_info, version)
+        self._actor.start(deployment_info, version)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
         self._version = version
@@ -623,11 +625,11 @@ class BackendState:
         self._save_checkpoint_func = _save_checkpoint_func
 
         # Each time we set a new backend goal, we're trying to save new
-        # BackendInfo and bring current deployment to meet new status.
+        # DeploymentInfo and bring current deployment to meet new status.
         # In case the new backend goal failed to complete, we keep track of
-        # previous BackendInfo and rollback to it.
-        self._target_info: BackendInfo = None
-        self._rollback_info: BackendInfo = None
+        # previous DeploymentInfo and rollback to it.
+        self._target_info: DeploymentInfo = None
+        self._rollback_info: DeploymentInfo = None
         self._target_replicas: int = -1
         self._curr_goal: Optional[GoalId] = None
         self._target_version: DeploymentVersion = None
@@ -705,7 +707,7 @@ class BackendState:
         self._notify_running_replicas_changed()
 
     @property
-    def target_info(self) -> BackendInfo:
+    def target_info(self) -> DeploymentInfo:
         return self._target_info
 
     @property
@@ -724,38 +726,40 @@ class BackendState:
             self.get_running_replica_infos(),
         )
 
-    def _set_backend_goal(self, backend_info: Optional[BackendInfo]) -> None:
+    def _set_backend_goal(self,
+                          deployment_info: Optional[DeploymentInfo]) -> None:
         """
         Set desirable state for a given backend, identified by tag.
 
         Args:
-            backend_info (Optional[BackendInfo]): Contains backend and
+            deployment_info (Optional[DeploymentInfo]): Contains backend and
                 replica config, if passed in as None, we're marking
                 target backend as shutting down.
         """
         existing_goal_id = self._curr_goal
         new_goal_id = self._goal_manager.create_goal()
 
-        if backend_info is not None:
-            self._target_info = backend_info
-            self._target_replicas = backend_info.deployment_config.num_replicas
+        if deployment_info is not None:
+            self._target_info = deployment_info
+            self._target_replicas = (
+                deployment_info.deployment_config.num_replicas)
 
             self._target_version = DeploymentVersion(
-                backend_info.version,
-                user_config=backend_info.deployment_config.user_config)
+                deployment_info.version,
+                user_config=deployment_info.deployment_config.user_config)
 
         else:
             self._target_replicas = 0
 
         self._curr_goal = new_goal_id
+        version_str = (deployment_info
+                       if deployment_info is None else deployment_info.version)
         logger.debug(
-            f"Set backend goal for {self._name} with version "
-            f"{backend_info if backend_info is None else backend_info.version}"
-        )
+            f"Set backend goal for {self._name} with version {version_str}")
         return new_goal_id, existing_goal_id
 
-    def deploy(self,
-               backend_info: BackendInfo) -> Tuple[Optional[GoalId], bool]:
+    def deploy(self, deployment_info: DeploymentInfo
+               ) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
         If the backend already exists with the same version and config,
@@ -770,12 +774,12 @@ class BackendState:
         existing_info = self._target_info
         if existing_info is not None:
             # Redeploying should not reset the deployment's start time.
-            backend_info.start_time_ms = existing_info.start_time_ms
+            deployment_info.start_time_ms = existing_info.start_time_ms
 
             if (existing_info.deployment_config ==
-                    backend_info.deployment_config
-                    and backend_info.version is not None
-                    and existing_info.version == backend_info.version):
+                    deployment_info.deployment_config
+                    and deployment_info.version is not None
+                    and existing_info.version == deployment_info.version):
                 return self._curr_goal, False
 
         # Keep a copy of previous backend info in case goal failed to
@@ -785,7 +789,7 @@ class BackendState:
         # Reset constructor retry counter.
         self._replica_constructor_retry_counter = 0
 
-        new_goal_id, existing_goal_id = self._set_backend_goal(backend_info)
+        new_goal_id, existing_goal_id = self._set_backend_goal(deployment_info)
 
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
@@ -1161,7 +1165,7 @@ class BackendState:
         status = self._check_curr_goal_status()
         if status == GoalStatus.SUCCEEDED:
             # Deployment successul, complete the goal and clear the
-            # backup backend_info.
+            # backup deployment_info.
             self._goal_manager.complete_goal(self._curr_goal)
             self._rollback_info = None
         elif status == GoalStatus.FAILED:
@@ -1213,7 +1217,7 @@ class BackendStateManager:
             long_poll_host, goal_manager, self._save_checkpoint_func)
         self._backend_states: Dict[BackendTag, BackendState] = dict()
         self._deleted_backend_metadata: Dict[BackendTag,
-                                             BackendInfo] = OrderedDict()
+                                             DeploymentInfo] = OrderedDict()
 
         self._recover_from_checkpoint(all_current_actor_names)
 
@@ -1350,7 +1354,7 @@ class BackendStateManager:
     def get_backend(self,
                     backend_tag: BackendTag,
                     include_deleted: Optional[bool] = False
-                    ) -> Optional[BackendInfo]:
+                    ) -> Optional[DeploymentInfo]:
         if backend_tag in self._backend_states:
             return self._backend_states[backend_tag].target_info
         elif include_deleted and backend_tag in self._deleted_backend_metadata:
@@ -1358,8 +1362,9 @@ class BackendStateManager:
         else:
             return None
 
-    def deploy_backend(self, backend_tag: BackendTag, backend_info: BackendInfo
-                       ) -> Tuple[Optional[GoalId], bool]:
+    def deploy_backend(
+            self, backend_tag: BackendTag,
+            deployment_info: DeploymentInfo) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
         If the backend already exists with the same version and config,
@@ -1377,7 +1382,7 @@ class BackendStateManager:
             self._backend_states[backend_tag] = self._create_backend_state(
                 backend_tag)
 
-        return self._backend_states[backend_tag].deploy(backend_info)
+        return self._backend_states[backend_tag].deploy(deployment_info)
 
     def delete_backend(self, backend_tag: BackendTag) -> Optional[GoalId]:
         # This method must be idempotent. We should validate that the
@@ -1395,12 +1400,12 @@ class BackendStateManager:
             deleted = backend_state.update()
             if deleted:
                 deleted_tags.append(backend_tag)
-                backend_info = backend_state.target_info
-                backend_info.end_time_ms = int(time.time() * 1000)
+                deployment_info = backend_state.target_info
+                deployment_info.end_time_ms = int(time.time() * 1000)
                 if (len(self._deleted_backend_metadata) >
                         MAX_NUM_DELETED_DEPLOYMENTS):
                     self._deleted_backend_metadata.popitem(last=False)
-                self._deleted_backend_metadata[backend_tag] = backend_info
+                self._deleted_backend_metadata[backend_tag] = deployment_info
 
         for tag in deleted_tags:
             del self._backend_states[tag]
