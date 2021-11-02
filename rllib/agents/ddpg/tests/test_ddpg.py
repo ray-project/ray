@@ -66,7 +66,7 @@ class TestDDPG(unittest.TestCase):
         config["exploration_config"]["random_timesteps"] = 100
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
             trainer.train()
             with TemporaryDirectory() as temp_dir:
