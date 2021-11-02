@@ -63,6 +63,7 @@ void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+  absl::MutexLock lock(&mu_);
   auto task_id = task_spec.TaskId();
   auto actor_id = task_spec.ActorId();
   RAY_LOG(DEBUG) << "Submitting task " << task_id;
@@ -97,17 +98,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   } else {
     // Do not hold the lock while calling into task_finisher_.
     task_finisher_.MarkTaskCanceled(task_id);
-    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
-    {
-      absl::MutexLock lock(&mu_);
-      auto queue = client_queues_.find(task_spec.ActorId());
-      creation_task_exception = queue->second.creation_task_exception;
-    }
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
     // dead.
     RAY_UNUSED(!task_finisher_.PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED,
-                                                 &status, creation_task_exception));
+                                                 &status,
+                                                 queue->second.creation_task_exception));
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -464,7 +460,8 @@ bool CoreWorkerDirectActorTaskSubmitter::FullOfPendingTasks(const ActorID &actor
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
-  return it->second.cur_pending_calls >= it->second.max_pending_calls;
+  return it->second.max_pending_calls != -1 &&
+         it->second.cur_pending_calls >= it->second.max_pending_calls;
 }
 
 void CoreWorkerDirectTaskReceiver::Init(
