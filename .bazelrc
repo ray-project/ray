@@ -96,7 +96,7 @@ build:tsan --copt -DTHREAD_SANITIZER
 build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
-build:tsan --copt -Wno-maybe-uninitialized
+build:tsan --copt -Wno-uninitialized
 build:tsan --linkopt -fsanitize=thread
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
