@@ -51,7 +51,7 @@ public class NamespaceTest {
     Ray.shutdown();
   }
 
-  private void testIsolation(Runnable runnable) throws IOException, InterruptedException {
+  static void testIsolation(Runnable runnable) throws IOException, InterruptedException {
     Process driver = null;
     try {
       Ray.init();

@@ -12,11 +12,7 @@ import io.ray.api.id.JobId;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import org.apache.commons.lang3.StringUtils;
 
 /** Configurations of Ray runtime. See `ray.default.conf` for the meaning of each field. */
@@ -121,7 +117,8 @@ public class RayConfig {
     }
 
     // Namespace of this job.
-    namespace = config.getString("ray.job.namespace");
+    String localNamespace = config.getString("ray.job.namespace");
+    namespace = StringUtils.isEmpty(localNamespace) ? UUID.randomUUID().toString() : localNamespace;
 
     // jvm options for java workers of this job.
     jvmOptionsForJavaWorker = config.getStringList("ray.job.jvm-options");
