@@ -57,7 +57,6 @@ An example of evaluating a previously trained DQN policy is as follows:
 
 .. code-block:: bash
 
-    pip install gym
     rllib rollout \
         ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1 \
         --run DQN --env CartPole-v0 --steps 10000
