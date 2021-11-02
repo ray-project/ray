@@ -10,7 +10,8 @@ from typing import Dict, List, Optional, Type, TYPE_CHECKING
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
