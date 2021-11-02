@@ -48,7 +48,7 @@ def test_successful_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
     def wait_for_job_to_succeed():
         data = _get_snapshot(address)
         for job_entry in data["data"]["snapshot"]["jobs"].values():
-            if job_entry["status"] != None:
+            if job_entry["status"] is not None:
                 assert job_entry["config"]["metadata"][
                     "jobSubmissionId"] == job_id
                 assert job_entry["status"] in {
@@ -81,7 +81,7 @@ def test_failed_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
     def wait_for_job_to_fail():
         data = _get_snapshot(address)
         for job_entry in data["data"]["snapshot"]["jobs"].values():
-            if job_entry["status"] != None:
+            if job_entry["status"] is not None:
                 assert job_entry["config"]["metadata"][
                     "jobSubmissionId"] == job_id
                 assert job_entry["status"] in {"PENDING", "RUNNING", "FAILED"}
