@@ -299,7 +299,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
 
     object_location_subscriber_->Subscribe(
         std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-        owner_address, object_id.Binary(), /*subscribe_done_callback=*/{},
+        owner_address, object_id.Binary(), /*subscribe_done_callback=*/nullptr,
         /*Success callback*/ msg_published_callback,
         /*Failure callback*/ failure_callback);
 

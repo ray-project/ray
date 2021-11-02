@@ -73,6 +73,7 @@ class SubscriptionIndex {
   bool CheckNoLeaks() const;
 
  private:
+  // Collection of subscribers that subscribe to all entities of the channel.
   absl::flat_hash_set<SubscriberID> subscribers_to_all_;
   // Mapping from subscribed entity id -> subscribers.
   absl::flat_hash_map<std::string, absl::flat_hash_set<SubscriberID>>

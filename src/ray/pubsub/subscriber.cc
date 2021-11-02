@@ -52,12 +52,14 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
   cum_unsubscribe_requests_++;
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
 
+  // Find subscription info.
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
     return false;
   }
   auto &subscription_index = subscription_it->second;
 
+  // Unsubscribing from the channel.
   if (!key_id) {
     RAY_CHECK(subscription_index.per_entity_subscription.empty());
     const bool unsubscribed = subscription_index.all_entities_subscription != nullptr;
@@ -66,6 +68,7 @@ bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
     return unsubscribed;
   }
 
+  // Unsubscribing from a single key.
   RAY_CHECK(subscription_index.all_entities_subscription == nullptr);
   auto &per_entity_subscription = subscription_index.per_entity_subscription;
 

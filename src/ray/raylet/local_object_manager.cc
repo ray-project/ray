@@ -75,7 +75,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 
     core_worker_subscriber_->Subscribe(
         std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address,
-        object_id.Binary(), /*subscribe_done_callback=*/{}, subscription_callback,
+        object_id.Binary(), /*subscribe_done_callback=*/nullptr, subscription_callback,
         owner_dead_callback);
   }
 }

@@ -851,7 +851,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
 
   object_info_subscriber_->Subscribe(
       std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-      addr.ToProto(), object_id.Binary(), /*subscribe_done_callback=*/{},
+      addr.ToProto(), object_id.Binary(), /*subscribe_done_callback=*/nullptr,
       message_published_callback, publisher_failed_callback);
 }
 

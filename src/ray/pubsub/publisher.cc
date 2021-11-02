@@ -247,7 +247,7 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
   }
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.AddEntry(key_id ? *key_id : "", subscriber_id);
+  return subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber_id);
 }
 
 void Publisher::Publish(const rpc::PubMessage &pub_message) {
@@ -288,7 +288,7 @@ bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
   absl::MutexLock lock(&mutex_);
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.EraseEntry(key_id ? *key_id : "", subscriber_id);
+  return subscription_index_it->second.EraseEntry(key_id.value_or(""), subscriber_id);
 }
 
 bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
