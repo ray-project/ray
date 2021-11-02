@@ -203,9 +203,6 @@ class Monitor:
 
         logger.info("Monitor: Started")
 
-    def __del__(self):
-        disconnect_from_gcs(self.gcs_client)
-
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
             autoscaling_config = self.autoscaling_config

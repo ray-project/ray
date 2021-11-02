@@ -184,5 +184,5 @@ class GcsClient:
     @staticmethod
     def connect_to_gcs_by_redis_address(redis_address, redis_password):
         from ray._private.services import create_redis_client
-        return connect_to_gcs_by_redis_cli(
+        return GcsClient.connect_to_gcs_by_redis_cli(
             create_redis_client(redis_address, redis_password))
