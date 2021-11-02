@@ -167,12 +167,12 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     const rpc::GetAllAvailableResourcesRequest &request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &iter : cluster_scheduling_resources_) {
+  for (const auto &iter : node_resource_usages_) {
     rpc::AvailableResources resource;
     resource.set_node_id(iter.first.Binary());
-    for (const auto &res : iter.second.GetAvailableResources().GetResourceAmountMap()) {
-      (*resource.mutable_resources_available())[res.first] = res.second.Double();
-    }
+    resource.mutable_resources_available()->insert(
+        iter.second.resources_available().begin(),
+        iter.second.resources_available().end());
     reply->add_resources_list()->CopyFrom(resource);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
