@@ -252,7 +252,10 @@ MANUAL_TESTS = {
 #   4. Have the `use_connect` flag set.
 USER_TESTS = {
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
-        "connect_tests",
+        ConnectTest(
+            "connect_tests",
+            requirements_file="release/rllib_tests"
+            "/connect_driver_requirements.txt")
     ],
 }
 
